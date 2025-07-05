@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "QuotaManagerTestHelpers.h"
 #include "gtest/gtest.h"
 #include "mozilla/dom/quota/OriginScope.h"
 #include "nsStringFwd.h"
@@ -12,22 +13,7 @@
 
 namespace mozilla::dom::quota {
 
-namespace {
-
-struct OriginTest {
-  const char* mOrigin;
-  bool mMatch;
-};
-
-void CheckOriginScopeMatchesOrigin(const OriginScope& aOriginScope,
-                                   const char* aOrigin, bool aMatch) {
-  bool result = aOriginScope.Matches(
-      OriginScope::FromOrigin(nsDependentCString(aOrigin)));
-
-  EXPECT_TRUE(result == aMatch);
-}
-
-}  // namespace
+using test::GetPrincipalMetadata;
 
 TEST(DOM_Quota_OriginScope, SanityChecks)
 {
@@ -36,18 +22,20 @@ TEST(DOM_Quota_OriginScope, SanityChecks)
   // Sanity checks.
 
   {
+    constexpr auto group = "www.mozilla.org"_ns;
     constexpr auto origin = "http://www.mozilla.org"_ns;
-    originScope.SetFromOrigin(origin);
+    originScope.SetFromOrigin(GetPrincipalMetadata(group, origin));
     EXPECT_TRUE(originScope.IsOrigin());
     EXPECT_TRUE(originScope.GetOrigin().Equals(origin));
     EXPECT_TRUE(originScope.GetOriginNoSuffix().Equals(origin));
   }
 
   {
-    constexpr auto prefix = "http://www.mozilla.org"_ns;
-    originScope.SetFromPrefix(prefix);
+    constexpr auto group = "mozilla.org"_ns;
+    constexpr auto origin = "http://www.mozilla.org"_ns;
+    originScope.SetFromPrefix(GetPrincipalMetadata(group, origin));
     EXPECT_TRUE(originScope.IsPrefix());
-    EXPECT_TRUE(originScope.GetOriginNoSuffix().Equals(prefix));
+    EXPECT_TRUE(originScope.GetOriginNoSuffix().Equals(origin));
   }
 
   {
@@ -58,49 +46,118 @@ TEST(DOM_Quota_OriginScope, SanityChecks)
 
 TEST(DOM_Quota_OriginScope, MatchesOrigin)
 {
-  OriginScope originScope;
-
   // Test each origin scope type against particular origins.
 
   {
-    originScope.SetFromOrigin("http://www.mozilla.org"_ns);
+    const auto originScope(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns)));
 
-    static const OriginTest tests[] = {
-        {"http://www.mozilla.org", true},
-        {"http://www.example.org", false},
-    };
-
-    for (const auto& test : tests) {
-      CheckOriginScopeMatchesOrigin(originScope, test.mOrigin, test.mMatch);
-    }
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns))));
+    EXPECT_FALSE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("example.org"_ns, "http://www.example.org"_ns))));
   }
 
   {
-    originScope.SetFromPrefix("http://www.mozilla.org"_ns);
+    const auto originScope(OriginScope::FromPrefix(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns)));
 
-    static const OriginTest tests[] = {
-        {"http://www.mozilla.org", true},
-        {"http://www.mozilla.org^userContextId=1", true},
-        {"http://www.example.org^userContextId=1", false},
-    };
-
-    for (const auto& test : tests) {
-      CheckOriginScopeMatchesOrigin(originScope, test.mOrigin, test.mMatch);
-    }
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns))));
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "mozilla.org"_ns,
+                             "http://www.mozilla.org"_ns))));
+    EXPECT_FALSE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "example.org"_ns,
+                             "http://www.example.org"_ns))));
   }
 
   {
-    originScope.SetFromNull();
+    const auto originScope(
+        OriginScope::FromJSONPattern(u"{ \"userContextId\": 1 }"_ns));
 
-    static const OriginTest tests[] = {
-        {"http://www.mozilla.org", true},
-        {"http://www.mozilla.org^userContextId=1", true},
-        {"http://www.example.org^userContextId=1", true},
-    };
+    EXPECT_FALSE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns))));
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "mozilla.org"_ns,
+                             "http://www.mozilla.org"_ns))));
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "example.org"_ns,
+                             "http://www.example.org"_ns))));
+  }
 
-    for (const auto& test : tests) {
-      CheckOriginScopeMatchesOrigin(originScope, test.mOrigin, test.mMatch);
-    }
+  {
+    const auto originScope(OriginScope::FromNull());
+
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns))));
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "mozilla.org"_ns,
+                             "http://www.mozilla.org"_ns))));
+    EXPECT_TRUE(originScope.Matches(OriginScope::FromOrigin(
+        GetPrincipalMetadata("^userContextId=1"_ns, "example.org"_ns,
+                             "http://www.example.org"_ns))));
+  }
+}
+
+TEST(DOM_Quota_OriginScope, MatchesGroup)
+{
+  {
+    const auto originScope(OriginScope::FromOrigin(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns)));
+
+    ASSERT_TRUE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_FALSE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
+  }
+
+  {
+    const auto originScope(OriginScope::FromOrigin(GetPrincipalMetadata(
+        "^userContextId=1"_ns, "mozilla.org"_ns, "http://www.mozilla.org"_ns)));
+
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_TRUE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
+  }
+
+  {
+    const auto originScope(OriginScope::FromPrefix(
+        GetPrincipalMetadata("mozilla.org"_ns, "http://www.mozilla.org"_ns)));
+
+    ASSERT_TRUE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_TRUE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
+  }
+
+  {
+    const auto originScope(
+        OriginScope::FromJSONPattern(u"{ \"userContextId\": 1 }"_ns));
+
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_TRUE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
+  }
+
+  {
+    const auto originScope(OriginScope::FromGroup("mozilla.org"_ns));
+
+    ASSERT_TRUE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_FALSE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_FALSE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
+  }
+
+  {
+    const auto originScope(OriginScope::FromNull());
+
+    ASSERT_TRUE(originScope.Matches(OriginScope::FromGroup("mozilla.org"_ns)));
+    ASSERT_TRUE(originScope.Matches(
+        OriginScope::FromGroup("mozilla.org^userContextId=1"_ns)));
+    ASSERT_TRUE(originScope.Matches(OriginScope::FromGroup("mozilla.com"_ns)));
   }
 }
 

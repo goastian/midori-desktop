@@ -8,7 +8,7 @@
 #define mozilla_dom_ServiceWorkerRegistrar_h
 
 #include "mozilla/Monitor.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/dom/ServiceWorkerRegistrarTypes.h"
 #include "nsClassHashtable.h"
 #include "nsIAsyncShutdown.h"
 #include "nsIObserver.h"
@@ -17,7 +17,7 @@
 #include "nsTArray.h"
 
 #define SERVICEWORKERREGISTRAR_FILE u"serviceworker.txt"
-#define SERVICEWORKERREGISTRAR_VERSION "9"
+#define SERVICEWORKERREGISTRAR_VERSION 10
 #define SERVICEWORKERREGISTRAR_TERMINATOR "#"
 #define SERVICEWORKERREGISTRAR_TRUE "true"
 #define SERVICEWORKERREGISTRAR_FALSE "false"
@@ -30,10 +30,6 @@ namespace ipc {
 class PrincipalInfo;
 }  // namespace ipc
 
-namespace dom {
-
-class ServiceWorkerRegistrationData;
-}
 }  // namespace mozilla
 
 namespace mozilla::dom {
@@ -41,6 +37,32 @@ namespace mozilla::dom {
 class ServiceWorkerRegistrar : public nsIObserver,
                                public nsIAsyncShutdownBlocker {
   friend class ServiceWorkerRegistrarSaveDataRunnable;
+
+  // The internal data struct is public to make gtests happy.
+ public:
+  // An expando handler consists of a set of callbacks and a key. During
+  // serialization/deserialization, ServiceWorkerRegistrar triggers these
+  // callbacks based on the key name found on disk.
+  struct ExpandoHandler {
+    nsCString mKey;
+    // The deserialization of the value is up to this callback.
+    void (*mServiceWorkerLoaded)(const ServiceWorkerRegistrationData& aData,
+                                 const nsACString& aValue);
+    void (*mServiceWorkerUpdated)(const ServiceWorkerRegistrationData& aData);
+    void (*mServiceWorkerUnregistered)(
+        const ServiceWorkerRegistrationData& aData);
+  };
+
+  struct ExpandoData {
+    nsCString mKey;
+    nsCString mValue;
+    const ExpandoHandler* mHandler;
+  };
+
+  struct ServiceWorkerData {
+    ServiceWorkerRegistrationData mRegistration;
+    CopyableTArray<ExpandoData> mExpandos;
+  };
 
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -61,6 +83,19 @@ class ServiceWorkerRegistrar : public nsIObserver,
   void UnregisterServiceWorker(
       const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
       const nsACString& aScope);
+
+  // Add or overwrite an expando key/value to a SW registration.
+  void StoreServiceWorkerExpandoOnMainThread(
+      const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
+      const nsACString& aScope, const nsACString& aKey,
+      const nsACString& aValue);
+
+  // Remove an existing expando key from a SW registration.
+  // This method is main-thread only.
+  void UnstoreServiceWorkerExpandoOnMainThread(
+      const mozilla::ipc::PrincipalInfo& aPrincipalInfo,
+      const nsACString& aScope, const nsACString& aKey);
+
   void RemoveAll();
 
   bool ReloadDataForTest();
@@ -69,10 +104,10 @@ class ServiceWorkerRegistrar : public nsIObserver,
   // These methods are protected because we test this class using gTest
   // subclassing it.
   void LoadData();
-  nsresult SaveData(const nsTArray<ServiceWorkerRegistrationData>& aData);
+  nsresult SaveData(const nsTArray<ServiceWorkerData>& aData);
 
   nsresult ReadData();
-  nsresult WriteData(const nsTArray<ServiceWorkerRegistrationData>& aData);
+  nsresult WriteData(const nsTArray<ServiceWorkerData>& aData);
   void DeleteData();
 
   void RegisterServiceWorkerInternal(const ServiceWorkerRegistrationData& aData)
@@ -94,7 +129,12 @@ class ServiceWorkerRegistrar : public nsIObserver,
 
   nsCOMPtr<nsIAsyncShutdownClient> GetShutdownPhase() const;
 
-  bool IsSupportedVersion(const nsACString& aVersion) const;
+  bool IsSupportedVersion(uint32_t aVersion) const;
+
+  void LoadExpandoCallbacks(const CopyableTArray<ServiceWorkerData>& aData);
+  void UpdateExpandoCallbacks(const ServiceWorkerData& aData);
+  void UnregisterExpandoCallbacks(
+      const CopyableTArray<ServiceWorkerData>& aData);
 
  protected:
   mozilla::Monitor mMonitor;
@@ -103,7 +143,7 @@ class ServiceWorkerRegistrar : public nsIObserver,
   nsCOMPtr<nsIFile> mProfileDir MOZ_GUARDED_BY(mMonitor);
   // Read on mainthread, modified on background thread EXCEPT for
   // ReloadDataForTest() AND for gtest, which modifies this on MainThread.
-  nsTArray<ServiceWorkerRegistrationData> mData MOZ_GUARDED_BY(mMonitor);
+  nsTArray<ServiceWorkerData> mData MOZ_GUARDED_BY(mMonitor);
   bool mDataLoaded MOZ_GUARDED_BY(mMonitor);
 
   // PBackground thread only
@@ -112,6 +152,8 @@ class ServiceWorkerRegistrar : public nsIObserver,
   uint32_t mRetryCount;
   bool mShuttingDown;
   bool mSaveDataRunnableDispatched;
+
+  nsTArray<ExpandoHandler> mExpandoHandlers;
 };
 
 }  // namespace mozilla::dom

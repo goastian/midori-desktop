@@ -10,10 +10,12 @@
 #include "MediaData.h"
 #include "KeySystemConfig.h"
 #include "mozilla/StaticPrefs_media.h"
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/KeySystemNames.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "nsContentUtils.h"
+#include "nsIScriptObjectPrincipal.h"
 
 #ifdef MOZ_WMF_CDM
 #  include "mozilla/PMFCDM.h"
@@ -32,8 +34,7 @@ LogModule* GetEMEVerboseLog() {
 }
 
 void CopyArrayBufferViewOrArrayBufferData(
-    const dom::ArrayBufferViewOrArrayBuffer& aBufferOrView,
-    nsTArray<uint8_t>& aOutData) {
+    const dom::BufferSource& aBufferOrView, nsTArray<uint8_t>& aOutData) {
   aOutData.Clear();
   Unused << dom::AppendTypedArrayDataTo(aBufferOrView, aOutData);
 }
@@ -51,11 +52,15 @@ bool IsWidevineKeySystem(const nsAString& aKeySystem) {
 }
 
 #ifdef MOZ_WMF_CDM
-bool IsPlayReadyEnabled() {
+bool IsMediaFoundationCDMPlaybackEnabled() {
   // 1=enabled encrypted and clear, 2=enabled encrytped.
+  return StaticPrefs::media_wmf_media_engine_enabled() == 1 ||
+         StaticPrefs::media_wmf_media_engine_enabled() == 2;
+}
+
+bool IsPlayReadyEnabled() {
   return StaticPrefs::media_eme_playready_enabled() &&
-         (StaticPrefs::media_wmf_media_engine_enabled() == 1 ||
-          StaticPrefs::media_wmf_media_engine_enabled() == 2);
+         IsMediaFoundationCDMPlaybackEnabled();
 }
 
 bool IsPlayReadyKeySystemAndSupported(const nsAString& aKeySystem) {
@@ -68,10 +73,8 @@ bool IsPlayReadyKeySystemAndSupported(const nsAString& aKeySystem) {
 }
 
 bool IsWidevineHardwareDecryptionEnabled() {
-  // 1=enabled encrypted and clear, 2=enabled encrytped.
   return StaticPrefs::media_eme_widevine_experiment_enabled() &&
-         (StaticPrefs::media_wmf_media_engine_enabled() == 1 ||
-          StaticPrefs::media_wmf_media_engine_enabled() == 2);
+         IsMediaFoundationCDMPlaybackEnabled();
 }
 
 bool IsWidevineExperimentKeySystemAndSupported(const nsAString& aKeySystem) {
@@ -86,9 +89,7 @@ bool IsWMFClearKeySystemAndSupported(const nsAString& aKeySystem) {
   if (!StaticPrefs::media_eme_wmf_clearkey_enabled()) {
     return false;
   }
-  // 1=enabled encrypted and clear, 2=enabled encrytped.
-  if (StaticPrefs::media_wmf_media_engine_enabled() != 1 &&
-      StaticPrefs::media_wmf_media_engine_enabled() != 2) {
+  if (!IsMediaFoundationCDMPlaybackEnabled()) {
     return false;
   }
   return aKeySystem.EqualsLiteral(kClearKeyKeySystemName);
@@ -256,6 +257,24 @@ void DeprecationWarningLog(const dom::Document* aDocument,
   nsContentUtils::ReportToConsole(nsIScriptError::warningFlag, "Media"_ns,
                                   aDocument, nsContentUtils::eDOM_PROPERTIES,
                                   aMsgName, params);
+}
+
+Maybe<nsCString> GetOrigin(const dom::Document* aDocument) {
+  if (!aDocument) {
+    return Nothing();
+  }
+  nsCOMPtr<nsIScriptObjectPrincipal> sop =
+      do_QueryInterface(aDocument->GetInnerWindow());
+  if (!sop) {
+    return Nothing();
+  }
+  auto* principal = sop->GetPrincipal();
+  nsAutoCString origin;
+  nsresult rv = principal->GetOrigin(origin);
+  if (NS_FAILED(rv)) {
+    return Nothing();
+  }
+  return Some(origin);
 }
 
 }  // namespace mozilla

@@ -7,6 +7,7 @@
 #include "RemoteWorkerService.h"
 
 #include "mozilla/dom/PRemoteWorkerParent.h"
+#include "mozilla/dom/PRemoteWorkerDebuggerParent.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/PBackgroundChild.h"
@@ -21,6 +22,8 @@
 #include "nsThreadUtils.h"
 #include "nsXPCOMPrivate.h"
 #include "RemoteWorkerController.h"
+#include "RemoteWorkerDebuggerManagerChild.h"
+#include "RemoteWorkerDebuggerManagerParent.h"
 #include "RemoteWorkerServiceChild.h"
 #include "RemoteWorkerServiceParent.h"
 
@@ -112,27 +115,15 @@ RemoteWorkerServiceKeepAlive::~RemoteWorkerServiceKeepAlive() {
 }
 
 /* static */
-void RemoteWorkerService::Initialize() {
+void RemoteWorkerService::InitializeParent() {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   StaticMutexAutoLock lock(sRemoteWorkerServiceMutex);
   MOZ_ASSERT(!sRemoteWorkerService);
 
   RefPtr<RemoteWorkerService> service = new RemoteWorkerService();
 
-  // ## Content Process Initialization Case
-  //
-  // We are being told to initialize now that we know what our remote type is.
-  // Now is a fine time to call InitializeOnMainThread.
-  if (!XRE_IsParentProcess()) {
-    nsresult rv = service->InitializeOnMainThread();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-
-    sRemoteWorkerService = service;
-    return;
-  }
   // ## Parent Process Initialization Case
   //
   // Otherwise we are in the parent process and were invoked by
@@ -158,11 +149,76 @@ void RemoteWorkerService::Initialize() {
 }
 
 /* static */
+void RemoteWorkerService::InitializeChild(
+    mozilla::ipc::Endpoint<PRemoteWorkerServiceChild> aEndpoint,
+    mozilla::ipc::Endpoint<PRemoteWorkerDebuggerManagerChild>
+        aDebuggerChildEp) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(!XRE_IsParentProcess());
+
+  StaticMutexAutoLock lock(sRemoteWorkerServiceMutex);
+  MOZ_ASSERT(!sRemoteWorkerService);
+
+  RefPtr<RemoteWorkerService> service = new RemoteWorkerService();
+
+  // ## Content Process Initialization Case
+  //
+  // We are being told to initialize now that we know what our remote type is.
+  // Now is a fine time to call InitializeOnMainThread.
+
+  nsresult rv = service->InitializeOnMainThread(std::move(aEndpoint),
+                                                std::move(aDebuggerChildEp));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  sRemoteWorkerService = service;
+}
+
+/* static */
 nsIThread* RemoteWorkerService::Thread() {
   StaticMutexAutoLock lock(sRemoteWorkerServiceMutex);
   MOZ_ASSERT(sRemoteWorkerService);
   MOZ_ASSERT(sRemoteWorkerService->mThread);
   return sRemoteWorkerService->mThread;
+}
+
+/* static */
+void RemoteWorkerService::RegisterRemoteDebugger(
+    RemoteWorkerDebuggerInfo aDebuggerInfo,
+    mozilla::ipc::Endpoint<PRemoteWorkerDebuggerParent> aDebuggerParentEp) {
+  StaticMutexAutoLock lock(sRemoteWorkerServiceMutex);
+  MOZ_ASSERT(sRemoteWorkerService);
+  MOZ_ASSERT(sRemoteWorkerService->mThread);
+
+  // If we are on WorkerLauncher thread, direcly call
+  // RemoteWorkerDebuggerManager::SendRegister.
+  if (sRemoteWorkerService->mThread->IsOnCurrentThread()) {
+    MOZ_ASSERT(sRemoteWorkerService->mDebuggerManagerChild);
+    Unused << sRemoteWorkerService->mDebuggerManagerChild->SendRegister(
+        std::move(aDebuggerInfo), std::move(aDebuggerParentEp));
+    return;
+  }
+
+  // For top-level workers in parent process, directly call RecvRegister().
+  if (XRE_IsParentProcess() && NS_IsMainThread()) {
+    MOZ_ASSERT(sRemoteWorkerService->mDebuggerManagerParent);
+    Unused << sRemoteWorkerService->mDebuggerManagerParent->RecvRegister(
+        std::move(aDebuggerInfo), std::move(aDebuggerParentEp));
+    return;
+  }
+
+  // We are on other thread in the case of this is a Child worker. Dispatch this
+  // method to WorkerLauncher thread.
+  nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "RemoteWorkerService::RegisterRemoteDebugger",
+      [debuggerInfo = std::move(aDebuggerInfo),
+       debuggerParentEp = std::move(aDebuggerParentEp)]() mutable {
+        RemoteWorkerService::RegisterRemoteDebugger(
+            std::move(debuggerInfo), std::move(debuggerParentEp));
+      });
+  Unused << NS_WARN_IF(
+      NS_FAILED(sRemoteWorkerService->mThread->Dispatch(r.forget())));
 }
 
 /* static */
@@ -183,7 +239,10 @@ RemoteWorkerService::MaybeGetKeepAlive() {
   return extraRef.forget();
 }
 
-nsresult RemoteWorkerService::InitializeOnMainThread() {
+nsresult RemoteWorkerService::InitializeOnMainThread(
+    mozilla::ipc::Endpoint<PRemoteWorkerServiceChild> aEndpoint,
+    mozilla::ipc::Endpoint<PRemoteWorkerDebuggerManagerChild>
+        aDebuggerChildEp) {
   // I would like to call this thread "DOM Remote Worker Launcher", but the max
   // length is 16 chars.
   nsresult rv = NS_NewNamedThread("Worker Launcher", getter_AddRefs(mThread));
@@ -213,7 +272,12 @@ nsresult RemoteWorkerService::InitializeOnMainThread() {
 
   RefPtr<RemoteWorkerService> self = this;
   nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-      "InitializeThread", [self]() { self->InitializeOnTargetThread(); });
+      "InitializeThread",
+      [self, endpoint = std::move(aEndpoint),
+       debuggerChildEp = std::move(aDebuggerChildEp)]() mutable {
+        self->InitializeOnTargetThread(std::move(endpoint),
+                                       std::move(debuggerChildEp));
+      });
 
   rv = mThread->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -230,25 +294,27 @@ RemoteWorkerService::RemoteWorkerService()
 
 RemoteWorkerService::~RemoteWorkerService() = default;
 
-void RemoteWorkerService::InitializeOnTargetThread() {
+void RemoteWorkerService::InitializeOnTargetThread(
+    mozilla::ipc::Endpoint<PRemoteWorkerServiceChild> aEndpoint,
+    mozilla::ipc::Endpoint<PRemoteWorkerDebuggerManagerChild>
+        aDebuggerMgrEndpoint) {
   MOZ_ASSERT(mThread);
   MOZ_ASSERT(mThread->IsOnCurrentThread());
 
-  PBackgroundChild* backgroundActor =
-      BackgroundChild::GetOrCreateForCurrentThread();
-  if (NS_WARN_IF(!backgroundActor)) {
+  RefPtr<RemoteWorkerDebuggerManagerChild> debuggerManagerActor =
+      MakeRefPtr<RemoteWorkerDebuggerManagerChild>();
+  if (NS_WARN_IF(!aDebuggerMgrEndpoint.Bind(debuggerManagerActor))) {
     return;
   }
 
   RefPtr<RemoteWorkerServiceChild> serviceActor =
       MakeAndAddRef<RemoteWorkerServiceChild>();
-  if (NS_WARN_IF(!backgroundActor->SendPRemoteWorkerServiceConstructor(
-          serviceActor))) {
+  if (NS_WARN_IF(!aEndpoint.Bind(serviceActor))) {
     return;
   }
 
-  // Now we are ready!
-  mActor = serviceActor;
+  mDebuggerManagerChild = std::move(debuggerManagerActor);
+  mActor = std::move(serviceActor);
 }
 
 void RemoteWorkerService::CloseActorOnTargetThread() {
@@ -258,8 +324,12 @@ void RemoteWorkerService::CloseActorOnTargetThread() {
   // If mActor is nullptr it means that initialization failed.
   if (mActor) {
     // Here we need to shutdown the IPC protocol.
-    mActor->Send__delete__(mActor);
+    mActor->Close();
     mActor = nullptr;
+  }
+  if (mDebuggerManagerChild) {
+    mDebuggerManagerChild->Close();
+    mDebuggerManagerChild = nullptr;
   }
 }
 
@@ -300,7 +370,17 @@ RemoteWorkerService::Observe(nsISupports* aSubject, const char* aTopic,
     obs->RemoveObserver(this, "profile-after-change");
   }
 
-  return InitializeOnMainThread();
+  Endpoint<PRemoteWorkerServiceChild> childEp;
+  RefPtr<RemoteWorkerServiceParent> parentActor =
+      RemoteWorkerServiceParent::CreateForProcess(nullptr, &childEp);
+  NS_ENSURE_TRUE(parentActor, NS_ERROR_FAILURE);
+
+  Endpoint<PRemoteWorkerDebuggerManagerChild> debuggerChildEp;
+  mDebuggerManagerParent =
+      RemoteWorkerDebuggerManagerParent::CreateForProcess(&debuggerChildEp);
+  NS_ENSURE_TRUE(mDebuggerManagerParent, NS_ERROR_FAILURE);
+
+  return InitializeOnMainThread(std::move(childEp), std::move(debuggerChildEp));
 }
 
 void RemoteWorkerService::BeginShutdown() {

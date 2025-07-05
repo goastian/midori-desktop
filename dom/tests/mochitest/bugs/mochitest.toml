@@ -1,6 +1,5 @@
 [DEFAULT]
 tags = "condprof"
-prefs = ["dom.window.sizeToContent.enabled=true"]
 support-files = [
   "bug289714.sjs",
   "bug346659-echoer.html",
@@ -135,7 +134,10 @@ skip-if = [
 ["test_bug456151.html"]
 
 ["test_bug458091.html"]
-skip-if = ["os == 'android'"] # Bug 1525959
+skip-if = [
+  "xorigin", # sessionStorage partitioning breaks this, and we don't need xorigin to validate the bugfix
+  "os == 'android'", # Bug 1525959
+]
 
 ["test_bug459848.html"]
 
@@ -271,6 +273,8 @@ skip-if = [
   "http2",
 ]
 
+["test_bug1840932.html"]
+
 ["test_devicemotion_multiple_listeners.html"]
 skip-if = [
   "os == 'android'",  # Bug 1780219
@@ -305,19 +309,14 @@ skip-if = [
 ["test_protochains.html"]
 
 ["test_resize_move_windows.html"]
+run-if = ["os != 'android'"] # Windows can't change size and position on Android
 skip-if = [
-  "os == 'android'", # Windows can't change size and position on Android
   "os == 'linux'", # Bug 1781569, Bug 1661132
-  "os == 'mac'", # Bug 1781569
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1781569
 ]
 support-files = [
   "file_resize_move_windows_1.html",
   "file_resize_move_windows_2.html",
-]
-
-["test_sizetocontent_clamp.html"]
-skip-if = [
-  "os == 'android'", #Windows can't change size on Android
 ]
 
 ["test_toJSON.html"]

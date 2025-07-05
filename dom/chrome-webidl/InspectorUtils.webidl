@@ -14,7 +14,7 @@
 namespace InspectorUtils {
   // documentOnly tells whether user and UA sheets should get included.
   sequence<StyleSheet> getAllStyleSheets(Document document, optional boolean documentOnly = false);
-  sequence<CSSStyleRule> getCSSStyleRules(
+  sequence<CSSRule> getMatchingCSSRules(
     Element element,
     optional [LegacyNullToEmptyString] DOMString pseudo = "",
     optional boolean relevantLinkVisited = false,
@@ -91,6 +91,7 @@ namespace InspectorUtils {
   [NewObject] NodeList getOverflowingChildrenOfElement(Element element);
   sequence<DOMString> getRegisteredCssHighlights(Document document, optional boolean activeOnly = false);
   sequence<InspectorCSSPropertyDefinition> getCSSRegisteredProperties(Document document);
+  InspectorCSSPropertyDefinition? getCSSRegisteredProperty(Document document, UTF8String name);
   boolean valueMatchesSyntax(Document document, UTF8String value, UTF8String syntax);
 
   // Get the first rule body text within initialText
@@ -197,6 +198,29 @@ dictionary InspectorStyleSheetRuleCountAndAtRulesResult {
 [Func="nsContentUtils::IsCallerChromeOrFuzzingEnabled",
  Exposed=Window]
 interface InspectorFontFace {
+  // OpenType IDs for some common name strings; see OpenType spec for details.
+  // (These may not always be present; and fonts may also contain names with
+  // other arbitrary 16-bit IDs, e.g. for variation axes, feature names, etc.)
+  const unsigned short NAME_ID_COPYRIGHT = 0;
+  const unsigned short NAME_ID_FAMILY = 1;
+  const unsigned short NAME_ID_SUBFAMILY = 2;
+  const unsigned short NAME_ID_UNIQUE = 3;
+  const unsigned short NAME_ID_FULL = 4;
+  const unsigned short NAME_ID_VERSION = 5;
+  const unsigned short NAME_ID_POSTSCRIPT = 6;
+  const unsigned short NAME_ID_TRADEMARK = 7;
+  const unsigned short NAME_ID_MANUFACTURER = 8;
+  const unsigned short NAME_ID_DESIGNER = 9;
+  const unsigned short NAME_ID_DESCRIPTION = 10;
+  const unsigned short NAME_ID_VENDOR_URL = 11;
+  const unsigned short NAME_ID_DESIGNER_URL = 12;
+  const unsigned short NAME_ID_LICENSE = 13;
+  const unsigned short NAME_ID_LICENSE_URL = 14;
+  const unsigned short NAME_ID_TYPOGRAPHIC_FAMILY = 16;
+  const unsigned short NAME_ID_TYPOGRAPHIC_SUBFAMILY = 17;
+  const unsigned short NAME_ID_COMPATIBLE_FULL = 18;
+  const unsigned short NAME_ID_SAMPLE_TEXT = 19;
+
   // An indication of how we found this font during font-matching.
   // Note that the same physical font may have been found in multiple ways within a range.
   readonly attribute boolean fromFontGroup;
@@ -210,6 +234,8 @@ interface InspectorFontFace {
                                               // due to aliases, generics, localized names, etc)
   readonly attribute DOMString CSSGeneric; // CSS generic (serif, sans-serif, etc) that was mapped
                                            // to this font, if any (frequently empty!)
+
+  DOMString getNameString(unsigned short id);  // Specified string from OpenType 'name' table.
 
   [NewObject,Throws] sequence<InspectorVariationAxis> getVariationAxes();
   [NewObject,Throws] sequence<InspectorVariationInstance> getVariationInstances();

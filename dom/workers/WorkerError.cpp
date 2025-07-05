@@ -201,7 +201,7 @@ class ReportGenericErrorRunnable final : public WorkerParentDebuggeeRunnable {
 }  // namespace
 
 void WorkerErrorBase::AssignErrorBase(JSErrorBase* aReport) {
-  CopyUTF8toUTF16(MakeStringSpan(aReport->filename.c_str()), mFilename);
+  mFilename.Assign(aReport->filename.c_str());
   mLineNumber = aReport->lineno;
   mColumnNumber = aReport->column.oneOriginValue();
   mErrorNumber = aReport->errorNumber;
@@ -218,8 +218,6 @@ WorkerErrorReport::WorkerErrorReport()
 void WorkerErrorReport::AssignErrorReport(JSErrorReport* aReport) {
   WorkerErrorBase::AssignErrorBase(aReport);
   xpc::ErrorReport::ErrorReportToMessageString(aReport, mMessage);
-
-  mLine.Assign(aReport->linebuf(), aReport->linebufLength());
   mIsWarning = aReport->isWarning();
   MOZ_ASSERT(aReport->exnType >= JSEXN_FIRST && aReport->exnType < JSEXN_LIMIT);
   mExnType = JSExnType(aReport->exnType);
@@ -325,8 +323,8 @@ void WorkerErrorReport::ReportError(
 
         MOZ_ASSERT(globalScope->GetWrapperPreserveColor() == global);
 
-        RefPtr<ErrorEvent> event =
-            ErrorEvent::Constructor(aTarget, u"error"_ns, init);
+        RefPtr<ErrorEvent> event = ErrorEvent::Constructor(
+            aTarget ? aTarget : globalScope, u"error"_ns, init);
         event->SetTrusted(true);
 
         if (NS_FAILED(EventDispatcher::DispatchDOMEvent(
@@ -371,7 +369,7 @@ void WorkerErrorReport::LogErrorToConsole(JSContext* aCx,
 
   ErrorData errorData(
       aReport.mIsWarning, aReport.mLineNumber, aReport.mColumnNumber,
-      aReport.mMessage, aReport.mFilename, aReport.mLine,
+      aReport.mMessage, aReport.mFilename,
       TransformIntoNewArray(aReport.mNotes, [](const WorkerErrorNote& note) {
         return ErrorDataNote(note.mLineNumber, note.mColumnNumber,
                              note.mMessage, note.mFilename);
@@ -396,9 +394,8 @@ void WorkerErrorReport::LogErrorToConsole(const ErrorData& aReport,
     uint32_t flags = aReport.isWarning() ? nsIScriptError::warningFlag
                                          : nsIScriptError::errorFlag;
     if (NS_FAILED(scriptError->nsIScriptError::InitWithWindowID(
-            aReport.message(), aReport.filename(), aReport.line(),
-            aReport.lineNumber(), aReport.columnNumber(), flags, category,
-            aInnerWindowId))) {
+            aReport.message(), aReport.filename(), aReport.lineNumber(),
+            aReport.columnNumber(), flags, category, aInnerWindowId))) {
       NS_WARNING("Failed to init script error!");
       scriptError = nullptr;
     }
@@ -429,18 +426,28 @@ void WorkerErrorReport::LogErrorToConsole(const ErrorData& aReport,
   }
 
   NS_ConvertUTF16toUTF8 msg(aReport.message());
-  NS_ConvertUTF16toUTF8 filename(aReport.filename());
 
   static const char kErrorString[] = "JS error in Web Worker: %s [%s:%u]";
 
 #ifdef ANDROID
   __android_log_print(ANDROID_LOG_INFO, "Gecko", kErrorString, msg.get(),
-                      filename.get(), aReport.lineNumber());
+                      aReport.filename().get(), aReport.lineNumber());
 #endif
 
-  fprintf(stderr, kErrorString, msg.get(), filename.get(),
+  fprintf(stderr, kErrorString, msg.get(), aReport.filename().get(),
           aReport.lineNumber());
   fflush(stderr);
+}
+
+/* static */
+void WorkerErrorReport::LogErrorToConsole(const nsAString& aMessage) {
+  AssertIsOnMainThread();
+
+  nsCOMPtr<nsIConsoleService> consoleService =
+      do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+  NS_WARNING_ASSERTION(consoleService, "Failed to get console service!");
+
+  consoleService->LogStringMessage(aMessage.BeginReading());
 }
 
 /* static */

@@ -34,19 +34,6 @@ namespace mozilla {
 //----------------------------------------------------------------------
 // Static members
 
-nsAttrValue::EnumTable SMILAnimationFunction::sAccumulateTable[] = {
-    {"none", false}, {"sum", true}, {nullptr, 0}};
-
-nsAttrValue::EnumTable SMILAnimationFunction::sAdditiveTable[] = {
-    {"replace", false}, {"sum", true}, {nullptr, 0}};
-
-nsAttrValue::EnumTable SMILAnimationFunction::sCalcModeTable[] = {
-    {"linear", CALC_LINEAR},
-    {"discrete", CALC_DISCRETE},
-    {"paced", CALC_PACED},
-    {"spline", CALC_SPLINE},
-    {nullptr, 0}};
-
 // Any negative number should be fine as a sentinel here,
 // because valid distances are non-negative.
 #define COMPUTE_DISTANCE_ERROR (-1)
@@ -258,7 +245,10 @@ int8_t SMILAnimationFunction::CompareTo(
     const SMILAnimationFunction* aOther) const {
   NS_ENSURE_TRUE(aOther, 0);
 
-  NS_ASSERTION(aOther != this, "Trying to compare to self");
+  if (aOther == this) {
+    // std::sort will sometimes compare an element to itself. It's fine.
+    return 0;
+  }
 
   // Inactive animations sort first
   if (!IsActiveOrFrozen() && aOther->IsActiveOrFrozen()) return -1;
@@ -279,7 +269,7 @@ int8_t SMILAnimationFunction::CompareTo(
 
   // Animations that appear later in the document sort after those earlier in
   // the document
-  MOZ_ASSERT(mAnimationElement != aOther->mAnimationElement,
+  MOZ_ASSERT(!HasSameAnimationElement(aOther),
              "Two animations cannot have the same animation content element!");
 
   return (nsContentUtils::PositionIsBefore(mAnimationElement,

@@ -4,6 +4,7 @@ misc createRenderPipeline and createRenderPipelineAsync validation tests.
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { kDefaultVertexShaderCode, kDefaultFragmentShaderCode } from '../../../util/shader.js';
+import * as vtu from '../validation_test_utils.js';
 
 import { CreateRenderPipelineValidationTest } from './common.js';
 
@@ -16,13 +17,27 @@ g.test('basic')
     const { isAsync } = t.params;
     const descriptor = t.getDescriptor();
 
-    t.doCreateRenderPipelineTest(isAsync, true, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, true, descriptor);
+  });
+
+g.test('no_attachment')
+  .desc(`Test that createRenderPipeline fails without any attachment.`)
+  .params(u => u.combine('isAsync', [false, true]))
+  .fn(t => {
+    const { isAsync } = t.params;
+
+    const descriptor = t.getDescriptor({
+      noFragment: true,
+      depthStencil: undefined,
+    });
+
+    vtu.doCreateRenderPipelineTest(t, isAsync, false, descriptor);
   });
 
 g.test('vertex_state_only')
   .desc(
     `Tests creating vertex-state-only render pipeline. A vertex-only render pipeline has no fragment
-state (and thus has no color state), and can be created with or without depth stencil state.`
+state (and thus has no color state), and must have a depth-stencil state as an attachment is required.`
   )
   .params(u =>
     u
@@ -35,6 +50,10 @@ state (and thus has no color state), and can be created with or without depth st
         '',
       ] as const)
       .combine('hasColor', [false, true])
+      .unless(({ depthStencilFormat, hasColor }) => {
+        // Render pipeline needs at least one attachement
+        return hasColor === false && depthStencilFormat === '';
+      })
   )
   .fn(t => {
     const { isAsync, depthStencilFormat, hasColor } = t.params;
@@ -58,7 +77,7 @@ state (and thus has no color state), and can be created with or without depth st
       targets: hasColor ? [{ format: 'rgba8unorm' }] : [],
     });
 
-    t.doCreateRenderPipelineTest(isAsync, true, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, depthStencilState !== undefined, descriptor);
   });
 
 g.test('pipeline_layout,device_mismatch')
@@ -66,9 +85,7 @@ g.test('pipeline_layout,device_mismatch')
     'Tests createRenderPipeline(Async) cannot be called with a pipeline layout created from another device'
   )
   .paramsSubcasesOnly(u => u.combine('isAsync', [true, false]).combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { isAsync, mismatched } = t.params;
 
@@ -94,7 +111,7 @@ g.test('pipeline_layout,device_mismatch')
       },
     };
 
-    t.doCreateRenderPipelineTest(isAsync, !mismatched, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, !mismatched, descriptor);
   });
 
 g.test('external_texture')
@@ -128,5 +145,5 @@ g.test('external_texture')
       },
     };
 
-    t.doCreateRenderPipelineTest(false, true, descriptor);
+    vtu.doCreateRenderPipelineTest(t, false, true, descriptor);
   });

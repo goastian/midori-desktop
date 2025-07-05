@@ -155,13 +155,16 @@ static bool IsAudioEncodeSupported(const nsAString& aCodec) {
 
 static bool CanEncode(const RefPtr<AudioEncoderConfigInternal>& aConfig,
                       nsCString& aErrorMessage) {
-  auto parsedCodecString =
-      ParseCodecString(aConfig->mCodec).valueOr(EmptyString());
   // TODO: Enable WebCodecs on Android (Bug 1840508)
   if (IsOnAndroid()) {
     return false;
   }
-  if (!IsAudioEncodeSupported(parsedCodecString)) {
+  if (!IsAudioEncodeSupported(aConfig->mCodec)) {
+    return false;
+  }
+  if (!IsSupportedAudioCodec(aConfig->mCodec)) {
+    aErrorMessage.AppendPrintf("%s is not supported",
+                               NS_ConvertUTF16toUTF8(aConfig->mCodec).get());
     return false;
   }
 
@@ -304,6 +307,14 @@ bool AudioEncoderTraits::Validate(const AudioEncoderConfig& aConfig,
     return false;
   }
 
+  // https://github.com/w3c/webcodecs/issues/816
+  if ((aConfig.mBitrate.WasPassed() && aConfig.mBitrate.Value() == 0)) {
+    aErrorMessage.AssignLiteral(
+        "Invalid AudioEncoderConfig: bitrate equal to 0");
+    LOGE("%s", aErrorMessage.get());
+    return false;
+  }
+
   if (codec->EqualsLiteral("opus")) {
     // This comes from
     // https://w3c.github.io/webcodecs/opus_codec_registration.html#opus-encoder-config
@@ -430,7 +441,6 @@ already_AddRefed<Promise> AudioEncoder::IsConfigSupported(
   RootedDictionary<AudioEncoderConfig> config(aGlobal.Context());
   CloneConfiguration(config, aGlobal.Context(), aConfig);
 
-  bool supportedAudioCodec = IsSupportedAudioCodec(aConfig.mCodec);
   auto configInternal = MakeRefPtr<AudioEncoderConfigInternal>(aConfig);
   bool canEncode = CanEncode(configInternal, errorMessage);
   if (!canEncode) {
@@ -438,7 +448,7 @@ already_AddRefed<Promise> AudioEncoder::IsConfigSupported(
   }
   RootedDictionary<AudioEncoderSupport> s(aGlobal.Context());
   s.mConfig.Construct(std::move(config));
-  s.mSupported.Construct(supportedAudioCodec && canEncode);
+  s.mSupported.Construct(canEncode);
 
   p->MaybeResolve(s);
   return p.forget();

@@ -8,11 +8,12 @@
 
 #include <utility>
 
-#include "DOMSVGPathSegList.h"
 #include "SVGPathSegListSMILType.h"
 #include "mozilla/SMILValue.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/SVGElement.h"
+#include "mozilla/dom/SVGPathElementBinding.h"
+#include "mozilla/dom/SVGPathSegment.h"
 
 using namespace mozilla::dom;
 
@@ -21,64 +22,166 @@ using namespace mozilla::dom;
 namespace mozilla {
 
 nsresult SVGAnimatedPathSegList::SetBaseValueString(const nsAString& aValue) {
-  SVGPathData newBaseValue;
-
-  // The spec says that the path data is parsed and accepted up to the first
-  // error encountered, so we don't return early if an error occurs. However,
-  // we do want to throw any error code from setAttribute if there's a problem.
-  nsresult rv = newBaseValue.SetValueFromString(aValue);
-
-  // We must send these notifications *before* changing mBaseVal! Our baseVal's
-  // DOM wrapper list may have to remove DOM items from itself, and any removed
-  // DOM items need to copy their internal counterpart's values *before* we
-  // change them. See the comments in
-  // DOMSVGPathSegList::InternalListWillChangeTo().
-  DOMSVGPathSegList* baseValWrapper = nullptr;
-  DOMSVGPathSegList* animValWrapper = nullptr;
-  if (StaticPrefs::dom_svg_pathSeg_enabled()) {
-    baseValWrapper = DOMSVGPathSegList::GetDOMWrapperIfExists(GetBaseValKey());
-    if (baseValWrapper) {
-      baseValWrapper->InternalListWillChangeTo(newBaseValue);
-    }
-
-    if (!IsAnimating()) {  // DOM anim val wraps our base val too!
-      animValWrapper =
-          DOMSVGPathSegList::GetDOMWrapperIfExists(GetAnimValKey());
-      if (animValWrapper) {
-        animValWrapper->InternalListWillChangeTo(newBaseValue);
-      }
-    }
-  }
-
-  // Only now may we modify mBaseVal!
-
   // We don't need to call DidChange* here - we're only called by
   // SVGElement::ParseAttribute under Element::SetAttr,
   // which takes care of notifying.
+  return mBaseVal.SetValueFromString(NS_ConvertUTF16toUTF8(aValue));
+}
 
-  mBaseVal.SwapWith(newBaseValue);
-  return rv;
+class MOZ_STACK_CLASS SVGPathSegmentInitWrapper final {
+ public:
+  explicit SVGPathSegmentInitWrapper(const SVGPathSegmentInit& aSVGPathSegment)
+      : mInit(aSVGPathSegment) {}
+
+  bool IsMove() const {
+    return mInit.mType.EqualsLiteral("M") || mInit.mType.EqualsLiteral("m");
+  }
+
+  bool IsArc() const {
+    return mInit.mType.EqualsLiteral("A") || mInit.mType.EqualsLiteral("a");
+  }
+
+  bool IsValid() const {
+    if (mInit.mType.Length() != 1) {
+      return false;
+    }
+    auto expectedArgCount = ArgCountForType(mInit.mType.First());
+    if (expectedArgCount < 0 ||
+        mInit.mValues.Length() != uint32_t(expectedArgCount)) {
+      return false;
+    }
+    if (IsArc() &&
+        !(IsValidFlag(mInit.mValues[3]) && IsValidFlag(mInit.mValues[4]))) {
+      return false;
+    }
+    return true;
+  }
+
+  StylePathCommand ToStylePathCommand() const {
+    MOZ_ASSERT(IsValid(), "Trying to convert invalid SVGPathSegment");
+    switch (mInit.mType.First()) {
+      case 'M':
+        return StylePathCommand::Move(StyleByTo::To,
+                                      {mInit.mValues[0], mInit.mValues[1]});
+      case 'm':
+        return StylePathCommand::Move(StyleByTo::By,
+                                      {mInit.mValues[0], mInit.mValues[1]});
+      case 'L':
+        return StylePathCommand::Line(StyleByTo::To,
+                                      {mInit.mValues[0], mInit.mValues[1]});
+      case 'l':
+        return StylePathCommand::Line(StyleByTo::By,
+                                      {mInit.mValues[0], mInit.mValues[1]});
+      case 'C':
+        return StylePathCommand::CubicCurve(
+            StyleByTo::To, {mInit.mValues[4], mInit.mValues[5]},
+            {mInit.mValues[0], mInit.mValues[1]},
+            {mInit.mValues[2], mInit.mValues[3]});
+      case 'c':
+        return StylePathCommand::CubicCurve(
+            StyleByTo::By, {mInit.mValues[4], mInit.mValues[5]},
+            {mInit.mValues[0], mInit.mValues[1]},
+            {mInit.mValues[2], mInit.mValues[3]});
+      case 'Q':
+        return StylePathCommand::QuadCurve(
+            StyleByTo::To, {mInit.mValues[2], mInit.mValues[3]},
+            {mInit.mValues[0], mInit.mValues[1]});
+      case 'q':
+        return StylePathCommand::QuadCurve(
+            StyleByTo::By, {mInit.mValues[2], mInit.mValues[3]},
+            {mInit.mValues[0], mInit.mValues[1]});
+      case 'A':
+        return StylePathCommand::Arc(
+            StyleByTo::To, {mInit.mValues[5], mInit.mValues[6]},
+            {mInit.mValues[0], mInit.mValues[1]},
+            mInit.mValues[3] ? StyleArcSweep::Cw : StyleArcSweep::Ccw,
+            mInit.mValues[4] ? StyleArcSize::Large : StyleArcSize::Small,
+            mInit.mValues[2]);
+      case 'a':
+        return StylePathCommand::Arc(
+            StyleByTo::By, {mInit.mValues[5], mInit.mValues[6]},
+            {mInit.mValues[0], mInit.mValues[1]},
+            mInit.mValues[3] ? StyleArcSweep::Cw : StyleArcSweep::Ccw,
+            mInit.mValues[4] ? StyleArcSize::Large : StyleArcSize::Small,
+            mInit.mValues[2]);
+      case 'H':
+        return StylePathCommand::HLine(StyleByTo::To, mInit.mValues[0]);
+      case 'h':
+        return StylePathCommand::HLine(StyleByTo::By, mInit.mValues[0]);
+      case 'V':
+        return StylePathCommand::VLine(StyleByTo::To, mInit.mValues[0]);
+      case 'v':
+        return StylePathCommand::VLine(StyleByTo::By, mInit.mValues[0]);
+      case 'S':
+        return StylePathCommand::SmoothCubic(
+            StyleByTo::To, {mInit.mValues[2], mInit.mValues[3]},
+            {mInit.mValues[0], mInit.mValues[1]});
+      case 's':
+        return StylePathCommand::SmoothCubic(
+            StyleByTo::By, {mInit.mValues[2], mInit.mValues[3]},
+            {mInit.mValues[0], mInit.mValues[1]});
+      case 'T':
+        return StylePathCommand::SmoothQuad(
+            StyleByTo::To, {mInit.mValues[0], mInit.mValues[1]});
+      case 't':
+        return StylePathCommand::SmoothQuad(
+            StyleByTo::By, {mInit.mValues[0], mInit.mValues[1]});
+    }
+    return StylePathCommand::Close();
+  }
+
+ private:
+  static bool IsValidFlag(float aFlag) {
+    return aFlag == 0.0f || aFlag == 1.0f;
+  }
+
+  static int32_t ArgCountForType(char aType) {
+    switch (ToLowerCase(aType)) {
+      case 'z':
+        return 0;
+      case 'm':
+      case 'l':
+        return 2;
+      case 'c':
+        return 6;
+      case 'q':
+        return 4;
+      case 'a':
+        return 7;
+      case 'h':
+      case 'v':
+        return 1;
+      case 's':
+        return 4;
+      case 't':
+        return 2;
+    }
+    return -1;
+  }
+
+  const SVGPathSegmentInit& mInit;
+};
+
+void SVGAnimatedPathSegList::SetBaseValueFromPathSegments(
+    const Sequence<SVGPathSegmentInit>& aValues) {
+  AutoTArray<StylePathCommand, 10> pathData;
+  if (!aValues.IsEmpty() && SVGPathSegmentInitWrapper(aValues[0]).IsMove()) {
+    for (const auto& value : aValues) {
+      SVGPathSegmentInitWrapper seg(value);
+      if (!seg.IsValid()) {
+        break;
+      }
+      pathData.AppendElement(seg.ToStylePathCommand());
+    }
+  }
+  if (pathData.IsEmpty()) {
+    mBaseVal.Clear();
+    return;
+  }
+  Servo_CreatePathDataFromCommands(&pathData, &mBaseVal.RawData());
 }
 
 void SVGAnimatedPathSegList::ClearBaseValue() {
-  if (StaticPrefs::dom_svg_pathSeg_enabled()) {
-    // We must send these notifications *before* changing mBaseVal! (See above.)
-
-    DOMSVGPathSegList* baseValWrapper =
-        DOMSVGPathSegList::GetDOMWrapperIfExists(GetBaseValKey());
-    if (baseValWrapper) {
-      baseValWrapper->InternalListWillChangeTo(SVGPathData());
-    }
-
-    if (!IsAnimating()) {  // DOM anim val wraps our base val too!
-      DOMSVGPathSegList* animValWrapper =
-          DOMSVGPathSegList::GetDOMWrapperIfExists(GetAnimValKey());
-      if (animValWrapper) {
-        animValWrapper->InternalListWillChangeTo(SVGPathData());
-      }
-    }
-  }
-
   mBaseVal.Clear();
   // Caller notifies
 }
@@ -91,46 +194,17 @@ nsresult SVGAnimatedPathSegList::SetAnimValue(const SVGPathData& aNewAnimValue,
   // Unfortunately it is not possible for us to reliably distinguish between
   // calls to this method that are setting a new sample for an existing
   // animation, and calls that are setting the first sample of an animation
-  // that will override an existing animation. In the case of DOMSVGPathSegList
-  // the InternalListWillChangeTo method is not virtually free as it is for the
-  // other DOM list classes, so this is a shame. We'd quite like to be able to
-  // skip the call if possible.
+  // that will override an existing animation.
 
-  if (StaticPrefs::dom_svg_pathSeg_enabled()) {
-    // We must send these notifications *before* changing mAnimVal! (See above.)
-
-    DOMSVGPathSegList* domWrapper =
-        DOMSVGPathSegList::GetDOMWrapperIfExists(GetAnimValKey());
-    if (domWrapper) {
-      domWrapper->InternalListWillChangeTo(aNewAnimValue);
-    }
-  }
   if (!mAnimVal) {
     mAnimVal = MakeUnique<SVGPathData>();
   }
-  nsresult rv = mAnimVal->CopyFrom(aNewAnimValue);
-  if (NS_FAILED(rv)) {
-    // OOM. We clear the animation and, importantly, ClearAnimValue() ensures
-    // that mAnimVal's DOM wrapper (if any) is kept in sync!
-    ClearAnimValue(aElement);
-  }
+  *mAnimVal = aNewAnimValue;
   aElement->DidAnimatePathSegList();
-  return rv;
+  return NS_OK;
 }
 
 void SVGAnimatedPathSegList::ClearAnimValue(SVGElement* aElement) {
-  if (StaticPrefs::dom_svg_pathSeg_enabled()) {
-    // We must send these notifications *before* changing mAnimVal! (See above.)
-
-    DOMSVGPathSegList* domWrapper =
-        DOMSVGPathSegList::GetDOMWrapperIfExists(GetAnimValKey());
-    if (domWrapper) {
-      // When all animation ends, animVal simply mirrors baseVal, which may have
-      // a different number of items to the last active animated value.
-      //
-      domWrapper->InternalListWillChangeTo(mBaseVal);
-    }
-  }
   mAnimVal = nullptr;
   aElement->DidAnimatePathSegList();
 }
@@ -148,7 +222,7 @@ nsresult SVGAnimatedPathSegList::SMILAnimatedPathSegList::ValueFromString(
     SMILValue& aValue, bool& aPreventCachingOfSandwich) const {
   SMILValue val(SVGPathSegListSMILType::Singleton());
   SVGPathDataAndInfo* list = static_cast<SVGPathDataAndInfo*>(val.mU.mPtr);
-  nsresult rv = list->SetValueFromString(aStr);
+  nsresult rv = list->SetValueFromString(NS_ConvertUTF16toUTF8(aStr));
   if (NS_SUCCEEDED(rv)) {
     list->SetElement(mElement);
     aValue = std::move(val);
@@ -161,16 +235,11 @@ SMILValue SVGAnimatedPathSegList::SMILAnimatedPathSegList::GetBaseValue()
   // To benefit from Return Value Optimization and avoid copy constructor calls
   // due to our use of return-by-value, we must return the exact same object
   // from ALL return points. This function must only return THIS variable:
-  SMILValue val;
-
   SMILValue tmp(SVGPathSegListSMILType::Singleton());
   auto* list = static_cast<SVGPathDataAndInfo*>(tmp.mU.mPtr);
-  nsresult rv = list->CopyFrom(mVal->mBaseVal);
-  if (NS_SUCCEEDED(rv)) {
-    list->SetElement(mElement);
-    val = std::move(tmp);
-  }
-  return val;
+  list->CopyFrom(mVal->mBaseVal);
+  list->SetElement(mElement);
+  return tmp;
 }
 
 nsresult SVGAnimatedPathSegList::SMILAnimatedPathSegList::SetAnimValue(

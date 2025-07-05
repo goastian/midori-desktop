@@ -9,9 +9,9 @@
 
 #include "js/TypeDecls.h"
 #include "js/Value.h"
+#include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/UniquePtr.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/TrustedHTML.h"
 #include "mozilla/dom/TrustedScript.h"
@@ -19,6 +19,9 @@
 #include "nsISupportsImpl.h"
 #include "nsString.h"
 #include "nsWrapperCache.h"
+
+template <typename T>
+class nsTArray;
 
 namespace mozilla::dom {
 
@@ -51,28 +54,18 @@ class TrustedTypePolicy : public nsWrapperCache {
   void GetName(DOMString& aResult) const;
 
   // https://w3c.github.io/trusted-types/dist/spec/#dom-trustedtypepolicy-createhtml
-  MOZ_CAN_RUN_SCRIPT UniquePtr<TrustedHTML> CreateHTML(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<TrustedHTML> CreateHTML(
       JSContext* aJSContext, const nsAString& aInput,
       const Sequence<JS::Value>& aArguments, ErrorResult& aErrorResult) const;
 
   // https://w3c.github.io/trusted-types/dist/spec/#dom-trustedtypepolicy-createscript
-  MOZ_CAN_RUN_SCRIPT UniquePtr<TrustedScript> CreateScript(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<TrustedScript> CreateScript(
       JSContext* aJSContext, const nsAString& aInput,
       const Sequence<JS::Value>& aArguments, ErrorResult& aErrorResult) const;
 
   // https://w3c.github.io/trusted-types/dist/spec/#dom-trustedtypepolicy-createscripturl
-  MOZ_CAN_RUN_SCRIPT UniquePtr<TrustedScriptURL> CreateScriptURL(
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<TrustedScriptURL> CreateScriptURL(
       JSContext* aJSContext, const nsAString& aInput,
-      const Sequence<JS::Value>& aArguments, ErrorResult& aErrorResult) const;
-
- private:
-  // Required because this class is ref-counted.
-  virtual ~TrustedTypePolicy() = default;
-
-  // https://w3c.github.io/trusted-types/dist/spec/#abstract-opdef-create-a-trusted-type
-  template <typename T, typename CallbackObject>
-  MOZ_CAN_RUN_SCRIPT UniquePtr<T> CreateTrustedType(
-      const RefPtr<CallbackObject>& aCallbackObject, const nsAString& aValue,
       const Sequence<JS::Value>& aArguments, ErrorResult& aErrorResult) const;
 
   // https://w3c.github.io/trusted-types/dist/spec/#abstract-opdef-get-trusted-type-policy-value
@@ -81,8 +74,21 @@ class TrustedTypePolicy : public nsWrapperCache {
   template <typename CallbackObject>
   MOZ_CAN_RUN_SCRIPT void DetermineTrustedPolicyValue(
       const RefPtr<CallbackObject>& aCallbackObject, const nsAString& aValue,
-      const Sequence<JS::Value>& aArguments, bool aThrowIfMissing,
+      const nsTArray<JS::Value>& aArguments, bool aThrowIfMissing,
       ErrorResult& aErrorResult, nsAString& aResult) const;
+
+  const Options& GetOptions() const { return mOptions; }
+
+ private:
+  // Required because this class is ref-counted.
+  virtual ~TrustedTypePolicy() = default;
+
+  // https://w3c.github.io/trusted-types/dist/spec/#abstract-opdef-create-a-trusted-type
+  template <typename T, typename CallbackObject>
+  MOZ_CAN_RUN_SCRIPT already_AddRefed<T> CreateTrustedType(
+      const RefPtr<CallbackObject>& aCallbackObject, const nsAString& aValue,
+      const Sequence<JS::Value>& aArguments, ErrorResult& aErrorResult) const;
+
   RefPtr<TrustedTypePolicyFactory> mParentObject;
 
   const nsString mName;

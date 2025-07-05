@@ -149,8 +149,8 @@ class EncodingRunnable : public Runnable {
                    UniquePtr<uint8_t[]> aImageBuffer, layers::Image* aImage,
                    imgIEncoder* aEncoder,
                    EncodingCompleteEvent* aEncodingCompleteEvent,
-                   int32_t aFormat, const nsIntSize aSize, bool aUsePlaceholder,
-                   bool aUsingCustomOptions)
+                   int32_t aFormat, const CSSIntSize aSize,
+                   bool aUsePlaceholder, bool aUsingCustomOptions)
       : Runnable("EncodingRunnable"),
         mType(aType),
         mOptions(aOptions),
@@ -215,14 +215,14 @@ class EncodingRunnable : public Runnable {
   nsCOMPtr<imgIEncoder> mEncoder;
   RefPtr<EncodingCompleteEvent> mEncodingCompleteEvent;
   int32_t mFormat;
-  const nsIntSize mSize;
+  const CSSIntSize mSize;
   bool mUsePlaceholder;
   bool mUsingCustomOptions;
 };
 
 /* static */
 nsresult ImageEncoder::ExtractData(
-    nsAString& aType, const nsAString& aOptions, const nsIntSize aSize,
+    nsAString& aType, const nsAString& aOptions, const CSSIntSize aSize,
     bool aUsePlaceholder, nsICanvasRenderingContextInternal* aContext,
     OffscreenCanvasDisplayHelper* aOffscreenDisplay, nsIInputStream** aStream) {
   nsCOMPtr<imgIEncoder> encoder = ImageEncoder::GetImageEncoder(aType);
@@ -248,7 +248,7 @@ nsresult ImageEncoder::ExtractDataFromLayersImageAsync(
   RefPtr<EncodingCompleteEvent> completeEvent =
       new EncodingCompleteEvent(aEncodeCallback);
 
-  nsIntSize size(aImage->GetSize().width, aImage->GetSize().height);
+  CSSIntSize size = CSSIntSize::FromUnknownSize(aImage->GetSize());
   nsCOMPtr<nsIRunnable> event =
       new EncodingRunnable(aType, aOptions, nullptr, aImage, encoder,
                            completeEvent, imgIEncoder::INPUT_FORMAT_HOSTARGB,
@@ -259,7 +259,7 @@ nsresult ImageEncoder::ExtractDataFromLayersImageAsync(
 /* static */
 nsresult ImageEncoder::ExtractDataAsync(
     nsAString& aType, const nsAString& aOptions, bool aUsingCustomOptions,
-    UniquePtr<uint8_t[]> aImageBuffer, int32_t aFormat, const nsIntSize aSize,
+    UniquePtr<uint8_t[]> aImageBuffer, int32_t aFormat, const CSSIntSize aSize,
     bool aUsePlaceholder, EncodeCompleteCallback* aEncodeCallback) {
   nsCOMPtr<imgIEncoder> encoder = ImageEncoder::GetImageEncoder(aType);
   if (!encoder) {
@@ -294,7 +294,7 @@ nsresult ImageEncoder::GetInputStream(int32_t aWidth, int32_t aHeight,
 /* static */
 nsresult ImageEncoder::ExtractDataInternal(
     const nsAString& aType, const nsAString& aOptions, uint8_t* aImageBuffer,
-    int32_t aFormat, const nsIntSize aSize, bool aUsePlaceholder,
+    int32_t aFormat, const CSSIntSize aSize, bool aUsePlaceholder,
     layers::Image* aImage, nsICanvasRenderingContextInternal* aContext,
     OffscreenCanvasDisplayHelper* aOffscreenDisplay, nsIInputStream** aStream,
     imgIEncoder* aEncoder) {
@@ -359,15 +359,19 @@ nsresult ImageEncoder::ExtractDataInternal(
       layers::PlanarYCbCrImage* ycbcrImage =
           static_cast<layers::PlanarYCbCrImage*>(aImage);
       gfxImageFormat format = SurfaceFormat::A8R8G8B8_UINT32;
-      uint32_t stride = GetAlignedStride<16>(aSize.width, 4);
+      int32_t stride = GetAlignedStride<16>(aSize.width, 4);
       size_t length = BufferSizeFromStrideAndHeight(stride, aSize.height);
       if (length == 0) {
         return NS_ERROR_INVALID_ARG;
       }
       data.SetCapacity(length);
 
-      ConvertYCbCrToRGB(*ycbcrImage->GetData(), format, aSize, data.Elements(),
-                        stride);
+      rv = ConvertYCbCrToRGB(*ycbcrImage->GetData(), format,
+                             aSize.ToUnknownSize(), data.Elements(), stride);
+      if (NS_FAILED(rv)) {
+        MOZ_ASSERT_UNREACHABLE("Failed to convert YUV into RGB data");
+        return rv;
+      }
 
       rv = aEncoder->InitFromData(data.Elements(),
                                   aSize.width * aSize.height * 4, aSize.width,

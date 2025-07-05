@@ -79,7 +79,7 @@ FilterPrimitiveDescription SVGFEColorMatrixElement::GetPrimitiveDescription(
        type == SVG_FECOLORMATRIX_TYPE_SATURATE ||
        type == SVG_FECOLORMATRIX_TYPE_HUE_ROTATE)) {
     atts.mType = (uint32_t)SVG_FECOLORMATRIX_TYPE_MATRIX;
-    static const float identityMatrix[] = {
+    static const auto identityMatrix = std::array{
         // clang-format off
         1, 0, 0, 0, 0,
         0, 1, 0, 0, 0,
@@ -87,7 +87,7 @@ FilterPrimitiveDescription SVGFEColorMatrixElement::GetPrimitiveDescription(
         0, 0, 0, 1, 0
         // clang-format on
     };
-    atts.mValues.AppendElements(identityMatrix, 20);
+    atts.mValues.AppendElements(Span(identityMatrix));
   } else {
     atts.mType = type;
     if (values.Length()) {
@@ -120,18 +120,18 @@ nsresult SVGFEColorMatrixElement::BindToTree(BindContext& aCtx,
 // SVGElement methods
 
 SVGElement::EnumAttributesInfo SVGFEColorMatrixElement::GetEnumInfo() {
-  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
+  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, std::size(sEnumInfo));
 }
 
 SVGElement::StringAttributesInfo SVGFEColorMatrixElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              ArrayLength(sStringInfo));
+                              std::size(sStringInfo));
 }
 
 SVGElement::NumberListAttributesInfo
 SVGFEColorMatrixElement::GetNumberListInfo() {
   return NumberListAttributesInfo(mNumberListAttributes, sNumberListInfo,
-                                  ArrayLength(sNumberListInfo));
+                                  std::size(sNumberListInfo));
 }
 
 }  // namespace mozilla::dom

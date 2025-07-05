@@ -68,6 +68,9 @@ prefs = [
 
 ["test_peerConnection_audioSynchronizationSourcesUnidirectional.html"]
 
+["test_peerConnection_basicAV1Video.html"]
+skip-if = ["os == 'android'"]
+
 ["test_peerConnection_basicAudio.html"]
 
 ["test_peerConnection_basicAudioDynamicPtMissingRtpmap.html"]
@@ -136,14 +139,23 @@ scheme = "http"
 skip-if = ["os == 'android' && is_emulator"]  # Bug 1355786, No h264 support on android emulator
 
 ["test_peerConnection_basicScreenshare.html"]
-skip-if = ["os == 'android'"] # no screenshare on android
+skip-if = [
+  "os == 'android'", # no screenshare on android
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1929420
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1929420
+]
 
 ["test_peerConnection_basicVideo.html"]
 
 ["test_peerConnection_basicVideoVerifyRtpHeaderExtensions.html"]
 
 ["test_peerConnection_basicWindowshare.html"]
-skip-if = ["os == 'android'"] # no screenshare on android
+skip-if = [
+  "os == 'android'", # no screenshare on android
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && debug", # Bug 1929420
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt && socketprocess_e10s", # Bug 1929420
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1929420
+]
 
 ["test_peerConnection_bug822674.html"]
 scheme = "http"
@@ -196,7 +208,6 @@ scheme = "http"
 ["test_peerConnection_codecNegotiationFailure.html"]
 
 ["test_peerConnection_constructedStream.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_disabledVideoPreNegotiation.html"]
 
@@ -206,7 +217,6 @@ skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 scheme = "http"
 
 ["test_peerConnection_extmapRenegotiation.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_forwarding_basicAudioVideoCombined.html"]
 skip-if = ["os == 'android'"]  # Bug 1189784
@@ -230,7 +240,10 @@ scheme = "http"
 ["test_peerConnection_getParameters.html"]
 
 ["test_peerConnection_glean.html"]
-disabled = "bug 1832459"
+
+["test_peerConnection_iceCandidateSelection.html"]
+skip-if = ["os == 'android'"] # websockets don't work on android (bug 1266217)
+scheme = "http"
 
 ["test_peerConnection_iceFailure.html"]
 skip-if = ["true"] # (Bug 1180388 for win, mac and linux), android(Bug 1189784), Bug 1180388
@@ -266,7 +279,6 @@ scheme = "http"
 ["test_peerConnection_promiseSendOnly.html"]
 
 ["test_peerConnection_recordReceiveTrack.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_relayOnly.html"]
 disabled = "bug 1612063 # test is racy"
@@ -295,7 +307,6 @@ scheme = "http"
 ["test_peerConnection_replaceNullTrackThenRenegotiateVideo.html"]
 
 ["test_peerConnection_replaceTrack.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_replaceTrack_camera.html"]
 skip-if = ["os == 'android'"] # Bug 1614460
@@ -330,14 +341,12 @@ skip-if = ["os == 'android'"] # Bug 1614460
 ["test_peerConnection_restrictBandwidthWithTias.html"]
 
 ["test_peerConnection_rtcp_rsize.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_scaleResolution.html"]
 
 ["test_peerConnection_scaleResolution_oldSetParameters.html"]
 
 ["test_peerConnection_sender_and_receiver_stats.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_setLocalAnswerInHaveLocalOffer.html"]
 
@@ -368,58 +377,41 @@ skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 ["test_peerConnection_sillyCodecPriorities.html"]
 
 ["test_peerConnection_simulcastAnswer.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
 ["test_peerConnection_simulcastAnswer_lowResFirst.html"]
-skip-if = [
-  "os == 'android'", # no simulcast support on android
-]
 
 ["test_peerConnection_simulcastAnswer_lowResFirst_oldSetParameters.html"]
-skip-if = [
-  "os == 'android'", # no simulcast support on android
-]
 
 ["test_peerConnection_simulcastAnswer_oldSetParameters.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
 ["test_peerConnection_simulcastOddResolution.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
 ["test_peerConnection_simulcastOddResolution_oldSetParameters.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
 ["test_peerConnection_simulcastOffer.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
 ["test_peerConnection_simulcastOffer_lowResFirst.html"]
-skip-if = [
-  "os == 'android'", # no simulcast support on android
-]
 
 ["test_peerConnection_simulcastOffer_lowResFirst_oldSetParameters.html"]
-skip-if = [
-  "os == 'android'", # no simulcast support on android
-]
 
 ["test_peerConnection_simulcastOffer_oldSetParameters.html"]
-skip-if = ["os == 'android'"] # no simulcast support on android
 
-["test_peerConnection_stats.html"]
+["test_peerConnection_simulcastOffer_screenshare.html"]
 skip-if = [
-  "os == 'linux' && tsan", #Bug 1838736
-  "win11_2009", # Bug 1780717
+  "os == 'android'", # no screenshare on android
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1941688
 ]
 
+["test_peerConnection_stats.html"]
+
 ["test_peerConnection_stats_jitter.html"]
-skip-if = ["tsan"] # Bug 1672590, TSan is just too slow to pass this test
 
 ["test_peerConnection_stats_oneway.html"]
+skip-if = ["os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && socketprocess_e10s"] # Bug 1798188
 
 ["test_peerConnection_stats_relayProtocol.html"]
 skip-if = [
   "os == 'android'",
-  "socketprocess_e10s", # android(Bug 1189784, timeouts on 4.3 emulator, Bug 1373858, Bug 1521117)
 ]
 scheme = "http"
 
@@ -442,7 +434,6 @@ skip-if = ["os == 'android'"] # Bug 1614460
 ["test_peerConnection_trackDisabling_clones.html"]
 
 ["test_peerConnection_trackless_sender_stats.html"]
-skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 
 ["test_peerConnection_twoAudioStreams.html"]
 
@@ -451,21 +442,16 @@ skip-if = ["os == 'linux' && tsan"] #Bug 1838736
 ["test_peerConnection_twoAudioVideoStreams.html"]
 skip-if = [
   "os == 'android'", # android(Bug 1189784)
-  "os == 'linux' && tsan", #Bug 1838736
 ]
 
 ["test_peerConnection_twoAudioVideoStreamsCombined.html"]
 skip-if = [
   "os == 'android'", # android(Bug 1189784)
-  "os == 'linux' && asan", # Bug 1480942 for Linux asan
-  "os == 'linux' && tsan", #Bug 1838736
 ]
 
 ["test_peerConnection_twoAudioVideoStreamsCombinedNoBundle.html"]
 skip-if = [
   "os == 'android'", # Bug 1189784
-  "os == 'linux' && asan", # Bug 1480942
-  "os == 'linux' && tsan", #Bug 1838736
 ]
 
 ["test_peerConnection_twoVideoStreams.html"]
@@ -476,6 +462,9 @@ skip-if = [
 skip-if = ["os == 'android' && processor == 'x86_64' && !debug"] # Bug 1783287
 
 ["test_peerConnection_verifyDescriptions.html"]
+
+["test_peerConnection_verifyNonEmptyFmtp.html"]
+skip-if = ["os == 'android'"]
 
 ["test_peerConnection_verifyVideoAfterRenegotiation.html"]
 

@@ -6,6 +6,7 @@
 #ifndef GPU_UTIL_H_
 #define GPU_UTIL_H_
 
+#include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/WebGPUBinding.h"
 
 namespace mozilla {
@@ -40,6 +41,11 @@ ffi::WGPUCompareFunction ConvertCompareFunction(
 ffi::WGPUTextureFormat ConvertTextureFormat(
     const dom::GPUTextureFormat& aFormat);
 
+ffi::WGPUTextureAspect ConvertTextureAspect(
+    const dom::GPUTextureAspect& aAspect);
+
+ffi::WGPUVertexFormat ConvertVertexFormat(const dom::GPUVertexFormat& aFormat);
+
 ffi::WGPUMultisampleState ConvertMultisampleState(
     const dom::GPUMultisampleState& aDesc);
 
@@ -51,6 +57,11 @@ ffi::WGPUStencilFaceState ConvertStencilFaceState(
 
 ffi::WGPUDepthStencilState ConvertDepthStencilState(
     const dom::GPUDepthStencilState& aDesc);
+
+mozilla::Maybe<mozilla::Buffer<uint32_t>> GetDynamicOffsetsFromArray(
+    const dom::Uint32Array& aDynamicOffsetsData,
+    uint64_t aDynamicOffsetsDataStart, uint64_t aDynamicOffsetsDataLength,
+    ErrorResult& aRv);
 
 }  // namespace webgpu
 }  // namespace mozilla

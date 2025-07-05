@@ -128,27 +128,25 @@ void CSSAnimation::Tick(TickState& aState) {
   QueueEvents();
 }
 
-bool CSSAnimation::HasLowerCompositeOrderThan(
-    const CSSAnimation& aOther) const {
+int32_t CSSAnimation::CompareCompositeOrder(
+    const CSSAnimation& aOther, nsContentUtils::NodeIndexCache& aCache) const {
   MOZ_ASSERT(IsTiedToMarkup() && aOther.IsTiedToMarkup(),
              "Should only be called for CSS animations that are sorted "
              "as CSS animations (i.e. tied to CSS markup)");
 
   // 0. Object-equality case
   if (&aOther == this) {
-    return false;
+    return 0;
   }
 
   // 1. Sort by document order
   if (!mOwningElement.Equals(aOther.mOwningElement)) {
-    return mOwningElement.LessThan(
-        const_cast<CSSAnimation*>(this)->CachedChildIndexRef(),
-        aOther.mOwningElement,
-        const_cast<CSSAnimation*>(&aOther)->CachedChildIndexRef());
+    return mOwningElement.Compare(aOther.mOwningElement, aCache);
   }
 
   // 2. (Same element and pseudo): Sort by position in animation-name
-  return mAnimationIndex < aOther.mAnimationIndex;
+  MOZ_ASSERT(mAnimationIndex != aOther.mAnimationIndex);
+  return mAnimationIndex < aOther.mAnimationIndex ? -1 : 1;
 }
 
 void CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime) {
@@ -170,7 +168,7 @@ void CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime) {
   // for these animations to still fire events we should spec the concept
   // of the "original owning element" or "event target" and allow script
   // to set it when creating a CSSAnimation object.
-  if (!mOwningElement.IsSet()) {
+  if (!mOwningElement.ShouldFireEvents()) {
     return;
   }
 
@@ -231,8 +229,8 @@ void CSSAnimation::QueueEvents(const StickyTimeDuration& aActiveTime) {
           elapsedTime, 0, mRTPCallerType);
     }
     events.AppendElement(AnimationEventInfo(
-      mAnimationName, mOwningElement.Target(), aMessage, elapsedTime,
-      mAnimationIndex, aScheduledEventTimeStamp, this));
+        mAnimationName, mOwningElement.Target(), aMessage, elapsedTime,
+        mAnimationIndex, aScheduledEventTimeStamp, this));
   };
 
   // Handle cancel event first
@@ -369,7 +367,7 @@ void CSSAnimationKeyframeEffect::MaybeFlushUnanimatedStyle() const {
 
   if (dom::Document* doc = GetRenderedDocument()) {
     doc->FlushPendingNotifications(
-        ChangesToFlush(FlushType::Style, false /* flush animations */));
+        ChangesToFlush(FlushType::Style, false /* flush animations */, false));
   }
 }
 

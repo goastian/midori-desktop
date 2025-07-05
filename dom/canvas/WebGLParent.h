@@ -17,6 +17,7 @@ class HostWebGLContext;
 class WebGLChild;
 
 namespace layers {
+class SharedSurfacesHolder;
 class SharedSurfaceTextureClient;
 class SurfaceDescriptor;
 }  // namespace layers
@@ -32,7 +33,8 @@ class WebGLParent : public PWebGLParent, public SupportsWeakPtr {
   mozilla::ipc::IPCResult RecvInitialize(const webgl::InitContextDesc&,
                                          webgl::InitContextResult* out);
 
-  explicit WebGLParent(const dom::ContentParentId& aContentId);  // For IPDL
+  WebGLParent(layers::SharedSurfacesHolder* aSharedSurfacesHolder,
+              const dom::ContentParentId& aContentId);  // For IPDL
 
   using IPCResult = mozilla::ipc::IPCResult;
 
@@ -95,9 +97,6 @@ class WebGLParent : public PWebGLParent, public SupportsWeakPtr {
                                          Maybe<double>* ret);
   IPCResult RecvGetSamplerParameter(ObjectId id, GLenum pname,
                                     Maybe<double>* ret);
-  IPCResult RecvGetShaderPrecisionFormat(
-      GLenum shaderType, GLenum precisionType,
-      Maybe<webgl::ShaderPrecisionFormat>* ret);
   IPCResult RecvGetString(GLenum pname, Maybe<std::string>* ret);
   IPCResult RecvGetTexParameter(ObjectId id, GLenum pname, Maybe<double>* ret);
   IPCResult RecvGetUniform(ObjectId id, uint32_t loc,
@@ -108,7 +107,10 @@ class WebGLParent : public PWebGLParent, public SupportsWeakPtr {
 
   // -
 
+  const RefPtr<layers::SharedSurfacesHolder> mSharedSurfacesHolder;
   const dom::ContentParentId mContentId;
+
+  HostWebGLContext* GetHostWebGLContext() const { return mHost.get(); }
 
  private:
   ~WebGLParent();
@@ -121,7 +123,7 @@ class WebGLParent : public PWebGLParent, public SupportsWeakPtr {
                                          layers::RemoteTextureTxnType aTxnType,
                                          layers::RemoteTextureTxnId aTxnId);
 
-  UniquePtr<HostWebGLContext> mHost;
+  std::unique_ptr<HostWebGLContext> mHost;
 
   // Runnable that repeatedly processes our WebGL command queue
   RefPtr<Runnable> mRunCommandsRunnable;

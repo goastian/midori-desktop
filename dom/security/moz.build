@@ -13,11 +13,14 @@ DIRS += ["featurepolicy", "sanitizer", "trusted-types"]
 
 EXPORTS.mozilla.dom += [
     "CSPEvalChecker.h",
+    "CSPViolationData.h",
+    "DomSecurityIPCUtils.h",
     "DOMSecurityMonitor.h",
     "FramingChecker.h",
     "nsContentSecurityManager.h",
     "nsContentSecurityUtils.h",
     "nsCSPContext.h",
+    "nsCSPParser.h",
     "nsCSPService.h",
     "nsCSPUtils.h",
     "nsHTTPSOnlyStreamListener.h",
@@ -40,6 +43,7 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     "CSPEvalChecker.cpp",
+    "CSPViolationData.cpp",
     "DOMSecurityMonitor.cpp",
     "FramingChecker.cpp",
     "nsContentSecurityManager.cpp",

@@ -1,5 +1,7 @@
 [DEFAULT]
-prefs = ["dom.svg.pathSeg.enabled=true"]
+prefs = [
+  "dom.svg.pathSegment.enabled=true",
+]
 support-files = [
   "MutationEventChecker.js",
   "a_href_destination.svg",
@@ -15,7 +17,6 @@ support-files = [
   "bounds-helper.svg",
   "dataTypes-helper.svg",
   "fragments-helper.svg",
-  "getBBox-options-helper.svg",
   "getCTM-helper.svg",
   "getSubStringLength-helper.svg",
   "matrixUtils.js",
@@ -38,6 +39,8 @@ support-files = [
 
 ["test_SVGNumberList.xhtml"]
 
+["test_SVGPathSegment.xhtml"]
+
 ["test_SVGPointList.xhtml"]
 
 ["test_SVGStringList.xhtml"]
@@ -49,6 +52,8 @@ support-files = [
 ["test_SVGTransformListAddition.xhtml"]
 
 ["test_SVG_namespace_ids.html"]
+
+["test_SVG_switch_language_spoof.html"]
 
 ["test_SVGxxxList.xhtml"]
 
@@ -80,15 +85,15 @@ support-files = [
 
 ["test_dataTypesModEvents.html"]
 
-["test_fragments.html"]
+["test_dynamic-move-under-mouse.html"]
 
-["test_getBBox-options.html"]
+["test_fragments.html"]
 
 ["test_getCTM.html"]
 
 ["test_getElementById.xhtml"]
 
-["test_getPathSegListAtLength_with_d_property.html"]
+["test_getPathSegmentAtLength_with_d_property.html"]
 
 ["test_getSubStringLength.xhtml"]
 
@@ -120,7 +125,6 @@ skip-if = ["true"] # disabled-for-intermittent-failures--bug-701060
 ["test_pairParsing.html"]
 
 ["test_pathAnimInterpolation.xhtml"]
-skip-if = ["true"] # We need to polyfill the SVG DOM for path data
 
 ["test_pointAtLength.xhtml"]
 

@@ -98,6 +98,9 @@ class nsFocusManager final : public nsIFocusManager,
    * Return a focused window. Version of nsIFocusManager::GetFocusedWindow.
    */
   nsPIDOMWindowOuter* GetFocusedWindow() const { return mFocusedWindow; }
+  static nsPIDOMWindowOuter* GetFocusedWindowStatic() {
+    return sInstance ? sInstance->GetFocusedWindow() : nullptr;
+  }
 
   /**
    * In the chrome process, retrieves the BrowsingContext corresponding
@@ -220,11 +223,16 @@ class nsFocusManager final : public nsIFocusManager,
   MOZ_CAN_RUN_SCRIPT nsresult SetFocusedWindowWithCallerType(
       mozIDOMWindowProxy* aWindowToFocus, mozilla::dom::CallerType aCallerType);
 
+  /** Given a focused frame loader owner, fix up the focus to be consistent */
+  MOZ_CAN_RUN_SCRIPT void FixUpFocusAfterFrameLoaderChange(
+      mozilla::dom::Element&);
   /**
-   * Given an element, which must be the focused element, activate the remote
-   * frame it embeds, if any.
+   * Keep track of whether the focused window is about to go away, and if so fix
+   * up the focus state so that we can know if we're still focused by the time
+   * the frame loader swap ends.
    */
-  void ActivateRemoteFrameIfNeeded(mozilla::dom::Element&, uint64_t aActionId);
+  void FixUpFocusBeforeFrameLoaderChange(mozilla::dom::Element&,
+                                         mozilla::dom::BrowsingContext* aBc);
 
   /**
    * Raises the top-level window aWindow at the widget level.
@@ -302,6 +310,13 @@ class nsFocusManager final : public nsIFocusManager,
    * focused at the widget level.
    */
   void EnsureCurrentWidgetFocused(mozilla::dom::CallerType aCallerType);
+
+  /**
+   * Focus the last focused element in aWindow, after aWindow was raised (or if
+   * aWindow was already raised).
+   */
+  MOZ_CAN_RUN_SCRIPT void MoveFocusToWindowAfterRaise(nsPIDOMWindowOuter*,
+                                                      uint64_t aActionId);
 
   /**
    * Activate or deactivate the window and send the activate/deactivate events.
@@ -760,6 +775,12 @@ class nsFocusManager final : public nsIFocusManager,
                            nsIContent** aFocusedContent);
 
  private:
+  /**
+   * Given an element, which must be the focused element, activate the remote
+   * frame it embeds, if any.
+   */
+  void ActivateRemoteFrameIfNeeded(mozilla::dom::Element&, uint64_t aActionId);
+
   // Notify that the focus state of aElement has changed.  Note that we need to
   // pass in whether the window should show a focus ring before the
   // SetFocusedNode call on it happened when losing focus and after the
@@ -972,11 +993,10 @@ class nsFocusManager final : public nsIFocusManager,
   // focused.
   RefPtr<mozilla::dom::Element> mFocusedElement;
 
-  // these fields store a content node temporarily while it is being focused
-  // or blurred to ensure that a recursive call doesn't refire the same event.
+  // This field stores a content node temporarily while it is being blurred
+  // to ensure that a recursive call doesn't refire the same event.
   // They will always be cleared afterwards.
   RefPtr<mozilla::dom::Element> mFirstBlurEvent;
-  RefPtr<mozilla::dom::Element> mFirstFocusEvent;
 
   // keep track of a window while it is being lowered
   nsCOMPtr<nsPIDOMWindowOuter> mWindowBeingLowered;

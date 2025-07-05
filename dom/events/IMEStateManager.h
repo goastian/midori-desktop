@@ -7,6 +7,7 @@
 #ifndef mozilla_IMEStateManager_h_
 #define mozilla_IMEStateManager_h_
 
+#include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/StaticPtr.h"
@@ -15,6 +16,7 @@
 
 class nsIContent;
 class nsINode;
+class nsIURI;
 class nsPresContext;
 
 namespace mozilla {
@@ -164,6 +166,20 @@ class IMEStateManager {
       nsPresContext& aPresContext);
   MOZ_CAN_RUN_SCRIPT static nsresult OnRemoveContent(
       nsPresContext& aPresContext, dom::Element& aElement);
+  /**
+   * Called when the parent chain of the observing element of IMEContentObserver
+   * is changed.
+   */
+  MOZ_CAN_RUN_SCRIPT static void OnParentChainChangedOfObservingElement(
+      IMEContentObserver& aObserver);
+
+  /**
+   * Called when HTMLEditor updates the root element which is <body> of the
+   * document if there is (or the document element otherwise).
+   */
+  MOZ_CAN_RUN_SCRIPT static void OnUpdateHTMLEditorRootElement(
+      HTMLEditor& aHTMLEditor, dom::Element* aNewRootElement);
+
   /**
    * OnChangeFocus() should be called when focused content is changed or
    * IME enabled state is changed.  If nobody has focus, set both aPresContext
@@ -342,6 +358,13 @@ class IMEStateManager {
                               const InputContextAction& aAction);
   static IMEState GetNewIMEState(const nsPresContext& aPresContext,
                                  dom::Element* aElement);
+
+  /**
+   * Return a URI which is exposable via the native IME API to the system or
+   * IME.
+   */
+  static already_AddRefed<nsIURI> GetExposableURL(
+      const nsPresContext* aPresContext);
 
   static void EnsureTextCompositionArray();
 

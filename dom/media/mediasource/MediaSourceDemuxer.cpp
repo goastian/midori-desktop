@@ -269,9 +269,8 @@ MediaSourceTrackDemuxer::MediaSourceTrackDemuxer(MediaSourceDemuxer* aParent,
                                                  TrackInfo::TrackType aType,
                                                  TrackBuffersManager* aManager)
     : mParent(aParent),
-      mTaskQueue(mParent->GetTaskQueue()),
       mType(aType),
-      mMutex("MediaSourceTrackDemuxer", this),
+      mLock("MediaSourceTrackDemuxer", mParent->GetTaskQueue()),
       mManager(aManager),
       mReset(true),
       mPreRoll(TimeUnit::FromMicroseconds(
@@ -289,7 +288,7 @@ MediaSourceTrackDemuxer::MediaSourceTrackDemuxer(MediaSourceDemuxer* aParent,
                  mParent->GetTrackInfo(mType)->GetAsAudioInfo()->mRate)
               : 0)) {
   MOZ_ASSERT(mParent);
-  MOZ_ASSERT(mTaskQueue);
+  MOZ_ASSERT(mLock.Target().GetEventTarget());
 }
 
 UniquePtr<TrackInfo> MediaSourceTrackDemuxer::GetInfo() const {
@@ -316,16 +315,19 @@ void MediaSourceTrackDemuxer::Reset() {
   RefPtr<MediaSourceTrackDemuxer> self = this;
   nsCOMPtr<nsIRunnable> task =
       NS_NewRunnableFunction("MediaSourceTrackDemuxer::Reset", [self]() {
-        self->mMutex.AssertOnWritingThread();
+        self->TaskQueue().AssertOnCurrentThread();
+        self->mLock.NoteOnTarget();
+
         self->mNextSample.reset();
         self->mReset = true;
         if (!self->mManager) {
           return;
         }
-        MOZ_ASSERT(self->OnTaskQueue());
         self->mManager->Seek(self->mType, TimeUnit::Zero(), TimeUnit::Zero());
         {
-          MutexSingleWriterAutoLockOnThread(lock, self->mMutex);
+          MutexAutoLock lock(self->Mutex());
+          self->mLock.ClearCurrentAccess();
+          self->mLock.NoteExclusiveAccess();
           self->mNextRandomAccessPoint =
               self->mManager->GetNextRandomAccessPoint(
                   self->mType, MediaSourceDemuxer::EOS_FUZZ);
@@ -337,7 +339,8 @@ void MediaSourceTrackDemuxer::Reset() {
 }
 
 nsresult MediaSourceTrackDemuxer::GetNextRandomAccessPoint(TimeUnit* aTime) {
-  MutexSingleWriterAutoLock mon(mMutex);
+  MutexAutoLock lock(Mutex());
+  mLock.NoteLockHeld();
   *aTime = mNextRandomAccessPoint;
   return NS_OK;
 }
@@ -351,7 +354,8 @@ MediaSourceTrackDemuxer::SkipToNextRandomAccessPoint(
 }
 
 media::TimeIntervals MediaSourceTrackDemuxer::GetBuffered() {
-  MutexSingleWriterAutoLock mon(mMutex);
+  MutexAutoLock lock(Mutex());
+  mLock.NoteLockHeld();
   if (!mManager) {
     return media::TimeIntervals();
   }
@@ -372,7 +376,9 @@ void MediaSourceTrackDemuxer::BreakCycles() {
 
 RefPtr<MediaSourceTrackDemuxer::SeekPromise> MediaSourceTrackDemuxer::DoSeek(
     const TimeUnit& aTime) {
-  mMutex.AssertOnWritingThread();
+  TaskQueue().AssertOnCurrentThread();
+  mLock.NoteOnTarget();
+
   if (!mManager) {
     return SeekPromise::CreateAndReject(
         MediaResult(NS_ERROR_DOM_MEDIA_CANCELED,
@@ -380,14 +386,13 @@ RefPtr<MediaSourceTrackDemuxer::SeekPromise> MediaSourceTrackDemuxer::DoSeek(
         __func__);
   }
 
-  MOZ_ASSERT(OnTaskQueue());
   TimeIntervals buffered = mManager->Buffered(mType);
   // Fuzz factor represents a +/- threshold. So when seeking it allows the gap
   // to be twice as big as the fuzz value. We only want to allow EOS_FUZZ gap.
   buffered.SetFuzz(MediaSourceDemuxer::EOS_FUZZ / 2);
   TimeUnit seekTime = std::max(aTime - mPreRoll, TimeUnit::Zero());
 
-  if (mManager->IsEnded() && seekTime >= buffered.GetEnd()) {
+  if (mManager->HaveAllData() && seekTime >= buffered.GetEnd()) {
     // We're attempting to seek past the end time. Cap seekTime so that we seek
     // to the last sample instead.
     seekTime = std::max(mManager->HighestStartTime(mType) - mPreRoll,
@@ -401,6 +406,9 @@ RefPtr<MediaSourceTrackDemuxer::SeekPromise> MediaSourceTrackDemuxer::DoSeek(
             DumpTimeRanges(buffered).get());
   if (!buffered.ContainsWithStrictEnd(seekTime)) {
     if (!buffered.ContainsWithStrictEnd(aTime)) {
+      // Target isn't in the buffered range, so we can perform an eviction if
+      // needed.
+      mManager->EvictDataWithoutSize(mType, seekTime);
       // We don't have the data to seek to.
       return SeekPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA,
                                           __func__);
@@ -428,7 +436,9 @@ RefPtr<MediaSourceTrackDemuxer::SeekPromise> MediaSourceTrackDemuxer::DoSeek(
   }
   mReset = false;
   {
-    MutexSingleWriterAutoLockOnThread(lock, mMutex);
+    MutexAutoLock lock(Mutex());
+    mLock.ClearCurrentAccess();
+    mLock.NoteExclusiveAccess();
     mNextRandomAccessPoint =
         mManager->GetNextRandomAccessPoint(mType, MediaSourceDemuxer::EOS_FUZZ);
   }
@@ -437,7 +447,8 @@ RefPtr<MediaSourceTrackDemuxer::SeekPromise> MediaSourceTrackDemuxer::DoSeek(
 
 RefPtr<MediaSourceTrackDemuxer::SamplesPromise>
 MediaSourceTrackDemuxer::DoGetSamples(int32_t aNumSamples) {
-  mMutex.AssertOnWritingThread();
+  TaskQueue().AssertOnCurrentThread();
+  mLock.NoteOnTarget();
   if (!mManager) {
     return SamplesPromise::CreateAndReject(
         MediaResult(NS_ERROR_DOM_MEDIA_CANCELED,
@@ -445,12 +456,11 @@ MediaSourceTrackDemuxer::DoGetSamples(int32_t aNumSamples) {
         __func__);
   }
 
-  MOZ_ASSERT(OnTaskQueue());
   if (mReset) {
     // If a reset was recently performed, we ensure that the data
     // we are about to retrieve is still available.
     TimeIntervals buffered = mManager->Buffered(mType);
-    if (buffered.IsEmpty() && mManager->IsEnded()) {
+    if (buffered.IsEmpty() && mManager->HaveAllData()) {
       return SamplesPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_END_OF_STREAM,
                                              __func__);
     }
@@ -478,7 +488,8 @@ MediaSourceTrackDemuxer::DoGetSamples(int32_t aNumSamples) {
       if (result == NS_ERROR_DOM_MEDIA_END_OF_STREAM ||
           result == NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA) {
         return SamplesPromise::CreateAndReject(
-            (result == NS_ERROR_DOM_MEDIA_END_OF_STREAM && mManager->IsEnded())
+            (result == NS_ERROR_DOM_MEDIA_END_OF_STREAM &&
+             mManager->HaveAllData())
                 ? NS_ERROR_DOM_MEDIA_END_OF_STREAM
                 : NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA,
             __func__);
@@ -487,10 +498,10 @@ MediaSourceTrackDemuxer::DoGetSamples(int32_t aNumSamples) {
     }
   }
   MOZ_DIAGNOSTIC_ASSERT(sample);
-  RefPtr<SamplesHolder> samples = new SamplesHolder;
-  samples->AppendSample(sample);
   {
-    MutexSingleWriterAutoLockOnThread(lock, mMutex);
+    MutexAutoLock lock(Mutex());
+    mLock.ClearCurrentAccess();
+    mLock.NoteExclusiveAccess();
     // Diagnostic asserts for bug 1810396
     MOZ_DIAGNOSTIC_ASSERT(sample, "Invalid sample pointer found!");
     MOZ_DIAGNOSTIC_ASSERT(sample->HasValidTime(), "Invalid sample time found!");
@@ -502,13 +513,17 @@ MediaSourceTrackDemuxer::DoGetSamples(int32_t aNumSamples) {
           mType, MediaSourceDemuxer::EOS_FUZZ);
     }
   }
+  RefPtr<SamplesHolder> samples = new SamplesHolder;
+  samples->AppendSample(std::move(sample));
   return SamplesPromise::CreateAndResolve(samples, __func__);
 }
 
 RefPtr<MediaSourceTrackDemuxer::SkipAccessPointPromise>
 MediaSourceTrackDemuxer::DoSkipToNextRandomAccessPoint(
     const TimeUnit& aTimeThreadshold) {
-  mMutex.AssertOnWritingThread();
+  TaskQueue().AssertOnCurrentThread();
+  mLock.NoteOnTarget();
+
   if (!mManager) {
     return SkipAccessPointPromise::CreateAndReject(
         SkipFailureHolder(MediaResult(NS_ERROR_DOM_MEDIA_CANCELED,
@@ -517,7 +532,6 @@ MediaSourceTrackDemuxer::DoSkipToNextRandomAccessPoint(
         __func__);
   }
 
-  MOZ_ASSERT(OnTaskQueue());
   uint32_t parsed = 0;
   // Ensure that the data we are about to skip to is still available.
   TimeIntervals buffered = mManager->Buffered(mType);
@@ -530,7 +544,7 @@ MediaSourceTrackDemuxer::DoSkipToNextRandomAccessPoint(
       return SkipAccessPointPromise::CreateAndResolve(parsed, __func__);
     }
   }
-  SkipFailureHolder holder(mManager->IsEnded()
+  SkipFailureHolder holder(mManager->HaveAllData()
                                ? NS_ERROR_DOM_MEDIA_END_OF_STREAM
                                : NS_ERROR_DOM_MEDIA_WAITING_FOR_DATA,
                            parsed);
@@ -538,13 +552,15 @@ MediaSourceTrackDemuxer::DoSkipToNextRandomAccessPoint(
 }
 
 bool MediaSourceTrackDemuxer::HasManager(TrackBuffersManager* aManager) const {
-  mMutex.AssertOnWritingThread();
+  TaskQueue().AssertOnCurrentThread();
+  mLock.NoteOnTarget();
   return mManager == aManager;
 }
 
 void MediaSourceTrackDemuxer::DetachManager() {
-  MOZ_ASSERT(OnTaskQueue());
-  MutexSingleWriterAutoLock mon(mMutex);
+  TaskQueue().AssertOnCurrentThread();
+  MutexAutoLock lock(Mutex());
+  mLock.NoteExclusiveAccess();
   mManager = nullptr;
 }
 

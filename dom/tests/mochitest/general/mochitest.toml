@@ -1,5 +1,4 @@
 [DEFAULT]
-prefs = ["dom.svg.pathSeg.enabled=false"]
 support-files = [
   "497633.html",
   "fail.png",
@@ -190,8 +189,10 @@ skip-if = [
 
 ["test_resizeby.html"]
 skip-if = [
+  "display == 'wayland'", # Decorations arrive async and mess up the resize intermittently on automation.
   "os == 'android'", # Window sizes cannot be controled on android; Windows
-  "os == 'linux' && os_version == '18.04' && bits == 64",# Bug 1604152
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1604152
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1604152
 ]
 
 ["test_resource_timing.html"]
@@ -258,10 +259,10 @@ skip-if = [
 
 ["test_toggling_performance_navigation_timing.html"]
 skip-if = [
-  "win10_2009 && bits == 64 && !debug", # Bug 1730152
-  "win11_2009 && bits == 64 && !debug", # Bug 1730152
-  "apple_catalina && !debug", # Bug 1730152
-  "apple_silicon && !debug", # Bug 1730152
+  "win10_2009 && bits == 64 && opt", # Bug 1730152
+  "win11_2009 && bits == 64 && opt", # Bug 1730152
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt", # Bug 1730152
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt", # Bug 1730152
 ]
 
 ["test_vibrator.html"]

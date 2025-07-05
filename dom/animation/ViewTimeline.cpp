@@ -18,19 +18,21 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(ViewTimeline, ScrollTimeline)
 
 /* static */
 already_AddRefed<ViewTimeline> ViewTimeline::MakeNamed(
-    Document* aDocument, Element* aSubject, PseudoStyleType aPseudoType,
+    Document* aDocument, Element* aSubject,
+    const PseudoStyleRequest& aPseudoRequest,
     const StyleViewTimeline& aStyleTimeline) {
   MOZ_ASSERT(NS_IsMainThread());
 
   // 1. Lookup scroller. We have to find the nearest scroller from |aSubject|
   // and |aPseudoType|.
-  auto [element, pseudo] = FindNearestScroller(aSubject, aPseudoType);
-  auto scroller = Scroller::Nearest(const_cast<Element*>(element), pseudo);
+  auto [element, pseudo] = FindNearestScroller(aSubject, aPseudoRequest);
+  auto scroller =
+      Scroller::Nearest(const_cast<Element*>(element), pseudo.mType);
 
   // 2. Create timeline.
-  return MakeAndAddRef<ViewTimeline>(aDocument, scroller,
-                                     aStyleTimeline.GetAxis(), aSubject,
-                                     aPseudoType, aStyleTimeline.GetInset());
+  return MakeAndAddRef<ViewTimeline>(
+      aDocument, scroller, aStyleTimeline.GetAxis(), aSubject,
+      aPseudoRequest.mType, aStyleTimeline.GetInset());
 }
 
 /* static */
@@ -39,18 +41,19 @@ already_AddRefed<ViewTimeline> ViewTimeline::MakeAnonymous(
     StyleScrollAxis aAxis, const StyleViewTimelineInset& aInset) {
   // view() finds the nearest scroll container from the animation target.
   auto [element, pseudo] =
-      FindNearestScroller(aTarget.mElement, aTarget.mPseudoType);
-  Scroller scroller = Scroller::Nearest(const_cast<Element*>(element), pseudo);
+      FindNearestScroller(aTarget.mElement, aTarget.mPseudoRequest);
+  Scroller scroller =
+      Scroller::Nearest(const_cast<Element*>(element), pseudo.mType);
   return MakeAndAddRef<ViewTimeline>(aDocument, scroller, aAxis,
-                                     aTarget.mElement, aTarget.mPseudoType,
-                                     aInset);
+                                     aTarget.mElement,
+                                     aTarget.mPseudoRequest.mType, aInset);
 }
 
-void ViewTimeline::ReplacePropertiesWith(Element* aSubjectElement,
-                                         PseudoStyleType aPseudoType,
-                                         const StyleViewTimeline& aNew) {
+void ViewTimeline::ReplacePropertiesWith(
+    Element* aSubjectElement, const PseudoStyleRequest& aPseudoRequest,
+    const StyleViewTimeline& aNew) {
   mSubject = aSubjectElement;
-  mSubjectPseudoType = aPseudoType;
+  mSubjectPseudoType = aPseudoRequest.mType;
   mAxis = aNew.GetAxis();
   // FIXME: Bug 1817073. We assume it is a non-animatable value for now.
   mInset = aNew.GetInset();
@@ -70,7 +73,7 @@ Maybe<ScrollTimeline::ScrollOffsets> ViewTimeline::ComputeOffsets(
   MOZ_ASSERT(aScrollContainerFrame);
 
   const Element* subjectElement =
-      AnimationUtils::GetElementForRestyle(mSubject, mSubjectPseudoType);
+      mSubject->GetPseudoElement(PseudoStyleRequest(mSubjectPseudoType));
   const nsIFrame* subject = subjectElement->GetPrimaryFrame();
   if (!subject) {
     // No principal box of the subject, so we cannot compute the offset. This
@@ -140,10 +143,9 @@ ScrollTimeline::ScrollOffsets ViewTimeline::ComputeInsets(
       aScrollContainerFrame->GetScrolledFrame()->GetWritingMode();
   const auto& scrollPadding =
       LogicalMargin(wm, aScrollContainerFrame->GetScrollPadding());
-  const bool isBlockAxis =
-      mAxis == StyleScrollAxis::Block ||
-      (mAxis == StyleScrollAxis::Horizontal && wm.IsVertical()) ||
-      (mAxis == StyleScrollAxis::Vertical && !wm.IsVertical());
+  const bool isBlockAxis = mAxis == StyleScrollAxis::Block ||
+                           (mAxis == StyleScrollAxis::X && wm.IsVertical()) ||
+                           (mAxis == StyleScrollAxis::Y && !wm.IsVertical());
 
   // The percentages of view-timelne-inset is relative to the corresponding
   // dimension of the relevant scrollport.

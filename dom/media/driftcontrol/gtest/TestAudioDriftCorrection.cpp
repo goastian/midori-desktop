@@ -347,20 +347,22 @@ TEST(TestAudioDriftCorrection, DynamicInputBufferSizeChanges)
 
   produceSomeData(transmitterBlockSize1, 5 * sampleRate);
   EXPECT_EQ(ad.BufferSize(), 4800U);
-  // Input is stable so no corrections should occur.
-  EXPECT_EQ(ad.NumCorrectionChanges(), 0U);
+  // No input is provided for the first transmitterBlockSize1 of output
+  // requested.  This causes a lower input rate estimate, so there are some
+  // initial corrections.
+  EXPECT_GT(ad.NumCorrectionChanges(), 0U);
   EXPECT_EQ(ad.NumUnderruns(), 0U);
 
   // Increase input latency. We expect this to underrun, but only once as the
   // drift correction adapts its buffer size and desired buffering level.
-  produceSomeData(transmitterBlockSize2, 10 * sampleRate);
+  produceSomeData(transmitterBlockSize2, 25 * sampleRate);
   auto numCorrectionChanges = ad.NumCorrectionChanges();
   EXPECT_EQ(ad.NumUnderruns(), 1U);
 
   // Adapting to the new input block size should have stabilized.
   EXPECT_GT(ad.BufferSize(), transmitterBlockSize2);
   produceSomeData(transmitterBlockSize2, 10 * sampleRate);
-  EXPECT_EQ(ad.NumCorrectionChanges(), numCorrectionChanges);
+  EXPECT_LE(ad.NumCorrectionChanges(), numCorrectionChanges + 1);
   EXPECT_EQ(ad.NumUnderruns(), 1U);
 
   // Decrease input latency. We expect the drift correction to gradually
@@ -369,10 +371,10 @@ TEST(TestAudioDriftCorrection, DynamicInputBufferSizeChanges)
   numCorrectionChanges = ad.NumCorrectionChanges();
   EXPECT_EQ(ad.NumUnderruns(), 1U);
 
-  // Adapting to the new input block size should have stabilized.
   EXPECT_EQ(ad.BufferSize(), 9600U);
+  // Adjustments to the desired buffering level continue.
   produceSomeData(transmitterBlockSize1, 20 * sampleRate);
-  EXPECT_NEAR(ad.NumCorrectionChanges(), numCorrectionChanges, 1U);
+  EXPECT_LE(ad.NumCorrectionChanges(), numCorrectionChanges + 2);
   EXPECT_EQ(ad.NumUnderruns(), 1U);
 
   EXPECT_NEAR(inToneVerifier.EstimatedFreq(), tone.mFrequency, 1.0f);
@@ -380,9 +382,16 @@ TEST(TestAudioDriftCorrection, DynamicInputBufferSizeChanges)
   EXPECT_EQ(inToneVerifier.CountDiscontinuities(), 0U);
 
   EXPECT_NEAR(outToneVerifier.EstimatedFreq(), tone.mFrequency, 1.0f);
-  // The expected pre-silence is equal to the desired buffering plus what's
-  // needed to resample the first input segment.
+  // No input is provided for the first transmitterBlockSize1 of output
+  // requested, so this output is all silent.
+  // The expected additional pre-silence is equal to the desired buffering
+  // plus what's needed to produce the first output segment minus the first
+  // input segment.
   EXPECT_EQ(outToneVerifier.PreSilenceSamples(), 2528U);
+  EXPECT_NEAR(outToneVerifier.PreSilenceSamples() - transmitterBlockSize1,
+              media::TimeUnit::FromSeconds(0.05).ToTicksAtRate(sampleRate) +
+                  receiverBlockSize - transmitterBlockSize1,
+              1U);
   // One mid-stream period of silence from increasing the input buffer size,
   // causing an underrun. Counts as two discontinuities.
   EXPECT_EQ(outToneVerifier.CountDiscontinuities(), 2U);
@@ -437,7 +446,7 @@ TEST(TestAudioDriftCorrection, DriftStepResponseUnderrun)
     ad.RequestFrames(inSegment, interval / 100);
   }
 
-  inputRate = nominalRate * 998 / 1000;  // -0.2% drift
+  inputRate = nominalRate * 997 / 1000;  // -0.3% drift
   inputInterval = inputRate;
   for (uint32_t i = 0; i < interval * iterations; i += interval / 100) {
     AudioSegment inSegment;
@@ -482,7 +491,7 @@ TEST(TestAudioDriftCorrection, DriftStepResponseUnderrunHighLatencyInput)
       tone.Generate(inSegment, inputInterval2);
     }
     ad.RequestFrames(inSegment, interval / 100);
-    if (i >= interval / 10 && i < interval) {
+    if (i >= interval * 8 / 10 && i < interval) {
       // While the DynamicResampler has not set its pre-buffer after the
       // underrun, InFramesBuffered() reports the pre-buffer size.
       // The initial desired buffer and pre-buffer size was
@@ -492,10 +501,10 @@ TEST(TestAudioDriftCorrection, DriftStepResponseUnderrunHighLatencyInput)
           << "for i=" << i;
     } else if (i == interval) {
       // After the pre-buffer was set and used to generate the first output
-      // block, the actual number of frames buffered almost matches the
-      // pre-buffer size, with some rounding from output to input frame count
-      // conversion.
-      EXPECT_EQ(ad.CurrentBuffering(), inputInterval1 * 11 / 10 * 2 - 1)
+      // with a non-empty input segment after the underun, the actual number
+      // of frames buffered almost matches the pre-buffer size, with some
+      // rounding from output to input frame count conversion.
+      EXPECT_NEAR(ad.CurrentBuffering(), inputInterval1 * 11 / 10 * 2, 1)
           << "after first input after underrun";
     }
   }

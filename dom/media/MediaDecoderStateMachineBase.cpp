@@ -49,6 +49,7 @@ MediaDecoderStateMachineBase::MediaDecoderStateMachineBase(
       INIT_CANONICAL(mCurrentPosition, media::TimeUnit::Zero()),
       INIT_CANONICAL(mIsAudioDataAudible, false),
       mMinimizePreroll(aDecoder->GetMinimizePreroll()),
+      mIsLiveStream(false),
       mWatchManager(this, mTaskQueue) {}
 
 MediaEventSource<void>& MediaDecoderStateMachineBase::OnMediaNotSeekable()
@@ -170,11 +171,22 @@ void MediaDecoderStateMachineBase::DecodeError(const MediaResult& aError) {
                        aError.Description());
   // Notify the decode error and MediaDecoder will shut down MDSM.
   mOnPlaybackErrorEvent.Notify(aError);
+#ifdef DEBUG
+  mHasNotifiedPlaybackError = true;
+#endif
 }
 
 RefPtr<SetCDMPromise> MediaDecoderStateMachineBase::SetCDMProxy(
     CDMProxy* aProxy) {
   return mReader->SetCDMProxy(aProxy);
+}
+
+void MediaDecoderStateMachineBase::SetIsLiveStream(bool aIsLiveStream) {
+  mIsLiveStream = aIsLiveStream;
+}
+
+bool MediaDecoderStateMachineBase::IsLiveStream() const {
+  return mIsLiveStream;
 }
 
 #undef INIT_MIRROR

@@ -7,15 +7,12 @@ support-files = [
   "page_localstorage_coop+coep.html",
   "page_localstorage_coop+coep.html^headers^",
   "page_localstorage_snapshotting.html",
-  "position.html",
   "test-console-api.html",
   "test_bug1004814.html",
   "worker_bug1004814.js",
-  "geo_leak_test.html",
   "dummy.html",
   "dummy.png",
   "helper_localStorage.js",
-  "!/dom/tests/mochitest/geolocation/network_geolocation.sjs",
 ]
 
 ["browser_ConsoleAPI_originAttributes.js"]
@@ -37,14 +34,11 @@ https_first_disabled = true
 
 ["browser_bug1004814.js"]
 
-["browser_bug1008941_dismissGeolocationHanger.js"]
-tags = "geolocation"
-
 ["browser_bug1236512.js"]
-skip-if = ["os != 'mac'"]
-
-["browser_bug1238427.js"]
-https_first_disabled = true
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
+]
 
 ["browser_bug1316330.js"]
 
@@ -64,6 +58,12 @@ support-files = [
 support-files = [
   "page_bytecode_cache_asm_js.html",
   "page_bytecode_cache_asm_js.js",
+]
+
+["browser_bytecode_json_module.js"]
+support-files = [
+  "page_bytecode_cache_json_module.html",
+  "page_bytecode_cache_json_module.json",
 ]
 
 ["browser_cancel_keydown_keypress_event.js"]
@@ -138,10 +138,59 @@ support-files = ["image.html"]
 support-files = ["test_mixed_content_image.html"]
 
 ["browser_pointerlock_popup.js"]
-  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1907085
-  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1907085
+
+["browser_pointerlock_sidebar.js"]
 
 ["browser_pointerlock_warning.js"]
+
+["browser_scriptCache_clear.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "counter_server.sjs",
+]
+
+["browser_scriptCache_container.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "page_scriptCache_container.html",
+  "page_scriptCache_container_module.html",
+  "counter_server.sjs",
+]
+
+["browser_scriptCache_evict_with_non_cacheable.js"]
+support-files = [
+  "cacheable_non_cacheable_server.sjs",
+  "page_evict_with_non_cacheable.html",
+]
+
+["browser_scriptCache_load_events.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "file_scriptCache_load_events.js",
+  "page_scriptCache_load_events.html",
+]
+
+["browser_scriptCache_partition.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "page_scriptCache_partition.html",
+  "page_scriptCache_partition_frame.html",
+  "page_scriptCache_partition_module.html",
+  "page_scriptCache_partition_module_frame.html",
+  "counter_server.sjs",
+]
+
+["browser_scriptCache_perf_timeline.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "perf_server.sjs",
+]
+
+["browser_scriptCache_redirect.js"]
+skip-if = ["!nightly_build"]
+support-files = [
+  "redirect_server.sjs",
+]
 
 ["browser_sessionStorage_navigation.js"]
 skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt"] # Bug 1712961
@@ -162,6 +211,14 @@ skip-if = [
   "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # see bug 1261495 for Linux debug time outs
 ]
 support-files = ["test_new_window_from_content_child.html"]
+
+["browser_test_report_missing_child_module.js"]
+support-files = [
+  "file_test_report_missing_child_module_grandparent.mjs",
+  "file_test_report_missing_child_module_parent.mjs",
+  "file_test_report_missing_child_module_parent_02.mjs",
+  "page_test_report_missing_child_module.html",
+]
 
 ["browser_test_toolbars_visibility.js"]
 https_first_disabled = true

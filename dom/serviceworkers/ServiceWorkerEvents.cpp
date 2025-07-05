@@ -33,7 +33,6 @@
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/net/NeckoChannelParams.h"
-#include "mozilla/Telemetry.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
@@ -109,10 +108,7 @@ CancelChannelRunnable::Run() {
 }
 
 FetchEvent::FetchEvent(EventTarget* aOwner)
-    : ExtendableEvent(aOwner),
-      mPreventDefaultLineNumber(0),
-      mPreventDefaultColumnNumber(1),
-      mWaitToRespond(false) {}
+    : ExtendableEvent(aOwner), mWaitToRespond(false) {}
 
 FetchEvent::~FetchEvent() = default;
 
@@ -341,9 +337,6 @@ class StartResponse final : public Runnable {
     }
     if (!body) {
       mInternalResponse->GetUnfilteredBody(getter_AddRefs(body));
-    } else {
-      Telemetry::ScalarAdd(Telemetry::ScalarID::SW_ALTERNATIVE_BODY_USED_COUNT,
-                           1);
     }
 
     RefPtr<BodyCopyHandle> copyHandle;
@@ -660,14 +653,12 @@ void RespondWithHandler::ResolvedCallback(JSContext* aCx,
   if (NS_WARN_IF((response->Type() == ResponseType::Opaque ||
                   response->Type() == ResponseType::Cors) &&
                  ir->GetUnfilteredURL().IsEmpty())) {
-    MOZ_DIAGNOSTIC_ASSERT(false, "Cors or opaque Response without a URL");
+    MOZ_DIAGNOSTIC_CRASH("Cors or opaque Response without a URL");
     return;
   }
 
   if (mRequestMode == RequestMode::Same_origin &&
       response->Type() == ResponseType::Cors) {
-    Telemetry::ScalarAdd(Telemetry::ScalarID::SW_CORS_RES_FOR_SO_REQ_COUNT, 1);
-
     // XXXtt: Will have a pref to enable the quirk response in bug 1419684.
     // The variadic template provided by StringArrayAppender requires exactly
     // an nsString.
@@ -767,11 +758,7 @@ void FetchEvent::RespondWith(JSContext* aCx, Promise& aArg, ErrorResult& aRv) {
   // Record where respondWith() was called in the script so we can include the
   // information in any error reporting.  We should be guaranteed not to get
   // a file:// string here because service workers require http/https.
-  nsCString spec;
-  uint32_t line = 0;
-  uint32_t column = 1;
-  nsJSUtils::GetCallingLocation(aCx, spec, &line, &column);
-
+  auto location = JSCallingLocation::Get(aCx);
   SafeRefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
 
   nsAutoCString requestURL;
@@ -784,12 +771,14 @@ void FetchEvent::RespondWith(JSContext* aCx, Promise& aArg, ErrorResult& aRv) {
     RefPtr<RespondWithHandler> handler = new RespondWithHandler(
         mChannel, mRegistration, mRequest->Mode(), ir->IsClientRequest(),
         mRequest->Redirect(), mScriptSpec, NS_ConvertUTF8toUTF16(requestURL),
-        ir->GetFragment(), spec, line, column);
+        ir->GetFragment(), location.FileName(), location.mLine,
+        location.mColumn);
 
     aArg.AppendNativeHandler(handler);
     // mRespondWithHandler can be nullptr for self-dispatched FetchEvent.
   } else if (mRespondWithHandler) {
-    mRespondWithHandler->RespondWithCalledAt(spec, line, column);
+    mRespondWithHandler->RespondWithCalledAt(location.FileName(),
+                                             location.mLine, location.mColumn);
     aArg.AppendNativeHandler(mRespondWithHandler);
     mRespondWithHandler = nullptr;
   }
@@ -804,22 +793,20 @@ void FetchEvent::PreventDefault(JSContext* aCx, CallerType aCallerType) {
   MOZ_ASSERT(aCallerType != CallerType::System,
              "Since when do we support system-principal service workers?");
 
-  if (mPreventDefaultScriptSpec.IsEmpty()) {
+  if (!mPreventDefaultLocation) {
     // Note when the FetchEvent might have been canceled by script, but don't
     // actually log the location until we are sure it matters.  This is
     // determined in ServiceWorkerPrivate.cpp.  We only remember the first
     // call to preventDefault() as its the most likely to have actually canceled
     // the event.
-    nsJSUtils::GetCallingLocation(aCx, mPreventDefaultScriptSpec,
-                                  &mPreventDefaultLineNumber,
-                                  &mPreventDefaultColumnNumber);
+    mPreventDefaultLocation = JSCallingLocation::Get(aCx);
   }
 
   Event::PreventDefault(aCx, aCallerType);
 }
 
 void FetchEvent::ReportCanceled() {
-  MOZ_ASSERT(!mPreventDefaultScriptSpec.IsEmpty());
+  MOZ_ASSERT(mPreventDefaultLocation);
 
   SafeRefPtr<InternalRequest> ir = mRequest->GetInternalRequest();
   nsAutoCString url;
@@ -832,14 +819,14 @@ void FetchEvent::ReportCanceled() {
   // CopyUTF8toUTF16(url, requestURL);
 
   if (mChannel) {
-    ::AsyncLog(mChannel.get(), mPreventDefaultScriptSpec,
-               mPreventDefaultLineNumber, mPreventDefaultColumnNumber,
+    ::AsyncLog(mChannel.get(), mPreventDefaultLocation.FileName(),
+               mPreventDefaultLocation.mLine, mPreventDefaultLocation.mColumn,
                "InterceptionCanceledWithURL"_ns, requestURL);
     // mRespondWithHandler could be nullptr for self-dispatched FetchEvent.
   } else if (mRespondWithHandler) {
-    mRespondWithHandler->ReportCanceled(mPreventDefaultScriptSpec,
-                                        mPreventDefaultLineNumber,
-                                        mPreventDefaultColumnNumber);
+    mRespondWithHandler->ReportCanceled(mPreventDefaultLocation.FileName(),
+                                        mPreventDefaultLocation.mLine,
+                                        mPreventDefaultLocation.mColumn);
     mRespondWithHandler = nullptr;
   }
 }
@@ -847,11 +834,8 @@ void FetchEvent::ReportCanceled() {
 namespace {
 
 class WaitUntilHandler final : public PromiseNativeHandler {
-  WorkerPrivate* mWorkerPrivate;
   const nsCString mScope;
-  nsString mSourceSpec;
-  uint32_t mLine;
-  uint32_t mColumn;
+  JSCallingLocation mLocation;
   nsString mRejectValue;
 
   ~WaitUntilHandler() = default;
@@ -860,15 +844,9 @@ class WaitUntilHandler final : public PromiseNativeHandler {
   NS_DECL_THREADSAFE_ISUPPORTS
 
   WaitUntilHandler(WorkerPrivate* aWorkerPrivate, JSContext* aCx)
-      : mWorkerPrivate(aWorkerPrivate),
-        mScope(mWorkerPrivate->ServiceWorkerScope()),
-        mLine(0),
-        mColumn(1) {
-    mWorkerPrivate->AssertIsOnWorkerThread();
-
-    // Save the location of the waitUntil() call itself as a fallback
-    // in case the rejection value does not contain any location info.
-    nsJSUtils::GetCallingLocation(aCx, mSourceSpec, &mLine, &mColumn);
+      : mScope(GetCurrentThreadWorkerPrivate()->ServiceWorkerScope()),
+        mLocation(JSCallingLocation::Get(aCx)) {
+    MOZ_ASSERT(GetCurrentThreadWorkerPrivate());
   }
 
   void ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValu,
@@ -878,9 +856,10 @@ class WaitUntilHandler final : public PromiseNativeHandler {
 
   void RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue,
                         ErrorResult& aRv) override {
-    mWorkerPrivate->AssertIsOnWorkerThread();
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
 
-    nsString spec;
+    nsCString spec;
     uint32_t line = 0;
     uint32_t column = 0;
     nsContentUtils::ExtractErrorValues(aCx, aValue, spec, &line, &column,
@@ -888,12 +867,12 @@ class WaitUntilHandler final : public PromiseNativeHandler {
 
     // only use the extracted location if we found one
     if (!spec.IsEmpty()) {
-      mSourceSpec = spec;
-      mLine = line;
-      mColumn = column;
+      mLocation.mResource = AsVariant(std::move(spec));
+      mLocation.mLine = line;
+      mLocation.mColumn = column;
     }
 
-    MOZ_ALWAYS_SUCCEEDS(mWorkerPrivate->DispatchToMainThread(
+    MOZ_ALWAYS_SUCCEEDS(workerPrivate->DispatchToMainThread(
         NewRunnableMethod("WaitUntilHandler::ReportOnMainThread", this,
                           &WaitUntilHandler::ReportOnMainThread)));
   }
@@ -921,8 +900,9 @@ class WaitUntilHandler final : public PromiseNativeHandler {
     // because there is no documeny yet, and the navigation is no longer
     // being intercepted.
 
-    swm->ReportToAllClients(mScope, message, mSourceSpec, u""_ns, mLine,
-                            mColumn, nsIScriptError::errorFlag);
+    swm->ReportToAllClients(mScope, message, mLocation.FileName(), u""_ns,
+                            mLocation.mLine, mLocation.mColumn,
+                            nsIScriptError::errorFlag);
   }
 };
 

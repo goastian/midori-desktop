@@ -15,7 +15,6 @@
 #include "SVGElement.h"
 #include "nsTArray.h"
 #include "SVGLength.h"
-#include "mozilla/dom/SVGLengthBinding.h"
 
 namespace mozilla {
 
@@ -310,21 +309,17 @@ class MOZ_STACK_CLASS SVGUserUnitList {
     mAxis = aAxis;
   }
 
-  void Clear() { mList = nullptr; }
+  bool IsEmpty() const { return mList->IsEmpty(); }
 
-  bool IsEmpty() const { return !mList || mList->IsEmpty(); }
-
-  uint32_t Length() const { return mList ? mList->Length() : 0; }
+  uint32_t Length() const { return mList->Length(); }
 
   /// This may return a non-finite value
   float operator[](uint32_t aIndex) const {
-    return (*mList)[aIndex].GetValueInPixels(mElement, mAxis);
+    return (*mList)[aIndex].GetValueInPixelsWithZoom(mElement, mAxis);
   }
 
   bool HasPercentageValueAt(uint32_t aIndex) const {
-    const SVGLength& length = (*mList)[aIndex];
-    return length.GetUnit() ==
-           dom::SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE;
+    return (*mList)[aIndex].IsPercentage();
   }
 
  private:

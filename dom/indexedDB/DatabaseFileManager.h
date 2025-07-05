@@ -130,7 +130,9 @@ class DatabaseFileManager final
 
   MOZ_DECLARE_REFCOUNTED_TYPENAME(DatabaseFileManager)
 
-  static StaticMutex& Mutex() { return sMutex; }
+  static StaticMutex& MutexInstance() MOZ_RETURN_CAPABILITY(sMutex) {
+    return sMutex;
+  }
 
   ~DatabaseFileManager() = default;
 };

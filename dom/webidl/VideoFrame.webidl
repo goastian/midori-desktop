@@ -13,18 +13,16 @@ enum AlphaOption {
 };
 
 // [Serializable, Transferable] are implemented without adding attributes here.
-[Exposed=(Window,DedicatedWorker), Pref="dom.media.webcodecs.enabled"]
+[Exposed=(Window,DedicatedWorker), Func="mozilla::dom::VideoFrame::PrefEnabled"]
 interface VideoFrame {
-  // The constructors should be shorten to:
+  // The constructors should be shortened to:
   //   ```
-  //   constructor([AllowShared] BufferSource data, VideoFrameBufferInit init);
   //   constructor(CanvasImageSource image, optional VideoFrameInit init = {});
+  //   constructor(AllowSharedBufferSource data, VideoFrameBufferInit init);
   //   ```
-  // However, `[AllowShared] BufferSource` doesn't work for now (bug 1696216), and
-  // `No support for unions as distinguishing arguments yet` error occurs when using
-  //   `constructor(CanvasImageSource image, optional VideoFrameInit init = {})` and
-  //   `constructor(([AllowShared] ArrayBufferView or [AllowShared] ArrayBuffer) data, VideoFrameBufferInit init)`
-  // at the same time (bug 1786410).
+  // but a `No support for unions as distinguishing arguments yet` error occurs
+  // when using the CanvasImageSource and AllowSharedBufferSource unions
+  // (bug 1786410).
   [Throws]
   constructor(HTMLImageElement imageElement, optional VideoFrameInit init = {});
   [Throws]
@@ -61,8 +59,7 @@ interface VideoFrame {
       optional VideoFrameCopyToOptions options = {});
   [Throws]
   Promise<sequence<PlaneLayout>> copyTo(
-      // bug 1696216: Should be `copyTo([AllowShared] BufferSource destination, ...)`
-      ([AllowShared] ArrayBufferView or [AllowShared] ArrayBuffer) destination,
+      AllowSharedBufferSource destination,
       optional VideoFrameCopyToOptions options = {});
   [Throws]
   VideoFrame clone();
@@ -107,6 +104,8 @@ dictionary VideoFrameBufferInit {
 dictionary VideoFrameCopyToOptions {
   DOMRectInit rect;
   sequence<PlaneLayout> layout;
+  VideoPixelFormat format;
+  PredefinedColorSpace colorSpace;
 };
 
 dictionary PlaneLayout {
@@ -118,20 +117,36 @@ dictionary PlaneLayout {
 enum VideoPixelFormat {
   // 4:2:0 Y, U, V
   "I420",
+  "I420P10",
+  "I420P12",
   // 4:2:0 Y, U, V, A
   "I420A",
+  "I420AP10",
+  "I420AP12",
   // 4:2:2 Y, U, V
   "I422",
+  "I422P10",
+  "I422P12",
+  // 4:2:2 Y, U, V, A
+  "I422A",
+  "I422AP10",
+  "I422AP12",
   // 4:4:4 Y, U, V
   "I444",
+  "I444P10",
+  "I444P12",
+  // 4:4:4 Y, U, V, A
+  "I444A",
+  "I444AP10",
+  "I444AP12",
   // 4:2:0 Y, UV
   "NV12",
-  // 32bpp RGBA
+  // 4:4:4 RGBA
   "RGBA",
-  // 32bpp RGBX (opaque)
+  // 4:4:4 RGBX (opaque)
   "RGBX",
-  // 32bpp BGRA
+  // 4:4:4 BGRA
   "BGRA",
-  // 32bpp BGRX (opaque)
+  // 4:4:4 BGRX (opaque)
   "BGRX",
 };

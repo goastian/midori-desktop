@@ -47,8 +47,8 @@ class txNodeSorter {
   static int compareNodes(uint32_t aIndexA, uint32_t aIndexB,
                           SortData& aSortData);
   static mozilla::UniquePtr<txObject> calcSortValue(SortKey* aKey,
-                            SortData* aSortData,
-                            uint32_t aNodeIndex);
+                                                    SortData* aSortData,
+                                                    uint32_t aNodeIndex);
   txList mSortKeys;
   unsigned int mNKeys;
 };

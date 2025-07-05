@@ -9,10 +9,10 @@
 #include <unordered_map>
 
 #include "mozilla/WeakPtr.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
 #include "mozilla/webgpu/PWebGPUParent.h"
 #include "mozilla/webrender/WebRenderAPI.h"
-#include "mozilla/ipc/RawShmem.h"
 #include "WebGPUTypes.h"
 #include "base/timer.h"
 
@@ -48,18 +48,17 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
   explicit WebGPUParent();
 
   ipc::IPCResult RecvInstanceRequestAdapter(
-      const dom::GPURequestAdapterOptions& aOptions,
-      const nsTArray<RawId>& aTargetIds,
+      const dom::GPURequestAdapterOptions& aOptions, RawId aAdapterId,
       InstanceRequestAdapterResolver&& resolver);
   ipc::IPCResult RecvAdapterRequestDevice(
       RawId aAdapterId, const ipc::ByteBuf& aByteBuf, RawId aDeviceId,
-      AdapterRequestDeviceResolver&& resolver);
+      RawId aQueueId, AdapterRequestDeviceResolver&& resolver);
   ipc::IPCResult RecvAdapterDrop(RawId aAdapterId);
   ipc::IPCResult RecvDeviceDestroy(RawId aDeviceId);
   ipc::IPCResult RecvDeviceDrop(RawId aDeviceId);
-  ipc::IPCResult RecvDeviceCreateBuffer(RawId aDeviceId, RawId aBufferId,
-                                        dom::GPUBufferDescriptor&& aDesc,
-                                        ipc::UnsafeSharedMemoryHandle&& aShmem);
+  ipc::IPCResult RecvDeviceCreateBuffer(
+      RawId aDeviceId, RawId aBufferId, dom::GPUBufferDescriptor&& aDesc,
+      ipc::MutableSharedMemoryHandle&& aShmem);
   ipc::IPCResult RecvBufferMap(RawId aDeviceId, RawId aBufferId, uint32_t aMode,
                                uint64_t aOffset, uint64_t size,
                                BufferMapResolver&& aResolver);
@@ -70,6 +69,7 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
   ipc::IPCResult RecvTextureDrop(RawId aTextureId);
   ipc::IPCResult RecvTextureViewDrop(RawId aTextureViewId);
   ipc::IPCResult RecvSamplerDrop(RawId aSamplerId);
+  ipc::IPCResult RecvQuerySetDrop(RawId aQuerySetId);
   ipc::IPCResult RecvCommandEncoderFinish(
       RawId aEncoderId, RawId aDeviceId,
       const dom::GPUCommandBufferDescriptor& aDesc);
@@ -83,7 +83,7 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
       RawId aQueueId, std::function<void(mozilla::void_t)>&& aResolver);
   ipc::IPCResult RecvQueueWriteAction(RawId aQueueId, RawId aDeviceId,
                                       const ipc::ByteBuf& aByteBuf,
-                                      ipc::UnsafeSharedMemoryHandle&& aShmem);
+                                      ipc::MutableSharedMemoryHandle&& aShmem);
   ipc::IPCResult RecvBindGroupLayoutDrop(RawId aBindGroupLayoutId);
   ipc::IPCResult RecvPipelineLayoutDrop(RawId aPipelineLayoutId);
   ipc::IPCResult RecvBindGroupDrop(RawId aBindGroupId);
@@ -135,12 +135,13 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
 
   ipc::IPCResult GetFrontBufferSnapshot(
       IProtocol* aProtocol, const layers::RemoteTextureOwnerId& aOwnerId,
-      Maybe<Shmem>& aShmem, gfx::IntSize& aSize);
+      const RawId& aCommandEncoderId, Maybe<Shmem>& aShmem, gfx::IntSize& aSize,
+      uint32_t& aByteStride);
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
   struct BufferMapData {
-    ipc::WritableSharedMemoryMapping mShmem;
+    ipc::SharedMemoryMapping mShmem;
     // True if buffer's usage has MAP_READ or MAP_WRITE set.
     bool mHasMapFlags;
     uint64_t mMappedOffset;
@@ -152,6 +153,8 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
 
   bool UseExternalTextureForSwapChain(ffi::WGPUSwapChainId aSwapChainId);
 
+  void DisableExternalTextureForSwapChain(ffi::WGPUSwapChainId aSwapChainId);
+
   bool EnsureExternalTextureForSwapChain(ffi::WGPUSwapChainId aSwapChainId,
                                          ffi::WGPUDeviceId aDeviceId,
                                          ffi::WGPUTextureId aTextureId,
@@ -159,9 +162,14 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
                                          struct ffi::WGPUTextureFormat aFormat,
                                          ffi::WGPUTextureUsages aUsage);
 
+  void EnsureExternalTextureForReadBackPresent(
+      ffi::WGPUSwapChainId aSwapChainId, ffi::WGPUDeviceId aDeviceId,
+      ffi::WGPUTextureId aTextureId, uint32_t aWidth, uint32_t aHeight,
+      struct ffi::WGPUTextureFormat aFormat, ffi::WGPUTextureUsages aUsage);
+
   std::shared_ptr<ExternalTexture> CreateExternalTexture(
-      ffi::WGPUDeviceId aDeviceId, ffi::WGPUTextureId aTextureId,
-      uint32_t aWidth, uint32_t aHeight,
+      const layers::RemoteTextureOwnerId& aOwnerId, ffi::WGPUDeviceId aDeviceId,
+      ffi::WGPUTextureId aTextureId, uint32_t aWidth, uint32_t aHeight,
       const struct ffi::WGPUTextureFormat aFormat,
       ffi::WGPUTextureUsages aUsage);
 
@@ -176,9 +184,17 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
     return ForwardError(Some(aDeviceId), aError);
   }
 
+  ffi::WGPUGlobal* GetContext() const { return mContext.get(); }
+
+  bool IsDeviceActive(const RawId aDeviceId) {
+    return mActiveDeviceIds.Contains(aDeviceId);
+  }
+
+  RefPtr<gfx::FileHandleWrapper> GetDeviceFenceHandle(const RawId aDeviceId);
+
  private:
-  static void MapCallback(ffi::WGPUBufferMapAsyncStatus aStatus,
-                          uint8_t* aUserData);
+  static void MapCallback(uint8_t* aUserData,
+                          ffi::WGPUBufferMapAsyncStatus aStatus);
   static void DeviceLostCallback(uint8_t* aUserData, uint8_t aReason,
                                  const char* aMessage);
   void DeallocBufferShmem(RawId aBufferId);
@@ -222,19 +238,52 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
   // limit each Device to one DeviceLost message.
   nsTHashSet<RawId> mLostDeviceIds;
 
+  // Store active DeviceIds
+  nsTHashSet<RawId> mActiveDeviceIds;
+
   // Shared handle of wgpu device's fence.
   std::unordered_map<RawId, RefPtr<gfx::FileHandleWrapper>> mDeviceFenceHandles;
-
-  // Store DeviceLostRequest structs for each device as unique_ptrs mapped
-  // to their device ids. We keep these unique_ptrs alive as long as the
-  // device is alive.
-  struct DeviceLostRequest {
-    WeakPtr<WebGPUParent> mParent;
-    RawId mDeviceId;
-  };
-  std::unordered_map<RawId, std::unique_ptr<DeviceLostRequest>>
-      mDeviceLostRequests;
 };
+
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+class VkImageHandle {
+ public:
+  explicit VkImageHandle(WebGPUParent* aParent,
+                         const ffi::WGPUDeviceId aDeviceId,
+                         ffi::WGPUVkImageHandle* aVkImageHandle)
+      : mParent(aParent),
+        mDeviceId(aDeviceId),
+        mVkImageHandle(aVkImageHandle) {}
+
+  const ffi::WGPUVkImageHandle* Get() { return mVkImageHandle; }
+
+  ~VkImageHandle();
+
+ protected:
+  const WeakPtr<WebGPUParent> mParent;
+  const RawId mDeviceId;
+  ffi::WGPUVkImageHandle* mVkImageHandle;
+};
+
+class VkSemaphoreHandle {
+ public:
+  explicit VkSemaphoreHandle(WebGPUParent* aParent,
+                             const ffi::WGPUDeviceId aDeviceId,
+                             ffi::WGPUVkSemaphoreHandle* aVkSemaphoreHandle)
+      : mParent(aParent),
+        mDeviceId(aDeviceId),
+        mVkSemaphoreHandle(aVkSemaphoreHandle) {}
+
+  const ffi::WGPUVkSemaphoreHandle* Get() { return mVkSemaphoreHandle; }
+
+  ~VkSemaphoreHandle();
+
+ protected:
+  const WeakPtr<WebGPUParent> mParent;
+  const RawId mDeviceId;
+  ffi::WGPUVkSemaphoreHandle* mVkSemaphoreHandle;
+};
+#endif
 
 }  // namespace webgpu
 }  // namespace mozilla

@@ -121,16 +121,16 @@ class QuotaTestCase(MarionetteTestCase):
                 script_args=(),
             )
 
-    def initTemporaryOrigin(self, persistenceType, origin):
+    def initTemporaryOrigin(self, persistenceType, origin, createIfNonExistent=True):
         with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
             return self.executeAsyncScript(
                 """
-                const [persistenceType, origin] = arguments;
+                const [persistenceType, origin, createIfNonExistent] = arguments;
                 async function main() {
                     const principal = Services.scriptSecurityManager.
                                         createContentPrincipalFromOrigin(origin);
 
-                    let req = Services.qms.initializeTemporaryOrigin(persistenceType, principal);
+                    let req = Services.qms.initializeTemporaryOrigin(persistenceType, principal, createIfNonExistent);
                     await requestFinished(req)
 
                     return true;
@@ -139,6 +139,7 @@ class QuotaTestCase(MarionetteTestCase):
                 script_args=(
                     persistenceType,
                     origin,
+                    createIfNonExistent,
                 ),
             )
 
@@ -156,26 +157,26 @@ class QuotaTestCase(MarionetteTestCase):
                 script_args=(),
             )
 
-    def resetStoragesForPrincipal(self, origin, persistenceType, client):
+    def resetStoragesForClient(self, persistenceType, origin, client):
         # This method is used to force sqlite to write journal file contents to
         # main sqlite database file
 
         with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
             res = self.executeAsyncScript(
                 """
-                const [origin, persistenceType, client] = arguments;
+                const [persistenceType, origin, client] = arguments;
 
                 async function main() {
                   const principal = Services.scriptSecurityManager.
                     createContentPrincipalFromOrigin(origin);
 
-                  const request = Services.qms.resetStoragesForPrincipal(principal, persistenceType, client);
+                  const request = Services.qms.resetStoragesForClient(principal, client, persistenceType);
                   await requestFinished(request);
 
                   return true;
                 }
                 """,
-                script_args=(origin, persistenceType, client),
+                script_args=(persistenceType, origin, client),
             )
 
             assert res is not None

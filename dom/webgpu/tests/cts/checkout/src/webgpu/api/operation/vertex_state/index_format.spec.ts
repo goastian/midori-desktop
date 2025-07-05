@@ -3,7 +3,7 @@ Test indexing, index format and primitive restart.
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 import { getTextureCopyLayout } from '../../../util/texture/layout.js';
 
 const kHeight = 4;
@@ -48,7 +48,7 @@ const { byteLength, bytesPerRow, rowsPerImage } = getTextureCopyLayout(kTextureF
   1,
 ]);
 
-class IndexFormatTest extends GPUTest {
+class IndexFormatTest extends AllFeaturesMaxLimitsGPUTest {
   MakeRenderPipeline(
     topology: GPUPrimitiveTopology,
     stripIndexFormat?: GPUIndexFormat
@@ -119,13 +119,13 @@ class IndexFormatTest extends GPUTest {
       pipeline = this.MakeRenderPipeline(primitiveTopology);
     }
 
-    const colorAttachment = this.device.createTexture({
+    const colorAttachment = this.createTextureTracked({
       format: kTextureFormat,
       size: { width: kWidth, height: kHeight, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
-    const result = this.device.createBuffer({
+    const result = this.createBufferTracked({
       size: byteLength,
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
@@ -233,13 +233,13 @@ g.test('index_format,change_pipeline_after_setIndexBuffer')
     const pipeline32 = t.MakeRenderPipeline(kPrimitiveTopology, indexFormat32);
     const pipeline16 = t.MakeRenderPipeline(kPrimitiveTopology, indexFormat16);
 
-    const colorAttachment = t.device.createTexture({
+    const colorAttachment = t.createTextureTracked({
       format: kTextureFormat,
       size: { width: kWidth, height: kHeight, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
-    const result = t.device.createBuffer({
+    const result = t.createBufferTracked({
       size: byteLength,
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
@@ -290,13 +290,13 @@ g.test('index_format,setIndexBuffer_before_setPipeline')
     const kPrimitiveTopology = 'triangle-strip';
     const pipeline = t.MakeRenderPipeline(kPrimitiveTopology, indexFormat);
 
-    const colorAttachment = t.device.createTexture({
+    const colorAttachment = t.createTextureTracked({
       format: kTextureFormat,
       size: { width: kWidth, height: kHeight, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
-    const result = t.device.createBuffer({
+    const result = t.createBufferTracked({
       size: byteLength,
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
@@ -350,13 +350,13 @@ g.test('index_format,setIndexBuffer_different_formats')
 
     const expectedTextureValues = t.CreateExpectedUint8Array(kBottomLeftTriangle);
 
-    const colorAttachment = t.device.createTexture({
+    const colorAttachment = t.createTextureTracked({
       format: kTextureFormat,
       size: { width: kWidth, height: kHeight, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
-    const result = t.device.createBuffer({
+    const result = t.createBufferTracked({
       size: byteLength,
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });

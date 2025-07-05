@@ -49,6 +49,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ShutdownPhase.h"
 #include "mozilla/StaticAnalysisFunctions.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_javascript.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/FocusModel.h"
@@ -221,68 +222,42 @@ nsXULElement* nsXULElement::Construct(
 }
 
 /* static */
-already_AddRefed<nsXULElement> nsXULElement::CreateFromPrototype(
-    nsXULPrototypeElement* aPrototype, mozilla::dom::NodeInfo* aNodeInfo,
-    bool aIsScriptable, bool aIsRoot) {
-  RefPtr<mozilla::dom::NodeInfo> ni = aNodeInfo;
+already_AddRefed<Element> nsXULElement::CreateFromPrototype(
+    nsXULPrototypeElement* aPrototype, Document* aDocument, bool aIsRoot) {
+  mozilla::dom::NodeInfo* ni = aPrototype->mNodeInfo;
+  RefPtr<mozilla::dom::NodeInfo> nodeInfo =
+      aDocument->NodeInfoManager()->GetNodeInfo(
+          ni->NameAtom(), ni->GetPrefixAtom(), ni->NamespaceID(), ELEMENT_NODE);
+
   nsCOMPtr<Element> baseElement;
-  NS_NewXULElement(getter_AddRefs(baseElement), ni.forget(),
+  NS_NewXULElement(getter_AddRefs(baseElement), nodeInfo.forget(),
                    dom::FROM_PARSER_NETWORK, aPrototype->mIsAtom);
-
-  if (baseElement) {
-    nsXULElement* element = FromNode(baseElement);
-
-    if (aPrototype->mHasIdAttribute) {
-      element->SetHasID();
-    }
-    if (aPrototype->mHasClassAttribute) {
-      element->SetMayHaveClass();
-    }
-    if (aPrototype->mHasStyleAttribute) {
-      element->SetMayHaveStyle();
-    }
-
-    element->MakeHeavyweight(aPrototype);
-    if (aIsScriptable) {
-      // Check each attribute on the prototype to see if we need to do
-      // any additional processing and hookup that would otherwise be
-      // done 'automagically' by SetAttr().
-      for (const auto& attribute : aPrototype->mAttributes) {
-        element->AddListenerForAttributeIfNeeded(attribute.mName);
-      }
-    }
-
-    return baseElement.forget().downcast<nsXULElement>();
+  if (!baseElement) {
+    return nullptr;
   }
 
-  return nullptr;
-}
+  nsXULElement* element = FromNode(baseElement);
 
-nsresult nsXULElement::CreateFromPrototype(nsXULPrototypeElement* aPrototype,
-                                           Document* aDocument,
-                                           bool aIsScriptable, bool aIsRoot,
-                                           Element** aResult) {
-  // Create an nsXULElement from a prototype
-  MOZ_ASSERT(aPrototype != nullptr, "null ptr");
-  if (!aPrototype) return NS_ERROR_NULL_POINTER;
-
-  MOZ_ASSERT(aResult != nullptr, "null ptr");
-  if (!aResult) return NS_ERROR_NULL_POINTER;
-
-  RefPtr<mozilla::dom::NodeInfo> nodeInfo;
-  if (aDocument) {
-    mozilla::dom::NodeInfo* ni = aPrototype->mNodeInfo;
-    nodeInfo = aDocument->NodeInfoManager()->GetNodeInfo(
-        ni->NameAtom(), ni->GetPrefixAtom(), ni->NamespaceID(), ELEMENT_NODE);
-  } else {
-    nodeInfo = aPrototype->mNodeInfo;
+  if (aPrototype->mHasIdAttribute) {
+    element->SetHasID();
+  }
+  if (aPrototype->mHasClassAttribute) {
+    element->SetMayHaveClass();
+  }
+  if (aPrototype->mHasStyleAttribute) {
+    element->SetMayHaveStyle();
   }
 
-  RefPtr<nsXULElement> element =
-      CreateFromPrototype(aPrototype, nodeInfo, aIsScriptable, aIsRoot);
-  element.forget(aResult);
+  element->MakeHeavyweight(aPrototype);
 
-  return NS_OK;
+  // Check each attribute on the prototype to see if we need to do
+  // any additional processing and hookup that would otherwise be
+  // done 'automagically' by SetAttr().
+  for (const auto& attribute : aPrototype->mAttributes) {
+    element->AddListenerForAttributeIfNeeded(attribute.mName);
+  }
+
+  return baseElement.forget();
 }
 
 nsresult NS_NewXULElement(Element** aResult,
@@ -594,7 +569,7 @@ nsresult nsXULElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   }
 
 #ifdef DEBUG
-  if (!doc.AllowXULXBL() && !doc.IsUnstyledDocument()) {
+  if (!doc.AllowXULXBL() && !doc.IsLoadedAsData()) {
     // To save CPU cycles and memory, we don't load xul.css for other elements
     // except scrollbars.
     //
@@ -608,29 +583,6 @@ nsresult nsXULElement::BindToTree(BindContext& aContext, nsINode& aParent) {
                "Unexpected XUL element in non-XUL doc");
   }
 #endif
-
-  // Within Bug 1492063 and its dependencies we started to apply a
-  // CSP to system privileged about pages. Since some about: pages
-  // are implemented in *.xul files we added this workaround to
-  // apply a CSP to them. To do so, we check the introduced custom
-  // attribute 'csp' on the root element.
-  if (doc.GetRootElement() == this) {
-    nsAutoString cspPolicyStr;
-    GetAttr(nsGkAtoms::csp, cspPolicyStr);
-
-#ifdef DEBUG
-    {
-      nsCOMPtr<nsIContentSecurityPolicy> docCSP = doc.GetCsp();
-      uint32_t policyCount = 0;
-      if (docCSP) {
-        docCSP->GetPolicyCount(&policyCount);
-      }
-      MOZ_ASSERT(policyCount == 0, "how come we already have a policy?");
-    }
-#endif
-
-    CSP_ApplyMetaCSPToDoc(doc, cspPolicyStr);
-  }
 
   if (NodeInfo()->Equals(nsGkAtoms::keyset, kNameSpaceID_XUL)) {
     // Create our XUL key listener and hook it up.
@@ -866,9 +818,9 @@ void nsXULElement::List(FILE* out, int32_t aIndent) const {
 bool nsXULElement::IsEventStoppedFromAnonymousScrollbar(EventMessage aMessage) {
   return (IsRootOfNativeAnonymousSubtree() &&
           IsAnyOfXULElements(nsGkAtoms::scrollbar, nsGkAtoms::scrollcorner) &&
-          (aMessage == eMouseClick || aMessage == eMouseDoubleClick ||
+          (aMessage == ePointerClick || aMessage == eMouseDoubleClick ||
            aMessage == eXULCommand || aMessage == eContextMenu ||
-           aMessage == eDragStart || aMessage == eMouseAuxClick));
+           aMessage == eDragStart || aMessage == ePointerAuxClick));
 }
 
 nsresult nsXULElement::DispatchXULCommand(const EventChainVisitor& aVisitor,
@@ -990,10 +942,23 @@ void nsXULElement::ClickWithInputSource(uint16_t aInputSource,
       // This helps to avoid commands being dispatched from
       // XULButtonElement::PostHandleEventForMenu.
       eventUp.mFlags.mMultipleActionsPrevented = true;
-      WidgetMouseEvent eventClick(aIsTrustedEvent, eMouseClick, nullptr,
-                                  WidgetMouseEvent::eReal);
+      WidgetPointerEvent eventClick(aIsTrustedEvent, ePointerClick, nullptr);
       eventDown.mInputSource = eventUp.mInputSource = eventClick.mInputSource =
           aInputSource;
+      switch (aInputSource) {
+        case MouseEvent_Binding::MOZ_SOURCE_MOUSE:
+          MOZ_ASSERT(eventClick.pointerId == 0 || eventClick.pointerId == 1,
+                     "pointerId for the primary mouse pointer must be 0 or 1");
+          break;
+        case MouseEvent_Binding::MOZ_SOURCE_KEYBOARD:
+        case MouseEvent_Binding::MOZ_SOURCE_UNKNOWN:
+          // pointerId definition in Pointer Events:
+          // > The pointerId value of -1 MUST be reserved and used to indicate
+          // > events that were generated by something other than a pointing
+          // > device.
+          eventDown.pointerId = eventUp.pointerId = eventClick.pointerId = -1;
+          break;
+      }
 
       // send mouse down
       nsEventStatus status = nsEventStatus_eIgnore;

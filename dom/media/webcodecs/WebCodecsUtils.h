@@ -13,16 +13,80 @@
 #include "js/TypeDecls.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/Result.h"
 #include "mozilla/TaskQueue.h"
 #include "mozilla/dom/AudioDataBinding.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/BufferSourceBindingFwd.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/UnionTypes.h"
+#include "mozilla/dom/VideoColorSpaceBinding.h"
 #include "mozilla/dom/VideoEncoderBinding.h"
 #include "mozilla/dom/VideoFrameBinding.h"
 
 namespace mozilla {
+
+#define WEBCODECS_MARKER(codecType, desc, options, markerType, ...)    \
+  do {                                                                 \
+    if (profiler_is_collecting_markers()) {                            \
+      nsFmtCString marker(FMT_STRING("{}{}"), codecType, desc);        \
+      PROFILER_MARKER(                                                 \
+          ProfilerString8View::WrapNullTerminatedString(marker.get()), \
+          MEDIA_RT, options, markerType, __VA_ARGS__);                 \
+    }                                                                  \
+  } while (0)
+
+#define WEBCODECS_MARKER_INTERVAL_START(type, desc)                      \
+  WEBCODECS_MARKER(type, desc, {MarkerTiming::IntervalStart()}, Tracing, \
+                   "WebCodecs")
+#define WEBCODECS_MARKER_INTERVAL_END(type, desc)                      \
+  WEBCODECS_MARKER(type, desc, {MarkerTiming::IntervalEnd()}, Tracing, \
+                   "WebCodecs")
+
+class AutoWebCodecsMarker {
+ public:
+  AutoWebCodecsMarker(const char* aType, const char* aDesc)
+      : mType(aType), mDesc(aDesc) {
+    WEBCODECS_MARKER_INTERVAL_START(mType, mDesc);
+  }
+
+  AutoWebCodecsMarker(AutoWebCodecsMarker&& aOther) noexcept {
+    MOZ_ASSERT(!aOther.mEnded, "Ended marker should not be moved");
+    mType = std::move(aOther.mType);
+    mDesc = std::move(aOther.mDesc);
+    mEnded = std::move(aOther.mEnded);
+    aOther.mEnded = true;
+  }
+
+  AutoWebCodecsMarker& operator=(AutoWebCodecsMarker&& aOther) noexcept {
+    if (this != &aOther) {
+      MOZ_ASSERT(!aOther.mEnded, "Ended marker should not be moved");
+      mType = std::move(aOther.mType);
+      mDesc = std::move(aOther.mDesc);
+      mEnded = std::move(aOther.mEnded);
+      aOther.mEnded = true;
+    }
+    return *this;
+  }
+
+  AutoWebCodecsMarker(const AutoWebCodecsMarker& aOther) = delete;
+  AutoWebCodecsMarker& operator=(const AutoWebCodecsMarker& aOther) = delete;
+
+  ~AutoWebCodecsMarker() { End(); }
+
+  void End() {
+    if (!mEnded) {
+      WEBCODECS_MARKER_INTERVAL_END(mType, mDesc);
+      mEnded = true;
+    }
+  }
+
+ private:
+  const char* mType;
+  const char* mDesc;
+  bool mEnded = false;
+};
 
 namespace gfx {
 enum class ColorRange : uint8_t;
@@ -47,6 +111,9 @@ namespace dom {
 nsTArray<nsCString> GuessContainers(const nsAString& aCodec);
 
 Maybe<nsString> ParseCodecString(const nsAString& aCodec);
+
+bool IsSameColorSpace(const VideoColorSpaceInit& aLhs,
+                      const VideoColorSpaceInit& aRhs);
 
 /*
  * Below are helpers for conversion among Maybe, Optional, and Nullable.
@@ -85,27 +152,57 @@ Nullable<T> MaybeToNullable(const Maybe<T>& aOptional) {
  * Below are helpers to operate ArrayBuffer or ArrayBufferView.
  */
 
-Result<Ok, nsresult> CloneBuffer(
-    JSContext* aCx,
-    OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDest,
-    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aSrc,
-    ErrorResult& aRv);
+Result<Ok, nsresult> CloneBuffer(JSContext* aCx,
+                                 OwningAllowSharedBufferSource& aDest,
+                                 const OwningAllowSharedBufferSource& aSrc,
+                                 ErrorResult& aRv);
 
 Result<RefPtr<MediaByteBuffer>, nsresult> GetExtraDataFromArrayBuffer(
-    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer);
+    const OwningAllowSharedBufferSource& aBuffer);
 
-bool CopyExtradataToDescription(
-    JSContext* aCx, Span<const uint8_t>& aSrc,
-    OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDest);
+bool CopyExtradataToDescription(JSContext* aCx, Span<const uint8_t>& aSrc,
+                                OwningAllowSharedBufferSource& aDest);
 
 /*
  * The following are utilities to convert between VideoColorSpace values to
  * gfx's values.
  */
 
-enum class VideoColorPrimaries : uint8_t;
-enum class VideoMatrixCoefficients : uint8_t;
-enum class VideoTransferCharacteristics : uint8_t;
+struct VideoColorSpaceInternal {
+  explicit VideoColorSpaceInternal(const VideoColorSpaceInit& aColorSpaceInit);
+  VideoColorSpaceInternal() = default;
+  VideoColorSpaceInternal(const bool& aFullRange,
+                          const VideoMatrixCoefficients& aMatrix,
+                          const VideoColorPrimaries& aPrimaries,
+                          const VideoTransferCharacteristics& aTransfer)
+      : mFullRange(Some(aFullRange)),
+        mMatrix(Some(aMatrix)),
+        mPrimaries(Some(aPrimaries)),
+        mTransfer(Some(aTransfer)) {}
+  VideoColorSpaceInternal(const VideoColorSpaceInternal& aOther) = default;
+  VideoColorSpaceInternal(VideoColorSpaceInternal&& aOther) = default;
+
+  VideoColorSpaceInternal& operator=(const VideoColorSpaceInternal& aOther) =
+      default;
+  VideoColorSpaceInternal& operator=(VideoColorSpaceInternal&& aOther) =
+      default;
+
+  bool operator==(const VideoColorSpaceInternal& aOther) const {
+    return mFullRange == aOther.mFullRange && mMatrix == aOther.mMatrix &&
+           mPrimaries == aOther.mPrimaries && mTransfer == aOther.mTransfer;
+  }
+  bool operator!=(const VideoColorSpaceInternal& aOther) const {
+    return !(*this == aOther);
+  }
+
+  VideoColorSpaceInit ToColorSpaceInit() const;
+  nsCString ToString() const;
+
+  Maybe<bool> mFullRange;
+  Maybe<VideoMatrixCoefficients> mMatrix;
+  Maybe<VideoColorPrimaries> mPrimaries;
+  Maybe<VideoTransferCharacteristics> mTransfer;
+};
 
 gfx::ColorRange ToColorRange(bool aIsFullRange);
 
@@ -235,8 +332,8 @@ nsCString ColorSpaceInitToString(
     const dom::VideoColorSpaceInit& aColorSpaceInit);
 
 RefPtr<TaskQueue> GetWebCodecsEncoderTaskQueue();
-VideoColorSpaceInit FallbackColorSpaceForVideoContent();
-VideoColorSpaceInit FallbackColorSpaceForWebContent();
+VideoColorSpaceInternal FallbackColorSpaceForVideoContent();
+VideoColorSpaceInternal FallbackColorSpaceForWebContent();
 
 Maybe<CodecType> CodecStringToCodecType(const nsAString& aCodecString);
 

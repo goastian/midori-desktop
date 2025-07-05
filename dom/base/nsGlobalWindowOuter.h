@@ -7,6 +7,7 @@
 #ifndef nsGlobalWindowOuter_h___
 #define nsGlobalWindowOuter_h___
 
+#include "nsNodeInfoManager.h"
 #include "nsPIDOMWindow.h"
 
 #include "nsTHashtable.h"
@@ -74,13 +75,15 @@ class nsGlobalWindowObserver;
 class nsGlobalWindowInner;
 class nsDOMWindowUtils;
 struct nsRect;
-
+class nsWindowRoot;
 class nsWindowSizes;
 
 namespace mozilla {
 class AbstractThread;
 class DOMEventTargetHelper;
 class ErrorResult;
+template <typename V, typename E>
+class Result;
 class ThrottledEventQueue;
 class ScrollContainerFrame;
 namespace dom {
@@ -251,7 +254,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   mozilla::dom::ChromeMessageBroadcaster* GetGroupMessageManager(
       const nsAString& aGroup);
 
-  nsresult OpenJS(const nsAString& aUrl, const nsAString& aName,
+  nsresult OpenJS(const nsACString& aUrl, const nsAString& aName,
                   const nsAString& aOptions,
                   mozilla::dom::BrowsingContext** _retval);
 
@@ -305,6 +308,9 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   void DetachFromDocShell(bool aIsBeingDiscarded);
 
+  // aState is only non-null if we are restoring from the bfcache.
+  // aForceReuseInnerWindow is only true if we are being triggered via XSLT.
+  // aActor is only non-null if the new document is about:blank.
   virtual nsresult SetNewDocument(
       Document* aDocument, nsISupports* aState, bool aForceReuseInnerWindow,
       mozilla::dom::WindowGlobalChild* aActor = nullptr) override;
@@ -333,7 +339,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   virtual bool DispatchCustomEvent(
       const nsAString& aEventName,
       mozilla::ChromeOnlyDispatch aChromeOnlyDispatch) override;
-  bool DispatchResizeEvent(const mozilla::CSSIntSize& aSize);
 
   // For accessing protected field mFullscreen
   friend class FullscreenTransitionTask;
@@ -553,7 +558,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> OpenOuter(
       const nsAString& aUrl, const nsAString& aName, const nsAString& aOptions,
       mozilla::ErrorResult& aError);
-  nsresult Open(const nsAString& aUrl, const nsAString& aName,
+  nsresult Open(const nsACString& aUrl, const nsAString& aName,
                 const nsAString& aOptions, nsDocShellLoadState* aLoadState,
                 bool aForceNoOpener,
                 mozilla::dom::BrowsingContext** _retval) override;
@@ -603,8 +608,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   double GetScrollYOuter();
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  void SizeToContentOuter(mozilla::dom::CallerType,
-                          const mozilla::dom::SizeToContentConstraints&,
+  void SizeToContentOuter(const mozilla::dom::SizeToContentConstraints&,
                           mozilla::ErrorResult&);
   nsIControllers* GetControllersOuter(mozilla::ErrorResult& aError);
   nsresult GetControllers(nsIControllers** aControllers) override;
@@ -623,8 +627,8 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
       const nsAString& aOptions,
       const mozilla::dom::Sequence<JS::Value>& aExtraArgument,
       mozilla::ErrorResult& aError);
-  nsresult OpenDialog(const nsAString& aUrl, const nsAString& aName,
-                      const nsAString& aOptions, nsISupports* aExtraArgument,
+  nsresult OpenDialog(const nsACString& aUrl, const nsAString& aName,
+                      const nsAString& aOptions, nsIArray* aArguments,
                       mozilla::dom::BrowsingContext** _retval) override;
   void UpdateCommands(const nsAString& anAction) override;
 
@@ -687,7 +691,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   // Outer windows only.
   virtual nsresult OpenNoNavigate(
-      const nsAString& aUrl, const nsAString& aName, const nsAString& aOptions,
+      const nsACString& aUrl, const nsAString& aName, const nsAString& aOptions,
       mozilla::dom::BrowsingContext** _retval) override;
 
  private:
@@ -725,12 +729,10 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
    *        security check, on the assumption that whoever *actually* loads this
    *        page will do their own security check.
    *
-   * @param argv The arguments to pass to the new window.  The first
-   *        three args, if present, will be aUrl, aName, and aOptions.  So this
-   *        param only matters if there are more than 3 arguments.
-   *
-   * @param aExtraArgument Another way to pass arguments in.  This is mutually
-   *        exclusive with the argv approach.
+   * @param aArguments The arguments to pass to the new window. The first three
+   *                   args, if present, will be aUrl, aName, and aOptions. So
+   *                   this param only matters if there are more than 3
+   *                   arguments.
    *
    * @param aLoadState to be passed on along to the windowwatcher.
    *
@@ -747,21 +749,21 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
    *
    * Outer windows only.
    */
-  nsresult OpenInternal(const nsAString& aUrl, const nsAString& aName,
+  nsresult OpenInternal(const nsACString& aUrl, const nsAString& aName,
                         const nsAString& aOptions, bool aDialog,
-                        bool aContentModal, bool aCalledNoScript,
-                        bool aDoJSFixups, bool aNavigate, nsIArray* argv,
-                        nsISupports* aExtraArgument,
-                        nsDocShellLoadState* aLoadState, bool aForceNoOpener,
-                        PrintKind aPrintKind,
+                        bool aCalledNoScript, bool aDoJSFixups, bool aNavigate,
+                        nsIArray* aArguments, nsDocShellLoadState* aLoadState,
+                        bool aForceNoOpener, PrintKind aPrintKind,
                         mozilla::dom::BrowsingContext** aReturn);
 
- public:
-  nsresult SecurityCheckURL(const char* aURL, nsIURI** aURI);
+  mozilla::Result<already_AddRefed<nsIURI>, nsresult>
+  URIfromURLAndMaybeDoSecurityCheck(const nsACString& aURL,
+                                    bool aSecurityCheck);
 
+ public:
   mozilla::dom::PopupBlocker::PopupControlState RevisePopupAbuseLevel(
       mozilla::dom::PopupBlocker::PopupControlState aState);
-  void FireAbuseEvents(const nsAString& aPopupURL,
+  void FireAbuseEvents(const nsACString& aPopupURL,
                        const nsAString& aPopupWindowName,
                        const nsAString& aPopupWindowFeatures);
 
@@ -939,11 +941,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
       mozilla::Maybe<nsID>* aCallerAgentClusterId, nsACString* aScriptLocation,
       mozilla::ErrorResult& aError);
 
-  // Ask the user if further dialogs should be blocked, if dialogs are currently
-  // being abused. This is used in the cases where we have no modifiable UI to
-  // show, in that case we show a separate dialog to ask this question.
-  bool ConfirmDialogIfNeeded();
-
   // Helper called after moving/resizing, to update docShell's presContext
   // if we have caused a resolution change by moving across monitors.
   void CheckForDPIChange();
@@ -967,8 +964,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   nsresult GetInterfaceInternal(const nsIID& aIID, void** aSink);
 
   void MaybeAllowStorageForOpenedWindow(nsIURI* aURI);
-
-  bool IsOnlyTopLevelDocumentInSHistory();
 
   void MaybeResetWindowName(Document* aNewDocument);
 

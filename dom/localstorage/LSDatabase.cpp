@@ -98,8 +98,8 @@ LSDatabase::~LSDatabase() {
   }
 
   if (mActor) {
-    mActor->SendDeleteMeInternal();
-    MOZ_ASSERT(!mActor, "SendDeleteMeInternal should have cleared!");
+    mActor->Shutdown();
+    MOZ_ASSERT(!mActor, "Shutdown should have cleared!");
   }
 }
 

@@ -13,6 +13,8 @@
 #include "mozilla/FixedBufferOutputStream.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/TaskQueue.h"
+#include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/FileSystemAccessHandleChild.h"
 #include "mozilla/dom/FileSystemAccessHandleControlChild.h"
 #include "mozilla/dom/FileSystemHandleBinding.h"
@@ -26,9 +28,9 @@
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/fs/IPCRejectReporter.h"
-#include "mozilla/dom/fs/TargetPtrHolder.h"
 #include "mozilla/dom/quota/QuotaCommon.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
+#include "mozilla/dom/quota/TargetPtrHolder.h"
 #include "mozilla/ipc/RandomAccessStreamUtils.h"
 #include "nsNetCID.h"
 #include "nsStringStream.h"
@@ -231,7 +233,7 @@ RefPtr<BoolPromise> FileSystemSyncAccessHandle::BeginClose() {
   mState = State::Closing;
 
   InvokeAsync(mIOTaskQueue, __func__,
-              [selfHolder = fs::TargetPtrHolder(this)]() {
+              [selfHolder = quota::TargetPtrHolder(this)]() {
                 if (selfHolder->mStream) {
                   LOG(("%p: Closing", selfHolder->mStream.get()));
 
@@ -308,13 +310,13 @@ JSObject* FileSystemSyncAccessHandle::WrapObject(
 // WebIDL Interface
 
 uint64_t FileSystemSyncAccessHandle::Read(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer,
+    const AllowSharedBufferSource& aBuffer,
     const FileSystemReadWriteOptions& aOptions, ErrorResult& aRv) {
   return ReadOrWrite(aBuffer, aOptions, /* aRead */ true, aRv);
 }
 
 uint64_t FileSystemSyncAccessHandle::Write(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer,
+    const AllowSharedBufferSource& aBuffer,
     const FileSystemReadWriteOptions& aOptions, ErrorResult& aRv) {
   return ReadOrWrite(aBuffer, aOptions, /* aRead */ false, aRv);
 }
@@ -337,7 +339,7 @@ void FileSystemSyncAccessHandle::Truncate(uint64_t aSize, ErrorResult& aError) {
 
   InvokeAsync(
       mIOTaskQueue, __func__,
-      [selfHolder = fs::TargetPtrHolder(this), aSize]() {
+      [selfHolder = quota::TargetPtrHolder(this), aSize]() {
         QM_TRY(MOZ_TO_RESULT(selfHolder->EnsureStream()),
                CreateAndRejectBoolPromise);
 
@@ -398,7 +400,7 @@ uint64_t FileSystemSyncAccessHandle::GetSize(ErrorResult& aError) {
   int64_t size;
 
   InvokeAsync(mIOTaskQueue, __func__,
-              [selfHolder = fs::TargetPtrHolder(this)]() {
+              [selfHolder = quota::TargetPtrHolder(this)]() {
                 QM_TRY(MOZ_TO_RESULT(selfHolder->EnsureStream()),
                        CreateAndRejectSizePromise);
 
@@ -457,7 +459,7 @@ void FileSystemSyncAccessHandle::Flush(ErrorResult& aError) {
   });
 
   InvokeAsync(mIOTaskQueue, __func__,
-              [selfHolder = fs::TargetPtrHolder(this)]() {
+              [selfHolder = quota::TargetPtrHolder(this)]() {
                 QM_TRY(MOZ_TO_RESULT(selfHolder->EnsureStream()),
                        CreateAndRejectBoolPromise);
 
@@ -521,7 +523,7 @@ void FileSystemSyncAccessHandle::Close() {
 }
 
 uint64_t FileSystemSyncAccessHandle::ReadOrWrite(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer,
+    const AllowSharedBufferSource& aBuffer,
     const FileSystemReadWriteOptions& aOptions, const bool aRead,
     ErrorResult& aRv) {
   if (!IsOpen()) {
@@ -562,7 +564,7 @@ uint64_t FileSystemSyncAccessHandle::ReadOrWrite(
   ProcessTypedArraysFixed(aBuffer, [&](const Span<uint8_t> aData) {
     InvokeAsync(
         mIOTaskQueue, __func__,
-        [selfHolder = fs::TargetPtrHolder(this), aData,
+        [selfHolder = quota::TargetPtrHolder(this), aData,
          use_offset = aOptions.mAt.WasPassed(), offset, aRead, syncLoopTarget,
          &totalCount]() {
           QM_TRY(MOZ_TO_RESULT(selfHolder->EnsureStream()),

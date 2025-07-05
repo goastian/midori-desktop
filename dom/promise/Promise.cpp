@@ -42,6 +42,7 @@
 #include "nsDebug.h"
 #include "nsGlobalWindowInner.h"
 #include "nsIScriptObjectPrincipal.h"
+#include "nsISupportsImpl.h"
 #include "nsJSEnvironment.h"
 #include "nsJSPrincipals.h"
 #include "nsJSUtils.h"
@@ -79,10 +80,10 @@ Promise::Promise(nsIGlobalObject* aGlobal)
     : mGlobal(aGlobal), mPromiseObj(nullptr) {
   MOZ_ASSERT(mGlobal);
 
-  mozilla::HoldJSObjects(this);
+  mozilla::HoldJSObjectsWithKey(this);
 }
 
-Promise::~Promise() { mozilla::DropJSObjects(this); }
+Promise::~Promise() { mozilla::DropJSObjectsWithKey(this); }
 
 // static
 already_AddRefed<Promise> Promise::Create(
@@ -108,8 +109,13 @@ already_AddRefed<Promise> Promise::CreateInfallible(
   RefPtr<Promise> p = new Promise(aGlobal);
   IgnoredErrorResult rv;
   p->CreateWrapper(rv, aPropagateUserInteraction);
-  if (rv.Failed() && rv.ErrorCodeIs(NS_ERROR_OUT_OF_MEMORY)) {
-    MOZ_CRASH("Out of memory");
+  if (rv.Failed()) {
+    if (rv.ErrorCodeIs(NS_ERROR_OUT_OF_MEMORY)) {
+      NS_ABORT_OOM(0);  // (0 meaning unknown size)
+    }
+    if (rv.ErrorCodeIs(NS_ERROR_NOT_INITIALIZED)) {
+      MOZ_CRASH("Failed to create promise wrapper for unknown non-OOM reason");
+    }
   }
 
   // We may have failed to init the wrapper here, because nsIGlobalObject had
@@ -213,6 +219,119 @@ already_AddRefed<Promise> Promise::All(
   return CreateFromExisting(global, result, aPropagateUserInteraction);
 }
 
+struct WaitForAllEmptyTask : public MicroTaskRunnable {
+  WaitForAllEmptyTask(
+      nsIGlobalObject* aGlobal,
+      const std::function<void(const Span<JS::Heap<JS::Value>>&)>& aCallback)
+      : mGlobal(aGlobal), mCallback(aCallback) {}
+
+ private:
+  virtual void Run(AutoSlowOperation&) override { mCallback({}); }
+
+  virtual bool Suppressed() override { return mGlobal->IsInSyncOperation(); }
+
+  nsCOMPtr<nsIGlobalObject> mGlobal;
+  const std::function<void(const Span<JS::Heap<JS::Value>>&)> mCallback;
+};
+
+// Initializing WaitForAllResults also performs step 1 and step 2 of
+// #wait-for-all.
+struct WaitForAllResults {
+  NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WaitForAllResults)
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WaitForAllResults)
+
+  explicit WaitForAllResults(size_t aSize) : mResult(aSize) {
+    HoldJSObjects(this);
+
+    mResult.EnsureLengthAtLeast(aSize);
+  }
+
+  // Step 1
+  size_t mFullfilledCount = 0;
+
+  // Step 2
+  bool mRejected = false;
+
+  nsTArray<JS::Heap<JS::Value>> mResult;
+
+ private:
+  ~WaitForAllResults() { DropJSObjects(this); };
+};
+
+NS_IMPL_CYCLE_COLLECTION_WITH_JS_MEMBERS(WaitForAllResults, (), (mResult))
+
+// https://webidl.spec.whatwg.org/#wait-for-all
+/* static */
+void Promise::WaitForAll(nsIGlobalObject* aGlobal,
+                         const Span<RefPtr<Promise>>& aPromises,
+                         SuccessSteps aSuccessSteps,
+                         FailureSteps aFailureSteps) {
+  // Step 1 and step 2 are in WaitForAllResults.
+
+  // Step 3
+  const auto& rejectionHandlerSteps =
+      [aFailureSteps](JSContext* aCx, JS::Handle<JS::Value> aArg,
+                      ErrorResult& aRv,
+                      const RefPtr<WaitForAllResults>& aResult) {
+        // Step 3.1
+        if (aResult->mRejected) {
+          return nullptr;
+        }
+        // Step 3.2
+        aResult->mRejected = true;
+        // Step 3.3
+        aFailureSteps(aArg);
+        return nullptr;
+      };
+  // Step 5
+  const size_t total = aPromises.size();
+  // Step 6
+  if (!total) {
+    CycleCollectedJSContext* context = CycleCollectedJSContext::Get();
+    if (context) {
+      RefPtr<MicroTaskRunnable> microTask =
+          new WaitForAllEmptyTask(aGlobal, aSuccessSteps);
+      // Step 6.1
+      context->DispatchToMicroTask(microTask.forget());
+    }
+    // Step 6.2
+    return;
+  }
+  // Step 7
+  size_t index = 0;
+  // Step 8
+  // Since we'll be passing an nsTArray to several invocations to
+  // fulfillmentHandlerSteps we wrap it into a cycle collecting and tracing
+  // object.
+  RefPtr result = MakeAndAddRef<WaitForAllResults>(total);
+  // Step 9
+  for (const auto& promise : aPromises) {
+    // Step 9.1 and step 9.2
+    const auto& fulfillmentHandlerSteps =
+        [aSuccessSteps, promiseIndex = index](
+            JSContext* aCx, JS::Handle<JS::Value> aArg, ErrorResult& aRv,
+            const RefPtr<WaitForAllResults>& aResult)
+        -> already_AddRefed<Promise> {
+      // Step 9.2.1
+      aResult->mResult[promiseIndex].set(aArg.get());
+      // Step 9.2.2
+      aResult->mFullfilledCount++;
+      // Step 9.2.3.
+      // aResult->mResult.Length() is by definition equals to total.
+      if (aResult->mFullfilledCount == aResult->mResult.Length()) {
+        aSuccessSteps(aResult->mResult);
+      }
+      return nullptr;
+    };
+    // Step 9.4 (and actually also step 4 and step 9.3)
+    (void)promise->ThenCatchWithCycleCollectedArgs(
+        fulfillmentHandlerSteps, rejectionHandlerSteps, result);
+
+    // Step 9.5
+    index++;
+  }
+}
+
 static void SettlePromise(Promise* aSettlingPromise, Promise* aCallbackPromise,
                           ErrorResult& aRv) {
   if (!aSettlingPromise) {
@@ -292,8 +411,10 @@ void Promise::CreateWrapper(
   JSContext* cx = jsapi.cx();
   mPromiseObj = JS::NewPromiseObject(cx, nullptr);
   if (!mPromiseObj) {
+    nsresult error = JS_IsThrowingOutOfMemory(cx) ? NS_ERROR_OUT_OF_MEMORY
+                                                  : NS_ERROR_NOT_INITIALIZED;
     JS_ClearPendingException(cx);
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+    aRv.Throw(error);
     return;
   }
   if (aPropagateUserInteraction == ePropagateUserInteraction) {
@@ -383,11 +504,11 @@ namespace {
 class PromiseNativeHandlerShim final : public PromiseNativeHandler {
   RefPtr<PromiseNativeHandler> mInner;
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
-  enum InnerState{
-      NotCleared,
-      ClearedFromResolve,
-      ClearedFromReject,
-      ClearedFromCC,
+  enum InnerState {
+    NotCleared,
+    ClearedFromResolve,
+    ClearedFromReject,
+    ClearedFromCC,
   };
   InnerState mState = NotCleared;
 #endif
@@ -828,10 +949,6 @@ WorkerPrivate* PromiseWorkerProxy::GetWorkerPrivate() const {
   MOZ_ASSERT(mWorkerRef);
 
   return mWorkerRef->Private();
-}
-
-bool PromiseWorkerProxy::OnWritingThread() const {
-  return IsCurrentThreadRunningWorker();
 }
 
 Promise* PromiseWorkerProxy::GetWorkerPromise() const {

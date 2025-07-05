@@ -144,9 +144,8 @@ inline nsINode* nsINode::GetFlattenedTreeParentNodeForStyle() const {
   return ::GetFlattenedTreeParentNode<nsINode::eForStyle>(this);
 }
 
-inline nsIContent* nsINode::GetFlattenedTreeParentNodeForSelection() const {
-  nsINode* parent = ::GetFlattenedTreeParentNode<nsINode::eForSelection>(this);
-  return (parent && parent->IsContent()) ? parent->AsContent() : nullptr;
+inline nsINode* nsINode::GetFlattenedTreeParentNodeForSelection() const {
+  return ::GetFlattenedTreeParentNode<nsINode::eForSelection>(this);
 }
 
 inline bool nsINode::NodeOrAncestorHasDirAuto() const {
@@ -170,7 +169,7 @@ inline bool nsINode::IsEditable() const {
 }
 
 inline bool nsINode::IsEditingHost() const {
-  if (!IsInComposedDoc() || IsInDesignMode() || !IsEditable() ||
+  if (!IsEditable() || !IsInComposedDoc() || IsInDesignMode() ||
       IsInNativeAnonymousSubtree()) {
     return false;
   }
@@ -184,15 +183,11 @@ inline bool nsINode::IsInDesignMode() const {
     return false;
   }
 
-  if (IsDocument()) {
-    return HasFlag(NODE_IS_EDITABLE);
-  }
-
   // NOTE(emilio): If you change this to be the composed doc you also need to
   // change NotifyEditableStateChange() in Document.cpp.
   // NOTE(masayuki): Perhaps, we should keep this behavior because of
   // web-compat.
-  if (IsInUncomposedDoc() && GetUncomposedDoc()->HasFlag(NODE_IS_EDITABLE)) {
+  if (IsInUncomposedDoc()) {
     return true;
   }
 

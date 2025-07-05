@@ -29,18 +29,15 @@ struct KeySystemConfig {
 
   // EME MediaKeysRequirement:
   // https://www.w3.org/TR/encrypted-media/#dom-mediakeysrequirement
-  enum class Requirement {
-    Required = 1,
-    Optional = 2,
-    NotAllowed = 3,
-  };
+  MOZ_DEFINE_ENUM_CLASS_WITH_TOSTRING_AT_CLASS_SCOPE(Requirement,
+                                                     (Required, Optional,
+                                                      NotAllowed));
 
   // EME MediaKeySessionType:
   // https://www.w3.org/TR/encrypted-media/#dom-mediakeysessiontype
-  enum class SessionType {
-    Temporary = 1,
-    PersistentLicense = 2,
-  };
+  MOZ_DEFINE_ENUM_CLASS_WITH_TOSTRING_AT_CLASS_SCOPE(SessionType,
+                                                     (Temporary,
+                                                      PersistentLicense));
 
   using EMECodecString = nsCString;
   static constexpr auto EME_CODEC_AAC = "aac"_ns;
@@ -264,8 +261,6 @@ struct KeySystemConfigRequest final {
 
 KeySystemConfig::SessionType ConvertToKeySystemConfigSessionType(
     dom::MediaKeySessionType aType);
-const char* SessionTypeToStr(KeySystemConfig::SessionType aType);
-const char* RequirementToStr(KeySystemConfig::Requirement aRequirement);
 
 }  // namespace mozilla
 

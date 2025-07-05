@@ -103,7 +103,7 @@ class ExternalEngineStateMachine final
 
   RefPtr<SetCDMPromise> SetCDMProxy(CDMProxy* aProxy) override;
 
-  bool IsCDMProxySupported(CDMProxy* aProxy) override;
+  nsresult IsCDMProxySupported(CDMProxy* aProxy) override;
 
   bool IsExternalEngineStateMachine() const override { return true; }
 
@@ -181,17 +181,17 @@ class ExternalEngineStateMachine final
     // crashes.
     struct RecoverEngine : public InitEngine {};
 
-    StateObject() : mData(ReadingMetadata()), mName(State::ReadingMetadata){};
+    StateObject() : mData(ReadingMetadata()), mName(State::ReadingMetadata) {};
     explicit StateObject(InitEngine&& aArg)
-        : mData(std::move(aArg)), mName(State::InitEngine){};
+        : mData(std::move(aArg)), mName(State::InitEngine) {};
     explicit StateObject(RunningEngine&& aArg)
-        : mData(std::move(aArg)), mName(State::RunningEngine){};
+        : mData(std::move(aArg)), mName(State::RunningEngine) {};
     explicit StateObject(SeekingData&& aArg)
-        : mData(std::move(aArg)), mName(State::SeekingData){};
+        : mData(std::move(aArg)), mName(State::SeekingData) {};
     explicit StateObject(ShutdownEngine&& aArg)
-        : mData(std::move(aArg)), mName(State::ShutdownEngine){};
+        : mData(std::move(aArg)), mName(State::ShutdownEngine) {};
     explicit StateObject(RecoverEngine&& aArg)
-        : mData(std::move(aArg)), mName(State::RecoverEngine){};
+        : mData(std::move(aArg)), mName(State::RecoverEngine) {};
 
     bool IsInitEngine() const { return mData.is<InitEngine>(); }
     bool IsReadingMetadata() const { return mData.is<ReadingMetadata>(); }
@@ -241,7 +241,6 @@ class ExternalEngineStateMachine final
   void PlaybackRateChanged();
 
   // Not supported.
-  void SetIsLiveStream(bool aIsLiveStream) override {}
   void SetCanPlayThrough(bool aCanPlayThrough) override {}
   void SetFragmentEndTime(const media::TimeUnit& aFragmentEndTime) override {}
 
@@ -301,6 +300,8 @@ class ExternalEngineStateMachine final
 
   void DecodeError(const MediaResult& aError) override;
 
+  void NotifyAudibleStateChangeIfNeeded();
+
   UniquePtr<ExternalPlaybackEngine> mEngine;
 
   bool mHasEnoughAudio = false;
@@ -338,9 +339,16 @@ class ExternalPlaybackEngine {
 
   virtual ~ExternalPlaybackEngine() = default;
 
+  enum class InitFlag {
+    None,
+    ShouldPreload,
+    EncryptedCustomIdent,
+  };
+  using InitFlagSet = EnumSet<InitFlag, uint8_t>;
+
   // Init the engine and specify the preload request.
-  virtual RefPtr<GenericNonExclusivePromise> Init(const MediaInfo& aInfo,
-                                                  bool aShouldPreload) = 0;
+  virtual RefPtr<GenericNonExclusivePromise> Init(
+      const MediaInfo& aInfo, const InitFlagSet& aFlags) = 0;
   virtual void Shutdown() = 0;
   virtual uint64_t Id() const = 0;
   virtual bool IsInited() const = 0;

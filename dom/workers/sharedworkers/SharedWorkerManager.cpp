@@ -7,6 +7,7 @@
 #include "SharedWorkerManager.h"
 #include "SharedWorkerParent.h"
 #include "SharedWorkerService.h"
+#include "mozilla/AppShutdown.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/PSharedWorker.h"
 #include "mozilla/ipc/BackgroundParent.h"
@@ -43,7 +44,7 @@ SharedWorkerManager::SharedWorkerManager(
       mDomain(aData.domain()),
       mEffectiveStoragePrincipalAttrs(aEffectiveStoragePrincipalAttrs),
       mResolvedScriptURL(DeserializeURI(aData.resolvedScriptURL())),
-      mName(aData.name()),
+      mWorkerOptions(aData.workerOptions()),
       mIsSecureContext(aData.isSecureContext()),
       mSuspended(false),
       mFrozen(false) {
@@ -87,10 +88,12 @@ bool SharedWorkerManager::MaybeCreateRemoteWorker(
 
 already_AddRefed<SharedWorkerManagerHolder>
 SharedWorkerManager::MatchOnMainThread(
-    SharedWorkerService* aService, const nsACString& aDomain,
-    nsIURI* aScriptURL, const nsAString& aName, nsIPrincipal* aLoadingPrincipal,
-    const OriginAttributes& aEffectiveStoragePrincipalAttrs) {
+    SharedWorkerService* aService, const RemoteWorkerData& aData,
+    nsIURI* aScriptURL, nsIPrincipal* aLoadingPrincipal,
+    const OriginAttributes& aEffectiveStoragePrincipalAttrs,
+    bool* aMatchNameButNotOptions) {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aMatchNameButNotOptions);
 
   bool urlEquals;
   if (NS_FAILED(aScriptURL->Equals(mResolvedScriptURL, &urlEquals))) {
@@ -98,13 +101,22 @@ SharedWorkerManager::MatchOnMainThread(
   }
 
   bool match =
-      aDomain == mDomain && urlEquals && aName == mName &&
+      aData.domain() == mDomain && urlEquals &&
+      aData.workerOptions().mName == mWorkerOptions.mName &&
       // We want to be sure that the window's principal subsumes the
       // SharedWorker's loading principal and vice versa.
       mLoadingPrincipal->Subsumes(aLoadingPrincipal) &&
       aLoadingPrincipal->Subsumes(mLoadingPrincipal) &&
       mEffectiveStoragePrincipalAttrs == aEffectiveStoragePrincipalAttrs;
   if (!match) {
+    return nullptr;
+  }
+
+  *aMatchNameButNotOptions =
+      aData.workerOptions().mType != mWorkerOptions.mType ||
+      aData.workerOptions().mCredentials != mWorkerOptions.mCredentials;
+
+  if (*aMatchNameButNotOptions) {
     return nullptr;
   }
 

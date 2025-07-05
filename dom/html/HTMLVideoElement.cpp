@@ -9,6 +9,9 @@
 #include "mozilla/AppShutdown.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/dom/HTMLVideoElementBinding.h"
+#ifdef MOZ_WEBRTC
+#  include "mozilla/dom/RTCStatsReport.h"
+#endif
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
 #include "nsSize.h"
@@ -79,6 +82,7 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED_0(HTMLVideoElement,
 NS_IMPL_CYCLE_COLLECTION_CLASS(HTMLVideoElement)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(HTMLVideoElement)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mVideoFrameRequestManager)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mVisualCloneTarget)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mVisualCloneTargetPromise)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mVisualCloneSource)
@@ -87,6 +91,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END_INHERITED(HTMLMediaElement)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(HTMLVideoElement,
                                                   HTMLMediaElement)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVideoFrameRequestManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVisualCloneTarget)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVisualCloneTargetPromise)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVisualCloneSource)
@@ -151,6 +156,16 @@ void HTMLVideoElement::Invalidate(ImageSizeChanged aImageSizeChanged,
         mVisualCloneTarget->GetVideoFrameContainer();
     if (container) {
       container->Invalidate();
+    }
+  }
+
+  if (mVideoFrameRequestManager.IsEmpty()) {
+    return;
+  }
+
+  if (RefPtr<ImageContainer> imageContainer = GetImageContainer()) {
+    if (imageContainer->HasCurrentImage()) {
+      OwnerDoc()->ScheduleVideoFrameCallbacks(this);
     }
   }
 }
@@ -674,6 +689,203 @@ void HTMLVideoElement::OnVisibilityChange(Visibility aNewVisibility) {
     PauseInternal();
     mCanAutoplayFlag = true;
     return;
+  }
+}
+
+void HTMLVideoElement::ResetState() {
+  HTMLMediaElement::ResetState();
+  mLastPresentedFrameID = layers::kContainerFrameID_Invalid;
+}
+
+void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
+    const TimeStamp& aNowTime, const Maybe<TimeStamp>& aNextTickTime,
+    VideoFrameCallbackMetadata& aMd, nsTArray<VideoFrameRequest>& aCallbacks) {
+  MOZ_ASSERT(aCallbacks.IsEmpty());
+
+  // Attempt to find the next image to be presented on this tick. Note that
+  // composited will be accurate only if the element is visible.
+  AutoTArray<ImageContainer::OwningImage, 4> images;
+  if (RefPtr<layers::ImageContainer> container = GetImageContainer()) {
+    container->GetCurrentImages(&images);
+  }
+
+  // If we did not find any current images, we must have fired too early, or we
+  // are in the process of shutting down. Wait for the next invalidation.
+  if (images.IsEmpty()) {
+    return;
+  }
+
+  // We are guaranteed that the images are in timestamp order. It is possible we
+  // are already behind if the compositor notifications have not been processed
+  // yet, so as per the standard, this is a best effort attempt at synchronizing
+  // with the state of the GPU process.
+  const ImageContainer::OwningImage* selected = nullptr;
+  bool composited = false;
+  for (const auto& image : images) {
+    if (image.mTimeStamp <= aNowTime) {
+      // Image should already have been composited. Because we might not be in
+      // the display list, we cannot rely upon its mComposited status, and
+      // should just assume it has indeed been composited.
+      selected = &image;
+      composited = true;
+    } else if (!aNextTickTime || image.mTimeStamp <= aNextTickTime.ref()) {
+      // Image should be the next to be composited. mComposited will be false
+      // if the compositor hasn't rendered the frame yet or notified us of the
+      // render yet, but it is in progress. If it is true, then we know the
+      // next vsync will display the frame.
+      selected = &image;
+      composited = false;
+    } else {
+      // Image is for a future composition.
+      break;
+    }
+  }
+
+  // If all of the available images are for future compositions, we must have
+  // fired too early. Wait for the next invalidation.
+  if (!selected || selected->mFrameID == layers::kContainerFrameID_Invalid ||
+      selected->mFrameID == mLastPresentedFrameID) {
+    return;
+  }
+
+  // If we have got a dummy frame, then we must have suspended decoding and have
+  // no actual frame to present. This should only happen if we raced on
+  // requesting a callback, and the media state machine advancing.
+  gfx::IntSize frameSize = selected->mImage->GetSize();
+  if (NS_WARN_IF(frameSize.IsEmpty())) {
+    return;
+  }
+
+  // If we have already displayed the expected frame, we need to make the
+  // display time match the presentation time to indicate it is already
+  // complete.
+  if (composited) {
+    aMd.mExpectedDisplayTime = aMd.mPresentationTime;
+  }
+
+  MOZ_ASSERT(!frameSize.IsEmpty());
+
+  aMd.mWidth = frameSize.width;
+  aMd.mHeight = frameSize.height;
+
+  // If we were not provided a valid media time, then we need to estimate based
+  // on the CurrentTime from the element.
+  aMd.mMediaTime = selected->mMediaTime.IsValid()
+                       ? selected->mMediaTime.ToSeconds()
+                       : CurrentTime();
+
+  // If we have a processing duration, we need to round it.
+  //
+  // https://wicg.github.io/video-rvfc/#security-and-privacy
+  //
+  // 5. Security and Privacy Considerations.
+  // ... processingDuration exposes some under-the-hood performance information
+  // about the video pipeline ... We therefore propose a resolution of 100μs,
+  // which is still useful for automated quality analysis, but doesn’t offer any
+  // new sources of high resolution information.
+  if (selected->mProcessingDuration.IsValid()) {
+    aMd.mProcessingDuration.Construct(
+        selected->mProcessingDuration.ToBase(10000).ToSeconds());
+  }
+
+#ifdef MOZ_WEBRTC
+  // If given, this is the RTP timestamp from the last packet for the frame.
+  if (selected->mRtpTimestamp) {
+    aMd.mRtpTimestamp.Construct(*selected->mRtpTimestamp);
+  }
+
+  // For remote sources, the capture and receive time are represented as WebRTC
+  // timestamps relative to an origin that is specific to the WebRTC session.
+  bool hasCaptureTimeNtp = selected->mWebrtcCaptureTime.is<int64_t>();
+  bool hasReceiveTimeReal = selected->mWebrtcReceiveTime.isSome();
+  if (mSelectedVideoStreamTrack && (hasCaptureTimeNtp || hasReceiveTimeReal)) {
+    if (const auto* timestampMaker =
+            mSelectedVideoStreamTrack->GetTimestampMaker()) {
+      if (hasCaptureTimeNtp) {
+        aMd.mCaptureTime.Construct(
+            RTCStatsTimestamp::FromNtp(
+                *timestampMaker,
+                webrtc::Timestamp::Micros(
+                    selected->mWebrtcCaptureTime.as<int64_t>()))
+                .ToDom());
+      }
+      if (hasReceiveTimeReal) {
+        aMd.mReceiveTime.Construct(
+            RTCStatsTimestamp::FromRealtime(
+                *timestampMaker,
+                webrtc::Timestamp::Micros(*selected->mWebrtcReceiveTime))
+                .ToDom());
+      }
+    }
+  }
+
+  // Otherwise, the capture time may be a high resolution timestamp from the
+  // camera pipeline indicating when the sample was captured.
+  if (selected->mWebrtcCaptureTime.is<TimeStamp>()) {
+    if (nsPIDOMWindowInner* win = OwnerDoc()->GetInnerWindow()) {
+      if (Performance* perf = win->GetPerformance()) {
+        aMd.mCaptureTime.Construct(perf->TimeStampToDOMHighResForRendering(
+            selected->mWebrtcCaptureTime.as<TimeStamp>()));
+      }
+    }
+  }
+#endif
+
+  // Note that if we seek, or restart a video, we may present an earlier frame
+  // that we already presented with the same ID. This would cause presented
+  // frames to go backwards when it must be monotonically increasing. Presented
+  // frames cannot simply increment by 1 each request callback because it is
+  // also used by the caller to determine if frames were missed. As such, we
+  // will typically use the difference between the current frame and the last
+  // presented via the callback, but otherwise assume a single frame due to the
+  // seek.
+  mPresentedFrames +=
+      selected->mFrameID > 1 && selected->mFrameID > mLastPresentedFrameID
+          ? selected->mFrameID - mLastPresentedFrameID
+          : 1;
+  mLastPresentedFrameID = selected->mFrameID;
+
+  // Presented frames is a bit of a misnomer from a rendering perspective,
+  // because we still need to advance regardless of composition. Video elements
+  // that are outside of the DOM, or are not visible, still advance the video in
+  // the background, and presumably the caller still needs some way to know how
+  // many frames we have advanced.
+  aMd.mPresentedFrames = mPresentedFrames;
+
+  mVideoFrameRequestManager.Take(aCallbacks);
+
+  NS_DispatchToMainThread(NewRunnableMethod(
+      "HTMLVideoElement::FinishedVideoFrameRequestCallbacks", this,
+      &HTMLVideoElement::FinishedVideoFrameRequestCallbacks));
+}
+
+void HTMLVideoElement::FinishedVideoFrameRequestCallbacks() {
+  // After we have executed the rVFC and rAF callbacks, we need to check whether
+  // or not we have scheduled more. If we did not, then we need to notify the
+  // decoder, because it may be the only thing keeping the decoder fully active.
+  if (!HasPendingCallbacks()) {
+    NotifyDecoderActivityChanges();
+  }
+}
+
+uint32_t HTMLVideoElement::RequestVideoFrameCallback(
+    VideoFrameRequestCallback& aCallback, ErrorResult& aRv) {
+  bool hasPending = HasPendingCallbacks();
+  uint32_t handle = 0;
+  aRv = mVideoFrameRequestManager.Schedule(aCallback, &handle);
+  if (!hasPending && HasPendingCallbacks()) {
+    NotifyDecoderActivityChanges();
+  }
+  return handle;
+}
+
+bool HTMLVideoElement::IsVideoFrameCallbackCancelled(uint32_t aHandle) {
+  return mVideoFrameRequestManager.IsCanceled(aHandle);
+}
+
+void HTMLVideoElement::CancelVideoFrameCallback(uint32_t aHandle) {
+  if (mVideoFrameRequestManager.Cancel(aHandle) && !HasPendingCallbacks()) {
+    NotifyDecoderActivityChanges();
   }
 }
 

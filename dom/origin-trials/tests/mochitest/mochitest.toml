@@ -2,6 +2,7 @@
 prefs = [
   "dom.origin-trials.enabled=true",
   "dom.origin-trials.test-key.enabled=true",
+  "dom.origin-trials.private-attribution.state=0",
   "browser.tabs.remote.coep.credentialless=false",
 ]
 support-files = [
@@ -37,5 +38,7 @@ skip-if = [
 ]
 
 ["test_trial_hidden.html"]
+
+["test_trial_hidden_deprecated.html"]
 
 ["test_wrong_origin.html"]

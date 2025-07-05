@@ -1,20 +1,28 @@
 export const description = `
 This test dedicatedly tests validation of GPUFragmentState of createRenderPipeline.
+
+TODO(#3363): Make this into a MaxLimitTest and increase kMaxColorAttachments.
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { range } from '../../../../common/util/util.js';
+import { assert, range } from '../../../../common/util/util.js';
 import {
+  getDefaultLimits,
+  IsDualSourceBlendingFactor,
   kBlendFactors,
   kBlendOperations,
-  kMaxColorAttachmentsToTest,
 } from '../../../capability_info.js';
+import { GPUConst } from '../../../constants.js';
 import {
   kAllTextureFormats,
-  kRenderableColorTextureFormats,
-  kTextureFormatInfo,
   computeBytesPerSampleFromFormats,
   kColorTextureFormats,
+  isTextureFormatColorRenderable,
+  isTextureFormatBlendable,
+  getTextureFormatColorType,
+  isColorTextureFormat,
+  kPossibleColorRenderableTextureFormats,
+  getColorRenderByteCost,
 } from '../../../format_info.js';
 import {
   getFragmentShaderCodeWithOutput,
@@ -23,8 +31,13 @@ import {
   kDefaultVertexShaderCode,
 } from '../../../util/shader.js';
 import { kTexelRepresentationInfo } from '../../../util/texture/texel_data.js';
+import * as vtu from '../validation_test_utils.js';
 
-import { CreateRenderPipelineValidationTest } from './common.js';
+import { ColorTargetState, CreateRenderPipelineValidationTest } from './common.js';
+
+// MAINTENANCE_TODO: This should be changed to kMaxColorAttachmentsToTest
+// when this is made a MaxLimitTest (see above).
+const kMaxColorAttachments = getDefaultLimits('core').maxColorAttachments.default;
 
 export const g = makeTestGroup(CreateRenderPipelineValidationTest);
 
@@ -41,14 +54,14 @@ g.test('color_target_exists')
     });
 
     // Control case
-    t.doCreateRenderPipelineTest(isAsync, true, goodDescriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, true, goodDescriptor);
 
     // Fail because lack of color states
     const badDescriptor = t.getDescriptor({
       targets: [],
     });
 
-    t.doCreateRenderPipelineTest(isAsync, false, badDescriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, false, badDescriptor);
   });
 
 g.test('targets_format_is_color_format')
@@ -61,27 +74,22 @@ g.test('targets_format_is_color_format')
       // Test all non-color texture formats, plus 'rgba8unorm' as a control case.
       .combine('format', kAllTextureFormats)
       .filter(({ format }) => {
-        return format === 'rgba8unorm' || !kTextureFormatInfo[format].color;
+        return format === 'rgba8unorm' || !isColorTextureFormat(format);
       })
       .combine('isAsync', [false, true])
       .beginSubcases()
       .combine('fragOutType', ['f32', 'u32', 'i32'] as const)
   )
-  .beforeAllSubcases(t => {
-    const { format } = t.params;
-    const info = kTextureFormatInfo[format];
-    t.skipIfTextureFormatNotSupported(t.params.format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
     const { isAsync, format, fragOutType } = t.params;
+    t.skipIfTextureFormatNotSupported(format);
 
     const fragmentShaderCode = getFragmentShaderCodeWithOutput([
       { values, plainType: fragOutType, componentCount: 4 },
     ]);
 
     const success = format === 'rgba8unorm' && fragOutType === 'f32';
-    t.doCreateRenderPipelineTest(isAsync, success, {
+    vtu.doCreateRenderPipelineTest(t, isAsync, success, {
       vertex: {
         module: t.device.createShaderModule({ code: kDefaultVertexShaderCode }),
         entryPoint: 'main',
@@ -105,19 +113,18 @@ g.test('targets_format_renderable')
       .combine('isAsync', [false, true])
       .combine('format', kColorTextureFormats)
   )
-  .beforeAllSubcases(t => {
-    const { format } = t.params;
-    const info = kTextureFormatInfo[format];
-    t.skipIfTextureFormatNotSupported(t.params.format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
     const { isAsync, format } = t.params;
-    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
 
     const descriptor = t.getDescriptor({ targets: [{ format }] });
 
-    t.doCreateRenderPipelineTest(isAsync, !!info.colorRender, descriptor);
+    vtu.doCreateRenderPipelineTest(
+      t,
+      isAsync,
+      isTextureFormatColorRenderable(t.device, format),
+      descriptor
+    );
   });
 
 g.test('limits,maxColorAttachments')
@@ -147,7 +154,8 @@ g.test('limits,maxColorAttachments')
       },
     });
 
-    t.doCreateRenderPipelineTest(
+    vtu.doCreateRenderPipelineTest(
+      t,
       isAsync,
       targetsLength <= t.device.limits.maxColorAttachments,
       descriptor
@@ -163,20 +171,17 @@ g.test('limits,maxColorAttachmentBytesPerSample,aligned')
   )
   .params(u =>
     u
-      .combine('format', kRenderableColorTextureFormats)
+      .combine('format', kPossibleColorRenderableTextureFormats)
       .beginSubcases()
       .combine(
         'attachmentCount',
-        range(kMaxColorAttachmentsToTest, i => i + 1)
+        range(kMaxColorAttachments, i => i + 1)
       )
       .combine('isAsync', [false, true])
   )
-  .beforeAllSubcases(t => {
-    t.skipIfTextureFormatNotSupported(t.params.format);
-  })
   .fn(t => {
     const { format, attachmentCount, isAsync } = t.params;
-    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
 
     t.skipIf(
       attachmentCount > t.device.limits.maxColorAttachments,
@@ -189,11 +194,11 @@ g.test('limits,maxColorAttachmentBytesPerSample,aligned')
       }),
     });
     const shouldError =
-      info.colorRender === undefined ||
-      info.colorRender.byteCost * attachmentCount >
+      !isTextureFormatColorRenderable(t.device, format) ||
+      getColorRenderByteCost(format) * attachmentCount >
         t.device.limits.maxColorAttachmentBytesPerSample;
 
-    t.doCreateRenderPipelineTest(isAsync, !shouldError, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, !shouldError, descriptor);
   });
 
 g.test('limits,maxColorAttachmentBytesPerSample,unaligned')
@@ -237,32 +242,26 @@ g.test('limits,maxColorAttachmentBytesPerSample,unaligned')
       }),
     });
 
-    t.doCreateRenderPipelineTest(isAsync, success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, success, descriptor);
   });
 
 g.test('targets_format_filterable')
   .desc(
     `
   Tests that color target state format must be filterable if blend is not undefined.
-
-  TODO: info.colorRender.blend now directly says whether the format is blendable. Use that.`
+  `
   )
   .params(u =>
     u
       .combine('isAsync', [false, true])
-      .combine('format', kRenderableColorTextureFormats)
+      .combine('format', kPossibleColorRenderableTextureFormats)
       .beginSubcases()
       .combine('hasBlend', [false, true])
   )
-  .beforeAllSubcases(t => {
-    const { format } = t.params;
-    const info = kTextureFormatInfo[format];
-    t.skipIfTextureFormatNotSupported(format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
     const { isAsync, format, hasBlend } = t.params;
-    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
+    t.skipIfTextureFormatNotUsableAsRenderAttachment(format);
 
     const descriptor = t.getDescriptor({
       targets: [
@@ -273,7 +272,8 @@ g.test('targets_format_filterable')
       ],
     });
 
-    t.doCreateRenderPipelineTest(isAsync, !hasBlend || info.color.type === 'float', descriptor);
+    const supportsBlend = isTextureFormatBlendable(t.device, format);
+    vtu.doCreateRenderPipelineTest(t, isAsync, !hasBlend || supportsBlend, descriptor);
   });
 
 g.test('targets_blend')
@@ -288,13 +288,16 @@ g.test('targets_blend')
     u
       .combine('isAsync', [false, true])
       .combine('component', ['color', 'alpha'] as const)
-      .beginSubcases()
       .combine('srcFactor', kBlendFactors)
       .combine('dstFactor', kBlendFactors)
+      .beginSubcases()
       .combine('operation', kBlendOperations)
   )
   .fn(t => {
     const { isAsync, component, srcFactor, dstFactor, operation } = t.params;
+    if (IsDualSourceBlendingFactor(srcFactor) || IsDualSourceBlendingFactor(dstFactor)) {
+      t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
+    }
 
     const defaultBlendComponent: GPUBlendComponent = {
       srcFactor: 'src-alpha',
@@ -307,6 +310,13 @@ g.test('targets_blend')
       operation,
     };
     const format = 'rgba8unorm';
+    const useDualSourceBlending =
+      IsDualSourceBlendingFactor(srcFactor) || IsDualSourceBlendingFactor(dstFactor);
+    const fragmentShaderCode = getFragmentShaderCodeWithOutput(
+      [{ values, plainType: 'f32', componentCount: 4 }],
+      null,
+      useDualSourceBlending
+    );
 
     const descriptor = t.getDescriptor({
       targets: [
@@ -318,13 +328,14 @@ g.test('targets_blend')
           },
         },
       ],
+      fragmentShaderCode,
     });
 
     if (operation === 'min' || operation === 'max') {
       const _success = srcFactor === 'one' && dstFactor === 'one';
-      t.doCreateRenderPipelineTest(isAsync, _success, descriptor);
+      vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
     } else {
-      t.doCreateRenderPipelineTest(isAsync, true, descriptor);
+      vtu.doCreateRenderPipelineTest(t, isAsync, true, descriptor);
     }
   });
 
@@ -343,7 +354,7 @@ g.test('targets_write_mask')
       ],
     });
 
-    t.doCreateRenderPipelineTest(isAsync, writeMask < 16, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, writeMask < 16, descriptor);
   });
 
 g.test('pipeline_output_targets')
@@ -358,7 +369,7 @@ g.test('pipeline_output_targets')
   .params(u =>
     u
       .combine('isAsync', [false, true])
-      .combine('format', [undefined, ...kRenderableColorTextureFormats] as const)
+      .combine('format', [undefined, ...kPossibleColorRenderableTextureFormats] as const)
       .beginSubcases()
       .combine('shaderOutput', [
         undefined,
@@ -369,11 +380,10 @@ g.test('pipeline_output_targets')
         p.format !== undefined && p.shaderOutput !== undefined ? [0, 0x1, 0x2, 0x4, 0x8] : [0xf]
       )
   )
-  .beforeAllSubcases(t => {
-    t.selectDeviceForTextureFormatOrSkipTestCase(t.params.format);
-  })
   .fn(t => {
     const { isAsync, format, writeMask, shaderOutput } = t.params;
+    t.skipIfTextureFormatNotSupported(format);
+    t.skipIfTextureFormatNotUsableAsRenderAttachment(format);
 
     const descriptor = t.getDescriptor({
       targets: format ? [{ format, writeMask }] : [],
@@ -391,9 +401,8 @@ g.test('pipeline_output_targets')
       // There is a color target
       if (shaderOutput) {
         // The shader outputs to the color target
-        const info = kTextureFormatInfo[format];
         success =
-          shaderOutput.scalar === getPlainTypeInfo(info.color.type) &&
+          shaderOutput.scalar === getPlainTypeInfo(getTextureFormatColorType(format)) &&
           shaderOutput.count >= kTexelRepresentationInfo[format].componentOrder.length;
       } else {
         // The shader does not output to the color target
@@ -401,13 +410,14 @@ g.test('pipeline_output_targets')
       }
     }
 
-    t.doCreateRenderPipelineTest(isAsync, success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, success, descriptor);
   });
 
 g.test('pipeline_output_targets,blend')
   .desc(
-    `On top of requirements from pipeline_output_targets, when blending is enabled and alpha channel is read indicated by any blend factor, an extra requirement is added:
-  - fragment output must be vec4.
+    `On top of requirements from pipeline_output_targets, when blending is enabled and alpha channel
+    is read indicated by any color blend factor, an extra requirement is added:
+      - fragment output must be vec4.
   `
   )
   .params(u =>
@@ -415,7 +425,6 @@ g.test('pipeline_output_targets,blend')
       .combine('isAsync', [false, true])
       .combine('format', ['r8unorm', 'rg8unorm', 'rgba8unorm', 'bgra8unorm'] as const)
       .combine('componentCount', [1, 2, 3, 4])
-      .beginSubcases()
       // The default srcFactor and dstFactor are 'one' and 'zero'. Override just one at a time.
       .combineWithParams([
         ...u.combine('colorSrcFactor', kBlendFactors),
@@ -424,11 +433,6 @@ g.test('pipeline_output_targets,blend')
         ...u.combine('alphaDstFactor', kBlendFactors),
       ] as const)
   )
-  .beforeAllSubcases(t => {
-    const { format } = t.params;
-    const info = kTextureFormatInfo[format];
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
     const sampleType = 'float';
     const {
@@ -440,7 +444,16 @@ g.test('pipeline_output_targets,blend')
       alphaSrcFactor,
       alphaDstFactor,
     } = t.params;
-    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
+
+    const useDualSourceBlending =
+      IsDualSourceBlendingFactor(colorSrcFactor) ||
+      IsDualSourceBlendingFactor(colorDstFactor) ||
+      IsDualSourceBlendingFactor(alphaSrcFactor) ||
+      IsDualSourceBlendingFactor(alphaDstFactor);
+    if (useDualSourceBlending) {
+      t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
+    }
 
     const descriptor = t.getDescriptor({
       targets: [
@@ -452,17 +465,147 @@ g.test('pipeline_output_targets,blend')
           },
         },
       ],
-      fragmentShaderCode: getFragmentShaderCodeWithOutput([
-        { values, plainType: getPlainTypeInfo(sampleType), componentCount },
-      ]),
+      fragmentShaderCode: getFragmentShaderCodeWithOutput(
+        [{ values, plainType: getPlainTypeInfo(sampleType), componentCount }],
+        null,
+        useDualSourceBlending
+      ),
     });
 
     const colorBlendReadsSrcAlpha =
-      colorSrcFactor?.includes('src-alpha') || colorDstFactor?.includes('src-alpha');
+      colorSrcFactor?.includes('src-alpha') ||
+      colorDstFactor?.includes('src-alpha') ||
+      colorSrcFactor?.includes('src1-alpha') ||
+      colorDstFactor?.includes('src1-alpha');
     const meetsExtraBlendingRequirement = !colorBlendReadsSrcAlpha || componentCount === 4;
     const _success =
-      info.color.type === sampleType &&
+      getTextureFormatColorType(format) === sampleType &&
       componentCount >= kTexelRepresentationInfo[format].componentOrder.length &&
       meetsExtraBlendingRequirement;
-    t.doCreateRenderPipelineTest(isAsync, _success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
+  });
+
+const kDualSourceBlendingFactors: GPUBlendFactor[] = [
+  'src1',
+  'one-minus-src1',
+  'src1-alpha',
+  'one-minus-src1-alpha',
+];
+
+g.test('dual_source_blending,color_target_count')
+  .desc(
+    `Test that when the blend factor of color attachment 0 uses src1 (the second input of the
+   corresponding blending unit), there must be exactly one color target.
+`
+  )
+  .params(u =>
+    u
+      .combine('blendFactor', kDualSourceBlendingFactors)
+      .combine('colorTargetsCount', [1, 2] as const)
+      .combine('maskOutNonZeroIndexColorTargets', [true, false] as const)
+      .beginSubcases()
+      .combine('component', ['color', 'alpha'] as const)
+  )
+  .fn(t => {
+    t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
+    const { blendFactor, colorTargetsCount, maskOutNonZeroIndexColorTargets, component } = t.params;
+
+    const defaultBlendComponent: GPUBlendComponent = {
+      srcFactor: 'src-alpha',
+      dstFactor: 'dst-alpha',
+      operation: 'add',
+    };
+    const testBlendComponent: GPUBlendComponent = {
+      srcFactor: blendFactor,
+      dstFactor: blendFactor,
+      operation: 'add',
+    };
+
+    assert(colorTargetsCount >= 1);
+    const colorTargetStates = new Array<ColorTargetState>(colorTargetsCount);
+    colorTargetStates[0] = {
+      format: 'rgba8unorm',
+      blend: {
+        color: component === 'color' ? testBlendComponent : defaultBlendComponent,
+        alpha: component === 'alpha' ? testBlendComponent : defaultBlendComponent,
+      },
+    };
+
+    for (let i = 1; i < colorTargetsCount; ++i) {
+      colorTargetStates[i] = {
+        format: 'rgba8unorm',
+        blend: {
+          color: defaultBlendComponent,
+          alpha: defaultBlendComponent,
+        },
+        writeMask: maskOutNonZeroIndexColorTargets ? 0 : GPUConst.ColorWrite.ALL,
+      };
+    }
+
+    const descriptor = t.getDescriptor({
+      targets: colorTargetStates,
+      fragmentShaderCode: getFragmentShaderCodeWithOutput(
+        [{ values, plainType: 'f32', componentCount: 4 }],
+        null,
+        true
+      ),
+    });
+
+    const isAsync = false;
+    const _success = colorTargetsCount === 1;
+    vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
+  });
+
+g.test('dual_source_blending,use_blend_src')
+  .desc(
+    `Test that when the blend factor of color attachment 0 uses src1, dual source blending must be
+    used in the fragment shader, whether the corresponding color write mask is 0 or not. In
+    contrast, when dual source blending is used in the fragment shader, we don't require blend
+    factor must use src1 (the second input of the corresponding blending unit).
+`
+  )
+  .params(u =>
+    u
+      .combine('blendFactor', kBlendFactors)
+      .combine('useBlendSrc1', [true, false] as const)
+      .combine('writeMask', [0, GPUConst.ColorWrite.ALL] as const)
+      .beginSubcases()
+      .combine('component', ['color', 'alpha'] as const)
+  )
+  .fn(t => {
+    t.skipIfDeviceDoesNotHaveFeature('dual-source-blending');
+    const { blendFactor, useBlendSrc1, writeMask, component } = t.params;
+
+    const defaultBlendComponent: GPUBlendComponent = {
+      srcFactor: 'src-alpha',
+      dstFactor: 'dst-alpha',
+      operation: 'add',
+    };
+    const testBlendComponent: GPUBlendComponent = {
+      srcFactor: blendFactor,
+      dstFactor: blendFactor,
+      operation: 'add',
+    };
+
+    const descriptor = t.getDescriptor({
+      targets: [
+        {
+          format: 'rgba8unorm',
+          blend: {
+            color: component === 'color' ? testBlendComponent : defaultBlendComponent,
+            alpha: component === 'alpha' ? testBlendComponent : defaultBlendComponent,
+          },
+          writeMask,
+        },
+      ],
+      fragmentShaderCode: getFragmentShaderCodeWithOutput(
+        [{ values, plainType: 'f32', componentCount: 4 }],
+        null,
+        useBlendSrc1
+      ),
+    });
+
+    const _success = !IsDualSourceBlendingFactor(blendFactor) || useBlendSrc1;
+    const isAsync = false;
+    vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
   });

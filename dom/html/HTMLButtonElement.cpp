@@ -15,7 +15,6 @@
 #include "nsPresContext.h"
 #include "nsIFormControl.h"
 #include "nsIFrame.h"
-#include "nsIFormControlFrame.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/FocusModel.h"
@@ -39,14 +38,15 @@ NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(Button)
 
 namespace mozilla::dom {
 
-static const nsAttrValue::EnumTable kButtonTypeTable[] = {
+static constexpr nsAttrValue::EnumTableEntry kButtonTypeTable[] = {
     {"button", FormControlType::ButtonButton},
     {"reset", FormControlType::ButtonReset},
     {"submit", FormControlType::ButtonSubmit},
-    {nullptr, 0}};
+};
 
 // Default type is 'submit'.
-static const nsAttrValue::EnumTable* kButtonDefaultType = &kButtonTypeTable[2];
+static constexpr const nsAttrValue::EnumTableEntry* kButtonDefaultType =
+    &kButtonTypeTable[2];
 
 // Construction, destruction
 HTMLButtonElement::HTMLButtonElement(
@@ -147,9 +147,7 @@ bool HTMLButtonElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
 }
 
 bool HTMLButtonElement::IsDisabledForEvents(WidgetEvent* aEvent) {
-  nsIFormControlFrame* formControlFrame = GetFormControlFrame(false);
-  nsIFrame* formFrame = do_QueryFrame(formControlFrame);
-  return IsElementDisabledForEvents(aEvent, formFrame);
+  return IsElementDisabledForEvents(aEvent, GetPrimaryFrame());
 }
 
 void HTMLButtonElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
@@ -186,7 +184,7 @@ void HTMLButtonElement::LegacyPreActivationBehavior(
     // tell the form that we are about to enter a click handler.
     // that means that if there are scripted submissions, the
     // latest one will be deferred until after the exit point of the handler.
-    mForm->OnSubmitClickBegin(this);
+    mForm->OnSubmitClickBegin();
   }
 }
 

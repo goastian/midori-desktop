@@ -4,41 +4,10 @@
 
 include protocol PQuota;
 
-include "mozilla/dom/quota/SerializationHelpers.h";
-
-using mozilla::dom::quota::UsageInfo
-  from "mozilla/dom/quota/UsageInfo.h";
-
 namespace mozilla {
 namespace dom {
 namespace quota {
 
-struct OriginUsage
-{
-  nsCString origin;
-  bool persisted;
-  uint64_t usage;
-  uint64_t lastAccessed;
-};
-
-struct AllUsageResponse
-{
-  OriginUsage[] originUsages;
-};
-
-struct OriginUsageResponse
-{
-  UsageInfo usageInfo;
-};
-
-union UsageRequestResponse
-{
-  nsresult;
-  AllUsageResponse;
-  OriginUsageResponse;
-};
-
-[ManualDealloc, ChildImpl=virtual, ParentImpl=virtual]
 protocol PQuotaUsageRequest
 {
   manager PQuota;
@@ -47,7 +16,7 @@ parent:
   async Cancel();
 
 child:
-  async __delete__(UsageRequestResponse response);
+  async __delete__();
 };
 
 } // namespace quota

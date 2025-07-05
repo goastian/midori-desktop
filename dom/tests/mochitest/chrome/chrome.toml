@@ -1,5 +1,4 @@
 [DEFAULT]
-skip-if = ["os == 'android'"]
 support-files = [
   "489127.html",
   "DOMWindowCreated_chrome.xhtml",
@@ -33,8 +32,8 @@ support-files = [
   "!/dom/tests/mochitest/general/file_clonewrapper.html",
   "!/dom/tests/mochitest/general/file_moving_nodeList.html",
   "!/dom/tests/mochitest/general/file_moving_xhr.html",
-  "!/dom/tests/mochitest/geolocation/network_geolocation.sjs",
 ]
+prefs = [ "layout.css.at-scope.enabled=true" ]
 
 ["test_DOMWindowCreated.xhtml"]
 
@@ -43,17 +42,21 @@ support-files = [
 ["test_activation.xhtml"]
 tags = "fullscreen"
 
+["test_browser_shadow_dom.xhtml"]
+
 ["test_bug800817.xhtml"]
 
 ["test_bug830858.xhtml"]
 
 ["test_bug1224790-1.xhtml"]
+run-if = ["os == 'mac'"]
 tags = "openwindow"
-skip-if = ["os != 'mac'"]
 
 ["test_bug1224790-2.xhtml"]
+run-if = ["os == 'mac'"]
 tags = "openwindow"
-skip-if = ["os != 'mac'"]
+
+["test_bug1931559.html"]
 
 ["test_callback_wrapping.xhtml"]
 
@@ -67,18 +70,13 @@ skip-if = ["os != 'mac'"]
 
 ["test_elements_proto.xhtml"]
 
+["test_first_focusable_in_scope.xhtml"]
+
 ["test_focus.xhtml"]
-skip-if = [
-  "os == 'linux'", # bug 1296622, Bug 1605253
-  "os == 'mac' && !debug", # Bug 1828622
-  "os == 'win' && !debug", # Bug 1828622
-]
 
 ["test_focus_dialog.xhtml"]
 
 ["test_focus_docnav.xhtml"]
-
-["test_first_focusable_in_scope.xhtml"]
 
 ["test_focused_link_scroll.xhtml"]
 
@@ -111,8 +109,10 @@ support-files = [
   "file_resize_move_windows_1.html",
   "file_resize_move_windows_2.html",
 ]
-# disabled on linux for timeouts--bug-834716
-skip-if = ["os == 'linux'"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug # disabled on linux for timeouts--bug-834716
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 834716
+]
 
 ["test_sandbox_bindings.xhtml"]
 
@@ -125,8 +125,8 @@ skip-if = ["os == 'linux'"]
 ["test_selectAtPoint.html"]
 
 ["test_sizemode_attribute.xhtml"]
+run-if = ["os == 'win'"]
 tags = "fullscreen"
-skip-if = ["os != 'win'"]
 
 ["test_subscript_bindings.xhtml"]
 

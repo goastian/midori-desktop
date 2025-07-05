@@ -27,7 +27,6 @@
 #include "nsGkAtoms.h"
 #include "nsComboboxControlFrame.h"
 #include "mozilla/dom/Document.h"
-#include "nsIFormControlFrame.h"
 #include "nsIFrame.h"
 #include "nsListControlFrame.h"
 #include "nsISelectControlFrame.h"
@@ -254,10 +253,12 @@ void HTMLSelectElement::InsertChildBefore(nsIContent* aKid,
   }
 }
 
-void HTMLSelectElement::RemoveChildNode(nsIContent* aKid, bool aNotify) {
+void HTMLSelectElement::RemoveChildNode(nsIContent* aKid, bool aNotify,
+                                        const BatchRemovalState* aState) {
   SafeOptionListMutation safeMutation(this, this, nullptr,
                                       *ComputeIndexOf(aKid), aNotify);
-  nsGenericHTMLFormControlElementWithState::RemoveChildNode(aKid, aNotify);
+  nsGenericHTMLFormControlElementWithState::RemoveChildNode(aKid, aNotify,
+                                                            aState);
 }
 
 void HTMLSelectElement::InsertOptionsIntoList(nsIContent* aOptions,
@@ -561,15 +562,7 @@ int32_t HTMLSelectElement::GetFirstChildOptionIndex(nsIContent* aOptions,
 }
 
 nsISelectControlFrame* HTMLSelectElement::GetSelectFrame() {
-  nsIFormControlFrame* form_control_frame = GetFormControlFrame(false);
-
-  nsISelectControlFrame* select_frame = nullptr;
-
-  if (form_control_frame) {
-    select_frame = do_QueryFrame(form_control_frame);
-  }
-
-  return select_frame;
+  return do_QueryFrame(GetPrimaryFrame());
 }
 
 void HTMLSelectElement::Add(
@@ -1266,12 +1259,7 @@ nsMapRuleToAttributesFunc HTMLSelectElement::GetAttributeMappingFunction()
 }
 
 bool HTMLSelectElement::IsDisabledForEvents(WidgetEvent* aEvent) {
-  nsIFormControlFrame* formControlFrame = GetFormControlFrame(false);
-  nsIFrame* formFrame = nullptr;
-  if (formControlFrame) {
-    formFrame = do_QueryFrame(formControlFrame);
-  }
-  return IsElementDisabledForEvents(aEvent, formFrame);
+  return IsElementDisabledForEvents(aEvent, GetPrimaryFrame());
 }
 
 void HTMLSelectElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
@@ -1484,10 +1472,8 @@ HTMLSelectElement::SubmitNamesValues(FormData* aFormData) {
 }
 
 void HTMLSelectElement::DispatchContentReset() {
-  if (nsIFormControlFrame* formControlFrame = GetFormControlFrame(false)) {
-    if (nsListControlFrame* listFrame = do_QueryFrame(formControlFrame)) {
-      listFrame->OnContentReset();
-    }
+  if (nsListControlFrame* listFrame = do_QueryFrame(GetPrimaryFrame())) {
+    listFrame->OnContentReset();
   }
 }
 
@@ -1635,8 +1621,7 @@ void HTMLSelectElement::SetUserInteracted(bool aInteracted) {
 void HTMLSelectElement::SetPreviewValue(const nsAString& aValue) {
   mPreviewValue = aValue;
   nsContentUtils::RemoveNewlines(mPreviewValue);
-  nsIFormControlFrame* formControlFrame = GetFormControlFrame(false);
-  nsComboboxControlFrame* comboFrame = do_QueryFrame(formControlFrame);
+  nsComboboxControlFrame* comboFrame = do_QueryFrame(GetPrimaryFrame());
   if (comboFrame) {
     comboFrame->RedisplaySelectedText();
   }

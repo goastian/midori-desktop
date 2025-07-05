@@ -65,6 +65,12 @@ class MediaChangeMonitor final
     }
     return false;
   }
+  bool ShouldDecoderAlwaysBeRecycled() const override {
+    if (RefPtr<MediaDataDecoder> decoder = GetDecoderOnNonOwnerThread()) {
+      return decoder->ShouldDecoderAlwaysBeRecycled();
+    }
+    return false;
+  }
 
   ConversionRequired NeedsConversion() const override {
     if (RefPtr<MediaDataDecoder> decoder = GetDecoderOnNonOwnerThread()) {
@@ -85,6 +91,7 @@ class MediaChangeMonitor final
     virtual bool IsHardwareAccelerated(nsACString& aFailureReason) const {
       return false;
     }
+    virtual void Flush() {};
     virtual ~CodecChangeMonitor() = default;
   };
 
@@ -121,7 +128,7 @@ class MediaChangeMonitor final
 
   UniquePtr<CodecChangeMonitor> mChangeMonitor;
   RefPtr<PDMFactory> mPDMFactory;
-  VideoInfo mCurrentConfig;
+  UniquePtr<TrackInfo> mCurrentConfig;
   nsCOMPtr<nsISerialEventTarget> mThread;
   RefPtr<MediaDataDecoder> mDecoder;
   MozPromiseRequestHolder<CreateDecoderPromise> mDecoderRequest;

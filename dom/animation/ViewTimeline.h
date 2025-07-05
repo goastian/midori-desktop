@@ -34,7 +34,8 @@ class ViewTimeline final : public ScrollTimeline {
   // Note: |aSubject| is used as the subject which specifies view-timeline-name
   // property, and we use this subject to look up its nearest scroll container.
   static already_AddRefed<ViewTimeline> MakeNamed(
-      Document* aDocument, Element* aSubject, PseudoStyleType aPseudoType,
+      Document* aDocument, Element* aSubject,
+      const PseudoStyleRequest& aPseudoRequest,
       const StyleViewTimeline& aStyleTimeline);
 
   static already_AddRefed<ViewTimeline> MakeAnonymous(
@@ -49,7 +50,7 @@ class ViewTimeline final : public ScrollTimeline {
   bool IsViewTimeline() const override { return true; }
 
   void ReplacePropertiesWith(Element* aSubjectElement,
-                             PseudoStyleType aPseudoType,
+                             const PseudoStyleRequest& aPseudoRequest,
                              const StyleViewTimeline& aNew);
 
  private:
@@ -75,6 +76,8 @@ class ViewTimeline final : public ScrollTimeline {
   // 2. For view-timeline property, the subject element is the element who
   //    defines this property.
   RefPtr<Element> mSubject;
+  // FIXME: Bug 1928437. We have to update mSubjectPseudoType to use
+  // PseudoStyleRequest.
   PseudoStyleType mSubjectPseudoType;
 
   // FIXME: Bug 1817073. view-timeline-inset is an animatable property. However,

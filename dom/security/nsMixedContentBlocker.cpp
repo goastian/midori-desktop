@@ -41,7 +41,7 @@
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/StaticPrefs_security.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/DomSecurityMetrics.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "mozilla/net/DNS.h"
@@ -115,9 +115,9 @@ static void LogMixedContentMessage(
                                         messageLookupKey.get(), params,
                                         localizedMsg);
 
-  nsContentUtils::ReportToConsoleByWindowID(localizedMsg, severityFlag,
-                                            messageCategory, aInnerWindowID,
-                                            aRequestingLocation);
+  nsContentUtils::ReportToConsoleByWindowID(
+      localizedMsg, severityFlag, messageCategory, aInnerWindowID,
+      SourceLocation(aRequestingLocation));
 }
 
 /* nsIChannelEventSink implementation
@@ -378,6 +378,7 @@ bool nsMixedContentBlocker::IsUpgradableContentType(nsContentPolicyType aType,
   switch (aType) {
     case nsIContentPolicy::TYPE_INTERNAL_IMAGE:
     case nsIContentPolicy::TYPE_INTERNAL_IMAGE_PRELOAD:
+    case nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON:
       return !aConsiderPrefs ||
              StaticPrefs::
                  security_mixed_content_upgrade_display_content_image();
@@ -492,13 +493,6 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   // Mixed content web fonts are relatively uncommon, and we can can fall back
   // to built-in fonts with minimal disruption in almost all cases.
   //
-  // TYPE_OBJECT_SUBREQUEST could actually be either active content (e.g. a
-  // script that a plugin will execute) or display content (e.g. Flash video
-  // content).  Until we have a way to determine active vs passive content
-  // from plugin requests (bug 836352), we will treat this as passive content.
-  // This is to prevent false positives from causing users to become
-  // desensitized to the mixed content blocker.
-  //
   // TYPE_CSP_REPORT: High-risk because they directly leak information about
   // the content of the page, and because blocking them does not have any
   // negative effect on the page loading.
@@ -580,13 +574,6 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     case ExtContentPolicy::TYPE_MEDIA:
       classification = eMixedDisplay;
       break;
-    case ExtContentPolicy::TYPE_OBJECT_SUBREQUEST:
-      if (StaticPrefs::security_mixed_content_block_object_subrequest()) {
-        classification = eMixedScript;
-      } else {
-        classification = eMixedDisplay;
-      }
-      break;
 
     // Active content (or content with a low value/risk-of-blocking ratio)
     // that has been explicitly evaluated; listed here for documentation
@@ -610,6 +597,7 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     case ExtContentPolicy::TYPE_SPECULATIVE:
     case ExtContentPolicy::TYPE_WEB_TRANSPORT:
     case ExtContentPolicy::TYPE_WEB_IDENTITY:
+    case ExtContentPolicy::TYPE_JSON:
       break;
 
     case ExtContentPolicy::TYPE_INVALID:
@@ -802,13 +790,13 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     CopyUTF8toUTF16(spec, *params.AppendElement());
 
     CSP_LogLocalizedStr("blockAllMixedContent", params,
-                        u""_ns,  // aSourceFile
+                        ""_ns,   // aSourceFile
                         u""_ns,  // aScriptSample
                         0,       // aLineNumber
                         1,       // aColumnNumber
                         nsIScriptError::errorFlag, "blockAllMixedContent"_ns,
                         requestingWindow->Id(),
-                        !!aLoadInfo->GetOriginAttributes().mPrivateBrowsingId);
+                        aLoadInfo->GetOriginAttributes().IsPrivateBrowsing());
     *aDecision = REJECT_REQUEST;
     MOZ_LOG(
         sMCBLog, LogLevel::Verbose,
@@ -822,7 +810,6 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
   // Content
   WindowContext* topWC = requestingWindow->TopWindowContext();
   bool rootHasSecureConnection = topWC->GetIsSecure();
-  bool allowMixedContent = topWC->GetAllowMixedContent();
 
   // When navigating an iframe, the iframe may be https but its parents may not
   // be. Check the parents to see if any of them are https. If none of the
@@ -878,25 +865,11 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     }
   }
 
-  // set hasMixedContentObjectSubrequest on this object if necessary
-  if (contentType == ExtContentPolicyType::TYPE_OBJECT_SUBREQUEST &&
-      aReportError) {
-    if (!StaticPrefs::security_mixed_content_block_object_subrequest()) {
-      nsAutoCString messageLookUpKey(
-          "LoadingMixedDisplayObjectSubrequestDeprecation");
-
-      LogMixedContentMessage(classification, aContentLocation, topWC->Id(),
-                             eUserOverride, requestingLocation,
-                             messageLookUpKey);
-    }
-  }
-
   uint32_t newState = 0;
   // If the content is display content, and the pref says display content should
   // be blocked, block it.
   if (classification == eMixedDisplay) {
-    if (!StaticPrefs::security_mixed_content_block_display_content() ||
-        allowMixedContent) {
+    if (!StaticPrefs::security_mixed_content_block_display_content()) {
       *aDecision = nsIContentPolicy::ACCEPT;
       // User has overriden the pref and the root is not https;
       // mixed display content was allowed on an https subframe.
@@ -914,8 +887,7 @@ nsresult nsMixedContentBlocker::ShouldLoad(bool aHadInsecureImageRedirect,
     MOZ_ASSERT(classification == eMixedScript);
     // If the content is active content, and the pref says active content should
     // be blocked, block it unless the user has choosen to override the pref
-    if (!StaticPrefs::security_mixed_content_block_active_content() ||
-        allowMixedContent) {
+    if (!StaticPrefs::security_mixed_content_block_active_content()) {
       *aDecision = nsIContentPolicy::ACCEPT;
       // User has already overriden the pref and the root is not https;
       // mixed active content was allowed on an https subframe.
@@ -1047,19 +1019,19 @@ void nsMixedContentBlocker::AccumulateMixedContentHSTS(
   //
   if (!aActive) {
     if (!hsts) {
-      Telemetry::Accumulate(Telemetry::MIXED_CONTENT_HSTS,
-                            MCB_HSTS_PASSIVE_NO_HSTS);
+      glean::mixed_content::hsts.AccumulateSingleSample(
+          MCB_HSTS_PASSIVE_NO_HSTS);
     } else {
-      Telemetry::Accumulate(Telemetry::MIXED_CONTENT_HSTS,
-                            MCB_HSTS_PASSIVE_WITH_HSTS);
+      glean::mixed_content::hsts.AccumulateSingleSample(
+          MCB_HSTS_PASSIVE_WITH_HSTS);
     }
   } else {
     if (!hsts) {
-      Telemetry::Accumulate(Telemetry::MIXED_CONTENT_HSTS,
-                            MCB_HSTS_ACTIVE_NO_HSTS);
+      glean::mixed_content::hsts.AccumulateSingleSample(
+          MCB_HSTS_ACTIVE_NO_HSTS);
     } else {
-      Telemetry::Accumulate(Telemetry::MIXED_CONTENT_HSTS,
-                            MCB_HSTS_ACTIVE_WITH_HSTS);
+      glean::mixed_content::hsts.AccumulateSingleSample(
+          MCB_HSTS_ACTIVE_WITH_HSTS);
     }
   }
 }

@@ -9,7 +9,7 @@
 #include "audio_thread_priority.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomMediaMetrics.h"
 #include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
@@ -18,8 +18,10 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/UnderrunHandler.h"
+#if defined(MOZ_SANDBOX)
+#  include "mozilla/SandboxSettings.h"
+#endif
 #include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsIStringBundle.h"
@@ -67,8 +69,7 @@ namespace mozilla {
 
 namespace {
 
-using Telemetry::LABELS_MEDIA_AUDIO_BACKEND;
-using Telemetry::LABELS_MEDIA_AUDIO_INIT_FAILURE;
+using glean::media_audio::BackendLabel;
 
 LazyLogModule gCubebLog("cubeb");
 
@@ -121,21 +122,21 @@ int sInCommunicationCount = 0;
 
 const char kBrandBundleURL[] = "chrome://branding/locale/brand.properties";
 
-std::unordered_map<std::string, LABELS_MEDIA_AUDIO_BACKEND>
+MOZ_RUNINIT std::unordered_map<std::string, BackendLabel>
     kTelemetryBackendLabel = {
-        {"audiounit", LABELS_MEDIA_AUDIO_BACKEND::audiounit},
-        {"audiounit-rust", LABELS_MEDIA_AUDIO_BACKEND::audiounit_rust},
-        {"aaudio", LABELS_MEDIA_AUDIO_BACKEND::aaudio},
-        {"opensl", LABELS_MEDIA_AUDIO_BACKEND::opensl},
-        {"wasapi", LABELS_MEDIA_AUDIO_BACKEND::wasapi},
-        {"winmm", LABELS_MEDIA_AUDIO_BACKEND::winmm},
-        {"alsa", LABELS_MEDIA_AUDIO_BACKEND::alsa},
-        {"jack", LABELS_MEDIA_AUDIO_BACKEND::jack},
-        {"oss", LABELS_MEDIA_AUDIO_BACKEND::oss},
-        {"pulse", LABELS_MEDIA_AUDIO_BACKEND::pulse},
-        {"pulse-rust", LABELS_MEDIA_AUDIO_BACKEND::pulse_rust},
-        {"sndio", LABELS_MEDIA_AUDIO_BACKEND::sndio},
-        {"sun", LABELS_MEDIA_AUDIO_BACKEND::sunaudio},
+        {"audiounit", BackendLabel::eAudiounit},
+        {"audiounit-rust", BackendLabel::eAudiounitRust},
+        {"aaudio", BackendLabel::eAaudio},
+        {"opensl", BackendLabel::eOpensl},
+        {"wasapi", BackendLabel::eWasapi},
+        {"winmm", BackendLabel::eWinmm},
+        {"alsa", BackendLabel::eAlsa},
+        {"jack", BackendLabel::eJack},
+        {"oss", BackendLabel::eOss},
+        {"pulse", BackendLabel::ePulse},
+        {"pulse-rust", BackendLabel::ePulseRust},
+        {"sndio", BackendLabel::eSndio},
+        {"sun", BackendLabel::eSunaudio},
 };
 
 // Prefered samplerate, in Hz (characteristic of the hardware, mixer, platform,
@@ -299,6 +300,14 @@ void PrefChanged(const char* aPref, void* aClosure) {
     sCubebSandbox = Preferences::GetBool(aPref);
     MOZ_LOG(gCubebLog, LogLevel::Verbose,
             ("%s: %s", PREF_CUBEB_SANDBOX, sCubebSandbox ? "true" : "false"));
+#  if defined(MOZ_SANDBOX)
+    if (!sCubebSandbox && IsContentSandboxEnabled()) {
+      sCubebSandbox = true;
+      MOZ_LOG(gCubebLog, LogLevel::Error,
+              ("%s: false, but content sandbox enabled - forcing true",
+               PREF_CUBEB_SANDBOX));
+    }
+#  endif
   } else if (strcmp(aPref, PREF_AUDIOIPC_STACK_SIZE) == 0) {
     StaticMutexAutoLock lock(sMutex);
     sAudioIPCStackSize = Preferences::GetUint(PREF_AUDIOIPC_STACK_SIZE,
@@ -363,7 +372,7 @@ void SetInCommunication(bool aInCommunication) {
 #endif
 }
 
-bool InitPreferredSampleRate() {
+bool InitPreferredSampleRate() MOZ_REQUIRES(sMutex) {
   sMutex.AssertCurrentThreadOwns();
   if (sPreferredSampleRate != 0) {
     return true;
@@ -631,19 +640,14 @@ void ReportCubebBackendUsed() {
 
   MOZ_RELEASE_ASSERT(handle.get());
 
-  LABELS_MEDIA_AUDIO_BACKEND label = LABELS_MEDIA_AUDIO_BACKEND::unknown;
+  BackendLabel label = BackendLabel::eUnknown;
   auto backend =
       kTelemetryBackendLabel.find(cubeb_get_backend_id(handle->Context()));
   if (backend != kTelemetryBackendLabel.end()) {
     label = backend->second;
   }
-  AccumulateCategorical(label);
 
-  mozilla::glean::media_audio::backend
-      .Get(backend != kTelemetryBackendLabel.end()
-               ? nsDependentCString(cubeb_get_backend_id(handle->Context()))
-               : nsCString("unknown"_ns))
-      .Add();
+  mozilla::glean::media_audio::backend.EnumGet(label).Add();
 }
 
 void ReportCubebStreamInitFailure(bool aIsFirst) {
@@ -654,8 +658,6 @@ void ReportCubebStreamInitFailure(bool aIsFirst) {
     // failures to open multiple streams in a process over time.
     return;
   }
-  AccumulateCategorical(aIsFirst ? LABELS_MEDIA_AUDIO_INIT_FAILURE::first
-                                 : LABELS_MEDIA_AUDIO_INIT_FAILURE::other);
   mozilla::glean::media_audio::init_failure
       .EnumGet(aIsFirst ? mozilla::glean::media_audio::InitFailureLabel::eFirst
                         : mozilla::glean::media_audio::InitFailureLabel::eOther)
@@ -685,12 +687,11 @@ uint32_t GetCubebMTGLatencyInFrames(cubeb_stream_params* params) {
   }
 
 #ifdef MOZ_WIDGET_ANDROID
-  int frames = AndroidGetAudioOutputFramesPerBuffer();
-  if (frames > 0) {
-    return frames;
-  } else {
-    return 512;
-  }
+  int32_t frames = AndroidGetAudioOutputFramesPerBuffer();
+  // Allow extra time until audioipc threads are scheduled with higher
+  // priority (bug 1931080).  768 was not sufficient on a Samsung SM-A528B
+  // when switching to the home screen.
+  return std::max(1024, frames);
 #else
   RefPtr<CubebHandle> handle = GetCubebUnlocked();
   if (!handle) {

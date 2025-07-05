@@ -1,16 +1,18 @@
 [DEFAULT]
 head = "head.js"
+tags = "inc-origin-init"
 support-files = [
   "bug1425146_profile.zip",
   "schema_15_profile.zip",
   "schema_25_profile.zip",
 ]
-# dummy test entry to generate profile zip files
 
 ["make_profile.js"]
-skip-if = ["true"]
+run-if = ["false"] # dummy test entry to generate profile zip files
 
 ["test_bug1425146.js"]
+
+["test_databaseWorkStarted.js"]
 
 ["test_empty_directories.js"]
 
@@ -21,3 +23,7 @@ skip-if = ["true"]
 ["test_padding_error_handle.js"]
 
 ["test_schema_26_upgrade.js"]
+
+["test_slowDatabaseInitialization.js"]
+
+["test_slowStorageInitialization.js"]

@@ -300,20 +300,19 @@ class Animation : public DOMEventTargetHelper,
   /**
    * Returns true if this Animation has a lower composite order than aOther.
    */
-   struct EventContext {
+  struct EventContext {
     NonOwningAnimationTarget mTarget;
     uint64_t mIndex;
   };
- 
   // Note: we provide |aContext|/|aOtherContext| only when it is a cancelled
   // transition or animation (for overridding the target and animation index).
-
-  bool HasLowerCompositeOrderThan(
-      const Maybe<EventContext>& aContext, const Animation& aOther,
-      const Maybe<EventContext>& aOtherContext) const;
-
-  bool HasLowerCompositeOrderThan(const Animation& aOther) const {
-    return HasLowerCompositeOrderThan(Nothing(), aOther, Nothing());
+  int32_t CompareCompositeOrder(const Maybe<EventContext>& aContext,
+                                const Animation& aOther,
+                                const Maybe<EventContext>& aOtherContext,
+                                nsContentUtils::NodeIndexCache&) const;
+  int32_t CompareCompositeOrder(const Animation& aOther,
+                                nsContentUtils::NodeIndexCache& aCache) const {
+    return CompareCompositeOrder(Nothing(), aOther, Nothing(), aCache);
   }
 
   /**
@@ -344,8 +343,10 @@ class Animation : public DOMEventTargetHelper,
    * Any properties contained in |aPropertiesToSkip| will not be added or
    * updated in |aComposeResult|.
    */
-  void ComposeStyle(StyleAnimationValueMap& aComposeResult,
-                    const InvertibleAnimatedPropertyIDSet& aPropertiesToSkip);
+  void ComposeStyle(
+      StyleAnimationValueMap& aComposeResult,
+      const InvertibleAnimatedPropertyIDSet& aPropertiesToSkip,
+      EndpointBehavior aEndpointBehavior = EndpointBehavior::Exclusive);
 
   void NotifyEffectTimingUpdated();
   void NotifyEffectPropertiesUpdated();
@@ -360,8 +361,6 @@ class Animation : public DOMEventTargetHelper,
    * exist when we would normally go to queue events on the next tick.
    */
   virtual void MaybeQueueCancelEvent(const StickyTimeDuration& aActiveTime) {};
-
-  Maybe<uint32_t>& CachedChildIndexRef() { return mCachedChildIndex; }
 
   void SetPartialPrerendered(uint64_t aIdOnCompositor) {
     mIdOnCompositor = aIdOnCompositor;
@@ -551,10 +550,6 @@ class Animation : public DOMEventTargetHelper,
   // this member to implement their own brand of sorting. As a result, it is
   // possible for two different objects to have the same index.
   uint64_t mAnimationIndex;
-
-  // While ordering Animation objects for event dispatch, the index of the
-  // target node in its parent may be cached in mCachedChildIndex.
-  Maybe<uint32_t> mCachedChildIndex;
 
   // Indicates if the animation is in the pending state (and what state it is
   // waiting to enter when it finished pending).

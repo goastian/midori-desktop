@@ -12,8 +12,12 @@
 #include "FFmpegLog.h"
 
 #include "mozilla/layers/DMABUFSurfaceImage.h"
-#include "mozilla/widget/DMABufLibWrapper.h"
+#include "mozilla/widget/DMABufDevice.h"
 #include "mozilla/widget/DMABufSurface.h"
+
+namespace mozilla::layers {
+class PlanarYCbCrImage;
+}
 
 namespace mozilla {
 
@@ -63,13 +67,20 @@ class VideoFrameSurface<LIBAV_VER> {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VideoFrameSurface)
 
-  explicit VideoFrameSurface(DMABufSurface* aSurface);
+  explicit VideoFrameSurface(DMABufSurface* aSurface,
+                             VASurfaceID aFFMPEGSurfaceID);
 
   void SetYUVColorSpace(mozilla::gfx::YUVColorSpace aColorSpace) {
     mSurface->GetAsDMABufSurfaceYUV()->SetYUVColorSpace(aColorSpace);
   }
   void SetColorRange(mozilla::gfx::ColorRange aColorRange) {
     mSurface->GetAsDMABufSurfaceYUV()->SetColorRange(aColorRange);
+  }
+  void SetColorPrimaries(mozilla::gfx::ColorSpace2 aColorPrimaries) {
+    mSurface->GetAsDMABufSurfaceYUV()->SetColorPrimaries(aColorPrimaries);
+  }
+  void SetTransferFunction(mozilla::gfx::TransferFunction aTransferFunction) {
+    mSurface->GetAsDMABufSurfaceYUV()->SetTransferFunction(aTransferFunction);
   }
 
   RefPtr<DMABufSurfaceYUV> GetDMABufSurface() {
@@ -84,6 +95,8 @@ class VideoFrameSurface<LIBAV_VER> {
   VideoFrameSurface(const VideoFrameSurface&) = delete;
   const VideoFrameSurface& operator=(VideoFrameSurface const&) = delete;
 
+  void DisableRecycle();
+
  protected:
   // Lock VAAPI related data
   void LockVAAPIData(AVCodecContext* aAVCodecContext, AVFrame* aAVFrame,
@@ -94,14 +107,10 @@ class VideoFrameSurface<LIBAV_VER> {
 
   // Check if DMABufSurface is used by any gecko rendering process
   // (WebRender or GL compositor) or by DMABUFSurfaceImage/VideoData.
-  bool IsUsed() const { return mSurface->IsGlobalRefSet(); }
+  bool IsUsedByRenderer() const { return mSurface->IsGlobalRefSet(); }
 
   // Surface points to dmabuf memmory owned by ffmpeg.
   bool IsFFMPEGSurface() const { return !!mLib; }
-
-  void MarkAsUsed(VASurfaceID aFFMPEGSurfaceID) {
-    mFFMPEGSurfaceID = Some(aFFMPEGSurfaceID);
-  }
 
  private:
   virtual ~VideoFrameSurface();
@@ -110,7 +119,8 @@ class VideoFrameSurface<LIBAV_VER> {
   const FFmpegLibWrapper* mLib;
   AVBufferRef* mAVHWFrameContext;
   AVBufferRef* mHWAVBuffer;
-  Maybe<VASurfaceID> mFFMPEGSurfaceID;
+  VASurfaceID mFFMPEGSurfaceID;
+  bool mHoldByFFmpeg;
 };
 
 // VideoFramePool class is thread-safe.
@@ -128,21 +138,30 @@ class VideoFramePool<LIBAV_VER> {
       AVDRMFrameDescriptor& aDesc, int aWidth, int aHeight,
       AVCodecContext* aAVCodecContext, AVFrame* aAVFrame,
       FFmpegLibWrapper* aLib);
+  RefPtr<VideoFrameSurface<LIBAV_VER>> GetVideoFrameSurface(
+      const layers::PlanarYCbCrData& aData, AVCodecContext* aAVCodecContext);
 
   void ReleaseUnusedVAAPIFrames();
+  void FlushFFmpegFrames();
 
  private:
-  RefPtr<VideoFrameSurface<LIBAV_VER>> GetFreeVideoFrameSurface();
+  RefPtr<VideoFrameSurface<LIBAV_VER>> GetTargetVideoFrameSurfaceLocked(
+      const MutexAutoLock& aProofOfLock, VASurfaceID aFFmpegSurfaceID,
+      bool aRecycleSurface);
+  RefPtr<VideoFrameSurface<LIBAV_VER>> GetFFmpegVideoFrameSurfaceLocked(
+      const MutexAutoLock& aProofOfLock, VASurfaceID aFFMPEGSurfaceID);
+  RefPtr<VideoFrameSurface<LIBAV_VER>> GetFreeVideoFrameSurfaceLocked(
+      const MutexAutoLock& aProofOfLock);
   bool ShouldCopySurface();
-  void CheckNewFFMPEGSurface(VASurfaceID aNewSurfaceID);
 
  private:
   // Protect mDMABufSurfaces pool access
   Mutex mSurfaceLock MOZ_UNANNOTATED;
   nsTArray<RefPtr<VideoFrameSurface<LIBAV_VER>>> mDMABufSurfaces;
-  // Number of dmabuf surfaces allocated by ffmpeg for decoded video frames.
-  // Can be adjusted by extra_hw_frames at InitVAAPICodecContext().
-  int mFFMPEGPoolSize;
+  // Maximal number of dmabuf surfaces allocated by ffmpeg for decoded video
+  // frames. Can be adjusted by extra_hw_frames at InitVAAPICodecContext().
+  // Zero meand unlimited / dynamically allocated pool.
+  int mMaxFFMPEGPoolSize;
   // We may fail to create texture over DMABuf memory due to driver bugs so
   // check that before we export first DMABuf video frame.
   Maybe<bool> mTextureCreationWorks;

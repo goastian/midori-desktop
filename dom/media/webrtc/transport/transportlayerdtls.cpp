@@ -16,8 +16,9 @@
 #include "dtlsidentity.h"
 #include "keyhi.h"
 #include "logging.h"
-#include "mozilla/glean/GleanMetrics.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/DomMediaWebrtcMetrics.h"
+#include "mozilla/StaticPrefs_media.h"
+#include "mozilla/StaticPrefs_security.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "nsCOMPtr.h"
@@ -447,11 +448,6 @@ void TransportLayerDtls::SetMinMaxVersion(Version min_version,
   maxVersion_ = max_version;
 }
 
-// These are the named groups that we will allow.
-static const SSLNamedGroup NamedGroupPreferences[] = {
-    ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
-    ssl_grp_ffdhe_2048, ssl_grp_ffdhe_3072};
-
 // TODO: make sure this is called from STS. Otherwise
 // we have thread safety issues
 bool TransportLayerDtls::Setup() {
@@ -597,10 +593,36 @@ bool TransportLayerDtls::Setup() {
     return false;
   }
 
-  rv = SSL_NamedGroupConfig(ssl_fd.get(), NamedGroupPreferences,
-                            mozilla::ArrayLength(NamedGroupPreferences));
+  unsigned int additional_shares =
+      StaticPrefs::security_tls_client_hello_send_p256_keyshare();
+
+  const SSLNamedGroup namedGroups[] = {
+      ssl_grp_ec_curve25519, ssl_grp_ec_secp256r1, ssl_grp_ec_secp384r1,
+      ssl_grp_ffdhe_2048, ssl_grp_ffdhe_3072,
+      // Advertise MLKEM support but do not pro-actively send a keyshare
+
+      // Mlkem must stay the last in the list because if we don't support it
+      // the amount of supported_groups will be sent without it.
+      ssl_grp_kem_mlkem768x25519};
+
+  size_t numGroups = std::size(namedGroups);
+  if (!(StaticPrefs::security_tls_enable_kyber() &&
+        StaticPrefs::media_webrtc_enable_pq_dtls() &&
+        maxVersion_ >= Version::DTLS_1_3)) {
+    // Excluding the last group of the namedGroups.
+    numGroups -= 1;
+  }
+
+  rv = SSL_NamedGroupConfig(ssl_fd.get(), namedGroups, numGroups);
+
   if (rv != SECSuccess) {
     MOZ_MTLOG(ML_ERROR, "Couldn't set named groups");
+    return false;
+  }
+
+  if (SECSuccess !=
+      SSL_SendAdditionalKeyShares(ssl_fd.get(), additional_shares)) {
+    MOZ_MTLOG(ML_ERROR, "Couldn't set up additional key shares");
     return false;
   }
 
@@ -879,6 +901,11 @@ void TransportLayerDtls::Handshake() {
     return;
   }
 
+  if (!handshakeTelemetryRecorded) {
+    RecordStartedHandshakeTelemetry();
+    handshakeTelemetryRecorded = true;
+  }
+
   // Clear the retransmit timer
   timer_->Cancel();
 
@@ -890,8 +917,8 @@ void TransportLayerDtls::Handshake() {
     MOZ_MTLOG(ML_NOTICE, LAYER_INFO << "****** SSL handshake completed ******");
     if (!cert_ok_) {
       MOZ_MTLOG(ML_ERROR, LAYER_INFO << "Certificate check never occurred");
-      TL_SET_STATE(TS_ERROR);
       RecordHandshakeCompletionTelemetry("CERT_FAILURE");
+      TL_SET_STATE(TS_ERROR);
       return;
     }
     if (!CheckAlpn()) {
@@ -899,14 +926,14 @@ void TransportLayerDtls::Handshake() {
       // Forcibly close the connection so that the peer isn't left hanging
       // (assuming the close_notify isn't dropped).
       ssl_fd_ = nullptr;
-      TL_SET_STATE(TS_ERROR);
       RecordHandshakeCompletionTelemetry("ALPN_FAILURE");
+      TL_SET_STATE(TS_ERROR);
       return;
     }
 
+    RecordHandshakeCompletionTelemetry("SUCCESS");
     TL_SET_STATE(TS_OPEN);
 
-    RecordHandshakeCompletionTelemetry("SUCCESS");
     RecordTlsTelemetry();
     timer_ = nullptr;
   } else {
@@ -936,8 +963,8 @@ void TransportLayerDtls::Handshake() {
         const char* err_msg = PR_ErrorToName(err);
         MOZ_MTLOG(ML_ERROR, LAYER_INFO << "DTLS handshake error " << err << " ("
                                        << err_msg << ")");
-        TL_SET_STATE(TS_ERROR);
         RecordHandshakeCompletionTelemetry(err_msg);
+        TL_SET_STATE(TS_ERROR);
         break;
     }
   }
@@ -1482,6 +1509,14 @@ void TransportLayerDtls::RecordHandshakeCompletionTelemetry(
   } else {
     mozilla::glean::webrtcdtls::server_handshake_result.Get(nsCString(aResult))
         .Add(1);
+  }
+}
+
+void TransportLayerDtls::RecordStartedHandshakeTelemetry() {
+  if (role_ == CLIENT) {
+    mozilla::glean::webrtcdtls::client_handshake_started_counter.Add(1);
+  } else {
+    mozilla::glean::webrtcdtls::server_handshake_started_counter.Add(1);
   }
 }
 

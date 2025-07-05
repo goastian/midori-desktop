@@ -5,23 +5,23 @@
 
 #include "ChromiumCDMParent.h"
 
+#include "AnnexB.h"
 #include "ChromiumCDMCallback.h"
 #include "ChromiumCDMCallbackProxy.h"
 #include "ChromiumCDMProxy.h"
-#include "content_decryption_module.h"
 #include "GMPContentChild.h"
 #include "GMPContentParent.h"
 #include "GMPLog.h"
 #include "GMPService.h"
 #include "GMPUtils.h"
+#include "H264.h"
 #include "VideoUtils.h"
-#include "mozilla/dom/MediaKeyMessageEventBinding.h"
-#include "mozilla/gmp/GMPTypes.h"
+#include "content_decryption_module.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/Unused.h"
-#include "AnnexB.h"
-#include "H264.h"
+#include "mozilla/dom/MediaKeyMessageEventBinding.h"
+#include "mozilla/gmp/GMPTypes.h"
 
 #define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
 
@@ -1090,7 +1090,7 @@ ipc::IPCResult ChromiumCDMParent::RecvDecodeFailed(const uint32_t& aStatus) {
           RESULT_DETAIL(
               "ChromiumCDMParent::RecvDecodeFailed with status %s (%" PRIu32
               ")",
-              CdmStatusToString(aStatus), aStatus)),
+              cdm::EnumValueToString(cdm::Status(aStatus)), aStatus)),
       __func__);
   return IPC_OK();
 }
@@ -1201,10 +1201,10 @@ ipc::IPCResult ChromiumCDMParent::RecvOnDecoderInitDone(
   } else {
     mVideoDecoderInitialized = false;
     mInitVideoDecoderPromise.RejectIfExists(
-        MediaResult(
-            NS_ERROR_DOM_MEDIA_FATAL_ERR,
-            RESULT_DETAIL("CDM init decode failed with status %s (%" PRIu32 ")",
-                          CdmStatusToString(aStatus), aStatus)),
+        MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                    RESULT_DETAIL(
+                        "CDM init decode failed with status %s (%" PRIu32 ")",
+                        cdm::EnumValueToString(cdm::Status(aStatus)), aStatus)),
         __func__);
   }
   return IPC_OK();

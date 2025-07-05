@@ -313,21 +313,8 @@ NS_IMPL_ISUPPORTS(ConsumeBodyDoneObserver, nsIStreamLoaderObserver)
 
     workerRef = new ThreadSafeWorkerRef(strongWorkerRef);
   } else {
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-    if (NS_WARN_IF(!os)) {
-      aRv.Throw(NS_ERROR_FAILURE);
-      return nullptr;
-    }
-
-    aRv = os->AddObserver(consumer, DOM_WINDOW_DESTROYED_TOPIC, true);
-    if (NS_WARN_IF(aRv.Failed())) {
-      return nullptr;
-    }
-
-    aRv = os->AddObserver(consumer, DOM_WINDOW_FROZEN_TOPIC, true);
-    if (NS_WARN_IF(aRv.Failed())) {
-      return nullptr;
-    }
+    consumer->GlobalTeardownObserver::BindToOwner(aGlobal);
+    consumer->GlobalFreezeObserver::BindToOwner(aGlobal);
   }
 
   nsCOMPtr<nsIRunnable> r = new BeginConsumeBodyRunnable(consumer, workerRef);
@@ -347,11 +334,8 @@ void BodyConsumer::ReleaseObject() {
   AssertIsOnTargetThread();
 
   if (NS_IsMainThread()) {
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-    if (os) {
-      os->RemoveObserver(this, DOM_WINDOW_DESTROYED_TOPIC);
-      os->RemoveObserver(this, DOM_WINDOW_FROZEN_TOPIC);
-    }
+    GlobalTeardownObserver::DisconnectFromOwner();
+    DisconnectFreezeObserver();
   }
 
   mGlobal = nullptr;
@@ -455,25 +439,17 @@ nsresult BodyConsumer::GetBodyLocalFile(nsIFile** aFile) const {
     return NS_OK;
   }
 
-  nsresult rv;
-  nsCOMPtr<nsIFile> file = do_CreateInstance("@mozilla.org/file/local;1", &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  rv = file->InitWithPath(mBodyLocalPath);
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<nsIFile> file;
+  MOZ_TRY(NS_NewLocalFile(mBodyLocalPath, getter_AddRefs(file)));
 
   bool exists;
-  rv = file->Exists(&exists);
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_TRY(file->Exists(&exists));
   if (!exists) {
     return NS_ERROR_FILE_NOT_FOUND;
   }
 
   bool isDir;
-  rv = file->IsDirectory(&isDir);
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_TRY(file->IsDirectory(&isDir));
   if (isDir) {
     return NS_ERROR_FILE_IS_DIRECTORY;
   }
@@ -683,10 +659,7 @@ void BodyConsumer::ContinueConsumeBody(nsresult aStatus, uint32_t aResultLength,
     } else {
       localPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
     }
-  }
 
-  // Don't warn here since we warned above.
-  if (NS_FAILED(aStatus)) {
     return;
   }
 
@@ -815,19 +788,10 @@ void BodyConsumer::ShutDownMainThreadConsuming() {
   }
 }
 
-NS_IMETHODIMP BodyConsumer::Observe(nsISupports* aSubject, const char* aTopic,
-                                    const char16_t* aData) {
+void BodyConsumer::MaybeAbortConsumption() {
   AssertIsOnMainThread();
 
-  MOZ_ASSERT((strcmp(aTopic, DOM_WINDOW_FROZEN_TOPIC) == 0) ||
-             (strcmp(aTopic, DOM_WINDOW_DESTROYED_TOPIC) == 0));
-
-  nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(mGlobal);
-  if (SameCOMIdentity(aSubject, window)) {
-    ContinueConsumeBody(NS_BINDING_ABORTED, 0, nullptr);
-  }
-
-  return NS_OK;
+  ContinueConsumeBody(NS_BINDING_ABORTED, 0, nullptr);
 }
 
 void BodyConsumer::RunAbortAlgorithm() {
@@ -836,6 +800,13 @@ void BodyConsumer::RunAbortAlgorithm() {
   ContinueConsumeBody(NS_ERROR_DOM_ABORT_ERR, 0, nullptr);
 }
 
-NS_IMPL_ISUPPORTS(BodyConsumer, nsIObserver, nsISupportsWeakReference)
+NS_IMPL_ADDREF(BodyConsumer)
+NS_IMPL_RELEASE(BodyConsumer)
+NS_INTERFACE_TABLE_HEAD(BodyConsumer)
+  NS_INTERFACE_TABLE_BEGIN
+    NS_INTERFACE_TABLE_ENTRY_AMBIGUOUS(BodyConsumer, nsISupports,
+                                       GlobalTeardownObserver)
+  NS_INTERFACE_TABLE_END
+NS_INTERFACE_TABLE_TAIL
 
 }  // namespace mozilla::dom

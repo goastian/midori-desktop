@@ -34,6 +34,7 @@
 #include "nsIScriptError.h"
 #include "nsMimeTypes.h"
 #include "nsProxyRelease.h"
+#include "nsGlobalWindowInner.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
 
@@ -166,10 +167,10 @@ NS_IMPL_RELEASE_INHERITED(MediaRecorder, DOMEventTargetHelper)
 
 namespace {
 bool PrincipalSubsumes(MediaRecorder* aRecorder, nsIPrincipal* aPrincipal) {
-  if (!aRecorder->GetOwner()) {
+  if (!aRecorder->GetOwnerWindow()) {
     return false;
   }
-  nsCOMPtr<Document> doc = aRecorder->GetOwner()->GetExtantDoc();
+  nsCOMPtr<Document> doc = aRecorder->GetOwnerWindow()->GetExtantDoc();
   if (!doc) {
     return false;
   }
@@ -197,8 +198,9 @@ bool MediaStreamTracksPrincipalSubsumes(
 bool AudioNodePrincipalSubsumes(MediaRecorder* aRecorder,
                                 AudioNode* aAudioNode) {
   MOZ_ASSERT(aAudioNode);
-  Document* doc =
-      aAudioNode->GetOwner() ? aAudioNode->GetOwner()->GetExtantDoc() : nullptr;
+  Document* doc = aAudioNode->GetOwnerWindow()
+                      ? aAudioNode->GetOwnerWindow()->GetExtantDoc()
+                      : nullptr;
   nsCOMPtr<nsIPrincipal> principal = doc ? doc->NodePrincipal() : nullptr;
   return PrincipalSubsumes(aRecorder, principal);
 }
@@ -599,10 +601,8 @@ class MediaRecorder::Session : public PrincipalChangeObserver<MediaStreamTrack>,
             mRecorder->mConstrainedMimeType)),
         mVideoBitsPerSecond(aVideoBitsPerSecond),
         mAudioBitsPerSecond(aAudioBitsPerSecond),
-        mStartTime(TimeStamp::Now()),
         mRunningState(RunningState::Idling) {
     MOZ_ASSERT(NS_IsMainThread());
-    Telemetry::ScalarAdd(Telemetry::ScalarID::MEDIARECORDER_RECORDING_COUNT, 1);
   }
 
   void PrincipalChanged(MediaStreamTrack* aTrack) override {
@@ -1056,13 +1056,6 @@ class MediaRecorder::Session : public PrincipalChangeObserver<MediaStreamTrack>,
       return mShutdownPromise;
     }
 
-    // This is a coarse calculation and does not reflect the duration of the
-    // final recording for reasons such as pauses. However it allows us an
-    // idea of how long people are running their recorders for.
-    TimeDuration timeDelta = TimeStamp::Now() - mStartTime;
-    Telemetry::Accumulate(Telemetry::MEDIA_RECORDER_RECORDING_DURATION,
-                          timeDelta.ToSeconds());
-
     mShutdownPromise = ShutdownPromise::CreateAndResolve(true, __func__);
 
     if (mEncoder) {
@@ -1162,8 +1155,6 @@ class MediaRecorder::Session : public PrincipalChangeObserver<MediaStreamTrack>,
   const uint32_t mVideoBitsPerSecond;
   // The audio bitrate the recorder was configured with.
   const uint32_t mAudioBitsPerSecond;
-  // The time this session started, for telemetry.
-  const TimeStamp mStartTime;
   // The session's current main thread state. The error type gets set when
   // ending a recording with an error. An NS_OK error is invalid.
   // Main thread only.
@@ -1192,7 +1183,7 @@ MediaRecorder::MediaRecorder(nsPIDOMWindowInner* aOwnerWindow)
 }
 
 void MediaRecorder::RegisterActivityObserver() {
-  if (nsPIDOMWindowInner* window = GetOwner()) {
+  if (nsPIDOMWindowInner* window = GetOwnerWindow()) {
     mDocument = window->GetExtantDoc();
     if (mDocument) {
       mDocument->RegisterActivityObserver(
@@ -1823,7 +1814,7 @@ void MediaRecorder::RemoveSession(Session* aSession) {
 }
 
 void MediaRecorder::NotifyOwnerDocumentActivityChanged() {
-  nsPIDOMWindowInner* window = GetOwner();
+  nsPIDOMWindowInner* window = GetOwnerWindow();
   NS_ENSURE_TRUE_VOID(window);
   Document* doc = window->GetExtantDoc();
   NS_ENSURE_TRUE_VOID(doc);

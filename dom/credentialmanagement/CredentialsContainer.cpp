@@ -5,25 +5,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Components.h"
+#include "mozilla/CredentialChosenCallback.h"
 #include "mozilla/dom/Credential.h"
 #include "mozilla/dom/CredentialsContainer.h"
 #include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/IdentityCredential.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_security.h"
-#include "mozilla/dom/WebAuthnManager.h"
+#include "mozilla/dom/WebAuthnHandler.h"
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/WindowContext.h"
 #include "nsContentUtils.h"
 #include "nsFocusManager.h"
 #include "nsICredentialChooserService.h"
-#include "nsICredentialChosenCallback.h"
 #include "nsIDocShell.h"
 
 namespace mozilla::dom {
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(CredentialsContainer, mParent, mManager)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(CredentialsContainer, mParent,
+                                      mWebAuthnHandler)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(CredentialsContainer)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(CredentialsContainer)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CredentialsContainer)
@@ -96,7 +98,9 @@ static bool ConsumeUserActivation(nsPIDOMWindowInner* aParent) {
   return doc->ConsumeTransientUserGestureActivation();
 }
 
-static bool IsSameOriginWithAncestors(nsPIDOMWindowInner* aParent) {
+// static
+bool CredentialsContainer::IsSameOriginWithAncestors(
+    nsPIDOMWindowInner* aParent) {
   // This method returns true if aParent is either not in a frame / iframe, or
   // is in a frame or iframe and all ancestors for aParent are the same origin.
   // This is useful for Credential Management because we need to prohibit
@@ -132,19 +136,19 @@ CredentialsContainer::CredentialsContainer(nsPIDOMWindowInner* aParent)
 
 CredentialsContainer::~CredentialsContainer() = default;
 
-void CredentialsContainer::EnsureWebAuthnManager() {
+void CredentialsContainer::EnsureWebAuthnHandler() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  if (!mManager) {
-    mManager = new WebAuthnManager(mParent);
+  if (!mWebAuthnHandler) {
+    mWebAuthnHandler = new WebAuthnHandler(mParent);
   }
 }
 
-already_AddRefed<WebAuthnManager> CredentialsContainer::GetWebAuthnManager() {
+already_AddRefed<WebAuthnHandler> CredentialsContainer::GetWebAuthnHandler() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  EnsureWebAuthnManager();
-  RefPtr<WebAuthnManager> ref = mManager;
+  EnsureWebAuthnHandler();
+  RefPtr<WebAuthnHandler> ref = mWebAuthnHandler;
   return ref.forget();
 }
 
@@ -152,44 +156,6 @@ JSObject* CredentialsContainer::WrapObject(JSContext* aCx,
                                            JS::Handle<JSObject*> aGivenProto) {
   return CredentialsContainer_Binding::Wrap(aCx, this, aGivenProto);
 }
-
-class CredentialChosenCallback final : public nsICredentialChosenCallback,
-                                       public nsINamed {
- public:
-  CredentialChosenCallback(Promise* aPromise, CredentialsContainer* aContainer)
-      : mPromise(aPromise), mContainer(aContainer) {
-    MOZ_ASSERT(NS_IsMainThread());
-  }
-
-  NS_IMETHOD
-  Notify(Credential* aCredential) override {
-    MOZ_ASSERT(NS_IsMainThread());
-    if (aCredential) {
-      mPromise->MaybeResolve(aCredential);
-    } else {
-      mPromise->MaybeResolve(JS::NullValue());
-    }
-
-    mContainer->mActiveIdentityRequest = false;
-    return NS_OK;
-  }
-
-  NS_IMETHOD
-  GetName(nsACString& aName) override {
-    aName.AssignLiteral("CredentialChosenCallback");
-    return NS_OK;
-  }
-
-  NS_DECL_ISUPPORTS
-
- private:
-  ~CredentialChosenCallback() = default;
-  RefPtr<Promise> mPromise;
-  RefPtr<CredentialsContainer> mContainer;
-};
-
-NS_IMPL_ISUPPORTS(CredentialChosenCallback, nsICredentialChosenCallback,
-                  nsINamed)
 
 already_AddRefed<Promise> CredentialsContainer::Get(
     const CredentialRequestOptions& aOptions, ErrorResult& aRv) {
@@ -228,9 +194,10 @@ already_AddRefed<Promise> CredentialsContainer::Get(
       return promise.forget();
     }
 
-    EnsureWebAuthnManager();
-    return mManager->GetAssertion(aOptions.mPublicKey.Value(),
-                                  conditionallyMediated, aOptions.mSignal, aRv);
+    EnsureWebAuthnHandler();
+    return mWebAuthnHandler->GetAssertion(aOptions.mPublicKey.Value(),
+                                          conditionallyMediated,
+                                          aOptions.mSignal, aRv);
   }
 
   if (aOptions.mIdentity.WasPassed() &&
@@ -255,64 +222,20 @@ already_AddRefed<Promise> CredentialsContainer::Get(
 
     RefPtr<CredentialsContainer> self = this;
 
-    if (StaticPrefs::
-            dom_security_credentialmanagement_identity_lightweight_enabled()) {
-      IdentityCredential::CollectFromCredentialStore(
-          mParent, aOptions, IsSameOriginWithAncestors(mParent))
-          ->Then(
-              GetCurrentSerialEventTarget(), __func__,
-              [self, promise](
-                  const nsTArray<RefPtr<IdentityCredential>>& credentials) {
-                if (credentials.Length() == 0) {
-                  self->mActiveIdentityRequest = false;
-                  promise->MaybeResolve(JS::NullValue());
-                } else {
-                  nsresult rv;
-                  nsCOMPtr<nsICredentialChooserService> ccService =
-                      mozilla::components::CredentialChooserService::Service(
-                          &rv);
-                  if (NS_WARN_IF(!ccService)) {
-                    self->mActiveIdentityRequest = false;
-                    promise->MaybeReject(rv);
-                    return;
-                  }
-                  RefPtr<CredentialChosenCallback> callback =
-                      new CredentialChosenCallback(promise, self);
-                  nsTArray<RefPtr<Credential>> argumentCredential;
-                  for (const RefPtr<IdentityCredential>& cred : credentials) {
-                    argumentCredential.AppendElement(cred);
-                  }
-                  rv = ccService->ShowCredentialChooser(
-                      self->mParent->GetBrowsingContext()->Top(),
-                      argumentCredential, callback);
-                  if (NS_FAILED(rv)) {
-                    self->mActiveIdentityRequest = false;
-                    promise->MaybeReject(rv);
-                    return;
-                  }
-                }
-              },
-              [self, promise](nsresult rv) {
-                self->mActiveIdentityRequest = false;
-                promise->MaybeReject(rv);
-              });
+    promise->AddCallbacksWithCycleCollectedArgs(
+        [](JSContext* aCx, JS::Handle<JS::Value> aValue, ErrorResult& aRv,
+           const RefPtr<CredentialsContainer>& aContainer) {
+          aContainer->mActiveIdentityRequest = false;
+        },
+        [](JSContext* aCx, JS::Handle<JS::Value> aValue, ErrorResult& aRv,
+           const RefPtr<CredentialsContainer>& aContainer) {
+          aContainer->mActiveIdentityRequest = false;
+        },
+        self);
 
-      return promise.forget();
-    }
-
-    IdentityCredential::DiscoverFromExternalSource(
-        mParent, aOptions, IsSameOriginWithAncestors(mParent))
-        ->Then(
-            GetCurrentSerialEventTarget(), __func__,
-            [self, promise](const RefPtr<IdentityCredential>& credential) {
-              self->mActiveIdentityRequest = false;
-              promise->MaybeResolve(credential);
-            },
-            [self, promise](nsresult error) {
-              self->mActiveIdentityRequest = false;
-              promise->MaybeReject(error);
-            });
-
+    IdentityCredentialRequestOptions options(aOptions.mIdentity.Value());
+    IdentityCredential::GetCredential(
+        mParent, aOptions, IsSameOriginWithAncestors(mParent), promise);
     return promise.forget();
   }
 
@@ -346,9 +269,9 @@ already_AddRefed<Promise> CredentialsContainer::Create(
       return CreateAndRejectWithNotAllowed(mParent, aRv);
     }
 
-    EnsureWebAuthnManager();
-    return mManager->MakeCredential(aOptions.mPublicKey.Value(),
-                                    aOptions.mSignal, aRv);
+    EnsureWebAuthnHandler();
+    return mWebAuthnHandler->MakeCredential(aOptions.mPublicKey.Value(),
+                                            aOptions.mSignal, aRv);
   }
 
   if (aOptions.mIdentity.WasPassed() &&
@@ -385,8 +308,8 @@ already_AddRefed<Promise> CredentialsContainer::Store(
       return CreateAndRejectWithNotAllowed(mParent, aRv);
     }
 
-    EnsureWebAuthnManager();
-    return mManager->Store(aCredential, aRv);
+    EnsureWebAuthnHandler();
+    return mWebAuthnHandler->Store(aCredential, aRv);
   }
 
   if (type.EqualsLiteral("identity") &&
@@ -424,7 +347,12 @@ already_AddRefed<Promise> CredentialsContainer::PreventSilentAccess(
     return nullptr;
   }
 
-  promise->MaybeResolveWithUndefined();
+  RefPtr<WindowGlobalChild> wgc = mParent->GetWindowGlobalChild();
+  MOZ_ASSERT(wgc);
+
+  wgc->SendPreventSilentAccess()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      [promise] { promise->MaybeResolveWithUndefined(); });
   return promise.forget();
 }
 

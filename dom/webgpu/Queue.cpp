@@ -14,12 +14,16 @@
 #include "ipc/WebGPUChild.h"
 #include "mozilla/Casting.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/dom/BufferSourceBinding.h"
+#include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/ImageBitmap.h"
 #include "mozilla/dom/OffscreenCanvas.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/WebGLTexelConversions.h"
 #include "mozilla/dom/WebGLTypes.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "nsLayoutUtils.h"
 #include "Utility.h"
 
@@ -58,11 +62,11 @@ already_AddRefed<dom::Promise> Queue::OnSubmittedWorkDone(ErrorResult& aRv) {
   return promise.forget();
 }
 
-void Queue::WriteBuffer(const Buffer& aBuffer, uint64_t aBufferOffset,
-                        const dom::ArrayBufferViewOrArrayBuffer& aData,
-                        uint64_t aDataOffset,
-                        const dom::Optional<uint64_t>& aSize,
-                        ErrorResult& aRv) {
+void Queue::WriteBuffer(
+    const Buffer& aBuffer, uint64_t aBufferOffset,
+    const dom::MaybeSharedArrayBufferOrMaybeSharedArrayBufferView& aData,
+    uint64_t aDataOffset, const dom::Optional<uint64_t>& aSize,
+    ErrorResult& aRv) {
   if (!aBuffer.mId) {
     // Invalid buffers are unknown to the parent -- don't try to write
     // to them.
@@ -76,92 +80,162 @@ void Queue::WriteBuffer(const Buffer& aBuffer, uint64_t aBufferOffset,
       elementByteSize = byteSize(type);
     }
   }
-  dom::ProcessTypedArraysFixed(aData, [&, elementByteSize](
-                                          const Span<const uint8_t>& aData) {
-    uint64_t byteLength = aData.Length();
+  dom::ProcessTypedArraysFixed(
+      aData, [&, elementByteSize](const Span<const uint8_t>& aData) {
+        uint64_t byteLength = aData.Length();
 
-    auto checkedByteOffset =
-        CheckedInt<uint64_t>(aDataOffset) * elementByteSize;
-    if (!checkedByteOffset.isValid()) {
-      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
-    }
-    auto offset = checkedByteOffset.value();
+        auto checkedByteOffset =
+            CheckedInt<uint64_t>(aDataOffset) * elementByteSize;
+        if (!checkedByteOffset.isValid()) {
+          aRv.ThrowOperationError("offset x element size overflows");
+          return;
+        }
+        auto offset = checkedByteOffset.value();
 
-    const auto checkedByteSize =
-        aSize.WasPassed() ? CheckedInt<size_t>(aSize.Value()) * elementByteSize
-                          : CheckedInt<size_t>(byteLength) - offset;
-    if (!checkedByteSize.isValid()) {
-      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
-    }
-    auto size = checkedByteSize.value();
+        size_t size;
+        if (aSize.WasPassed()) {
+          const auto checkedByteSize =
+              CheckedInt<size_t>(aSize.Value()) * elementByteSize;
+          if (!checkedByteSize.isValid()) {
+            aRv.ThrowOperationError("write size x element size overflows");
+            return;
+          }
+          size = checkedByteSize.value();
+        } else {
+          const auto checkedByteSize = CheckedInt<size_t>(byteLength) - offset;
+          if (!checkedByteSize.isValid()) {
+            aRv.ThrowOperationError("data byte length - offset underflows");
+            return;
+          }
+          size = checkedByteSize.value();
+        }
 
-    auto checkedByteEnd = CheckedInt<uint64_t>(offset) + size;
-    if (!checkedByteEnd.isValid() || checkedByteEnd.value() > byteLength) {
-      aRv.ThrowAbortError(nsPrintfCString("Wrong data size %" PRIuPTR, size));
-      return;
-    }
+        auto checkedByteEnd = CheckedInt<uint64_t>(offset) + size;
+        if (!checkedByteEnd.isValid() || checkedByteEnd.value() > byteLength) {
+          aRv.ThrowOperationError(
+              nsPrintfCString("Wrong data size %" PRIuPTR, size));
+          return;
+        }
 
-    if (size % 4 != 0) {
-      aRv.ThrowAbortError("Byte size must be a multiple of 4");
-      return;
-    }
+        if (size % 4 != 0) {
+          aRv.ThrowOperationError("Byte size must be a multiple of 4");
+          return;
+        }
 
-    auto alloc = mozilla::ipc::UnsafeSharedMemoryHandle::CreateAndMap(size);
-    if (alloc.isNothing()) {
-      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
-    }
+        mozilla::ipc::MutableSharedMemoryHandle handle;
+        if (size != 0) {
+          handle = mozilla::ipc::shared_memory::Create(size);
+          auto mapping = handle.Map();
+          if (!handle || !mapping) {
+            aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+            return;
+          }
 
-    auto handle = std::move(alloc.ref().first);
-    auto mapping = std::move(alloc.ref().second);
-
-    memcpy(mapping.Bytes().data(), aData.Elements() + aDataOffset, size);
-    ipc::ByteBuf bb;
-    ffi::wgpu_queue_write_buffer(aBuffer.mId, aBufferOffset, ToFFI(&bb));
-    mBridge->SendQueueWriteAction(mId, mParent->mId, std::move(bb),
-                                  std::move(handle));
-  });
+          memcpy(mapping.DataAs<uint8_t>(), aData.Elements() + offset, size);
+        }
+        ipc::ByteBuf bb;
+        ffi::wgpu_queue_write_buffer(aBuffer.mId, aBufferOffset, ToFFI(&bb));
+        mBridge->SendQueueWriteAction(mId, mParent->mId, std::move(bb),
+                                      std::move(handle));
+      });
 }
 
-void Queue::WriteTexture(const dom::GPUImageCopyTexture& aDestination,
-                         const dom::ArrayBufferViewOrArrayBuffer& aData,
-                         const dom::GPUImageDataLayout& aDataLayout,
-                         const dom::GPUExtent3D& aSize, ErrorResult& aRv) {
-  ffi::WGPUImageCopyTexture copyView = {};
+static CheckedInt<size_t> ComputeApproxSize(
+    const dom::GPUTexelCopyTextureInfo& aDestination,
+    const dom::GPUTexelCopyBufferLayout& aDataLayout,
+    const ffi::WGPUExtent3d& extent,
+    const ffi::WGPUTextureFormatBlockInfo& info) {
+  // The spec's algorithm for [validating linear texture data][vltd] computes
+  // an exact size for the transfer. wgpu implements the algorithm and will
+  // fully validate the operation as described in the spec.
+  //
+  // Here, we just want to avoid copying excessive amounts of data in the case
+  // where the transfer will use only a small portion of the buffer. So we
+  // compute an approximation that will be at least the actual transfer size
+  // for any valid request. Then we copy the smaller of the approximated size
+  // or the remainder of the buffer.
+  //
+  // [vltd]:
+  // https://www.w3.org/TR/webgpu/#abstract-opdef-validating-linear-texture-data
+
+  // VLTD requires that width/height are multiples of the block size.
+  auto widthInBlocks = extent.width / info.width;
+  auto heightInBlocks = extent.height / info.height;
+  auto bytesInLastRow = CheckedInt<size_t>(widthInBlocks) * info.copy_size;
+
+  // VLTD requires bytesPerRow present if heightInBlocks > 1.
+  auto bytesPerRow = CheckedInt<size_t>(aDataLayout.mBytesPerRow.WasPassed()
+                                            ? aDataLayout.mBytesPerRow.Value()
+                                            : bytesInLastRow);
+
+  if (extent.depth_or_array_layers > 1) {
+    // VLTD requires rowsPerImage present if layers > 1
+    auto rowsPerImage = aDataLayout.mRowsPerImage.WasPassed()
+                            ? aDataLayout.mRowsPerImage.Value()
+                            : heightInBlocks;
+    return bytesPerRow * rowsPerImage * extent.depth_or_array_layers;
+  } else {
+    return bytesPerRow * heightInBlocks;
+  }
+}
+
+void Queue::WriteTexture(
+    const dom::GPUTexelCopyTextureInfo& aDestination,
+    const dom::MaybeSharedArrayBufferOrMaybeSharedArrayBufferView& aData,
+    const dom::GPUTexelCopyBufferLayout& aDataLayout,
+    const dom::GPUExtent3D& aSize, ErrorResult& aRv) {
+  ffi::WGPUTexelCopyTextureInfo copyView = {};
   CommandEncoder::ConvertTextureCopyViewToFFI(aDestination, &copyView);
-  ffi::WGPUImageDataLayout dataLayout = {};
+  ffi::WGPUTexelCopyBufferLayout dataLayout = {};
   CommandEncoder::ConvertTextureDataLayoutToFFI(aDataLayout, &dataLayout);
   dataLayout.offset = 0;  // our Shmem has the contents starting from 0.
   ffi::WGPUExtent3d extent = {};
   ConvertExtent3DToFFI(aSize, &extent);
 
-  dom::ProcessTypedArraysFixed(aData, [&](const Span<const uint8_t>& aData) {
-    if (aData.IsEmpty()) {
-      aRv.ThrowAbortError("Input size cannot be zero.");
-      return;
-    }
+  auto format = ConvertTextureFormat(aDestination.mTexture->Format());
+  auto aspect = ConvertTextureAspect(aDestination.mAspect);
+  ffi::WGPUTextureFormatBlockInfo info = {};
+  bool valid = ffi::wgpu_texture_format_get_block_info(format, aspect, &info);
+  CheckedInt<size_t> approxSize;
+  if (valid) {
+    approxSize = ComputeApproxSize(aDestination, aDataLayout, extent, info);
+  } else {
+    // This happens when the caller does not indicate a single aspect to
+    // target in a multi-aspect texture. It needs to be validated on the
+    // device timeline, so proceed without an estimated size for now
+    approxSize = CheckedInt<size_t>(SIZE_MAX) + 1;
+  }
 
+  dom::ProcessTypedArraysFixed(aData, [&](const Span<const uint8_t>& aData) {
     const auto checkedSize =
         CheckedInt<size_t>(aData.Length()) - aDataLayout.mOffset;
-    if (!checkedSize.isValid()) {
-      aRv.ThrowAbortError("Offset is higher than the size");
-      return;
+    size_t size;
+    if (checkedSize.isValid() && approxSize.isValid()) {
+      size = std::min(checkedSize.value(), approxSize.value());
+    } else if (checkedSize.isValid()) {
+      size = checkedSize.value();
+    } else {
+      // CheckedSize is invalid when the caller-provided offset was past the
+      // end of their buffer. Maintain that condition, and fail the operation
+      // on the device timeline.
+      dataLayout.offset = 1;
+      size = 0;
     }
-    const auto size = checkedSize.value();
 
-    auto alloc = mozilla::ipc::UnsafeSharedMemoryHandle::CreateAndMap(size);
-    if (alloc.isNothing()) {
-      aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return;
+    mozilla::ipc::MutableSharedMemoryHandle handle;
+    if (size != 0) {
+      handle = mozilla::ipc::shared_memory::Create(size);
+      auto mapping = handle.Map();
+      if (!handle || !mapping) {
+        aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+        return;
+      }
+
+      memcpy(mapping.DataAs<uint8_t>(), aData.Elements() + aDataLayout.mOffset,
+             size);
+    } else {
+      handle = mozilla::ipc::MutableSharedMemoryHandle();
     }
-
-    auto handle = std::move(alloc.ref().first);
-    auto mapping = std::move(alloc.ref().second);
-
-    memcpy(mapping.Bytes().data(), aData.Elements() + aDataLayout.mOffset,
-           size);
 
     ipc::ByteBuf bb;
     ffi::wgpu_queue_write_texture(copyView, dataLayout, extent, ToFFI(&bb));
@@ -214,8 +288,8 @@ static WebGLTexelFormat ToWebGLTexelFormat(dom::GPUTextureFormat aFormat) {
 }
 
 void Queue::CopyExternalImageToTexture(
-    const dom::GPUImageCopyExternalImage& aSource,
-    const dom::GPUImageCopyTextureTagged& aDestination,
+    const dom::GPUCopyExternalImageSourceInfo& aSource,
+    const dom::GPUCopyExternalImageDestInfo& aDestination,
     const dom::GPUExtent3D& aCopySize, ErrorResult& aRv) {
   const auto dstFormat = ToWebGLTexelFormat(aDestination.mTexture->Format());
   if (dstFormat == WebGLTexelFormat::FormatNotSupportingAnyConversion) {
@@ -234,6 +308,16 @@ void Queue::CopyExternalImageToTexture(
       }
 
       sfeResult = nsLayoutUtils::SurfaceFromImageBitmap(bitmap, surfaceFlags);
+      break;
+    }
+    case decltype(aSource.mSource)::Type::eHTMLImageElement: {
+      const auto& image = aSource.mSource.GetAsHTMLImageElement();
+      if (image->NaturalWidth() == 0 || image->NaturalHeight() == 0) {
+        aRv.ThrowInvalidStateError("Zero-sized HTMLImageElement");
+        return;
+      }
+
+      sfeResult = nsLayoutUtils::SurfaceFromElement(image, surfaceFlags);
       break;
     }
     case decltype(aSource.mSource)::Type::eHTMLCanvasElement: {
@@ -385,18 +469,15 @@ void Queue::CopyExternalImageToTexture(
     return;
   }
 
-  auto alloc = mozilla::ipc::UnsafeSharedMemoryHandle::CreateAndMap(
-      dstByteLength.value());
-  if (alloc.isNothing()) {
+  auto handle = mozilla::ipc::shared_memory::Create(dstByteLength.value());
+  auto mapping = handle.Map();
+  if (!handle || !mapping) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
   }
 
-  auto handle = std::move(alloc.ref().first);
-  auto mapping = std::move(alloc.ref().second);
-
   const int32_t pixelSize = gfx::BytesPerPixel(surfaceFormat);
-  auto* dstBegin = mapping.Bytes().data();
+  auto* dstBegin = mapping.DataAs<uint8_t>();
   const auto* srcBegin =
       map.GetData() + srcOriginX * pixelSize + srcOriginY * map.GetStride();
   const auto srcOriginPos = gl::OriginPos::TopLeft;
@@ -410,7 +491,8 @@ void Queue::CopyExternalImageToTexture(
   if (!ConvertImage(dstWidth, dstHeight, srcBegin, srcStride, srcOriginPos,
                     srcFormat, srcPremultiplied, dstBegin, dstStrideVal,
                     dstOriginPos, dstFormat, aDestination.mPremultipliedAlpha,
-                    &wasTrivial)) {
+                    dom::PredefinedColorSpace::Srgb,
+                    dom::PredefinedColorSpace::Srgb, &wasTrivial)) {
     MOZ_ASSERT_UNREACHABLE("ConvertImage failed!");
     aRv.ThrowInvalidStateError(
         nsPrintfCString("Failed to convert source to destination format "
@@ -419,8 +501,8 @@ void Queue::CopyExternalImageToTexture(
     return;
   }
 
-  ffi::WGPUImageDataLayout dataLayout = {0, &dstStrideVal, &dstHeight};
-  ffi::WGPUImageCopyTexture copyView = {};
+  ffi::WGPUTexelCopyBufferLayout dataLayout = {0, &dstStrideVal, &dstHeight};
+  ffi::WGPUTexelCopyTextureInfo copyView = {};
   CommandEncoder::ConvertTextureCopyViewToFFI(aDestination, &copyView);
   ipc::ByteBuf bb;
   ffi::wgpu_queue_write_texture(copyView, dataLayout, extent, ToFFI(&bb));

@@ -10,6 +10,8 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLIFrameElementBinding.h"
 #include "mozilla/dom/FeaturePolicy.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
 #include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/StaticPrefs_dom.h"
@@ -331,10 +333,6 @@ void HTMLIFrameElement::SetLazyLoading() {
     return;
   }
 
-  if (!StaticPrefs::dom_iframe_lazy_loading_enabled()) {
-    return;
-  }
-
   // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#will-lazy-load-element-steps
   // "If scripting is disabled for element, then return false."
   Document* doc = OwnerDoc();
@@ -349,16 +347,7 @@ void HTMLIFrameElement::SetLazyLoading() {
 }
 
 void HTMLIFrameElement::StopLazyLoading() {
-  if (!mLazyLoading) {
-    return;
-  }
-
-  mLazyLoading = false;
-
-  Document* doc = OwnerDoc();
-  if (auto* obs = doc->GetLazyLoadObserver()) {
-    obs->Unobserve(*this);
-  }
+  CancelLazyLoading(false /* aClearLazyLoadState */);
 
   LoadSrc();
 
@@ -374,8 +363,49 @@ void HTMLIFrameElement::NodeInfoChanged(Document* aOldDoc) {
   if (mLazyLoading) {
     aOldDoc->GetLazyLoadObserver()->Unobserve(*this);
     mLazyLoading = false;
+  }
+
+  if (LoadingState() == Loading::Lazy) {
     SetLazyLoading();
   }
+}
+
+void HTMLIFrameElement::CancelLazyLoading(bool aClearLazyLoadState) {
+  if (!mLazyLoading) {
+    return;
+  }
+
+  Document* doc = OwnerDoc();
+  if (auto* obs = doc->GetLazyLoadObserver()) {
+    obs->Unobserve(*this);
+  }
+
+  mLazyLoading = false;
+
+  if (aClearLazyLoadState) {
+    mLazyLoadState.Clear();
+  }
+}
+
+void HTMLIFrameElement::GetSrcdoc(OwningTrustedHTMLOrString& aSrcdoc) {
+  GetHTMLAttr(nsGkAtoms::srcdoc, aSrcdoc.SetAsString());
+}
+
+void HTMLIFrameElement::SetSrcdoc(const TrustedHTMLOrString& aSrcdoc,
+                                  nsIPrincipal* aSubjectPrincipal,
+                                  ErrorResult& aError) {
+  constexpr nsLiteralString sink = u"HTMLIFrameElement srcdoc"_ns;
+
+  Maybe<nsAutoString> compliantStringHolder;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aSrcdoc, sink, kTrustedTypesOnlySinkGroup, *this, aSubjectPrincipal,
+          compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return;
+  }
+
+  SetHTMLAttr(nsGkAtoms::srcdoc, *compliantString, aError);
 }
 
 }  // namespace mozilla::dom

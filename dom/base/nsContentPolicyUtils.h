@@ -30,12 +30,8 @@
 
 #define NS_CONTENTPOLICY_CONTRACTID "@mozilla.org/layout/content-policy;1"
 #define NS_CONTENTPOLICY_CATEGORY "content-policy"
-#define NS_CONTENTPOLICY_CID                         \
-  {                                                  \
-    0x0e3afd3d, 0xeb60, 0x4c2b, {                    \
-      0x96, 0x3b, 0x56, 0xd7, 0xc4, 0x39, 0xf1, 0x24 \
-    }                                                \
-  }
+#define NS_CONTENTPOLICY_CID \
+  {0x0e3afd3d, 0xeb60, 0x4c2b, {0x96, 0x3b, 0x56, 0xd7, 0xc4, 0x39, 0xf1, 0x24}}
 
 /**
  * Evaluates to true if val is ACCEPT.
@@ -100,7 +96,6 @@ inline const char* NS_CP_ContentTypeName(nsContentPolicyType contentType) {
     CASE_RETURN(TYPE_SUBDOCUMENT);
     CASE_RETURN(TYPE_PING);
     CASE_RETURN(TYPE_XMLHTTPREQUEST);
-    CASE_RETURN(TYPE_OBJECT_SUBREQUEST);
     CASE_RETURN(TYPE_DTD);
     CASE_RETURN(TYPE_FONT);
     CASE_RETURN(TYPE_MEDIA);
@@ -149,6 +144,9 @@ inline const char* NS_CP_ContentTypeName(nsContentPolicyType contentType) {
     CASE_RETURN(TYPE_WEB_IDENTITY);
     CASE_RETURN(TYPE_WEB_TRANSPORT);
     CASE_RETURN(TYPE_INTERNAL_XMLHTTPREQUEST_SYNC);
+    CASE_RETURN(TYPE_INTERNAL_EXTERNAL_RESOURCE);
+    CASE_RETURN(TYPE_JSON);
+    CASE_RETURN(TYPE_INTERNAL_JSON_PRELOAD);
     CASE_RETURN(TYPE_END);
     case nsIContentPolicy::TYPE_INVALID:
       break;

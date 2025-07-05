@@ -10,21 +10,15 @@
 typedef long long GLint64;
 typedef unsigned long long GLuint64;
 
-[Pref="webgl.enable-webgl2",
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread",
- Exposed=(Window,Worker)]
+[Pref="webgl.enable-webgl2", Exposed=(Window,Worker)]
 interface WebGLSampler {
 };
 
-[Pref="webgl.enable-webgl2",
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread",
- Exposed=(Window,Worker)]
+[Pref="webgl.enable-webgl2", Exposed=(Window,Worker)]
 interface WebGLSync {
 };
 
-[Pref="webgl.enable-webgl2",
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread",
- Exposed=(Window,Worker)]
+[Pref="webgl.enable-webgl2", Exposed=(Window,Worker)]
 interface WebGLTransformFeedback {
 };
 
@@ -32,9 +26,7 @@ typedef ([AllowShared] Uint32Array or sequence<GLuint>) Uint32List;
 
 // WebGL2 spec has this as an empty interface that pulls in everything
 // via WebGL2RenderingContextBase.
-[Pref="webgl.enable-webgl2",
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread",
- Exposed=(Window,Worker)]
+[Pref="webgl.enable-webgl2", Exposed=(Window,Worker)]
 interface WebGL2RenderingContext
 {
 };
@@ -686,7 +678,7 @@ interface mixin WebGL2RenderingContextBase
     undefined clearBufferfi(GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil);
 
     /* Query Objects */
-    WebGLQuery? createQuery();
+    WebGLQuery createQuery();
     undefined deleteQuery(WebGLQuery? query);
     [WebGLHandlesContextLoss] GLboolean isQuery(WebGLQuery? query);
     undefined beginQuery(GLenum target, WebGLQuery query);
@@ -695,7 +687,7 @@ interface mixin WebGL2RenderingContextBase
     any getQueryParameter(WebGLQuery query, GLenum pname);
 
     /* Sampler Objects */
-    WebGLSampler? createSampler();
+    WebGLSampler createSampler();
     undefined deleteSampler(WebGLSampler? sampler);
     [WebGLHandlesContextLoss] GLboolean isSampler(WebGLSampler? sampler);
     undefined bindSampler(GLuint unit, WebGLSampler? sampler);
@@ -712,7 +704,7 @@ interface mixin WebGL2RenderingContextBase
     any getSyncParameter(WebGLSync sync, GLenum pname);
 
     /* Transform Feedback */
-    WebGLTransformFeedback? createTransformFeedback();
+    WebGLTransformFeedback createTransformFeedback();
     undefined deleteTransformFeedback(WebGLTransformFeedback? tf);
     [WebGLHandlesContextLoss] GLboolean isTransformFeedback(WebGLTransformFeedback? tf);
     undefined bindTransformFeedback(GLenum target, WebGLTransformFeedback? tf);
@@ -738,7 +730,7 @@ interface mixin WebGL2RenderingContextBase
     undefined uniformBlockBinding(WebGLProgram program, GLuint uniformBlockIndex, GLuint uniformBlockBinding);
 
     /* Vertex Array Objects */
-    WebGLVertexArrayObject? createVertexArray();
+    WebGLVertexArrayObject createVertexArray();
     undefined deleteVertexArray(WebGLVertexArrayObject? vertexArray);
     [WebGLHandlesContextLoss] GLboolean isVertexArray(WebGLVertexArrayObject? vertexArray);
     undefined bindVertexArray(WebGLVertexArrayObject? array);

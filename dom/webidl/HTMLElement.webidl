@@ -12,8 +12,7 @@
  * and create derivative works of this document.
  */
 
-[Exposed=Window,
- InstrumentedProps=(attributeStyleMap,hidePopover,popover,showPopover,togglePopover)]
+[Exposed=Window]
 interface HTMLElement : Element {
   [HTMLConstructor] constructor();
 
@@ -34,7 +33,7 @@ interface HTMLElement : Element {
 
   // user interaction
   [CEReactions, SetterThrows, Pure]
-           attribute boolean hidden;
+           attribute (boolean or unrestricted double or DOMString)? hidden;
   [CEReactions, SetterThrows, Pure]
            attribute boolean inert;
   [NeedsCallerType]
@@ -50,7 +49,7 @@ interface HTMLElement : Element {
            attribute DOMString contentEditable;
   [Pure]
   readonly attribute boolean isContentEditable;
-  [CEReactions, SetterThrows, Pure, Pref="dom.element.popover.enabled"]
+  [CEReactions, SetterThrows, Pure]
            attribute DOMString? popover;
   [CEReactions, SetterThrows, Pure]
            attribute boolean spellcheck;
@@ -60,6 +59,8 @@ interface HTMLElement : Element {
            attribute DOMString enterKeyHint;
   [CEReactions, Pure, SetterThrows]
            attribute DOMString autocapitalize;
+  [CEReactions, Pure, SetterThrows, Pref="dom.forms.autocorrect"]
+           attribute boolean autocorrect;
 
   attribute DOMString nonce;
 
@@ -75,12 +76,9 @@ interface HTMLElement : Element {
   [Throws]
   ElementInternals attachInternals();
 
-  [Throws, Pref="dom.element.popover.enabled"]
-  undefined showPopover();
-  [Throws, Pref="dom.element.popover.enabled"]
-  undefined hidePopover();
-  [Throws, Pref="dom.element.popover.enabled"]
-  boolean togglePopover(optional boolean force);
+  [Throws] undefined showPopover();
+  [Throws] undefined hidePopover();
+  [Throws] boolean togglePopover(optional boolean force);
 };
 
 // http://dev.w3.org/csswg/cssom-view/#extensions-to-the-htmlelement-interface

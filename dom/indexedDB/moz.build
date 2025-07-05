@@ -24,7 +24,13 @@ XPCSHELL_TESTS_MANIFESTS += [
     "test/unit/xpcshell-parent-process.toml",
 ]
 
-TEST_DIRS += ["test/gtest"]
+TEST_DIRS += ["test"]
+
+XPIDL_SOURCES += [
+    "nsIIndexedDatabaseManager.idl",
+]
+
+XPIDL_MODULE = "dom_indexeddb"
 
 EXPORTS.mozilla.dom += [
     "DatabaseFileInfoFwd.h",
@@ -54,6 +60,10 @@ EXPORTS.mozilla.dom.indexedDB += [
     "ThreadLocal.h",
 ]
 
+XPCOM_MANIFESTS += [
+    "components.conf",
+]
+
 UNIFIED_SOURCES += [
     "ActorsChild.cpp",
     "ActorsParentCommon.cpp",
@@ -73,6 +83,7 @@ UNIFIED_SOURCES += [
     "IndexedDatabaseManager.cpp",
     "IndexedDBCommon.cpp",
     "KeyPath.cpp",
+    "NotifyUtils.cpp",
     "ProfilerHelpers.cpp",
     "ReportInternalError.cpp",
     "SchemaUpgrades.cpp",

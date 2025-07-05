@@ -10,6 +10,7 @@
 #include "MemMapSnapshot.h"
 #include "ScriptPreloader-inl.h"
 
+#include "mozilla/RefPtr.h"
 #include "mozilla/dom/AutoEntryScript.h"
 #include "mozilla/dom/BlobImpl.h"
 #include "mozilla/dom/ContentParent.h"
@@ -41,12 +42,11 @@ static inline void AlignTo(size_t* aOffset, size_t aAlign) {
 
 SharedMap::SharedMap() = default;
 
-SharedMap::SharedMap(nsIGlobalObject* aGlobal, const FileDescriptor& aMapFile,
-                     size_t aMapSize, nsTArray<RefPtr<BlobImpl>>&& aBlobs)
-    : DOMEventTargetHelper(aGlobal), mBlobImpls(std::move(aBlobs)) {
-  mMapFile.reset(new FileDescriptor(aMapFile));
-  mMapSize = aMapSize;
-}
+SharedMap::SharedMap(nsIGlobalObject* aGlobal, SharedMemoryHandle&& aMapHandle,
+                     nsTArray<RefPtr<BlobImpl>>&& aBlobs)
+    : DOMEventTargetHelper(aGlobal),
+      mBlobImpls(std::move(aBlobs)),
+      mHandle(std::move(aMapHandle)) {}
 
 bool SharedMap::Has(const nsACString& aName) {
   Unused << MaybeRebuild();
@@ -96,25 +96,13 @@ void SharedMap::Entry::Read(JSContext* aCx,
   holder.Read(aCx, aRetVal, aRv);
 }
 
-FileDescriptor SharedMap::CloneMapFile() const {
-  if (mMap.initialized()) {
-    return mMap.cloneHandle();
-  }
-  return *mMapFile;
-}
-
-void SharedMap::Update(const FileDescriptor& aMapFile, size_t aMapSize,
+void SharedMap::Update(SharedMemoryHandle&& aMapHandle,
                        nsTArray<RefPtr<BlobImpl>>&& aBlobs,
                        nsTArray<nsCString>&& aChangedKeys) {
   MOZ_DIAGNOSTIC_ASSERT(!mWritable);
 
-  mMap.reset();
-  if (mMapFile) {
-    *mMapFile = aMapFile;
-  } else {
-    mMapFile.reset(new FileDescriptor(aMapFile));
-  }
-  mMapSize = aMapSize;
+  mMapping = nullptr;
+  mHandle = std::move(aMapHandle);
   mEntries.Clear();
   mEntryArray.reset();
 
@@ -194,9 +182,11 @@ void SharedMap::Entry::ExtractData(char* aDestPtr, uint32_t aNewOffset,
 }
 
 Result<Ok, nsresult> SharedMap::MaybeRebuild() {
-  if (!mMapFile) {
+  if (mMapping || !mHandle) {
     return Ok();
   }
+
+  MOZ_DIAGNOSTIC_ASSERT(!mWritable);
 
   // This function maps a shared memory region created by Serialize() and reads
   // its header block to build a new mEntries hashtable of its contents.
@@ -206,18 +196,20 @@ Result<Ok, nsresult> SharedMap::MaybeRebuild() {
   // its shared memory region. When needed, that structured clone data is
   // retrieved directly as indexes into the SharedMap's shared memory region.
 
-  MOZ_TRY(mMap.initWithHandle(*mMapFile, mMapSize));
-  mMapFile.reset();
+  mMapping = mHandle.Map();
+  if (!mMapping) {
+    return Err(NS_ERROR_FAILURE);
+  }
+  mHandle = nullptr;
 
-  // We should be able to pass this range as an initializer list or an immediate
-  // param, but gcc currently chokes on that if optimization is enabled, and
-  // initializes everything to 0.
-  Range<uint8_t> range(&mMap.get<uint8_t>()[0], mMap.size());
-  InputBuffer buffer(range);
+  Range<const uint8_t> inputRange(mMapping.DataAsSpan<uint8_t>());
+  InputBuffer buffer(inputRange);
 
   uint32_t count;
   buffer.codeUint32(count);
 
+  MOZ_ASSERT(mEntries.IsEmpty());
+  MOZ_ASSERT(mEntryArray.isNothing());
   for (uint32_t i = 0; i < count; i++) {
     auto entry = MakeUnique<Entry>(*this);
     entry->Code(buffer);
@@ -243,9 +235,9 @@ void SharedMap::MaybeRebuild() const {
 WritableSharedMap::WritableSharedMap() {
   mWritable = true;
   // Serialize the initial empty contents of the map immediately so that we
-  // always have a file descriptor to send to callers of CloneMapFile().
+  // always have a file descriptor to send.
   Unused << Serialize();
-  MOZ_RELEASE_ASSERT(mMap.initialized());
+  MOZ_RELEASE_ASSERT(mHandle.IsValid() && mMapping.IsValid());
 }
 
 SharedMap* WritableSharedMap::GetReadOnly() {
@@ -253,7 +245,7 @@ SharedMap* WritableSharedMap::GetReadOnly() {
     nsTArray<RefPtr<BlobImpl>> blobs(mBlobImpls.Clone());
     mReadOnly =
         new SharedMap(ContentProcessMessageManager::Get()->GetParentObject(),
-                      CloneMapFile(), MapSize(), std::move(blobs));
+                      mHandle.Clone(), std::move(blobs));
   }
   return mReadOnly;
 }
@@ -336,8 +328,11 @@ Result<Ok, nsresult> WritableSharedMap::Serialize() {
   memcpy(ptr.get(), header.Get(), header.cursor());
 
   // We've already updated offsets at this point. We need this to succeed.
-  mMap.reset();
-  MOZ_RELEASE_ASSERT(mem.Finalize(mMap).isOk());
+  auto result = mem.Finalize();
+  MOZ_RELEASE_ASSERT(result.isOk());
+  mHandle = result.unwrap();
+  mMapping = mHandle.Map();
+  MOZ_RELEASE_ASSERT(mMapping.IsValid());
 
   return Ok();
 }
@@ -352,8 +347,7 @@ void WritableSharedMap::SendTo(ContentParent* aParent) const {
     }
   }
 
-  Unused << aParent->SendUpdateSharedData(CloneMapFile(), mMap.size(), blobs,
-                                          mChangedKeys);
+  Unused << aParent->SendUpdateSharedData(mHandle.Clone(), blobs, mChangedKeys);
 }
 
 void WritableSharedMap::BroadcastChanges() {
@@ -373,7 +367,7 @@ void WritableSharedMap::BroadcastChanges() {
 
   if (mReadOnly) {
     nsTArray<RefPtr<BlobImpl>> blobImpls(mBlobImpls.Clone());
-    mReadOnly->Update(CloneMapFile(), mMap.size(), std::move(blobImpls),
+    mReadOnly->Update(mHandle.Clone(), std::move(blobImpls),
                       std::move(mChangedKeys));
   }
 

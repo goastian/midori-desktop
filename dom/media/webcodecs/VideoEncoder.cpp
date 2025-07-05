@@ -218,7 +218,8 @@ EncoderConfig VideoEncoderConfigInternal::ToEncoderConfig() const {
   }
   Maybe<EncoderConfig::CodecSpecific> specific;
   if (codecType == CodecType::H264) {
-    uint8_t profile, constraints, level;
+    uint8_t profile, constraints;
+    H264_LEVEL level;
     H264BitStreamFormat format;
     if (mAvc) {
       format = mAvc->mFormat == AvcBitstreamFormat::Annexb
@@ -227,11 +228,12 @@ EncoderConfig VideoEncoderConfigInternal::ToEncoderConfig() const {
     } else {
       format = H264BitStreamFormat::AVC;
     }
-    if (ExtractH264CodecDetails(mCodec, profile, constraints, level)) {
+    if (ExtractH264CodecDetails(mCodec, profile, constraints, level,
+                                H264CodecStringStrictness::Strict)) {
       if (profile == H264_PROFILE_BASE || profile == H264_PROFILE_MAIN ||
           profile == H264_PROFILE_EXTENDED || profile == H264_PROFILE_HIGH) {
-        specific.emplace(H264Specific(static_cast<H264_PROFILE>(profile),
-                                      static_cast<H264_LEVEL>(level), format));
+        specific.emplace(
+            H264Specific(static_cast<H264_PROFILE>(profile), level, format));
       }
     }
   }
@@ -273,11 +275,20 @@ EncoderConfig VideoEncoderConfigInternal::ToEncoderConfig() const {
         false                  /* Flexible */
         ));
   }
-  return EncoderConfig(codecType, {mWidth, mHeight}, usage,
-                       ImageBitmapFormat::RGBA32, ImageBitmapFormat::RGBA32,
-                       AssertedCast<uint8_t>(mFramerate.refOr(0.f)), 0,
+  // For real-time usage, typically used in web conferencing, YUV420 is the most
+  // common format and is set as the default. Otherwise, Gecko's preferred
+  // format, BGRA, is assumed.
+  EncoderConfig::SampleFormat format;
+  if (usage == Usage::Realtime) {
+    format.mPixelFormat = ImageBitmapFormat::YUV420P;
+    format.mColorSpace.mRange.emplace(gfx::ColorRange::LIMITED);
+  } else {
+    format.mPixelFormat = ImageBitmapFormat::BGRA32;
+  }
+  return EncoderConfig(codecType, {mWidth, mHeight}, usage, format,
+                       SaturatingCast<uint32_t>(mFramerate.refOr(0.f)), 0,
                        mBitrate.refOr(0), 0, 0,
-                       mBitrateMode == VideoEncoderBitrateMode::Constant
+                       (mBitrateMode == VideoEncoderBitrateMode::Constant)
                            ? mozilla::BitrateMode::Constant
                            : mozilla::BitrateMode::Variable,
                        hwPref, scalabilityMode, specific);
@@ -334,13 +345,11 @@ VideoEncoderConfigInternal::Diff(
 
 // https://w3c.github.io/webcodecs/#check-configuration-support
 static bool CanEncode(const RefPtr<VideoEncoderConfigInternal>& aConfig) {
-  auto parsedCodecString =
-      ParseCodecString(aConfig->mCodec).valueOr(EmptyString());
   // TODO: Enable WebCodecs on Android (Bug 1840508)
   if (IsOnAndroid()) {
     return false;
   }
-  if (!IsSupportedVideoCodec(parsedCodecString)) {
+  if (!IsSupportedVideoCodec(aConfig->mCodec)) {
     return false;
   }
   if (aConfig->mScalabilityMode.isSome()) {
@@ -349,7 +358,7 @@ static bool CanEncode(const RefPtr<VideoEncoderConfigInternal>& aConfig) {
         !aConfig->mScalabilityMode->EqualsLiteral("L1T3")) {
       LOGE("Scalability mode %s not supported for codec: %s",
            NS_ConvertUTF16toUTF8(aConfig->mScalabilityMode.value()).get(),
-           NS_ConvertUTF16toUTF8(parsedCodecString).get());
+           NS_ConvertUTF16toUTF8(aConfig->mCodec).get());
       return false;
     }
   }
@@ -424,17 +433,24 @@ bool VideoEncoderTraits::Validate(const VideoEncoderConfig& aConfig,
   }
 
   // 3.
-  if ((aConfig.mDisplayWidth.WasPassed() &&
-       aConfig.mDisplayWidth.Value() == 0)) {
+  if (aConfig.mDisplayWidth.WasPassed() && aConfig.mDisplayWidth.Value() == 0) {
     aErrorMessage.AssignLiteral(
         "Invalid VideoEncoderConfig: displayWidth equal to 0");
     LOGE("%s", aErrorMessage.get());
     return false;
   }
-  if ((aConfig.mDisplayHeight.WasPassed() &&
-       aConfig.mDisplayHeight.Value() == 0)) {
+  if (aConfig.mDisplayHeight.WasPassed() &&
+      aConfig.mDisplayHeight.Value() == 0) {
     aErrorMessage.AssignLiteral(
         "Invalid VideoEncoderConfig: displayHeight equal to 0");
+    LOGE("%s", aErrorMessage.get());
+    return false;
+  }
+
+  // https://github.com/w3c/webcodecs/issues/816
+  if ((aConfig.mBitrate.WasPassed() && aConfig.mBitrate.Value() == 0)) {
+    aErrorMessage.AssignLiteral(
+        "Invalid VideoEncoderConfig: bitrate equal to 0");
     LOGE("%s", aErrorMessage.get());
     return false;
   }

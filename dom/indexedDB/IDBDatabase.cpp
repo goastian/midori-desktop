@@ -22,7 +22,6 @@
 #include "mozilla/Services.h"
 #include "mozilla/dom/IDBTransactionBinding.h"
 #include "mozilla/storage.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/DOMStringListBinding.h"
 #include "mozilla/dom/Exceptions.h"
@@ -50,6 +49,7 @@
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
 #include "ScriptErrorHelper.h"
+#include "nsGlobalWindowInner.h"
 #include "nsQueryObject.h"
 
 // Include this last to avoid path problems on Windows.
@@ -187,28 +187,26 @@ RefPtr<IDBDatabase> IDBDatabase::Create(IDBOpenDBRequest* aRequest,
   RefPtr<IDBDatabase> db =
       new IDBDatabase(aRequest, aFactory.clonePtr(), aActor, std::move(aSpec));
 
-  if (NS_IsMainThread()) {
-    nsCOMPtr<nsPIDOMWindowInner> window = aFactory->GetOwner();
-    if (window) {
-      uint64_t windowId = window->WindowID();
+  if (nsCOMPtr<nsPIDOMWindowInner> window = aFactory->GetOwnerWindow()) {
+    MOZ_ASSERT(NS_IsMainThread());
+    uint64_t windowId = window->WindowID();
 
-      RefPtr<Observer> observer = new Observer(db, windowId);
+    RefPtr<Observer> observer = new Observer(db, windowId);
 
-      nsCOMPtr<nsIObserverService> obsSvc = GetObserverService();
-      MOZ_ASSERT(obsSvc);
+    nsCOMPtr<nsIObserverService> obsSvc = GetObserverService();
+    MOZ_ASSERT(obsSvc);
 
-      // This topic must be successfully registered.
-      MOZ_ALWAYS_SUCCEEDS(
-          obsSvc->AddObserver(observer, kWindowObserverTopic, false));
+    // This topic must be successfully registered.
+    MOZ_ALWAYS_SUCCEEDS(
+        obsSvc->AddObserver(observer, kWindowObserverTopic, false));
 
-      // These topics are not crucial.
-      QM_WARNONLY_TRY(QM_TO_RESULT(
-          obsSvc->AddObserver(observer, kCycleCollectionObserverTopic, false)));
-      QM_WARNONLY_TRY(QM_TO_RESULT(
-          obsSvc->AddObserver(observer, kMemoryPressureObserverTopic, false)));
+    // These topics are not crucial.
+    QM_WARNONLY_TRY(QM_TO_RESULT(
+        obsSvc->AddObserver(observer, kCycleCollectionObserverTopic, false)));
+    QM_WARNONLY_TRY(QM_TO_RESULT(
+        obsSvc->AddObserver(observer, kMemoryPressureObserverTopic, false)));
 
-      db->mObserver = std::move(observer);
-    }
+    db->mObserver = std::move(observer);
   }
 
   db->IncreaseActiveDatabaseCount();
@@ -342,7 +340,7 @@ RefPtr<DOMStringList> IDBDatabase::ObjectStoreNames() const {
 }
 
 RefPtr<Document> IDBDatabase::GetOwnerDocument() const {
-  if (nsPIDOMWindowInner* window = GetOwner()) {
+  if (nsPIDOMWindowInner* window = GetOwnerWindow()) {
     return window->GetExtantDoc();
   }
   return nullptr;
@@ -549,14 +547,6 @@ RefPtr<IDBTransaction> IDBDatabase::Transaction(
           return objectStore.metadata().name() == name;
         });
     if (foundIt == end) {
-      Telemetry::ScalarAdd(
-          storeNames.IsEmpty()
-              ? Telemetry::ScalarID::
-                    IDB_FAILURE_UNKNOWN_OBJECTSTORE_EMPTY_DATABASE
-              : Telemetry::ScalarID::
-                    IDB_FAILURE_UNKNOWN_OBJECTSTORE_NON_EMPTY_DATABASE,
-          1);
-
       // Not using nsPrintfCString in case "name" has embedded nulls.
       aRv.ThrowNotFoundError("'"_ns + NS_ConvertUTF16toUTF8(name) +
                              "' is not a known object store name"_ns);
@@ -733,12 +723,7 @@ void IDBDatabase::AbortTransactions(bool aShouldWarn) {
 
   for (IDBTransaction* transaction : transactionsThatNeedWarning) {
     MOZ_ASSERT(transaction);
-
-    nsString filename;
-    uint32_t lineNo, column;
-    transaction->GetCallerLocation(filename, &lineNo, &column);
-
-    LogWarning(kWarningMessage, filename, lineNo, column);
+    LogWarning(kWarningMessage, transaction->GetCallerLocation());
   }
 }
 
@@ -880,15 +865,13 @@ void IDBDatabase::NoteInactiveTransactionDelayed() {
 }
 
 void IDBDatabase::LogWarning(const char* aMessageName,
-                             const nsAString& aFilename, uint32_t aLineNumber,
-                             uint32_t aColumnNumber) {
+                             const JSCallingLocation& aLoc) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(aMessageName);
 
   ScriptErrorHelper::DumpLocalizedMessage(
-      nsDependentCString(aMessageName), aFilename, aLineNumber, aColumnNumber,
-      nsIScriptError::warningFlag, mFactory->IsChrome(),
-      mFactory->InnerWindowID());
+      nsDependentCString(aMessageName), aLoc, nsIScriptError::warningFlag,
+      mFactory->IsChrome(), mFactory->InnerWindowID());
 }
 
 NS_IMPL_ADDREF_INHERITED(IDBDatabase, DOMEventTargetHelper)

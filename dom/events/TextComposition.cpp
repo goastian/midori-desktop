@@ -4,13 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "TextComposition.h"
+
 #include "ContentEventHandler.h"
 #include "IMEContentObserver.h"
 #include "IMEStateManager.h"
-#include "nsContentUtils.h"
-#include "nsIContent.h"
-#include "nsIMutationObserver.h"
-#include "nsPresContext.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/EventDispatcher.h"
@@ -21,10 +19,13 @@
 #include "mozilla/RangeBoundary.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_intl.h"
-#include "mozilla/TextComposition.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/BrowserParent.h"
+#include "nsContentUtils.h"
+#include "nsIContent.h"
+#include "nsIMutationObserver.h"
+#include "nsPresContext.h"
 
 #ifdef XP_MACOSX
 // Some defiens will be conflict with OSX SDK
@@ -85,7 +86,6 @@ TextComposition::TextComposition(nsPresContext* aPresContext, nsINode* aNode,
       mCompositionLengthInTextNode(UINT32_MAX),
       mIsSynthesizedForTests(aCompositionEvent->mFlags.mIsSynthesizedForTests),
       mIsComposing(false),
-      mIsEditorHandlingEvent(false),
       mIsRequestingCommit(false),
       mIsRequestingCancel(false),
       mRequestedToCommitOrCancel(false),
@@ -135,7 +135,7 @@ void TextComposition::OnCharacterDataChanged(
 
   // If this is caused by a splitting text node, the composition string
   // may be split out to the new right node.  In the case,
-  // CompositionTransaction::DoTransaction handles it with warking the
+  // CompositionTransaction::DoTransaction handles it with walking the
   // following text nodes.  Therefore, we should NOT shrink the composing
   // range for avoind breaking the fix of bug 1310912.  Although the handling
   // looks buggy so that we need to move the handling into here later.
@@ -169,18 +169,28 @@ void TextComposition::OnCharacterDataChanged(
   // If removed range starts in the composition string, we need only adjust
   // the length to make composition range contain the replace string.
   if (aInfo.mChangeStart >= mCompositionStartOffsetInTextNode) {
+    if (!mCompositionLengthInTextNode) {
+      // However, don't extend composition range if there is no composition
+      // string.
+      return;
+    }
     MOZ_ASSERT(aInfo.LengthOfRemovedText() <= mCompositionLengthInTextNode);
     mCompositionLengthInTextNode -= aInfo.LengthOfRemovedText();
     mCompositionLengthInTextNode += aInfo.mReplaceLength;
     return;
   }
 
-  // If preceding characers of the composition string is also removed,  new
+  // If preceding characters of the composition string is also removed, new
   // composition start will be there and new composition ends at current
   // position.
   const uint32_t removedLengthInCompositionString =
       aInfo.mChangeEnd - mCompositionStartOffsetInTextNode;
   mCompositionStartOffsetInTextNode = aInfo.mChangeStart;
+  if (!mCompositionLengthInTextNode) {
+    // However, don't extend composition range if there is no composition
+    // string.
+    return;
+  }
   mCompositionLengthInTextNode -= removedLengthInCompositionString;
   mCompositionLengthInTextNode += aInfo.mReplaceLength;
 }
@@ -207,6 +217,9 @@ bool TextComposition::MaybeDispatchCompositionUpdate(
   // empty string (mLastData isn't set to selected text when this receives
   // eCompositionStart).
   if (mLastData == aCompositionEvent->mData) {
+    // Even if the new composition event does not update the composition string,
+    // it may change IME selection.
+    mLastRanges = aCompositionEvent->mRanges;
     return true;
   }
   CloneAndDispatchAs(aCompositionEvent, eCompositionUpdate);
@@ -726,7 +739,7 @@ void TextComposition::EditorWillHandleCompositionChangeEvent(
     const WidgetCompositionEvent* aCompositionChangeEvent) {
   mIsComposing = aCompositionChangeEvent->IsComposing();
   mRanges = aCompositionChangeEvent->mRanges;
-  mIsEditorHandlingEvent = true;
+  mEditorIsHandlingEvent = true;
 
   MOZ_ASSERT(
       mLastData == aCompositionChangeEvent->mData,
@@ -737,7 +750,7 @@ void TextComposition::EditorWillHandleCompositionChangeEvent(
 void TextComposition::OnEditorDestroyed() {
   MOZ_RELEASE_ASSERT(!mBrowserParent);
 
-  MOZ_ASSERT(!mIsEditorHandlingEvent,
+  MOZ_ASSERT(!mEditorIsHandlingEvent,
              "The editor should have stopped listening events");
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (NS_WARN_IF(!widget)) {
@@ -751,7 +764,7 @@ void TextComposition::OnEditorDestroyed() {
 
 void TextComposition::EditorDidHandleCompositionChangeEvent() {
   mString = mLastData;
-  mIsEditorHandlingEvent = false;
+  mEditorIsHandlingEvent = false;
 }
 
 void TextComposition::StartHandlingComposition(EditorBase* aEditorBase) {
@@ -1056,10 +1069,10 @@ TextComposition* TextCompositionArray::GetCompositionFor(
 TextComposition* TextCompositionArray::GetCompositionInContent(
     nsPresContext* aPresContext, nsIContent* aContent) {
   // There should be only one composition per content object.
-  for (index_type i = Length(); i > 0; --i) {
-    nsINode* node = ElementAt(i - 1)->GetEventTargetNode();
-    if (node && node->IsInclusiveDescendantOf(aContent)) {
-      return ElementAt(i - 1);
+  for (TextComposition* const composition : Reversed(*this)) {
+    nsINode* node = composition->GetEventTargetNode();
+    if (node && node->IsInclusiveFlatTreeDescendantOf(aContent)) {
+      return composition;
     }
   }
   return nullptr;

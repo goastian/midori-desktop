@@ -21,6 +21,9 @@
 #include "nsDebug.h"
 #include "mozilla/dom/WorkerStatus.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/dom/TrustedScriptURL.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
 
 #ifdef XP_WIN
 #  undef PostMessage
@@ -29,24 +32,53 @@
 namespace mozilla::dom {
 
 /* static */
-already_AddRefed<Worker> Worker::Constructor(const GlobalObject& aGlobal,
-                                             const nsAString& aScriptURL,
-                                             const WorkerOptions& aOptions,
-                                             ErrorResult& aRv) {
+already_AddRefed<Worker> Worker::Constructor(
+    const GlobalObject& aGlobal, const TrustedScriptURLOrUSVString& aScriptURL,
+    const WorkerOptions& aOptions, ErrorResult& aRv) {
   JSContext* cx = aGlobal.Context();
 
   nsCOMPtr<nsIGlobalObject> globalObject =
       do_QueryInterface(aGlobal.GetAsSupports());
 
-  if (globalObject->GetAsInnerWindow() &&
-      !globalObject->GetAsInnerWindow()->IsCurrentInnerWindow()) {
+  nsPIDOMWindowInner* innerWindow = globalObject->GetAsInnerWindow();
+  if (innerWindow && !innerWindow->IsCurrentInnerWindow()) {
     aRv.ThrowInvalidStateError(
         "Cannot create worker for a going to be discarded document");
     return nullptr;
   }
 
+  // TODO(Bug 1963277) This doen't work for content scripts.
+  nsCOMPtr<nsIPrincipal> principal = aGlobal.GetSubjectPrincipal();
+
+  // The spec only mentions Window and WorkerGlobalScope global objects, but
+  // Gecko can actually call the constructor with other ones, so we just skip
+  // trusted types handling in that case.
+  // https://html.spec.whatwg.org/multipage/workers.html#dedicated-workers-and-the-worker-interface
+  const nsAString* compliantString = nullptr;
+  bool performTrustedTypeConversion = innerWindow;
+  if (!performTrustedTypeConversion) {
+    if (JSObject* globalJSObject = globalObject->GetGlobalJSObject()) {
+      performTrustedTypeConversion = IsWorkerGlobal(globalJSObject);
+    }
+  }
+  Maybe<nsAutoString> compliantStringHolder;
+  if (performTrustedTypeConversion) {
+    constexpr nsLiteralString sink = u"Worker constructor"_ns;
+    compliantString = TrustedTypeUtils::GetTrustedTypesCompliantString(
+        aScriptURL, sink, kTrustedTypesOnlySinkGroup, *globalObject, principal,
+        compliantStringHolder, aRv);
+    if (aRv.Failed()) {
+      return nullptr;
+    }
+  } else {
+    compliantString = aScriptURL.IsUSVString()
+                          ? &aScriptURL.GetAsUSVString()
+                          : &aScriptURL.GetAsTrustedScriptURL().mData;
+  }
+  MOZ_ASSERT(compliantString);
+
   RefPtr<WorkerPrivate> workerPrivate = WorkerPrivate::Constructor(
-      cx, aScriptURL, false /* aIsChromeWorker */, WorkerKindDedicated,
+      cx, *compliantString, false /* aIsChromeWorker */, WorkerKindDedicated,
       aOptions.mCredentials, aOptions.mType, aOptions.mName, VoidCString(),
       nullptr /*aLoadInfo */, aRv);
   if (NS_WARN_IF(aRv.Failed())) {

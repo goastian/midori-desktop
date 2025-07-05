@@ -79,10 +79,7 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
   void NodeInfoChanged(Document* aOldDoc) override;
-
   nsresult CopyInnerTo(HTMLImageElement* aDest);
-
-  void MaybeLoadImage(bool aAlwaysForceLoad);
 
   bool IsMap() { return GetBoolAttr(nsGkAtoms::ismap); }
   void SetIsMap(bool aIsMap, ErrorResult& aError) {
@@ -97,7 +94,7 @@ class HTMLImageElement final : public nsGenericHTMLElement,
     SetUnsignedIntAttr(nsGkAtoms::height, aHeight, 0, aError);
   }
 
-  nsIntSize NaturalSize();
+  CSSIntSize NaturalSize();
   uint32_t NaturalHeight() { return NaturalSize().height; }
   uint32_t NaturalWidth() { return NaturalSize().width; }
 
@@ -255,9 +252,8 @@ class HTMLImageElement final : public nsGenericHTMLElement,
       const nsAString& aTypeAttr, const nsAString& aMediaAttr,
       nsAString& aResult);
 
-  enum class FromIntersectionObserver : bool { No, Yes };
-  enum class StartLoading : bool { No, Yes };
-  void StopLazyLoading(StartLoading);
+  enum class StartLoad : bool { No, Yes };
+  void StopLazyLoading(StartLoad = StartLoad::Yes);
 
   // This is used when restyling, for retrieving the extra style from the source
   // element.
@@ -270,28 +266,23 @@ class HTMLImageElement final : public nsGenericHTMLElement,
 
   // Update the responsive source synchronously and queues a task to run
   // LoadSelectedImage pending stable state.
-  //
-  // Pending Bug 1076583 this is only used by the responsive image
-  // algorithm (InResponsiveMode()) -- synchronous actions when just
-  // using img.src will bypass this, and update source and kick off
-  // image load synchronously.
   void UpdateSourceSyncAndQueueImageTask(
-      bool aAlwaysLoad, const HTMLSourceElement* aSkippedSource = nullptr);
+      bool aAlwaysLoad, bool aNotify,
+      const HTMLSourceElement* aSkippedSource = nullptr);
+
+  // Clears the current image load task.
+  void ClearImageLoadTask();
 
   // True if we have a srcset attribute or a <picture> parent, regardless of if
   // any valid responsive sources were parsed from either.
-  bool HaveSrcsetOrInPicture();
-
-  // True if we are using the newer image loading algorithm. This will be the
-  // only mode after Bug 1076583
-  bool InResponsiveMode();
+  bool HaveSrcsetOrInPicture() const;
 
   // True if the given URL equals the last URL that was loaded by this element.
   bool SelectedSourceMatchesLast(nsIURI* aSelectedSource);
 
   // Load the current mResponsiveSelector (responsive mode) or src attr image.
   // Note: This doesn't run the full selection for the responsive selector.
-  nsresult LoadSelectedImage(bool aForce, bool aNotify, bool aAlwaysLoad);
+  void LoadSelectedImage(bool aAlwaysLoad);
 
   // True if this string represents a type we would support on <source type>
   static bool SupportedPictureSourceType(const nsAString& aType);
@@ -310,9 +301,11 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   void PictureSourceDimensionChanged(HTMLSourceElement* aSourceNode,
                                      bool aNotify);
 
-  void PictureSourceAdded(HTMLSourceElement* aSourceNode = nullptr);
+  void PictureSourceAdded(bool aNotify,
+                          HTMLSourceElement* aSourceNode = nullptr);
   // This should be called prior to the unbind, such that nextsibling works
-  void PictureSourceRemoved(HTMLSourceElement* aSourceNode = nullptr);
+  void PictureSourceRemoved(bool aNotify,
+                            HTMLSourceElement* aSourceNode = nullptr);
 
   // Re-evaluates all source nodes (picture <source>,<img>) and finds
   // the best source set for mResponsiveSelector. If a better source
@@ -397,8 +390,6 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   // Set this image as a lazy load image due to loading="lazy".
   void SetLazyLoading();
 
-  void StartLoadingIfNeeded();
-
   bool IsInPicture() const {
     return GetParentElement() &&
            GetParentElement()->IsHTMLElement(nsGkAtoms::picture);
@@ -409,9 +400,6 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   void SetResponsiveSelector(RefPtr<ResponsiveImageSelector>&& aSource);
   void SetDensity(double aDensity);
 
-  // Queue an image load task (via microtask).
-  void QueueImageLoadTask(bool aAlwaysLoad);
-
   RefPtr<ImageLoadTask> mPendingImageLoadTask;
   nsCOMPtr<nsIURI> mSrcURI;
   nsCOMPtr<nsIPrincipal> mSrcTriggeringPrincipal;
@@ -421,7 +409,6 @@ class HTMLImageElement final : public nsGenericHTMLElement,
   nsCOMPtr<nsIURI> mLastSelectedSource;
   // Last pixel density that was selected.
   double mCurrentDensity = 1.0;
-  bool mInDocResponsiveContent = false;
 };
 
 }  // namespace dom

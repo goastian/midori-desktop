@@ -57,8 +57,8 @@ void HTMLTitleElement::ContentInserted(nsIContent* aChild) {
   SendTitleChangeEvent(false);
 }
 
-void HTMLTitleElement::ContentRemoved(nsIContent* aChild,
-                                      nsIContent* aPreviousSibling) {
+void HTMLTitleElement::ContentWillBeRemoved(nsIContent* aChild,
+                                            const BatchRemovalState*) {
   SendTitleChangeEvent(false);
 }
 
@@ -86,8 +86,7 @@ void HTMLTitleElement::DoneAddingChildren(bool aHaveNotified) {
 }
 
 void HTMLTitleElement::SendTitleChangeEvent(bool aBound) {
-  Document* doc = GetUncomposedDoc();
-  if (doc) {
+  if (Document* doc = GetUncomposedDoc()) {
     doc->NotifyPossibleTitleChange(aBound);
   }
 }

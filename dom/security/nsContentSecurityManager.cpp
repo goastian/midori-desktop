@@ -40,6 +40,7 @@
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/extensions/WebExtensionPolicy.h"
+#include "mozilla/glean/DomSecurityMetrics.h"
 #include "mozilla/Components.h"
 #include "mozilla/ExtensionPolicyService.h"
 #include "mozilla/Logging.h"
@@ -47,8 +48,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_security.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/TelemetryComms.h"
 #include "xpcpublic.h"
 #include "nsMimeTypes.h"
 
@@ -57,12 +56,12 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
-using namespace mozilla::Telemetry;
 
 NS_IMPL_ISUPPORTS(nsContentSecurityManager, nsIContentSecurityManager,
                   nsIChannelEventSink)
 
 mozilla::LazyLogModule sCSMLog("CSMLog");
+mozilla::LazyLogModule sUELLog("UnexpectedLoad");
 
 // These first two are used for off-the-main-thread checks of
 // general.config.filename
@@ -71,7 +70,6 @@ Atomic<bool, mozilla::Relaxed> sJSHacksChecked(false);
 Atomic<bool, mozilla::Relaxed> sJSHacksPresent(false);
 Atomic<bool, mozilla::Relaxed> sCSSHacksChecked(false);
 Atomic<bool, mozilla::Relaxed> sCSSHacksPresent(false);
-Atomic<bool, mozilla::Relaxed> sTelemetryEventEnabled(false);
 
 /* static */
 bool nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
@@ -100,8 +98,7 @@ bool nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
   nsCOMPtr<nsIURI> uri;
   nsresult rv = NS_GetFinalChannelURI(aChannel, getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, true);
-  bool isDataURI = uri->SchemeIs("data");
-  if (!isDataURI) {
+  if (!uri->SchemeIs("data")) {
     return true;
   }
 
@@ -115,7 +112,7 @@ bool nsContentSecurityManager::AllowTopLevelNavigationToDataURI(
 
   // Allow data: images as long as they are not SVGs
   if (StringBeginsWith(contentType, "image/"_ns) &&
-      !contentType.EqualsLiteral("image/svg+xml")) {
+      !contentType.EqualsLiteral(IMAGE_SVG_XML)) {
     return true;
   }
   // Allow all data: PDFs. or JSON documents
@@ -177,11 +174,7 @@ bool nsContentSecurityManager::AllowInsecureRedirectToDataURI(
   }
   nsCOMPtr<nsIURI> newURI;
   nsresult rv = NS_GetFinalChannelURI(aNewChannel, getter_AddRefs(newURI));
-  if (NS_FAILED(rv) || !newURI) {
-    return true;
-  }
-  bool isDataURI = newURI->SchemeIs("data");
-  if (!isDataURI) {
+  if (NS_FAILED(rv) || !newURI || !newURI->SchemeIs("data")) {
     return true;
   }
 
@@ -402,18 +395,6 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
       break;
     }
 
-    case ExtContentPolicy::TYPE_OBJECT_SUBREQUEST: {
-#ifdef DEBUG
-      {
-        nsCOMPtr<nsINode> node = aLoadInfo->LoadingNode();
-        MOZ_ASSERT(
-            !node || node->NodeType() == nsINode::ELEMENT_NODE,
-            "type_subrequest requires requestingContext of type Element");
-      }
-#endif
-      break;
-    }
-
     case ExtContentPolicy::TYPE_DTD: {
 #ifdef DEBUG
       {
@@ -490,6 +471,7 @@ static nsresult DoContentSecurityChecks(nsIChannel* aChannel,
     case ExtContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA:
     case ExtContentPolicy::TYPE_WEB_TRANSPORT:
     case ExtContentPolicy::TYPE_WEB_IDENTITY:
+    case ExtContentPolicy::TYPE_JSON:
       break;
 
     case ExtContentPolicy::TYPE_INVALID:
@@ -731,8 +713,7 @@ static void DebugDoContentSecurityCheck(nsIChannel* aChannel,
             ("  allowDeprecatedSystemRequests: %s\n",
              aLoadInfo->GetAllowDeprecatedSystemRequests() ? "true" : "false"));
     MOZ_LOG(sCSMLog, LogLevel::Verbose,
-            ("  wasSchemeless: %s\n",
-             aLoadInfo->GetWasSchemelessInput() ? "true" : "false"));
+            ("  schemelessInput: %d\n", aLoadInfo->GetSchemelessInput()));
 
     // Log CSPrequestPrincipal
     nsCOMPtr<nsIContentSecurityPolicy> csp = aLoadInfo->GetCsp();
@@ -811,52 +792,41 @@ void nsContentSecurityManager::MeasureUnexpectedPrivilegedLoads(
   nsAutoCString uriString;
   if (aFinalURI) {
     aFinalURI->GetAsciiSpec(uriString);
-  } else {
-    uriString.AssignLiteral("");
   }
   FilenameTypeAndDetails fileNameTypeAndDetails =
-      nsContentSecurityUtils::FilenameToFilenameType(
-          NS_ConvertUTF8toUTF16(uriString), true);
+      nsContentSecurityUtils::FilenameToFilenameType(uriString, true);
 
   nsCString loggedFileDetails = "unknown"_ns;
   if (fileNameTypeAndDetails.second.isSome()) {
-    loggedFileDetails.Assign(
-        NS_ConvertUTF16toUTF8(fileNameTypeAndDetails.second.value()));
+    loggedFileDetails.Assign(fileNameTypeAndDetails.second.value());
   }
   // sanitize remoteType because it may contain sensitive
   // info, like URLs. e.g. `webIsolated=https://example.com`
   nsAutoCString loggedRemoteType(dom::RemoteTypePrefix(aRemoteType));
   nsAutoCString loggedContentType(NS_CP_ContentTypeName(contentPolicyType));
 
-  MOZ_LOG(sCSMLog, LogLevel::Debug, ("UnexpectedPrivilegedLoadTelemetry:\n"));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug, ("UnexpectedPrivilegedLoadTelemetry:\n"));
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- contentType: %s\n", loggedContentType.get()));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- URL (not to be reported): %s\n", uriString.get()));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- remoteType: %s\n", loggedRemoteType.get()));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- fileInfo: %s\n", fileNameTypeAndDetails.first.get()));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- fileDetails: %s\n", loggedFileDetails.get()));
-  MOZ_LOG(sCSMLog, LogLevel::Debug,
+  MOZ_LOG(sUELLog, LogLevel::Debug,
           ("- redirects: %s\n\n", loggedRedirects.get()));
 
-  // Send Telemetry
-  auto extra = Some<nsTArray<EventExtraEntry>>(
-      {EventExtraEntry{"contenttype"_ns, loggedContentType},
-       EventExtraEntry{"remotetype"_ns, loggedRemoteType},
-       EventExtraEntry{"filedetails"_ns, loggedFileDetails},
-       EventExtraEntry{"redirects"_ns, loggedRedirects}});
-
-  if (!sTelemetryEventEnabled.exchange(true)) {
-    Telemetry::SetEventRecordingEnabled("security"_ns, true);
-  }
-
-  Telemetry::EventID eventType =
-      Telemetry::EventID::Security_Unexpectedload_Systemprincipal;
-  Telemetry::RecordEvent(eventType, mozilla::Some(fileNameTypeAndDetails.first),
-                         extra);
+  glean::security::UnexpectedLoadExtra extra = {
+      .contenttype = Some(loggedContentType),
+      .filedetails = Some(loggedFileDetails),
+      .redirects = Some(loggedRedirects),
+      .remotetype = Some(loggedRemoteType),
+      .value = Some(fileNameTypeAndDetails.first),
+  };
+  glean::security::unexpected_load.Record(Some(extra));
 }
 
 /* static */
@@ -978,13 +948,14 @@ nsresult nsContentSecurityManager::CheckAllowLoadInSystemPrivilegedContext(
   // (2) about: resources are always allowed: they are part of the build.
   // (3) extensions are signed or the user has made bad decisions.
   if (innerURI->SchemeIs("jar") || innerURI->SchemeIs("about") ||
-      innerURI->SchemeIs("moz-extension")) {
+      innerURI->SchemeIs("moz-extension") ||
+      innerURI->SchemeIs("moz-safe-about")) {
     return NS_OK;
   }
 
   nsAutoCString requestedURL;
   innerURI->GetAsciiSpec(requestedURL);
-  MOZ_LOG(sCSMLog, LogLevel::Warning,
+  MOZ_LOG(sUELLog, LogLevel::Warning,
           ("SystemPrincipal should not load remote resources. URL: %s, type %d",
            requestedURL.get(), int(contentPolicyType)));
 
@@ -1019,15 +990,15 @@ nsresult nsContentSecurityManager::CheckAllowLoadInSystemPrivilegedContext(
 
   if (contentPolicyType == ExtContentPolicy::TYPE_SUBDOCUMENT) {
     if (StaticPrefs::security_disallow_privileged_https_subdocuments_loads() &&
-        (innerURI->SchemeIs("http") || innerURI->SchemeIs("https"))) {
+        net::SchemeIsHttpOrHttps(innerURI)) {
       MOZ_ASSERT(
           false,
           "Disallowing SystemPrincipal load of subdocuments on HTTP(S).");
       aChannel->Cancel(NS_ERROR_CONTENT_BLOCKED);
       return NS_ERROR_CONTENT_BLOCKED;
     }
-    if ((StaticPrefs::security_disallow_privileged_data_subdocuments_loads()) &&
-        (innerURI->SchemeIs("data"))) {
+    if (StaticPrefs::security_disallow_privileged_data_subdocuments_loads() &&
+        innerURI->SchemeIs("data")) {
       MOZ_ASSERT(
           false,
           "Disallowing SystemPrincipal load of subdocuments on data URL.");
@@ -1036,8 +1007,8 @@ nsresult nsContentSecurityManager::CheckAllowLoadInSystemPrivilegedContext(
     }
   }
   if (contentPolicyType == ExtContentPolicy::TYPE_SCRIPT) {
-    if ((StaticPrefs::security_disallow_privileged_https_script_loads()) &&
-        (innerURI->SchemeIs("http") || innerURI->SchemeIs("https"))) {
+    if (StaticPrefs::security_disallow_privileged_https_script_loads() &&
+        net::SchemeIsHttpOrHttps(innerURI)) {
       MOZ_ASSERT(false,
                  "Disallowing SystemPrincipal load of scripts on HTTP(S).");
       aChannel->Cancel(NS_ERROR_CONTENT_BLOCKED);
@@ -1046,7 +1017,7 @@ nsresult nsContentSecurityManager::CheckAllowLoadInSystemPrivilegedContext(
   }
   if (contentPolicyType == ExtContentPolicy::TYPE_STYLESHEET) {
     if (StaticPrefs::security_disallow_privileged_https_stylesheet_loads() &&
-        (innerURI->SchemeIs("http") || innerURI->SchemeIs("https"))) {
+        net::SchemeIsHttpOrHttps(innerURI)) {
       MOZ_ASSERT(false,
                  "Disallowing SystemPrincipal load of stylesheets on HTTP(S).");
       aChannel->Cancel(NS_ERROR_CONTENT_BLOCKED);
@@ -1103,8 +1074,7 @@ nsresult nsContentSecurityManager::CheckAllowLoadInPrivilegedAboutContext(
                       &isLocal);
   // We allow URLs that are URI_IS_LOCAL (but that includes `data`
   // and `blob` which are also undesirable.
-  if ((isLocal) && (!innerURI->SchemeIs("data")) &&
-      (!innerURI->SchemeIs("blob"))) {
+  if (isLocal && !innerURI->SchemeIs("data") && !innerURI->SchemeIs("blob")) {
     return NS_OK;
   }
   MOZ_ASSERT(
@@ -1132,7 +1102,7 @@ nsresult nsContentSecurityManager::CheckChannelHasProtocolSecurityFlag(
   NS_ENSURE_SUCCESS(rv, rv);
 
   uint32_t securityFlagsSet = 0;
-  if (flags & nsIProtocolHandler::WEBEXT_URI_WEB_ACCESSIBLE) {
+  if (flags & nsIProtocolHandler::URI_IS_WEBEXTENSION_RESOURCE) {
     securityFlagsSet += 1;
   }
   if (flags & nsIProtocolHandler::URI_LOADABLE_BY_ANYONE) {
@@ -1771,10 +1741,8 @@ nsresult nsContentSecurityManager::CheckForIncoherentResultPrincipal(
 
   if (nsScriptSecurityManager::IsHttpOrHttpsAndCrossOrigin(
           resultSiteOriginURI, channelSiteOriginURI) ||
-      (!net::SchemeIsHTTP(resultSiteOriginURI) &&
-       !net::SchemeIsHTTPS(resultSiteOriginURI) &&
-       (net::SchemeIsHTTP(channelSiteOriginURI) ||
-        net::SchemeIsHTTPS(channelSiteOriginURI)))) {
+      (!net::SchemeIsHttpOrHttps(resultSiteOriginURI) &&
+       net::SchemeIsHttpOrHttps(channelSiteOriginURI))) {
     return NS_ERROR_CONTENT_BLOCKED;
   }
 

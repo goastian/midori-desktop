@@ -20,6 +20,7 @@ RefPtr<WMFCDMImpl::InitPromise> WMFCDMImpl::Init(
     const WMFCDMImpl::InitParams& aParams) {
   if (!mCDM) {
     mCDM = MakeRefPtr<MFCDMChild>(mKeySystem);
+    mCDM->EnsureRemote();
   }
   RefPtr<WMFCDMImpl> self = this;
   mCDM->Init(aParams.mOrigin, aParams.mInitDataTypes,
@@ -58,6 +59,7 @@ WMFCDMCapabilites::GetCapabilities(
   nsTArray<RefPtr<CapabilitiesPromise>> promises;
   for (const auto& request : aRequests) {
     RefPtr<MFCDMChild> cdm = new MFCDMChild(request.mKeySystem);
+    cdm->EnsureRemote();
     promises.AppendElement(cdm->GetCapabilities(MFCDMCapabilitiesRequest{
         nsString{request.mKeySystem},
         request.mDecryption == KeySystemConfig::DecryptionInfo::Hardware,
@@ -95,14 +97,14 @@ WMFCDMCapabilites::GetCapabilities(
                 for (const auto& scheme : v.encryptionSchemes()) {
                   EME_LOG("capabilities: video=%s, scheme=%s",
                           NS_ConvertUTF16toUTF8(v.contentType()).get(),
-                          CryptoSchemeToString(scheme));
+                          EnumValueToString(scheme));
                 }
               }
               for (const auto& a : capabilities.audioCapabilities()) {
                 for (const auto& scheme : a.encryptionSchemes()) {
                   EME_LOG("capabilities: audio=%s, scheme=%s",
                           NS_ConvertUTF16toUTF8(a.contentType()).get(),
-                          CryptoSchemeToString(scheme));
+                          EnumValueToString(scheme));
                 }
               }
               KeySystemConfig* config = outConfigs.AppendElement();

@@ -131,6 +131,13 @@ function storageInitialized(callback) {
   return request;
 }
 
+function persistentStorageInitialized(callback) {
+  let request = SpecialPowers._getQuotaManager().persistentStorageInitialized();
+  request.callback = callback;
+
+  return request;
+}
+
 function temporaryStorageInitialized(callback) {
   let request = SpecialPowers._getQuotaManager().temporaryStorageInitialized();
   request.callback = callback;
@@ -138,8 +145,33 @@ function temporaryStorageInitialized(callback) {
   return request;
 }
 
+function persistentOriginInitialized(principal, callback) {
+  let request =
+    SpecialPowers._getQuotaManager().persistentOriginInitialized(principal);
+  request.callback = callback;
+
+  return request;
+}
+
+function temporaryOriginInitialized(persistence, principal, callback) {
+  let request = SpecialPowers._getQuotaManager().temporaryOriginInitialized(
+    persistence,
+    principal
+  );
+  request.callback = callback;
+
+  return request;
+}
+
 function init(callback) {
   let request = SpecialPowers._getQuotaManager().init();
+  request.callback = callback;
+
+  return request;
+}
+
+function initializePersistentStorage(callback) {
+  let request = SpecialPowers._getQuotaManager().initializePersistentStorage();
   request.callback = callback;
 
   return request;
@@ -160,10 +192,16 @@ function initPersistentOrigin(principal, callback) {
   return request;
 }
 
-function initTemporaryOrigin(persistence, principal, callback) {
+function initTemporaryOrigin(
+  persistence,
+  principal,
+  createIfNonExistent = true,
+  callback
+) {
   let request = SpecialPowers._getQuotaManager().initializeTemporaryOrigin(
     persistence,
-    principal
+    principal,
+    createIfNonExistent
   );
   request.callback = callback;
 
@@ -180,11 +218,18 @@ function initPersistentClient(principal, client, callback) {
   return request;
 }
 
-function initTemporaryClient(persistence, principal, client, callback) {
+function initTemporaryClient(
+  persistence,
+  principal,
+  client,
+  createIfNonExistent = true,
+  callback
+) {
   let request = SpecialPowers._getQuotaManager().initializeTemporaryClient(
     persistence,
     principal,
-    client
+    client,
+    createIfNonExistent
   );
   request.callback = callback;
 
@@ -201,11 +246,11 @@ function getFullOriginMetadata(persistence, principal, callback) {
   return request;
 }
 
-function clearClient(principal, persistence, client, callback) {
-  let request = SpecialPowers._getQuotaManager().clearStoragesForPrincipal(
+function clearClient(principal, client, persistence, callback) {
+  let request = SpecialPowers._getQuotaManager().clearStoragesForClient(
     principal,
-    persistence,
-    client
+    client,
+    persistence
   );
   request.callback = callback;
 
@@ -241,10 +286,10 @@ function clearPrivateBrowsing(callback) {
 }
 
 function resetClient(principal, client) {
-  let request = Services.qms.resetStoragesForPrincipal(
+  let request = Services.qms.resetStoragesForClient(
     principal,
-    "default",
-    client
+    client,
+    "default"
   );
 
   return request;
@@ -300,12 +345,23 @@ function getUsage(usageHandler, getAll) {
   return request;
 }
 
-function getOriginUsage(principal, fromMemory = false) {
-  let request = Services.qms.getUsageForPrincipal(
+function getOriginUsage(principal) {
+  let request = Services.qms.getUsageForPrincipal(principal, function () {});
+
+  return request;
+}
+
+function getCachedOriginUsage(principal) {
+  let request = Services.qms.getCachedUsageForPrincipal(
     principal,
-    function () {},
-    fromMemory
+    function () {}
   );
+
+  return request;
+}
+
+function getCachedOriginUsage(principal) {
+  let request = Services.qms.getCachedUsageForPrincipal(principal);
 
   return request;
 }
@@ -630,8 +686,13 @@ function verifyStorage(packageDefinitionRelativePaths, key, sharedKey) {
 
 async function verifyInitializationStatus(
   expectStorageIsInitialized,
+  expectPersistentStorageIsInitialized,
   expectTemporaryStorageIsInitialized
 ) {
+  if (!expectStorageIsInitialized && expectPersistentStorageIsInitialized) {
+    throw new Error("Invalid expectation");
+  }
+
   if (!expectStorageIsInitialized && expectTemporaryStorageIsInitialized) {
     throw new Error("Invalid expectation");
   }
@@ -641,10 +702,20 @@ async function verifyInitializationStatus(
 
   const storageIsInitialized = request.result;
 
+  request = persistentStorageInitialized();
+  await requestFinished(request);
+
+  const persistentStorageIsInitialized = request.result;
+
   request = temporaryStorageInitialized();
   await requestFinished(request);
 
   const temporaryStorageIsInitialized = request.result;
+
+  ok(
+    !(!storageIsInitialized && persistentStorageIsInitialized),
+    "Initialization status is consistent"
+  );
 
   ok(
     !(!storageIsInitialized && temporaryStorageIsInitialized),
@@ -655,6 +726,15 @@ async function verifyInitializationStatus(
     ok(storageIsInitialized, "Storage is initialized");
   } else {
     ok(!storageIsInitialized, "Storage is not initialized");
+  }
+
+  if (expectPersistentStorageIsInitialized) {
+    ok(persistentStorageIsInitialized, "Persistent storage is initialized");
+  } else {
+    ok(
+      !persistentStorageIsInitialized,
+      "Persistent storage is not initialized"
+    );
   }
 
   if (expectTemporaryStorageIsInitialized) {

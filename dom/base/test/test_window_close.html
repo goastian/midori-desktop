@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/tests/SimpleTest/test.css"/>
   <script>
     SimpleTest.waitForExplicitFinish();
-    var b = new BroadcastChannel("windowclose");
+    var b = SpecialPowers.wrap(BroadcastChannel).unpartitionedTestingChannel("windowclose");
 
     const link = "link";
     const windowopen = "window.open()";

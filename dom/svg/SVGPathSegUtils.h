@@ -7,22 +7,14 @@
 #ifndef DOM_SVG_SVGPATHSEGUTILS_H_
 #define DOM_SVG_SVGPATHSEGUTILS_H_
 
-#include "mozilla/ArrayUtils.h"
-#include "mozilla/dom/SVGPathSegBinding.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/gfx/Rect.h"
-#include "nsDebug.h"
+#include "mozilla/Span.h"
 
 namespace mozilla {
 template <typename Angle, typename LP>
 struct StyleGenericShapeCommand;
-
-#define NS_SVG_PATH_SEG_MAX_ARGS 7
-#define NS_SVG_PATH_SEG_FIRST_VALID_TYPE \
-  dom::SVGPathSeg_Binding::PATHSEG_CLOSEPATH
-#define NS_SVG_PATH_SEG_LAST_VALID_TYPE \
-  dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL
-#define NS_SVG_PATH_SEG_TYPE_COUNT (NS_SVG_PATH_SEG_LAST_VALID_TYPE + 1)
+using StylePathCommand = StyleGenericShapeCommand<float, float>;
 
 /**
  * Code that works with path segments can use an instance of this class to
@@ -79,194 +71,12 @@ class SVGPathSegUtils {
   SVGPathSegUtils() = default;  // private to prevent instances
 
  public:
-  static void GetValueAsString(const float* aSeg, nsAString& aValue);
-
-  /**
-   * Encode a segment type enum to a float.
-   *
-   * At some point in the future we will likely want to encode other
-   * information into the float, such as whether the command was explicit or
-   * not. For now all this method does is save on int to float runtime
-   * conversion by requiring uint32_t and float to be of the same size so we
-   * can simply do a bitwise uint32_t<->float copy.
-   */
-  static float EncodeType(uint32_t aType) {
-    static_assert(sizeof(uint32_t) == sizeof(float),
-                  "sizeof uint32_t and float must be the same");
-    MOZ_ASSERT(IsValidType(aType), "Seg type not recognized");
-    return *(reinterpret_cast<float*>(&aType));
-  }
-
-  static uint32_t DecodeType(float aType) {
-    static_assert(sizeof(uint32_t) == sizeof(float),
-                  "sizeof uint32_t and float must be the same");
-    uint32_t type = *(reinterpret_cast<uint32_t*>(&aType));
-    MOZ_ASSERT(IsValidType(type), "Seg type not recognized");
-    return type;
-  }
-
-  static char16_t GetPathSegTypeAsLetter(uint32_t aType) {
-    MOZ_ASSERT(IsValidType(aType), "Seg type not recognized");
-
-    static const char16_t table[] = {
-        char16_t('x'),  //  0 == PATHSEG_UNKNOWN
-        char16_t('z'),  //  1 == PATHSEG_CLOSEPATH
-        char16_t('M'),  //  2 == PATHSEG_MOVETO_ABS
-        char16_t('m'),  //  3 == PATHSEG_MOVETO_REL
-        char16_t('L'),  //  4 == PATHSEG_LINETO_ABS
-        char16_t('l'),  //  5 == PATHSEG_LINETO_REL
-        char16_t('C'),  //  6 == PATHSEG_CURVETO_CUBIC_ABS
-        char16_t('c'),  //  7 == PATHSEG_CURVETO_CUBIC_REL
-        char16_t('Q'),  //  8 == PATHSEG_CURVETO_QUADRATIC_ABS
-        char16_t('q'),  //  9 == PATHSEG_CURVETO_QUADRATIC_REL
-        char16_t('A'),  // 10 == PATHSEG_ARC_ABS
-        char16_t('a'),  // 11 == PATHSEG_ARC_REL
-        char16_t('H'),  // 12 == PATHSEG_LINETO_HORIZONTAL_ABS
-        char16_t('h'),  // 13 == PATHSEG_LINETO_HORIZONTAL_REL
-        char16_t('V'),  // 14 == PATHSEG_LINETO_VERTICAL_ABS
-        char16_t('v'),  // 15 == PATHSEG_LINETO_VERTICAL_REL
-        char16_t('S'),  // 16 == PATHSEG_CURVETO_CUBIC_SMOOTH_ABS
-        char16_t('s'),  // 17 == PATHSEG_CURVETO_CUBIC_SMOOTH_REL
-        char16_t('T'),  // 18 == PATHSEG_CURVETO_QUADRATIC_SMOOTH_ABS
-        char16_t('t')   // 19 == PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL
-    };
-    static_assert(MOZ_ARRAY_LENGTH(table) == NS_SVG_PATH_SEG_TYPE_COUNT,
-                  "Unexpected table size");
-
-    return table[aType];
-  }
-
-  static uint32_t ArgCountForType(uint32_t aType) {
-    MOZ_ASSERT(IsValidType(aType), "Seg type not recognized");
-
-    static const uint8_t table[] = {
-        0,  //  0 == PATHSEG_UNKNOWN
-        0,  //  1 == PATHSEG_CLOSEPATH
-        2,  //  2 == PATHSEG_MOVETO_ABS
-        2,  //  3 == PATHSEG_MOVETO_REL
-        2,  //  4 == PATHSEG_LINETO_ABS
-        2,  //  5 == PATHSEG_LINETO_REL
-        6,  //  6 == PATHSEG_CURVETO_CUBIC_ABS
-        6,  //  7 == PATHSEG_CURVETO_CUBIC_REL
-        4,  //  8 == PATHSEG_CURVETO_QUADRATIC_ABS
-        4,  //  9 == PATHSEG_CURVETO_QUADRATIC_REL
-        7,  // 10 == PATHSEG_ARC_ABS
-        7,  // 11 == PATHSEG_ARC_REL
-        1,  // 12 == PATHSEG_LINETO_HORIZONTAL_ABS
-        1,  // 13 == PATHSEG_LINETO_HORIZONTAL_REL
-        1,  // 14 == PATHSEG_LINETO_VERTICAL_ABS
-        1,  // 15 == PATHSEG_LINETO_VERTICAL_REL
-        4,  // 16 == PATHSEG_CURVETO_CUBIC_SMOOTH_ABS
-        4,  // 17 == PATHSEG_CURVETO_CUBIC_SMOOTH_REL
-        2,  // 18 == PATHSEG_CURVETO_QUADRATIC_SMOOTH_ABS
-        2   // 19 == PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL
-    };
-    static_assert(MOZ_ARRAY_LENGTH(table) == NS_SVG_PATH_SEG_TYPE_COUNT,
-                  "Unexpected table size");
-
-    return table[aType];
-  }
-
-  /**
-   * Convenience so that callers can pass a float containing an encoded type
-   * and have it decoded implicitly.
-   */
-  static uint32_t ArgCountForType(float aType) {
-    return ArgCountForType(DecodeType(aType));
-  }
-
-  static bool IsValidType(uint32_t aType) {
-    return aType >= NS_SVG_PATH_SEG_FIRST_VALID_TYPE &&
-           aType <= NS_SVG_PATH_SEG_LAST_VALID_TYPE;
-  }
-
-  static bool IsCubicType(uint32_t aType) {
-    return aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_CUBIC_REL ||
-           aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_CUBIC_ABS ||
-           aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_CUBIC_SMOOTH_REL ||
-           aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_CUBIC_SMOOTH_ABS;
-  }
-
-  static bool IsQuadraticType(uint32_t aType) {
-    return aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_REL ||
-           aType == dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_ABS ||
-           aType ==
-               dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL ||
-           aType ==
-               dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_ABS;
-  }
-
-  static bool IsArcType(uint32_t aType) {
-    return aType == dom::SVGPathSeg_Binding::PATHSEG_ARC_ABS ||
-           aType == dom::SVGPathSeg_Binding::PATHSEG_ARC_REL;
-  }
-
-  static bool IsRelativeOrAbsoluteType(uint32_t aType) {
-    MOZ_ASSERT(IsValidType(aType), "Seg type not recognized");
-
-    // When adding a new path segment type, ensure that the returned condition
-    // below is still correct.
-    static_assert(
-        NS_SVG_PATH_SEG_LAST_VALID_TYPE ==
-            dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL,
-        "Unexpected type");
-
-    return aType >= dom::SVGPathSeg_Binding::PATHSEG_MOVETO_ABS;
-  }
-
-  static bool IsRelativeType(uint32_t aType) {
-    MOZ_ASSERT(IsRelativeOrAbsoluteType(aType),
-               "IsRelativeType called with segment type that does not come in "
-               "relative and absolute forms");
-
-    // When adding a new path segment type, ensure that the returned condition
-    // below is still correct.
-    static_assert(
-        NS_SVG_PATH_SEG_LAST_VALID_TYPE ==
-            dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL,
-        "Unexpected type");
-
-    return aType & 1;
-  }
-
-  static uint32_t RelativeVersionOfType(uint32_t aType) {
-    MOZ_ASSERT(IsRelativeOrAbsoluteType(aType),
-               "RelativeVersionOfType called with segment type that does not "
-               "come in relative and absolute forms");
-
-    // When adding a new path segment type, ensure that the returned condition
-    // below is still correct.
-    static_assert(
-        NS_SVG_PATH_SEG_LAST_VALID_TYPE ==
-            dom::SVGPathSeg_Binding::PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL,
-        "Unexpected type");
-
-    return aType | 1;
-  }
-
-  static bool SameTypeModuloRelativeness(uint32_t aType1, uint32_t aType2) {
-    if (!IsRelativeOrAbsoluteType(aType1) ||
-        !IsRelativeOrAbsoluteType(aType2)) {
-      return aType1 == aType2;
-    }
-
-    return RelativeVersionOfType(aType1) == RelativeVersionOfType(aType2);
-  }
-
-  /**
-   * Traverse the given path segment and update the SVGPathTraversalState
-   * object.
-   */
-  static void TraversePathSegment(const float* aData,
-                                  SVGPathTraversalState& aState);
-
   /**
    * Traverse the given path segment and update the SVGPathTraversalState
    * object. This is identical to the above one but accepts StylePathCommand.
    */
-  static void TraversePathSegment(
-      const StyleGenericShapeCommand<float, float>& aCommand,
-      SVGPathTraversalState& aState);
+  static void TraversePathSegment(const StylePathCommand&,
+                                  SVGPathTraversalState&);
 };
 
 /// Detect whether the path represents a rectangle (for both filling AND
@@ -274,15 +84,14 @@ class SVGPathSegUtils {
 ///
 /// This is typically useful for google slides which has many of these rectangle
 /// shaped paths. It handles the same scenarios as skia's
-/// SkPathPriv::IsRectContour which it is inspried from, including zero-length
+/// SkPathPriv::IsRectContour which it is inspired from, including zero-length
 /// edges and multiple points on edges of the rectangle, and doesn't attempt to
 /// detect flat curves (that could easily be added but the expectation is that
 /// since skia doesn't fast path it we're not likely to run into it in
 /// practice).
 ///
 /// We could implement something similar for polygons.
-Maybe<gfx::Rect> SVGPathToAxisAlignedRect(
-    Span<const StyleGenericShapeCommand<float, float>> aPath);
+Maybe<gfx::Rect> SVGPathToAxisAlignedRect(Span<const StylePathCommand>);
 
 }  // namespace mozilla
 

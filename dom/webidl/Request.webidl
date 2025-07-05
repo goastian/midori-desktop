@@ -7,6 +7,9 @@
  * https://fetch.spec.whatwg.org/#request-class
  */
 
+
+interface Principal;
+
 typedef (Request or UTF8String) RequestInfo;
 typedef unsigned long nsContentPolicyType;
 
@@ -77,6 +80,21 @@ dictionary RequestInit {
   [ChromeOnly]
   boolean mozErrors;
 
+  // This allows the Chrome process to send Fetch requests as if they were
+  // triggered by another origin. It is up to the Chrome process to use
+  // this responsibly to represent that a Fetch is _really_ being triggered
+  // by some content even though it is occurring in a system context.
+  [ChromeOnly]
+  Principal triggeringPrincipal;
+
+  // This allows fetches made by the system using the triggeringPrincipal
+  // to ensure that the response can be read by the system. This forces
+  // the request to never be tainted, so that the response remains Basic.
+  // It is then up to the Chrome process to not share the contents to other
+  // processes.
+  [ChromeOnly]
+  boolean neverTaint;
+
   AbortSignal? signal;
 
   [Pref="network.fetchpriority.enabled"]
@@ -89,7 +107,7 @@ dictionary RequestInit {
 enum RequestDestination {
   "",
   "audio", "audioworklet", "document", "embed", "font", "frame", "iframe",
-  "image", "manifest", "object", "paintworklet", "report", "script",
+  "image", "json", "manifest", "object", "paintworklet", "report", "script",
   "sharedworker", "style",  "track", "video", "worker", "xslt"
 };
 

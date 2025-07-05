@@ -4,16 +4,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+include "mozilla/dom/DomSecurityIPCUtils.h";
 include "mozilla/GfxMessageUtils.h";
 include "mozilla/dom/CSPMessageUtils.h";
 include "mozilla/dom/DocShellMessageUtils.h";
+include "mozilla/dom/NavigationAPIIPCUtils.h";
 include "mozilla/dom/PermissionMessageUtils.h";
 include "mozilla/dom/PropertyBagUtils.h";
 include "mozilla/dom/ReferrerInfoUtils.h";
 include "mozilla/dom/TabMessageUtils.h";
+include "mozilla/dom/notification/IPCUtils.h";
 include "mozilla/ipc/URIUtils.h";
 include "mozilla/layers/LayersMessageUtils.h";
-include "mozilla/net/ClassOfService.h";
+include "mozilla/net/NeckoMessageUtils.h";
 
 include IPCBlob;
 include IPCStream;
@@ -37,12 +40,14 @@ using mozilla::DesktopToLayoutDeviceScale from "Units.h";
 using mozilla::CSSToLayoutDeviceScale from "Units.h";
 using mozilla::CSSRect from "Units.h";
 using mozilla::CSSSize from "Units.h";
-using mozilla::ScreenIntSize from "Units.h";
+using mozilla::LayoutDeviceIntSize from "Units.h";
 using mozilla::LayoutDeviceIntPoint from "Units.h";
 using mozilla::ImageIntSize from "Units.h";
 using nsSizeMode from "nsIWidgetListener.h";
 using mozilla::ScrollbarPreference from "mozilla/ScrollbarPreferences.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
+using nsILoadInfo::HTTPSUpgradeTelemetryType from "nsILoadInfo.h";
+using nsILoadInfo::SchemelessInputType from "nsILoadInfo.h";
 [RefCounted] using class nsIPrincipal from "nsIPrincipal.h";
 using mozilla::dom::MaybeDiscardedBrowsingContext from "mozilla/dom/BrowsingContext.h";
 [RefCounted] using class nsIURI from "nsIURI.h";
@@ -53,6 +58,8 @@ using mozilla::dom::MaybeDiscardedBrowsingContext from "mozilla/dom/BrowsingCont
 using mozilla::TimeStamp from "mozilla/TimeStamp.h";
 [RefCounted] using class mozilla::RemoteLazyInputStream from "mozilla/RemoteLazyInputStream.h";
 [MoveOnly] using class mozilla::ipc::BigBuffer from "mozilla/ipc/BigBuffer.h";
+using mozilla::dom::NotificationDirection from "mozilla/dom/NotificationBinding.h";
+using mozilla::dom::UserNavigationInvolvement from "mozilla/dom/UserNavigationInvolvement.h";
 
 namespace mozilla {
 namespace dom {
@@ -188,8 +195,11 @@ struct DocShellLoadStateInit
   uint32_t LoadType;
   uint32_t LoadFlags;
   uint32_t InternalLoadFlags;
-  
-  // The TriggineringSandboxFlags are the SandboxFlags of the entity
+
+  // https://html.spec.whatwg.org/#user-navigation-involvement
+  UserNavigationInvolvement userNavigationInvolvement;
+
+  // The TriggeringSandboxFlags are the SandboxFlags of the entity
   // responsible for causing the load to occur.
   uint32_t TriggeringSandboxFlags;
   uint64_t TriggeringWindowId;
@@ -204,12 +214,15 @@ struct DocShellLoadStateInit
   bool ForceAllowDataURI;
   bool IsExemptFromHTTPSFirstMode;
   bool OriginalFrameSrc;
+  bool ShouldCheckForRecursion;
   bool IsFormSubmission;
   bool FirstParty;
   bool HasValidUserGestureActivation;
+  bool TextDirectiveUserActivation;
   bool AllowFocusMove;
   bool IsFromProcessingFrameAttributes;
-  bool WasSchemelessInput;
+  SchemelessInputType SchemelessInput;
+  HTTPSUpgradeTelemetryType HttpsUpgradeTelemetry;
 
   // Fields missing due to lack of need or serialization
   // nsCOMPtr<nsIDocShell> mSourceDocShell;
@@ -225,7 +238,6 @@ struct DocShellLoadStateInit
 
 struct TimedChannelInfo
 {
-  bool timingEnabled;
   int8_t redirectCount;
   int8_t internalRedirectCount;
   TimeStamp asyncOpen;
@@ -308,7 +320,7 @@ struct ParentShowInfo
 struct OwnerShowInfo {
   // This can be an IntSize rather than a Rect because content processes always
   // render to a virtual <0, 0> top-left point.
-  ScreenIntSize size;
+  LayoutDeviceIntSize size;
 
   // TODO(emilio): Margin preferences go here.
   ScrollbarPreference scrollbarPreference;
@@ -323,6 +335,39 @@ struct IPCImage {
     uint32_t stride;
     SurfaceFormat format;
     ImageIntSize size;
+};
+
+struct IPCNotificationAction {
+  nsString name;
+  nsString title;
+};
+
+// Mostly same as NotificationOptions except:
+// * `title` is included (it's a separate parameter in the Notification constructor)
+// * `data` is serialized to base64 string by StructuredCloneContainer
+// * `vibrate` is normalized to sequence
+struct IPCNotificationOptions {
+  nsString title;
+  NotificationDirection dir;
+  nsString lang;
+  nsString body;
+  nsString tag;
+  nsString icon;
+  bool requireInteraction;
+  bool silent;
+  uint32_t[] vibrate;
+  nsString dataSerialized;
+  IPCNotificationAction[] actions;
+};
+
+struct IPCNotification {
+  nsString id;
+  IPCNotificationOptions options;
+};
+
+union IPCNotificationsOrError {
+  IPCNotification[];
+  nsresult;
 };
 
 } // namespace dom

@@ -28,6 +28,12 @@ class nsIEventTarget;
 
 namespace mozilla::media {
 
+/* Utility function, given a string pref and an URI, returns whether or not
+ * the URI occurs in the pref. Wildcards are supported (e.g. *.example.com)
+ * and multiple hostnames can be present, separated by commas.
+ */
+bool HostnameInPref(const char* aPrefList, const nsCString& aHostName);
+
 /* media::NewRunnableFrom() - Create a Runnable from a lambda.
  *
  * Passing variables (closures) to an async function is clunky with Runnable:
@@ -210,6 +216,46 @@ class ShutdownBlockingTicket {
    * the MozPromise will get rejected.
    */
   virtual ShutdownMozPromise* ShutdownPromise() = 0;
+};
+
+/**
+ * A convenience class intended to be subclassed by DOM objects wanting to be
+ * notified when its owning thread shutdown is about to occur.
+ */
+class ShutdownConsumer {
+ public:
+  /**
+   * On the main thread, this is called with the xpcom-will-shutdown event.
+   * On a worker thread, this is called by the WeakWorkerRef callback.
+   */
+  virtual void OnShutdown() = 0;
+};
+
+/**
+ * A convenience class intended to be held by DOM objects wanting to be notified
+ * when its owning thread shutdown is about to occur.
+ */
+class ShutdownWatcher : public nsISupports {
+ public:
+  /**
+   * Create a shutdown watcher for the given consumer.
+   */
+  static already_AddRefed<ShutdownWatcher> Create(ShutdownConsumer* aConsumer);
+
+  /**
+   * Destroy a shutdown watcher. Must be called by the owning object prior to
+   * clearing its reference.
+   */
+  virtual void Destroy() = 0;
+
+ protected:
+  explicit ShutdownWatcher(ShutdownConsumer* aConsumer) : mConsumer(aConsumer) {
+    MOZ_ASSERT(aConsumer);
+  }
+
+  virtual ~ShutdownWatcher() { MOZ_ASSERT(!mConsumer); }
+
+  ShutdownConsumer* mConsumer;
 };
 
 /**

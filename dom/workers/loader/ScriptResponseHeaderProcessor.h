@@ -13,12 +13,13 @@
 #include "nsIHttpChannelInternal.h"
 #include "nsIStreamLoader.h"
 #include "nsStreamUtils.h"
+#include "js/Modules.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_dom.h"
 
 namespace mozilla::dom {
 
-class WorkerPrivate;
+class ThreadSafeWorkerRef;
 
 namespace workerinternals::loader {
 
@@ -34,19 +35,22 @@ class ScriptResponseHeaderProcessor final : public nsIRequestObserver {
  public:
   NS_DECL_ISUPPORTS
 
-  ScriptResponseHeaderProcessor(WorkerPrivate* aWorkerPrivate,
-                                bool aIsMainScript, bool aIsImportScript)
-      : mWorkerPrivate(aWorkerPrivate),
+  ScriptResponseHeaderProcessor(RefPtr<ThreadSafeWorkerRef>& aWorkerRef,
+                                bool aIsMainScript,
+                                bool aRequiresStrictMimeCheck,
+                                JS::ModuleType aModuleType)
+      : mWorkerRef(aWorkerRef),
         mIsMainScript(aIsMainScript),
-        mIsImportScript(aIsImportScript) {
+        mRequiresStrictMimeCheck(aRequiresStrictMimeCheck),
+        mModuleType(aModuleType) {
     AssertIsOnMainThread();
   }
 
   NS_IMETHOD OnStartRequest(nsIRequest* aRequest) override {
     nsresult rv = NS_OK;
-    if (mIsImportScript &&
+    if (mRequiresStrictMimeCheck &&
         StaticPrefs::dom_workers_importScripts_enforceStrictMimeType()) {
-      rv = EnsureJavaScriptMimeType(aRequest);
+      rv = EnsureExpectedModuleType(aRequest);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         aRequest->Cancel(rv);
         return NS_OK;
@@ -78,13 +82,16 @@ class ScriptResponseHeaderProcessor final : public nsIRequestObserver {
  private:
   ~ScriptResponseHeaderProcessor() = default;
 
-  nsresult EnsureJavaScriptMimeType(nsIRequest* aRequest);
+  nsresult EnsureExpectedModuleType(nsIRequest* aRequest);
 
   nsresult ProcessCrossOriginEmbedderPolicyHeader(nsIRequest* aRequest);
 
-  WorkerPrivate* const mWorkerPrivate;
+  // The owner of ScriptResponseHeaderProcessor should give the WorkerRef to
+  // ensure ScriptResponseHeaderProcessor works with an valid WorkerPrivate.
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
   const bool mIsMainScript;
-  const bool mIsImportScript;
+  const bool mRequiresStrictMimeCheck;
+  const JS::ModuleType mModuleType;
 };
 
 }  // namespace workerinternals::loader

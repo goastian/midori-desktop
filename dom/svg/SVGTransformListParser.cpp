@@ -48,7 +48,7 @@ bool SVGTransformListParser::ParseTransforms() {
 }
 
 bool SVGTransformListParser::ParseTransform() {
-  RangedPtr<const char16_t> start(mIter);
+  nsAString::const_iterator start(mIter);
   while (IsAsciiAlpha(*mIter)) {
     ++mIter;
     if (mIter == mEnd) {
@@ -61,7 +61,7 @@ bool SVGTransformListParser::ParseTransform() {
     return false;
   }
 
-  const nsAString& transform = Substring(start.get(), mIter.get());
+  const nsAString& transform = Substring(start, mIter);
   nsStaticAtom* keyAtom = NS_GetStaticAtom(transform);
 
   if (!keyAtom || !SkipWsp()) {
@@ -126,7 +126,7 @@ bool SVGTransformListParser::ParseTranslate() {
   float t[2];
   uint32_t count;
 
-  if (!ParseArguments(t, ArrayLength(t), &count)) {
+  if (!ParseArguments(t, std::size(t), &count)) {
     return false;
   }
 
@@ -151,7 +151,7 @@ bool SVGTransformListParser::ParseScale() {
   float s[2];
   uint32_t count;
 
-  if (!ParseArguments(s, ArrayLength(s), &count)) {
+  if (!ParseArguments(s, std::size(s), &count)) {
     return false;
   }
 
@@ -176,7 +176,7 @@ bool SVGTransformListParser::ParseRotate() {
   float r[3];
   uint32_t count;
 
-  if (!ParseArguments(r, ArrayLength(r), &count)) {
+  if (!ParseArguments(r, std::size(r), &count)) {
     return false;
   }
 
@@ -235,7 +235,7 @@ bool SVGTransformListParser::ParseMatrix() {
   float m[6];
   uint32_t count;
 
-  if (!ParseArguments(m, ArrayLength(m), &count) || count != 6) {
+  if (!ParseArguments(m, std::size(m), &count) || count != 6) {
     return false;
   }
 

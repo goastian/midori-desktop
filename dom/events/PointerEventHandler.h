@@ -52,15 +52,19 @@ class PointerInfo final {
   bool mPrimaryState;
   bool mFromTouchEvent;
   bool mPreventMouseEventByContent;
+  // Set to true if the pointer is activated only by synthesized mouse events.
+  bool mIsSynthesizedForTests;
   WeakPtr<dom::Document> mActiveDocument;
   explicit PointerInfo(bool aActiveState, uint16_t aPointerType,
                        bool aPrimaryState, bool aFromTouchEvent,
-                       dom::Document* aActiveDocument)
+                       dom::Document* aActiveDocument,
+                       bool aIsSynthesizedForTests = false)
       : mPointerType(aPointerType),
         mActiveState(aActiveState),
         mPrimaryState(aPrimaryState),
         mFromTouchEvent(aFromTouchEvent),
         mPreventMouseEventByContent(false),
+        mIsSynthesizedForTests(aIsSynthesizedForTests),
         mActiveDocument(aActiveDocument) {}
 };
 
@@ -73,6 +77,19 @@ class PointerEventHandler final {
 
   // Return the preference value of implicit capture.
   static bool IsPointerEventImplicitCaptureForTouchEnabled();
+
+  /**
+   * Return true if click/auxclick/contextmenu event should be fired on
+   * an element which was capturing the pointer at dispatching ePointerUp.
+   *
+   * @param aSourceEvent    [Optional] The source event which causes the
+   *                        `click`, `auxclick` or `contextmenu` event.  I.e.,
+   *                        must be one of `mouseup`, `pointerup` or `touchend`.
+   *                        If specifying nullptr, this method checks only
+   *                        whether the behavior is enabled.
+   */
+  [[nodiscard]] static bool ShouldDispatchClickEventOnCapturingElement(
+      const WidgetGUIEvent* aSourceEvent = nullptr);
 
   // Called in ESM::PreHandleEvent to update current active pointers in a hash
   // table.
@@ -103,6 +120,8 @@ class PointerEventHandler final {
 
   // Return the PointerInfo if the pointer with aPointerId is situated in device
   // , nullptr otherwise.
+  // Note that the result may be activated only by synthesized events for test.
+  // If you don't want it, check PointerInfo::mIsSynthesizedForTests.
   static const PointerInfo* GetPointerInfo(uint32_t aPointerId);
 
   // CheckPointerCaptureState checks cases, when got/lostpointercapture events
@@ -133,9 +152,39 @@ class PointerEventHandler final {
    *
    * @return                     Target element for aEvent.
    */
-  static dom::Element* GetPointerCapturingElement(WidgetGUIEvent* aEvent);
+  static dom::Element* GetPointerCapturingElement(const WidgetGUIEvent* aEvent);
 
   static dom::Element* GetPointerCapturingElement(uint32_t aPointerId);
+
+  /**
+   * Return pending capture element of for the pointerId (of the event).
+   * - If the element has already overriden the pointer capture and there is no
+   * new pending capture element, the result is what captures the pointer right
+   * now.
+   * - If the element has not overriden the pointer capture, the result will
+   * start capturing the pointer once the pending pointer capture is processed
+   * at dispatching a pointer event later.
+   *
+   * So, in other words, the result is the element which will capture the next
+   * pointer event for the pointerId.
+   */
+  static dom::Element* GetPendingPointerCapturingElement(
+      const WidgetGUIEvent* aEvent);
+  static dom::Element* GetPendingPointerCapturingElement(uint32_t aPointerId);
+
+  /**
+   * Return an element which captured the pointer at dispatching the last
+   * ePointerUp event caused by eMouseUp except the compatibility mouse events
+   * of Touch Events or caused by eTouchEnd whose number of touches is one,
+   * i.e., the last touch release.
+   */
+  [[nodiscard]] static RefPtr<dom::Element>
+  GetPointerCapturingElementAtLastPointerUp();
+
+  /**
+   * Forget the pointer capturing element at dispatching the last ePointerUp.
+   */
+  static void ReleasePointerCapturingElementAtLastPointerUp();
 
   // Release pointer capture if captured by the specified content or it's
   // descendant. This is called to handle the case that the pointer capturing
@@ -177,6 +226,8 @@ class PointerEventHandler final {
    * @param aShell              The PresShell which is handling the event.
    * @param aEventTargetFrame   The frame for aEventTargetContent.
    * @param aEventTargetContent The event target node.
+   * @param aPointerCapturingElement
+   *                            The pointer capturing element.
    * @param aMouseOrTouchEvent  A mouse or touch event.
    * @param aDontRetargetEvents If true, this won't dispatch event with
    *                            different PresShell from aShell.  Otherwise,
@@ -201,9 +252,19 @@ class PointerEventHandler final {
    */
   MOZ_CAN_RUN_SCRIPT static void DispatchPointerFromMouseOrTouch(
       PresShell* aShell, nsIFrame* aEventTargetFrame,
-      nsIContent* aEventTargetContent, WidgetGUIEvent* aMouseOrTouchEvent,
-      bool aDontRetargetEvents, nsEventStatus* aStatus,
-      nsIContent** aMouseOrTouchEventTarget = nullptr);
+      nsIContent* aEventTargetContent, dom::Element* aPointerCapturingElement,
+      WidgetGUIEvent* aMouseOrTouchEvent, bool aDontRetargetEvents,
+      nsEventStatus* aStatus, nsIContent** aMouseOrTouchEventTarget = nullptr);
+
+  /**
+   * Synthesize eMouseMove or ePointerMove to dispatch mouse/pointer boundary
+   * events if they are required.  This dispatches the event on the widget.
+   * Therefore, this dispatches the event on correct document in the same
+   * process.  However, if there is a popup under the pointer or a document in a
+   * different process, this does not work as you expected.
+   */
+  MOZ_CAN_RUN_SCRIPT static void SynthesizeMoveToDispatchBoundaryEvents(
+      const WidgetMouseEvent* aEvent);
 
   static void InitPointerEventFromMouse(WidgetPointerEvent* aPointerEvent,
                                         WidgetMouseEvent* aMouseEvent,
@@ -213,15 +274,21 @@ class PointerEventHandler final {
                                         const WidgetTouchEvent& aTouchEvent,
                                         const mozilla::dom::Touch& aTouch);
 
+  static void InitCoalescedEventFromPointerEvent(
+      WidgetPointerEvent& aCoalescedEvent,
+      const WidgetPointerEvent& aSourceEvent);
+
   static bool ShouldGeneratePointerEventFromMouse(WidgetGUIEvent* aEvent) {
-    return aEvent->mMessage == eMouseDown || aEvent->mMessage == eMouseUp ||
+    return aEvent->mMessage == eMouseRawUpdate ||
+           aEvent->mMessage == eMouseDown || aEvent->mMessage == eMouseUp ||
            (aEvent->mMessage == eMouseMove &&
             aEvent->AsMouseEvent()->IsReal()) ||
            aEvent->mMessage == eMouseExitFromWidget;
   }
 
   static bool ShouldGeneratePointerEventFromTouch(WidgetGUIEvent* aEvent) {
-    return aEvent->mMessage == eTouchStart || aEvent->mMessage == eTouchMove ||
+    return aEvent->mMessage == eTouchRawUpdate ||
+           aEvent->mMessage == eTouchStart || aEvent->mMessage == eTouchMove ||
            aEvent->mMessage == eTouchEnd || aEvent->mMessage == eTouchCancel ||
            aEvent->mMessage == eTouchPointerCancel;
   }
@@ -234,11 +301,18 @@ class PointerEventHandler final {
 
   static bool IsDragAndDropEnabled(WidgetMouseEvent& aEvent);
 
- private:
   // Get proper pointer event message for a mouse or touch event.
-  static EventMessage ToPointerEventMessage(
+  [[nodiscard]] static EventMessage ToPointerEventMessage(
       const WidgetGUIEvent* aMouseOrTouchEvent);
 
+  /**
+   * Return true if the window containing aDocument has had a
+   * `pointerrawupdate` event listener.
+   */
+  [[nodiscard]] static bool NeedToDispatchPointerRawUpdate(
+      const dom::Document* aDocument);
+
+ private:
   // Set pointer capture of the specified pointer by the element.
   static void SetPointerCaptureById(uint32_t aPointerId,
                                     dom::Element* aElement);
@@ -261,6 +335,10 @@ class PointerEventHandler final {
       bool aIsGotCapture, const WidgetPointerEvent* aPointerEvent,
       dom::Element* aCaptureTarget);
 
+  enum class CapturingState { Pending, Override };
+  static dom::Element* GetPointerCapturingElementInternal(
+      CapturingState aCapturingState, const WidgetGUIEvent* aEvent);
+
   // The cached spoofed pointer ID for fingerprinting resistance. We will use a
   // mouse pointer id for desktop. For mobile, we should use the touch pointer
   // id as the spoofed one, and this work will be addressed in Bug 1492775.
@@ -271,6 +349,12 @@ class PointerEventHandler final {
   // that pointer id for fingerprinting resistance.
   static void MaybeCacheSpoofedPointerID(uint16_t aInputSource,
                                          uint32_t aPointerId);
+
+  /**
+   * Store the pointer capturing element.
+   */
+  static void SetPointerCapturingElementAtLastPointerUp(
+      nsWeakPtr&& aPointerCapturingElement);
 };
 
 }  // namespace mozilla

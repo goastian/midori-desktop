@@ -21,14 +21,14 @@ class ErrorData;
 class WorkerErrorBase {
  public:
   nsString mMessage;
-  nsString mFilename;
+  nsCString mFilename;
   // Line number (1-origin).
-  uint32_t mLineNumber;
+  uint32_t mLineNumber = 0;
   // Column number in UTF-16 code units (1-origin).
-  uint32_t mColumnNumber;
-  uint32_t mErrorNumber;
+  uint32_t mColumnNumber = 0;
+  uint32_t mErrorNumber = 0;
 
-  WorkerErrorBase() : mLineNumber(0), mColumnNumber(0), mErrorNumber(0) {}
+  WorkerErrorBase() = default;
 
   void AssignErrorBase(JSErrorBase* aReport);
 };
@@ -42,7 +42,6 @@ class WorkerPrivate;
 
 class WorkerErrorReport : public WorkerErrorBase, public SerializedStackHolder {
  public:
-  nsString mLine;
   bool mIsWarning;
   JSExnType mExnType;
   bool mMutedError;
@@ -69,6 +68,8 @@ class WorkerErrorReport : public WorkerErrorBase, public SerializedStackHolder {
                                 uint64_t aInnerWindowId,
                                 JS::Handle<JSObject*> aStack = nullptr,
                                 JS::Handle<JSObject*> aStackGlobal = nullptr);
+
+  static void LogErrorToConsole(const nsAString& aMessage);
 
   static void CreateAndDispatchGenericErrorRunnableToParent(
       WorkerPrivate* aWorkerPrivate);

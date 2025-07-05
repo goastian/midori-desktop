@@ -25,13 +25,16 @@ class ContentProcess : public mozilla::ipc::ProcessChild {
   using ProcessChild = mozilla::ipc::ProcessChild;
 
  public:
-  ContentProcess(ProcessId aParentPid, const nsID& aMessageChannelId);
+  ContentProcess(IPC::Channel::ChannelHandle aClientChannel,
+                 ProcessId aParentPid, const nsID& aMessageChannelId);
   ~ContentProcess();
 
   virtual bool Init(int aArgc, char* aArgv[]) override;
   virtual void CleanUp() override;
 
  private:
+  void InfallibleInit(int aArgc, char* aArgv[]);
+
   ContentChild mContent;
 #if defined(XP_WIN)
   // This object initializes and configures COM. This must happen prior to

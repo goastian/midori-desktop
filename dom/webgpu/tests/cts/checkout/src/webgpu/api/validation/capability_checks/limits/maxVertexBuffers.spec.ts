@@ -19,6 +19,7 @@ function getPipelineDescriptor(device: GPUDevice, testValue: number): GPURenderP
       module,
       buffers,
     },
+    depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'always' },
   };
 }
 
@@ -55,10 +56,10 @@ g.test('setVertexBuffer,at_over')
     await t.testDeviceWithRequestedMaximumLimits(
       limitTest,
       testValueName,
-      async ({ device, testValue, shouldError, actualLimit }) => {
+      async ({ testValue, shouldError, actualLimit }) => {
         const lastIndex = testValue - 1;
 
-        const buffer = device.createBuffer({
+        const buffer = t.createBufferTracked({
           size: 16,
           usage: GPUBufferUsage.VERTEX,
         });

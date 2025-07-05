@@ -8,7 +8,6 @@
 
 #include "AlignmentUtils.h"
 #include "AudibilityMonitor.h"
-#include "AudioChannelService.h"
 #include "AudioContext.h"
 #include "AudioNodeEngine.h"
 #include "AudioNodeTrack.h"
@@ -22,12 +21,8 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/WakeLock.h"
 #include "mozilla/dom/power/PowerManagerService.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/TelemetryHistogramEnums.h"
 #include "nsContentUtils.h"
-#include "nsIInterfaceRequestorUtils.h"
-#include "nsIScriptObjectPrincipal.h"
-#include "nsServiceManagerUtils.h"
+#include "nsGlobalWindowInner.h"
 #include "Tracing.h"
 
 extern mozilla::LazyLogModule gAudioChannelLog;
@@ -152,8 +147,8 @@ class OfflineDestinationNodeEngine final : public AudioNodeEngine {
     // Create the input buffer
     ErrorResult rv;
     RefPtr<AudioBuffer> renderedBuffer =
-        AudioBuffer::Create(aContext->GetOwner(), mNumberOfChannels, mLength,
-                            mSampleRate, mBuffer.forget(), rv);
+        AudioBuffer::Create(aContext->GetOwnerWindow(), mNumberOfChannels,
+                            mLength, mSampleRate, mBuffer.forget(), rv);
     if (rv.Failed()) {
       rv.SuppressException();
       return nullptr;
@@ -297,8 +292,7 @@ AudioDestinationNode::AudioDestinationNode(AudioContext* aContext,
     : AudioNode(aContext, aNumberOfChannels, ChannelCountMode::Explicit,
                 ChannelInterpretation::Speakers),
       mFramesToProduce(aLength),
-      mIsOffline(aIsOffline),
-      mCreatedTime(TimeStamp::Now()) {
+      mIsOffline(aIsOffline) {
   if (aIsOffline) {
     // The track is created on demand to avoid creating a graph thread that
     // may not be used.
@@ -308,7 +302,7 @@ AudioDestinationNode::AudioDestinationNode(AudioContext* aContext,
   // GetParentObject can return nullptr here. This will end up creating another
   // MediaTrackGraph
   MediaTrackGraph* graph = MediaTrackGraph::GetInstance(
-      MediaTrackGraph::AUDIO_THREAD_DRIVER, aContext->GetParentObject(),
+      MediaTrackGraph::AUDIO_THREAD_DRIVER, aContext->GetOwnerWindow(),
       aContext->SampleRate(), MediaTrackGraph::DEFAULT_OUTPUT_DEVICE);
   AudioNodeEngine* engine = new DestinationNodeEngine(this);
 
@@ -339,7 +333,7 @@ void AudioDestinationNode::CreateAndStartAudioChannelAgent() {
   MOZ_ASSERT(!mAudioChannelAgent);
 
   AudioChannelAgent* agent = new AudioChannelAgent();
-  nsresult rv = agent->InitWithWeakCallback(GetOwner(), this);
+  nsresult rv = agent->InitWithWeakCallback(GetOwnerWindow(), this);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     AUDIO_CHANNEL_LOG("Failed to init audio channel agent");
     return;
@@ -567,8 +561,7 @@ AudioDestinationNode::WindowAudioCaptureChanged(bool aCapture) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindowInner> ownerWindow = GetOwner();
-  if (!ownerWindow) {
+  if (!GetOwnerWindow()) {
     return NS_OK;
   }
 
@@ -591,7 +584,7 @@ bool AudioDestinationNode::IsCapturingAudio() const {
 
 void AudioDestinationNode::StartAudioCapturingTrack() {
   MOZ_ASSERT(!IsCapturingAudio());
-  nsCOMPtr<nsPIDOMWindowInner> window = Context()->GetParentObject();
+  nsGlobalWindowInner* window = Context()->GetOwnerWindow();
   uint64_t id = window->WindowID();
   mCaptureTrackPort = mTrack->Graph()->ConnectToCaptureTrack(id, mTrack);
 }
@@ -609,7 +602,8 @@ void AudioDestinationNode::CreateAudioWakeLockIfNeeded() {
     NS_ENSURE_TRUE_VOID(pmService);
 
     ErrorResult rv;
-    mWakeLock = pmService->NewWakeLock(u"audio-playing"_ns, GetOwner(), rv);
+    mWakeLock =
+        pmService->NewWakeLock(u"audio-playing"_ns, GetOwnerWindow(), rv);
   }
 }
 
@@ -627,13 +621,6 @@ void AudioDestinationNode::NotifyDataAudibleStateChanged(bool aAudible) {
   AUDIO_CHANNEL_LOG(
       "AudioDestinationNode %p NotifyDataAudibleStateChanged, audible=%d", this,
       aAudible);
-
-  if (mDurationBeforeFirstTimeAudible.IsZero()) {
-    MOZ_ASSERT(aAudible);
-    mDurationBeforeFirstTimeAudible = TimeStamp::Now() - mCreatedTime;
-    Telemetry::Accumulate(Telemetry::WEB_AUDIO_BECOMES_AUDIBLE_TIME,
-                          mDurationBeforeFirstTimeAudible.ToSeconds());
-  }
 
   mIsDataAudible = aAudible;
   UpdateFinalAudibleStateIfNeeded(AudibleChangedReasons::eDataAudibleChanged);

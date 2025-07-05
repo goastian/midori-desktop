@@ -1,4 +1,5 @@
 // Implements the standalone test runner (see also: /standalone/index.html).
+
 /* eslint no-console: "off" */
 
 import { dataCache } from '../framework/data_cache.js';
@@ -24,15 +25,16 @@ import {
 import { TestDedicatedWorker, TestSharedWorker, TestServiceWorker } from './helper/test_worker.js';
 
 const rootQuerySpec = 'webgpu:*';
-let promptBeforeReload = false;
 let isFullCTS = false;
 
 globalTestConfig.frameworkDebugLog = console.log;
 
-window.onbeforeunload = () => {
-  // Prompt user before reloading if there are any results
-  return promptBeforeReload ? false : undefined;
-};
+// Prompt before reloading to avoid losing test results.
+function enablePromptBeforeReload() {
+  window.addEventListener('beforeunload', () => {
+    return false;
+  });
+}
 
 const kOpenTestLinkAltText = 'Open';
 
@@ -51,6 +53,8 @@ const { runnow, powerPreference, compatibility, forceFallbackAdapter } = options
 globalTestConfig.enableDebugLogs = options.debug;
 globalTestConfig.unrollConstEvalLoops = options.unrollConstEvalLoops;
 globalTestConfig.compatibility = compatibility;
+globalTestConfig.enforceDefaultLimits = options.enforceDefaultLimits;
+globalTestConfig.blockAllFeatures = options.blockAllFeatures;
 globalTestConfig.logToWebSocket = options.logToWebSocket;
 
 const logger = new Logger();
@@ -83,8 +87,7 @@ stopButtonElem.addEventListener('click', () => {
 if (powerPreference || compatibility || forceFallbackAdapter) {
   setDefaultRequestAdapterOptions({
     ...(powerPreference && { powerPreference }),
-    // MAINTENANCE_TODO: Change this to whatever the option ends up being
-    ...(compatibility && { compatibilityMode: true }),
+    ...(compatibility && { featureLevel: 'compatibility' }),
     ...(forceFallbackAdapter && { forceFallbackAdapter: true }),
   });
 }
@@ -281,7 +284,7 @@ function makeSubtreeHTML(n: TestSubtree, parentLevel: TestQueryLevel): Visualize
       progressElem.style.display = '';
       // only prompt if this is the full CTS and we started from the root.
       if (isFullCTS && n.query.filePathParts.length === 0) {
-        promptBeforeReload = true;
+        enablePromptBeforeReload();
       }
     }
     if (stopRequested) {
@@ -368,6 +371,9 @@ function makeSubtreeChildrenHTML(
   const runMySubtree = async () => {
     const results: SubtreeResult[] = [];
     for (const { runSubtree } of childFns) {
+      if (stopRequested) {
+        break;
+      }
       results.push(await runSubtree());
     }
     return mergeSubtreeResults(...results);
@@ -490,6 +496,7 @@ function makeTreeNodeHeaderHTML(
   {
     $('<input>')
       .attr('type', 'text')
+      .attr('title', n.query.toString())
       .prop('readonly', true)
       .addClass('nodequery')
       .on('click', event => {
@@ -627,17 +634,21 @@ void (async () => {
       return select;
     };
 
-    for (const [optionName, info] of Object.entries(optionsInfos)) {
+    Object.entries(optionsInfos).forEach(([optionName, info], i) => {
+      const id = `option${i}`;
       const input =
         typeof optionValues[optionName] === 'boolean'
           ? createCheckbox(optionName)
           : createSelect(optionName, info);
+      input.attr('id', id);
       $('<tr>')
         .append($('<td>').append(input))
-        .append($('<td>').text(camelCaseToSnakeCase(optionName)))
+        .append(
+          $('<td>').append($('<label>').attr('for', id).text(camelCaseToSnakeCase(optionName)))
+        )
         .append($('<td>').text(info.description))
         .appendTo(optionsElem);
-    }
+    });
   };
   addOptionsToPage(options, kStandaloneOptionsInfos);
 
@@ -675,6 +686,8 @@ void (async () => {
     return;
   }
 
+  document.title = `${document.title} ${compatibility ? '(compat)' : ''} - ${rootQuery.toString()}`;
+
   tree.dissolveSingleChildTrees();
 
   const { runSubtree, generateSubtreeHTML } = makeSubtreeHTML(tree.root, 1);
@@ -686,6 +699,15 @@ void (async () => {
 
   document.getElementById('copyResultsJSON')!.addEventListener('click', () => {
     void navigator.clipboard.writeText(logger.asJSON(2));
+  });
+
+  document.getElementById('saveResultsJSON')!.addEventListener('click', () => {
+    const text = logger.asJSON(2);
+    const blob = new Blob([text], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.download = 'results-webgpu-cts.json';
+    link.href = window.URL.createObjectURL(blob);
+    link.click();
   });
 
   if (runnow) {

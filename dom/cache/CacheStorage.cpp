@@ -22,7 +22,7 @@
 #include "mozilla/dom/cache/PCacheChild.h"
 #include "mozilla/dom/cache/ReadStream.h"
 #include "mozilla/dom/cache/TypeUtils.h"
-#include "mozilla/dom/quota/QuotaManager.h"
+#include "mozilla/dom/quota/PrincipalUtils.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/ipc/BackgroundChild.h"
@@ -42,7 +42,6 @@
 namespace mozilla::dom::cache {
 
 using mozilla::ErrorResult;
-using mozilla::dom::quota::QuotaManager;
 using mozilla::ipc::BackgroundChild;
 using mozilla::ipc::PBackgroundChild;
 using mozilla::ipc::PrincipalInfo;
@@ -145,7 +144,7 @@ already_AddRefed<CacheStorage> CacheStorage::CreateOnMainThread(
   QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(aPrincipal, &principalInfo)),
          nullptr, [&aRv](const nsresult rv) { aRv.Throw(rv); });
 
-  QM_TRY(OkIf(QuotaManager::IsPrincipalInfoValid(principalInfo)),
+  QM_TRY(OkIf(quota::IsPrincipalInfoValid(principalInfo)),
          RefPtr{new CacheStorage(NS_ERROR_DOM_SECURITY_ERR)}.forget(),
          [](const auto) {
            NS_WARNING("CacheStorage not supported on invalid origins.");
@@ -175,7 +174,7 @@ already_AddRefed<CacheStorage> CacheStorage::CreateOnWorker(
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate);
   aWorkerPrivate->AssertIsOnWorkerThread();
 
-  if (aWorkerPrivate->GetOriginAttributes().mPrivateBrowsingId > 0 &&
+  if (aWorkerPrivate->GetOriginAttributes().IsPrivateBrowsing() &&
       !StaticPrefs::dom_cache_privateBrowsing_enabled()) {
     NS_WARNING("CacheStorage not supported during private browsing.");
     RefPtr<CacheStorage> ref = new CacheStorage(NS_ERROR_DOM_SECURITY_ERR);
@@ -193,7 +192,7 @@ already_AddRefed<CacheStorage> CacheStorage::CreateOnWorker(
   const PrincipalInfo& principalInfo =
       aWorkerPrivate->GetEffectiveStoragePrincipalInfo();
 
-  QM_TRY(OkIf(QuotaManager::IsPrincipalInfoValid(principalInfo)), nullptr,
+  QM_TRY(OkIf(quota::IsPrincipalInfoValid(principalInfo)), nullptr,
          [&aRv](const auto) { aRv.Throw(NS_ERROR_FAILURE); });
 
   // We have a number of cases where we want to skip the https scheme
@@ -256,6 +255,11 @@ bool CacheStorage::DefineCachesForSandbox(JSContext* aCx,
   }
 
   return JS_DefineProperty(aCx, aGlobal, "caches", caches, JSPROP_ENUMERATE);
+}
+
+// static
+bool CacheStorage::CachesEnabled(JSContext* aCx, JSObject* aObj) {
+  return cache::Cache::CachesEnabled(aCx, aObj);
 }
 
 CacheStorage::CacheStorage(Namespace aNamespace, nsIGlobalObject* aGlobal,

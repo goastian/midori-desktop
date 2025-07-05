@@ -1,16 +1,18 @@
 [DEFAULT]
 head = ""
 
+["test_csp_deserialization.js"]
+
 ["test_csp_reports.js"]
 
 ["test_csp_upgrade_insecure_request_header.js"]
 
 ["test_deserialization_format_before_100.js"]
 
+["test_get_trusted_types_compliant_string.js"]
+
 ["test_https_only_https_first_default_port.js"]
-skip-if = ["debug"] # assertions in loadinfo; loadinfo is just not xpcshell test friendly
 
 ["test_https_only_https_first_prefs.js"]
-skip-if = ["debug"] # assertions in loadinfo; loadinfo is just not xpcshell test friendly
 
 ["test_isOriginPotentiallyTrustworthy.js"]

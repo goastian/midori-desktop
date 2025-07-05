@@ -14,6 +14,7 @@
 #include "mozilla/Span.h"
 #include "mozilla/dom/AudioDataBinding.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/BufferSourceBindingFwd.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
@@ -23,8 +24,6 @@ class nsIURI;
 
 namespace mozilla::dom {
 
-class MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer;
-class OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer;
 class Promise;
 struct AudioDataBufferInit;
 struct AudioDataCopyToOptions;
@@ -83,9 +82,8 @@ class AudioData final : public nsISupports, public nsWrapperCache {
   uint32_t AllocationSize(const AudioDataCopyToOptions& aOptions,
                           ErrorResult& aRv);
 
-  void CopyTo(
-      const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDestination,
-      const AudioDataCopyToOptions& aOptions, ErrorResult& aRv);
+  void CopyTo(const AllowSharedBufferSource& aDestination,
+              const AudioDataCopyToOptions& aOptions, ErrorResult& aRv);
 
   already_AddRefed<AudioData> Clone(ErrorResult& aRv);
 
@@ -147,7 +145,7 @@ class AudioDataResource final {
   }
 
   static Result<already_AddRefed<AudioDataResource>, nsresult> Construct(
-      const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aInit);
+      const OwningAllowSharedBufferSource& aInit);
 
   Span<uint8_t> Data() { return Span(mData.Elements(), mData.Length()); };
 

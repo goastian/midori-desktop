@@ -33,6 +33,7 @@
 #include "mozilla/dom/AncestorIterator.h"
 #include "mozilla/dom/Directory.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/FormData.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/RandomNum.h"
 
@@ -352,10 +353,9 @@ FSMultipartFormData::FSMultipartFormData(nsIURI* aActionURL,
 
   mTotalLength = 0;
 
-  mBoundary.AssignLiteral("---------------------------");
-  mBoundary.AppendInt(static_cast<uint32_t>(mozilla::RandomUint64OrDie()));
-  mBoundary.AppendInt(static_cast<uint32_t>(mozilla::RandomUint64OrDie()));
-  mBoundary.AppendInt(static_cast<uint32_t>(mozilla::RandomUint64OrDie()));
+  mBoundary.AssignLiteral("----geckoformboundary");
+  mBoundary.AppendInt(mozilla::RandomUint64OrDie(), 16);
+  mBoundary.AppendInt(mozilla::RandomUint64OrDie(), 16);
 }
 
 FSMultipartFormData::~FSMultipartFormData() {
@@ -771,6 +771,7 @@ void GetEnumAttr(nsGenericHTMLElement* aContent, nsAtom* atom,
 nsresult HTMLFormSubmission::GetFromForm(HTMLFormElement* aForm,
                                          nsGenericHTMLElement* aSubmitter,
                                          NotNull<const Encoding*>& aEncoding,
+                                         FormData* aFormData,
                                          HTMLFormSubmission** aFormSubmission) {
   // Get all the information necessary to encode the form data
   NS_ASSERTION(aForm->GetComposedDoc(),
@@ -863,6 +864,13 @@ nsresult HTMLFormSubmission::GetFromForm(HTMLFormElement* aForm,
     }
     *aFormSubmission =
         new FSURLEncoded(actionURL, target, aEncoding, method, doc, aSubmitter);
+  }
+
+  // We store the FormData here to be able to set it on the load state when we
+  // submit the submission. It's used for the #navigate algorithm in the HTML
+  // spec and is only ever needed when the method is POST.
+  if (method == NS_FORM_METHOD_POST) {
+    (*aFormSubmission)->mFormData = aFormData;
   }
 
   return NS_OK;

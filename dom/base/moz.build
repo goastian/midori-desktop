@@ -128,6 +128,7 @@ EXPORTS.mozilla += [
     "FlushType.h",
     "FocusModel.h",
     "FullscreenChange.h",
+    "GlobalFreezeObserver.h",
     "GlobalTeardownObserver.h",
     "IdentifierMapEntry.h",
     "PointerLockManager.h",
@@ -136,6 +137,7 @@ EXPORTS.mozilla += [
     "ScriptableContentIterator.h",
     "ScrollingMetrics.h",
     "SelectionChangeEventDispatcher.h",
+    "SourceLocation.h",
     "TextInputProcessor.h",
     "UseCounter.h",
 ]
@@ -155,6 +157,7 @@ EXPORTS.mozilla.dom += [
     "BodyConsumer.h",
     "BodyUtil.h",
     "BorrowedAttrInfo.h",
+    "CacheExpirationTime.h",
     "CCGCScheduler.h",
     "CharacterData.h",
     "ChildIterator.h",
@@ -207,8 +210,9 @@ EXPORTS.mozilla.dom += [
     "IDTracker.h",
     "ImageEncoder.h",
     "ImageTracker.h",
+    "InteractiveWidget.h",
     "IntlUtils.h",
-    "JSExecutionContext.h",
+    "JSExecutionUtils.h",
     "Link.h",
     "LinkStyle.h",
     "Location.h",
@@ -256,6 +260,7 @@ EXPORTS.mozilla.dom += [
     "PostMessageEvent.h",
     "ProcessMessageManager.h",
     "RadioGroupContainer.h",
+    "RequestCallbackManager.h",
     "ResizeObserver.h",
     "ResponsiveImageSelector.h",
     "SameProcessMessageQueue.h",
@@ -265,6 +270,7 @@ EXPORTS.mozilla.dom += [
     "SerializedStackHolder.h",
     "ShadowIncludingTreeIterator.h",
     "ShadowRoot.h",
+    "StaticAtomSet.h",
     "StaticRange.h",
     "StructuredCloneBlob.h",
     "StructuredCloneHolder.h",
@@ -277,6 +283,7 @@ EXPORTS.mozilla.dom += [
     "TestUtils.h",
     "Text.h",
     "Timeout.h",
+    "TimeoutBudgetManager.h",
     "TimeoutHandler.h",
     "TimeoutManager.h",
     "TreeIterator.h",
@@ -287,6 +294,7 @@ EXPORTS.mozilla.dom += [
     "UnbindContext.h",
     "UseCounterMetrics.h",
     "UserActivation.h",
+    "VideoFrameProvider.h",
     "ViewportMetaData.h",
     "VisualViewport.h",
     "WindowFeatures.h",
@@ -296,6 +304,15 @@ EXPORTS.mozilla.dom += [
 if CONFIG["FUZZING"]:
     EXPORTS.mozilla.dom += [
         "FuzzingFunctions.h",
+    ]
+
+if CONFIG["FUZZING_SNAPSHOT"]:
+    EXPORTS.mozilla.dom += [
+        "Nyx.h",
+    ]
+
+    UNIFIED_SOURCES += [
+        "Nyx.cpp",
     ]
 
 if CONFIG["COMPILE_ENVIRONMENT"]:
@@ -373,7 +390,7 @@ UNIFIED_SOURCES += [
     "ImageTracker.cpp",
     "InProcessBrowserChildMessageManager.cpp",
     "IntlUtils.cpp",
-    "JSExecutionContext.cpp",
+    "JSExecutionUtils.cpp",
     "Link.cpp",
     "LinkStyle.cpp",
     "Location.cpp",
@@ -460,6 +477,7 @@ UNIFIED_SOURCES += [
     "SelectionChangeEventDispatcher.cpp",
     "SerializedStackHolder.cpp",
     "ShadowRoot.cpp",
+    "SourceLocation.cpp",
     "StaticRange.cpp",
     "StorageAccessPermissionRequest.cpp",
     "StructuredCloneBlob.cpp",
@@ -470,6 +488,9 @@ UNIFIED_SOURCES += [
     "SubtleCrypto.cpp",
     "TestUtils.cpp",
     "Text.cpp",
+    "TextDirectiveCreator.cpp",
+    "TextDirectiveFinder.cpp",
+    "TextDirectiveUtil.cpp",
     "TextInputProcessor.cpp",
     "ThirdPartyUtil.cpp",
     "Timeout.cpp",
@@ -557,7 +578,6 @@ EXTRA_JS_MODULES += [
     "ContentAreaDropListener.sys.mjs",
     "IndexedDBHelper.sys.mjs",
     "LocationHelper.sys.mjs",
-    "ProcessSelector.sys.mjs",
     "SlowScriptDebug.sys.mjs",
 ]
 

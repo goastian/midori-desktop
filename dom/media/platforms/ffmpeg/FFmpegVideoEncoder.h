@@ -18,11 +18,11 @@
 namespace mozilla {
 
 template <int V>
-class FFmpegVideoEncoder : public MediaDataEncoder {};
+class FFmpegVideoEncoder : public FFmpegDataEncoder<V> {};
 
 template <>
 class FFmpegVideoEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
-  using DurationMap = SimpleMap<int64_t, int64_t, ThreadSafePolicy>;
+  using PtsMap = SimpleMap<int64_t, int64_t, NoOpPolicy>;
 
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(FFmpegVideoEncoder, final);
@@ -31,19 +31,21 @@ class FFmpegVideoEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
                      const RefPtr<TaskQueue>& aTaskQueue,
                      const EncoderConfig& aConfig);
 
+  RefPtr<InitPromise> Init() override;
+
   nsCString GetDescriptionName() const override;
 
  protected:
   virtual ~FFmpegVideoEncoder() = default;
   // Methods only called on mTaskQueue.
-  virtual nsresult InitSpecific() override;
+  virtual MediaResult InitEncoder() override;
 #if LIBAVCODEC_VERSION_MAJOR >= 58
-  Result<EncodedData, nsresult> EncodeInputWithModernAPIs(
+  Result<EncodedData, MediaResult> EncodeInputWithModernAPIs(
       RefPtr<const MediaData> aSample) override;
 #endif
-  bool ScaleInputFrame();
-  virtual RefPtr<MediaRawData> ToMediaRawData(AVPacket* aPacket) override;
-  Result<already_AddRefed<MediaByteBuffer>, nsresult> GetExtraData(
+  virtual Result<RefPtr<MediaRawData>, MediaResult> ToMediaRawData(
+      AVPacket* aPacket) override;
+  Result<already_AddRefed<MediaByteBuffer>, MediaResult> GetExtraData(
       AVPacket* aPacket) override;
   void ForceEnablingFFmpegDebugLogs();
   struct SVCSettings {
@@ -51,6 +53,7 @@ class FFmpegVideoEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
     // A key-value pair for av_opt_set.
     std::pair<nsCString, nsCString> mSettingKeyValue;
   };
+  bool SvcEnabled() const;
   Maybe<SVCSettings> GetSVCSettings();
   struct H264Settings {
     int mProfile;
@@ -61,13 +64,20 @@ class FFmpegVideoEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
   H264Settings GetH264Settings(const H264Specific& aH264Specific);
   struct SVCInfo {
     explicit SVCInfo(nsTArray<uint8_t>&& aTemporalLayerIds)
-        : mTemporalLayerIds(std::move(aTemporalLayerIds)), mNextIndex(0) {}
+        : mTemporalLayerIds(std::move(aTemporalLayerIds)), mCurrentIndex(0) {}
     const nsTArray<uint8_t> mTemporalLayerIds;
-    size_t mNextIndex;
-    // Return the current temporal layer id and update the next.
-    uint8_t UpdateTemporalLayerId();
+    size_t mCurrentIndex;
+    void UpdateTemporalLayerId();
+    void ResetTemporalLayerId();
+    uint8_t CurrentTemporalLayerId();
   };
   Maybe<SVCInfo> mSVCInfo{};
+  // Some codecs use the input frames pts for rate control. We'd rather only use
+  // the duration. Synthetize fake pts based on integrating over the duration of
+  // input frames.
+  int64_t mFakePts = 0;
+  int64_t mCurrentFramePts = 0;
+  PtsMap mPtsMap;
 };
 
 }  // namespace mozilla

@@ -36,6 +36,7 @@ class nsXULElement;
 
 namespace mozilla {
 class ErrorResult;
+class ISVGFilterObserverList;
 class PresShell;
 
 namespace gl {
@@ -99,6 +100,10 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   void GetContextAttributes(CanvasRenderingContext2DSettings& aSettings) const;
 
+  void GetDebugInfo(bool aEnsureTarget,
+                    CanvasRenderingContext2DDebugInfo& aDebugInfo,
+                    ErrorResult& aError);
+
   void OnMemoryPressure() override;
   void OnBeforePaintTransaction() override;
   void OnDidPaintTransaction() override;
@@ -109,6 +114,9 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   already_AddRefed<layers::FwdTransactionTracker> UseCompositableForwarder(
       layers::CompositableForwarder* aForwarder) override;
+
+  mozilla::gfx::Matrix GetCurrentTransform() const;
+  bool HasAnyClips() const;
 
   void Save();
   void Restore();
@@ -457,6 +465,14 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     }
   }
 
+  CanvasContextProperties ContextProperties() const {
+    return mContextProperties;
+  }
+
+  void SetContextProperties(const CanvasContextProperties& aValue) {
+    mContextProperties = aValue;
+  }
+
   void DrawWindow(nsGlobalWindowInner& aWindow, double aX, double aY, double aW,
                   double aH, const nsACString& aBgColor, uint32_t aFlags,
                   nsIPrincipal& aSubjectPrincipal,
@@ -692,9 +708,19 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    */
   bool EnsureWritablePath();
 
+  // Ensures there is a valid BufferProvider for creating a PathBuilder.
+  bool EnsureBufferProvider();
+
   // Ensures a path in UserSpace is available.
   void EnsureUserSpacePath(
       const CanvasWindingRule& aWinding = CanvasWindingRule::Nonzero);
+
+  // Ensures both target and a path in UserSpace is available.
+  void EnsureTargetAndUserSpacePath(
+      const CanvasWindingRule& aWinding = CanvasWindingRule::Nonzero) {
+    EnsureTarget();
+    EnsureUserSpacePath(aWinding);
+  }
 
   /**
    * Needs to be called before updating the transform. This makes a call to
@@ -704,6 +730,18 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   // Report the fillRule has changed.
   void FillRuleChanged();
+
+  /**
+   * Check if the target is in an error state. Functions that may need to
+   * access the transform or clip state with or without a target should call
+   * this first to verify that it's okay to access this state, as error targets
+   * should ignore it instead.
+   */
+  bool HasErrorState(ErrorResult& aError, bool aInitProvider = true);
+  bool HasErrorState() {
+    IgnoredErrorResult error;
+    return HasErrorState(error);
+  }
 
   /**
    * Create the backing surfacing, if it doesn't exist. If there is an error
@@ -811,7 +849,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     return CurrentState().font;
   }
 
-  bool GetEffectiveWillReadFrequently() const;
+  bool UseSoftwareRendering() const;
 
   // Member vars
   int32_t mWidth, mHeight;
@@ -850,19 +888,26 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   RefPtr<mozilla::gfx::DrawTarget> mTarget;
 
   RefPtr<mozilla::layers::PersistentBufferProvider> mBufferProvider;
+  // Whether the target's buffer must be cleared before drawing.
   bool mBufferNeedsClear = false;
+  // Whether the current state contains clips or transforms not set on target.
+  bool mTargetNeedsClipsAndTransforms = false;
 
   // Whether we should try to create an accelerated buffer provider.
   bool mAllowAcceleration = true;
   // Whether the application expects to use operations that perform poorly with
   // acceleration.
   bool mWillReadFrequently = false;
+  // Whether to force software rendering
+  bool mForceSoftwareRendering = false;
   // Whether or not we have already shutdown.
   bool mHasShutdown = false;
   // Whether or not remote canvas is currently unavailable.
   bool mIsContextLost = false;
   // Whether or not we can restore the context after restoration.
   bool mAllowContextRestore = true;
+  // Which context properties apply to an SVG when calling drawImage.
+  CanvasContextProperties mContextProperties = CanvasContextProperties::None;
 
   bool AddShutdownObserver();
   void RemoveShutdownObserver();
@@ -913,6 +958,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    */
   RefPtr<mozilla::gfx::Path> mPath;
   RefPtr<mozilla::gfx::PathBuilder> mPathBuilder;
+  mozilla::gfx::BackendType mPathType = mozilla::gfx::BackendType::NONE;
   bool mPathPruned = false;
   mozilla::gfx::Matrix mPathTransform;
   bool mPathTransformDirty = false;
@@ -1077,7 +1123,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     StyleOwnedSlice<StyleFilter> filterChain;
     // RAII object that we obtain when we start to observer SVG filter elements
     // for rendering changes.  When released we stop observing the SVG elements.
-    nsCOMPtr<nsISupports> autoSVGFiltersObserver;
+    nsCOMPtr<ISVGFilterObserverList> autoSVGFiltersObserver;
     mozilla::gfx::FilterDescription filter;
     nsTArray<RefPtr<mozilla::gfx::SourceSurface>> filterAdditionalImages;
 
@@ -1106,6 +1152,10 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   inline const ContextState& CurrentState() const {
     return mStyleStack[mStyleStack.Length() - 1];
+  }
+
+  inline const ContextState& PreviousState() const {
+    return mStyleStack[mStyleStack.Length() - 2];
   }
 
   struct FontStyleCacheKey {
@@ -1175,7 +1225,6 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   bool IsWriteOnly() const { return mWriteOnly; }
 
   bool mWriteOnly;
-  bool mClipsNeedConverting = false;
 
   uint8_t mFillTextCalls = 0;
   // Flags used by the fingerprinting detection heuristic

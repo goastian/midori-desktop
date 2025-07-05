@@ -228,9 +228,15 @@ TEST(CSPParser, Directives)
       "script-src http://example.com"},
     { "require-trusted-types-for 'script'",
       "require-trusted-types-for 'script'" },
+    { "require-trusted-types-for 'script' invalid",
+      "require-trusted-types-for 'script' invalid" }, // bug 1956731
+    { "require-trusted-types-for 'script' 'invalid'",
+      "require-trusted-types-for 'script' 'invalid'" }, // bug 1956731
     { "trusted-types somePolicyName", "trusted-types somePolicyName" },
     { "trusted-types somePolicyName anotherPolicyName 1 - # = _ / @ . % *",
       "trusted-types somePolicyName anotherPolicyName 1 - # = _ / @ . % *" },
+    { "trusted-types $", "trusted-types $" }, // bug 1935434
+    { "trusted-types 'invalid'", "trusted-types 'invalid'" }, // bug 1935434
       // clang-format on
   };
 
@@ -262,6 +268,10 @@ TEST(CSPParser, Keywords)
       "trusted-types somePolicyName 'allow-duplicates'" },
     { "trusted-types 'none'", "trusted-types 'none'" },
     { "trusted-types", "trusted-types 'none'" },
+    { "trusted-types 'none' somePolicyName", "trusted-types somePolicyName" },
+    { "trusted-types 'none' 'none'", "trusted-types 'none'" },
+    { "trusted-types 'none' 'allow-duplicates'", "trusted-types 'allow-duplicates'" },
+    { "trusted-types 'none' *", "trusted-types *" },
     { "trusted-types *", "trusted-types *" },
       // clang-format on
   };
@@ -404,8 +414,7 @@ TEST(CSPParser, Paths)
     { "script-src http://www.example.com:88/.js",
       "script-src http://www.example.com:88/.js" },
     { "script-src https://foo.com/_abc/abc_/_/_a_b_c_",
-      "script-src https://foo.com/_abc/abc_/_/_a_b_c_" }
-      // clang-format on
+      "script-src https://foo.com/_abc/abc_/_/_a_b_c_" }  // clang-format on
   };
 
   uint32_t policyCount = sizeof(policies) / sizeof(PolicyTest);
@@ -605,7 +614,9 @@ TEST(CSPParser, BadPolicies)
     { "report-uri http://:foo", ""},
     { "require-sri-for", ""},
     { "require-sri-for style", ""},
-    { "trusted-types $", ""},
+    { "require-trusted-types-for invalid" },
+    { "require-trusted-types-for 'invalid'" },
+
       // clang-format on
   };
 

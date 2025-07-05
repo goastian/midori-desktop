@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Utility.h"
+#include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/WebGPUBinding.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
 #include "mozilla/webgpu/WebGPUTypes.h"
@@ -139,7 +140,7 @@ ffi::WGPUTextureFormat ConvertTextureFormat(
       result.tag = ffi::WGPUTextureFormat_Rgb10a2Unorm;
       break;
     case dom::GPUTextureFormat::Rg11b10ufloat:
-      result.tag = ffi::WGPUTextureFormat_Rg11b10Float;
+      result.tag = ffi::WGPUTextureFormat_Rg11b10Ufloat;
       break;
     case dom::GPUTextureFormat::Rg32uint:
       result.tag = ffi::WGPUTextureFormat_Rg32Uint;
@@ -228,12 +229,344 @@ ffi::WGPUTextureFormat ConvertTextureFormat(
     case dom::GPUTextureFormat::Depth32float_stencil8:
       result.tag = ffi::WGPUTextureFormat_Depth32FloatStencil8;
       break;
+    case dom::GPUTextureFormat::Astc_4x4_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B4x4;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_4x4_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B4x4;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_5x4_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B5x4;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_5x4_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B5x4;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_5x5_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B5x5;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_5x5_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B5x5;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_6x5_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B6x5;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_6x5_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B6x5;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_6x6_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B6x6;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_6x6_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B6x6;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_8x5_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x5;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_8x5_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x5;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_8x6_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x6;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_8x6_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x6;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_8x8_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x8;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_8x8_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B8x8;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_10x5_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x5;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_10x5_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x5;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_10x6_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x6;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_10x6_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x6;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_10x8_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x8;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_10x8_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x8;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_10x10_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x10;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_10x10_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B10x10;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_12x10_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B12x10;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_12x10_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B12x10;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Astc_12x12_unorm:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B12x12;
+      result.astc.channel = ffi::WGPUAstcChannel_Unorm;
+      break;
+    case dom::GPUTextureFormat::Astc_12x12_unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Astc;
+      result.astc.block = ffi::WGPUAstcBlock_B12x12;
+      result.astc.channel = ffi::WGPUAstcChannel_UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgb8unorm:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgb8Unorm;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgb8unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgb8UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgb8a1unorm:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgb8A1Unorm;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgb8a1unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgb8A1UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgba8unorm:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgba8Unorm;
+      break;
+    case dom::GPUTextureFormat::Etc2_rgba8unorm_srgb:
+      result.tag = ffi::WGPUTextureFormat_Etc2Rgba8UnormSrgb;
+      break;
+    case dom::GPUTextureFormat::Eac_r11unorm:
+      result.tag = ffi::WGPUTextureFormat_EacR11Unorm;
+      break;
+    case dom::GPUTextureFormat::Eac_r11snorm:
+      result.tag = ffi::WGPUTextureFormat_EacR11Snorm;
+      break;
+    case dom::GPUTextureFormat::Eac_rg11unorm:
+      result.tag = ffi::WGPUTextureFormat_EacRg11Unorm;
+      break;
+    case dom::GPUTextureFormat::Eac_rg11snorm:
+      result.tag = ffi::WGPUTextureFormat_EacRg11Snorm;
+      break;
+    case dom::GPUTextureFormat::Rgb10a2uint:
+      result.tag = ffi::WGPUTextureFormat_Rgb10a2Uint;
+      break;
   }
 
   // Clang will check for us that the switch above is exhaustive,
   // but not if we add a 'default' case. So, check this here.
-  MOZ_ASSERT(result.tag != ffi::WGPUTextureFormat_Sentinel,
-             "unexpected texture format enum");
+  MOZ_RELEASE_ASSERT(result.tag != ffi::WGPUTextureFormat_Sentinel,
+                     "unexpected texture format enum");
+
+  return result;
+}
+
+ffi::WGPUTextureAspect ConvertTextureAspect(
+    const dom::GPUTextureAspect& aAspect) {
+  ffi::WGPUTextureAspect result = ffi::WGPUTextureAspect_Sentinel;
+  switch (aAspect) {
+    case dom::GPUTextureAspect::All:
+      result = ffi::WGPUTextureAspect_All;
+      break;
+    case dom::GPUTextureAspect::Depth_only:
+      result = ffi::WGPUTextureAspect_DepthOnly;
+      break;
+    case dom::GPUTextureAspect::Stencil_only:
+      result = ffi::WGPUTextureAspect_StencilOnly;
+      break;
+  }
+
+  // Clang will check for us that the switch above is exhaustive,
+  // but not if we add a 'default' case. So, check this here.
+  MOZ_RELEASE_ASSERT(result != ffi::WGPUTextureAspect_Sentinel,
+                     "unexpected texture aspect enum");
+
+  return result;
+}
+
+ffi::WGPUVertexFormat ConvertVertexFormat(const dom::GPUVertexFormat& aFormat) {
+  ffi::WGPUVertexFormat result = ffi::WGPUVertexFormat_Sentinel;
+  switch (aFormat) {
+    case dom::GPUVertexFormat::Uint8:
+      result = ffi::WGPUVertexFormat_Uint8;
+      break;
+    case dom::GPUVertexFormat::Uint8x2:
+      result = ffi::WGPUVertexFormat_Uint8x2;
+      break;
+    case dom::GPUVertexFormat::Uint8x4:
+      result = ffi::WGPUVertexFormat_Uint8x4;
+      break;
+    case dom::GPUVertexFormat::Sint8:
+      result = ffi::WGPUVertexFormat_Sint8;
+      break;
+    case dom::GPUVertexFormat::Sint8x2:
+      result = ffi::WGPUVertexFormat_Sint8x2;
+      break;
+    case dom::GPUVertexFormat::Sint8x4:
+      result = ffi::WGPUVertexFormat_Sint8x4;
+      break;
+    case dom::GPUVertexFormat::Unorm8:
+      result = ffi::WGPUVertexFormat_Unorm8;
+      break;
+    case dom::GPUVertexFormat::Unorm8x2:
+      result = ffi::WGPUVertexFormat_Unorm8x2;
+      break;
+    case dom::GPUVertexFormat::Unorm8x4:
+      result = ffi::WGPUVertexFormat_Unorm8x4;
+      break;
+    case dom::GPUVertexFormat::Snorm8:
+      result = ffi::WGPUVertexFormat_Snorm8;
+      break;
+    case dom::GPUVertexFormat::Snorm8x2:
+      result = ffi::WGPUVertexFormat_Snorm8x2;
+      break;
+    case dom::GPUVertexFormat::Snorm8x4:
+      result = ffi::WGPUVertexFormat_Snorm8x4;
+      break;
+    case dom::GPUVertexFormat::Uint16:
+      result = ffi::WGPUVertexFormat_Uint16;
+      break;
+    case dom::GPUVertexFormat::Uint16x2:
+      result = ffi::WGPUVertexFormat_Uint16x2;
+      break;
+    case dom::GPUVertexFormat::Uint16x4:
+      result = ffi::WGPUVertexFormat_Uint16x4;
+      break;
+    case dom::GPUVertexFormat::Sint16:
+      result = ffi::WGPUVertexFormat_Sint16;
+      break;
+    case dom::GPUVertexFormat::Sint16x2:
+      result = ffi::WGPUVertexFormat_Sint16x2;
+      break;
+    case dom::GPUVertexFormat::Sint16x4:
+      result = ffi::WGPUVertexFormat_Sint16x4;
+      break;
+    case dom::GPUVertexFormat::Unorm16:
+      result = ffi::WGPUVertexFormat_Unorm16;
+      break;
+    case dom::GPUVertexFormat::Unorm16x2:
+      result = ffi::WGPUVertexFormat_Unorm16x2;
+      break;
+    case dom::GPUVertexFormat::Unorm16x4:
+      result = ffi::WGPUVertexFormat_Unorm16x4;
+      break;
+    case dom::GPUVertexFormat::Snorm16:
+      result = ffi::WGPUVertexFormat_Snorm16;
+      break;
+    case dom::GPUVertexFormat::Snorm16x2:
+      result = ffi::WGPUVertexFormat_Snorm16x2;
+      break;
+    case dom::GPUVertexFormat::Snorm16x4:
+      result = ffi::WGPUVertexFormat_Snorm16x4;
+      break;
+    case dom::GPUVertexFormat::Float16:
+      result = ffi::WGPUVertexFormat_Float16;
+      break;
+    case dom::GPUVertexFormat::Float16x2:
+      result = ffi::WGPUVertexFormat_Float16x2;
+      break;
+    case dom::GPUVertexFormat::Float16x4:
+      result = ffi::WGPUVertexFormat_Float16x4;
+      break;
+    case dom::GPUVertexFormat::Float32:
+      result = ffi::WGPUVertexFormat_Float32;
+      break;
+    case dom::GPUVertexFormat::Float32x2:
+      result = ffi::WGPUVertexFormat_Float32x2;
+      break;
+    case dom::GPUVertexFormat::Float32x3:
+      result = ffi::WGPUVertexFormat_Float32x3;
+      break;
+    case dom::GPUVertexFormat::Float32x4:
+      result = ffi::WGPUVertexFormat_Float32x4;
+      break;
+    case dom::GPUVertexFormat::Uint32:
+      result = ffi::WGPUVertexFormat_Uint32;
+      break;
+    case dom::GPUVertexFormat::Uint32x2:
+      result = ffi::WGPUVertexFormat_Uint32x2;
+      break;
+    case dom::GPUVertexFormat::Uint32x3:
+      result = ffi::WGPUVertexFormat_Uint32x3;
+      break;
+    case dom::GPUVertexFormat::Uint32x4:
+      result = ffi::WGPUVertexFormat_Uint32x4;
+      break;
+    case dom::GPUVertexFormat::Sint32:
+      result = ffi::WGPUVertexFormat_Sint32;
+      break;
+    case dom::GPUVertexFormat::Sint32x2:
+      result = ffi::WGPUVertexFormat_Sint32x2;
+      break;
+    case dom::GPUVertexFormat::Sint32x3:
+      result = ffi::WGPUVertexFormat_Sint32x3;
+      break;
+    case dom::GPUVertexFormat::Sint32x4:
+      result = ffi::WGPUVertexFormat_Sint32x4;
+      break;
+    case dom::GPUVertexFormat::Unorm10_10_10_2:
+      result = ffi::WGPUVertexFormat_Unorm10_10_10_2;
+      break;
+    case dom::GPUVertexFormat::Unorm8x4_bgra:
+      result = ffi::WGPUVertexFormat_Unorm8x4Bgra;
+      break;
+  }
+
+  // Clang will check for us that the switch above is exhaustive,
+  // but not if we add a 'default' case. So, check this here.
+  MOZ_RELEASE_ASSERT(result != ffi::WGPUVertexFormat_Sentinel,
+                     "unexpected texture format enum");
 
   return result;
 }
@@ -280,6 +613,39 @@ ffi::WGPUDepthStencilState ConvertDepthStencilState(
   desc.bias.slope_scale = aDesc.mDepthBiasSlopeScale;
   desc.bias.clamp = aDesc.mDepthBiasClamp;
   return desc;
+}
+
+// Extract a list of dynamic offsets from a larger JS-supplied buffer.
+// Used by implementions of the `setBindGroup` method of the spec's
+// `GPUBindingCommandsMixin`.
+//
+// If the given start/length are out of bounds, sets a
+// `RangeError` in `aRv` and returns `Nothing`.
+mozilla::Maybe<mozilla::Buffer<uint32_t>> GetDynamicOffsetsFromArray(
+    const dom::Uint32Array& aDynamicOffsetsData,
+    uint64_t aDynamicOffsetsDataStart, uint64_t aDynamicOffsetsDataLength,
+    ErrorResult& aRv) {
+  auto dynamicOffsets =
+      aDynamicOffsetsData.CreateFromData<mozilla::Buffer<uint32_t>>(
+          [&](const size_t& aLength)
+              -> mozilla::Maybe<std::pair<uint64_t, uint64_t>> {
+            auto checkedLength =
+                CheckedInt<uint64_t>(aDynamicOffsetsDataStart) +
+                aDynamicOffsetsDataLength;
+            if (!checkedLength.isValid() || checkedLength.value() > aLength) {
+              return mozilla::Nothing();
+            } else {
+              return mozilla::Some(std::make_pair(aDynamicOffsetsDataStart,
+                                                  aDynamicOffsetsDataLength));
+            }
+          });
+
+  if (dynamicOffsets.isNothing()) {
+    aRv.ThrowRangeError<dom::MSG_VALUE_OUT_OF_RANGE>(
+        "dynamicOffsetsDataStart/Length");
+  }
+
+  return dynamicOffsets;
 }
 
 }  // namespace mozilla::webgpu

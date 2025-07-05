@@ -1,11 +1,5 @@
 "use strict";
 
-// This test tends to trigger a race in the fullscreen time telemetry,
-// where the fullscreen enter and fullscreen exit events (which use the
-// same histogram ID) overlap. That causes TelemetryStopwatch to log an
-// error.
-SimpleTest.ignoreAllUncaughtExceptions(true);
-
 const kPage =
   "https://example.org/browser/" +
   "dom/base/test/fullscreen/file_fullscreen-newtab.html";
@@ -58,12 +52,17 @@ async function runTest() {
       let [newtab] = await Promise.all([promiseNewTab, promiseFsEvents]);
       await BrowserTestUtils.removeTab(newtab);
 
-      // Ensure the browser exits fullscreen state in reasonable time.
-      await Promise.race([
-        BrowserTestUtils.waitForCondition(() => getSizeMode() == "normal"),
-        // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
-        new Promise(resolve => setTimeout(resolve, 2000)),
-      ]);
+      if (document.fullscreen) {
+        info(
+          "The chrome document is still in fullscreen, waiting for it to exit."
+        );
+        // Ensure the browser exits fullscreen state in reasonable time.
+        await Promise.race([
+          BrowserTestUtils.waitForEvent(document, "fullscreenchange"),
+          // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+          new Promise(resolve => setTimeout(resolve, 5000)),
+        ]);
+      }
 
       ok(!window.fullScreen, "The chrome window should not be in fullscreen");
       ok(

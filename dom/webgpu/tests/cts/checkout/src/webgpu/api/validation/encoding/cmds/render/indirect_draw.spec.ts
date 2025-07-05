@@ -4,16 +4,16 @@ Validation tests for drawIndirect/drawIndexedIndirect on render pass and render 
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { GPUConst } from '../../../../../constants.js';
-import { kResourceStates } from '../../../../../gpu_test.js';
-import { ValidationTest } from '../../../validation_test.js';
+import { kResourceStates, AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import * as vtu from '../../../validation_test_utils.js';
 
 import { kRenderEncodeTypeParams } from './render.js';
 
 const kIndirectDrawTestParams = kRenderEncodeTypeParams.combine('indexed', [true, false] as const);
 
-class F extends ValidationTest {
+class F extends AllFeaturesMaxLimitsGPUTest {
   makeIndexBuffer(): GPUBuffer {
-    return this.device.createBuffer({
+    return this.createBufferTracked({
       size: 16,
       usage: GPUBufferUsage.INDEX,
     });
@@ -31,8 +31,8 @@ Tests indirect buffer must be valid.
   .paramsSubcasesOnly(kIndirectDrawTestParams.combine('state', kResourceStates))
   .fn(t => {
     const { encoderType, indexed, state } = t.params;
-    const pipeline = t.createNoOpRenderPipeline();
-    const indirectBuffer = t.createBufferWithState(state, {
+    const pipeline = vtu.createNoOpRenderPipeline(t);
+    const indirectBuffer = vtu.createBufferWithState(t, state, {
       size: 256,
       usage: GPUBufferUsage.INDIRECT,
     });
@@ -55,22 +55,21 @@ g.test('indirect_buffer,device_mismatch')
     'Tests draw(Indexed)Indirect cannot be called with an indirect buffer created from another device'
   )
   .paramsSubcasesOnly(kIndirectDrawTestParams.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { encoderType, indexed, mismatched } = t.params;
 
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
 
-    const indirectBuffer = sourceDevice.createBuffer({
-      size: 256,
-      usage: GPUBufferUsage.INDIRECT,
-    });
-    t.trackForCleanup(indirectBuffer);
+    const indirectBuffer = t.trackForCleanup(
+      sourceDevice.createBuffer({
+        size: 256,
+        usage: GPUBufferUsage.INDIRECT,
+      })
+    );
 
     const { encoder, validateFinish } = t.createEncoder(encoderType);
-    encoder.setPipeline(t.createNoOpRenderPipeline());
+    encoder.setPipeline(vtu.createNoOpRenderPipeline(t));
 
     if (indexed) {
       encoder.setIndexBuffer(t.makeIndexBuffer(), 'uint32');
@@ -96,13 +95,13 @@ Tests indirect buffer must have 'Indirect' usage.
   )
   .fn(t => {
     const { encoderType, indexed, usage } = t.params;
-    const indirectBuffer = t.device.createBuffer({
+    const indirectBuffer = t.createBufferTracked({
       size: 256,
       usage,
     });
 
     const { encoder, validateFinish } = t.createEncoder(encoderType);
-    encoder.setPipeline(t.createNoOpRenderPipeline());
+    encoder.setPipeline(vtu.createNoOpRenderPipeline(t));
     if (indexed) {
       const indexBuffer = t.makeIndexBuffer();
       encoder.setIndexBuffer(indexBuffer, 'uint32');
@@ -122,8 +121,8 @@ Tests indirect offset must be a multiple of 4.
   .paramsSubcasesOnly(kIndirectDrawTestParams.combine('indirectOffset', [0, 2, 4] as const))
   .fn(t => {
     const { encoderType, indexed, indirectOffset } = t.params;
-    const pipeline = t.createNoOpRenderPipeline();
-    const indirectBuffer = t.device.createBuffer({
+    const pipeline = vtu.createNoOpRenderPipeline(t);
+    const indirectBuffer = t.createBufferTracked({
       size: 256,
       usage: GPUBufferUsage.INDIRECT,
     });
@@ -182,8 +181,8 @@ Tests indirect draw calls with various indirect offsets and buffer sizes.
   )
   .fn(t => {
     const { encoderType, indexed, indirectOffset, bufferSize, _valid } = t.params;
-    const pipeline = t.createNoOpRenderPipeline();
-    const indirectBuffer = t.device.createBuffer({
+    const pipeline = vtu.createNoOpRenderPipeline(t);
+    const indirectBuffer = t.createBufferTracked({
       size: bufferSize,
       usage: GPUBufferUsage.INDIRECT,
     });

@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "ImageUtils.h"
+#include "mozilla/dom/ImageUtils.h"
 
 #include "ImageContainer.h"
 #include "Intervals.h"
@@ -37,7 +37,7 @@ static Maybe<ImageBitmapFormat> GetImageBitmapFormatFromSurfaceFromat(
     case SurfaceFormat::A8:
       return Some(ImageBitmapFormat::GRAY8);
     case SurfaceFormat::R5G6B5_UINT16:
-    case SurfaceFormat::YUV:
+    case SurfaceFormat::YUV420:
     case SurfaceFormat::NV12:
     case SurfaceFormat::P010:
     case SurfaceFormat::P016:
@@ -57,7 +57,7 @@ static Maybe<ImageBitmapFormat> GetImageBitmapFormatFromPlanarYCbCrData(
       uintptr_t(aData->mYChannel),
       uintptr_t(aData->mYChannel) + ySize.height * aData->mYStride),
       CbInterval(
-          uintptr_t(aData->mCbChannel),
+          uintptr_t(aData -> mCbChannel),
           uintptr_t(aData->mCbChannel) + cbcrSize.height * aData->mCbCrStride),
       CrInterval(
           uintptr_t(aData->mCrChannel),
@@ -105,28 +105,37 @@ class ImageUtils::Impl {
   virtual ~Impl() = default;
 
   virtual Maybe<ImageBitmapFormat> GetFormat() const {
-    return GetImageBitmapFormatFromSurfaceFromat(Surface()->GetFormat());
+    if (DataSourceSurface* surface = Surface()) {
+      return GetImageBitmapFormatFromSurfaceFromat(surface->GetFormat());
+    }
+    return Nothing();
   }
 
   virtual uint32_t GetBufferLength() const {
-    DataSourceSurface::ScopedMap map(Surface(), DataSourceSurface::READ);
-    const uint32_t stride = map.GetStride();
-    const IntSize size = Surface()->GetSize();
-    return (uint32_t)(size.height * stride);
+    if (DataSourceSurface* surface = Surface()) {
+      DataSourceSurface::ScopedMap map(surface, DataSourceSurface::READ);
+      const uint32_t stride = map.GetStride();
+      const IntSize size = surface->GetSize();
+      return (uint32_t)(size.height * stride);
+    }
+    return 0;
   }
 
  protected:
   Impl() = default;
 
   DataSourceSurface* Surface() const {
-    if (!mSurface) {
-      RefPtr<SourceSurface> surface = mImage->GetAsSourceSurface();
-      MOZ_ASSERT(surface);
-
-      mSurface = surface->GetDataSurface();
-      MOZ_ASSERT(mSurface);
+    if (mSurface) {
+      return mSurface.get();
     }
 
+    RefPtr<SourceSurface> surface = mImage->GetAsSourceSurface();
+    if (NS_WARN_IF(!surface)) {
+      return nullptr;
+    }
+
+    mSurface = surface->GetDataSurface();
+    MOZ_ASSERT(mSurface);
     return mSurface.get();
   }
 

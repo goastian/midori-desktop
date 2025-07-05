@@ -4,17 +4,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/BasePrincipal.h"
 #include "mozilla/Components.h"
 #include "mozilla/dom/PopupBlocker.h"
 #include "mozilla/dom/UserActivation.h"
-#include "mozilla/BasePrincipal.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TimeStamp.h"
-#include "nsXULPopupManager.h"
 #include "nsIPermissionManager.h"
+#include "nsXULPopupManager.h"
 
 namespace mozilla::dom {
 
@@ -214,7 +215,7 @@ PopupBlocker::PopupControlState PopupBlocker::GetEventPopupControlState(
         uint32_t key = aEvent->AsKeyboardEvent()->mKeyCode;
         switch (aEvent->mMessage) {
           case eKeyPress:
-            // return key on focused button. see note at eMouseClick.
+            // return key on focused button. see note at ePointerClick.
             if (key == NS_VK_RETURN) {
               abuse = PopupBlocker::openAllowed;
             } else if (PopupAllowedForEvent("keypress")) {
@@ -222,7 +223,7 @@ PopupBlocker::PopupControlState PopupBlocker::GetEventPopupControlState(
             }
             break;
           case eKeyUp:
-            // space key on focused button. see note at eMouseClick.
+            // space key on focused button. see note at ePointerClick.
             if (key == NS_VK_SPACE) {
               abuse = PopupBlocker::openAllowed;
             } else if (PopupAllowedForEvent("keyup")) {
@@ -274,15 +275,6 @@ PopupBlocker::PopupControlState PopupBlocker::GetEventPopupControlState(
                 abuse = PopupBlocker::openControlled;
               }
               break;
-            case eMouseClick:
-              /* Click events get special treatment because of their
-                 historical status as a more legitimate event handler. If
-                 click popups are enabled in the prefs, clear the popup
-                 status completely. */
-              if (PopupAllowedForEvent("click")) {
-                abuse = PopupBlocker::openAllowed;
-              }
-              break;
             case eMouseDoubleClick:
               if (PopupAllowedForEvent("dblclick")) {
                 abuse = PopupBlocker::openControlled;
@@ -291,8 +283,40 @@ PopupBlocker::PopupControlState PopupBlocker::GetEventPopupControlState(
             default:
               break;
           }
-        } else if (aEvent->mMessage == eMouseAuxClick) {
-          // Not eLeftButton
+        }
+      }
+      break;
+    case ePointerEventClass:
+      if (aEvent->IsTrusted()) {
+        if ((aEvent->AsPointerEvent()->mButton == MouseButton::ePrimary ||
+             aEvent->AsPointerEvent()->mButton == MouseButton::eMiddle)) {
+          switch (aEvent->mMessage) {
+            case ePointerClick:
+              /* Click events get special treatment because of their
+                 historical status as a more legitimate event handler. If
+                 click popups are enabled in the prefs, clear the popup
+                 status completely. */
+              if (PopupAllowedForEvent("click")) {
+                abuse = PopupBlocker::openAllowed;
+              }
+              break;
+            case ePointerUp:
+              if (PopupAllowedForEvent("pointerup")) {
+                abuse = PopupBlocker::openControlled;
+              }
+              break;
+            case ePointerDown:
+              if (PopupAllowedForEvent("pointerdown")) {
+                abuse = PopupBlocker::openControlled;
+              }
+              break;
+            default:
+              break;
+          }
+        }
+        // XXX Why don't we handle auxclick if the button is the middle button?
+        else if (aEvent->mMessage == ePointerAuxClick) {
+          // Not MouseButton::ePrimary:
           // There's not a strong reason to ignore other events (eg eMouseUp)
           // for non-primary clicks as far as we know, so we could add them if
           // it becomes a compat issue
@@ -301,34 +325,13 @@ PopupBlocker::PopupControlState PopupBlocker::GetEventPopupControlState(
           }
         }
 
-        switch (aEvent->mMessage) {
-          case eContextMenu:
-            if (PopupAllowedForEvent("contextmenu")) {
-              abuse = PopupBlocker::openControlled;
-            }
-            break;
-          default:
-            break;
-        }
-      }
-      break;
-    case ePointerEventClass:
-      if (aEvent->IsTrusted() &&
-          (aEvent->AsPointerEvent()->mButton == MouseButton::ePrimary ||
-           aEvent->AsPointerEvent()->mButton == MouseButton::eMiddle)) {
-        switch (aEvent->mMessage) {
-          case ePointerUp:
-            if (PopupAllowedForEvent("pointerup")) {
-              abuse = PopupBlocker::openControlled;
-            }
-            break;
-          case ePointerDown:
-            if (PopupAllowedForEvent("pointerdown")) {
-              abuse = PopupBlocker::openControlled;
-            }
-            break;
-          default:
-            break;
+        // XXX However, `contextmenu` event is handled even if the button is the
+        // primary button which may occur if the context menu is opened by
+        // keyboard.
+        if (aEvent->mMessage == eContextMenu) {
+          if (PopupAllowedForEvent("contextmenu")) {
+            abuse = PopupBlocker::openControlled;
+          }
         }
       }
       break;

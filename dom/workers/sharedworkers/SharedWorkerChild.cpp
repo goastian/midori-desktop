@@ -17,6 +17,7 @@
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/WorkerError.h"
 #include "mozilla/dom/locks/LockManagerChild.h"
+#include "nsGlobalWindowInner.h"
 
 namespace mozilla {
 
@@ -74,7 +75,7 @@ IPCResult SharedWorkerChild::RecvError(const ErrorValue& aValue) {
     return IPC_OK();
   }
 
-  nsPIDOMWindowInner* window = mParent->GetOwner();
+  nsPIDOMWindowInner* window = mParent->GetOwnerWindow();
   uint64_t innerWindowId = window ? window->WindowID() : 0;
 
   if (aValue.type() == ErrorValue::TCSPViolation) {
@@ -99,6 +100,11 @@ IPCResult SharedWorkerChild::RecvError(const ErrorValue& aValue) {
 
     eventTarget->DispatchEvent(*event);
     return IPC_OK();
+  }
+
+  if (aValue.type() == ErrorValue::TErrorMismatchOptions) {
+    WorkerErrorReport::LogErrorToConsole(
+        u"Failed to connect an existing shared worker because the type or credentials given on the SharedWorker constructor do not match the existing shared worker's type or credentials"_ns);
   }
 
   if (aValue.type() == ErrorValue::TErrorData &&
@@ -137,7 +143,8 @@ IPCResult SharedWorkerChild::RecvError(const ErrorValue& aValue) {
   }
 
   if (aValue.type() != ErrorValue::TErrorData) {
-    MOZ_ASSERT(aValue.type() == ErrorValue::Tvoid_t);
+    MOZ_ASSERT(aValue.type() == ErrorValue::Tvoid_t ||
+               aValue.type() == ErrorValue::TErrorMismatchOptions);
     return IPC_OK();
   }
 
@@ -153,7 +160,7 @@ IPCResult SharedWorkerChild::RecvNotifyLock(bool aCreated) {
     return IPC_OK();
   }
 
-  locks::LockManagerChild::NotifyBFCacheOnMainThread(mParent->GetOwner(),
+  locks::LockManagerChild::NotifyBFCacheOnMainThread(mParent->GetOwnerWindow(),
                                                      aCreated);
 
   return IPC_OK();
@@ -164,7 +171,7 @@ IPCResult SharedWorkerChild::RecvNotifyWebTransport(bool aCreated) {
     return IPC_OK();
   }
 
-  WebTransport::NotifyBFCacheOnMainThread(mParent->GetOwner(), aCreated);
+  WebTransport::NotifyBFCacheOnMainThread(mParent->GetOwnerWindow(), aCreated);
 
   return IPC_OK();
 }

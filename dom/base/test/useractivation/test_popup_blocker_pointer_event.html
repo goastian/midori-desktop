@@ -60,63 +60,69 @@
     const RIGHT_BUTTON = 2;
     let target = document.getElementById("target");
 
-    add_task(function testPointerEventDefault() {
+    async function testPointerEventDefault() {
       // By default, only allow opening popup in the pointerup listener.
       // Left button
       sendMouseEvent(target, "mousedown", LEFT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", LEFT_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Middle button
       sendMouseEvent(target, "mousedown", MIDDLE_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", MIDDLE_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Right button
-      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkBlockOpenPopup);
+      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", RIGHT_BUTTON, "pointermove", checkBlockOpenPopup);
       sendMouseEvent(target, "mouseup", RIGHT_BUTTON, "pointerup", checkBlockOpenPopup);
-    });
+    };
 
-    add_task(async function testPointerEventAddPointerDownToPref() {
+    async function testPointerEventAddPointerDownToPref() {
       // Adding pointerdown to preference
       await SpecialPowers.pushPrefEnv({"set": [["dom.popup_allowed_events",
                                                 "pointerdown pointerup"]]});
       // Left button
       sendMouseEvent(target, "mousedown", LEFT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", LEFT_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Middle button
       sendMouseEvent(target, "mousedown", MIDDLE_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", MIDDLE_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Right button
-      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkBlockOpenPopup);
+      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", RIGHT_BUTTON, "pointermove", checkBlockOpenPopup);
       sendMouseEvent(target, "mouseup", RIGHT_BUTTON, "pointerup", checkBlockOpenPopup);
-    });
+      await SpecialPowers.popPrefEnv();
+    }
 
-    add_task(async function testPointerEventAddPointerMoveToPref() {
+    async function testPointerEventAddPointerMoveToPref() {
       // Adding pointermove to preference should have no effect.
       await SpecialPowers.pushPrefEnv({"set": [["dom.popup_allowed_events",
                                                 "pointerdown pointerup pointermove"]]});
       // Left button
       sendMouseEvent(target, "mousedown", LEFT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", LEFT_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", LEFT_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Middle button
       sendMouseEvent(target, "mousedown", MIDDLE_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", MIDDLE_BUTTON, "pointermove", checkBlockOpenPopup);
-      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkAllowOpenPopup);
+      sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "pointerup", checkBlockOpenPopup);
 
       // Right button
-      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkBlockOpenPopup);
+      sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "pointerdown", checkAllowOpenPopup);
       sendMouseEvent(target, "mousemove", RIGHT_BUTTON, "pointermove", checkBlockOpenPopup);
       sendMouseEvent(target, "mouseup", RIGHT_BUTTON, "pointerup", checkBlockOpenPopup);
-    });
+      await SpecialPowers.popPrefEnv();
+    }
+
+    add_task(testPointerEventDefault);
+    add_task(testPointerEventAddPointerDownToPref);
+    add_task(testPointerEventAddPointerMoveToPref);
   </script>
 </body>
 </html>

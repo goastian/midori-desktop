@@ -10,9 +10,20 @@
 #include "gtest/gtest.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/SpinEventLoopUntil.h"
+#include "mozilla/dom/quota/ClientDirectoryLock.h"
+#include "mozilla/dom/quota/ClientDirectoryLockHandle.h"
 #include "mozilla/dom/quota/DirectoryLock.h"
+#include "mozilla/dom/quota/DirectoryLockInlines.h"
 #include "mozilla/dom/quota/ForwardDecls.h"
 #include "mozilla/dom/quota/QuotaManager.h"
+
+// ENSURE_NO_FATAL_FAILURE is useful in non-void functions where
+// ASSERT_NO_FATAL_FAILURE can't be used.
+#define ENSURE_NO_FATAL_FAILURE(expr, ret) \
+  (expr);                                  \
+  if (HasFatalFailure()) {                 \
+    return ret;                            \
+  }
 
 #define QM_TEST_FAIL [](nsresult) { FAIL(); }
 
@@ -27,56 +38,129 @@ class QuotaManagerDependencyFixture : public testing::Test {
   static void StorageInitialized(bool* aResult);
   static void AssertStorageInitialized();
   static void AssertStorageNotInitialized();
+  static void ClearStorage();
   static void ShutdownStorage();
 
+  static void InitializeTemporaryStorage();
+  static void TemporaryStorageInitialized(bool* aResult);
+  static void AssertTemporaryStorageInitialized();
+  static void AssertTemporaryStorageNotInitialized();
+  static void ShutdownTemporaryStorage();
+
+  static void InitializeTemporaryOrigin(const OriginMetadata& aOriginMetadata,
+                                        bool aCreateIfNonExistent = true);
+  static void TemporaryOriginInitialized(const OriginMetadata& aOriginMetadata,
+                                         bool* aResult);
+  static void AssertTemporaryOriginInitialized(
+      const OriginMetadata& aOriginMetadata);
+  static void AssertTemporaryOriginNotInitialized(
+      const OriginMetadata& aOriginMetadata);
+
+  // For more complex testing, use of this helper is optional.
+  static void SaveOriginAccessTime(const OriginMetadata& aOriginMetadata,
+                                   int64_t aTimestamp);
+
+  static void GetOriginUsage(const OriginMetadata& aOriginMetadata,
+                             UsageInfo* aResult);
+  static void GetCachedOriginUsage(const OriginMetadata& aOriginMetadata,
+                                   UsageInfo* aResult);
   static void ClearStoragesForOrigin(const OriginMetadata& aOriginMetadata);
+
+  static void InitializeTemporaryClient(const ClientMetadata& aClientMetadata,
+                                        bool aCreateIfNonExistent = true);
+
+  static CStringArray ListOrigins();
+  static CStringArray ListCachedOrigins();
+
+  static void ClearStoragesForOriginAttributesPattern(
+      const nsAString& aPattern);
+
+  static void ProcessPendingNormalOriginOperations();
+
+  static uint64_t TotalDirectoryIterations();
+
+  static uint64_t SaveOriginAccessTimeCount();
+  static uint64_t SaveOriginAccessTimeCountInternal();
 
   /* Convenience method for tasks which must be called on PBackground thread */
   template <class Invokable, class... Args>
-  static void PerformOnBackgroundThread(Invokable&& aInvokable,
-                                        Args&&... aArgs) {
+  static auto PerformOnBackgroundThread(Invokable&& aInvokable, Args&&... aArgs)
+      -> std::invoke_result_t<Invokable, Args...> {
+    return PerformOnThread(BackgroundTargetStrongRef(),
+                           std::forward<Invokable>(aInvokable),
+                           std::forward<Args>(aArgs)...);
+  }
+
+  /* Convenience method for tasks which must be executed on IO thread */
+  template <class Invokable, class... Args>
+  static auto PerformOnIOThread(Invokable&& aInvokable, Args&&... aArgs)
+      -> std::invoke_result_t<Invokable, Args...> {
+    QuotaManager* quotaManager = QuotaManager::Get();
+    MOZ_RELEASE_ASSERT(quotaManager);
+
+    return PerformOnThread(quotaManager->IOThread(),
+                           std::forward<Invokable>(aInvokable),
+                           std::forward<Args>(aArgs)...);
+  }
+
+  template <class Invokable, class... Args,
+            bool ReturnTypeIsVoid =
+                std::is_same_v<std::invoke_result_t<Invokable, Args...>, void>>
+  static auto PerformOnThread(nsISerialEventTarget* aTarget,
+                              Invokable&& aInvokable, Args&&... aArgs)
+      -> std::invoke_result_t<Invokable, Args...> {
+    using ReturnType =
+        std::conditional_t<ReturnTypeIsVoid, bool,
+                           std::invoke_result_t<Invokable, Args...>>;
+
     bool done = false;
     auto boundTask =
         // For c++17, bind is cleaner than tuple for parameter pack forwarding
         // NOLINTNEXTLINE(modernize-avoid-bind)
         std::bind(std::forward<Invokable>(aInvokable),
                   std::forward<Args>(aArgs)...);
-    InvokeAsync(BackgroundTargetStrongRef(), __func__,
-                [boundTask = std::move(boundTask)]() mutable {
-                  boundTask();
-                  return BoolPromise::CreateAndResolve(true, __func__);
-                })
+    Maybe<ReturnType> maybeReturnValue;
+    InvokeAsync(
+        aTarget, __func__,
+        [boundTask = std::move(boundTask), &maybeReturnValue]() mutable {
+          if constexpr (ReturnTypeIsVoid) {
+            boundTask();
+            (void)maybeReturnValue;
+          } else {
+            maybeReturnValue.emplace(boundTask());
+          }
+          return BoolPromise::CreateAndResolve(true, __func__);
+        })
         ->Then(GetCurrentSerialEventTarget(), __func__,
                [&done](const BoolPromise::ResolveOrRejectValue& /* aValue */) {
                  done = true;
                });
 
     SpinEventLoopUntil("Promise is fulfilled"_ns, [&done]() { return done; });
+
+    if constexpr (!ReturnTypeIsVoid) {
+      return maybeReturnValue.extract();
+    }
   }
 
-  /* Convenience method for tasks which must be executed on IO thread */
-  template <class Invokable, class... Args>
-  static void PerformOnIOThread(Invokable&& aInvokable, Args&&... aArgs) {
-    QuotaManager* quotaManager = QuotaManager::Get();
-    ASSERT_TRUE(quotaManager);
+  // Acquire and await a client directory lock and pass it to the given task.
+  template <class Task>
+  static void PerformClientDirectoryLockTest(
+      const ClientMetadata& aClientMetadata, Task&& aTask) {
+    PerformOnBackgroundThread(
+        [clientMetadata = aClientMetadata, task = std::forward<Task>(aTask)]() {
+          QuotaManager* quotaManager = QuotaManager::Get();
+          ASSERT_TRUE(quotaManager);
 
-    bool done = false;
-    auto boundTask =
-        // For c++17, bind is cleaner than tuple for parameter pack forwarding
-        // NOLINTNEXTLINE(modernize-avoid-bind)
-        std::bind(std::forward<Invokable>(aInvokable),
-                  std::forward<Args>(aArgs)...);
-    InvokeAsync(quotaManager->IOThread(), __func__,
-                [boundTask = std::move(boundTask)]() mutable {
-                  boundTask();
-                  return BoolPromise::CreateAndResolve(true, __func__);
-                })
-        ->Then(GetCurrentSerialEventTarget(), __func__,
-               [&done](const BoolPromise::ResolveOrRejectValue& value) {
-                 done = true;
-               });
+          RefPtr<ClientDirectoryLock> directoryLock =
+              quotaManager->CreateDirectoryLock(clientMetadata,
+                                                /* aExclusive */ false);
 
-    SpinEventLoopUntil("Promise is fulfilled"_ns, [&done]() { return done; });
+          auto value = Await(directoryLock->Acquire());
+          ASSERT_TRUE(value.IsResolve());
+
+          task(std::move(directoryLock));
+        });
   }
 
   template <class Task>
@@ -84,7 +168,7 @@ class QuotaManagerDependencyFixture : public testing::Test {
                                          Task&& aTask) {
     PerformOnBackgroundThread([clientMetadata = aClientMetadata,
                                task = std::forward<Task>(aTask)]() mutable {
-      RefPtr<ClientDirectoryLock> directoryLock;
+      ClientDirectoryLockHandle directoryLockHandle;
 
       QuotaManager* quotaManager = QuotaManager::Get();
       ASSERT_TRUE(quotaManager);
@@ -94,9 +178,9 @@ class QuotaManagerDependencyFixture : public testing::Test {
       quotaManager->OpenClientDirectory(clientMetadata)
           ->Then(
               GetCurrentSerialEventTarget(), __func__,
-              [&directoryLock,
-               &done](RefPtr<ClientDirectoryLock> aResolveValue) {
-                directoryLock = std::move(aResolveValue);
+              [&directoryLockHandle,
+               &done](ClientDirectoryLockHandle&& aResolveValue) {
+                directoryLockHandle = std::move(aResolveValue);
 
                 done = true;
               },
@@ -108,21 +192,63 @@ class QuotaManagerDependencyFixture : public testing::Test {
 
       SpinEventLoopUntil("Promise is fulfilled"_ns, [&done]() { return done; });
 
-      ASSERT_TRUE(directoryLock);
+      ASSERT_TRUE(directoryLockHandle);
 
-      PerformOnIOThread(std::move(task), directoryLock->Id());
+      PerformOnIOThread(std::move(task), directoryLockHandle->Id());
 
-      directoryLock = nullptr;
+      {
+        auto destroyingDirectoryLockHandle = std::move(directoryLockHandle);
+      }
     });
+  }
+
+  /* Convenience method for defering execution of code until the promise has
+   * been resolved or rejected */
+  template <typename ResolveValueT, typename RejectValueT, bool IsExclusive>
+  static typename MozPromise<ResolveValueT, RejectValueT,
+                             IsExclusive>::ResolveOrRejectValue
+  Await(RefPtr<MozPromise<ResolveValueT, RejectValueT, IsExclusive>> aPromise) {
+    using PromiseType = MozPromise<ResolveValueT, RejectValueT, IsExclusive>;
+    using ResolveOrRejectValue = typename PromiseType::ResolveOrRejectValue;
+
+    ResolveOrRejectValue value;
+
+    bool done = false;
+
+    auto SelectResolveOrRejectCallback = [&value, &done]() {
+      if constexpr (IsExclusive) {
+        return [&value, &done](ResolveOrRejectValue&& aValue) {
+          value = std::move(aValue);
+
+          done = true;
+        };
+      } else {
+        return [&value, &done](const ResolveOrRejectValue& aValue) {
+          value = aValue;
+
+          done = true;
+        };
+      }
+    };
+
+    aPromise->Then(GetCurrentSerialEventTarget(), __func__,
+                   SelectResolveOrRejectCallback());
+
+    SpinEventLoopUntil("Promise is fulfilled"_ns, [&done]() { return done; });
+
+    return value;
   }
 
   static const nsCOMPtr<nsISerialEventTarget>& BackgroundTargetStrongRef() {
     return sBackgroundTarget;
   }
 
+  static PrincipalMetadata GetTestPrincipalMetadata();
+  static OriginMetadata GetTestPersistentOriginMetadata();
   static OriginMetadata GetTestOriginMetadata();
   static ClientMetadata GetTestClientMetadata();
 
+  static PrincipalMetadata GetOtherTestPrincipalMetadata();
   static OriginMetadata GetOtherTestOriginMetadata();
   static ClientMetadata GetOtherTestClientMetadata();
 

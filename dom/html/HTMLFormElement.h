@@ -57,7 +57,8 @@ class HTMLFormElement final : public nsGenericHTMLElement {
 
   /** Whether we already dispatched a DOMFormHasPassword event or not */
   bool mHasPendingPasswordEvent = false;
-  /** Whether we already dispatched a DOMFormHasPossibleUsername event or not */
+  /** Whether we already dispatched a DOMPossibleUsernameInputAdded event or not
+   */
   bool mHasPendingPossibleUsernameEvent = false;
 
   // nsIContent
@@ -189,7 +190,7 @@ class HTMLFormElement final : public nsGenericHTMLElement {
    * submission. In that case the form will defer the submission until the
    * script handler returns and the return value is known.
    */
-  void OnSubmitClickBegin(Element* aOriginatingElement);
+  void OnSubmitClickBegin();
   void OnSubmitClickEnd();
 
   /**
@@ -409,14 +410,12 @@ class HTMLFormElement final : public nsGenericHTMLElement {
   nsresult SubmitDialog(DialogFormSubmission* aFormSubmission);
 
   /**
-   * Notify any submit observers of the submit.
+   * Dispatch a DOMFormBeforeSubmit chrome-only event.
    *
-   * @param aActionURL the URL being submitted to
    * @param aCancelSubmit out param where submit observers can specify that the
    *        submit should be cancelled.
    */
-  nsresult NotifySubmitObservers(nsIURI* aActionURL, bool* aCancelSubmit,
-                                 bool aEarlyNotify);
+  nsresult DispatchBeforeSubmitChromeOnlyEvent(bool* aCancelSubmit);
 
   /**
    * If this form submission is secure -> insecure, ask the user if they want

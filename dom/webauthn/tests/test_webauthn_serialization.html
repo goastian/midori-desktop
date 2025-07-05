@@ -85,7 +85,24 @@
         hints: ["hybrid"],
         attestation: "indirect",
         attestationFormats: ["fido-u2f"],
-        extensions: { appid: "https://www.example.com/appID", credProps: true, hmacCreateSecret: true, minPinLength: true },
+        extensions: {
+              appid: "https://www.example.com/appID",
+              credProps: true,
+              hmacCreateSecret: true,
+              minPinLength: true,
+              prf: {
+                    eval: {
+                          first: "Zmlyc3Q",
+                          second: "c2Vjb25k"
+                        },
+                    evalByCredential: {
+                          "19TVpqBBOAM": {
+                                first: "Zmlyc3Q",
+                                second: "c2Vjb25k"
+                              }
+                        }
+                  }
+            },
       };
       let creationOptions = PublicKeyCredential.parseCreationOptionsFromJSON(creationOptionsJSON);
       is(Object.getOwnPropertyNames(creationOptions).length, 9, "creation options should have 9 properties");
@@ -113,6 +130,10 @@
       is(creationOptions.extensions.credProps, true, "extensions.credProps should be true");
       is(creationOptions.extensions.hmacCreateSecret, true, "extensions.hmacCreateSecret should be true");
       is(creationOptions.extensions.minPinLength, true, "extensions.minPinLength should be true");
+      arrayBufferEqualsArray(creationOptions.extensions.prf.eval.first, [102, 105, 114, 115, 116], "extensions.prf.eval.first should be 'first'");
+      arrayBufferEqualsArray(creationOptions.extensions.prf.eval.second, [115, 101, 99, 111, 110, 100], "extensions.prf.eval.second should be 'second'");
+      arrayBufferEqualsArray(creationOptions.extensions.prf.evalByCredential["19TVpqBBOAM"].first, [102, 105, 114, 115, 116], "extensions.prf.evalByCredential[\"19TVpqBBOAM\"].first should be 'first'");
+      arrayBufferEqualsArray(creationOptions.extensions.prf.evalByCredential["19TVpqBBOAM"].second, [115, 101, 99, 111, 110, 100], "extensions.prf.evalByCredential[\"19TVpqBBOAM\"].second should be 'second'");
     });
 
     add_task(function test_parseCreationOptionsFromJSON_malformed() {
@@ -184,7 +205,21 @@
         hints: ["client-device"],
         attestation: "enterprise",
         attestationFormats: ["packed"],
-        extensions: { appid: "https://www.example.com/anotherAppID", hmacCreateSecret: false },
+        extensions: {
+              appid: "https://www.example.com/anotherAppID",
+              prf: {
+                    eval: {
+                          first: "Zmlyc3Q",
+                          second: "c2Vjb25k"
+                        },
+                    evalByCredential: {
+                          "19TVpqBBOAM": {
+                                first: "Zmlyc3Q",
+                                second: "c2Vjb25k"
+                              }
+                        }
+                  }
+            },
       };
       let requestOptions = PublicKeyCredential.parseRequestOptionsFromJSON(requestOptionsJSON);
       is(Object.getOwnPropertyNames(requestOptions).length, 6, "request options should have 6 properties");
@@ -198,7 +233,10 @@
       is(requestOptions.allowCredentials[0].transports[0], "smart-card", "allowCredentials[0].transports[0] should be usb");
       is(requestOptions.userVerification, "discouraged", "userVerification should be discouraged");
       is(requestOptions.extensions.appid, "https://www.example.com/anotherAppID", "extensions.appid should be https://www.example.com/anotherAppID");
-      is(requestOptions.extensions.hmacCreateSecret, false, "extensions.hmacCreateSecret should be false");
+      arrayBufferEqualsArray(requestOptions.extensions.prf.eval.first, [102, 105, 114, 115, 116], "extensions.prf.eval.first should be 'first'");
+      arrayBufferEqualsArray(requestOptions.extensions.prf.eval.second, [115, 101, 99, 111, 110, 100], "extensions.prf.eval.second should be 'second'");
+      arrayBufferEqualsArray(requestOptions.extensions.prf.evalByCredential["19TVpqBBOAM"].first, [102, 105, 114, 115, 116], "extensions.prf.evalByCredential[\"19TVpqBBOAM\"].first should be 'first'");
+      arrayBufferEqualsArray(requestOptions.extensions.prf.evalByCredential["19TVpqBBOAM"].second, [115, 101, 99, 111, 110, 100], "extensions.prf.evalByCredential[\"19TVpqBBOAM\"].second should be 'second'");
     });
 
     add_task(function test_parseRequestOptionsFromJSON_malformed() {
@@ -220,7 +258,7 @@
         hints: ["client-device"],
         attestation: "enterprise",
         attestationFormats: ["packed"],
-        extensions: { appid: "https://www.example.com/anotherAppID", hmacCreateSecret: false },
+        extensions: { appid: "https://www.example.com/anotherAppID" },
       };
       shouldThrow(
         () => { PublicKeyCredential.parseRequestOptionsFromJSON(allowCredentialsIdNotBase64); },
@@ -275,6 +313,7 @@
           user: {id: new Uint8Array(), name: "none", icon: "none", displayName: "none"},
           challenge: crypto.getRandomValues(new Uint8Array(16)),
           pubKeyCredParams: [{type: "public-key", alg: cose_alg_ECDSA_w_SHA256}],
+          extensions: { prf: { enabled: true } }
         },
       };
       let registrationResponse = await navigator.credentials.create(registrationRequest);
@@ -283,6 +322,7 @@
         publicKey: {
           challenge: crypto.getRandomValues(new Uint8Array(16)),
           allowCredentials: [{ type: "public-key", id: registrationResponse.rawId }],
+          extensions: { prf: { eval: { first: new Uint8Array([1,2,3,4,5]).buffer } } }
         },
       };
       let assertionResponse = await navigator.credentials.get(assertionRequest);
@@ -295,7 +335,9 @@
       ok(isUrlsafeBase64(assertionResponseJSON.response.authenticatorData), "assertionResponseJSON.response.authenticatorData should be urlsafe base64");
       ok(isUrlsafeBase64(assertionResponseJSON.response.signature), "assertionResponseJSON.response.signature should be urlsafe base64");
       is(assertionResponseJSON.authenticatorAttachment, "platform", "assertionResponseJSON.authenticatorAttachment should be platform");
-      is(Object.keys(assertionResponseJSON.clientExtensionResults).length, 0, "assertionResponseJSON.clientExtensionResults should be an empty dictionary");
+      is(Object.keys(assertionResponseJSON.clientExtensionResults).length, 1, "assertionResponseJSON.clientExtensionResults should have one entry");
+      ok(isUrlsafeBase64(assertionResponseJSON.clientExtensionResults.prf.results.first), "assertionResponseJSON.clientExtensionResults.prf.results should be urlsafe base64");
+      is(assertionResponseJSON.clientExtensionResults.prf.results.first.length, 43, "assertionResponseJSON.clientExtensionResults.prf.results should be of length 43");
       is(assertionResponseJSON.type, "public-key", "assertionResponseJSON.type should be public-key");
     });
   </script>

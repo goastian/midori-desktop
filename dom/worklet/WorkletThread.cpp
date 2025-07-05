@@ -315,8 +315,8 @@ WorkletThread::DelayedDispatch(already_AddRefed<nsIRunnable>, uint32_t aFlags) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-static bool DispatchToEventLoop(void* aClosure,
-                                JS::Dispatchable* aDispatchable) {
+static bool DispatchToEventLoop(
+    void* aClosure, js::UniquePtr<JS::Dispatchable>&& aDispatchable) {
   // This callback may execute either on the worklet thread or a random
   // JS-internal helper thread.
 
@@ -327,25 +327,36 @@ static bool DispatchToEventLoop(void* aClosure,
   nsresult rv = thread->Dispatch(
       NS_NewRunnableFunction(
           "WorkletThread::DispatchToEventLoop",
-          [aDispatchable]() {
+          [dispatchable = std::move(aDispatchable)]() mutable {
             CycleCollectedJSContext* ccjscx = CycleCollectedJSContext::Get();
             if (!ccjscx) {
+              JS::Dispatchable::ReleaseFailedTask(std::move(dispatchable));
               return;
             }
 
             WorkletJSContext* wjc = ccjscx->GetAsWorkletJSContext();
             if (!wjc) {
+              JS::Dispatchable::ReleaseFailedTask(std::move(dispatchable));
               return;
             }
 
             AutoJSAPI jsapi;
             jsapi.Init();
-            aDispatchable->run(wjc->Context(),
-                               JS::Dispatchable::NotShuttingDown);
+            JS::Dispatchable::Run(wjc->Context(), std::move(dispatchable),
+                                  JS::Dispatchable::NotShuttingDown);
           }),
       NS_DISPATCH_NORMAL);
 
   return NS_SUCCEEDED(rv);
+}
+
+static bool DelayedDispatchToEventLoop(
+    void* aClosure, js::UniquePtr<JS::Dispatchable>&& aDispatchable,
+    uint32_t delay) {
+  // Worklets do not support delayed dispatch. If something is trying to use it,
+  // it should fail. For now we are warning.
+  NS_WARNING("Trying to perform a delayed dispatch on a worklet.");
+  return false;
 }
 
 // static
@@ -377,8 +388,9 @@ void WorkletThread::EnsureCycleCollectedJSContext(
 
   // A thread lives strictly longer than its JSRuntime so we can safely
   // store a raw pointer as the callback's closure argument on the JSRuntime.
-  JS::InitDispatchToEventLoop(context->Context(), DispatchToEventLoop,
-                              NS_GetCurrentThread());
+  JS::InitDispatchsToEventLoop(context->Context(), DispatchToEventLoop,
+                               DelayedDispatchToEventLoop,
+                               NS_GetCurrentThread());
 
   JS_SetNativeStackQuota(context->Context(),
                          WORKLET_CONTEXT_NATIVE_STACK_LIMIT);
@@ -422,6 +434,8 @@ void WorkletThread::Terminate() {
   RefPtr<TerminateRunnable> runnable = new TerminateRunnable(this);
   DispatchRunnable(runnable.forget());
 }
+
+uint32_t WorkletThread::StackSize() { return kWorkletStackSize; }
 
 void WorkletThread::TerminateInternal() {
   MOZ_ASSERT(!CycleCollectedJSContext::Get() || IsOnWorkletThread());

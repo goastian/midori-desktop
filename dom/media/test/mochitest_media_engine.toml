@@ -3,8 +3,14 @@ subsuite = "media"
 tags = "media-engine-compatible"
 skip-if = ["!wmfme"]
 
+support-files = [
+  "tearsofsteel_1frame_encrypted.mp4",
+]
+
 ["test_eme_mfcdm_generate_request.html"]
 
-["test_eme_wideinve_l1_installation.html"]
+["test_eme_mfcdm_generate_request_from_new_session.html"]
 
 ["test_eme_mfcdm_getstatusforpolicy.html"]
+
+["test_eme_wideinve_l1_installation.html"]

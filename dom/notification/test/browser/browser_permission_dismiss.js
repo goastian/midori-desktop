@@ -77,9 +77,10 @@ function tabWithRequest(
               "Should call the legacy callback with the permission state"
             );
           }
-          let perm = await content.window.Notification.requestPermission(
-            requestCallback
-          );
+          let perm =
+            await content.window.Notification.requestPermission(
+              requestCallback
+            );
           is(
             perm,
             permission,
@@ -179,10 +180,8 @@ add_task(async function test_requestPermission_denied_permanently() {
 add_task(
   async function test_requestPermission_defaultPrivateNotificationsPref() {
     ok(
-      !SpecialPowers.getBoolPref(
-        "dom.webnotifications.privateBrowsing.enableDespiteLimitations"
-      ),
-      "Pref should be default disabled"
+      SpecialPowers.getBoolPref("dom.webnotifications.privateBrowsing.enabled"),
+      "Pref should be default enabled"
     );
   }
 );
@@ -220,12 +219,5 @@ add_task(async function test_requestPermission_privateNotifications() {
     await BrowserTestUtils.closeWindow(privateWindow);
   }
 
-  await run(Services.perms.UNKNOWN_ACTION);
-
-  await SpecialPowers.pushPrefEnv({
-    set: [
-      ["dom.webnotifications.privateBrowsing.enableDespiteLimitations", true],
-    ],
-  });
   await run(Services.perms.ALLOW_ACTION);
 });

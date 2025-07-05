@@ -54,6 +54,7 @@ EXPORTS.mozilla.dom += [
     "AudioParamMap.h",
     "AudioProcessingEvent.h",
     "AudioScheduledSourceNode.h",
+    "AudioWorklet.h",
     "AudioWorkletGlobalScope.h",
     "AudioWorkletNode.h",
     "AudioWorkletProcessor.h",
@@ -95,6 +96,7 @@ UNIFIED_SOURCES += [
     "AudioParamMap.cpp",
     "AudioProcessingEvent.cpp",
     "AudioScheduledSourceNode.cpp",
+    "AudioWorklet.cpp",
     "AudioWorkletGlobalScope.cpp",
     "AudioWorkletImpl.cpp",
     "AudioWorkletNode.cpp",
@@ -144,6 +146,9 @@ if CONFIG["INTEL_ARCHITECTURE"]:
         SOURCES["AudioNodeEngineSSE4_2_FMA3.cpp"].flags += (
             CONFIG["SSE4_2_FLAGS"] + CONFIG["FMA_FLAGS"]
         )
+
+if CONFIG["MOZ_SYSTEM_AV1"]:
+    CXXFLAGS += CONFIG["MOZ_SYSTEM_LIBAOM_CFLAGS"]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

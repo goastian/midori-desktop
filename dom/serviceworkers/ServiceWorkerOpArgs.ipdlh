@@ -5,6 +5,7 @@
 include ClientIPCTypes;
 include DOMTypes;
 include FetchTypes;
+include NeckoChannelParams;
 
 include "mozilla/dom/ServiceWorkerIPCUtils.h";
 
@@ -31,6 +32,11 @@ struct ServiceWorkerLifeCycleEventOpArgs {
   nsString eventName;
 };
 
+struct ServiceWorkerCookieChangeEventOpArgs {
+  CookieStruct cookie;
+  bool deleted;
+};
+
 // Possibly need to differentiate an empty array from the absence of an array.
 union OptionalPushData {
   void_t;
@@ -42,21 +48,29 @@ struct ServiceWorkerPushEventOpArgs {
   OptionalPushData data;
 };
 
-struct ServiceWorkerPushSubscriptionChangeEventOpArgs {};
+struct PushSubscriptionData {
+  nsString endpoint;
+  uint8_t[] rawP256dhKey;
+  uint8_t[] authSecret;
+  uint8_t[] appServerKey;
+};
 
-struct ServiceWorkerNotificationEventOpArgs {
-  nsString eventName;
-  nsString id;
-  nsString title;
-  nsString dir;
-  nsString lang;
-  nsString body;
-  nsString tag;
-  nsString icon;
-  nsString data;
-  nsString behavior;
-  nsString scope;
-  uint32_t disableOpenClickDelay;
+struct ServiceWorkerPushSubscriptionChangeEventOpArgs {
+  PushSubscriptionData? oldSubscription;
+};
+
+struct ServiceWorkerNotificationClickEventOpArgs {
+  IPCNotification notification;
+  nsString action;
+};
+
+struct ServiceWorkerNotificationCloseEventOpArgs {
+  IPCNotification notification;
+};
+
+union ServiceWorkerNotificationEventOpArgs {
+  ServiceWorkerNotificationClickEventOpArgs;
+  ServiceWorkerNotificationCloseEventOpArgs;
 };
 
 struct ServiceWorkerExtensionAPIEventOpArgs {
@@ -69,7 +83,7 @@ struct ServiceWorkerExtensionAPIEventOpArgs {
 };
 
 struct ServiceWorkerMessageEventOpArgs {
-  ClientInfoAndState clientInfoAndState;
+  PostMessageSource source;
   ClonedOrErrorMessageData clonedData;
 };
 
@@ -104,17 +118,23 @@ struct ParentToChildServiceWorkerFetchEventOpArgs {
   ResponseEndArgs? preloadResponseEndArgs;
 };
 
+struct ServiceWorkerUpdateIsOnContentBlockingAllowListOpArgs {
+  bool onContentBlockingAllowList;
+};
+
 union ServiceWorkerOpArgs {
   ServiceWorkerCheckScriptEvaluationOpArgs;
   ServiceWorkerUpdateStateOpArgs;
   ServiceWorkerTerminateWorkerOpArgs;
   ServiceWorkerLifeCycleEventOpArgs;
+  ServiceWorkerCookieChangeEventOpArgs;
   ServiceWorkerPushEventOpArgs;
   ServiceWorkerPushSubscriptionChangeEventOpArgs;
   ServiceWorkerNotificationEventOpArgs;
   ServiceWorkerMessageEventOpArgs;
   ServiceWorkerExtensionAPIEventOpArgs;
   ParentToChildServiceWorkerFetchEventOpArgs;
+  ServiceWorkerUpdateIsOnContentBlockingAllowListOpArgs;
 };
 
 /**

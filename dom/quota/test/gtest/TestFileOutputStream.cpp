@@ -5,8 +5,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/quota/Client.h"
+#include "mozilla/dom/quota/ClientDirectoryLock.h"
+#include "mozilla/dom/quota/ClientDirectoryLockHandle.h"
 #include "mozilla/dom/quota/CommonMetadata.h"
-#include "mozilla/dom/quota/DirectoryLock.h"
 #include "mozilla/dom/quota/FileStreams.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/gtest/MozAssertions.h"
@@ -57,15 +58,6 @@ TEST_F(TestFileOutputStream, extendFileStreamWithSetEOF) {
 
       auto originMetadata = GetOutputStreamTestOriginMetadata();
 
-      {
-        ASSERT_NS_SUCCEEDED(
-            quotaManager->EnsureTemporaryStorageIsInitializedInternal());
-
-        auto res = quotaManager->EnsureTemporaryOriginIsInitialized(
-            quota::PERSISTENCE_TYPE_DEFAULT, originMetadata);
-        ASSERT_TRUE(res.isOk());
-      }
-
       const int64_t groupLimit =
           static_cast<int64_t>(quotaManager->GetGroupLimit());
       ASSERT_TRUE(mQuotaLimit * 1024LL == groupLimit);
@@ -83,7 +75,8 @@ TEST_F(TestFileOutputStream, extendFileStreamWithSetEOF) {
                                               quota::Client::Type::SDB);
 
       {
-        auto testPathRes = quotaManager->GetOriginDirectory(originMetadata);
+        auto testPathRes =
+            quotaManager->GetOrCreateTemporaryOriginDirectory(originMetadata);
 
         ASSERT_TRUE(testPathRes.isOk());
 
@@ -189,7 +182,7 @@ TEST_F(TestFileOutputStream, extendFileStreamWithSetEOF) {
       ASSERT_TRUE(0 == avail);
     };
 
-    RefPtr<ClientDirectoryLock> directoryLock;
+    ClientDirectoryLockHandle directoryLockHandle;
 
     QuotaManager* quotaManager = QuotaManager::Get();
     ASSERT_TRUE(quotaManager);
@@ -201,8 +194,9 @@ TEST_F(TestFileOutputStream, extendFileStreamWithSetEOF) {
             {GetOutputStreamTestOriginMetadata(), Client::SDB})
         ->Then(
             GetCurrentSerialEventTarget(), __func__,
-            [&directoryLock, &done](RefPtr<ClientDirectoryLock> aResolveValue) {
-              directoryLock = std::move(aResolveValue);
+            [&directoryLockHandle,
+             &done](ClientDirectoryLockHandle&& aResolveValue) {
+              directoryLockHandle = std::move(aResolveValue);
 
               done = true;
             },
@@ -214,11 +208,13 @@ TEST_F(TestFileOutputStream, extendFileStreamWithSetEOF) {
 
     SpinEventLoopUntil("Promise is fulfilled"_ns, [&done]() { return done; });
 
-    ASSERT_TRUE(directoryLock);
+    ASSERT_TRUE(directoryLockHandle);
 
     PerformOnIOThread(std::move(ioTask));
 
-    directoryLock = nullptr;
+    {
+      auto destroyingDirectoryLockHandle = std::move(directoryLockHandle);
+    }
   };
 
   PerformOnBackgroundThread(std::move(backgroundTask));

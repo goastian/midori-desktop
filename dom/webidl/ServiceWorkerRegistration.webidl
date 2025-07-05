@@ -7,9 +7,10 @@
  * http://slightlyoff.github.io/ServiceWorker/spec/service_worker/index.html
  * https://w3c.github.io/push-api/
  * https://notifications.spec.whatwg.org/
+ * https://wicg.github.io/cookie-store/#idl-index
  */
 
-[Func="ServiceWorkerVisible",
+[Func="ServiceWorkersEnabled",
  Exposed=(Window,Worker)]
 interface ServiceWorkerRegistration : EventTarget {
   readonly attribute ServiceWorker? installing;
@@ -51,4 +52,9 @@ partial interface ServiceWorkerRegistration {
   Promise<undefined> showNotification(DOMString title, optional NotificationOptions options = {});
   [NewObject, Func="mozilla::dom::Notification::PrefEnabled"]
   Promise<sequence<Notification>> getNotifications(optional GetNotificationOptions filter = {});
+};
+
+partial interface ServiceWorkerRegistration {
+  [Throws, SameObject, Exposed=(ServiceWorker,Window), Pref="dom.cookieStore.manager.enabled"]
+  readonly attribute CookieStoreManager cookies;
 };

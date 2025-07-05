@@ -133,11 +133,11 @@ bool SVGMarkerElement::HasValidDimensions() const {
 
 SVGElement::LengthAttributesInfo SVGMarkerElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              ArrayLength(sLengthInfo));
+                              std::size(sLengthInfo));
 }
 
 SVGElement::EnumAttributesInfo SVGMarkerElement::GetEnumInfo() {
-  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
+  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, std::size(sEnumInfo));
 }
 
 SVGAnimatedOrient* SVGMarkerElement::GetAnimatedOrient() { return &mOrient; }
@@ -178,7 +178,8 @@ gfx::Matrix SVGMarkerElement::GetMarkerTransform(float aStrokeWidth,
 
 SVGViewBox SVGMarkerElement::GetViewBox() {
   if (mViewBox.HasRect()) {
-    return mViewBox.GetAnimValue();
+    float zoom = UserSpaceMetrics::GetZoom(this);
+    return mViewBox.GetAnimValue() * zoom;
   }
   return SVGViewBox(
       0, 0, mLengthAttributes[MARKERWIDTH].GetAnimValueWithZoom(mCoordCtx),

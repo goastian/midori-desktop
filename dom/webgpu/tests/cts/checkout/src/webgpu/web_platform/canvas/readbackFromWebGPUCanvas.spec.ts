@@ -25,7 +25,7 @@ import {
   kCanvasColorSpaces,
   kCanvasTextureFormats,
 } from '../../capability_info.js';
-import { GPUTest } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest, GPUTest } from '../../gpu_test.js';
 import { checkElementsEqual } from '../../util/check_contents.js';
 import {
   kAllCanvasTypes,
@@ -37,7 +37,7 @@ import {
 import { TexelView } from '../../util/texture/texel_view.js';
 import { findFailedPixels } from '../../util/texture/texture_ok.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 // We choose 0x66 as the value for each color and alpha channel
 // 0x66 / 0xff = 0.4
@@ -68,6 +68,9 @@ const expect = {
     0xff, 0xff, 0x00, kPixelValue, // yellow
   ]),
 };
+
+// ULP tolerance fo cross color space readback
+const kMaxDiffULPsForNormFormatWithDifferentColorSpaceCanvas = 3;
 
 /**
  * Given 4 pixels in rgba8unorm format, puts them into an ImageData
@@ -109,7 +112,7 @@ function initWebGPUCanvasContent<T extends CanvasType>(
   });
 
   const canvasTexture = ctx.getCurrentTexture();
-  const tempTexture = t.device.createTexture({
+  const tempTexture = t.createTextureTracked({
     size: { width: 1, height: 1, depthOrArrayLayers: 1 },
     format,
     usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -181,7 +184,12 @@ function checkImageResultWithDifferentColorSpaceCanvas(
     destinationColorSpace
   );
 
-  readPixelsFrom2DCanvasAndCompare(t, fromWebGPUCtx, expect, 2);
+  readPixelsFrom2DCanvasAndCompare(
+    t,
+    fromWebGPUCtx,
+    expect,
+    kMaxDiffULPsForNormFormatWithDifferentColorSpaceCanvas
+  );
 }
 
 function checkImageResult(
@@ -388,6 +396,7 @@ g.test('onscreenCanvas,uploadToWebGL')
       return;
     }
 
+    // eslint-disable-next-line no-restricted-syntax
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     switch (upload) {
@@ -504,7 +513,7 @@ g.test('transferToImageBitmap_unconfigured_nonzero_size')
     const readbackCanvas = createCanvas(t, t.params.readbackCanvasType, kWidth, kHeight);
     const readbackContext = readbackCanvas.getContext('2d', {
       alpha: true,
-    });
+    }) as CanvasRenderingContext2D;
     if (readbackContext === null) {
       t.skip('Cannot get a 2D canvas context');
       return;

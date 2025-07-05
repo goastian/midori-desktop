@@ -40,7 +40,7 @@ let wasmGlobalInterfaces = [
   { name: "Function", insecureContext: true, nightly: true },
   { name: "Exception", insecureContext: true },
   { name: "Tag", insecureContext: true },
-  { name: "JSTag", insecureContext: true, earlyBetaOrEarlier: true },
+  { name: "JSTag", insecureContext: true },
   { name: "compile", insecureContext: true },
   { name: "compileStreaming", insecureContext: true },
   { name: "instantiate", insecureContext: true },
@@ -63,6 +63,7 @@ let ecmaGlobals = [
   "Error",
   "EvalError",
   "FinalizationRegistry",
+  "Float16Array",
   "Float32Array",
   "Float64Array",
   "Function",
@@ -72,6 +73,7 @@ let ecmaGlobals = [
   "Int8Array",
   "InternalError",
   "Intl",
+  "Iterator",
   "JSON",
   "Map",
   "Math",
@@ -92,6 +94,7 @@ let ecmaGlobals = [
   "String",
   "Symbol",
   "SyntaxError",
+  "Temporal",
   "TypeError",
   "Uint16Array",
   "Uint32Array",
@@ -150,6 +153,10 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CountQueuingStrategy",
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  "CookieStore",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "CookieStoreManager",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   "Crypto",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "CryptoKey",
@@ -182,7 +189,11 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "Event",
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  "EventSource",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   "EventTarget",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "ExtendableCookieChangeEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ExtendableEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -211,6 +222,86 @@ let interfaceNamesInGlobalScope = [
   "FontFaceSetLoadEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "FormData",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPU", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUAdapter", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUAdapterInfo", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUBindGroup", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUBindGroupLayout", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUBuffer", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUBufferUsage", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUCanvasContext", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUColorWrite", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUCommandBuffer", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUCommandEncoder", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUCompilationInfo", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUCompilationMessage", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUComputePassEncoder", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUComputePipeline", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUDevice", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUDeviceLostInfo", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUError", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUExternalTexture", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUInternalError", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUMapMode", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUOutOfMemoryError", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUPipelineError", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUPipelineLayout", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUQuerySet", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUQueue", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPURenderBundle", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPURenderBundleEncoder", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPURenderPassEncoder", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPURenderPipeline", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUSampler", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUShaderModule", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUShaderStage", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUSupportedFeatures", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUSupportedLimits", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUTexture", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUTextureUsage", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUTextureView", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUUncapturedErrorEvent", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "GPUValidationError", earlyBetaOrEarlier: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "Headers",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -248,8 +339,6 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "MediaCapabilities",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  "MediaCapabilitiesInfo",
-  // IMPORTANT: Do not change this list without review from a DOM peer!
   "MessageChannel",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "MessageEvent",
@@ -286,19 +375,25 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "PerformanceServerTiming",
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  "Permissions",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "PermissionStatus",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   "ProgressEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "PromiseRejectionEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PushEvent" },
+  "PushEvent",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PushManager" },
+  "PushManager",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PushMessageData" },
+  "PushMessageData",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PushSubscription" },
+  "PushSubscription",
   // IMPORTANT: Do not change this list without review from a DOM peer!
-  { name: "PushSubscriptionOptions" },
+  "PushSubscriptionChangeEvent",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "PushSubscriptionOptions",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ReadableByteStreamController",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -319,6 +414,8 @@ let interfaceNamesInGlobalScope = [
   { name: "Scheduler", nightly: true },
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ServiceWorker",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "ServiceWorkerContainer",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "ServiceWorkerGlobalScope",
   // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -402,6 +499,8 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "WindowClient",
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  { name: "WGSLLanguageFeatures", earlyBetaOrEarlier: true },
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   "WorkerGlobalScope",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "WorkerLocation",
@@ -418,7 +517,11 @@ let interfaceNamesInGlobalScope = [
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "console",
   // IMPORTANT: Do not change this list without review from a DOM peer!
+  "cookieStore",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
   "onactivate",
+  // IMPORTANT: Do not change this list without review from a DOM peer!
+  "oncookiechange",
   // IMPORTANT: Do not change this list without review from a DOM peer!
   "onfetch",
   // IMPORTANT: Do not change this list without review from a DOM peer!

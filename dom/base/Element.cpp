@@ -13,10 +13,10 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ElementInlines.h"
 
+#include <cstddef>
 #include <inttypes.h>
 #include <initializer_list>
-#include <new>
-#include "DOMIntersectionObserver.h"
+#include <utility>
 #include "DOMMatrix.h"
 #include "ExpandedPrincipal.h"
 #include "PresShellInlines.h"
@@ -47,21 +47,25 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MappedDeclarationsBuilder.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/PointerLockManager.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellForwards.h"
 #include "mozilla/ReflowOutput.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/RelativeTo.h"
 #include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/ScrollTypes.h"
 #include "mozilla/ServoStyleConsts.h"
 #include "mozilla/ServoStyleConstsInlines.h"
 #include "mozilla/SizeOfState.h"
+#include "mozilla/SourceLocation.h"
 #include "mozilla/StaticAnalysisFunctions.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
+#include "mozilla/StaticString.h"
 #include "mozilla/TextControlElement.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
@@ -73,7 +77,9 @@
 #include "mozilla/dom/Attr.h"
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/CloseWatcher.h"
 #include "mozilla/dom/CustomElementRegistry.h"
+#include "mozilla/dom/CSPViolationData.h"
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/Document.h"
@@ -99,6 +105,7 @@
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/MutationObservers.h"
 #include "mozilla/dom/NodeInfo.h"
+#include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/Sanitizer.h"
@@ -106,7 +113,11 @@
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/Text.h"
+#include "mozilla/dom/TrustedHTML.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
 #include "mozilla/dom/UnbindContext.h"
+#include "mozilla/dom/ViewTransition.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/XULCommandEvent.h"
 #include "mozilla/dom/nsCSPContext.h"
@@ -143,6 +154,7 @@
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
 #include "nsGridContainerFrame.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsIAutoCompletePopup.h"
 #include "nsIBrowser.h"
 #include "nsIContentInlines.h"
@@ -170,6 +182,7 @@
 #include "nsIURI.h"
 #include "nsLayoutUtils.h"
 #include "nsLineBox.h"
+#include "nsLiteralString.h"
 #include "nsNameSpaceManager.h"
 #include "nsNodeInfoManager.h"
 #include "nsPIDOMWindow.h"
@@ -289,7 +302,7 @@ nsDOMAttributeMap* Element::Attributes() {
 }
 
 void Element::SetPointerCapture(int32_t aPointerId, ErrorResult& aError) {
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::PointerEvents) &&
+  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::PointerId) &&
       aPointerId != PointerEventHandler::GetSpoofedPointerIdForRFP()) {
     aError.ThrowNotFoundError("Invalid pointer id");
     return;
@@ -310,6 +323,9 @@ void Element::SetPointerCapture(int32_t aPointerId, ErrorResult& aError) {
     aError.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
+  // XXX If pointerInfo->mIsSynthesizedForTests does not match the last
+  // WidgetPointerEvent's mFlags.mIsSynthesizedForTests, should we treat it
+  // as unknown pointerId?
   if (!pointerInfo->mActiveState ||
       pointerInfo->mActiveDocument != OwnerDoc()) {
     return;
@@ -318,7 +334,7 @@ void Element::SetPointerCapture(int32_t aPointerId, ErrorResult& aError) {
 }
 
 void Element::ReleasePointerCapture(int32_t aPointerId, ErrorResult& aError) {
-  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::PointerEvents) &&
+  if (OwnerDoc()->ShouldResistFingerprinting(RFPTarget::PointerId) &&
       aPointerId != PointerEventHandler::GetSpoofedPointerIdForRFP()) {
     aError.ThrowNotFoundError("Invalid pointer id");
     return;
@@ -604,23 +620,23 @@ void Element::ClearStyleStateLocks() {
 /* virtual */
 nsINode* Element::GetScopeChainParent() const { return OwnerDoc(); }
 
-nsDOMTokenList* Element::ClassList() {
-  Element::nsDOMSlots* slots = DOMSlots();
+JSObject* Element::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
+  return Element_Binding::Wrap(aCx, this, aGivenProto);
+}
 
+nsDOMTokenList* Element::ClassList() {
+  nsDOMSlots* slots = DOMSlots();
   if (!slots->mClassList) {
     slots->mClassList = new nsDOMTokenList(this, nsGkAtoms::_class);
   }
-
   return slots->mClassList;
 }
 
 nsDOMTokenList* Element::Part() {
-  Element::nsDOMSlots* slots = DOMSlots();
-
+  nsExtendedDOMSlots* slots = ExtendedDOMSlots();
   if (!slots->mPart) {
     slots->mPart = new nsDOMTokenList(this, nsGkAtoms::part);
   }
-
   return slots->mPart;
 }
 
@@ -792,15 +808,15 @@ void Element::ScrollIntoView(const ScrollIntoViewOptions& aOptions) {
   const auto block = ToWhereToScroll(aOptions.mBlock);
   const auto inline_ = ToWhereToScroll(aOptions.mInline);
 
-  ScrollFlags scrollFlags =
-      ScrollFlags::ScrollOverflowHidden | ScrollFlags::TriggeredByScript;
+  ScrollFlags scrollFlags = ScrollFlags::ScrollOverflowHidden |
+                            ScrollFlags::TriggeredByScript |
+                            ScrollFlags::AxesAreLogical;
   if (aOptions.mBehavior == ScrollBehavior::Smooth) {
     scrollFlags |= ScrollFlags::ScrollSmooth;
   } else if (aOptions.mBehavior == ScrollBehavior::Auto) {
     scrollFlags |= ScrollFlags::ScrollSmoothAuto;
   }
 
-  // TODO: Propagate whether the axes are logical or not down (via scrollflags).
   presShell->ScrollContentIntoView(
       this, ScrollAxis(block, WhenToScroll::Always),
       ScrollAxis(inline_, WhenToScroll::Always), scrollFlags);
@@ -933,24 +949,34 @@ int32_t Element::ScrollLeftMax() {
 
 static nsSize GetScrollRectSizeForOverflowVisibleFrame(nsIFrame* aFrame) {
   if (!aFrame || aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
-    return nsSize(0, 0);
+    return nsSize();
   }
 
-  nsRect paddingRect = aFrame->GetPaddingRectRelativeToSelf();
-  OverflowAreas overflowAreas(paddingRect, paddingRect);
-  // Add the scrollable overflow areas of children (if any) to the paddingRect.
-  // It's important to start with the paddingRect, otherwise if there are no
-  // children the overflow rect will be 0,0,0,0 which will force the point 0,0
-  // to be included in the final rect.
-  nsLayoutUtils::UnionChildOverflow(aFrame, overflowAreas);
-  // Make sure that an empty padding-rect's edges are included, by adding
-  // the padding-rect in again with UnionEdges.
-  nsRect overflowRect =
-      overflowAreas.ScrollableOverflow().UnionEdges(paddingRect);
-  return nsLayoutUtils::GetScrolledRect(aFrame, overflowRect,
-                                        paddingRect.Size(),
-                                        aFrame->StyleVisibility()->mDirection)
-      .Size();
+  // This matches WebKit and Blink, which in turn (apparently, according to
+  // their source) matched old IE.
+  const nsRect paddingRect = aFrame->GetPaddingRectRelativeToSelf();
+  const nsRect overflowRect = [&] {
+    OverflowAreas overflowAreas(paddingRect, paddingRect);
+    // Add the scrollable overflow areas of children (if any) to the
+    // paddingRect, as if aFrame was a scrolled frame. It's important to start
+    // with the paddingRect, otherwise if there are no children the overflow
+    // rect will be 0,0,0,0 which will force the point 0,0 to be included in the
+    // final rect.
+    aFrame->UnionChildOverflow(overflowAreas, /* aAsIfScrolled = */ true);
+    // Make sure that an empty padding-rect's edges are included, by adding
+    // the padding-rect in again with UnionEdges.
+    return overflowAreas.ScrollableOverflow().UnionEdges(paddingRect);
+  }();
+
+  auto directions =
+      ScrollContainerFrame::ComputePerAxisScrollDirections(aFrame);
+  const nscoord height = directions.mToBottom
+                             ? overflowRect.YMost() - paddingRect.Y()
+                             : paddingRect.YMost() - overflowRect.Y();
+  const nscoord width = directions.mToRight
+                            ? overflowRect.XMost() - paddingRect.X()
+                            : paddingRect.XMost() - overflowRect.X();
+  return nsSize(width, height);
 }
 
 nsSize Element::GetScrollSize() {
@@ -1099,10 +1125,10 @@ const DOMTokenListSupportedToken Element::sAnchorAndFormRelValues[] = {
     "noreferrer", "noopener", "opener", nullptr};
 
 // https://html.spec.whatwg.org/multipage/urls-and-fetching.html#lazy-loading-attribute
-static constexpr nsAttrValue::EnumTable kLoadingTable[] = {
+static constexpr nsAttrValue::EnumTableEntry kLoadingTable[] = {
     {"eager", Element::Loading::Eager},
     {"lazy", Element::Loading::Lazy},
-    {nullptr, 0}};
+};
 
 void Element::GetLoading(nsAString& aValue) const {
   GetEnumAttr(nsGkAtoms::loading, kLoadingTable[0].tag, aValue);
@@ -1111,7 +1137,8 @@ void Element::GetLoading(nsAString& aValue) const {
 bool Element::ParseLoadingAttribute(const nsAString& aValue,
                                     nsAttrValue& aResult) {
   return aResult.ParseEnumValue(aValue, kLoadingTable,
-                                /* aCaseSensitive = */ false, kLoadingTable);
+                                /* aCaseSensitive = */ false,
+                                &kLoadingTable[0]);
 }
 
 Element::Loading Element::LoadingState() const {
@@ -1120,6 +1147,36 @@ Element::Loading Element::LoadingState() const {
     return Loading::Eager;
   }
   return static_cast<Loading>(val->GetEnumValue());
+}
+
+namespace {
+// <https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fetch-priority-attributes>.
+static constexpr nsAttrValue::EnumTableEntry kFetchPriorityEnumTable[] = {
+    {kFetchPriorityAttributeValueHigh, FetchPriority::High},
+    {kFetchPriorityAttributeValueLow, FetchPriority::Low},
+    {kFetchPriorityAttributeValueAuto, FetchPriority::Auto}};
+
+// <https://html.spec.whatwg.org/multipage/urls-and-fetching.html#fetch-priority-attributes>.
+static constexpr const nsAttrValue::EnumTableEntry*
+    kFetchPriorityEnumTableInvalidValueDefault = &kFetchPriorityEnumTable[2];
+}  // namespace
+
+void Element::ParseFetchPriority(const nsAString& aValue,
+                                 nsAttrValue& aResult) {
+  aResult.ParseEnumValue(aValue, kFetchPriorityEnumTable,
+                         false /* aCaseSensitive */,
+                         kFetchPriorityEnumTableInvalidValueDefault);
+}
+
+FetchPriority Element::GetFetchPriority() const {
+  const nsAttrValue* fetchpriorityAttribute =
+      GetParsedAttr(nsGkAtoms::fetchpriority);
+  if (fetchpriorityAttribute) {
+    MOZ_ASSERT(fetchpriorityAttribute->Type() == nsAttrValue::eEnum);
+    return FetchPriority(fetchpriorityAttribute->GetEnumValue());
+  }
+
+  return FetchPriority::Auto;
 }
 
 //----------------------------------------------------------------------
@@ -1579,9 +1636,10 @@ Attr* Element::GetAttributeNode(const nsAString& aName) {
   return Attributes()->GetNamedItem(aName);
 }
 
-already_AddRefed<Attr> Element::SetAttributeNode(Attr& aNewAttr,
-                                                 ErrorResult& aError) {
-  return Attributes()->SetNamedItemNS(aNewAttr, aError);
+already_AddRefed<Attr> Element::SetAttributeNode(
+    Attr& aNewAttr, nsIPrincipal* aSubjectPrincipal, ErrorResult& aError) {
+  RefPtr<nsDOMAttributeMap> attrMap = Attributes();
+  return attrMap->SetNamedItemNS(aNewAttr, aSubjectPrincipal, aError);
 }
 
 already_AddRefed<Attr> Element::RemoveAttributeNode(Attr& aAttribute,
@@ -1652,6 +1710,80 @@ already_AddRefed<nsIPrincipal> Element::CreateDevtoolsPrincipal() {
   return dtPrincipal.forget();
 }
 
+void Element::SetAttribute(
+    const nsAString& aName,
+    const TrustedHTMLOrTrustedScriptOrTrustedScriptURLOrString& aValue,
+    nsIPrincipal* aTriggeringPrincipal, ErrorResult& aError) {
+  aError = nsContentUtils::CheckQName(aName, false);
+  if (aError.Failed()) {
+    return;
+  }
+
+  nsAutoString nameToUse;
+  const nsAttrName* name = InternalGetAttrNameFromQName(aName, &nameToUse);
+  if (!name) {
+    RefPtr<nsAtom> nameAtom = NS_AtomizeMainThread(nameToUse);
+    Maybe<nsAutoString> compliantStringHolder;
+    const nsAString* compliantString =
+        TrustedTypeUtils::GetTrustedTypesCompliantAttributeValue(
+            *this, nameAtom, kNameSpaceID_None, aValue, aTriggeringPrincipal,
+            compliantStringHolder, aError);
+    if (aError.Failed()) {
+      return;
+    }
+    aError = SetAttr(kNameSpaceID_None, nameAtom, *compliantString,
+                     aTriggeringPrincipal, true);
+    return;
+  }
+
+  Maybe<nsAutoString> compliantStringHolder;
+  RefPtr<nsAtom> attributeName = name->LocalName();
+  nsMutationGuard guard;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantAttributeValue(
+          *this, attributeName, name->NamespaceID(), aValue,
+          aTriggeringPrincipal, compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return;
+  }
+  if (!guard.Mutated(0)) {
+    aError = SetAttr(name->NamespaceID(), name->LocalName(), name->GetPrefix(),
+                     *compliantString, aTriggeringPrincipal, true);
+    return;
+  }
+
+  // GetTrustedTypesCompliantAttributeValue may have modified mAttrs and made
+  // the result of InternalGetAttrNameFromQName above invalid. It may now return
+  // a different value, perhaps a nullptr. To be safe, just call the version of
+  // Element::SetAttribute accepting a string value.
+  SetAttribute(aName, *compliantString, aTriggeringPrincipal, aError);
+}
+
+void Element::SetAttributeNS(
+    const nsAString& aNamespaceURI, const nsAString& aQualifiedName,
+    const TrustedHTMLOrTrustedScriptOrTrustedScriptURLOrString& aValue,
+    nsIPrincipal* aTriggeringPrincipal, ErrorResult& aError) {
+  RefPtr<mozilla::dom::NodeInfo> ni;
+  aError = nsContentUtils::GetNodeInfoFromQName(
+      aNamespaceURI, aQualifiedName, mNodeInfo->NodeInfoManager(),
+      ATTRIBUTE_NODE, getter_AddRefs(ni));
+  if (aError.Failed()) {
+    return;
+  }
+
+  Maybe<nsAutoString> compliantStringHolder;
+  RefPtr<nsAtom> attributeName = ni->NameAtom();
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantAttributeValue(
+          *this, attributeName, ni->NamespaceID(), aValue, aTriggeringPrincipal,
+          compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return;
+  }
+  aError = SetAttr(ni->NamespaceID(), ni->NameAtom(), ni->GetPrefixAtom(),
+                   *compliantString, aTriggeringPrincipal, true);
+}
+
 void Element::SetAttributeDevtools(const nsAString& aName,
                                    const nsAString& aValue,
                                    ErrorResult& aError) {
@@ -1696,9 +1828,10 @@ Attr* Element::GetAttributeNodeNSInternal(const nsAString& aNamespaceURI,
   return Attributes()->GetNamedItemNS(aNamespaceURI, aLocalName);
 }
 
-already_AddRefed<Attr> Element::SetAttributeNodeNS(Attr& aNewAttr,
-                                                   ErrorResult& aError) {
-  return Attributes()->SetNamedItemNS(aNewAttr, aError);
+already_AddRefed<Attr> Element::SetAttributeNodeNS(
+    Attr& aNewAttr, nsIPrincipal* aSubjectPrincipal, ErrorResult& aError) {
+  RefPtr<nsDOMAttributeMap> attrMap = Attributes();
+  return attrMap->SetNamedItemNS(aNewAttr, aSubjectPrincipal, aError);
 }
 
 already_AddRefed<nsIHTMLCollection> Element::GetElementsByTagNameNS(
@@ -1738,25 +1871,40 @@ already_AddRefed<nsIHTMLCollection> Element::GetElementsByClassName(
   return nsContentUtils::GetElementsByClassName(this, aClassNames);
 }
 
+bool Element::HasSharedRoot(const Element* aElement) const {
+  nsINode* root = SubtreeRoot();
+  nsINode* attrSubtreeRoot = aElement->SubtreeRoot();
+  do {
+    if (root == attrSubtreeRoot) {
+      return true;
+    }
+    auto* shadow = ShadowRoot::FromNode(root);
+    if (!shadow || !shadow->GetHost()) {
+      break;
+    }
+    root = shadow->GetHost()->SubtreeRoot();
+  } while (true);
+  return false;
+}
+
+Element* Element::GetElementByIdInDocOrSubtree(nsAtom* aID) const {
+  if (auto* docOrShadowRoot = GetContainingDocumentOrShadowRoot()) {
+    return docOrShadowRoot->GetElementById(aID);
+  }
+
+  return nsContentUtils::MatchElementId(SubtreeRoot()->AsContent(), aID);
+}
+
 Element* Element::GetAttrAssociatedElement(nsAtom* aAttr) const {
   if (const nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots()) {
-    nsWeakPtr weakAttrEl = slots->mExplicitlySetAttrElements.Get(aAttr);
+    nsWeakPtr weakAttrEl = slots->mExplicitlySetAttrElementMap.Get(aAttr);
     if (nsCOMPtr<Element> attrEl = do_QueryReferent(weakAttrEl)) {
       // If reflectedTarget's explicitly set attr-element |attrEl| is
       // a descendant of any of element's shadow-including ancestors, then
       // return |atrEl|.
-      nsINode* root = SubtreeRoot();
-      nsINode* attrSubtreeRoot = attrEl->SubtreeRoot();
-      do {
-        if (root == attrSubtreeRoot) {
-          return attrEl;
-        }
-        auto* shadow = ShadowRoot::FromNode(root);
-        if (!shadow || !shadow->GetHost()) {
-          break;
-        }
-        root = shadow->GetHost()->SubtreeRoot();
-      } while (true);
+      if (HasSharedRoot(attrEl)) {
+        return attrEl;
+      }
       return nullptr;
     }
   }
@@ -1769,23 +1917,102 @@ Element* Element::GetAttrAssociatedElement(nsAtom* aAttr) const {
   MOZ_ASSERT(value->Type() == nsAttrValue::eAtom,
              "Attribute used for attr associated element must be parsed");
 
-  nsAtom* valueAtom = value->GetAtomValue();
-  if (auto* docOrShadowRoot = GetContainingDocumentOrShadowRoot()) {
-    return docOrShadowRoot->GetElementById(valueAtom);
+  return GetElementByIdInDocOrSubtree(value->GetAtomValue());
+}
+
+void Element::GetAttrAssociatedElements(
+    nsAtom* aAttr, bool* aUseCachedValue,
+    Nullable<nsTArray<RefPtr<Element>>>& aElements) {
+  MOZ_ASSERT(aElements.IsNull());
+
+  auto& [explicitlySetAttrElements, cachedAttrElements] =
+      ExtendedDOMSlots()->mAttrElementsMap.LookupOrInsert(aAttr);
+
+  // https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#attr-associated-elements
+  auto getAttrAssociatedElements =
+      [&, &explicitlySetAttrElements =
+              explicitlySetAttrElements]() -> Maybe<nsTArray<RefPtr<Element>>> {
+    nsTArray<RefPtr<Element>> elements;
+
+    if (explicitlySetAttrElements) {
+      // 3. If reflectedTarget's explicitly set attr-elements is not null
+      for (const nsWeakPtr& weakEl : *explicitlySetAttrElements) {
+        // For each attrElement in reflectedTarget's explicitly set
+        // attr-elements:
+        if (nsCOMPtr<Element> attrEl = do_QueryReferent(weakEl)) {
+          // If attrElement is not a descendant of any of element's
+          // shadow-including ancestors, then continue.
+          if (!HasSharedRoot(attrEl)) {
+            continue;
+          }
+          // Append attrElement to elements.
+          elements.AppendElement(attrEl);
+        }
+      }
+    } else {
+      // 4. Otherwise
+      //   1. Let contentAttributeValue be the result of running
+      //   reflectedTarget's get the content attribute.
+      const nsAttrValue* value = GetParsedAttr(aAttr);
+      //   2. If contentAttributeValue is null, then return null.
+      if (!value) {
+        return Nothing();
+      }
+
+      //   3. Let tokens be contentAttributeValue, split on ASCII whitespace.
+      MOZ_ASSERT(value->Type() == nsAttrValue::eAtomArray ||
+                     value->Type() == nsAttrValue::eAtom,
+                 "Attribute used for attr associated elements must be parsed");
+      for (uint32_t i = 0; i < value->GetAtomCount(); i++) {
+        // For each id of tokens:
+        if (auto* candidate = GetElementByIdInDocOrSubtree(
+                value->AtomAt(static_cast<int32_t>(i)))) {
+          // Append candidate to elements.
+          elements.AppendElement(candidate);
+        }
+      }
+    }
+
+    return Some(std::move(elements));
+  };
+
+  // getter steps:
+  // 1. Let elements be the result of running this's get the attr-associated
+  // elements.
+  auto elements = getAttrAssociatedElements();
+
+  if (elements && elements == cachedAttrElements) {
+    // 2. If the contents of elements is equal to the contents of this's cached
+    // attr-associated elements, then return this's cached attr-associated
+    // elements object.
+    MOZ_ASSERT(!*aUseCachedValue);
+    *aUseCachedValue = true;
+    return;
   }
 
-  nsINode* root = SubtreeRoot();
-  for (auto* node = root; node; node = node->GetNextNode(root)) {
-    if (node->HasID() && node->AsContent()->GetID() == valueAtom) {
-      return node->AsElement();
-    }
+  // 3. Let elementsAsFrozenArray be elements, converted to a FrozenArray<T>?.
+  //    (the binding code takes aElements and returns it as a FrozenArray)
+  // 5. Set this's cached attr-associated elements object to
+  //    elementsAsFrozenArray.
+  //    (the binding code stores the attr-associated elements object in a slot)
+  // 6. Return elementsAsFrozenArray.
+  if (elements) {
+    aElements.SetValue(elements->Clone());
   }
-  return nullptr;
+
+  // 4. Set this's cached attr-associated elements to elements.
+  cachedAttrElements = std::move(elements);
 }
 
 void Element::ClearExplicitlySetAttrElement(nsAtom* aAttr) {
   if (auto* slots = GetExistingExtendedDOMSlots()) {
-    slots->mExplicitlySetAttrElements.Remove(aAttr);
+    slots->mExplicitlySetAttrElementMap.Remove(aAttr);
+  }
+}
+
+void Element::ClearExplicitlySetAttrElements(nsAtom* aAttr) {
+  if (auto* slots = GetExistingExtendedDOMSlots()) {
+    slots->mAttrElementsMap.Remove(aAttr);
   }
 }
 
@@ -1808,7 +2035,7 @@ void Element::ExplicitlySetAttrElement(nsAtom* aAttr, Element* aElement) {
 #endif
     SetAttr(aAttr, EmptyString(), IgnoreErrors());
     nsExtendedDOMSlots* slots = ExtendedDOMSlots();
-    slots->mExplicitlySetAttrElements.InsertOrUpdate(
+    slots->mExplicitlySetAttrElementMap.InsertOrUpdate(
         aAttr, do_GetWeakReference(aElement));
 #ifdef ACCESSIBILITY
     if (accService) {
@@ -1832,14 +2059,69 @@ void Element::ExplicitlySetAttrElement(nsAtom* aAttr, Element* aElement) {
 #endif
 }
 
+void Element::ExplicitlySetAttrElements(
+    nsAtom* aAttr,
+    const Nullable<Sequence<OwningNonNull<Element>>>& aElements) {
+#ifdef ACCESSIBILITY
+  nsAccessibilityService* accService = GetAccService();
+#endif
+  // Accessibility requires that no other attribute changes occur between
+  // AttrElementWillChange and AttrElementChanged. Scripts could cause
+  // this, so don't let them run here. We do this even if accessibility isn't
+  // running so that the JS behavior is consistent regardless of accessibility.
+  // Otherwise, JS might be able to use this difference to determine whether
+  // accessibility is running, which would be a privacy concern.
+  nsAutoScriptBlocker scriptBlocker;
+
+#ifdef ACCESSIBILITY
+  if (accService) {
+    accService->NotifyAttrElementWillChange(this, aAttr);
+  }
+#endif
+
+  if (aElements.IsNull()) {
+    ClearExplicitlySetAttrElements(aAttr);
+    UnsetAttr(aAttr, IgnoreErrors());
+  } else {
+    SetAttr(aAttr, EmptyString(), IgnoreErrors());
+    auto& entry = ExtendedDOMSlots()->mAttrElementsMap.LookupOrInsert(aAttr);
+    entry.first.emplace(nsTArray<nsWeakPtr>());
+    for (Element* el : aElements.Value()) {
+      entry.first->AppendElement(do_GetWeakReference(el));
+    }
+  }
+
+#ifdef ACCESSIBILITY
+  if (accService) {
+    accService->NotifyAttrElementChanged(this, aAttr);
+  }
+#endif
+}
+
 Element* Element::GetExplicitlySetAttrElement(nsAtom* aAttr) const {
   if (const nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots()) {
-    nsWeakPtr weakAttrEl = slots->mExplicitlySetAttrElements.Get(aAttr);
+    nsWeakPtr weakAttrEl = slots->mExplicitlySetAttrElementMap.Get(aAttr);
     if (nsCOMPtr<Element> attrEl = do_QueryReferent(weakAttrEl)) {
       return attrEl;
     }
   }
   return nullptr;
+}
+
+void Element::GetExplicitlySetAttrElements(
+    nsAtom* aAttr, nsTArray<Element*>& aElements) const {
+  if (const nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots()) {
+    if (auto attrElementsMaybeEntry = slots->mAttrElementsMap.Lookup(aAttr)) {
+      auto& [attrElements, cachedAttrElements] = attrElementsMaybeEntry.Data();
+      if (attrElements) {
+        for (const nsWeakPtr& weakEl : *attrElements) {
+          if (nsCOMPtr<Element> attrEl = do_QueryReferent(weakEl)) {
+            aElements.AppendElement(attrEl);
+          }
+        }
+      }
+    }
+  }
 }
 
 void Element::GetElementsWithGrid(nsTArray<RefPtr<Element>>& aElements) {
@@ -1855,16 +2137,18 @@ void Element::GetElementsWithGrid(nsTArray<RefPtr<Element>>& aElements) {
                 elem->GetPrimaryFrame())) {
           aElements.AppendElement(elem);
         }
+      }
 
-        // This element has a frame, so allow the traversal to go through
-        // the children.
+      // Only allow the traversal to go through the children if the element
+      // does have a display.
+      if (elem->HasServoData()) {
         cur = cur->GetNextNode(this);
         continue;
       }
     }
 
-    // Either this isn't an element, or it has no frame. Continue with the
-    // traversal but ignore all the children.
+    // Either this isn't an element, or it has `display: none`.
+    // Continue with the traversal but ignore all the children.
     cur = cur->GetNextNonChildNode(this);
   }
 }
@@ -2026,6 +2310,11 @@ void Element::UnbindFromTree(UnbindContext& aContext) {
 
   HandleShadowDOMRelatedRemovalSteps(nullParent);
 
+  if (HasFlag(ELEMENT_IN_CONTENT_IDENTIFIER_FOR_LCP)) {
+    OwnerDoc()->ContentIdentifiersForLCP().Remove(this);
+    UnsetFlags(ELEMENT_IN_CONTENT_IDENTIFIER_FOR_LCP);
+  }
+
   if (HasFlag(ELEMENT_IS_DATALIST_OR_HAS_DATALIST_ANCESTOR) &&
       !IsHTMLElement(nsGkAtoms::datalist)) {
     if (nullParent) {
@@ -2057,7 +2346,7 @@ void Element::UnbindFromTree(UnbindContext& aContext) {
   Document* document = GetComposedDoc();
 
   if (HasPointerLock()) {
-    PointerLockManager::Unlock();
+    PointerLockManager::Unlock("Element::UnbindFromTree");
   }
   if (mState.HasState(ElementState::FULLSCREEN)) {
     // The element being removed is an ancestor of the fullscreen element,
@@ -2363,8 +2652,8 @@ nsresult Element::DispatchClickEvent(nsPresContext* aPresContext,
   MOZ_ASSERT(aSourceEvent, "Must have source event");
   MOZ_ASSERT(aStatus, "Null out param?");
 
-  WidgetMouseEvent event(aSourceEvent->IsTrusted(), eMouseClick,
-                         aSourceEvent->mWidget, WidgetMouseEvent::eReal);
+  WidgetPointerEvent event(aSourceEvent->IsTrusted(), ePointerClick,
+                           aSourceEvent->mWidget);
   event.mRefPoint = aSourceEvent->mRefPoint;
   uint32_t clickCount = 1;
   float pressure = 0;
@@ -2379,6 +2668,10 @@ nsresult Element::DispatchClickEvent(nsPresContext* aPresContext,
   } else if (aSourceEvent->mClass == eKeyboardEventClass) {
     event.mFlags.mIsPositionless = true;
     inputSource = MouseEvent_Binding::MOZ_SOURCE_KEYBOARD;
+    // pointerId definition in Pointer Events:
+    // > The pointerId value of -1 MUST be reserved and used to indicate events
+    // > that were generated by something other than a pointing device.
+    pointerId = -1;
   }
   event.mPressure = pressure;
   event.mClickCount = clickCount;
@@ -2459,7 +2752,7 @@ bool Element::MaybeCheckSameAttrVal(int32_t aNamespaceID, const nsAtom* aName,
                                     bool* aOldValueSet) {
   bool modification = false;
   *aHasListeners =
-      aNotify && nsContentUtils::HasMutationListeners(
+      aNotify && nsContentUtils::WantMutationEvents(
                      this, NS_EVENT_BITS_MUTATION_ATTRMODIFIED, this);
   *aOldValueSet = false;
 
@@ -2791,7 +3084,14 @@ bool Element::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
   }
 
   if (aNamespaceID == kNameSpaceID_None) {
-    if (aAttribute == nsGkAtoms::_class || aAttribute == nsGkAtoms::part) {
+    if (aAttribute == nsGkAtoms::_class || aAttribute == nsGkAtoms::part ||
+        aAttribute == nsGkAtoms::aria_controls ||
+        aAttribute == nsGkAtoms::aria_describedby ||
+        aAttribute == nsGkAtoms::aria_details ||
+        aAttribute == nsGkAtoms::aria_errormessage ||
+        aAttribute == nsGkAtoms::aria_flowto ||
+        aAttribute == nsGkAtoms::aria_labelledby ||
+        aAttribute == nsGkAtoms::aria_owns) {
       aResult.ParseAtomArray(aValue);
       return true;
     }
@@ -2863,6 +3163,14 @@ void Element::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
       }
     } else if (aName == nsGkAtoms::aria_activedescendant) {
       ClearExplicitlySetAttrElement(aName);
+    } else if (aName == nsGkAtoms::aria_controls ||
+               aName == nsGkAtoms::aria_describedby ||
+               aName == nsGkAtoms::aria_details ||
+               aName == nsGkAtoms::aria_errormessage ||
+               aName == nsGkAtoms::aria_flowto ||
+               aName == nsGkAtoms::aria_labelledby ||
+               aName == nsGkAtoms::aria_owns) {
+      ClearExplicitlySetAttrElements(aName);
     }
   }
 }
@@ -2919,6 +3227,16 @@ void Element::OnAttrSetButNotChanged(int32_t aNamespaceID, nsAtom* aName,
       aName == nsGkAtoms::aria_activedescendant) {
     ClearExplicitlySetAttrElement(aName);
   }
+
+  if (aNamespaceID == kNameSpaceID_None &&
+      (aName == nsGkAtoms::aria_controls ||
+       aName == nsGkAtoms::aria_describedby ||
+       aName == nsGkAtoms::aria_details ||
+       aName == nsGkAtoms::aria_errormessage ||
+       aName == nsGkAtoms::aria_flowto || aName == nsGkAtoms::aria_labelledby ||
+       aName == nsGkAtoms::aria_owns)) {
+    ClearExplicitlySetAttrElements(aName);
+  }
 }
 
 EventListenerManager* Element::GetEventListenerManagerForAttr(nsAtom* aAttrName,
@@ -2973,7 +3291,7 @@ nsresult Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName, bool aNotify) {
   BeforeSetAttr(aNameSpaceID, aName, nullptr, aNotify);
 
   bool hasMutationListeners =
-      aNotify && nsContentUtils::HasMutationListeners(
+      aNotify && nsContentUtils::WantMutationEvents(
                      this, NS_EVENT_BITS_MUTATION_ATTRMODIFIED, this);
 
   PreIdMaybeChange(aNameSpaceID, aName, nullptr);
@@ -3194,7 +3512,7 @@ bool Element::CheckHandleEventForLinksPrecondition(
   }
   if (aVisitor.mEventStatus == nsEventStatus_eConsumeNoDefault ||
       (!aVisitor.mEvent->IsTrusted() &&
-       (aVisitor.mEvent->mMessage != eMouseClick) &&
+       (aVisitor.mEvent->mMessage != ePointerClick) &&
        (aVisitor.mEvent->mMessage != eKeyPress) &&
        (aVisitor.mEvent->mMessage != eLegacyDOMActivate)) ||
       aVisitor.mEvent->mFlags.mMultipleActionsPrevented) {
@@ -3242,8 +3560,7 @@ void Element::GetEventTargetParentForLinks(EventChainPreVisitor& aVisitor) {
       if (!focusEvent || !focusEvent->mIsRefocus) {
         nsAutoString target;
         GetLinkTarget(target);
-        nsContentUtils::TriggerLink(this, absURI, target,
-                                    /* click */ false, /* isTrusted */ true);
+        nsContentUtils::TriggerLinkMouseOver(this, absURI, target);
         // Make sure any ancestor links don't also TriggerLink
         aVisitor.mEvent->mFlags.mMultipleActionsPrevented = true;
       }
@@ -3273,8 +3590,8 @@ void Element::GetEventTargetParentForLinks(EventChainPreVisitor& aVisitor) {
 // Only supported for click or auxclick events.
 void Element::DispatchChromeOnlyLinkClickEvent(
     EventChainPostVisitor& aVisitor) {
-  MOZ_ASSERT(aVisitor.mEvent->mMessage == eMouseAuxClick ||
-                 aVisitor.mEvent->mMessage == eMouseClick,
+  MOZ_ASSERT(aVisitor.mEvent->mMessage == ePointerAuxClick ||
+                 aVisitor.mEvent->mMessage == ePointerClick,
              "DispatchChromeOnlyLinkClickEvent supports only click and "
              "auxclick source events");
   Document* doc = OwnerDoc();
@@ -3310,8 +3627,8 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
   // IMPORTANT: this switch and the switch below it must be kept in sync!
   switch (aVisitor.mEvent->mMessage) {
     case eMouseDown:
-    case eMouseClick:
-    case eMouseAuxClick:
+    case ePointerClick:
+    case ePointerAuxClick:
     case eLegacyDOMActivate:
     case eKeyPress:
       break;
@@ -3377,7 +3694,7 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
       }
     } break;
 
-    case eMouseClick: {
+    case ePointerClick: {
       WidgetMouseEvent* mouseEvent = aVisitor.mEvent->AsMouseEvent();
       if (mouseEvent->IsLeftClickEvent()) {
         if (!mouseEvent->IsControl() && !mouseEvent->IsMeta() &&
@@ -3401,9 +3718,12 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
               // eLegacyDOMActivate.
               nsAutoString target;
               GetLinkTarget(target);
-              nsContentUtils::TriggerLink(this, absURI, target,
-                                          /* click */ true,
-                                          mouseEvent->IsTrusted());
+              UserNavigationInvolvement userInvolvement =
+                  mouseEvent->IsTrusted()
+                      ? UserNavigationInvolvement::Activation
+                      : UserNavigationInvolvement::None;
+              nsContentUtils::TriggerLinkClick(this, absURI, target,
+                                               userInvolvement);
             }
             // Since we didn't dispatch DOMActivate because there were no
             // listeners, do still set mEventStatus as if it was dispatched
@@ -3416,21 +3736,23 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
       }
       break;
     }
-    case eMouseAuxClick: {
+    case ePointerAuxClick: {
       DispatchChromeOnlyLinkClickEvent(aVisitor);
       break;
     }
     case eLegacyDOMActivate: {
       // If you modify this code, tweak also the code handling
-      // eMouseClick.
+      // ePointerClick.
       if (aVisitor.mEvent->mOriginalTarget == this) {
         if (nsCOMPtr<nsIURI> absURI = GetHrefURI()) {
           nsAutoString target;
           GetLinkTarget(target);
-          const InternalUIEvent* activeEvent = aVisitor.mEvent->AsUIEvent();
-          MOZ_ASSERT(activeEvent);
-          nsContentUtils::TriggerLink(this, absURI, target, /* click */ true,
-                                      activeEvent->IsTrustable());
+          UserNavigationInvolvement userInvolvement =
+              aVisitor.mEvent->IsTrusted()
+                  ? UserNavigationInvolvement::Activation
+                  : UserNavigationInvolvement::None;
+          nsContentUtils::TriggerLinkClick(this, absURI, target,
+                                           userInvolvement);
           aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
         }
       }
@@ -3560,12 +3882,11 @@ bool Element::Matches(const nsACString& aSelector, ErrorResult& aResult) {
   return Servo_SelectorList_Matches(this, list);
 }
 
-static const nsAttrValue::EnumTable kCORSAttributeTable[] = {
+static constexpr nsAttrValue::EnumTableEntry kCORSAttributeTable[] = {
     // Order matters here
     // See ParseCORSValue
     {"anonymous", CORS_ANONYMOUS},
-    {"use-credentials", CORS_USE_CREDENTIALS},
-    {nullptr, 0}};
+    {"use-credentials", CORS_USE_CREDENTIALS}};
 
 /* static */
 void Element::ParseCORSValue(const nsAString& aValue, nsAttrValue& aResult) {
@@ -3845,66 +4166,22 @@ void Element::GetAnimations(const GetAnimationsOptions& aOptions,
     // be reflected in the flags passed in DocumentOrShadowRoot::GetAnimations
     // too.
     doc->FlushPendingNotifications(
-        ChangesToFlush(FlushType::Style, false /* flush animations */));
+        ChangesToFlush(FlushType::Style, /* aFlushAnimations = */ false,
+                       /* aUpdateRelevancy = */ false));
   }
 
   GetAnimationsWithoutFlush(aOptions, aAnimations);
 }
 
-void Element::GetAnimationsWithoutFlush(
-    const GetAnimationsOptions& aOptions,
-    nsTArray<RefPtr<Animation>>& aAnimations) {
-  Element* elem = this;
-  PseudoStyleType pseudoType = PseudoStyleType::NotPseudo;
-  // For animations on generated-content elements, the animations are stored
-  // on the parent element.
-  if (IsGeneratedContentContainerForBefore()) {
-    elem = GetParentElement();
-    pseudoType = PseudoStyleType::before;
-  } else if (IsGeneratedContentContainerForAfter()) {
-    elem = GetParentElement();
-    pseudoType = PseudoStyleType::after;
-  } else if (IsGeneratedContentContainerForMarker()) {
-    elem = GetParentElement();
-    pseudoType = PseudoStyleType::marker;
-  }
-
-  if (!elem) {
-    return;
-  }
-
-  if (!aOptions.mSubtree ||
-      AnimationUtils::IsSupportedPseudoForAnimations(pseudoType)) {
-    GetAnimationsUnsorted(elem, pseudoType, aAnimations);
-  } else {
-    for (nsIContent* node = this; node; node = node->GetNextNode(this)) {
-      if (!node->IsElement()) {
-        continue;
-      }
-      Element* element = node->AsElement();
-      Element::GetAnimationsUnsorted(element, PseudoStyleType::NotPseudo,
-                                     aAnimations);
-      Element::GetAnimationsUnsorted(element, PseudoStyleType::before,
-                                     aAnimations);
-      Element::GetAnimationsUnsorted(element, PseudoStyleType::after,
-                                     aAnimations);
-      Element::GetAnimationsUnsorted(element, PseudoStyleType::marker,
-                                     aAnimations);
-    }
-  }
-  aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
-}
-
-/* static */
-void Element::GetAnimationsUnsorted(Element* aElement,
-                                    PseudoStyleType aPseudoType,
-                                    nsTArray<RefPtr<Animation>>& aAnimations) {
-  MOZ_ASSERT(aPseudoType == PseudoStyleType::NotPseudo ||
-                 AnimationUtils::IsSupportedPseudoForAnimations(aPseudoType),
+static void GetAnimationsUnsorted(const Element* aElement,
+                                  const PseudoStyleRequest& aPseudoRequest,
+                                  nsTArray<RefPtr<Animation>>& aAnimations) {
+  MOZ_ASSERT(aPseudoRequest.IsNotPseudo() ||
+                 AnimationUtils::IsSupportedPseudoForAnimations(aPseudoRequest),
              "Unsupported pseudo type");
   MOZ_ASSERT(aElement, "Null element");
 
-  EffectSet* effects = EffectSet::Get(aElement, aPseudoType);
+  EffectSet* effects = EffectSet::Get(aElement, aPseudoRequest);
   if (!effects) {
     return;
   }
@@ -3922,18 +4199,100 @@ void Element::GetAnimationsUnsorted(Element* aElement,
   }
 }
 
+// This traverses all the view transition pseudo-elements and get all of the
+// animations on them.
+static void GetAnimationsOfViewTransitionTree(
+    const Element* aOriginatingElement,
+    nsTArray<RefPtr<Animation>>& aAnimations) {
+  if (!aOriginatingElement->IsRootElement()) {
+    return;
+  }
+
+  const Document* doc = aOriginatingElement->OwnerDoc();
+  const ViewTransition* vt = doc->GetActiveViewTransition();
+  if (!vt) {
+    return;
+  }
+
+  Element* root = vt->GetViewTransitionTreeRoot();
+  if (!root) {
+    return;
+  }
+
+  for (const nsIContent* node = root; node; node = node->GetNextNode(root)) {
+    if (!node->IsElement()) {
+      continue;
+    }
+    const Element* pseudo = node->AsElement();
+    const PseudoStyleRequest request(
+        pseudo->GetPseudoElementType(),
+        pseudo->HasName()
+            ? pseudo->GetParsedAttr(nsGkAtoms::name)->GetAtomValue()
+            : nullptr);
+    GetAnimationsUnsorted(aOriginatingElement, request, aAnimations);
+  }
+}
+
+void Element::GetAnimationsWithoutFlush(
+    const GetAnimationsOptions& aOptions,
+    nsTArray<RefPtr<Animation>>& aAnimations) {
+  Element* elem = this;
+  PseudoStyleRequest pseudoRequest;
+  // For animations on generated-content elements, the animations are stored
+  // on the parent element.
+  if (IsGeneratedContentContainerForBefore()) {
+    elem = GetParentElement();
+    pseudoRequest.mType = PseudoStyleType::before;
+  } else if (IsGeneratedContentContainerForAfter()) {
+    elem = GetParentElement();
+    pseudoRequest.mType = PseudoStyleType::after;
+  } else if (IsGeneratedContentContainerForMarker()) {
+    elem = GetParentElement();
+    pseudoRequest.mType = PseudoStyleType::marker;
+  }
+
+  if (!elem) {
+    return;
+  }
+
+  // FIXME: Bug 1935557. Rewrite this to support pseudoElement option.
+  if (!aOptions.mSubtree || (pseudoRequest.mType == PseudoStyleType::before ||
+                             pseudoRequest.mType == PseudoStyleType::after ||
+                             pseudoRequest.mType == PseudoStyleType::marker)) {
+    GetAnimationsUnsorted(elem, pseudoRequest, aAnimations);
+  } else {
+    for (nsIContent* node = this; node; node = node->GetNextNode(this)) {
+      if (!node->IsElement()) {
+        continue;
+      }
+      Element* element = node->AsElement();
+      GetAnimationsUnsorted(element, PseudoStyleRequest::NotPseudo(),
+                            aAnimations);
+      GetAnimationsUnsorted(element, PseudoStyleRequest::Before(), aAnimations);
+      GetAnimationsUnsorted(element, PseudoStyleRequest::After(), aAnimations);
+      GetAnimationsUnsorted(element, PseudoStyleRequest::Marker(), aAnimations);
+    }
+    GetAnimationsOfViewTransitionTree(this, aAnimations);
+  }
+  aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
+}
+
 void Element::CloneAnimationsFrom(const Element& aOther) {
   AnimationTimeline* const timeline = OwnerDoc()->Timeline();
   MOZ_ASSERT(timeline, "Timeline has not been set on the document yet");
   // Iterate through all pseudo types and copy the effects from each of the
   // other element's effect sets into this element's effect set.
+  // FIXME: Bug 1929470. This funciton is for printing, and it may be tricky to
+  // support view transitions. We have to revisit here after we support view
+  // transitions to make sure we clone the animations properly.
   for (PseudoStyleType pseudoType :
        {PseudoStyleType::NotPseudo, PseudoStyleType::before,
         PseudoStyleType::after, PseudoStyleType::marker}) {
     // If the element has an effect set for this pseudo type (or not pseudo)
     // then copy the effects and animation properties.
-    if (auto* const effects = EffectSet::Get(&aOther, pseudoType)) {
-      auto* const clonedEffects = EffectSet::GetOrCreate(this, pseudoType);
+    const PseudoStyleRequest request(pseudoType);
+    if (auto* const effects = EffectSet::Get(&aOther, request)) {
+      auto* const clonedEffects = EffectSet::GetOrCreate(this, request);
       for (KeyframeEffect* const effect : *effects) {
         auto* animation = effect->GetAnimation();
         if (animation->AsCSSTransition()) {
@@ -3942,7 +4301,7 @@ void Element::CloneAnimationsFrom(const Element& aOther) {
         }
         // Clone the effect.
         RefPtr<KeyframeEffect> clonedEffect = new KeyframeEffect(
-            OwnerDoc(), OwningAnimationTarget{this, pseudoType}, *effect);
+            OwnerDoc(), OwningAnimationTarget{this, request}, *effect);
 
         // Clone the animation
         RefPtr<Animation> clonedAnimation = Animation::ClonePausedAnimation(
@@ -3961,17 +4320,53 @@ void Element::GetInnerHTML(nsAString& aInnerHTML, OOMReporter& aError) {
   GetMarkup(false, aInnerHTML);
 }
 
-void Element::SetInnerHTML(const nsAString& aInnerHTML,
+void Element::GetInnerHTML(OwningTrustedHTMLOrNullIsEmptyString& aInnerHTML,
+                           OOMReporter& aError) {
+  GetInnerHTML(aInnerHTML.SetAsNullIsEmptyString(), aError);
+}
+
+void Element::SetInnerHTML(const TrustedHTMLOrNullIsEmptyString& aInnerHTML,
                            nsIPrincipal* aSubjectPrincipal,
                            ErrorResult& aError) {
+  constexpr nsLiteralString sink = u"Element innerHTML"_ns;
+
+  Maybe<nsAutoString> compliantStringHolder;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aInnerHTML, sink, kTrustedTypesOnlySinkGroup, *this,
+          aSubjectPrincipal, compliantStringHolder, aError);
+
+  if (aError.Failed()) {
+    return;
+  }
+
+  SetInnerHTMLTrusted(*compliantString, aSubjectPrincipal, aError);
+}
+
+void Element::SetInnerHTMLTrusted(const nsAString& aInnerHTML,
+                                  nsIPrincipal* aSubjectPrincipal,
+                                  ErrorResult& aError) {
   SetInnerHTMLInternal(aInnerHTML, aError);
 }
 
-void Element::GetOuterHTML(nsAString& aOuterHTML) {
-  GetMarkup(true, aOuterHTML);
+void Element::GetOuterHTML(OwningTrustedHTMLOrNullIsEmptyString& aOuterHTML) {
+  GetMarkup(true, aOuterHTML.SetAsNullIsEmptyString());
 }
 
-void Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError) {
+void Element::SetOuterHTML(const TrustedHTMLOrNullIsEmptyString& aOuterHTML,
+                           nsIPrincipal* aSubjectPrincipal,
+                           ErrorResult& aError) {
+  constexpr nsLiteralString sink = u"Element outerHTML"_ns;
+
+  Maybe<nsAutoString> compliantStringHolder;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aOuterHTML, sink, kTrustedTypesOnlySinkGroup, *this,
+          aSubjectPrincipal, compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return;
+  }
+
   nsCOMPtr<nsINode> parent = GetParentNode();
   if (!parent) {
     return;
@@ -3998,7 +4393,7 @@ void Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError) {
     RefPtr<DocumentFragment> fragment = new (OwnerDoc()->NodeInfoManager())
         DocumentFragment(OwnerDoc()->NodeInfoManager());
     nsContentUtils::ParseFragmentHTML(
-        aOuterHTML, fragment, localName, namespaceID,
+        *compliantString, fragment, localName, namespaceID,
         OwnerDoc()->GetCompatibilityMode() == eCompatibility_NavQuirks, true);
     parent->ReplaceChild(*fragment, *this, aError);
     return;
@@ -4018,7 +4413,7 @@ void Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError) {
   }
 
   RefPtr<DocumentFragment> fragment = nsContentUtils::CreateContextualFragment(
-      context, aOuterHTML, true, aError);
+      context, *compliantString, true, aError);
   if (aError.Failed()) {
     return;
   }
@@ -4027,8 +4422,21 @@ void Element::SetOuterHTML(const nsAString& aOuterHTML, ErrorResult& aError) {
 
 enum nsAdjacentPosition { eBeforeBegin, eAfterBegin, eBeforeEnd, eAfterEnd };
 
-void Element::InsertAdjacentHTML(const nsAString& aPosition,
-                                 const nsAString& aText, ErrorResult& aError) {
+void Element::InsertAdjacentHTML(
+    const nsAString& aPosition, const TrustedHTMLOrString& aTrustedHTMLOrString,
+    nsIPrincipal* aSubjectPrincipal, ErrorResult& aError) {
+  constexpr nsLiteralString kSink = u"Element insertAdjacentHTML"_ns;
+
+  Maybe<nsAutoString> compliantStringHolder;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aTrustedHTMLOrString, kSink, kTrustedTypesOnlySinkGroup, *this,
+          aSubjectPrincipal, compliantStringHolder, aError);
+
+  if (aError.Failed()) {
+    return;
+  }
+
   nsAdjacentPosition position;
   if (aPosition.LowerCaseEqualsLiteral("beforebegin")) {
     position = eBeforeBegin;
@@ -4079,7 +4487,7 @@ void Element::InsertAdjacentHTML(const nsAString& aPosition,
       contextLocal = nsGkAtoms::body;
     }
     aError = nsContentUtils::ParseFragmentHTML(
-        aText, destination, contextLocal, contextNs,
+        *compliantString, destination, contextLocal, contextNs,
         doc->GetCompatibilityMode() == eCompatibility_NavQuirks, true);
     // HTML5 parser has notified, but not fired mutation events.
     nsContentUtils::FireMutationEventsForDirectParsing(doc, destination,
@@ -4089,7 +4497,7 @@ void Element::InsertAdjacentHTML(const nsAString& aPosition,
 
   // couldn't parse directly
   RefPtr<DocumentFragment> fragment = nsContentUtils::CreateContextualFragment(
-      destination, aText, true, aError);
+      destination, *compliantString, true, aError);
   if (aError.Failed()) {
     return;
   }
@@ -4250,6 +4658,55 @@ void Element::GetImplementedPseudoElement(nsAString& aPseudo) const {
   aPseudo.Append(pseudo);
 }
 
+// This function traverses the view transition pseudo-elements tree and finds
+// the pseudo-element matched with |aRequest|.
+static Element* SearchViewTransitionPseudo(const Element* aElement,
+                                           const PseudoStyleRequest& aRequest) {
+  // If |aElement| is not the root.
+  if (!aElement->IsRootElement()) {
+    return nullptr;
+  }
+
+  const Document* doc = aElement->OwnerDoc();
+  const ViewTransition* vt = doc->GetActiveViewTransition();
+  if (!vt) {
+    return nullptr;
+  }
+
+  return vt->FindPseudo(aRequest);
+}
+
+Element* Element::GetPseudoElement(const PseudoStyleRequest& aRequest) const {
+  switch (aRequest.mType) {
+    case PseudoStyleType::NotPseudo:
+      // It's unfortunate we have to do const cast, so we don't have to write
+      // the almost duplicate function for the non-const function.
+      return const_cast<Element*>(this);
+    case PseudoStyleType::before:
+      return nsLayoutUtils::GetBeforePseudo(this);
+    case PseudoStyleType::after:
+      return nsLayoutUtils::GetAfterPseudo(this);
+    case PseudoStyleType::marker:
+      return nsLayoutUtils::GetMarkerPseudo(this);
+    case PseudoStyleType::viewTransition:
+    case PseudoStyleType::viewTransitionGroup:
+    case PseudoStyleType::viewTransitionImagePair:
+    case PseudoStyleType::viewTransitionOld:
+    case PseudoStyleType::viewTransitionNew: {
+      Element* result = SearchViewTransitionPseudo(this, aRequest);
+      MOZ_ASSERT(!result || result->GetPseudoElementType() == aRequest.mType,
+                 "The type should match");
+      MOZ_ASSERT(!result || !result->HasName() ||
+                     result->GetParsedAttr(nsGkAtoms::name)->GetAtomValue() ==
+                         aRequest.mIdentifier,
+                 "The identifier should match");
+      return result;
+    }
+    default:
+      return nullptr;
+  }
+}
+
 ReferrerPolicy Element::GetReferrerPolicyAsEnum() const {
   if (IsHTMLElement()) {
     return ReferrerPolicyFromAttr(GetParsedAttr(nsGkAtoms::referrerpolicy));
@@ -4266,99 +4723,26 @@ ReferrerPolicy Element::ReferrerPolicyFromAttr(
 }
 
 already_AddRefed<nsDOMStringMap> Element::Dataset() {
-  nsDOMSlots* slots = DOMSlots();
-
+  nsExtendedDOMSlots* slots = ExtendedDOMSlots();
   if (!slots->mDataset) {
     // mDataset is a weak reference so assignment will not AddRef.
     // AddRef is called before returning the pointer.
     slots->mDataset = new nsDOMStringMap(this);
   }
-
-  RefPtr<nsDOMStringMap> ret = slots->mDataset;
-  return ret.forget();
+  return do_AddRef(slots->mDataset);
 }
 
 void Element::ClearDataset() {
-  nsDOMSlots* slots = GetExistingDOMSlots();
-
+  nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
   MOZ_ASSERT(slots && slots->mDataset,
              "Slots should exist and dataset should not be null.");
   slots->mDataset = nullptr;
 }
 
-enum nsPreviousIntersectionThreshold {
-  eUninitialized = -2,
-  eNonIntersecting = -1
-};
-
-static void IntersectionObserverPropertyDtor(void* aObject,
-                                             nsAtom* aPropertyName,
-                                             void* aPropertyValue,
-                                             void* aData) {
-  auto* element = static_cast<Element*>(aObject);
-  auto* observers = static_cast<IntersectionObserverList*>(aPropertyValue);
-  for (DOMIntersectionObserver* observer : observers->Keys()) {
-    observer->UnlinkTarget(*element);
-  }
-  delete observers;
-}
-
-void Element::RegisterIntersectionObserver(DOMIntersectionObserver* aObserver) {
-  IntersectionObserverList* observers = static_cast<IntersectionObserverList*>(
-      GetProperty(nsGkAtoms::intersectionobserverlist));
-
-  if (!observers) {
-    observers = new IntersectionObserverList();
-    observers->InsertOrUpdate(aObserver, eUninitialized);
-    SetProperty(nsGkAtoms::intersectionobserverlist, observers,
-                IntersectionObserverPropertyDtor, /* aTransfer = */ true);
-    return;
-  }
-
-  // Value can be:
-  //   -2:   Makes sure next calculated threshold always differs, leading to a
-  //         notification task being scheduled.
-  //   -1:   Non-intersecting.
-  //   >= 0: Intersecting, valid index of aObserver->mThresholds.
-  observers->LookupOrInsert(aObserver, eUninitialized);
-}
-
-void Element::UnregisterIntersectionObserver(
-    DOMIntersectionObserver* aObserver) {
-  auto* observers = static_cast<IntersectionObserverList*>(
-      GetProperty(nsGkAtoms::intersectionobserverlist));
-  if (observers) {
-    observers->Remove(aObserver);
-    if (observers->IsEmpty()) {
-      RemoveProperty(nsGkAtoms::intersectionobserverlist);
-    }
-  }
-}
-
-void Element::UnlinkIntersectionObservers() {
-  // IntersectionObserverPropertyDtor takes care of the hard work.
-  RemoveProperty(nsGkAtoms::intersectionobserverlist);
-}
-
-bool Element::UpdateIntersectionObservation(DOMIntersectionObserver* aObserver,
-                                            int32_t aThreshold) {
-  auto* observers = static_cast<IntersectionObserverList*>(
-      GetProperty(nsGkAtoms::intersectionobserverlist));
-  if (!observers) {
-    return false;
-  }
-  bool updated = false;
-  if (auto entry = observers->Lookup(aObserver)) {
-    updated = entry.Data() != aThreshold;
-    entry.Data() = aThreshold;
-  }
-  return updated;
-}
-
 template <class T>
 void Element::GetCustomInterface(nsGetterAddRefs<T> aResult) {
-  nsCOMPtr<nsISupports> iface = CustomElementRegistry::CallGetCustomInterface(
-      this, NS_GET_TEMPLATE_IID(T));
+  nsCOMPtr<nsISupports> iface =
+      CustomElementRegistry::CallGetCustomInterface(this, NS_GET_IID(T));
   if (iface) {
     if (NS_SUCCEEDED(CallQueryInterface(iface, static_cast<T**>(aResult)))) {
       return;
@@ -4943,143 +5327,9 @@ void Element::RegUnRegAccessKey(bool aDoReg) {
   }
 }
 
-void Element::SetHTML(const nsAString& aInnerHTML,
-                      const SetHTMLOptions& aOptions, ErrorResult& aError) {
-  // Throw for disallowed elements
-  if (IsHTMLElement(nsGkAtoms::script)) {
-    aError.ThrowTypeError("This does not work on <script> elements");
-    return;
-  }
-  if (IsHTMLElement(nsGkAtoms::object)) {
-    aError.ThrowTypeError("This does not work on <object> elements");
-    return;
-  }
-  if (IsHTMLElement(nsGkAtoms::iframe)) {
-    aError.ThrowTypeError("This does not work on <iframe> elements");
-    return;
-  }
-
-  // Keep "this" alive should be guaranteed by the caller, and also the content
-  // of a template element (if this is one) should never been released from this
-  // during this call.  Therefore, using raw pointer here is safe.
-  FragmentOrElement* target = this;
-  // Handle template case.
-  if (target->IsTemplateElement()) {
-    DocumentFragment* frag =
-        static_cast<HTMLTemplateElement*>(target)->Content();
-    MOZ_ASSERT(frag);
-    target = frag;
-  }
-
-  // TODO: Avoid parsing and implement a fast-path for non-markup input,
-  // Filed as bug 1731215.
-
-  // mozAutoSubtreeModified keeps the owner document alive.  Therefore, using a
-  // raw pointer here is safe.
-  Document* const doc = target->OwnerDoc();
-
-  // Batch possible DOMSubtreeModified events.
-  mozAutoSubtreeModified subtree(doc, nullptr);
-
-  target->FireNodeRemovedForChildren();
-
-  // Needed when innerHTML is used in combination with contenteditable
-  mozAutoDocUpdate updateBatch(doc, true);
-
-  // Remove childnodes.
-  nsAutoMutationBatch mb(target, true, false);
-  while (target->HasChildren()) {
-    target->RemoveChildNode(target->GetFirstChild(), true);
-  }
-  mb.RemovalDone();
-
-  nsAutoScriptLoaderDisabler sld(doc);
-
-  FragmentOrElement* parseContext = this;
-  if (ShadowRoot* shadowRoot = ShadowRoot::FromNode(parseContext)) {
-    // Fix up the context to be the host of the ShadowRoot.  See
-    // https://w3c.github.io/DOM-Parsing/#dom-innerhtml-innerhtml setter step 1.
-    parseContext = shadowRoot->GetHost();
-  }
-
-  // We MUST NOT cause any requests during parsing, so we'll
-  // create an inert Document and parse into a new DocumentFragment.
-  RefPtr<Document> inertDoc;
-  nsAtom* contextLocalName = parseContext->NodeInfo()->NameAtom();
-  int32_t contextNameSpaceID = parseContext->GetNameSpaceID();
-  ElementCreationOptionsOrString options;
-  RefPtr<DocumentFragment> fragment;
-  if (doc->IsHTMLDocument()) {
-    inertDoc = nsContentUtils::CreateInertHTMLDocument(nullptr);
-    if (!inertDoc) {
-      aError = NS_ERROR_FAILURE;
-      return;
-    }
-    fragment = new (inertDoc->NodeInfoManager())
-        DocumentFragment(inertDoc->NodeInfoManager());
-
-    aError = nsContentUtils::ParseFragmentHTML(aInnerHTML, fragment,
-                                               contextLocalName,
-                                               contextNameSpaceID, false, true);
-
-  } else if (doc->IsXMLDocument()) {
-    inertDoc = nsContentUtils::CreateInertXMLDocument(nullptr);
-    if (!inertDoc) {
-      aError = NS_ERROR_FAILURE;
-      return;
-    }
-    fragment = new (inertDoc->NodeInfoManager())
-        DocumentFragment(inertDoc->NodeInfoManager());
-
-    // TODO(freddyb) `nsContentUtils::CreateContextualFragment` is actually
-    // collecting a ton of stacks to get in an (X)HTMLish state.
-    // I'm afraid we might need that too. Ugh.
-    AutoTArray<nsString, 0> emptyTagStack;
-    aError =
-        nsContentUtils::ParseFragmentXML(aInnerHTML, inertDoc, emptyTagStack,
-                                         true, -1, getter_AddRefs(fragment));
-  }
-
-  if (aError.Failed()) {
-    return;
-  }
-
-  // Suppress assertion about node removal mutation events that can't have
-  // listeners anyway, because no one has had the chance to register
-  // mutation listeners on the fragment that comes from the parser.
-  nsAutoScriptBlockerSuppressNodeRemoved scriptBlocker;
-
-  int32_t oldChildCount = static_cast<int32_t>(target->GetChildCount());
-
-  nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
-  if (!global) {
-    aError.ThrowInvalidStateError("Missing owner global.");
-    return;
-  }
-
-  RefPtr<Sanitizer> sanitizer;
-  if (aOptions.mSanitizer.WasPassed()) {
-    sanitizer = Sanitizer::New(global, aOptions.mSanitizer.Value(), aError);
-  } else {
-    sanitizer = Sanitizer::New(global, {}, aError);
-  }
-  if (aError.Failed()) {
-    return;
-  }
-
-  sanitizer->SanitizeFragment(fragment, aError);
-  if (aError.Failed()) {
-    return;
-  }
-
-  target->AppendChild(*fragment, aError);
-  if (aError.Failed()) {
-    return;
-  }
-
-  mb.NodesAdded();
-  nsContentUtils::FireMutationEventsForDirectParsing(doc, target,
-                                                     oldChildCount);
+void Element::SetHTML(const nsAString& aHTML, const SetHTMLOptions& aOptions,
+                      ErrorResult& aError) {
+  nsContentUtils::SetHTML(this, this, aHTML, aOptions, aError);
 }
 
 void Element::GetHTML(const GetHTMLOptions& aOptions, nsAString& aResult) {
@@ -5101,7 +5351,7 @@ bool Element::Translate() const {
   return true;
 }
 
-EditorBase* Element::GetEditorWithoutCreation() const {
+EditorBase* Element::GetExtantEditor() const {
   if (!IsInComposedDoc()) {
     return nullptr;
   }
@@ -5113,8 +5363,7 @@ EditorBase* Element::GetEditorWithoutCreation() const {
   if (!isInDesignMode) {
     if (const auto* textControlElement = TextControlElement::FromNode(this)) {
       if (textControlElement->IsSingleLineTextControlOrTextArea()) {
-        return static_cast<const TextControlElement*>(this)
-            ->GetTextEditorWithoutCreation();
+        return textControlElement->GetExtantTextEditor();
       }
     }
   }
@@ -5123,12 +5372,28 @@ EditorBase* Element::GetEditorWithoutCreation() const {
     return nullptr;
   }
   // FYI: This never creates HTMLEditor immediately.
-  nsDocShell* docShell = nsDocShell::Cast(OwnerDoc()->GetDocShell());
+  nsDocShell* const docShell = nsDocShell::Cast(OwnerDoc()->GetDocShell());
   return docShell ? docShell->GetHTMLEditorInternal() : nullptr;
 }
 
-void Element::SetHTMLUnsafe(const nsAString& aHTML) {
-  nsContentUtils::SetHTMLUnsafe(this, this, aHTML);
+void Element::SetHTMLUnsafe(const TrustedHTMLOrString& aHTML,
+                            const SetHTMLUnsafeOptions& aOptions,
+                            nsIPrincipal* aSubjectPrincipal,
+                            ErrorResult& aError) {
+  nsContentUtils::SetHTMLUnsafe(this, this, aHTML, aOptions,
+                                false /*aIsShadowRoot*/, aSubjectPrincipal,
+                                aError);
+}
+
+// https://html.spec.whatwg.org/#event-beforematch
+void Element::FireBeforematchEvent(ErrorResult& aRv) {
+  RefPtr<Event> event = NS_NewDOMEvent(this, nullptr, nullptr);
+  event->InitEvent(u"beforematch"_ns,
+                   /*aCanBubble=*/true,
+                   /*aCancelable=*/false);
+
+  event->SetTrusted(true);
+  DispatchEvent(*event, aRv);
 }
 
 bool Element::BlockingContainsRender() const {

@@ -17,7 +17,6 @@
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/layers/ImageBridgeChild.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/webgpu/CanvasContext.h"
 #include "CanvasRenderingContext2D.h"
 #include "CanvasUtils.h"
@@ -34,13 +33,12 @@ namespace mozilla::dom {
 
 OffscreenCanvasCloneData::OffscreenCanvasCloneData(
     OffscreenCanvasDisplayHelper* aDisplay, uint32_t aWidth, uint32_t aHeight,
-    layers::LayersBackend aCompositorBackend, layers::TextureType aTextureType,
-    bool aNeutered, bool aIsWriteOnly, nsIPrincipal* aExpandedReader)
+    layers::LayersBackend aCompositorBackend, bool aNeutered, bool aIsWriteOnly,
+    nsIPrincipal* aExpandedReader)
     : mDisplay(aDisplay),
       mWidth(aWidth),
       mHeight(aHeight),
       mCompositorBackendType(aCompositorBackend),
-      mTextureType(aTextureType),
       mNeutered(aNeutered),
       mIsWriteOnly(aIsWriteOnly),
       mExpandedReader(aExpandedReader) {}
@@ -56,13 +54,12 @@ OffscreenCanvas::OffscreenCanvas(nsIGlobalObject* aGlobal, uint32_t aWidth,
 
 OffscreenCanvas::OffscreenCanvas(
     nsIGlobalObject* aGlobal, uint32_t aWidth, uint32_t aHeight,
-    layers::LayersBackend aCompositorBackend, layers::TextureType aTextureType,
+    layers::LayersBackend aCompositorBackend,
     already_AddRefed<OffscreenCanvasDisplayHelper> aDisplay)
     : DOMEventTargetHelper(aGlobal),
       mWidth(aWidth),
       mHeight(aHeight),
       mCompositorBackendType(aCompositorBackend),
-      mTextureType(aTextureType),
       mDisplay(aDisplay) {}
 
 OffscreenCanvas::~OffscreenCanvas() {
@@ -230,7 +227,7 @@ void OffscreenCanvas::GetContext(
     return;
   }
 
-  Maybe<int32_t> childId;
+  Maybe<mozilla::ipc::ActorId> childId;
 
   MOZ_ASSERT(mCurrentContext);
   switch (mCurrentContextType) {
@@ -321,7 +318,7 @@ void OffscreenCanvas::DequeueCommitToCompositor() {
   MOZ_ASSERT(mPendingCommit);
   mPendingCommit = nullptr;
   Maybe<OffscreenCanvasDisplayData> update = std::move(mPendingUpdate);
-  mDisplay->CommitFrameToCompositor(mCurrentContext, mTextureType, update);
+  mDisplay->CommitFrameToCompositor(mCurrentContext, update);
 }
 
 void OffscreenCanvas::CommitFrameToCompositor() {
@@ -338,7 +335,7 @@ void OffscreenCanvas::CommitFrameToCompositor() {
   }
 
   Maybe<OffscreenCanvasDisplayData> update = std::move(mPendingUpdate);
-  mDisplay->CommitFrameToCompositor(mCurrentContext, mTextureType, update);
+  mDisplay->CommitFrameToCompositor(mCurrentContext, update);
 }
 
 UniquePtr<OffscreenCanvasCloneData> OffscreenCanvas::ToCloneData(
@@ -374,8 +371,8 @@ UniquePtr<OffscreenCanvasCloneData> OffscreenCanvas::ToCloneData(
   }
 
   auto cloneData = MakeUnique<OffscreenCanvasCloneData>(
-      mDisplay, mWidth, mHeight, mCompositorBackendType, mTextureType,
-      mNeutered, mIsWriteOnly, mExpandedReader);
+      mDisplay, mWidth, mHeight, mCompositorBackendType, mNeutered,
+      mIsWriteOnly, mExpandedReader);
   SetNeutered();
   return cloneData;
 }
@@ -598,7 +595,7 @@ already_AddRefed<OffscreenCanvas> OffscreenCanvas::CreateFromCloneData(
   MOZ_ASSERT(aData);
   RefPtr<OffscreenCanvas> wc = new OffscreenCanvas(
       aGlobal, aData->mWidth, aData->mHeight, aData->mCompositorBackendType,
-      aData->mTextureType, aData->mDisplay.forget());
+      aData->mDisplay.forget());
   if (aData->mNeutered) {
     wc->SetNeutered();
   }
@@ -606,12 +603,6 @@ already_AddRefed<OffscreenCanvas> OffscreenCanvas::CreateFromCloneData(
     wc->SetWriteOnly(std::move(aData->mExpandedReader));
   }
   return wc.forget();
-}
-
-/* static */
-bool OffscreenCanvas::PrefEnabledOnWorkerThread(JSContext* aCx,
-                                                JSObject* aObj) {
-  return NS_IsMainThread() || StaticPrefs::gfx_offscreencanvas_enabled();
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(OffscreenCanvas, DOMEventTargetHelper,

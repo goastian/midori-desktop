@@ -1,12 +1,13 @@
 [DEFAULT]
 head = "head.js"
+tags = "inc-origin-init"
 support-files = [
   "groupMismatch_profile.zip",
   "removedOrigin_profile.zip",
 ]
 
 ["make_unsetLastAccessTime.js"]
-skip-if = ["true"] # Only used for recreating unsetLastAccessTime_profile.zip
+run-if = ["false"] # Only used for recreating unsetLastAccessTime_profile.zip
 
 ["test_groupMismatch.js"]
 

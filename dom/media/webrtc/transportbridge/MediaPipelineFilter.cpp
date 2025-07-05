@@ -85,20 +85,17 @@ bool MediaPipelineFilter::Filter(const webrtc::RTPHeader& header) {
   // Remote SSRC based filtering
   //
 
-  if (!remote_ssrc_set_.empty()) {
-    if (remote_ssrc_set_.count(header.ssrc)) {
-      DEBUG_LOG(
-          ("MediaPipelineFilter SSRC: %u matched remote SSRC set."
-           " passing packet",
-           header.ssrc));
-      return true;
-    }
+  if (remote_ssrc_set_.count(header.ssrc)) {
     DEBUG_LOG(
-        ("MediaPipelineFilter SSRC: %u did not match any of %zu"
-         " remote SSRCS.",
-         header.ssrc, remote_ssrc_set_.size()));
-    return false;
+        ("MediaPipelineFilter SSRC: %u matched remote SSRC set."
+         " passing packet",
+         header.ssrc));
+    return true;
   }
+  DEBUG_LOG(
+      ("MediaPipelineFilter SSRC: %u did not match any of %zu"
+       " remote SSRCS.",
+       header.ssrc, remote_ssrc_set_.size()));
 
   //
   // PT, payload type, last ditch effort filtering. We only try this if we do
@@ -133,7 +130,12 @@ void MediaPipelineFilter::AddUniqueReceivePT(uint8_t payload_type) {
   receive_payload_type_set_.insert(payload_type);
 }
 
-void MediaPipelineFilter::Update(const MediaPipelineFilter& filter_update) {
+void MediaPipelineFilter::AddDuplicateReceivePT(uint8_t payload_type) {
+  duplicate_payload_type_set_.insert(payload_type);
+}
+
+void MediaPipelineFilter::Update(const MediaPipelineFilter& filter_update,
+                                 bool signalingStable) {
   // We will not stomp the remote_ssrc_set_ if the update has no ssrcs,
   // because we don't want to unlearn any remote ssrcs unless the other end
   // has explicitly given us a new set.
@@ -147,7 +149,20 @@ void MediaPipelineFilter::Update(const MediaPipelineFilter& filter_update) {
     mRemoteMid = filter_update.mRemoteMid;
     mRemoteMidBindings = filter_update.mRemoteMidBindings;
   }
-  receive_payload_type_set_ = filter_update.receive_payload_type_set_;
+
+  // If we are signaling is stable replace the filters values otherwise add to
+  // them.
+  if (signalingStable) {
+    receive_payload_type_set_ = filter_update.receive_payload_type_set_;
+    duplicate_payload_type_set_ = filter_update.duplicate_payload_type_set_;
+  } else {
+    for (const auto& uniquePT : filter_update.receive_payload_type_set_) {
+      if (!receive_payload_type_set_.count(uniquePT) &&
+          !duplicate_payload_type_set_.count(uniquePT)) {
+        AddUniqueReceivePT(uniquePT);
+      }
+    }
+  }
 
   // Use extmapping from new filter
   mExtMap = filter_update.mExtMap;

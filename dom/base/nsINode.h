@@ -40,11 +40,13 @@ class nsAttrChildContentList;
 template <typename T>
 class nsCOMArray;
 class nsDOMAttributeMap;
+class nsFrameSelection;
 class nsGenericHTMLElement;
 class nsIAnimationObserver;
 class nsIContent;
 class nsIContentSecurityPolicy;
 class nsIFrame;
+class nsIFormControl;
 class nsIHTMLCollection;
 class nsMultiMutationObserver;
 class nsINode;
@@ -63,6 +65,7 @@ template <typename T>
 class Maybe;
 class PresShell;
 class TextEditor;
+class WidgetEvent;
 namespace dom {
 /**
  * @return true if aChar is what the WHATWG defines as a 'ascii whitespace'.
@@ -93,6 +96,7 @@ class Element;
 class EventHandlerNonNull;
 template <typename T>
 class FlatTreeAncestorsOfTypeIterator;
+class HTMLDialogElement;
 template <typename T>
 class InclusiveAncestorsOfTypeIterator;
 template <typename T>
@@ -102,6 +106,7 @@ class MutationObservers;
 template <typename T>
 class Optional;
 class OwningNodeOrString;
+class SelectionNodeCache;
 template <typename>
 class Sequence;
 class ShadowRoot;
@@ -110,6 +115,7 @@ class Text;
 class TextOrElementOrDocument;
 struct DOMPointInit;
 struct GetRootNodeOptions;
+enum class AllowRangeCrossShadowBoundary : bool;  // defined in AbstractRange.h
 enum class CallerType : uint32_t;
 }  // namespace dom
 }  // namespace mozilla
@@ -238,6 +244,15 @@ enum class NodeSelectorFlags : uint32_t {
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(NodeSelectorFlags);
 
+enum class BatchRemovalOrder {
+  FrontToBack,
+  BackToFront,
+};
+
+struct BatchRemovalState {
+  bool mIsFirst = true;
+};
+
 // Make sure we have space for our bits
 #define ASSERT_NODE_FLAGS_SPACE(n)                         \
   static_assert(WRAPPER_CACHE_FLAGS_BITS_USED + (n) <=     \
@@ -313,12 +328,8 @@ class nsNodeWeakReference final : public nsIWeakReference {
 
 // IID for the nsINode interface
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
-#define NS_INODE_IID                                 \
-  {                                                  \
-    0x70ba4547, 0x7699, 0x44fc, {                    \
-      0xb3, 0x20, 0x52, 0xdb, 0xe3, 0xd1, 0xf9, 0x0a \
-    }                                                \
-  }
+#define NS_INODE_IID \
+  {0x70ba4547, 0x7699, 0x44fc, {0xb3, 0x20, 0x52, 0xdb, 0xe3, 0xd1, 0xf9, 0x0a}}
 
 /**
  * An internal interface that abstracts some DOMNode-related parts that both
@@ -371,7 +382,7 @@ class nsINode : public mozilla::dom::EventTarget {
   template <class T>
   using Sequence = mozilla::dom::Sequence<T>;
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_INODE_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_INODE_IID)
 
   // The |aNodeSize| outparam on this function is where the actual node size
   // value is put. It gets added to the appropriate value within |aSizes| by
@@ -556,6 +567,11 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   mozilla::dom::Element* GetTopmostClickedPopover() const;
 
+  /**
+   * https://html.spec.whatwg.org/multipage/interactive-elements.html#nearest-clicked-dialog
+   */
+  mozilla::dom::HTMLDialogElement* NearestClickedDialog(mozilla::WidgetEvent*);
+
   bool IsNode() const final { return true; }
 
   NS_IMPL_FROMEVENTTARGET_HELPER(nsINode, IsNode())
@@ -627,6 +643,16 @@ class nsINode : public mozilla::dom::EventTarget {
   inline mozilla::dom::Text* AsText();
   inline const mozilla::dom::Text* AsText() const;
 
+  /**
+   * Return this node if the instance type inherits nsIFormControl, or an
+   * nsIFormControl instance which ia associated with this node.  Otherwise,
+   * returns nullptr.
+   */
+  [[nodiscard]] virtual nsIFormControl* GetAsFormControl() { return nullptr; }
+  [[nodiscard]] virtual const nsIFormControl* GetAsFormControl() const {
+    return nullptr;
+  }
+
   /*
    * Return whether the node is a ProcessingInstruction node.
    */
@@ -665,6 +691,9 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   uint32_t GetChildCount() const { return mChildCount; }
 
+  /** Get the number of flat tree children */
+  uint32_t GetFlatTreeChildCount() const;
+
   /**
    * NOTE: this function is going to be removed soon (hopefully!) Don't use it
    * in new code.
@@ -687,6 +716,12 @@ class nsINode : public mozilla::dom::EventTarget {
    * that value will return aPossibleChild.
    */
   mozilla::Maybe<uint32_t> ComputeIndexOf(const nsINode* aPossibleChild) const;
+
+  /**
+   * Return true if ComputeIndexOf() may cache the computed index for further
+   * calls.
+   */
+  [[nodiscard]] bool MaybeCachesComputedIndex() const;
 
   /**
    * Get the index of a child within this content's flat tree children.
@@ -714,6 +749,12 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   mozilla::Maybe<uint32_t> ComputeIndexInParentNode() const;
   mozilla::Maybe<uint32_t> ComputeIndexInParentContent() const;
+
+  /**
+   * Return true if the parent node may cache the computed index for further
+   * calls.
+   */
+  [[nodiscard]] bool MaybeParentCachesComputedIndex() const;
 
   /**
    * Get the index of a child within this content.
@@ -982,6 +1023,21 @@ class nsINode : public mozilla::dom::EventTarget {
     InsertChildBefore(aKid, nullptr, aNotify, aRv);
   }
 
+  template <BatchRemovalOrder aOrder = BatchRemovalOrder::FrontToBack>
+  void RemoveAllChildren(bool aNotify) {
+    if (!HasChildren()) {
+      return;
+    }
+    BatchRemovalState state{};
+    do {
+      nsIContent* nodeToRemove = aOrder == BatchRemovalOrder::FrontToBack
+                                     ? GetFirstChild()
+                                     : GetLastChild();
+      RemoveChildNode(nodeToRemove, aNotify, &state);
+      state.mIsFirst = false;
+    } while (HasChildren());
+  }
+
   /**
    * Remove a child from this node.  This method handles calling UnbindFromTree
    * on the child appropriately.
@@ -989,8 +1045,10 @@ class nsINode : public mozilla::dom::EventTarget {
    * @param aKid the content to remove
    * @param aNotify whether to notify the document (current document for
    *        nsIContent, and |this| for Document) that the remove has occurred
+   * @param BatchRemovalState The current state of our batch removal.
    */
-  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify);
+  virtual void RemoveChildNode(nsIContent* aKid, bool aNotify,
+                               const BatchRemovalState* = nullptr);
 
   /**
    * Get a property associated with this node.
@@ -1132,7 +1190,7 @@ class nsINode : public mozilla::dom::EventTarget {
    *   2. For contents that are slotted into a UA shadow tree, use its
    *   parent rather than the slot element.
    */
-  inline nsIContent* GetFlattenedTreeParentNodeForSelection() const;
+  inline nsINode* GetFlattenedTreeParentNodeForSelection() const;
 
   inline mozilla::dom::Element* GetFlattenedTreeParentElement() const;
   inline mozilla::dom::Element* GetFlattenedTreeParentElementForStyle() const;
@@ -1157,6 +1215,12 @@ class nsINode : public mozilla::dom::EventTarget {
    * element node, returns itself.  Otherwise, returns parent element or null.
    */
   inline mozilla::dom::Element* GetAsElementOrParentElement() const;
+
+  /**
+   * Get inclusive ancestor element in the flattened tree.
+   */
+  inline mozilla::dom::Element* GetInclusiveFlattenedTreeAncestorElement()
+      const;
 
   /**
    * Get the root of the subtree this node belongs to.  This never returns
@@ -1369,6 +1433,23 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   virtual nsresult Clone(mozilla::dom::NodeInfo*, nsINode** aResult) const = 0;
 
+  // A callback that gets called when we are forcefully unbound from a node (due
+  // to the node going away). You shouldn't take a strong ref to the node from
+  // the callback.
+  using UnbindCallback = void (*)(nsISupports*, nsINode*);
+  // We should keep alive these objects.
+  struct BoundObject {
+    nsCOMPtr<nsISupports> mObject;
+    UnbindCallback mDtor = nullptr;
+
+    BoundObject(nsISupports* aObject, UnbindCallback aDtor)
+        : mObject(aObject), mDtor(aDtor) {}
+
+    bool operator==(nsISupports* aOther) const {
+      return mObject.get() == aOther;
+    }
+  };
+
   // This class can be extended by subclasses that wish to store more
   // information in the slots.
   class nsSlots {
@@ -1399,6 +1480,9 @@ class nsINode : public mozilla::dom::EventTarget {
      * nsNodeWeakReference.
      */
     nsNodeWeakReference* MOZ_NON_OWNING_REF mWeakReference;
+
+    /** A list of objects that we should keep alive. See Bind/UnbindObject. */
+    nsTArray<BoundObject> mBoundObjects;
 
     /**
      * A set of ranges which are in the selection and which have this node as
@@ -1554,8 +1638,10 @@ class nsINode : public mozilla::dom::EventTarget {
   // Only nsIContent can fulfill this condition.
   bool ChromeOnlyAccess() const { return IsInNativeAnonymousSubtree(); }
 
-  const nsIContent* GetChromeOnlyAccessSubtreeRootParent() const {
-    return GetClosestNativeAnonymousSubtreeRootParentOrHost();
+  // Whether we're chrome-only for event targeting. UA widgets can use regular
+  // shadow DOM retargeting for these.
+  bool ChromeOnlyAccessForEvents() const {
+    return ChromeOnlyAccess() && !HasBeenInUAWidget();
   }
 
   bool IsInShadowTree() const { return HasFlag(NODE_IS_IN_SHADOW_TREE); }
@@ -1617,8 +1703,26 @@ class nsINode : public mozilla::dom::EventTarget {
    * for that nsRange.  Collapsed ranges always counts as non-overlapping.
    *
    * @param aStartOffset has to be less or equal to aEndOffset.
+   * @param aCache A cache which contains all fully selected nodes for each
+   *               selection. If present, this provides a fast path to check if
+   *               a node is fully selected.
    */
-  bool IsSelected(uint32_t aStartOffset, uint32_t aEndOffset) const;
+  bool IsSelected(uint32_t aStartOffset, uint32_t aEndOffset,
+                  mozilla::dom::SelectionNodeCache* aCache = nullptr) const;
+
+#ifdef DEBUG
+  void AssertIsRootElementSlow(bool) const;
+#endif
+
+  /** Returns whether we're the root element of our document. */
+  bool IsRootElement() const {
+    // This should be faster than pointer-chasing in the common cases.
+    const bool isRoot = !GetParent() && IsInUncomposedDoc() && IsElement();
+#ifdef DEBUG
+    AssertIsRootElementSlow(isRoot);
+#endif
+    return isRoot;
+  }
 
   /**
    * Get the root element of the text editor associated with this node or the
@@ -1633,16 +1737,31 @@ class nsINode : public mozilla::dom::EventTarget {
   MOZ_CAN_RUN_SCRIPT mozilla::dom::Element* GetAnonymousRootElementOfTextEditor(
       mozilla::TextEditor** aTextEditor = nullptr);
 
+  enum class IgnoreOwnIndependentSelection : bool { No, Yes };
+  using AllowCrossShadowBoundary = mozilla::dom::AllowRangeCrossShadowBoundary;
+
   /**
-   * Get the nearest selection root, ie. the node that will be selected if the
-   * user does "Select All" while the focus is in this node. Note that if this
-   * node is not in an editor, the result comes from the nsFrameSelection that
-   * is related to aPresShell, so the result might not be the ancestor of this
-   * node. Be aware that if this node and the computed selection limiter are
-   * not in same subtree, this returns the root content of the closeset subtree.
+   * Get the selection root for this node.
+   * Note that if this node is not in an editor, the result comes from the
+   * nsFrameSelection that is related to aPresShell, so the result might not be
+   * the ancestor of this node.
+   * Be aware that if this node and the computed selection limiter are not in
+   * same subtree, this returns the root content of the closest subtree.
+   *
+   * @param aIgnoreOwnIndependentSelection
+   *                    If "Yes", return selection root for selecting this node.
+   *                    If "No", return independent selection root which is
+   *                    in a native anonymous subtree hosted by this node.
+   *                    For example, when this is a text control element,
+   *                    return the document's selection root if "No" or return
+   *                    the native anonymous <div> if "Yes".
    */
   MOZ_CAN_RUN_SCRIPT nsIContent* GetSelectionRootContent(
-      mozilla::PresShell* aPresShell, bool aAllowCrossShadowBoundary = false);
+      mozilla::PresShell* aPresShell,
+      IgnoreOwnIndependentSelection aIgnoreOwnIndependentSelection,
+      AllowCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  [[nodiscard]] nsFrameSelection* GetFrameSelection() const;
 
   bool HasScheduledSelectionChangeEvent() {
     return HasFlag(NODE_HAS_SCHEDULED_SELECTION_CHANGE_EVENT);
@@ -1706,9 +1825,9 @@ class nsINode : public mozilla::dom::EventTarget {
   void GetTextContent(nsAString& aTextContent, mozilla::OOMReporter& aError) {
     GetTextContentInternal(aTextContent, aError);
   }
-  void SetTextContent(const nsAString& aTextContent,
-                      nsIPrincipal* aSubjectPrincipal,
-                      mozilla::ErrorResult& aError) {
+  MOZ_CAN_RUN_SCRIPT virtual void SetTextContent(
+      const nsAString& aTextContent, nsIPrincipal* aSubjectPrincipal,
+      mozilla::ErrorResult& aError) {
     SetTextContentInternal(aTextContent, aSubjectPrincipal, aError);
   }
   void SetTextContent(const nsAString& aTextContent,
@@ -1894,6 +2013,9 @@ class nsINode : public mozilla::dom::EventTarget {
     ElementHasPart,
     // Set if the element might have a contenteditable attribute set.
     ElementMayHaveContentEditableAttr,
+    // Set if the element has a contenteditable attribute whose value makes the
+    // element editable.
+    ElementHasContentEditableAttrTrueOrPlainTextOnly,
     // Set if the node is the closest common inclusive ancestor of the start/end
     // nodes of a Range that is in a Selection.
     NodeIsClosestCommonInclusiveAncestorForRangeInSelection,
@@ -1921,11 +2043,14 @@ class nsINode : public mozilla::dom::EventTarget {
     // flags, because we can't use those to distinguish
     // <bdi dir="some-invalid-value"> and <bdi dir="auto">.
     NodeHasValidDirAttribute,
-    // Set if this node, which must be a text node, might be responsible for
-    // setting the directionality of a dir="auto" ancestor.
-    NodeMaySetDirAuto,
-    // Set if a node in the node's parent chain has dir=auto.
+    // Set if a node in the node's parent chain has dir=auto and nothing
+    // inbetween nor the node itself establishes its own direction.
     NodeAncestorHasDirAuto,
+    // Set if the node or an ancestor is assigned to a dir=auto slot and
+    // nothing between nor the node itself establishes its own direction.
+    // Except for when the node assigned to the dir=auto slot establishes
+    // its own direction, then the flag is still set.
+    NodeAffectsDirAutoSlot,
     // Set if the node is handling a click.
     NodeHandlingClick,
     // Set if the element has a parser insertion mode other than "in body",
@@ -1950,25 +2075,25 @@ class nsINode : public mozilla::dom::EventTarget {
   void SetBoolFlag(BooleanFlag name, bool value) {
     static_assert(BooleanFlagCount <= 8 * sizeof(mBoolFlags),
                   "Too many boolean flags");
-    mBoolFlags = (mBoolFlags & ~(1 << name)) | (value << name);
+    mBoolFlags = (mBoolFlags & ~(1U << name)) | (value << name);
   }
 
   void SetBoolFlag(BooleanFlag name) {
     static_assert(BooleanFlagCount <= 8 * sizeof(mBoolFlags),
                   "Too many boolean flags");
-    mBoolFlags |= (1 << name);
+    mBoolFlags |= (1U << name);
   }
 
   void ClearBoolFlag(BooleanFlag name) {
     static_assert(BooleanFlagCount <= 8 * sizeof(mBoolFlags),
                   "Too many boolean flags");
-    mBoolFlags &= ~(1 << name);
+    mBoolFlags &= ~(1U << name);
   }
 
   bool GetBoolFlag(BooleanFlag name) const {
     static_assert(BooleanFlagCount <= 8 * sizeof(mBoolFlags),
                   "Too many boolean flags");
-    return mBoolFlags & (1 << name);
+    return mBoolFlags & (1U << name);
   }
 
  public:
@@ -1987,6 +2112,14 @@ class nsINode : public mozilla::dom::EventTarget {
   bool HasPartAttribute() const { return GetBoolFlag(ElementHasPart); }
   bool MayHaveContentEditableAttr() const {
     return GetBoolFlag(ElementMayHaveContentEditableAttr);
+  }
+  /**
+   * HasContentEditableAttrTrueOrPlainTextOnly() should not be called between
+   * nsGenericHTMLElement::BeforeSetAttr and nsGenericHTMLElement::AfterSetAttr
+   * because this is set and cleared by nsGenericHTMLElement::AfterSetAttr.
+   */
+  bool HasContentEditableAttrTrueOrPlainTextOnly() const {
+    return GetBoolFlag(ElementHasContentEditableAttrTrueOrPlainTextOnly);
   }
   /**
    * https://dom.spec.whatwg.org/#concept-tree-inclusive-ancestor
@@ -2050,23 +2183,17 @@ class nsINode : public mozilla::dom::EventTarget {
   void SetHasValidDir() { SetBoolFlag(NodeHasValidDirAttribute); }
   void ClearHasValidDir() { ClearBoolFlag(NodeHasValidDirAttribute); }
   bool HasValidDir() const { return GetBoolFlag(NodeHasValidDirAttribute); }
-  void SetMaySetDirAuto() {
-    // FIXME(bug 1881225): dir=auto should probably work on CDATA too.
-    MOZ_ASSERT(NodeType() == TEXT_NODE);
-    SetBoolFlag(NodeMaySetDirAuto);
-  }
-  bool MaySetDirAuto() const {
-    MOZ_ASSERT(NodeType() == TEXT_NODE);
-    return GetBoolFlag(NodeMaySetDirAuto);
-  }
-  void ClearMaySetDirAuto() {
-    MOZ_ASSERT(NodeType() == TEXT_NODE);
-    ClearBoolFlag(NodeMaySetDirAuto);
-  }
   void SetAncestorHasDirAuto() { SetBoolFlag(NodeAncestorHasDirAuto); }
   void ClearAncestorHasDirAuto() { ClearBoolFlag(NodeAncestorHasDirAuto); }
   bool AncestorHasDirAuto() const {
     return GetBoolFlag(NodeAncestorHasDirAuto);
+  }
+  void SetAffectsDirAutoSlot() { SetBoolFlag(NodeAffectsDirAutoSlot); }
+  void ClearAffectsDirAutoSlot() { ClearBoolFlag(NodeAffectsDirAutoSlot); }
+
+  // Set if the node or an ancestor is assigned to a dir=auto slot.
+  bool AffectsDirAutoSlot() const {
+    return GetBoolFlag(NodeAffectsDirAutoSlot);
   }
 
   // Implemented in nsIContentInlines.h.
@@ -2124,6 +2251,15 @@ class nsINode : public mozilla::dom::EventTarget {
   void SetMayHaveContentEditableAttr() {
     SetBoolFlag(ElementMayHaveContentEditableAttr);
   }
+  void ClearMayHaveContentEditableAttr() {
+    ClearBoolFlag(ElementMayHaveContentEditableAttr);
+  }
+  void SetHasContentEditableAttrTrueOrPlainTextOnly() {
+    SetBoolFlag(ElementHasContentEditableAttrTrueOrPlainTextOnly);
+  }
+  void ClearHasContentEditableAttrTrueOrPlainTextOnly() {
+    ClearBoolFlag(ElementHasContentEditableAttrTrueOrPlainTextOnly);
+  }
   void SetHasLockedStyleStates() { SetBoolFlag(ElementHasLockedStyleStates); }
   void ClearHasLockedStyleStates() {
     ClearBoolFlag(ElementHasLockedStyleStates);
@@ -2151,10 +2287,11 @@ class nsINode : public mozilla::dom::EventTarget {
   void ClearSubtreeRootPointer() { mSubtreeRoot = nullptr; }
 
  public:
-  // Makes nsINode object to keep aObject alive.
-  void BindObject(nsISupports* aObject);
-  // After calling UnbindObject nsINode object doesn't keep
-  // aObject alive anymore.
+  // Makes nsINode object keep aObject alive. If a callback is provided, it's
+  // called before deleting the node.
+  void BindObject(nsISupports* aObject, UnbindCallback = nullptr);
+  // After calling UnbindObject nsINode, object doesn't keep aObject alive
+  // anymore.
   void UnbindObject(nsISupports* aObject);
 
   void GenerateXPath(nsAString& aResult);
@@ -2180,12 +2317,10 @@ class nsINode : public mozilla::dom::EventTarget {
                         ErrorResult& aRv) const;
   bool HasChildNodes() const { return HasChildren(); }
 
-  // See nsContentUtils::PositionIsBefore for aThisIndex and aOtherIndex usage.
-  uint16_t CompareDocumentPosition(
-      nsINode& aOther, mozilla::Maybe<uint32_t>* aThisIndex = nullptr,
-      mozilla::Maybe<uint32_t>* aOtherIndex = nullptr) const;
+  uint16_t CompareDocumentPosition(const nsINode& aOther) const;
   void GetNodeValue(nsAString& aNodeValue) { GetNodeValueInternal(aNodeValue); }
-  void SetNodeValue(const nsAString& aNodeValue, mozilla::ErrorResult& aError) {
+  MOZ_CAN_RUN_SCRIPT virtual void SetNodeValue(const nsAString& aNodeValue,
+                                               mozilla::ErrorResult& aError) {
     SetNodeValueInternal(aNodeValue, aError);
   }
   virtual void GetNodeValueInternal(nsAString& aNodeValue);
@@ -2328,6 +2463,11 @@ class nsINode : public mozilla::dom::EventTarget {
   nsIWeakReference* GetExistingWeakReference() {
     return HasSlots() ? GetExistingSlots()->mWeakReference : nullptr;
   }
+
+  MOZ_CAN_RUN_SCRIPT
+  void RevealAncestorHiddenUntilFoundAndFireBeforematchEvent(ErrorResult& aRv);
+
+  void RevealAncestorClosedDetails();
 
  protected:
   // Override this function to create a custom slots class.
@@ -2484,40 +2624,38 @@ inline nsINode* NODE_FROM(C& aContent, D& aDocument) {
   return static_cast<nsINode*>(aDocument);
 }
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsINode, NS_INODE_IID)
-
 inline nsISupports* ToSupports(nsINode* aPointer) { return aPointer; }
 
 // Some checks are faster to do on nsIContent or Element than on
 // nsINode, so spit out FromNode versions taking those types too.
-#define NS_IMPL_FROMNODE_GENERIC(_class, _check, _const)                  \
-  template <typename T>                                                   \
-  static auto FromNode(                                                   \
-      _const T& aNode) -> decltype(static_cast<_const _class*>(&aNode)) { \
-    return aNode._check ? static_cast<_const _class*>(&aNode) : nullptr;  \
-  }                                                                       \
-  template <typename T>                                                   \
-  static _const _class* FromNode(_const T* aNode) {                       \
-    return FromNode(*aNode);                                              \
-  }                                                                       \
-  template <typename T>                                                   \
-  static _const _class* FromNodeOrNull(_const T* aNode) {                 \
-    return aNode ? FromNode(*aNode) : nullptr;                            \
-  }                                                                       \
-  template <typename T>                                                   \
-  static auto FromEventTarget(_const T& aEventTarget)                     \
-      -> decltype(static_cast<_const _class*>(&aEventTarget)) {           \
-    return aEventTarget.IsNode() && aEventTarget.AsNode()->_check         \
-               ? static_cast<_const _class*>(&aEventTarget)               \
-               : nullptr;                                                 \
-  }                                                                       \
-  template <typename T>                                                   \
-  static _const _class* FromEventTarget(_const T* aEventTarget) {         \
-    return FromEventTarget(*aEventTarget);                                \
-  }                                                                       \
-  template <typename T>                                                   \
-  static _const _class* FromEventTargetOrNull(_const T* aEventTarget) {   \
-    return aEventTarget ? FromEventTarget(*aEventTarget) : nullptr;       \
+#define NS_IMPL_FROMNODE_GENERIC(_class, _check, _const)                 \
+  template <typename T>                                                  \
+  static auto FromNode(_const T& aNode)                                  \
+      -> decltype(static_cast<_const _class*>(&aNode)) {                 \
+    return aNode._check ? static_cast<_const _class*>(&aNode) : nullptr; \
+  }                                                                      \
+  template <typename T>                                                  \
+  static _const _class* FromNode(_const T* aNode) {                      \
+    return FromNode(*aNode);                                             \
+  }                                                                      \
+  template <typename T>                                                  \
+  static _const _class* FromNodeOrNull(_const T* aNode) {                \
+    return aNode ? FromNode(*aNode) : nullptr;                           \
+  }                                                                      \
+  template <typename T>                                                  \
+  static auto FromEventTarget(_const T& aEventTarget)                    \
+      -> decltype(static_cast<_const _class*>(&aEventTarget)) {          \
+    return aEventTarget.IsNode() && aEventTarget.AsNode()->_check        \
+               ? static_cast<_const _class*>(&aEventTarget)              \
+               : nullptr;                                                \
+  }                                                                      \
+  template <typename T>                                                  \
+  static _const _class* FromEventTarget(_const T* aEventTarget) {        \
+    return FromEventTarget(*aEventTarget);                               \
+  }                                                                      \
+  template <typename T>                                                  \
+  static _const _class* FromEventTargetOrNull(_const T* aEventTarget) {  \
+    return aEventTarget ? FromEventTarget(*aEventTarget) : nullptr;      \
   }
 
 #define NS_IMPL_FROMNODE_HELPER(_class, _check)                                \

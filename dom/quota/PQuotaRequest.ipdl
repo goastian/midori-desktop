@@ -18,23 +18,9 @@ struct StorageNameResponse
   nsString name;
 };
 
-struct InitializePersistentOriginResponse
-{
-  bool created;
-};
-
-struct InitializeTemporaryOriginResponse
-{
-  bool created;
-};
-
 struct GetFullOriginMetadataResponse
 {
   FullOriginMetadata? maybeFullOriginMetadata;
-};
-
-struct ResetOriginResponse
-{
 };
 
 struct PersistedResponse
@@ -52,23 +38,14 @@ struct EstimateResponse
   uint64_t limit;
 };
 
-struct ListOriginsResponse
-{
-  nsCString[] origins;
-};
-
 union RequestResponse
 {
   nsresult;
   StorageNameResponse;
-  InitializePersistentOriginResponse;
-  InitializeTemporaryOriginResponse;
   GetFullOriginMetadataResponse;
-  ResetOriginResponse;
   PersistedResponse;
   PersistResponse;
   EstimateResponse;
-  ListOriginsResponse;
 };
 
 [ManualDealloc, ChildImpl=virtual, ParentImpl=virtual]

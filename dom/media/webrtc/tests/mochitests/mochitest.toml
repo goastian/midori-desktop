@@ -37,6 +37,7 @@ prefs = [
   "network.proxy.allow_hijacking_localhost=true",
   "media.devices.enumerate.legacy.enabled=false",
 ]
+skip-if = ["os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && asan"] # high frequency leaks on shutdown
 
 ["test_1488832.html"]
 skip-if = ["os == 'linux'"] # Bug 1714410
@@ -51,6 +52,10 @@ scheme = "http"
 ["test_enumerateDevices_getUserMediaFake.html"]
 
 ["test_enumerateDevices_legacy.html"]
+support-files = ["testLegacyEnumerateDevices.js"]
+
+["test_enumerateDevices_legacy_allowlist.html"]
+support-files = ["testLegacyEnumerateDevices.js"]
 
 ["test_enumerateDevices_navigation.html"]
 skip-if = ["true"] # Disabled because it is a racy test and causes timeouts, see bug 1650932
@@ -69,6 +74,9 @@ skip-if = ["os != 'linux'"] # the only platform with real devices
 ["test_ondevicechange.html"]
 run-sequentially = "sets prefs that may disrupt other tests"
 
+["test_ondevicechange_resistfingerprinting.html"]
+run-sequentially = "sets prefs that may disrupt other tests"
+
 ["test_setSinkId-echoCancellation.html"]
 skip-if = ["os == 'android'"] # bug 1473346 - no setSinkId()
 
@@ -76,7 +84,7 @@ skip-if = ["os == 'android'"] # bug 1473346 - no setSinkId()
 skip-if = ["os == 'android'"] # bug 1473346 - no setSinkId()
 
 ["test_setSinkId.html"]
-skip-if = ["os != 'linux'"] # the only platform with real devices
+run-if = ["os == 'linux'"] # the only platform with real devices
 
 ["test_setSinkId_default_addTrack.html"]
 

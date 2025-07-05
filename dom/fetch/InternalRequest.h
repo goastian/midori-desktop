@@ -8,6 +8,7 @@
 #define mozilla_dom_InternalRequest_h
 
 #include "mozilla/dom/HeadersBinding.h"
+#include "mozilla/dom/InternalResponse.h"
 #include "mozilla/dom/InternalHeaders.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/SafeRefPtr.h"
@@ -17,6 +18,7 @@
 #include "nsIChannelEventSink.h"
 #include "nsIInputStream.h"
 #include "nsISupportsImpl.h"
+#include "nsISupportsPriority.h"
 #include "mozilla/net/NeckoChannelParams.h"
 #ifdef DEBUG
 #  include "nsIURLParser.h"
@@ -50,6 +52,7 @@ namespace dom {
  * "iframe"          | TYPE_SUBDOCUMENT, TYPE_INTERNAL_IFRAME
  * "image"           | TYPE_INTERNAL_IMAGE, TYPE_INTERNAL_IMAGE_PRELOAD,
  *                   | TYPE_IMAGE, TYPE_INTERNAL_IMAGE_FAVICON, TYPE_IMAGESET
+ * "json"            | TYPE_JSON, TYPE_INTERNAL_JSON_PRELOAD
  * "manifest"        | TYPE_WEB_MANIFEST
  * "object"          | TYPE_INTERNAL_OBJECT, TYPE_OBJECT
  * "paintworklet"    | TYPE_INTERNAL_PAINTWORKLET
@@ -86,16 +89,6 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
  public:
   MOZ_DECLARE_REFCOUNTED_TYPENAME(InternalRequest)
   InternalRequest(const nsACString& aURL, const nsACString& aFragment);
-  InternalRequest(const nsACString& aURL, const nsACString& aFragment,
-                  const nsACString& aMethod,
-                  already_AddRefed<InternalHeaders> aHeaders,
-                  RequestCache aCacheMode, RequestMode aMode,
-                  RequestRedirect aRequestRedirect,
-                  RequestCredentials aRequestCredentials,
-                  const nsACString& aReferrer, ReferrerPolicy aReferrerPolicy,
-                  RequestPriority aPriority,
-                  nsContentPolicyType aContentPolicyType,
-                  const nsAString& aIntegrity);
 
   explicit InternalRequest(const IPCInternalRequest& aIPCRequest);
 
@@ -235,7 +228,7 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   LoadTainting GetResponseTainting() const { return mResponseTainting; }
 
   void MaybeIncreaseResponseTainting(LoadTainting aTainting) {
-    if (aTainting > mResponseTainting) {
+    if (aTainting > mResponseTainting && !mNeverTaint) {
       mResponseTainting = aTainting;
     }
   }
@@ -270,6 +263,18 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
 
   void SetMozErrors() { mMozErrors = true; }
 
+  void SetTriggeringPrincipal(nsIPrincipal* aPrincipal) {
+    mTriggeringPrincipalOverride = aPrincipal;
+  }
+
+  nsIPrincipal* GetTriggeringPrincipalOverride() {
+    return mTriggeringPrincipalOverride;
+  }
+
+  void SetNeverTaint(bool aNeverTaint) { mNeverTaint = aNeverTaint; }
+
+  bool GetNeverTaint() { return mNeverTaint; }
+
   const nsCString& GetFragment() const { return mFragment; }
 
   nsContentPolicyType ContentPolicyType() const { return mContentPolicyType; }
@@ -279,6 +284,11 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
 
   RequestDestination Destination() const {
     return MapContentPolicyTypeToRequestDestination(mContentPolicyType);
+  }
+
+  int32_t InternalPriority() const { return mInternalPriority; }
+  void SetInternalPriority(int32_t aInternalPriority) {
+    mInternalPriority = aInternalPriority;
   }
 
   bool UnsafeRequest() const { return mUnsafeRequest; }
@@ -309,6 +319,8 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
       *aBodyLength = mBodyLength;
     }
   }
+
+  int64_t BodyLength() const { return mBodyLength; }
 
   void SetBodyBlobURISpec(nsACString& aBlobURISpec) {
     mBodyBlobURISpec = aBlobURISpec;
@@ -378,6 +390,10 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   nsContentPolicyType InterceptionContentPolicyType() const {
     return mInterceptionContentPolicyType;
   }
+  RequestDestination InterceptionDestination() const {
+    return MapContentPolicyTypeToRequestDestination(
+        mInterceptionContentPolicyType);
+  }
   void SetInterceptionContentPolicyType(nsContentPolicyType aContentPolicyType);
 
   const nsTArray<RedirectHistoryEntryInfo>& InterceptionRedirectChain() const {
@@ -404,7 +420,6 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   // Does not copy mBodyStream.  Use fallible Clone() for complete copy.
   InternalRequest(const InternalRequest& aOther, ConstructorGuard);
 
- private:
   // Map the content policy type to the associated fetch destination, as defined
   // by the spec at https://fetch.spec.whatwg.org/#concept-request-destination.
   // Note that while the HTML spec for the "Link" element and its "as" attribute
@@ -413,6 +428,7 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   static RequestDestination MapContentPolicyTypeToRequestDestination(
       nsContentPolicyType aContentPolicyType);
 
+ private:
   static bool IsNavigationContentPolicy(nsContentPolicyType aContentPolicyType);
 
   static bool IsWorkerContentPolicy(nsContentPolicyType aContentPolicyType);
@@ -434,11 +450,16 @@ class InternalRequest final : public AtomicSafeRefCounted<InternalRequest> {
   nsCString mBodyBlobURISpec;
   nsString mBodyLocalPath;
   nsCOMPtr<nsIInputStream> mBodyStream;
-  int64_t mBodyLength;
+
+  nsCOMPtr<nsIPrincipal> mTriggeringPrincipalOverride;
+  bool mNeverTaint = false;
+  int64_t mBodyLength{InternalResponse::UNKNOWN_BODY_SIZE};
 
   nsCString mPreferredAlternativeDataType;
 
   nsContentPolicyType mContentPolicyType;
+
+  int32_t mInternalPriority = nsISupportsPriority::PRIORITY_NORMAL;
 
   // Empty string: no-referrer
   // "about:client": client (default)

@@ -38,14 +38,18 @@ class PointerEvent : public MouseEvent {
       EventTarget* aOwner, const nsAString& aType,
       const PointerEventInit& aParam);
 
+  PointerEvent* AsPointerEvent() final { return this; }
+
   int32_t PointerId();
-  int32_t Width();
-  int32_t Height();
+  double Width() const;
+  double Height() const;
   float Pressure();
   float TangentialPressure();
   int32_t TiltX();
   int32_t TiltY();
   int32_t Twist();
+  double AltitudeAngle();
+  double AzimuthAngle();
   bool IsPrimary();
   void GetPointerType(nsAString& aPointerType);
   static bool EnableGetCoalescedEvents(JSContext* aCx, JSObject* aGlobal);
@@ -58,13 +62,31 @@ class PointerEvent : public MouseEvent {
  private:
   // This method returns the boolean to indicate whether spoofing pointer
   // event for fingerprinting resistance.
-  bool ShouldResistFingerprinting();
+  bool ShouldResistFingerprinting(bool aForPointerId = false) const;
+
+  // When the instance is a trusted `pointermove` event but the widget event
+  // does not have proper coalesced events (typically, the event is synthesized
+  // for tests or instantiated in the main process), this fills mCoalescedEvents
+  // with this instance.
+  void EnsureFillingCoalescedEvents(WidgetPointerEvent& aWidgetEvent);
 
   nsTArray<RefPtr<PointerEvent>> mCoalescedEvents;
   nsTArray<RefPtr<PointerEvent>> mPredictedEvents;
 
   // This is used to store the pointerType assigned from constructor.
   Maybe<nsString> mPointerType;
+
+  Maybe<int32_t> mTiltX;
+  Maybe<int32_t> mTiltY;
+  Maybe<double> mAltitudeAngle;
+  Maybe<double> mAzimuthAngle;
+
+  // https://w3c.github.io/pointerevents/#dfn-coalesced-events
+  // https://w3c.github.io/pointerevents/#dfn-predicted-events
+  // The events in the coalesced/predicted events list of a trusted event will
+  // have:
+  // ... Empty coalesced events list and predicted events list of their own.
+  bool mCoalescedOrPredictedEvent = false;
 };
 
 void ConvertPointerTypeToString(uint16_t aPointerTypeSrc,

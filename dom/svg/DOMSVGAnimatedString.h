@@ -10,7 +10,12 @@
 #include "mozilla/SVGAnimatedClassOrString.h"
 #include "mozilla/dom/SVGElement.h"
 
+class nsIPrincipal;
+
 namespace mozilla::dom {
+
+class OwningTrustedScriptURLOrString;
+class TrustedScriptURLOrString;
 
 class DOMSVGAnimatedString final : public nsWrapperCache {
  public:
@@ -26,11 +31,14 @@ class DOMSVGAnimatedString final : public nsWrapperCache {
   // WebIDL
   SVGElement* GetParentObject() const { return mSVGElement; }
 
-  void GetBaseVal(nsAString& aResult) {
+  void GetBaseVal(OwningTrustedScriptURLOrString& aResult) {
     mVal->GetBaseValue(aResult, mSVGElement);
   }
-  void SetBaseVal(const nsAString& aValue) {
-    mVal->SetBaseValue(aValue, mSVGElement, true);
+  MOZ_CAN_RUN_SCRIPT void SetBaseVal(const TrustedScriptURLOrString& aValue,
+                                     nsIPrincipal* aSubjectPrincipal,
+                                     ErrorResult& aRv) {
+    RefPtr<SVGElement> svgElement = mSVGElement;
+    mVal->SetBaseValue(aValue, svgElement, true, aSubjectPrincipal, aRv);
   }
   void GetAnimVal(nsAString& aResult) {
     mSVGElement->FlushAnimations();

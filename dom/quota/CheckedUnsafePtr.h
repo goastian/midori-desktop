@@ -289,11 +289,17 @@ class CheckedUnsafePtrBase<T, CheckingSupport::Enabled>
   CheckedUnsafePtrBase& operator=(const CheckedUnsafePtrBase& aOther) {
     if (StaticPrefs::dom_checkedUnsafePtr_dumpStacks_enabled()) {
       mLastAssignmentStack.Truncate();
-      MozStackWalk(CheckedUnsafePtrStackCallback, CallerPC(), 0,
-                   &mLastAssignmentStack);
+      if (aOther.get()) {
+        MozStackWalk(CheckedUnsafePtrStackCallback, CallerPC(), 0,
+                     &mLastAssignmentStack);
+      }
     }
     if (&aOther != this) {
-      Replace(aOther.Downcast());
+      if (aOther.get()) {
+        Replace(aOther.Downcast());
+      } else {
+        Reset();
+      }
     }
     return Downcast();
   }
@@ -469,6 +475,14 @@ template <typename Condition,
 using CheckIf = std::conditional_t<Condition::value, CheckingPolicy,
                                    DoNotCheckCheckedUnsafePtrs>;
 
+using AssertEnabled = std::integral_constant<bool,
+#ifdef DEBUG
+                                             true
+#else
+                                             false
+#endif
+                                             >;
+
 using DiagnosticAssertEnabled = std::integral_constant<bool,
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
                                                        true
@@ -476,6 +490,8 @@ using DiagnosticAssertEnabled = std::integral_constant<bool,
                                                        false
 #endif
                                                        >;
+
+using ReleaseAssertEnabled = std::integral_constant<bool, true>;
 
 // A T class that publicly inherits from an instantiation of
 // SupportsCheckedUnsafePtr and its subclasses can be pointed to by smart

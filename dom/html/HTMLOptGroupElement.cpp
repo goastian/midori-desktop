@@ -12,7 +12,6 @@
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsIFrame.h"
-#include "nsIFormControlFrame.h"
 
 NS_IMPL_NS_NEW_HTML_ELEMENT(OptGroup)
 
@@ -67,7 +66,8 @@ void HTMLOptGroupElement::InsertChildBefore(nsIContent* aKid,
   }
 }
 
-void HTMLOptGroupElement::RemoveChildNode(nsIContent* aKid, bool aNotify) {
+void HTMLOptGroupElement::RemoveChildNode(nsIContent* aKid, bool aNotify,
+                                          const BatchRemovalState*) {
   SafeOptionListMutation safeMutation(GetSelect(), this, nullptr,
                                       *ComputeIndexOf(aKid), aNotify);
   nsGenericHTMLElement::RemoveChildNode(aKid, aNotify);

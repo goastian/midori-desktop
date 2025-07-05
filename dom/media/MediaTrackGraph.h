@@ -137,11 +137,20 @@ class AudioDataListenerInterface {
   virtual void Disconnect(MediaTrackGraph* aGraph) = 0;
 
   /**
-   * Called after an attempt to set the input processing params on the
+   * Called sync when attempting to set the input processing params on the
+   * underlying input track. Note that when multiple listeners request distinct
+   * parameters, aRequestedParams is the aggregated form of those parameters.
+   */
+  virtual void NotifySetRequestedInputProcessingParams(
+      MediaTrackGraph* aGraph, int aGeneration,
+      cubeb_input_processing_params aRequestedParams) = 0;
+
+  /**
+   * Called async after an attempt to set the input processing params on the
    * underlying input track.
    */
   virtual void NotifySetRequestedInputProcessingParamsResult(
-      MediaTrackGraph* aGraph, cubeb_input_processing_params aRequestedParams,
+      MediaTrackGraph* aGraph, int aGeneration,
       const Result<cubeb_input_processing_params, int>& aResult) = 0;
 };
 
@@ -394,6 +403,8 @@ class MediaTrack : public mozilla::LinkedListElement<MediaTrack> {
     NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
     return mMainThreadDestroyed;
   }
+
+  uint64_t GetWindowId() const;
 
   friend class MediaTrackGraphImpl;
   friend class MediaInputPort;

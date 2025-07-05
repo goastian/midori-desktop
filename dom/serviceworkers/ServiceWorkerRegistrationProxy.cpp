@@ -8,14 +8,17 @@
 
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/dom/notification/NotificationUtils.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "ServiceWorkerManager.h"
 #include "ServiceWorkerRegistrationParent.h"
 #include "ServiceWorkerUnregisterCallback.h"
+#include "nsINotificationStorage.h"
 
 namespace mozilla::dom {
 
 using mozilla::ipc::AssertIsOnBackgroundThread;
+using namespace mozilla::dom::notification;
 
 class ServiceWorkerRegistrationProxy::DelayedUpdate final
     : public nsITimerCallback,
@@ -167,8 +170,11 @@ bool ServiceWorkerRegistrationProxy::MatchesDescriptor(
 }
 
 ServiceWorkerRegistrationProxy::ServiceWorkerRegistrationProxy(
-    const ServiceWorkerRegistrationDescriptor& aDescriptor)
-    : mEventTarget(GetCurrentSerialEventTarget()), mDescriptor(aDescriptor) {}
+    const ServiceWorkerRegistrationDescriptor& aDescriptor,
+    const ClientInfo& aForClient)
+    : mEventTarget(GetCurrentSerialEventTarget()),
+      mDescriptor(aDescriptor),
+      mListeningClientInfo(aForClient) {}
 
 void ServiceWorkerRegistrationProxy::Init(
     ServiceWorkerRegistrationParent* aActor) {
@@ -318,8 +324,8 @@ ServiceWorkerRegistrationProxy::DelayedUpdate::Notify(nsITimer* aTimer) {
   NS_ENSURE_TRUE(swm, NS_ERROR_FAILURE);
 
   RefPtr<UpdateCallback> cb = new UpdateCallback(std::move(mPromise));
-  swm->Update(mProxy->mReg->Principal(), mProxy->mReg->Scope(),
-              std::move(mNewestWorkerScriptUrl), cb);
+  swm->Update(mProxy->mListeningClientInfo, mProxy->mReg->Principal(),
+              mProxy->mReg->Scope(), std::move(mNewestWorkerScriptUrl), cb);
 
   mTimer = nullptr;
   mProxy->mDelayedUpdate = nullptr;
@@ -377,8 +383,9 @@ RefPtr<ServiceWorkerRegistrationPromise> ServiceWorkerRegistrationProxy::Update(
           NS_ENSURE_TRUE_VOID(swm);
 
           RefPtr<UpdateCallback> cb = new UpdateCallback(std::move(promise));
-          swm->Update(self->mReg->Principal(), self->mReg->Scope(),
-                      std::move(newestWorkerScriptUrl), cb);
+          swm->Update(self->mListeningClientInfo, self->mReg->Principal(),
+                      self->mReg->Scope(), std::move(newestWorkerScriptUrl),
+                      cb);
         }
         scopeExit.release();
       });
@@ -478,6 +485,80 @@ ServiceWorkerRegistrationProxy::GetNavigationPreloadState() {
   MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 
   return promise;
+}
+
+// TODO(krosylight): Ideally this callback shouldn't be needed, see bug 1950116.
+class NotificationsCallback : public nsINotificationStorageCallback {
+ public:
+  NS_DECL_ISUPPORTS
+
+  already_AddRefed<NotificationsPromise> Promise() {
+    return mPromiseHolder.Ensure(__func__);
+  }
+
+  NS_IMETHOD Done(
+      const nsTArray<RefPtr<nsINotificationStorageEntry>>& aEntries) final {
+    AssertIsOnMainThread();
+
+    nsTArray<IPCNotification> notifications(aEntries.Length());
+    for (const auto& entry : aEntries) {
+      auto result = NotificationStorageEntry::ToIPC(*entry);
+      if (result.isErr()) {
+        continue;
+      }
+      MOZ_ASSERT(!result.inspect().id().IsEmpty());
+      notifications.AppendElement(result.unwrap());
+    }
+
+    mPromiseHolder.Resolve(std::move(notifications), __func__);
+    return NS_OK;
+  }
+
+ protected:
+  virtual ~NotificationsCallback() {
+    // We may be shutting down prematurely without getting the result, so make
+    // sure to settle the promise.
+    mPromiseHolder.RejectIfExists(NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
+  };
+
+  MozPromiseHolder<NotificationsPromise> mPromiseHolder;
+};
+
+NS_IMPL_ISUPPORTS(NotificationsCallback, nsINotificationStorageCallback)
+
+RefPtr<NotificationsPromise> ServiceWorkerRegistrationProxy::GetNotifications(
+    const nsAString& aTag) {
+  AssertIsOnBackgroundThread();
+
+  RefPtr<ServiceWorkerRegistrationProxy> self = this;
+  return InvokeAsync(
+      GetMainThreadSerialEventTarget(), __func__,
+      [self, tag = nsString(aTag)]() {
+        Result<nsCOMPtr<nsIPrincipal>, nsresult> principalResult =
+            self->mListeningClientInfo.GetPrincipal();
+        if (principalResult.isErr()) {
+          return NotificationsPromise::CreateAndReject(
+              NS_ERROR_DOM_INVALID_STATE_ERR, __func__);
+        }
+
+        nsCOMPtr<nsIPrincipal> principal = principalResult.unwrap();
+        nsString origin;
+        GetOrigin(principal, origin);
+
+        RefPtr<NotificationsCallback> callback = new NotificationsCallback();
+        RefPtr<NotificationsPromise> promise = callback->Promise();
+
+        nsCOMPtr<nsINotificationStorage> notificationStorage =
+            GetNotificationStorage(
+                self->mListeningClientInfo.IsPrivateBrowsing());
+
+        nsString scope;
+        self->GetScope(scope);
+
+        notificationStorage->Get(origin, scope, tag, callback);
+
+        return promise;
+      });
 }
 
 }  // namespace mozilla::dom

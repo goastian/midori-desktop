@@ -28,6 +28,7 @@
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StaticPrefs_layers.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "nsCSSPropertyID.h"
 #include "nsComputedDOMStyle.h"  // nsComputedDOMStyle::GetComputedStyle
 #include "nsContentUtils.h"
@@ -102,7 +103,7 @@ KeyframeEffect::KeyframeEffect(Document* aDocument,
     : AnimationEffect(aDocument, TimingParams{aOther.SpecifiedTiming()}),
       mTarget(std::move(aTarget)),
       mEffectOptions{aOther.IterationComposite(), aOther.Composite(),
-                     mTarget.mPseudoType},
+                     mTarget.mPseudoRequest},
       mKeyframes(aOther.mKeyframes.Clone()),
       mProperties(aOther.mProperties.Clone()),
       mBaseValues(aOther.mBaseValues.Clone()) {}
@@ -307,8 +308,7 @@ static bool IsEffectiveProperty(const EffectSet& aEffects,
 
 const AnimationProperty* KeyframeEffect::GetEffectiveAnimationOfProperty(
     const AnimatedPropertyID& aProperty, const EffectSet& aEffects) const {
-  MOZ_ASSERT(mTarget && &aEffects == EffectSet::Get(mTarget.mElement,
-                                                    mTarget.mPseudoType));
+  MOZ_ASSERT(mTarget && &aEffects == EffectSet::Get(mTarget));
 
   for (const AnimationProperty& property : mProperties) {
     if (aProperty != property.mProperty) {
@@ -336,8 +336,7 @@ bool KeyframeEffect::HasEffectiveAnimationOfPropertySet(
 
 nsCSSPropertyIDSet KeyframeEffect::GetPropertiesForCompositor(
     EffectSet& aEffects, const nsIFrame* aFrame) const {
-  MOZ_ASSERT(&aEffects ==
-             EffectSet::Get(mTarget.mElement, mTarget.mPseudoType));
+  MOZ_ASSERT(&aEffects == EffectSet::Get(mTarget));
 
   nsCSSPropertyIDSet properties;
 
@@ -478,6 +477,10 @@ void KeyframeEffect::UpdateProperties(const ComputedStyle* aStyle,
   RequestRestyle(EffectCompositor::RestyleType::Layer);
 }
 
+void KeyframeEffect::UpdateBaseStyle(const ComputedStyle* aStyle) {
+  EnsureBaseStyles(aStyle, BuildProperties(aStyle), nullptr, nullptr);
+}
+
 void KeyframeEffect::EnsureBaseStyles(
     const ComputedStyle* aComputedValues,
     const nsTArray<AnimationProperty>& aProperties,
@@ -576,8 +579,8 @@ void KeyframeEffect::EnsureBaseStyle(
   if (!aBaseComputedStyle) {
     MOZ_ASSERT(mTarget, "Should have a valid target");
 
-    Element* animatingElement = AnimationUtils::GetElementForRestyle(
-        mTarget.mElement, mTarget.mPseudoType);
+    Element* animatingElement =
+        mTarget.mElement->GetPseudoElement(mTarget.mPseudoRequest);
     if (!animatingElement) {
       return;
     }
@@ -610,8 +613,9 @@ void KeyframeEffect::ComposeStyleRule(StyleAnimationValueMap& aAnimationValues,
 
 void KeyframeEffect::ComposeStyle(
     StyleAnimationValueMap& aComposeResult,
-    const InvertibleAnimatedPropertyIDSet& aPropertiesToSkip) {
-  ComputedTiming computedTiming = GetComputedTiming();
+    const InvertibleAnimatedPropertyIDSet& aPropertiesToSkip,
+    EndpointBehavior aEndpointBehavior) {
+  ComputedTiming computedTiming = GetComputedTiming(nullptr, aEndpointBehavior);
 
   // If the progress is null, we don't have fill data for the current
   // time so we shouldn't animate.
@@ -662,8 +666,7 @@ void KeyframeEffect::ComposeStyle(
   if (HasPropertiesThatMightAffectOverflow()) {
     nsPresContext* presContext =
         nsContentUtils::GetContextForContent(mTarget.mElement);
-    EffectSet* effectSet =
-        EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+    EffectSet* effectSet = EffectSet::Get(mTarget);
     if (presContext && effectSet) {
       TimeStamp now = presContext->RefreshDriver()->MostRecentRefresh();
       effectSet->UpdateLastOverflowAnimationSyncTime(now);
@@ -784,17 +787,17 @@ static KeyframeEffectParams KeyframeEffectParamsFromUnion(
   const KeyframeEffectOptions& options =
       KeyframeEffectOptionsFromUnion(aOptions);
 
+  // |result.mPseudoRequest| uses the default value, i.e. NotPseudo.
   result.mIterationComposite = options.mIterationComposite;
   result.mComposite = options.mComposite;
 
-  result.mPseudoType = PseudoStyleType::NotPseudo;
   if (DOMStringIsNull(options.mPseudoElement)) {
     return result;
   }
 
-  Maybe<PseudoStyleType> pseudoType =
-      nsCSSPseudoElements::GetPseudoType(options.mPseudoElement);
-  if (!pseudoType) {
+  Maybe<PseudoStyleRequest> pseudoRequest =
+      nsCSSPseudoElements::ParsePseudoElement(options.mPseudoElement);
+  if (!pseudoRequest) {
     // Per the spec, we throw SyntaxError for syntactically invalid pseudos.
     aRv.ThrowSyntaxError(
         nsPrintfCString("'%s' is a syntactically invalid pseudo-element.",
@@ -802,8 +805,8 @@ static KeyframeEffectParams KeyframeEffectParamsFromUnion(
     return result;
   }
 
-  result.mPseudoType = *pseudoType;
-  if (!AnimationUtils::IsSupportedPseudoForAnimations(result.mPseudoType)) {
+  result.mPseudoRequest = std::move(*pseudoRequest);
+  if (!AnimationUtils::IsSupportedPseudoForAnimations(result.mPseudoRequest)) {
     // Per the spec, we throw SyntaxError for unsupported pseudos.
     aRv.ThrowSyntaxError(
         nsPrintfCString("'%s' is an unsupported pseudo-element.",
@@ -847,7 +850,7 @@ already_AddRefed<KeyframeEffect> KeyframeEffect::ConstructKeyframeEffect(
   }
 
   RefPtr<KeyframeEffect> effect = new KeyframeEffect(
-      doc, OwningAnimationTarget(aTarget, effectOptions.mPseudoType),
+      doc, OwningAnimationTarget(aTarget, effectOptions.mPseudoRequest),
       std::move(timingParams), effectOptions);
 
   effect->SetKeyframes(aGlobal.Context(), aKeyframes, aRv);
@@ -878,7 +881,7 @@ nsTArray<AnimationProperty> KeyframeEffect::BuildProperties(
   auto keyframesCopy(mKeyframes.Clone());
 
   result = KeyframeUtils::GetAnimationPropertiesFromKeyframes(
-      keyframesCopy, mTarget.mElement, mTarget.mPseudoType, aStyle,
+      keyframesCopy, mTarget.mElement, mTarget.mPseudoRequest, aStyle,
       mEffectOptions.mComposite);
 
 #ifdef DEBUG
@@ -901,8 +904,8 @@ static void EnumerateContinuationsOrIBSplitSiblings(nsIFrame* aFrame,
 }
 
 void KeyframeEffect::UpdateTarget(Element* aElement,
-                                  PseudoStyleType aPseudoType) {
-  OwningAnimationTarget newTarget(aElement, aPseudoType);
+                                  const PseudoStyleRequest& aPseudoRequest) {
+  OwningAnimationTarget newTarget(aElement, aPseudoRequest);
 
   if (mTarget == newTarget) {
     // Assign the same target, skip it.
@@ -965,8 +968,7 @@ void KeyframeEffect::UpdateTargetRegistration() {
              "Out of date Animation::IsRelevant value");
 
   if (isRelevant && !mInEffectSet) {
-    EffectSet* effectSet =
-        EffectSet::GetOrCreate(mTarget.mElement, mTarget.mPseudoType);
+    EffectSet* effectSet = EffectSet::GetOrCreate(mTarget);
     effectSet->AddEffect(*this);
     mInEffectSet = true;
     UpdateEffectSet(effectSet);
@@ -983,7 +985,7 @@ void KeyframeEffect::UnregisterTarget() {
     return;
   }
 
-  EffectSet* effectSet = EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+  EffectSet* effectSet = EffectSet::Get(mTarget);
   MOZ_ASSERT(effectSet,
              "If mInEffectSet is true, there must be an EffectSet"
              " on the target element");
@@ -992,7 +994,7 @@ void KeyframeEffect::UnregisterTarget() {
     effectSet->RemoveEffect(*this);
 
     if (effectSet->IsEmpty()) {
-      EffectSet::DestroyEffectSet(mTarget.mElement, mTarget.mPseudoType);
+      EffectSet::DestroyEffectSet(mTarget);
     }
   }
   nsIFrame* frame = GetPrimaryFrame();
@@ -1009,7 +1011,7 @@ void KeyframeEffect::RequestRestyle(
       nsContentUtils::GetContextForContent(mTarget.mElement);
   if (presContext && mAnimation) {
     presContext->EffectCompositor()->RequestRestyle(
-        mTarget.mElement, mTarget.mPseudoType, aRestyleType,
+        mTarget.mElement, mTarget.mPseudoRequest, aRestyleType,
         mAnimation->CascadeLevel());
   }
 }
@@ -1023,13 +1025,14 @@ already_AddRefed<const ComputedStyle> KeyframeEffect::GetTargetComputedStyle(
   MOZ_ASSERT(mTarget,
              "Should only have a document when we have a target element");
 
-  OwningAnimationTarget kungfuDeathGrip(mTarget.mElement, mTarget.mPseudoType);
+  OwningAnimationTarget kungfuDeathGrip(mTarget.mElement,
+                                        mTarget.mPseudoRequest);
 
   return aFlushType == Flush::Style
              ? nsComputedDOMStyle::GetComputedStyle(mTarget.mElement,
-                                                    mTarget.mPseudoType)
-             : nsComputedDOMStyle::GetComputedStyleNoFlush(mTarget.mElement,
-                                                           mTarget.mPseudoType);
+                                                    mTarget.mPseudoRequest)
+             : nsComputedDOMStyle::GetComputedStyleNoFlush(
+                   mTarget.mElement, mTarget.mPseudoRequest);
 }
 
 #ifdef DEBUG
@@ -1094,15 +1097,15 @@ already_AddRefed<KeyframeEffect> KeyframeEffect::Constructor(
 void KeyframeEffect::SetPseudoElement(const nsAString& aPseudoElement,
                                       ErrorResult& aRv) {
   if (DOMStringIsNull(aPseudoElement)) {
-    UpdateTarget(mTarget.mElement, PseudoStyleType::NotPseudo);
+    UpdateTarget(mTarget.mElement, PseudoStyleRequest::NotPseudo());
     return;
   }
 
-  // Note: GetPseudoType() returns Some(NotPseudo) for the null string,
+  // Note: ParsePseudoELement() returns Some(NotPseudo) for the null string,
   // so we handle null case before this.
-  Maybe<PseudoStyleType> pseudoType =
-      nsCSSPseudoElements::GetPseudoType(aPseudoElement);
-  if (!pseudoType || *pseudoType == PseudoStyleType::NotPseudo) {
+  Maybe<PseudoStyleRequest> pseudoRequest =
+      nsCSSPseudoElements::ParsePseudoElement(aPseudoElement);
+  if (!pseudoRequest || pseudoRequest->IsNotPseudo()) {
     // Per the spec, we throw SyntaxError for syntactically invalid pseudos.
     aRv.ThrowSyntaxError(
         nsPrintfCString("'%s' is a syntactically invalid pseudo-element.",
@@ -1110,7 +1113,7 @@ void KeyframeEffect::SetPseudoElement(const nsAString& aPseudoElement,
     return;
   }
 
-  if (!AnimationUtils::IsSupportedPseudoForAnimations(*pseudoType)) {
+  if (!AnimationUtils::IsSupportedPseudoForAnimations(*pseudoRequest)) {
     // Per the spec, we throw SyntaxError for unsupported pseudos.
     aRv.ThrowSyntaxError(
         nsPrintfCString("'%s' is an unsupported pseudo-element.",
@@ -1118,7 +1121,7 @@ void KeyframeEffect::SetPseudoElement(const nsAString& aPseudoElement,
     return;
   }
 
-  UpdateTarget(mTarget.mElement, *pseudoType);
+  UpdateTarget(mTarget.mElement, *pseudoRequest);
 }
 
 static void CreatePropertyValue(
@@ -1375,6 +1378,12 @@ bool KeyframeEffect::CanThrottleIfNotVisible(nsIFrame& aFrame) const {
     return true;
   }
 
+  // The frame may be indirectly rendered as a mask or clipPath or via a use
+  // element.
+  if (SVGObserverUtils::SelfOrAncestorHasRenderingObservers(&aFrame)) {
+    return false;
+  }
+
   const bool isVisibilityHidden =
       !aFrame.IsVisibleOrMayHaveVisibleDescendants();
   const bool canOptimizeAwayVisibility =
@@ -1446,14 +1455,11 @@ bool KeyframeEffect::CanThrottle() const {
                    property.mProperty),
                "The property should be able to run on the compositor");
     if (!effectSet) {
-      effectSet = EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+      effectSet = EffectSet::Get(mTarget);
       MOZ_ASSERT(effectSet,
                  "CanThrottle should be called on an effect "
                  "associated with a target element");
     }
-    MOZ_ASSERT(HasEffectiveAnimationOfProperty(property.mProperty, *effectSet),
-               "There should be an effective animation of the property while "
-               "it is marked as being run on the compositor");
 
     DisplayItemType displayItemType =
         LayerAnimationInfo::GetDisplayItemTypeForProperty(
@@ -1467,6 +1473,10 @@ bool KeyframeEffect::CanThrottle() const {
     if (!generation || effectSet->GetAnimationGeneration() != *generation) {
       return false;
     }
+
+    MOZ_ASSERT(HasEffectiveAnimationOfProperty(property.mProperty, *effectSet),
+               "There should be an effective animation of the property while "
+               "it is marked as being run on the compositor");
 
     // If this is a transform animation that affects the overflow region,
     // we should unthrottle the animation periodically.
@@ -1482,7 +1492,7 @@ bool KeyframeEffect::CanThrottle() const {
 bool KeyframeEffect::CanThrottleOverflowChanges(const nsIFrame& aFrame) const {
   TimeStamp now = aFrame.PresContext()->RefreshDriver()->MostRecentRefresh();
 
-  EffectSet* effectSet = EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+  EffectSet* effectSet = EffectSet::Get(mTarget);
   MOZ_ASSERT(effectSet,
              "CanOverflowTransformChanges is expected to be called"
              " on an effect in an effect set");
@@ -1549,16 +1559,30 @@ nsIFrame* KeyframeEffect::GetPrimaryFrame() const {
     return frame;
   }
 
-  if (mTarget.mPseudoType == PseudoStyleType::before) {
-    frame = nsLayoutUtils::GetBeforeFrame(mTarget.mElement);
-  } else if (mTarget.mPseudoType == PseudoStyleType::after) {
-    frame = nsLayoutUtils::GetAfterFrame(mTarget.mElement);
-  } else if (mTarget.mPseudoType == PseudoStyleType::marker) {
-    frame = nsLayoutUtils::GetMarkerFrame(mTarget.mElement);
-  } else {
-    frame = mTarget.mElement->GetPrimaryFrame();
-    MOZ_ASSERT(mTarget.mPseudoType == PseudoStyleType::NotPseudo,
-               "unknown mTarget.mPseudoType");
+  switch (mTarget.mPseudoRequest.mType) {
+    case PseudoStyleType::before:
+      frame = nsLayoutUtils::GetBeforeFrame(mTarget.mElement);
+      break;
+    case PseudoStyleType::after:
+      frame = nsLayoutUtils::GetAfterFrame(mTarget.mElement);
+      break;
+    case PseudoStyleType::marker:
+      frame = nsLayoutUtils::GetMarkerFrame(mTarget.mElement);
+      break;
+    case PseudoStyleType::viewTransition:
+    case PseudoStyleType::viewTransitionGroup:
+    case PseudoStyleType::viewTransitionImagePair:
+    case PseudoStyleType::viewTransitionOld:
+    case PseudoStyleType::viewTransitionNew:
+      if (Element* pseudoElement =
+              mTarget.mElement->GetPseudoElement(mTarget.mPseudoRequest)) {
+        frame = pseudoElement->GetPrimaryFrame();
+      }
+      break;
+    default:
+      frame = mTarget.mElement->GetPrimaryFrame();
+      MOZ_ASSERT(mTarget.mPseudoRequest.IsNotPseudo(),
+                 "unknown mTarget.mPseudoRequest");
   }
 
   return frame;
@@ -1619,8 +1643,17 @@ bool KeyframeEffect::CanAnimateTransformOnCompositor(
 
   // Async 'transform' animations of aFrames with SVG transforms is not
   // supported.  See bug 779599.
-  if (primaryFrame->IsSVGTransformed()) {
+  if (primaryFrame->GetParentSVGTransforms()) {
     aPerformanceWarning = AnimationPerformanceWarning::Type::TransformSVG;
+    return false;
+  }
+
+  // If there's any content that might have non-scaling stroke then we can't
+  // run in the compositor.
+  if (primaryFrame->IsSVGFrame() &&
+      primaryFrame->HasAnyStateBits(
+          NS_STATE_SVG_MAY_CONTAIN_NON_SCALING_STROKE)) {
+    aPerformanceWarning = AnimationPerformanceWarning::Type::NonScalingStroke;
     return false;
   }
 
@@ -1637,7 +1670,7 @@ bool KeyframeEffect::ShouldBlockAsyncTransformAnimations(
     return true;
   }
 
-  EffectSet* effectSet = EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+  EffectSet* effectSet = EffectSet::Get(mTarget);
   // The various transform properties ('transform', 'scale' etc.) get combined
   // on the compositor.
   //
@@ -1810,7 +1843,7 @@ void KeyframeEffect::MarkCascadeNeedsUpdate() {
     return;
   }
 
-  EffectSet* effectSet = EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+  EffectSet* effectSet = EffectSet::Get(mTarget);
   if (!effectSet) {
     return;
   }
@@ -1898,9 +1931,7 @@ void KeyframeEffect::UpdateEffectSet(EffectSet* aEffectSet) const {
     return;
   }
 
-  EffectSet* effectSet =
-      aEffectSet ? aEffectSet
-                 : EffectSet::Get(mTarget.mElement, mTarget.mPseudoType);
+  EffectSet* effectSet = aEffectSet ? aEffectSet : EffectSet::Get(mTarget);
   if (!effectSet) {
     return;
   }

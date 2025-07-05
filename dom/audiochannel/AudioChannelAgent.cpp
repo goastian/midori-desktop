@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "AudioChannelAgent.h"
+
 #include "AudioChannelService.h"
 #include "mozilla/Preferences.h"
-#include "nsContentUtils.h"
 #include "mozilla/dom/Document.h"
+#include "nsContentUtils.h"
 #include "nsPIDOMWindow.h"
 
 using namespace mozilla::dom;
@@ -157,7 +158,7 @@ AudioChannelAgent::NotifyStartedPlaying(uint8_t aAudible) {
   MOZ_LOG(AudioChannelService::GetAudioChannelLog(), LogLevel::Debug,
           ("AudioChannelAgent, NotifyStartedPlaying, this = %p, audible = %s\n",
            this,
-           AudibleStateToStr(
+           AudioChannelService::EnumValueToString(
                static_cast<AudioChannelService::AudibleState>(aAudible))));
 
   mIsRegToService = true;
@@ -189,9 +190,9 @@ AudioChannelAgent::NotifyStartedAudible(uint8_t aAudible, uint32_t aReason) {
       ("AudioChannelAgent, NotifyStartedAudible, this = %p, "
        "audible = %s, reason = %s\n",
        this,
-       AudibleStateToStr(
+       AudioChannelService::EnumValueToString(
            static_cast<AudioChannelService::AudibleState>(aAudible)),
-       AudibleChangedReasonToStr(
+       AudioChannelService::EnumValueToString(
            static_cast<AudioChannelService::AudibleChangedReasons>(aReason))));
 
   RefPtr<AudioChannelService> service = AudioChannelService::GetOrCreate();

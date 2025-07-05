@@ -37,17 +37,21 @@ function generateHash(aString, hashAlg) {
   const stringStream = Cc[
     "@mozilla.org/io/string-input-stream;1"
   ].createInstance(Ci.nsIStringInputStream);
-  stringStream.data = aString;
+  stringStream.setByteStringData(aString);
   cryptoHash.updateFromStream(stringStream, -1);
   // base64 allows the '/' char, but we can't use it for filenames.
   return cryptoHash.finish(true).replace(/\//g, "-");
 }
 
 /**
- * Trims the query parameters from a url
+ * Trims the query parameters from a uri.
+ *
+ * @param {nsIURI} uri
+ *
+ * @returns {string} The url as a string, without any query or hash/ref bits.
  */
-function stripQuery(url) {
-  return url.split("?")[0];
+function stripQuery(uri) {
+  return uri.mutate().setQuery("").setRef("").finalize().spec;
 }
 
 // Folder in which we store the manifest files
@@ -158,7 +162,7 @@ class Manifest {
   get scope() {
     const scope =
       this._store.data.manifest.scope || this._store.data.manifest.start_url;
-    return stripQuery(scope);
+    return stripQuery(Services.io.newURI(scope));
   }
 
   get name() {
@@ -247,7 +251,7 @@ export var Manifests = {
     // url of the client and see if it matches the scope of any installed
     // manifests
     if (!manifestUrl) {
-      const url = stripQuery(browser.currentURI.spec);
+      const url = stripQuery(browser.currentURI);
       manifestUrl = this.findManifestUrl(url);
     }
 

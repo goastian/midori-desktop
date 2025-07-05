@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsOpenURIInFrameParams.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsIOpenWindowInfo.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/dom/Element.h"
@@ -47,7 +48,7 @@ nsOpenURIInFrameParams::SetReferrerInfo(nsIReferrerInfo* aReferrerInfo) {
 NS_IMETHODIMP
 nsOpenURIInFrameParams::GetIsPrivate(bool* aIsPrivate) {
   NS_ENSURE_ARG_POINTER(aIsPrivate);
-  *aIsPrivate = mOpenWindowInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
+  *aIsPrivate = mOpenWindowInfo->GetOriginAttributes().IsPrivateBrowsing();
   return NS_OK;
 }
 

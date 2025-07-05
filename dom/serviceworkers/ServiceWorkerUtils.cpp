@@ -6,87 +6,133 @@
 
 #include "ServiceWorkerUtils.h"
 
+#include "nsContentPolicyUtils.h"
+
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/LoadInfo.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_extensions.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/ClientInfo.h"
+#include "mozilla/dom/ClientIPCTypes.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/ServiceWorkerGlobalScopeBinding.h"
 #include "mozilla/dom/ServiceWorkerRegistrarTypes.h"
+#include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRunnable.h"
 #include "nsCOMPtr.h"
+#include "nsIContentSecurityPolicy.h"
+#include "nsIGlobalObject.h"
 #include "nsIPrincipal.h"
 #include "nsIURL.h"
 #include "nsPrintfCString.h"
 
 namespace mozilla::dom {
 
-static bool IsServiceWorkersTestingEnabledInWindow(JSObject* const aGlobal) {
+static bool IsServiceWorkersTestingEnabledInGlobal(JSObject* const aGlobal) {
   if (const nsCOMPtr<nsPIDOMWindowInner> innerWindow =
           Navigator::GetWindowFromGlobal(aGlobal)) {
     if (auto* bc = innerWindow->GetBrowsingContext()) {
       return bc->Top()->ServiceWorkersTestingEnabled();
     }
+    return false;
   }
-  return false;
-}
-
-static bool IsInPrivateBrowsing(JSContext* const aCx) {
-  if (const nsCOMPtr<nsIGlobalObject> global = xpc::CurrentNativeGlobal(aCx)) {
-    if (const nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull()) {
-      return principal->GetPrivateBrowsingId() > 0;
-    }
+  if (WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate()) {
+    return workerPrivate->ServiceWorkersTestingInWindow();
   }
   return false;
 }
 
 bool ServiceWorkersEnabled(JSContext* aCx, JSObject* aGlobal) {
-  MOZ_ASSERT(NS_IsMainThread());
-
   if (!StaticPrefs::dom_serviceWorkers_enabled()) {
     return false;
   }
 
   // xpc::CurrentNativeGlobal below requires rooting
-  JS::Rooted<JSObject*> global(aCx, aGlobal);
+  JS::Rooted<JSObject*> jsGlobal(aCx, aGlobal);
+  nsIGlobalObject* global = xpc::CurrentNativeGlobal(aCx);
 
-  if (IsInPrivateBrowsing(aCx)) {
-    return false;
-  }
-
-  // Allow a webextension principal to register a service worker script with
-  // a moz-extension url only if 'extensions.service_worker_register.allowed'
-  // is true.
-  if (!StaticPrefs::extensions_serviceWorkerRegister_allowed()) {
-    nsIPrincipal* principal = nsContentUtils::SubjectPrincipal(aCx);
-    if (principal && BasePrincipal::Cast(principal)->AddonPolicy()) {
+  if (const nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull()) {
+    // Only support ServiceWorkers in Private Browsing Mode (PBM) if Cache API
+    // and ServiceWorkers are enabled.  We'll get weird errors without Cache
+    // API.
+    if (principal->GetIsInPrivateBrowsing() &&
+        !(StaticPrefs::dom_cache_privateBrowsing_enabled() &&
+          StaticPrefs::dom_serviceWorkers_privateBrowsing_enabled())) {
       return false;
+    }
+
+    // Allow a webextension principal to register a service worker script with
+    // a moz-extension url only if 'extensions.service_worker_register.allowed'
+    // is true.
+    if (!StaticPrefs::extensions_serviceWorkerRegister_allowed()) {
+      if (principal->GetIsAddonOrExpandedAddonPrincipal()) {
+        return false;
+      }
     }
   }
 
-  if (IsSecureContextOrObjectIsFromSecureContext(aCx, global)) {
+  if (IsSecureContextOrObjectIsFromSecureContext(aCx, jsGlobal)) {
     return true;
   }
 
   return StaticPrefs::dom_serviceWorkers_testing_enabled() ||
-         IsServiceWorkersTestingEnabledInWindow(global);
+         IsServiceWorkersTestingEnabledInGlobal(jsGlobal);
 }
 
-bool ServiceWorkerVisible(JSContext* aCx, JSObject* aGlobal) {
-  if (NS_IsMainThread()) {
-    // We want to expose ServiceWorker interface only when
-    // navigator.serviceWorker is available. Currently it may not be available
-    // with some reasons:
-    // 1. navigator.serviceWorker is not supported in workers. (bug 1131324)
-    return ServiceWorkersEnabled(aCx, aGlobal);
+bool ServiceWorkersStorageAllowedForGlobal(nsIGlobalObject* aGlobal) {
+  Maybe<ClientInfo> clientInfo = aGlobal->GetClientInfo();
+  nsICookieJarSettings* cookieJarSettings = aGlobal->GetCookieJarSettings();
+  nsIPrincipal* principal = aGlobal->PrincipalOrNull();
+
+  if (NS_WARN_IF(clientInfo.isNothing() || !cookieJarSettings || !principal)) {
+    return false;
   }
 
-  // We are already in ServiceWorker and interfaces need to be exposed for e.g.
-  // globalThis.registration.serviceWorker. Note that navigator.serviceWorker
-  // is still not supported. (bug 1131324)
-  return IS_INSTANCE_OF(ServiceWorkerGlobalScope, aGlobal);
+  // Note that while we could call GetClientState on the global and it has a
+  // StorageAccess value, for non-fully active Window Clients, the storage
+  // access value is set to eDeny when snapshotted so we must not use it because
+  // this method may be called before a window becomes fully active.
+  auto storageAllowed = aGlobal->GetStorageAccess();
+
+  // Allow access if:
+  // - Storage access is explicitly granted.
+  // - We are in private browsing and ServiceWorkers is allowed in PBM.  Note
+  //   that we will also potentially partition in PBM, so we have to do a
+  //   separate PBM check in the partitioned case.
+  // - Partitioned access is granted and partitioning is enabled, plus if our
+  //   principal is in PBM that ServiceWorkers are enabled in PBM.
+  return (storageAllowed == StorageAccess::eAllow ||
+          (storageAllowed == StorageAccess::ePrivateBrowsing &&
+           StaticPrefs::dom_serviceWorkers_privateBrowsing_enabled()) ||
+          (ShouldPartitionStorage(storageAllowed) &&
+           StaticPrefs::privacy_partition_serviceWorkers() &&
+           StoragePartitioningEnabled(storageAllowed, cookieJarSettings) &&
+           (!principal->GetIsInPrivateBrowsing() ||
+            StaticPrefs::dom_serviceWorkers_privateBrowsing_enabled())));
+}
+
+bool ServiceWorkersStorageAllowedForClient(
+    const ClientInfoAndState& aInfoAndState) {
+  ClientInfo info(aInfoAndState.info());
+  ClientState state(ClientState::FromIPC(aInfoAndState.state()));
+
+  auto storageAllowed = state.GetStorageAccess();
+  // This is the same check as in ServiceWorkersStorageAllowedForGlobal except
+  // that because we have no access to a cookie-jar we can't call
+  // StoragePartitioningEnabled.  This isn't a concern in this case because any
+  // partitioning will already be baked into our principal.
+  return (storageAllowed == StorageAccess::eAllow ||
+          (storageAllowed == StorageAccess::ePrivateBrowsing &&
+           StaticPrefs::dom_serviceWorkers_privateBrowsing_enabled()) ||
+          (ShouldPartitionStorage(storageAllowed) &&
+           StaticPrefs::privacy_partition_serviceWorkers() &&
+           /* note: no call to StoragePartitioningEnabled here */
+           (!info.IsPrivateBrowsing() ||
+            StaticPrefs::dom_serviceWorkers_privateBrowsing_enabled())));
 }
 
 bool ServiceWorkerRegistrationDataIsValid(
@@ -94,6 +140,30 @@ bool ServiceWorkerRegistrationDataIsValid(
   return !aData.scope().IsEmpty() && !aData.currentWorkerURL().IsEmpty() &&
          !aData.cacheName().IsEmpty();
 }
+
+class WorkerCheckMayLoadSyncRunnable final : public WorkerMainThreadRunnable {
+ public:
+  explicit WorkerCheckMayLoadSyncRunnable(
+      std::function<void(ErrorResult&)>&& aCheckFunc)
+      : WorkerMainThreadRunnable(GetCurrentThreadWorkerPrivate(),
+                                 "WorkerCheckMayLoadSyncRunnable"_ns),
+        mCheckFunc(aCheckFunc) {}
+
+  bool MainThreadRun() override {
+    ErrorResult localResult;
+    mCheckFunc(localResult);
+    mRv = CopyableErrorResult(std::move(localResult));
+    return true;
+  }
+
+  void PropagateErrorResult(ErrorResult& aOutRv) {
+    aOutRv = ErrorResult(std::move(mRv));
+  }
+
+ private:
+  std::function<void(ErrorResult&)> mCheckFunc;
+  CopyableErrorResult mRv;
+};
 
 namespace {
 
@@ -126,11 +196,36 @@ void CheckForSlashEscapedCharsInPath(nsIURI* aURI, const char* aURLDescription,
   }
 }
 
+// Helper to take a lambda and, if we are already on the main thread, run it
+// right now on the main thread, otherwise we use the
+// WorkerCheckMayLoadSyncRunnable which spins a sync loop and run that on the
+// main thread.  When Bug 1901387 makes it possible to run CheckMayLoad logic
+// on worker threads, this helper can be removed and the lambda flattened.
+//
+// This method takes an ErrorResult to pass as an argument to the lambda because
+// the ErrorResult will also be used to capture dispatch failures.
+void CheckMayLoadOnMainThread(ErrorResult& aRv,
+                              std::function<void(ErrorResult&)>&& aCheckFunc) {
+  if (NS_IsMainThread()) {
+    aCheckFunc(aRv);
+    return;
+  }
+
+  RefPtr<WorkerCheckMayLoadSyncRunnable> runnable =
+      new WorkerCheckMayLoadSyncRunnable(std::move(aCheckFunc));
+  runnable->Dispatch(GetCurrentThreadWorkerPrivate(), Canceling, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+  runnable->PropagateErrorResult(aRv);
+}
+
 }  // anonymous namespace
 
 void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
                                          nsIURI* aScopeURI, nsIURI* aScriptURI,
-                                         ErrorResult& aRv) {
+                                         ErrorResult& aRv,
+                                         nsIGlobalObject* aGlobalForReporting) {
   MOZ_DIAGNOSTIC_ASSERT(aScopeURI);
   MOZ_DIAGNOSTIC_ASSERT(aScriptURI);
 
@@ -141,7 +236,7 @@ void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
   }
 
   auto hasHTTPScheme = [](nsIURI* aURI) -> bool {
-    return aURI->SchemeIs("http") || aURI->SchemeIs("https");
+    return net::SchemeIsHttpOrHttps(aURI);
   };
   auto hasMozExtScheme = [](nsIURI* aURI) -> bool {
     return aURI->SchemeIs("moz-extension");
@@ -149,7 +244,7 @@ void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
 
   nsCOMPtr<nsIPrincipal> principal = principalOrErr.unwrap();
 
-  auto isExtension = !!BasePrincipal::Cast(principal)->AddonPolicy();
+  auto isExtension = principal->GetIsAddonOrExpandedAddonPrincipal();
   auto hasValidURISchemes = !isExtension ? hasHTTPScheme : hasMozExtScheme;
 
   // https://w3c.github.io/ServiceWorker/#start-register-algorithm step 3.
@@ -197,21 +292,97 @@ void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
     return;
   }
 
-  // Unfortunately we don't seem to have an obvious window id here; in
-  // particular ClientInfo does not have one.
-  nsresult rv = principal->CheckMayLoadWithReporting(
-      aScopeURI, false /* allowIfInheritsPrincipal */, 0 /* innerWindowID */);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    aRv.ThrowSecurityError("Scope URL is not same-origin with Client");
-    return;
+  // CSP reporting on the main thread relies on the document node.
+  Document* maybeDoc = nullptr;
+  // CSP reporting for the worker relies on a helper listener.
+  nsCOMPtr<nsICSPEventListener> cspListener;
+  if (aGlobalForReporting) {
+    if (auto* win = aGlobalForReporting->GetAsInnerWindow()) {
+      maybeDoc = win->GetExtantDoc();
+      if (!maybeDoc) {
+        aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+        return;
+      }
+      // LoadInfo has assertions about the Principal passed to it being the
+      // same object as the doc NodePrincipal(), so clobber principal to be
+      // that rather than the Principal we pulled out of the ClientInfo.
+      principal = maybeDoc->NodePrincipal();
+    } else if (auto* wp = GetCurrentThreadWorkerPrivate()) {
+      cspListener = wp->CSPEventListener();
+    }
   }
 
-  rv = principal->CheckMayLoadWithReporting(
-      aScriptURI, false /* allowIfInheritsPrincipal */, 0 /* innerWindowID */);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    aRv.ThrowSecurityError("Script URL is not same-origin with Client");
-    return;
-  }
+  // If this runs on the main thread, it is done synchronously.  On workers all
+  // the references are safe due to the use of a sync runnable that blocks
+  // execution of the worker.  The caveat is that control runnables can run
+  // while the syncloop spins and these can cause a worker global to start dying
+  // and WorkerRefs to be notified.  However, GlobalTeardownObservers will only
+  // be torn down when the stack completely unwinds and no syncloops are on the
+  // stack.
+  CheckMayLoadOnMainThread(aRv, [&](ErrorResult& aResult) {
+    nsresult rv = principal->CheckMayLoadWithReporting(
+        aScopeURI, false /* allowIfInheritsPrincipal */, 0 /* innerWindowID */);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      aResult.ThrowSecurityError("Scope URL is not same-origin with Client");
+      return;
+    }
+
+    rv = principal->CheckMayLoadWithReporting(
+        aScriptURI, false /* allowIfInheritsPrincipal */,
+        0 /* innerWindowID */);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      aResult.ThrowSecurityError("Script URL is not same-origin with Client");
+      return;
+    }
+
+    // We perform a CSP check where the check will retrieve the CSP from the
+    // ClientInfo and validate worker-src directives or its fallbacks
+    // (https://w3c.github.io/webappsec-csp/#directive-worker-src).
+    //
+    // https://w3c.github.io/webappsec-csp/#fetch-integration explains how CSP
+    // integrates with fetch (although exact step numbers are currently out of
+    // sync).  Specifically main fetch
+    // (https://fetch.spec.whatwg.org/#concept-main-fetch) does report-only
+    // checks in step 4, checks for request blocks in step 7, and response
+    // blocks in step 19.
+    //
+    // We are performing this check prior to our use of fetch due to asymmetries
+    // about application of CSP raised in Bug 1455077 and in more detail in the
+    // still-open https://github.com/w3c/ServiceWorker/issues/755.
+    //
+    // Also note that while fetch explicitly returns network errors for CSP, our
+    // logic here (and the CheckMayLoad calls above) corresponds to the steps of
+    // the register (https://w3c.github.io/ServiceWorker/#register-algorithm)
+    // which explicitly throws a SecurityError.
+    Result<RefPtr<net::LoadInfo>, nsresult> maybeLoadInfo =
+        net::LoadInfo::Create(
+            principal,  // loading principal
+            principal,  // triggering principal
+            maybeDoc,   // loading node
+            nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
+            nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER, Some(aClientInfo));
+    if (NS_WARN_IF(maybeLoadInfo.isErr())) {
+      aResult.ThrowSecurityError("Script URL is not allowed by policy.");
+      return;
+    }
+    RefPtr<net::LoadInfo> secCheckLoadInfo = maybeLoadInfo.unwrap();
+
+    if (cspListener) {
+      rv = secCheckLoadInfo->SetCspEventListener(cspListener);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+        return;
+      }
+    }
+
+    // Check content policy.
+    int16_t decision = nsIContentPolicy::ACCEPT;
+    rv = NS_CheckContentLoadPolicy(aScriptURI, secCheckLoadInfo, &decision);
+    if (NS_FAILED(rv) || NS_WARN_IF(decision != nsIContentPolicy::ACCEPT)) {
+      aResult.ThrowSecurityError("Script URL is not allowed by policy.");
+      return;
+    }
+  });
 }
 
 }  // namespace mozilla::dom

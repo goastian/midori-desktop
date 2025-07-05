@@ -1,6 +1,7 @@
 [DEFAULT]
 dupe-manifest = ""
 head = "xpcshell-head-parent-process.js"
+tags = "inc-origin-init"
 tail =  ""
 support-files = [
   "URLSearchParams_profile.zip",
@@ -16,6 +17,7 @@ support-files = [
   "GlobalObjectsSandbox.js",
   "metadata2Restore_profile.zip",
   "metadataRestore_profile.zip",
+  "fileListUpgrade_profile.zip",
   "schema18upgrade_profile.zip",
   "schema21upgrade_profile.zip",
   "schema23upgrade_profile.zip",
@@ -28,7 +30,7 @@ support-files = [
 ["include:xpcshell-shared.toml"]
 
 ["make_URLSearchParams.js"]
-skip-if = ["true"] # Only used for recreating URLSearchParams_profile.zip
+run-if = ["false"] # Only used for recreating URLSearchParams_profile.zip
 
 ["test_URLSearchParams.js"]
 
@@ -42,24 +44,32 @@ skip-if = ["true"] # Only used for recreating URLSearchParams_profile.zip
 
 ["test_clear_object_store_with_indexes.js"]
 requesttimeoutfactor = 2
-skip-if = ["tsan"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan && !fission && socketprocess_networking", # Bug TBD
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # Bug 1959284
+]
 
 ["test_connection_idle_maintenance.js"]
 
 ["test_connection_idle_maintenance_stop.js"]
 
+["test_databaseWorkStarted.js"]
+
 ["test_database_close_without_onclose.js"]
 
 ["test_database_onclose.js"]
 
+["test_fileListUpgrade.js"]
+
 ["test_file_copy_failure.js"]
 
 ["test_globalObjects_ipc.js"]
-skip-if = ["os == 'android'"]
 
 ["test_idbSubdirUpgrade.js"]
 
 ["test_idle_maintenance.js"]
+
+["test_idle_maintenance_and_databases.js"]
 
 ["test_invalidate.js"]
 # disabled for the moment.
@@ -68,6 +78,8 @@ skip-if = ["true"]
 ["test_marker_file.js"]
 
 ["test_maximal_serialized_object_size.js"]
+
+["test_maximal_structured_clone_size.js"]
 
 ["test_metadata2Restore.js"]
 
@@ -91,13 +103,21 @@ skip-if = ["true"]
 
 ["test_schema23upgrade.js"]
 
+["test_slowDatabaseInitialization.js"]
+
+["test_slowStorageInitialization.js"]
+
 ["test_snappyUpgrade.js"]
 
 ["test_storagePersistentUpgrade.js"]
 
 ["test_temporary_storage.js"]
-# bug 951017: intermittent failure on Android x86 emulator
-skip-if = ["os == 'android' && processor == 'x86'"]
+skip-if = [
+  "inc_origin_init", # bug 1942783
+]
+
+["test_transaction_durability.js"]
+run-sequentially = "very high failure rate in parallel"
 
 ["test_unexpectedDirectory.js"]
 

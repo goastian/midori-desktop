@@ -21,6 +21,7 @@
 #include "mozilla/dom/PContent.h"
 #include "mozilla/dom/Document.h"
 #include "nsPIDOMWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "nsContentPermissionHelper.h"
 #include "nsISupportsImpl.h"  // for MOZ_COUNT_CTOR, MOZ_COUNT_DTOR
 #include "ipc/IPCMessageUtils.h"
@@ -74,7 +75,6 @@ void MIDIAccess::Shutdown() {
   if (mHasShutdown) {
     return;
   }
-  mDestructionObservers.Broadcast(void_t());
   if (MIDIAccessManager::IsRunning()) {
     MIDIAccessManager::Get()->RemoveObserver(this);
   }
@@ -150,7 +150,7 @@ void MIDIAccess::MaybeCreateMIDIPort(const MIDIPortInfo& aInfo,
       // We already have the port in our map.
       return;
     }
-    port = MIDIInput::Create(GetOwner(), this, aInfo, mSysexEnabled);
+    port = MIDIInput::Create(GetOwnerWindow(), this, aInfo, mSysexEnabled);
     if (NS_WARN_IF(!port)) {
       LOG("Couldn't create input port");
       aRv.Throw(NS_ERROR_FAILURE);
@@ -169,7 +169,7 @@ void MIDIAccess::MaybeCreateMIDIPort(const MIDIPortInfo& aInfo,
       // We already have the port in our map.
       return;
     }
-    port = MIDIOutput::Create(GetOwner(), this, aInfo, mSysexEnabled);
+    port = MIDIOutput::Create(GetOwnerWindow(), this, aInfo, mSysexEnabled);
     if (NS_WARN_IF(!port)) {
       LOG("Couldn't create output port");
       aRv.Throw(NS_ERROR_FAILURE);
@@ -188,8 +188,6 @@ void MIDIAccess::MaybeCreateMIDIPort(const MIDIPortInfo& aInfo,
     // That is bad.
     MOZ_CRASH("We shouldn't be here!");
   }
-  // Set up port to listen for destruction of this access object.
-  mDestructionObservers.AddObserver(port);
 
   // If we haven't resolved the promise for handing the MIDIAccess object to
   // content, this means we're still populating the list of already connected
@@ -205,7 +203,7 @@ void MIDIAccess::MaybeCreateMIDIPort(const MIDIPortInfo& aInfo,
 // request removal from MIDIAccess's maps.
 void MIDIAccess::Notify(const MIDIPortList& aEvent) {
   LOG("MIDIAcess::Notify");
-  if (!GetOwner()) {
+  if (!GetOwnerWindow()) {
     // Do nothing if we've already been disconnected from the document.
     return;
   }
@@ -234,10 +232,6 @@ void MIDIAccess::Notify(const MIDIPortList& aEvent) {
 JSObject* MIDIAccess::WrapObject(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto) {
   return MIDIAccess_Binding::Wrap(aCx, this, aGivenProto);
-}
-
-void MIDIAccess::RemovePortListener(MIDIAccessDestructionObserver* aObs) {
-  mDestructionObservers.RemoveObserver(aObs);
 }
 
 void MIDIAccess::DisconnectFromOwner() {

@@ -6,6 +6,7 @@
 #include "WebGLParent.h"
 
 #include "WebGLChild.h"
+#include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/layers/TextureClientSharedSurface.h"
 #include "ImageContainer.h"
 #include "HostWebGLContext.h"
@@ -24,8 +25,9 @@ mozilla::ipc::IPCResult WebGLParent::RecvInitialize(
   return IPC_OK();
 }
 
-WebGLParent::WebGLParent(const dom::ContentParentId& aContentId)
-    : mContentId(aContentId) {}
+WebGLParent::WebGLParent(layers::SharedSurfacesHolder* aSharedSurfacesHolder,
+                         const dom::ContentParentId& aContentId)
+    : mSharedSurfacesHolder(aSharedSurfacesHolder), mContentId(aContentId) {}
 
 WebGLParent::~WebGLParent() = default;
 
@@ -145,6 +147,7 @@ IPCResult WebGLParent::GetFrontBufferSnapshot(
     if (maybeSize) {
       const auto& surfSize = *maybeSize;
       const auto byteSize = 4 * surfSize.x * surfSize.y;
+      const auto byteStride = 4 * surfSize.x;
 
       auto shmem = webgl::RaiiShmem::Alloc(aProtocol, byteSize);
       if (!shmem) {
@@ -152,7 +155,7 @@ IPCResult WebGLParent::GetFrontBufferSnapshot(
         return false;
       }
       const auto range = shmem.ByteRange();
-      *ret = {surfSize, Some(shmem.Extract())};
+      *ret = {surfSize, byteStride, Some(shmem.Extract())};
 
       if (!mHost->FrontBufferSnapshotInto(Some(range))) {
         gfxCriticalNote << "WebGLParent::RecvGetFrontBufferSnapshot: "
@@ -408,17 +411,6 @@ IPCResult WebGLParent::RecvGetSamplerParameter(ObjectId id, GLenum pname,
   }
 
   *ret = mHost->GetSamplerParameter(id, pname);
-  return IPC_OK();
-}
-
-IPCResult WebGLParent::RecvGetShaderPrecisionFormat(
-    GLenum shaderType, GLenum precisionType,
-    Maybe<webgl::ShaderPrecisionFormat>* const ret) {
-  if (!mHost) {
-    return IPC_FAIL(this, "HostWebGLContext is not initialized.");
-  }
-
-  *ret = mHost->GetShaderPrecisionFormat(shaderType, precisionType);
   return IPC_OK();
 }
 

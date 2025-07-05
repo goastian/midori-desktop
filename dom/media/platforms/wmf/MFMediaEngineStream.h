@@ -42,6 +42,7 @@ class MFMediaEngineStream
   virtual nsCString GetCodecName() const = 0;
 
   HRESULT RuntimeClassInitialize(uint64_t aStreamId, const TrackInfo& aInfo,
+                                 bool aIsEncrytpedCustomInit,
                                  MFMediaSource* aParentSource);
 
   // Called by MFMediaSource.
@@ -127,7 +128,7 @@ class MFMediaEngineStream
 
   // Overwrite this method if inherited class needs to perform clean up on the
   // task queue when the stream gets shutdowned.
-  virtual void ShutdownCleanUpOnTaskQueue(){};
+  virtual void ShutdownCleanUpOnTaskQueue() {};
 
   // Inherited class must implement this method to return decoded data. it
   // should uses `mRawDataQueueForGeneratingOutput` to generate output.
@@ -188,6 +189,9 @@ class MFMediaEngineStream
   // True if the stream has received the last data, but it could be reset if the
   // stream starts delivering more data. Used on the task queue only.
   bool mReceivedEOS;
+
+  // https://github.com/w3c/encrypted-media/issues/251#issuecomment-819783073
+  bool mIsEncrytpedCustomInit;
 };
 
 /**
@@ -217,6 +221,9 @@ class MFMediaEngineStreamWrapper final : public MediaDataDecoder {
   nsCString GetDescriptionName() const override;
   nsCString GetCodecName() const override;
   ConversionRequired NeedsConversion() const override;
+  bool ShouldDecoderAlwaysBeRecycled() const override;
+
+  bool IsHardwareAccelerated(nsACString& aFailureReason) const override;
 
  private:
   ~MFMediaEngineStreamWrapper() = default;

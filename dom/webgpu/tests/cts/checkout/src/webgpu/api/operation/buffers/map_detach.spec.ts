@@ -7,9 +7,9 @@ import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { getGPU } from '../../../../common/util/navigator_gpu.js';
 import { assert } from '../../../../common/util/util.js';
 import { GPUConst } from '../../../constants.js';
-import { GPUTest } from '../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('while_mapped')
   .desc(
@@ -50,13 +50,15 @@ g.test('while_mapped')
     if (deviceDestroy) {
       const adapter = await getGPU(t.rec).requestAdapter();
       assert(adapter !== null);
-      device = await adapter.requestDevice();
+      device = await t.requestDeviceTracked(adapter);
     }
-    const buffer = device.createBuffer({
-      size: 4,
-      usage,
-      mappedAtCreation,
-    });
+    const buffer = t.trackForCleanup(
+      device.createBuffer({
+        size: 4,
+        usage,
+        mappedAtCreation,
+      })
+    );
 
     if (mapMode !== undefined) {
       if (mappedAtCreation) {

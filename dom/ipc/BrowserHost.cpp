@@ -7,6 +7,7 @@
 #include "mozilla/dom/BrowserHost.h"
 
 #include "mozilla/Unused.h"
+#include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/CancelContentJSOptionsBinding.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/WindowGlobalParent.h"
@@ -90,8 +91,8 @@ bool BrowserHost::Show(const OwnerShowInfo& aShowInfo) {
   return mRoot->Show(aShowInfo);
 }
 
-void BrowserHost::UpdateDimensions(const nsIntRect& aRect,
-                                   const ScreenIntSize& aSize) {
+void BrowserHost::UpdateDimensions(const LayoutDeviceIntRect& aRect,
+                                   const LayoutDeviceIntSize& aSize) {
   mRoot->UpdateDimensions(aRect, aSize);
 }
 
@@ -106,8 +107,7 @@ void BrowserHost::UpdateEffects(EffectsInfo aEffects) {
 /* attribute boolean renderLayers; */
 NS_IMETHODIMP
 BrowserHost::GetRenderLayers(bool* aRenderLayers) {
-  // Floorp Injections
-  if (!mRoot && !Preferences::GetBool("floorp.browser.splitView.working", false)) {
+  if (!mRoot) {
     *aRenderLayers = false;
     return NS_OK;
   }
@@ -254,12 +254,26 @@ BrowserHost::CreateAboutBlankDocumentViewer(
     return NS_OK;
   }
 
+  // Before creating the viewer in-content, ensure that the process is allowed
+  // to load this principal.
+  if (NS_WARN_IF(!mRoot->Manager()->ValidatePrincipal(aPrincipal))) {
+    ContentParent::LogAndAssertFailedPrincipalValidationInfo(
+        aPrincipal, "BrowserHost::CreateAboutBlankDocumentViewer");
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
   // Ensure the content process has permisisons for the new document we're about
   // to create in it.
   nsresult rv = GetContentParent()->TransmitPermissionsForPrincipal(aPrincipal);
   if (NS_FAILED(rv)) {
     return rv;
   }
+
+  // Ensure that UsesOriginAgentCluster has been initialized for this
+  // BrowsingContextGroup/principal pair before creating the document in
+  // content.
+  mRoot->GetBrowsingContext()->Group()->EnsureUsesOriginAgentClusterInitialized(
+      aPrincipal);
 
   Unused << mRoot->SendCreateAboutBlankDocumentViewer(aPrincipal,
                                                       aPartitionedPrincipal);

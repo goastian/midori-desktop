@@ -9,6 +9,7 @@
 
 #include "DebuggerNotification.h"
 #include "DebuggerNotificationManager.h"
+#include "mozilla/CycleCollectedJSContext.h"
 
 namespace mozilla::dom {
 
@@ -62,6 +63,52 @@ class MOZ_RAII CallbackDebuggerNotificationGuard final {
 
  private:
   MOZ_CAN_RUN_SCRIPT void Dispatch(CallbackDebuggerNotificationPhase aPhase) {
+#ifdef MOZ_EXECUTION_TRACING
+    if (MOZ_UNLIKELY(profiler_is_active())) {
+      CycleCollectedJSContext* ccjcx = CycleCollectedJSContext::Get();
+      if (ccjcx) {
+        const char* typeStr = "";
+        switch (mType) {
+          case DebuggerNotificationType::SetTimeout:
+            typeStr = "setTimeout";
+            break;
+          case DebuggerNotificationType::ClearTimeout:
+            typeStr = "clearTimeout";
+            break;
+          case DebuggerNotificationType::SetInterval:
+            typeStr = "setInterval";
+            break;
+          case DebuggerNotificationType::ClearInterval:
+            typeStr = "clearInterval";
+            break;
+          case DebuggerNotificationType::RequestAnimationFrame:
+            typeStr = "requestAnimationFrame";
+            break;
+          case DebuggerNotificationType::CancelAnimationFrame:
+            typeStr = "cancelAnimationFrame";
+            break;
+          case DebuggerNotificationType::SetTimeoutCallback:
+            typeStr = "setTimeout";
+            break;
+          case DebuggerNotificationType::SetIntervalCallback:
+            typeStr = "setInterval";
+            break;
+          case DebuggerNotificationType::RequestAnimationFrameCallback:
+            typeStr = "requestAnimationFrame";
+            break;
+          case DebuggerNotificationType::DomEvent:
+            MOZ_CRASH("Unreachable");
+            break;
+        }
+        if (aPhase == CallbackDebuggerNotificationPhase::Pre) {
+          JS_TracerEnterLabelLatin1(ccjcx->Context(), typeStr);
+        } else {
+          JS_TracerLeaveLabelLatin1(ccjcx->Context(), typeStr);
+        }
+      }
+    }
+#endif
+
     auto manager = DebuggerNotificationManager::ForDispatch(mDebuggeeGlobal);
     if (MOZ_UNLIKELY(manager)) {
       manager->Dispatch<CallbackDebuggerNotification>(mType, aPhase);

@@ -103,7 +103,8 @@ class WorkletImpl {
   WorkletImpl(nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal);
   virtual ~WorkletImpl();
 
-  virtual already_AddRefed<dom::WorkletGlobalScope> ConstructGlobalScope() = 0;
+  virtual already_AddRefed<dom::WorkletGlobalScope> ConstructGlobalScope(
+      JSContext* aCx) = 0;
 
   // Modified only in constructor.
   ipc::PrincipalInfo mPrincipalInfo;
@@ -128,7 +129,7 @@ class WorkletImpl {
   // This will only get populated if these is one that comes from the local
   // granular override pref or WebCompat. Otherwise, a value of Nothing()
   // indicates no granular overrides are present for this workerlet.
-  Maybe<RFPTarget> mOverriddenFingerprintingSettings;
+  Maybe<RFPTargetSet> mOverriddenFingerprintingSettings;
 
   const OriginTrials mTrials;
 };

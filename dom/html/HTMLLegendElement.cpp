@@ -33,11 +33,11 @@ bool HTMLLegendElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                        nsIPrincipal* aMaybeScriptedPrincipal,
                                        nsAttrValue& aResult) {
   // this contains center, because IE4 does
-  static const nsAttrValue::EnumTable kAlignTable[] = {
+  static constexpr nsAttrValue::EnumTableEntry kAlignTable[] = {
       {"left", LegendAlignValue::Left},
       {"right", LegendAlignValue::Right},
       {"center", LegendAlignValue::Center},
-      {nullptr, 0}};
+  };
 
   if (aAttribute == nsGkAtoms::align && aNamespaceID == kNameSpaceID_None) {
     return aResult.ParseEnumValue(aValue, kAlignTable, false);
@@ -128,7 +128,7 @@ HTMLLegendElement::LegendAlignValue HTMLLegendElement::LogicalAlign(
 }
 
 HTMLFormElement* HTMLLegendElement::GetForm() const {
-  nsCOMPtr<nsIFormControl> fieldsetControl = do_QueryInterface(GetFieldSet());
+  const auto* fieldsetControl = nsIFormControl::FromNodeOrNull(GetFieldSet());
   return fieldsetControl ? fieldsetControl->GetForm() : nullptr;
 }
 

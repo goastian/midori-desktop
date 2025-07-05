@@ -21,7 +21,7 @@ function localStorageReload(callback) {
     localStorage.close();
     let qms = SpecialPowers.Services.qms;
     let principal = SpecialPowers.wrap(document).nodePrincipal;
-    let request = qms.resetStoragesForPrincipal(principal, "default", "ls");
+    let request = qms.resetStoragesForClient(principal, "ls", "default");
     request.callback = SpecialPowers.wrapCallback(function () {
       localStorage.open();
       callback();
@@ -40,7 +40,7 @@ function localStorageFlushAndReload(callback) {
     localStorage.close();
     let qms = SpecialPowers.Services.qms;
     let principal = SpecialPowers.wrap(document).nodePrincipal;
-    let request = qms.resetStoragesForPrincipal(principal, "default", "ls");
+    let request = qms.resetStoragesForClient(principal, "ls", "default");
     request.callback = SpecialPowers.wrapCallback(function () {
       localStorage.open();
       callback();
@@ -68,10 +68,10 @@ function localStorageClearAll(callback) {
         let clearRequestCount = 0;
         for (let item of request.result) {
           let principal = ssm.createContentPrincipalFromOrigin(item.origin);
-          let clearRequest = qms.clearStoragesForPrincipal(
+          let clearRequest = qms.clearStoragesForClient(
             principal,
-            "default",
-            "ls"
+            "ls",
+            "default"
           );
           clearRequestCount++;
           clearRequest.callback = SpecialPowers.wrapCallback(function () {
@@ -95,7 +95,7 @@ function localStorageClearDomain(domain, callback) {
   if (SpecialPowers.Services.domStorageManager.nextGenLocalStorageEnabled) {
     let qms = SpecialPowers.Services.qms;
     let principal = SpecialPowers.wrap(document).effectiveStoragePrincipal;
-    let request = qms.clearStoragesForPrincipal(principal, "default", "ls");
+    let request = qms.clearStoragesForClient(principal, "ls", "default");
     let cb = SpecialPowers.wrapCallback(callback);
     request.callback = cb;
     return;

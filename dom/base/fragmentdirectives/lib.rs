@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use nsstring::{nsCString, nsString};
+use rayon::prelude::*;
 use thin_vec::ThinVec;
 pub mod fragment_directive_impl;
 mod test;
@@ -64,16 +65,16 @@ impl TextDirective {
 /// and an array of the parsed text directives.
 #[repr(C)]
 pub struct ParsedFragmentDirectiveResult {
-    url_without_fragment_directive: nsCString,
+    hash_without_fragment_directive: nsCString,
     fragment_directive: nsCString,
     text_directives: ThinVec<TextDirective>,
 }
 
-/// Parses the fragment directive from a given URL.
+/// Parses the fragment directive from a given URL fragment.
 ///
 /// This function writes the result data into `result`.
 /// The result consists of
-///   - the input url without the fragment directive,
+///   - the input url fragment without the fragment directive,
 ///   - the fragment directive as unparsed string,
 ///   - a list of the parsed and percent-decoded text directives.
 ///
@@ -83,21 +84,23 @@ pub struct ParsedFragmentDirectiveResult {
 /// fragment directive (even if invalid), this function returns true.
 #[no_mangle]
 pub extern "C" fn parse_fragment_directive(
-    url: &nsCString,
+    hash: &nsCString,
     result: &mut ParsedFragmentDirectiveResult,
 ) -> bool {
     // sanitize inputs
-    result.url_without_fragment_directive = nsCString::new();
+    result.hash_without_fragment_directive = nsCString::new();
     result.fragment_directive = nsCString::new();
     result.text_directives.clear();
 
-    let url_as_rust_string = url.to_utf8();
-    if let Some((stripped_url, fragment_directive, text_directives)) =
+    let url_as_rust_string = hash.to_utf8();
+    if let Some((stripped_hash, fragment_directive, text_directives)) =
         fragment_directive_impl::parse_fragment_directive_and_remove_it_from_hash(
             &url_as_rust_string,
         )
     {
-        result.url_without_fragment_directive.assign(&stripped_url);
+        result
+            .hash_without_fragment_directive
+            .assign(&stripped_hash);
         result.fragment_directive.assign(&fragment_directive);
         result.text_directives.extend(
             text_directives
@@ -154,4 +157,80 @@ pub extern "C" fn create_text_directive(
         }
     }
     false
+}
+
+#[repr(C)]
+pub struct TextDirectiveCandidateContents<'a> {
+    full_prefix_content: &'a nsString,
+    full_start_content: &'a nsString,
+    full_end_content: &'a nsString,
+    full_suffix_content: &'a nsString,
+
+    prefix_content: &'a nsString,
+    start_content: &'a nsString,
+    end_content: &'a nsString,
+    suffix_content: &'a nsString,
+    use_exact_matching: bool,
+}
+
+impl<'a> TextDirectiveCandidateContents<'a> {
+    /// Returns true if all context terms of `candidate` are contained
+    /// in the start (or end, depending on which term)
+    /// of the fully expanded terms of `self`.
+    fn matches_candidate(&self, candidate: &Self) -> bool {
+        if !self
+            .full_prefix_content
+            .ends_with(&candidate.prefix_content)
+        {
+            return false;
+        }
+        if !self
+            .full_suffix_content
+            .starts_with(&candidate.suffix_content)
+        {
+            return false;
+        }
+        assert!(self.use_exact_matching == candidate.use_exact_matching);
+        if !candidate.use_exact_matching {
+            if !self
+                .full_start_content
+                .starts_with(&candidate.start_content)
+            {
+                return false;
+            }
+            if !self.full_end_content.ends_with(&candidate.end_content) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Matches all `candidates` against all `matches`, potentially in parallel.
+/// Returns an array of length of `candidates`, where each element is an
+/// array of all indices (in `matches`) of matches.
+#[no_mangle]
+pub extern "C" fn fragment_directive_filter_non_matching_candidates(
+    candidates: &ThinVec<&TextDirectiveCandidateContents>,
+    matches: &ThinVec<&TextDirectiveCandidateContents>,
+    result: &mut ThinVec<ThinVec<usize>>,
+) {
+    // It's not possible (yet) to use `ThinVec` together with `rayon`.
+    // Therefore it's necessary to collect into a `Vec<Vec<usize>>` first,
+    // and then get a new (non-rayon) iterator to be able
+    // to collect into `ThinVec<ThinVec<usize>>`.
+    result.extend(
+        candidates
+            .par_iter()
+            .map(|candidate| {
+                matches
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.matches_candidate(candidate))
+                    .map(|(index, _)| index)
+                    .collect::<ThinVec<_>>()
+            })
+            .collect::<Vec<_>>()
+            .into_iter(),
+    );
 }

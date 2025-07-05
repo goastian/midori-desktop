@@ -14,6 +14,9 @@
 
 namespace mozilla::dom {
 
+class OwningTrustedHTMLOrString;
+class TrustedHTMLOrString;
+
 class FeaturePolicy;
 
 class HTMLIFrameElement final : public nsGenericHTMLFrameElement {
@@ -57,12 +60,14 @@ class HTMLIFrameElement final : public nsGenericHTMLFrameElement {
               ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::src, aSrc, aTriggeringPrincipal, aError);
   }
-  void GetSrcdoc(DOMString& aSrcdoc) {
-    GetHTMLAttr(nsGkAtoms::srcdoc, aSrcdoc);
-  }
-  void SetSrcdoc(const nsAString& aSrcdoc, ErrorResult& aError) {
-    SetHTMLAttr(nsGkAtoms::srcdoc, aSrcdoc, aError);
-  }
+
+  // @param aSrcdoc will always be of type `String`.
+  void GetSrcdoc(OwningTrustedHTMLOrString& aSrcdoc);
+
+  MOZ_CAN_RUN_SCRIPT void SetSrcdoc(const TrustedHTMLOrString& aSrcdoc,
+                                    nsIPrincipal* aSubjectPrincipal,
+                                    ErrorResult& aError);
+
   void GetName(DOMString& aName) { GetHTMLAttr(nsGkAtoms::name, aName); }
   void SetName(const nsAString& aName, ErrorResult& aError) {
     SetHTMLAttr(nsGkAtoms::name, aName, aError);
@@ -160,6 +165,7 @@ class HTMLIFrameElement final : public nsGenericHTMLFrameElement {
 
   void SetLazyLoading();
   void StopLazyLoading();
+  void CancelLazyLoading(bool aClearLazyLoadState);
 
   const LazyLoadFrameResumptionState& GetLazyLoadFrameResumptionState() const {
     return mLazyLoadState;

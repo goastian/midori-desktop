@@ -21,6 +21,37 @@ support-files = [
   "file_download_attribute.sjs",
 ]
 
+["browser_http_scheme_no_upgrade.js"]
+
+["browser_https_rr_no_downgrade.js"]
+support-files = ["file_https_rr_no_downgrade.sjs"]
+skip-if = [
+  "os == 'mac' && os_version == '10.15'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1950553
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt && socketprocess_networking", # Bug 1950553
+]
+
+["browser_https_telemetry.js"]
+support-files = [
+  "file_https_telemetry_hsts.sjs",
+  "file_no_https_support.sjs"
+]
+skip-if = [
+  "http3",
+  "http2",
+  "socketprocess_networking",
+]
+
+["browser_https_telemetry2.js"]
+support-files = [
+  "file_https_telemetry_csp_uir.html",
+]
+skip-if = [
+  "http3",
+  "http2",
+  "socketprocess_networking",
+]
+
 ["browser_httpsfirst.js"]
 support-files = ["file_httpsfirst_timeout_server.sjs"]
 
@@ -41,13 +72,19 @@ support-files = [
 ["browser_navigation.js"]
 support-files = ["file_navigation.html"]
 
-["browser_subdocument_downgrade.js"]
-support-files = [
-  "file_empty.html",
-  "file_subdocument_downgrade.sjs",
-]
+["browser_nohttps_download.js"]
+support-files = ["file_nohttps_download.html", "file_nohttps_download.sjs"]
+
+["browser_redirect_exemption_clearing.js"]
+support-files = ["file_redirect_exemption_clearing.sjs"]
 
 ["browser_schemeless.js"]
+skip-if = ["!debug && tsan"] #Bug 1890170
+
+["browser_schemeless_redirect.js"]
+support-files = [
+  "file_schemeless_redirect.sjs"
+]
 
 ["browser_slow_download.js"]
 support-files = [
@@ -55,6 +92,14 @@ support-files = [
   "file_slow_download.sjs",
 ]
 
+["browser_subdocument_downgrade.js"]
+support-files = [
+  "file_empty.html",
+  "file_subdocument_downgrade.sjs",
+]
+
 ["browser_superfluos_auth.js"]
+
+["browser_tlds.js"]
 
 ["browser_upgrade_onion.js"]

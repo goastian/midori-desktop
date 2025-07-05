@@ -18,13 +18,28 @@ class WebAuthnRegisterArgs final : public nsIWebAuthnRegisterArgs {
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIWEBAUTHNREGISTERARGS
 
-  explicit WebAuthnRegisterArgs(const WebAuthnMakeCredentialInfo& aInfo)
-      : mInfo(aInfo),
+  explicit WebAuthnRegisterArgs(const nsCString& aOrigin,
+                                const nsCString& aClientDataJSON,
+                                const bool aPrivateBrowsing,
+                                const WebAuthnMakeCredentialInfo& aInfo)
+      : mOrigin(aOrigin),
+        mClientDataJSON(aClientDataJSON),
+        mPrivateBrowsing(aPrivateBrowsing),
+        mInfo(aInfo),
+        mEnforceCredentialProtectionPolicy(false),
         mCredProps(false),
         mHmacCreateSecret(false),
-        mMinPinLength(false) {
+        mLargeBlobSupportRequired(Nothing()),
+        mMinPinLength(false),
+        mPrf(false) {
     for (const WebAuthnExtension& ext : mInfo.Extensions()) {
       switch (ext.type()) {
+        case WebAuthnExtension::TWebAuthnExtensionCredProtect:
+          mCredentialProtectionPolicy.emplace(
+              ext.get_WebAuthnExtensionCredProtect().policy());
+          mEnforceCredentialProtectionPolicy =
+              ext.get_WebAuthnExtensionCredProtect().required();
+          break;
         case WebAuthnExtension::TWebAuthnExtensionCredProps:
           mCredProps = ext.get_WebAuthnExtensionCredProps().credProps();
           break;
@@ -32,11 +47,16 @@ class WebAuthnRegisterArgs final : public nsIWebAuthnRegisterArgs {
           mHmacCreateSecret =
               ext.get_WebAuthnExtensionHmacSecret().hmacCreateSecret();
           break;
+        case WebAuthnExtension::TWebAuthnExtensionLargeBlob:
+          mLargeBlobSupportRequired =
+              ext.get_WebAuthnExtensionLargeBlob().flag();
+          break;
         case WebAuthnExtension::TWebAuthnExtensionMinPinLength:
           mMinPinLength =
               ext.get_WebAuthnExtensionMinPinLength().minPinLength();
           break;
-        case WebAuthnExtension::TWebAuthnExtensionAppId:
+        case WebAuthnExtension::TWebAuthnExtensionPrf:
+          mPrf = true;
           break;
         case WebAuthnExtension::T__None:
           break;
@@ -47,12 +67,20 @@ class WebAuthnRegisterArgs final : public nsIWebAuthnRegisterArgs {
  private:
   ~WebAuthnRegisterArgs() = default;
 
+  const nsCString mOrigin;
+  const nsCString mClientDataJSON;
+  const bool mPrivateBrowsing;
   const WebAuthnMakeCredentialInfo mInfo;
+
+  Maybe<CredentialProtectionPolicy> mCredentialProtectionPolicy;
+  bool mEnforceCredentialProtectionPolicy;
 
   // Flags to indicate whether an extension is being requested.
   bool mCredProps;
   bool mHmacCreateSecret;
+  Maybe<bool> mLargeBlobSupportRequired;
   bool mMinPinLength;
+  bool mPrf;
 };
 
 class WebAuthnSignArgs final : public nsIWebAuthnSignArgs {
@@ -60,18 +88,38 @@ class WebAuthnSignArgs final : public nsIWebAuthnSignArgs {
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIWEBAUTHNSIGNARGS
 
-  explicit WebAuthnSignArgs(const WebAuthnGetAssertionInfo& aInfo)
-      : mInfo(aInfo) {
+  explicit WebAuthnSignArgs(const nsCString& aOrigin,
+                            const nsCString& aClientDataJSON,
+                            const bool aPrivateBrowsing,
+                            const WebAuthnGetAssertionInfo& aInfo)
+      : mOrigin(aOrigin),
+        mClientDataJSON(aClientDataJSON),
+        mPrivateBrowsing(aPrivateBrowsing),
+        mInfo(aInfo),
+        mPrf(false) {
     for (const WebAuthnExtension& ext : mInfo.Extensions()) {
       switch (ext.type()) {
-        case WebAuthnExtension::TWebAuthnExtensionAppId:
-          mAppId = Some(ext.get_WebAuthnExtensionAppId().appIdentifier());
+        case WebAuthnExtension::TWebAuthnExtensionCredProtect:
           break;
         case WebAuthnExtension::TWebAuthnExtensionCredProps:
           break;
         case WebAuthnExtension::TWebAuthnExtensionHmacSecret:
           break;
         case WebAuthnExtension::TWebAuthnExtensionMinPinLength:
+          break;
+        case WebAuthnExtension::TWebAuthnExtensionLargeBlob:
+          if (ext.get_WebAuthnExtensionLargeBlob().flag().isSome()) {
+            bool read = ext.get_WebAuthnExtensionLargeBlob().flag().ref();
+            mLargeBlobRead.emplace(read);
+            if (!read) {
+              mLargeBlobWrite.AppendElements(
+                  ext.get_WebAuthnExtensionLargeBlob().write());
+            }
+          }
+          break;
+        case WebAuthnExtension::TWebAuthnExtensionPrf:
+          mPrf = ext.get_WebAuthnExtensionPrf().eval().isSome() ||
+                 ext.get_WebAuthnExtensionPrf().evalByCredentialMaybe();
           break;
         case WebAuthnExtension::T__None:
           break;
@@ -82,8 +130,13 @@ class WebAuthnSignArgs final : public nsIWebAuthnSignArgs {
  private:
   ~WebAuthnSignArgs() = default;
 
+  const nsCString mOrigin;
+  const nsCString mClientDataJSON;
+  const bool mPrivateBrowsing;
   const WebAuthnGetAssertionInfo mInfo;
-  Maybe<nsString> mAppId;
+  Maybe<bool> mLargeBlobRead;
+  nsTArray<uint8_t> mLargeBlobWrite;
+  bool mPrf;
 };
 
 }  // namespace mozilla::dom

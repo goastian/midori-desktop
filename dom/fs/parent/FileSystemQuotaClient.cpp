@@ -38,6 +38,12 @@ Result<quota::UsageInfo, nsresult> FileSystemQuotaClient::InitOrigin(
     const quota::OriginMetadata& aOriginMetadata, const AtomicBool& aCanceled) {
   quota::AssertIsOnIOThread();
 
+  DebugOnly<quota::QuotaManager*> quotaManager = quota::QuotaManager::Get();
+  MOZ_ASSERT(quotaManager);
+
+  MOZ_ASSERT(
+      !quotaManager->IsTemporaryOriginInitializedInternal(aOriginMetadata));
+
   {
     QM_TRY_INSPECT(const nsCOMPtr<nsIFile>& databaseFile,
                    data::GetDatabaseFile(aOriginMetadata).mapErr(toNSResult));
@@ -90,6 +96,8 @@ Result<quota::UsageInfo, nsresult> FileSystemQuotaClient::GetUsageForOrigin(
   quota::QuotaManager* quotaManager = quota::QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
+  MOZ_ASSERT(quotaManager->IsTemporaryStorageInitializedInternal());
+
   // We can't open the database at this point because the quota manager may not
   // allow it. Use the cached value instead.
   return quotaManager->GetUsageForClient(aPersistenceType, aOriginMetadata,
@@ -97,7 +105,7 @@ Result<quota::UsageInfo, nsresult> FileSystemQuotaClient::GetUsageForOrigin(
 }
 
 void FileSystemQuotaClient::OnOriginClearCompleted(
-    quota::PersistenceType aPersistenceType, const nsACString& aOrigin) {
+    const quota::OriginMetadata& aOriginMetadata) {
   quota::AssertIsOnIOThread();
 }
 

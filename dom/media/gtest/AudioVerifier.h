@@ -59,7 +59,7 @@ class AudioVerifier {
   // Returns the maximum difference in value between two adjacent samples along
   // the sine curve.
   Sample MaxMagnitudeDifference() {
-    return static_cast<Sample>(AudioGenerator<Sample>::Amplitude() *
+    return static_cast<Sample>(AudioGenerator<Sample>::Amplitude() * 2 *
                                sin(2 * M_PI * mFrequency / mRate));
   }
 

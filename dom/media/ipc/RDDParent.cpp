@@ -26,12 +26,14 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/GleanTestsTestMetrics.h"
+#include "mozilla/glean/IpcMetrics.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
+#  include "mozilla/SandboxProfilerObserver.h"
 #endif
 
 #include "ChildProfilerController.h"
@@ -55,6 +57,10 @@
 #if defined(XP_MACOSX) || defined(XP_LINUX)
 #  include "VideoUtils.h"
 #endif
+
+namespace TelemetryScalar {
+void Set(mozilla::Telemetry::ScalarID aId, uint32_t aValue);
+}
 
 namespace mozilla {
 
@@ -149,6 +155,7 @@ mozilla::ipc::IPCResult RDDParent::RecvInit(
   if (aBrokerFd.isSome()) {
     fd = aBrokerFd.value().ClonePlatformHandle().release();
   }
+  RegisterProfilerObserversForSandboxProfiler();
   SetRemoteDataDecoderSandbox(fd);
 #  endif  // XP_MACOSX/XP_LINUX
 #endif    // MOZ_SANDBOX
@@ -282,15 +289,19 @@ mozilla::ipc::IPCResult RDDParent::RecvTestTriggerMetrics(
 
 mozilla::ipc::IPCResult RDDParent::RecvTestTelemetryProbes() {
   const uint32_t kExpectedUintValue = 42;
-  Telemetry::ScalarSet(Telemetry::ScalarID::TELEMETRY_TEST_RDD_ONLY_UINT,
+  TelemetryScalar::Set(Telemetry::ScalarID::TELEMETRY_TEST_RDD_ONLY_UINT,
                        kExpectedUintValue);
   return IPC_OK();
 }
 
 void RDDParent::ActorDestroy(ActorDestroyReason aWhy) {
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  DestroySandboxProfiler();
+#endif
+
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down RDD process early due to a crash!");
-    Telemetry::Accumulate(Telemetry::SUBPROCESS_ABNORMAL_ABORT, "rdd"_ns, 1);
+    glean::subprocess::abnormal_abort.Get("rdd"_ns).Add(1);
     ProcessChild::QuickExit();
   }
 

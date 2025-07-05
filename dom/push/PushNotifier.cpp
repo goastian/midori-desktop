@@ -9,6 +9,7 @@
 #include "nsContentUtils.h"
 #include "nsCOMPtr.h"
 #include "nsICategoryManager.h"
+#include "nsIPushService.h"
 #include "nsIXULRuntime.h"
 #include "nsNetUtil.h"
 #include "nsXPCOM.h"
@@ -66,9 +67,11 @@ PushNotifier::NotifyPush(const nsACString& aScope, nsIPrincipal* aPrincipal,
 
 NS_IMETHODIMP
 PushNotifier::NotifySubscriptionChange(const nsACString& aScope,
-                                       nsIPrincipal* aPrincipal) {
+                                       nsIPrincipal* aPrincipal,
+                                       nsIPushSubscription* aOldSubscription) {
   NS_ENSURE_ARG(aPrincipal);
-  PushSubscriptionChangeDispatcher dispatcher(aScope, aPrincipal);
+  PushSubscriptionChangeDispatcher dispatcher(aScope, aPrincipal,
+                                              aOldSubscription);
   return Dispatch(dispatcher);
 }
 
@@ -311,8 +314,9 @@ bool PushMessageDispatcher::SendToChild(ContentParent* aContentActor) {
 }
 
 PushSubscriptionChangeDispatcher::PushSubscriptionChangeDispatcher(
-    const nsACString& aScope, nsIPrincipal* aPrincipal)
-    : PushDispatcher(aScope, aPrincipal) {}
+    const nsACString& aScope, nsIPrincipal* aPrincipal,
+    nsIPushSubscription* aOldSubscription)
+    : PushDispatcher(aScope, aPrincipal), mOldSubscription(aOldSubscription) {}
 
 PushSubscriptionChangeDispatcher::~PushSubscriptionChangeDispatcher() = default;
 
@@ -334,18 +338,18 @@ nsresult PushSubscriptionChangeDispatcher::NotifyWorkers() {
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
-  return swm->SendPushSubscriptionChangeEvent(originSuffix, mScope);
+  return swm->SendPushSubscriptionChangeEvent(originSuffix, mScope,
+                                              mOldSubscription);
 }
 
 bool PushSubscriptionChangeDispatcher::SendToParent(
     ContentChild* aParentActor) {
-  return aParentActor->SendNotifyPushSubscriptionChangeObservers(mScope,
-                                                                 mPrincipal);
+  return true;
 }
 
 bool PushSubscriptionChangeDispatcher::SendToChild(
     ContentParent* aContentActor) {
-  return aContentActor->SendPushSubscriptionChange(mScope, mPrincipal);
+  return true;
 }
 
 PushSubscriptionModifiedDispatcher::PushSubscriptionModifiedDispatcher(
@@ -390,21 +394,16 @@ nsresult PushErrorDispatcher::NotifyWorkers() {
     // For system subscriptions, log the error directly to the browser console.
     return nsContentUtils::ReportToConsoleNonLocalized(
         mMessage, mFlags, "Push"_ns, nullptr, /* aDocument */
-        nullptr,                              /* aURI */
-        u""_ns,                               /* aLine */
-        0,                                    /* aLineNumber */
-        0,                                    /* aColumnNumber */
-        nsContentUtils::eOMIT_LOCATION);
+        SourceLocation());
   }
 
   // For service worker subscriptions, report the error to all clients.
   RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
   if (swm) {
-    swm->ReportToAllClients(mScope, mMessage,
-                            NS_ConvertUTF8toUTF16(mScope), /* aFilename */
-                            u""_ns,                        /* aLine */
-                            0,                             /* aLineNumber */
-                            0,                             /* aColumnNumber */
+    swm->ReportToAllClients(mScope, mMessage, mScope, /* aFilename */
+                            u""_ns,                   /* aLine */
+                            0,                        /* aLineNumber */
+                            0,                        /* aColumnNumber */
                             mFlags);
   }
   return NS_OK;
@@ -426,12 +425,8 @@ nsresult PushErrorDispatcher::HandleNoChildProcesses() {
     return rv;
   }
   return nsContentUtils::ReportToConsoleNonLocalized(
-      mMessage, mFlags, "Push"_ns, nullptr, /* aDocument */
-      scopeURI,                             /* aURI */
-      u""_ns,                               /* aLine */
-      0,                                    /* aLineNumber */
-      0,                                    /* aColumnNumber */
-      nsContentUtils::eOMIT_LOCATION);
+      mMessage, mFlags, "Push"_ns, /* aDocument = */ nullptr,
+      SourceLocation(scopeURI.get()));
 }
 
 }  // namespace mozilla::dom

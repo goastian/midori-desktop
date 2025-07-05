@@ -408,6 +408,17 @@ pub struct RustRtxFmtpParameters {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+pub struct RustAv1FmtpParameters {
+    pub profile: u8,
+    pub has_profile: bool,
+    pub level_idx: u8,
+    pub has_level_idx: bool,
+    pub tier: u8,
+    pub has_tier: bool,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 pub struct RustSdpAttributeFmtpParameters {
     // H264
     pub packetization_mode: u32,
@@ -437,6 +448,9 @@ pub struct RustSdpAttributeFmtpParameters {
     // telephone-event
     pub dtmf_tones: StringView,
 
+    // AV1
+    pub av1: RustAv1FmtpParameters,
+
     // RTX
     pub rtx: RustRtxFmtpParameters,
 
@@ -462,6 +476,14 @@ impl<'a> From<&'a SdpAttributeFmtpParameters> for RustSdpAttributeFmtpParameters
                 rtx_time: 0,
             }
         };
+        let av1 = RustAv1FmtpParameters {
+            profile: other.profile.unwrap_or(0),
+            has_profile: other.profile.is_some(),
+            level_idx: other.level_idx.unwrap_or(0),
+            has_level_idx: other.level_idx.is_some(),
+            tier: other.tier.unwrap_or(0),
+            has_tier: other.tier.is_some(),
+        };
 
         RustSdpAttributeFmtpParameters {
             packetization_mode: other.packetization_mode,
@@ -483,6 +505,7 @@ impl<'a> From<&'a SdpAttributeFmtpParameters> for RustSdpAttributeFmtpParameters
             minptime: other.minptime,
             maxptime: other.maxptime,
             dtmf_tones: StringView::from(other.dtmf_tones.as_str()),
+            av1,
             rtx,
             encodings: &other.encodings,
             unknown_tokens: &other.unknown_tokens,
@@ -590,6 +613,7 @@ pub struct RustSdpAttributeFlags {
     pub rtcp_rsize: bool,
     pub bundle_only: bool,
     pub end_of_candidates: bool,
+    pub extmap_allow_mixed: bool,
 }
 
 #[no_mangle]
@@ -602,6 +626,7 @@ pub unsafe extern "C" fn sdp_get_attribute_flags(
         rtcp_rsize: false,
         bundle_only: false,
         end_of_candidates: false,
+        extmap_allow_mixed: false,
     };
     for attribute in (*attributes).iter() {
         if let SdpAttribute::IceLite = *attribute {
@@ -614,6 +639,8 @@ pub unsafe extern "C" fn sdp_get_attribute_flags(
             ret.bundle_only = true;
         } else if let SdpAttribute::EndOfCandidates = *attribute {
             ret.end_of_candidates = true;
+        } else if let SdpAttribute::ExtmapAllowMixed = *attribute {
+            ret.extmap_allow_mixed = true;
         }
     }
     ret

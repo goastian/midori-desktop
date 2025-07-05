@@ -7,6 +7,7 @@
 #include "nsContentUtils.h"
 #include "nsScreen.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "nsGlobalWindowInner.h"
 #include "nsGlobalWindowOuter.h"
 #include "nsIDocShell.h"
@@ -15,6 +16,7 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsLayoutUtils.h"
 #include "nsDeviceContext.h"
+#include "mozilla/GeckoBindings.h"
 #include "mozilla/widget/ScreenManager.h"
 
 using namespace mozilla;
@@ -49,7 +51,7 @@ int32_t nsScreen::PixelDepth() {
 }
 
 nsPIDOMWindowOuter* nsScreen::GetOuter() const {
-  if (nsPIDOMWindowInner* inner = GetOwner()) {
+  if (nsPIDOMWindowInner* inner = GetOwnerWindow()) {
     return inner->GetOuterWindow();
   }
   return nullptr;
@@ -67,7 +69,7 @@ CSSIntRect nsScreen::GetRect() {
 
   // Here we manipulate the value of aRect to represent the screen size,
   // if in RDM.
-  if (nsPIDOMWindowInner* owner = GetOwner()) {
+  if (nsPIDOMWindowInner* owner = GetOwnerWindow()) {
     if (Document* doc = owner->GetExtantDoc()) {
       Maybe<CSSIntSize> deviceSize =
           nsGlobalWindowOuter::GetRDMDeviceSize(*doc);
@@ -82,10 +84,7 @@ CSSIntRect nsScreen::GetRect() {
   if (NS_WARN_IF(!context)) {
     return {};
   }
-
-  nsRect r;
-  context->GetRect(r);
-  return CSSIntRect::FromAppUnitsRounded(r);
+  return CSSIntRect::FromAppUnitsRounded(context->GetRect());
 }
 
 CSSIntRect nsScreen::GetAvailRect() {
@@ -94,9 +93,18 @@ CSSIntRect nsScreen::GetAvailRect() {
     return GetTopWindowInnerRectForRFP();
   }
 
+  if (ShouldResistFingerprinting(RFPTarget::ScreenAvailToResolution)) {
+    nsDeviceContext* context = GetDeviceContext();
+    if (NS_WARN_IF(!context)) {
+      return {};
+    }
+    return nsRFPService::GetSpoofedScreenAvailSize(
+        context->GetRect(), context->GetFullZoom(), IsFullscreen());
+  }
+
   // Here we manipulate the value of aRect to represent the screen size,
   // if in RDM.
-  if (nsPIDOMWindowInner* owner = GetOwner()) {
+  if (nsPIDOMWindowInner* owner = GetOwnerWindow()) {
     if (Document* doc = owner->GetExtantDoc()) {
       Maybe<CSSIntSize> deviceSize =
           nsGlobalWindowOuter::GetRDMDeviceSize(*doc);
@@ -111,10 +119,17 @@ CSSIntRect nsScreen::GetAvailRect() {
   if (NS_WARN_IF(!context)) {
     return {};
   }
+  return CSSIntRect::FromAppUnitsRounded(context->GetClientRect());
+}
 
-  nsRect r;
-  context->GetClientRect(r);
-  return CSSIntRect::FromAppUnitsRounded(r);
+bool nsScreen::IsFullscreen() const {
+  if (nsPIDOMWindowInner* owner = GetOwnerWindow()) {
+    if (Document* doc = owner->GetExtantDoc()) {
+      return StyleDisplayMode::Fullscreen ==
+             Gecko_MediaFeatures_GetDisplayMode(doc);
+    }
+  }
+  return false;
 }
 
 uint16_t nsScreen::GetOrientationAngle() const {
@@ -166,7 +181,7 @@ JSObject* nsScreen::WrapObject(JSContext* aCx,
 }
 
 CSSIntRect nsScreen::GetTopWindowInnerRectForRFP() {
-  if (nsPIDOMWindowInner* inner = GetOwner()) {
+  if (nsPIDOMWindowInner* inner = GetOwnerWindow()) {
     if (BrowsingContext* bc = inner->GetBrowsingContext()) {
       CSSIntSize size = bc->Top()->GetTopInnerSizeForRFP();
       return {0, 0, size.width, size.height};
@@ -176,7 +191,6 @@ CSSIntRect nsScreen::GetTopWindowInnerRectForRFP() {
 }
 
 bool nsScreen::ShouldResistFingerprinting(RFPTarget aTarget) const {
-  nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
-  return owner &&
-         nsGlobalWindowInner::Cast(owner)->ShouldResistFingerprinting(aTarget);
+  nsGlobalWindowInner* owner = GetOwnerWindow();
+  return owner && owner->ShouldResistFingerprinting(aTarget);
 }

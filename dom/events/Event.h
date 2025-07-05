@@ -16,6 +16,7 @@
 #include "mozilla/BasicEvents.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/WeakPtr.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
@@ -52,6 +53,7 @@ class ExtendableEvent;
 class KeyboardEvent;
 class MouseEvent;
 class MessageEvent;
+class PointerEvent;
 class TimeEvent;
 class UIEvent;
 class WantsPopupControlCheck;
@@ -63,22 +65,20 @@ struct EventInit;
 #undef GENERATED_EVENT
 
 // IID for Event
-#define NS_EVENT_IID                                 \
-  {                                                  \
-    0x71139716, 0x4d91, 0x4dee, {                    \
-      0xba, 0xf9, 0xe3, 0x3b, 0x80, 0xc1, 0x61, 0x61 \
-    }                                                \
-  }
+#define NS_EVENT_IID \
+  {0x71139716, 0x4d91, 0x4dee, {0xba, 0xf9, 0xe3, 0x3b, 0x80, 0xc1, 0x61, 0x61}}
 
 class Event : public nsISupports, public nsWrapperCache {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_EVENT_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_EVENT_IID)
 
   Event(EventTarget* aOwner, nsPresContext* aPresContext, WidgetEvent* aEvent);
   explicit Event(nsPIDOMWindowInner* aWindow);
 
  protected:
   virtual ~Event();
+
+  void LastRelease();
 
  private:
   void ConstructorInit(EventTarget* aOwner, nsPresContext* aPresContext,
@@ -88,7 +88,7 @@ class Event : public nsISupports, public nsWrapperCache {
 
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(Event)
+  NS_DECL_CYCLE_COLLECTION_SKIPPABLE_WRAPPERCACHE_CLASS(Event)
 
   nsIGlobalObject* GetParentObject() const { return mOwner; }
 
@@ -123,6 +123,8 @@ class Event : public nsISupports, public nsWrapperCache {
   // MouseEvent has a non-autogeneratable initMouseEvent and other
   // non-autogeneratable methods.
   virtual MouseEvent* AsMouseEvent() { return nullptr; }
+
+  virtual PointerEvent* AsPointerEvent() { return nullptr; }
 
   // UIEvent has a non-autogeneratable initUIEvent.
   virtual UIEvent* AsUIEvent() { return nullptr; }
@@ -169,22 +171,102 @@ class Event : public nsISupports, public nsWrapperCache {
   bool Init(EventTarget* aGlobal);
 
   static const char16_t* GetEventName(EventMessage aEventType);
-  static CSSIntPoint GetClientCoords(nsPresContext* aPresContext,
-                                     WidgetEvent* aEvent,
-                                     LayoutDeviceIntPoint aPoint,
-                                     CSSIntPoint aDefaultPoint);
-  static CSSIntPoint GetPageCoords(nsPresContext* aPresContext,
-                                   WidgetEvent* aEvent,
-                                   LayoutDeviceIntPoint aPoint,
-                                   CSSIntPoint aDefaultPoint);
-  static Maybe<CSSIntPoint> GetScreenCoords(nsPresContext* aPresContext,
-                                            WidgetEvent* aEvent,
-                                            LayoutDeviceIntPoint aPoint);
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  static CSSIntPoint GetOffsetCoords(nsPresContext* aPresContext,
-                                     WidgetEvent* aEvent,
-                                     LayoutDeviceIntPoint aPoint,
-                                     CSSIntPoint aDefaultPoint);
+
+  /**
+   * Return clientX and clientY values for aEvent fired at
+   * aWidgetOrScreenRelativePoint. If you do not want fractional values as
+   * the result, you should floor aWidgetRelativePoint and aDefaultClientPoint
+   * before calling this method like defined by the Pointer Events spec.
+   * https://w3c.github.io/pointerevents/#event-coordinates
+   * And finally round the result to the integer.
+   * Note that if you want fractional values and the source of
+   * aWidgetOrScreenRelativePoint and aDefaultClientPoint is an untrusted
+   * event, the result may not be representable with floats, i.e., CSSPoint.
+   * However, if it's trusted point, the result is representable with floats
+   * because we use CSSPoint to convert to/from app units.
+   *
+   * Note that if and only if aEvent->mWidget is nullptr,
+   * aWidgetOrScreenRelativePoint is treated as screen point because it's
+   * impossible to compute screen point from widget relative point without the
+   * widget.
+   */
+  static CSSDoublePoint GetClientCoords(
+      nsPresContext* aPresContext, WidgetEvent* aEvent,
+      const LayoutDeviceDoublePoint& aWidgetOrScreenRelativePoint,
+      const CSSDoublePoint& aDefaultClientPoint);
+
+  /**
+   * Return pageX and pageY values for aEvent fired at
+   * aWidgetOrScreenRelativePoint, which are client point + scroll position
+   * of the root scrollable frame. If you do not want fractional values as the
+   * result, you should floor aWidgetOrScreenRelativePoint and
+   * aDefaultClientPoint before calling this method like defined by the Pointer
+   * Events spec. https://w3c.github.io/pointerevents/#event-coordinates And
+   * finally round the result to the integer. Note that if you want fractional
+   * values and the source of aWidgetOrScreenRelativePoint and
+   * aDefaultClientPoint is an untrusted event, the result may not be
+   * representable with floats, i.e., CSSPoint.  However, if it's trusted point,
+   * the result is representable with floats because we use CSSPoint to convert
+   * to/from app units.
+   *
+   * Note that if and only if aEvent->mWidget is nullptr,
+   * aWidgetOrScreenRelativePoint is treated as screen point because it's
+   * impossible to compute screen point from widget relative point without the
+   * widget.
+   */
+  static CSSDoublePoint GetPageCoords(
+      nsPresContext* aPresContext, WidgetEvent* aEvent,
+      const LayoutDeviceDoublePoint& aWidgetOrScreenRelativePoint,
+      const CSSDoublePoint& aDefaultClientPoint);
+
+  /**
+   * Return screenX and screenY values for aEvent fired at
+   * aWidgetOrScreenRelativePoint. If aEvent does not support exposing the
+   * ref point, this returns Nothing. If you do not want fractional values as
+   * the result, you should floor aWidgetOrScreenRelativePoint and
+   * aDefaultClientPoint before calling this method like defined by the Pointer
+   * Events spec. https://w3c.github.io/pointerevents/#event-coordinates And
+   * finally round the result to the integer. Note that if you want fractional
+   * values and the source of aWidgetOrScreenRelativePoint and
+   * aDefaultClientPoint is an untrusted event, the result may not be
+   * representable with floats, i.e., CSSPoint.  However, if it's trusted point,
+   * the result is representable with floats because we use CSSPoint to convert
+   * to/from app units.
+   *
+   * Note that if and only if aEvent->mWidget is nullptr,
+   * aWidgetOrScreenRelativePoint is treated as screen point because it's
+   * impossible to compute screen point from widget relative point without the
+   * widget.
+   */
+  static Maybe<CSSDoublePoint> GetScreenCoords(
+      nsPresContext* aPresContext, WidgetEvent* aEvent,
+      const LayoutDeviceDoublePoint& aWidgetOrScreenRelativePoint);
+
+  /**
+   * Return offsetX and offsetY values for aEvent fired at
+   * aWidgetOrScreenRelativePoint, which are offset in the target element.
+   * If you do not want fractional values as the result, you should floor
+   * aWidgetOrScreenRelativePoint and aDefaultClientPoint before calling
+   * this method like defined by the Pointer Events spec.
+   * https://w3c.github.io/pointerevents/#event-coordinates And finally round
+   * the result to the integer. Note that if you want fractional values and the
+   * source of aWidgetOrScreenRelativePoint and aDefaultClientPoint is an
+   * untrusted event, the result may not be representable with floats, i.e.,
+   * CSSPoint. However, if it's trusted point, the result is representable with
+   * floats because we use CSSPoint to convert to/from app units.
+   *
+   * Note that if and only if aEvent->mWidget is nullptr,
+   * aWidgetOrScreenRelativePoint is treated as screen point because it's
+   * impossible to compute screen point from widget relative point without the
+   * widget.
+   *
+   * Be aware, this may flush the layout.
+   */
+  MOZ_CAN_RUN_SCRIPT
+  static CSSDoublePoint GetOffsetCoords(
+      nsPresContext* aPresContext, WidgetEvent* aEvent,
+      const LayoutDeviceDoublePoint& aWidgetOrScreenRelativePoint,
+      const CSSDoublePoint& aDefaultClientPoint);
 
   static already_AddRefed<Event> Constructor(EventTarget* aEventTarget,
                                              const nsAString& aType,
@@ -318,7 +400,7 @@ class Event : public nsISupports, public nsWrapperCache {
  protected:
   // Internal helper functions
   void SetEventType(const nsAString& aEventTypeArg);
-  already_AddRefed<nsIContent> GetTargetFromFrame();
+  nsIContent* GetTargetFromFrame();
 
   friend class EventMessageAutoOverride;
   friend class PopupBlocker;
@@ -336,8 +418,18 @@ class Event : public nsISupports, public nsWrapperCache {
   already_AddRefed<EventTarget> EnsureWebAccessibleRelatedTarget(
       EventTarget* aRelatedTarget);
 
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT static nsIFrame*
+  GetPrimaryFrameOfEventTarget(const nsPresContext& aPresContext,
+                               const WidgetEvent& aEvent);
+
   mozilla::WidgetEvent* mEvent;
-  RefPtr<nsPresContext> mPresContext;
+  // When the private data of this event is duplicated, mPresContext is
+  // cleared by Event::DuplicatePrivateData().  However, only
+  // MouseEvent::DuplicatePrivateData() restores mPresContext after calling
+  // Event::DuplicatePrivateData() to compute the offset point later.
+  // Therefore, only `MouseEvent` and its subclasses may keep storing
+  // mPresContext until destroyed.
+  WeakPtr<nsPresContext> mPresContext;
   nsCOMPtr<EventTarget> mExplicitOriginalTarget;
   nsCOMPtr<nsIGlobalObject> mOwner;
   bool mEventIsInternal;
@@ -399,8 +491,6 @@ class MOZ_STACK_CLASS WantsPopupControlCheck {
   Event* mEvent;
   bool mOriginalWantsPopupControlCheck;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(Event, NS_EVENT_IID)
 
 }  // namespace mozilla::dom
 

@@ -42,6 +42,7 @@ class ServiceWorkerContainer;
 class CredentialsContainer;
 class Clipboard;
 class LockManager;
+class NavigatorLogin;
 class PrivateAttribution;
 class HTMLMediaElement;
 class AudioContext;
@@ -210,6 +211,7 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   dom::Clipboard* Clipboard();
   webgpu::Instance* Gpu();
   dom::LockManager* Locks();
+  NavigatorLogin* Login();
   dom::PrivateAttribution* PrivateAttribution();
 
   static bool Webdriver();
@@ -228,6 +230,8 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   // WebIDL helper methods
   static bool HasUserMediaSupport(JSContext* /* unused */,
                                   JSObject* /* unused */);
+  static bool MozGetUserMediaSupport(JSContext* /* unused */,
+                                     JSObject* /* unused */);
   static bool HasShareSupport(JSContext* /* unused */, JSObject* /* unused */);
 
   static bool HasMidiSupport(JSContext* /* unused */, JSObject* /* unused */);
@@ -255,6 +259,8 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   AutoplayPolicy GetAutoplayPolicy(AudioContext& aContext);
 
   already_AddRefed<dom::UserActivation> UserActivation();
+
+  MediaKeySystemAccessManager* GetOrCreateMediaKeySystemAccessManager();
 
  private:
   void ValidateShareData(const ShareData& aData, ErrorResult& aRv);
@@ -303,6 +309,7 @@ class Navigator final : public nsISupports, public nsWrapperCache {
   RefPtr<webgpu::Instance> mWebGpu;
   RefPtr<Promise> mSharePromise;  // Web Share API related
   RefPtr<LockManager> mLocks;
+  RefPtr<NavigatorLogin> mLogin;
   RefPtr<dom::PrivateAttribution> mPrivateAttribution;
   RefPtr<dom::UserActivation> mUserActivation;
   RefPtr<dom::WakeLockJS> mWakeLock;

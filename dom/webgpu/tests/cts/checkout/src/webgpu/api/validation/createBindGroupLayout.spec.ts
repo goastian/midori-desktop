@@ -4,6 +4,7 @@ createBindGroupLayout validation tests.
 TODO: make sure tests are complete.
 `;
 
+import { AllFeaturesMaxLimitsGPUTest } from '../.././gpu_test.js';
 import { kUnitCaseParamsBuilder } from '../../../common/framework/params_builder.js';
 import { makeTestGroup } from '../../../common/framework/test_group.js';
 import {
@@ -17,16 +18,65 @@ import {
   bufferBindingTypeInfo,
   kBufferBindingTypes,
   BGLEntry,
+  getBindingLimitForBindingType,
 } from '../../capability_info.js';
-import { kAllTextureFormats, kTextureFormatInfo } from '../../format_info.js';
-
-import { ValidationTest } from './validation_test.js';
+import {
+  isTextureFormatUsableAsReadWriteStorageTexture,
+  isTextureFormatUsableAsStorageFormat,
+  kAllTextureFormats,
+} from '../../format_info.js';
 
 function clone<T extends GPUBindGroupLayoutDescriptor>(descriptor: T): T {
   return JSON.parse(JSON.stringify(descriptor));
 }
 
-export const g = makeTestGroup(ValidationTest);
+function isValidBufferTypeForStages(
+  device: GPUDevice,
+  visibility: number,
+  type: GPUBufferBindingType | undefined
+) {
+  if (type === 'read-only-storage' || type === 'storage') {
+    if (visibility & GPUShaderStage.VERTEX) {
+      if (!(device.limits.maxStorageBuffersInVertexStage! > 0)) {
+        return false;
+      }
+    }
+
+    if (visibility & GPUShaderStage.FRAGMENT) {
+      if (!(device.limits.maxStorageBuffersInFragmentStage! > 0)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function isValidStorageTextureForStages(device: GPUDevice, visibility: number) {
+  if (visibility & GPUShaderStage.VERTEX) {
+    if (!(device.limits.maxStorageTexturesInVertexStage! > 0)) {
+      return false;
+    }
+  }
+
+  if (visibility & GPUShaderStage.FRAGMENT) {
+    if (!(device.limits.maxStorageTexturesInFragmentStage! > 0)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isValidBGLEntryForStages(device: GPUDevice, visibility: number, entry: BGLEntry) {
+  return entry.storageTexture
+    ? isValidStorageTextureForStages(device, visibility)
+    : entry.buffer
+    ? isValidBufferTypeForStages(device, visibility, entry.buffer?.type)
+    : true;
+}
+
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('duplicate_bindings')
   .desc('Test that uniqueness of binding numbers across entries is enforced.')
@@ -107,7 +157,9 @@ g.test('visibility')
     const { visibility, entry } = t.params;
     const info = bindingTypeInfo(entry);
 
-    const success = (visibility & ~info.validStages) === 0;
+    const success =
+      (visibility & ~info.validStages) === 0 &&
+      isValidBGLEntryForStages(t.device, visibility, entry);
 
     t.expectValidationError(() => {
       t.device.createBindGroupLayout({
@@ -132,7 +184,9 @@ g.test('visibility,VERTEX_shader_stage_buffer_type')
   .fn(t => {
     const { shaderStage, type } = t.params;
 
-    const success = !(type === 'storage' && shaderStage & GPUShaderStage.VERTEX);
+    const success =
+      !(type === 'storage' && shaderStage & GPUShaderStage.VERTEX) &&
+      isValidBufferTypeForStages(t.device, shaderStage, type);
 
     t.expectValidationError(() => {
       t.device.createBindGroupLayout({
@@ -164,10 +218,11 @@ g.test('visibility,VERTEX_shader_stage_storage_texture_access')
     const { shaderStage, access } = t.params;
 
     const appliedAccess = access ?? 'write-only';
-    const success = !(
-      // If visibility includes VERETX, storageTexture.access must be "read-only"
-      (shaderStage & GPUShaderStage.VERTEX && appliedAccess !== 'read-only')
-    );
+    const success =
+      !(
+        // If visibility includes VERETX, storageTexture.access must be "read-only"
+        (shaderStage & GPUShaderStage.VERTEX && appliedAccess !== 'read-only')
+      ) && isValidStorageTextureForStages(t.device, shaderStage);
 
     t.expectValidationError(() => {
       t.device.createBindGroupLayout({
@@ -235,9 +290,9 @@ g.test('max_dynamic_buffers')
     const info = bufferBindingTypeInfo({ type });
 
     const limitName = info.perPipelineLimitClass.maxDynamicLimit;
-    const bufferCount = limitName ? t.getDefaultLimit(limitName) : 0;
+    const bufferCount = limitName ? t.device.limits[limitName]! : 0;
     const dynamicBufferCount = bufferCount + extraDynamicBuffers;
-    const perStageLimit = t.getDefaultLimit(info.perStageLimitClass.maxLimit);
+    const perStageLimit = t.device.limits[info.perStageLimitClass.maxLimits.COMPUTE]!;
 
     const entries = [];
     for (let i = 0; i < dynamicBufferCount; i++) {
@@ -319,8 +374,10 @@ g.test('max_resources_per_stage,in_bind_group_layout')
   .fn(t => {
     const { maxedEntry, extraEntry, maxedVisibility, extraVisibility } = t.params;
     const maxedTypeInfo = bindingTypeInfo(maxedEntry);
-    const maxedCount = t.getDefaultLimit(maxedTypeInfo.perStageLimitClass.maxLimit);
+    const maxedCount = getBindingLimitForBindingType(t.device, maxedVisibility, maxedEntry);
     const extraTypeInfo = bindingTypeInfo(extraEntry);
+
+    t.skipIf(!isValidBGLEntryForStages(t.device, extraVisibility, extraEntry));
 
     const maxResourceBindings: GPUBindGroupLayoutEntry[] = [];
     for (let i = 0; i < maxedCount; i++) {
@@ -370,8 +427,10 @@ g.test('max_resources_per_stage,in_pipeline_layout')
   .fn(t => {
     const { maxedEntry, extraEntry, maxedVisibility, extraVisibility } = t.params;
     const maxedTypeInfo = bindingTypeInfo(maxedEntry);
-    const maxedCount = t.getDefaultLimit(maxedTypeInfo.perStageLimitClass.maxLimit);
+    const maxedCount = getBindingLimitForBindingType(t.device, maxedVisibility, maxedEntry);
     const extraTypeInfo = bindingTypeInfo(extraEntry);
+
+    t.skipIf(!isValidBGLEntryForStages(t.device, extraVisibility, extraEntry));
 
     const maxResourceBindings: GPUBindGroupLayoutEntry[] = [];
     for (let i = 0; i < maxedCount; i++) {
@@ -448,16 +507,15 @@ g.test('storage_texture,formats')
       .combine('format', kAllTextureFormats) //
       .combine('access', kStorageTextureAccessValues)
   )
-  .beforeAllSubcases(t => {
-    t.selectDeviceForTextureFormatOrSkipTestCase(t.params.format);
-    t.skipIfTextureFormatNotUsableAsStorageTexture(t.params.format);
-  })
   .fn(t => {
     const { format, access } = t.params;
-    const info = kTextureFormatInfo[format];
+    t.skipIfTextureFormatNotSupported(format);
 
     const success =
-      info.color?.storage && !(access === 'read-write' && !info.color?.readWriteStorage);
+      isTextureFormatUsableAsStorageFormat(t.device, format) &&
+      !(
+        access === 'read-write' && !isTextureFormatUsableAsReadWriteStorageTexture(t.device, format)
+      );
 
     t.expectValidationError(() => {
       t.device.createBindGroupLayout({

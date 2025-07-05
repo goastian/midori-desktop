@@ -177,7 +177,9 @@ interface WebExtensionPolicy {
   /**
    * Returns true if the extension has cross-origin access to the given URI.
    */
-  boolean canAccessURI(URI uri, optional boolean explicit = false);
+  boolean canAccessURI(URI uri, optional boolean explicit = false,
+                       optional boolean checkRestricted = true,
+                       optional boolean allowFilePermission = false);
 
   /**
    * Returns true if the extension currently has the given permission.
@@ -257,7 +259,7 @@ interface WebExtensionPolicy {
   static WebExtensionPolicy? getByHostname(ByteString hostname);
 
   /**
-   * Returns the currently-active policy for the extension extension URI, or
+   * Returns the currently-active policy for the extension URI, or
    * null if the URI is not an extension URI, or no policy is currently active
    * for it.
    */

@@ -71,6 +71,8 @@ class SVGImageElement final : public SVGImageElementBase,
 
   nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
+  void NodeInfoChanged(Document* aOldDoc) override;
+
   void MaybeLoadSVGImage();
 
   // WebIDL
@@ -90,6 +92,11 @@ class SVGImageElement final : public SVGImageElementBase,
     SetOrRemoveNullableStringAttr(nsGkAtoms::crossorigin, aCrossOrigin, aError);
   }
 
+  void GetFetchPriority(nsAString& aFetchPriority) const;
+  void SetFetchPriority(const nsAString& aFetchPriority) {
+    SetAttr(nsGkAtoms::fetchpriority, aFetchPriority, IgnoreErrors());
+  }
+
   void SetDecoding(const nsAString& aDecoding, ErrorResult& aError) {
     SetAttr(nsGkAtoms::decoding, aDecoding, aError);
   }
@@ -104,6 +111,7 @@ class SVGImageElement final : public SVGImageElementBase,
  protected:
   void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute) override;
 
+  void UpdateSrcURI();
   nsresult LoadSVGImage(bool aForce, bool aNotify);
   bool ShouldLoadImage() const;
 
@@ -113,6 +121,12 @@ class SVGImageElement final : public SVGImageElementBase,
 
   // Override for nsImageLoadingContent.
   nsIContent* AsContent() override { return this; }
+
+  FetchPriority GetFetchPriorityForImage() const override {
+    return Element::GetFetchPriority();
+  }
+
+  nsCOMPtr<nsIURI> mSrcURI;
 
   enum { ATTR_X, ATTR_Y, ATTR_WIDTH, ATTR_HEIGHT };
   SVGAnimatedLength mLengthAttributes[4];

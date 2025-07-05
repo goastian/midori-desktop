@@ -42,8 +42,8 @@ class MOZ_STACK_CLASS ContentPlaybackController {
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void Focus();
   void Play();
   void Pause();
-  void SeekBackward();
-  void SeekForward();
+  void SeekBackward(double aSeekOffset);
+  void SeekForward(double aSeekOffset);
   void PreviousTrack();
   void NextTrack();
   void SkipAd();
@@ -51,7 +51,8 @@ class MOZ_STACK_CLASS ContentPlaybackController {
   void SeekTo(double aSeekTime, bool aFastSeek);
 
  private:
-  void NotifyContentMediaControlKeyReceiver(MediaControlKey aKey);
+  void NotifyContentMediaControlKeyReceiver(
+      MediaControlKey aKey, Maybe<SeekDetails> aDetails = Nothing());
   void NotifyMediaSession(MediaSessionAction aAction);
   void NotifyMediaSession(const MediaSessionActionDetails& aDetails);
   void NotifyMediaSessionWhenActionIsSupported(MediaSessionAction aAction);

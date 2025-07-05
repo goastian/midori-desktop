@@ -44,6 +44,7 @@ namespace mozilla {
 
 using namespace mozilla::gfx;
 using dom::MediaSourceEnum;
+using dom::MediaTrackCapabilities;
 using dom::MediaTrackConstraints;
 using dom::MediaTrackSettings;
 using dom::VideoFacingModeEnum;
@@ -99,6 +100,9 @@ class MediaEngineFakeVideoSource : public MediaEngineSource {
       const nsTArray<const NormalizedConstraintSet*>& aConstraintSets)
       const override;
   void GetSettings(dom::MediaTrackSettings& aOutSettings) const override;
+
+  void GetCapabilities(
+      dom::MediaTrackCapabilities& aOutCapabilities) const override;
 
   bool IsFake() const override { return true; }
 
@@ -179,6 +183,32 @@ void MediaEngineFakeVideoSource::GetSettings(
   aOutSettings = *mSettings;
 }
 
+void MediaEngineFakeVideoSource::GetCapabilities(
+    MediaTrackCapabilities& aOutCapabilities) const {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  NS_ConvertASCIItoUTF16 facingString(
+      GetEnumString(VideoFacingModeEnum::Environment));
+  nsTArray<nsString> facing;
+  facing.AppendElement(facingString);
+  aOutCapabilities.mFacingMode.Construct(std::move(facing));
+
+  dom::ULongRange widthRange;
+  widthRange.mMax.Construct(VIDEO_WIDTH_MAX);
+  widthRange.mMin.Construct(VIDEO_WIDTH_MIN);
+  aOutCapabilities.mWidth.Construct(widthRange);
+
+  dom::ULongRange heightRange;
+  heightRange.mMax.Construct(VIDEO_HEIGHT_MAX);
+  heightRange.mMin.Construct(VIDEO_HEIGHT_MIN);
+  aOutCapabilities.mHeight.Construct(heightRange);
+
+  dom::DoubleRange frameRateRange;
+  frameRateRange.mMax.Construct(double(MediaEnginePrefs::DEFAULT_VIDEO_FPS));
+  frameRateRange.mMin.Construct(0);
+  aOutCapabilities.mFrameRate.Construct(frameRateRange);
+}
+
 nsresult MediaEngineFakeVideoSource::Allocate(
     const MediaTrackConstraints& aConstraints, const MediaEnginePrefs& aPrefs,
     uint64_t aWindowID, const char** aOutBadConstraint) {
@@ -208,10 +238,9 @@ nsresult MediaEngineFakeVideoSource::Allocate(
 #endif
       );
   mOpts.mWidth =
-      std::max(VIDEO_WIDTH_MIN, std::min(mOpts.mWidth, VIDEO_WIDTH_MAX)) & ~1;
+      std::clamp(mOpts.mWidth, VIDEO_WIDTH_MIN, VIDEO_WIDTH_MAX) & ~1;
   mOpts.mHeight =
-      std::max(VIDEO_HEIGHT_MIN, std::min(mOpts.mHeight, VIDEO_HEIGHT_MAX)) &
-      ~1;
+      std::clamp(mOpts.mHeight, VIDEO_HEIGHT_MIN, VIDEO_HEIGHT_MAX) & ~1;
 
   NS_DispatchToMainThread(NS_NewRunnableFunction(
       __func__, [settings = mSettings, frameRate = mOpts.mFPS,
@@ -303,21 +332,14 @@ nsresult MediaEngineFakeVideoSource::Start() {
   }
 
   // Start timer for subsequent frames
-  uint32_t interval;
-#if defined(MOZ_WIDGET_ANDROID) && defined(DEBUG)
-  // emulator debug is very, very slow and has problems dealing with realtime
-  // audio inputs
-  interval = 10 * (1000 / mOpts.mFPS);
-#else
-  interval = 1000 / mOpts.mFPS;
-#endif
+  const uint32_t interval = 1000 / mOpts.mFPS;
   mTimer->InitWithNamedFuncCallback(
       [](nsITimer* aTimer, void* aClosure) {
         RefPtr<MediaEngineFakeVideoSource> source =
             static_cast<MediaEngineFakeVideoSource*>(aClosure);
         source->GenerateFrame();
       },
-      this, interval, nsITimer::TYPE_REPEATING_SLACK,
+      this, interval, nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP,
       "MediaEngineFakeVideoSource::GenerateFrame");
 
   mState = kStarted;
@@ -458,6 +480,9 @@ class MediaEngineFakeAudioSource : public MediaEngineSource {
 
   void GetSettings(dom::MediaTrackSettings& aOutSettings) const override;
 
+  void GetCapabilities(
+      dom::MediaTrackCapabilities& aOutCapabilities) const override;
+
  protected:
   ~MediaEngineFakeAudioSource() = default;
 
@@ -484,6 +509,27 @@ void MediaEngineFakeAudioSource::GetSettings(
   aOutSettings.mEchoCancellation.Construct(false);
   aOutSettings.mNoiseSuppression.Construct(false);
   aOutSettings.mChannelCount.Construct(1);
+}
+
+void MediaEngineFakeAudioSource::GetCapabilities(
+    MediaTrackCapabilities& aOutCapabilities) const {
+  MOZ_ASSERT(NS_IsMainThread());
+  nsTArray<bool> echoCancellation;
+  echoCancellation.AppendElement(false);
+  aOutCapabilities.mEchoCancellation.Construct(std::move(echoCancellation));
+
+  nsTArray<bool> autoGainControl;
+  autoGainControl.AppendElement(false);
+  aOutCapabilities.mAutoGainControl.Construct(std::move(autoGainControl));
+
+  nsTArray<bool> noiseSuppression;
+  noiseSuppression.AppendElement(false);
+  aOutCapabilities.mNoiseSuppression.Construct(std::move(noiseSuppression));
+
+  dom::ULongRange channelCountRange;
+  channelCountRange.mMax.Construct(1);
+  channelCountRange.mMin.Construct(1);
+  aOutCapabilities.mChannelCount.Construct(channelCountRange);
 }
 
 nsresult MediaEngineFakeAudioSource::Allocate(

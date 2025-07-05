@@ -27,7 +27,7 @@
 
   SimpleTest.waitForExplicitFinish();
 
-  const PERMISSIONS = [{
+  const OTHER_PERMISSIONS = [{
     name: 'geolocation',
     type: 'geo'
   }, {
@@ -44,8 +44,18 @@
     type: 'midi'
   }, ];
 
+  const MEDIA_PERMISSIONS = [{
+    name: 'camera',
+    type: 'camera'
+  }, {
+    name: 'microphone',
+    type: 'microphone'
+  }, ];
+
+  const PERMISSIONS = [...OTHER_PERMISSIONS, ...MEDIA_PERMISSIONS];
+
   const UNSUPPORTED_PERMISSIONS = [
-    'foobarbaz', // Not in spec, for testing only.
+    { name: 'foobarbaz' }, // Not in spec, for testing only.
   ];
 
   // Create a closure, so that tests are run on the correct window object.
@@ -63,22 +73,26 @@
         await SpecialPowers.popPermissions();
         return SpecialPowers.pushPermissions(permissions);
       },
-      checkPermissions(expectedState) {
-        const promisesToQuery = PERMISSIONS.map(({ name: expectedName }) => {
+      checkPermissions(permissions, expectedState, mediaExpectedState = expectedState) {
+        const promisesToQuery = permissions.map(({ name: expectedName }) => {
           return iframeWindow.navigator.permissions
             .query({ name: expectedName })
             .then(
               ({ state, name }) => {
-                is(state, expectedState, `correct state for '${expectedName}'`)
-                is(name, expectedName, `correct name for '${expectedName}'`)
+                is(name, expectedName, `correct name for '${expectedName}'`);
+                if (['camera', 'microphone'].includes(expectedName)) {
+                  is(state, mediaExpectedState, `correct state for '${expectedName}'`);
+                } else {
+                  is(state, expectedState, `correct state for '${expectedName}'`);
+                }
               },
               () => ok(false, `query should not have rejected for '${name}'`)
             );
           });
         return Promise.all(promisesToQuery);
       },
-      checkUnsupportedPermissions() {
-        const promisesToQuery = UNSUPPORTED_PERMISSIONS.map(({ name }) => {
+      checkUnsupportedPermissions(permissions) {
+        const promisesToQuery = permissions.map(({ name }) => {
           return iframeWindow.navigator.permissions
             .query({ name })
             .then(
@@ -223,30 +237,43 @@
     });
   }
 
-  window.onload = () => {
-    createIframe()
-      .then(createPermissionTester)
-      .then((tester) => {
-        return tester
-          .checkUnsupportedPermissions()
-          .then(() => tester.setPermissions(UNKNOWN_ACTION))
-          .then(() => tester.checkPermissions('prompt'))
-          .then(() => tester.setPermissions(PROMPT_ACTION))
-          .then(() => tester.checkPermissions('prompt'))
-          .then(() => tester.setPermissions(ALLOW_ACTION))
-          .then(() => tester.checkPermissions('granted'))
-          .then(() => tester.setPermissions(DENY_ACTION))
-          .then(() => tester.checkPermissions('denied'))
-          .then(() => tester.testStatusOnChange())
-          .then(() => tester.testInvalidQuery())
-          .then(() => tester.testNotFullyActiveDoc())
-          .then(() => tester.testNotFullyActiveChange());
-      })
-      .then(SimpleTest.finish)
-      .catch((e) => {
-        ok(false, `Unexpected error ${e}`);
-        SimpleTest.finish();
+  window.onload = async () => {
+    try {
+      const tester = createPermissionTester(await createIframe());
+      await tester.checkUnsupportedPermissions(UNSUPPORTED_PERMISSIONS);
+      await tester.setPermissions(UNKNOWN_ACTION);
+      await tester.checkPermissions(PERMISSIONS, 'prompt');
+      await tester.setPermissions(PROMPT_ACTION);
+      await tester.checkPermissions(PERMISSIONS, 'prompt', 'granted');
+      await tester.setPermissions(ALLOW_ACTION);
+      await tester.checkPermissions(PERMISSIONS, 'granted');
+      await tester.setPermissions(DENY_ACTION);
+      await tester.checkPermissions(PERMISSIONS, 'denied');
+      await tester.testStatusOnChange();
+      await tester.testInvalidQuery();
+      await tester.testNotFullyActiveDoc();
+      await tester.testNotFullyActiveChange();
+
+      await SpecialPowers.pushPrefEnv({
+        set: [
+          ["privacy.resistFingerprinting", true]
+        ]
       });
+      await tester.setPermissions(PROMPT_ACTION);
+      await tester.checkPermissions(PERMISSIONS, 'prompt', 'prompt');
+      await SpecialPowers.popPrefEnv();
+
+      await SpecialPowers.pushPrefEnv({
+        set: [
+          ["permissions.media.query.enabled", false]
+        ]
+      });
+      await tester.setPermissions(UNKNOWN_ACTION);
+      await tester.checkUnsupportedPermissions(MEDIA_PERMISSIONS);
+      await tester.checkPermissions(OTHER_PERMISSIONS, 'prompt');
+    } finally {
+      SimpleTest.finish();
+    }
   };
   </script>
 </body>

@@ -11,7 +11,7 @@
 #include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/dom/OffscreenCanvasRenderingContext2D.h"
 #include "mozilla/GfxMessageUtils.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/DomCanvasMetrics.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/webgpu/CanvasContext.h"
 #include "MozFramebuffer.h"
@@ -98,7 +98,7 @@ void CanvasRenderingContextHelper::ToBlob(EncodeCompleteCallback* aCallback,
                                           bool aUsingCustomOptions,
                                           bool aUsePlaceholder,
                                           ErrorResult& aRv) {
-  const nsIntSize elementSize = GetWidthHeight();
+  const CSSIntSize elementSize = GetWidthHeight();
   if (mCurrentContext) {
     // We disallow canvases of width or height zero, and set them to 1, so
     // we will have a discrepancy with the sizes of the canvas and the context.
@@ -119,7 +119,8 @@ void CanvasRenderingContextHelper::ToBlob(EncodeCompleteCallback* aCallback,
 
   aRv = ImageEncoder::ExtractDataAsync(
       aType, aEncodeOptions, aUsingCustomOptions, std::move(imageBuffer),
-      format, {imageSize.width, imageSize.height}, aUsePlaceholder, callback);
+      format, CSSIntSize::FromUnknownSize(imageSize), aUsePlaceholder,
+      callback);
 }
 
 UniquePtr<uint8_t[]> CanvasRenderingContextHelper::GetImageBuffer(
@@ -146,24 +147,26 @@ CanvasRenderingContextHelper::CreateContextHelper(
       break;
 
     case CanvasContextType::Canvas2D:
-      Telemetry::Accumulate(Telemetry::CANVAS_2D_USED, 1);
+      glean::canvas::used_2d.EnumGet(glean::canvas::Used2dLabel::eTrue).Add();
       ret = new CanvasRenderingContext2D(aCompositorBackend);
       break;
 
     case CanvasContextType::OffscreenCanvas2D:
-      Telemetry::Accumulate(Telemetry::CANVAS_2D_USED, 1);
+      glean::canvas::used_2d.EnumGet(glean::canvas::Used2dLabel::eTrue).Add();
       ret = new OffscreenCanvasRenderingContext2D(aCompositorBackend);
       break;
 
     case CanvasContextType::WebGL1:
-      Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_USED, 1);
+      glean::canvas::webgl_used.EnumGet(glean::canvas::WebglUsedLabel::eTrue)
+          .Add();
 
       ret = new ClientWebGLContext(/*webgl2:*/ false);
 
       break;
 
     case CanvasContextType::WebGL2:
-      Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_USED, 1);
+      glean::canvas::webgl_used.EnumGet(glean::canvas::WebglUsedLabel::eTrue)
+          .Add();
 
       ret = new ClientWebGLContext(/*webgl2:*/ true);
 
@@ -237,18 +240,26 @@ already_AddRefed<nsISupports> CanvasRenderingContextHelper::GetOrCreateContext(
       // We want to throw only if dictionary initialization fails,
       // so only in case aRv has been set to some error value.
       if (aContextType == CanvasContextType::WebGL1) {
-        Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_SUCCESS, 0);
+        glean::canvas::webgl_success
+            .EnumGet(glean::canvas::WebglSuccessLabel::eFalse)
+            .Add();
       } else if (aContextType == CanvasContextType::WebGL2) {
-        Telemetry::Accumulate(Telemetry::CANVAS_WEBGL2_SUCCESS, 0);
+        glean::canvas::webgl2_success
+            .EnumGet(glean::canvas::Webgl2SuccessLabel::eFalse)
+            .Add();
       } else if (aContextType == CanvasContextType::WebGPU) {
         // Telemetry::Accumulate(Telemetry::CANVAS_WEBGPU_SUCCESS, 0);
       }
       return nullptr;
     }
     if (aContextType == CanvasContextType::WebGL1) {
-      Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_SUCCESS, 1);
+      glean::canvas::webgl_success
+          .EnumGet(glean::canvas::WebglSuccessLabel::eTrue)
+          .Add();
     } else if (aContextType == CanvasContextType::WebGL2) {
-      Telemetry::Accumulate(Telemetry::CANVAS_WEBGL2_SUCCESS, 1);
+      glean::canvas::webgl2_success
+          .EnumGet(glean::canvas::Webgl2SuccessLabel::eTrue)
+          .Add();
     } else if (aContextType == CanvasContextType::WebGPU) {
       // Telemetry::Accumulate(Telemetry::CANVAS_WEBGPU_SUCCESS, 1);
     }
@@ -266,7 +277,7 @@ nsresult CanvasRenderingContextHelper::UpdateContext(
     ErrorResult& aRvForDictionaryInit) {
   if (!mCurrentContext) return NS_OK;
 
-  nsIntSize sz = GetWidthHeight();
+  CSSIntSize sz = GetWidthHeight();
 
   nsCOMPtr<nsICanvasRenderingContextInternal> currentContext = mCurrentContext;
 

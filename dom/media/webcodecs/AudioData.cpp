@@ -5,12 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Assertions.h"
+#include "mozilla/CheckedInt.h"
 #include "mozilla/Logging.h"
 #include "mozilla/dom/AudioData.h"
 #include "mozilla/dom/AudioDataBinding.h"
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "nsStringFwd.h"
+#include "nsFmtString.h"
 
 #include <utility>
 
@@ -24,21 +27,25 @@ extern mozilla::LazyLogModule gWebCodecsLog;
 
 namespace mozilla::dom {
 
-#ifdef LOG_INTERNAL
-#  undef LOG_INTERNAL
-#endif  // LOG_INTERNAL
-#define LOG_INTERNAL(level, msg, ...) \
-  MOZ_LOG(gWebCodecsLog, LogLevel::level, (msg, ##__VA_ARGS__))
+#define LOGD(fmt, ...) \
+  MOZ_LOG_FMT(gWebCodecsLog, LogLevel::Debug, fmt, ##__VA_ARGS__)
 
-#ifdef LOGD
-#  undef LOGD
-#endif  // LOGD
-#define LOGD(msg, ...) LOG_INTERNAL(Debug, msg, ##__VA_ARGS__)
+#define LOGE(fmt, ...) \
+  MOZ_LOG_FMT(gWebCodecsLog, LogLevel::Error, fmt, ##__VA_ARGS__)
 
-#ifdef LOGE
-#  undef LOGE
-#endif  // LOGE
-#define LOGE(msg, ...) LOG_INTERNAL(Error, msg, ##__VA_ARGS__)
+[[nodiscard]] Result<Ok, nsCString> LogAndReturnErr(const char* aLiteral) {
+  MOZ_LOG(gWebCodecsLog, LogLevel::Debug, ("%s", aLiteral));
+  return Err(nsCString(aLiteral));
+}
+
+template <typename... Args>
+[[nodiscard]] Result<Ok, nsCString> LogAndReturnErr(
+    fmt::format_string<Args...> aFmt, Args&&... aArgs) {
+  nsAutoCStringN<100> str;
+  str.AppendVfmt(aFmt, fmt::make_format_args(aArgs...));
+  MOZ_LOG(gWebCodecsLog, LogLevel::Debug, ("%s", str.get()));
+  return Err(str);
+}
 
 // Only needed for refcounted objects.
 //
@@ -94,8 +101,7 @@ AudioData::AudioData(const AudioData& aOther)
 }
 
 Result<already_AddRefed<AudioDataResource>, nsresult>
-AudioDataResource::Construct(
-    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aInit) {
+AudioDataResource::Construct(const OwningAllowSharedBufferSource& aInit) {
   FallibleTArray<uint8_t> copied;
   uint8_t* rv = ProcessTypedArraysFixed(
       aInit, [&](const Span<uint8_t>& aData) -> uint8_t* {
@@ -152,36 +158,38 @@ JSObject* AudioData::WrapObject(JSContext* aCx,
 }
 
 Result<Ok, nsCString> IsValidAudioDataInit(const AudioDataInit& aInit) {
-  if (aInit.mSampleRate <= 0.0) {
-    auto msg = nsLiteralCString("sampleRate must be positive");
-    LOGD("%s", msg.get());
-    return Err(msg);
+  // The sample rate is an uint32_t within Gecko
+  uint32_t integerSampleRate = SaturatingCast<uint32_t>(aInit.mSampleRate);
+  if (integerSampleRate == 0) {
+    return LogAndReturnErr("sampleRate must be positive");
   }
   if (aInit.mNumberOfFrames == 0) {
-    auto msg = nsLiteralCString("mNumberOfFrames must be positive");
-    LOGD("%s", msg.get());
-    return Err(msg);
+    return LogAndReturnErr("mNumberOfFrames must be positive");
   }
   if (aInit.mNumberOfChannels == 0) {
-    auto msg = nsLiteralCString("mNumberOfChannels must be positive");
-    LOGD("%s", msg.get());
-    return Err(msg);
+    return LogAndReturnErr("mNumberOfChannels must be positive");
   }
 
-  uint64_t totalSamples = aInit.mNumberOfFrames * aInit.mNumberOfChannels;
-  uint32_t bytesPerSamples = BytesPerSamples(aInit.mFormat);
-  uint64_t totalSize = totalSamples * bytesPerSamples;
+  CheckedInt<uint64_t> bytesNeeded = aInit.mNumberOfFrames;
+  bytesNeeded *= aInit.mNumberOfChannels;
+  bytesNeeded *= BytesPerSamples(aInit.mFormat);
+
+  if (!bytesNeeded.isValid()) {
+    return LogAndReturnErr(
+        FMT_STRING("Overflow when computing the number of bytes needed to hold "
+                   "audio samples ({}*{}*{})"),
+        aInit.mNumberOfFrames, aInit.mNumberOfChannels,
+        BytesPerSamples(aInit.mFormat));
+  }
+
   uint64_t arraySizeBytes = ProcessTypedArraysFixed(
       aInit.mData, [&](const Span<uint8_t>& aData) -> uint64_t {
         return aData.LengthBytes();
       });
-  if (arraySizeBytes < totalSize) {
-    auto msg =
-        nsPrintfCString("Array of size %" PRIu64
-                        " not big enough, should be at least %" PRIu64 " bytes",
-                        arraySizeBytes, totalSize);
-    LOGD("%s", msg.get());
-    return Err(msg);
+  if (arraySizeBytes < bytesNeeded.value()) {
+    return LogAndReturnErr(
+        FMT_STRING("Array of size {} not big enough, should be at least {}"),
+        arraySizeBytes, bytesNeeded.value());
   }
   return Ok();
 }
@@ -191,9 +199,9 @@ already_AddRefed<AudioData> AudioData::Constructor(const GlobalObject& aGlobal,
                                                    const AudioDataInit& aInit,
                                                    ErrorResult& aRv) {
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
-  LOGD("[%p] AudioData(fmt: %s, rate: %f, ch: %" PRIu32 ", ts: %" PRId64 ")",
-       global.get(), GetEnumString(aInit.mFormat).get(), aInit.mSampleRate,
-       aInit.mNumberOfChannels, aInit.mTimestamp);
+  LOGD("[{}] AudioData(fmt: {}, rate: {}, ch: {}, ts: {})",
+       fmt::ptr(global.get()), GetEnumString(aInit.mFormat).get(),
+       aInit.mSampleRate, aInit.mNumberOfChannels, aInit.mTimestamp);
   if (!global) {
     LOGE("Global unavailable");
     aRv.Throw(NS_ERROR_FAILURE);
@@ -244,6 +252,9 @@ uint32_t AudioData::NumberOfChannels() const {
 // https://w3c.github.io/webcodecs/#dom-audiodata-duration
 uint64_t AudioData::Duration() const {
   AssertIsOnOwningThread();
+  if (!mNumberOfFrames) {
+    return 0;
+  }
   // The spec isn't clear in which direction to convert to integer.
   // https://github.com/w3c/webcodecs/issues/726
   return static_cast<uint64_t>(
@@ -268,9 +279,6 @@ struct CopyToSpec {
   const uint32_t mFrameOffset;
   const uint32_t mPlaneIndex;
   const AudioSampleFormat mFormat;
-  // False if this is used internally, and this copy call doesn't come from
-  // script.
-  DebugOnly<bool> mFromScript = true;
 };
 
 bool IsInterleaved(const AudioSampleFormat& aFormat) {
@@ -303,17 +311,16 @@ size_t AudioData::ComputeCopyElementCount(
   if (IsInterleaved(destFormat.value())) {
     if (aOptions.mPlaneIndex > 0) {
       auto msg = "Interleaved format, but plane index > 0"_ns;
-      LOGD("%s", msg.get());
+      LOGD("{}", msg.get());
       aRv.ThrowRangeError(msg);
       return 0;
     }
   } else {
     if (aOptions.mPlaneIndex >= mNumberOfChannels) {
-      auto msg = nsPrintfCString(
-          "Plane index %" PRIu32
-          " greater or equal than the number of channels %" PRIu32,
-          aOptions.mPlaneIndex, mNumberOfChannels);
-      LOGD("%s", msg.get());
+      auto msg = nsFmtCString(FMT_STRING("Plane index {} greater or equal "
+                                         "than the number of channels {}"),
+                              aOptions.mPlaneIndex, mNumberOfChannels);
+      LOGD("{}", msg.get());
       aRv.ThrowRangeError(msg);
       return 0;
     }
@@ -323,10 +330,10 @@ size_t AudioData::ComputeCopyElementCount(
   uint64_t frameCount = mNumberOfFrames;
   // 7
   if (aOptions.mFrameOffset >= frameCount) {
-    auto msg = nsPrintfCString("Frame offset of %" PRIu32
-                               " greater or equal than frame count %" PRIu64,
-                               aOptions.mFrameOffset, frameCount);
-    LOGD("%s", msg.get());
+    auto msg = nsFmtCString(
+        FMT_STRING("Frame offset of {} greater or equal than frame count {}"),
+        aOptions.mFrameOffset, frameCount);
+    LOGD("{}", msg.get());
     aRv.ThrowRangeError(msg);
     return 0;
   }
@@ -334,11 +341,11 @@ size_t AudioData::ComputeCopyElementCount(
   uint64_t copyFrameCount = frameCount - aOptions.mFrameOffset;
   if (aOptions.mFrameCount.WasPassed()) {
     if (aOptions.mFrameCount.Value() > copyFrameCount) {
-      auto msg = nsPrintfCString(
-          "Passed copy frame count of %" PRIu32
-          " greater than available source frames for copy of %" PRIu64,
-          aOptions.mFrameCount.Value(), copyFrameCount);
-      LOGD("%s", msg.get());
+      auto msg = nsFmtCString(FMT_STRING("Passed copy frame count of {} "
+                                         "greater than available source frames "
+                                         "for copy of {}"),
+                              aOptions.mFrameCount.Value(), copyFrameCount);
+      LOGD("{}", msg.get());
       aRv.ThrowRangeError(msg);
       return 0;
     }
@@ -360,7 +367,7 @@ uint32_t AudioData::AllocationSize(const AudioDataCopyToOptions& aOptions,
   AssertIsOnOwningThread();
   if (!mResource) {
     auto msg = "allocationSize called on detached AudioData"_ns;
-    LOGD("%s", msg.get());
+    LOGD("{}", msg.get());
     aRv.ThrowInvalidStateError(msg);
     return 0;
   }
@@ -376,7 +383,7 @@ uint32_t AudioData::AllocationSize(const AudioDataCopyToOptions& aOptions,
   }
   if (destFormat.isNothing()) {
     auto msg = "AudioData has an unknown format"_ns;
-    LOGD("%s", msg.get());
+    LOGD("{}", msg.get());
     // See https://github.com/w3c/webcodecs/issues/727 -- it isn't clear yet
     // what to do here
     aRv.ThrowRangeError(msg);
@@ -423,7 +430,6 @@ void CopySamples(Span<S> aSource, Span<D> aDest, uint32_t aSourceChannelCount,
   }
 
   if (!IsInterleaved(aSourceFormat) && IsInterleaved(aCopyToSpec.mFormat)) {
-    MOZ_ASSERT(!aCopyToSpec.mFromScript);
     // Planar to interleaved -- copy of all channels of the source into the
     // destination buffer.
     MOZ_ASSERT(aCopyToSpec.mPlaneIndex == 0);
@@ -447,10 +453,12 @@ void CopySamples(Span<S> aSource, Span<D> aDest, uint32_t aSourceChannelCount,
   }
   if (!IsInterleaved(aSourceFormat) && !IsInterleaved(aCopyToSpec.mFormat)) {
     // Planar to Planar / convert + copy from the right index in the source.
-    size_t offset =
-        aCopyToSpec.mPlaneIndex * aSource.Length() / aSourceChannelCount;
-    MOZ_ASSERT(aDest.Length() >= aSource.Length() / aSourceChannelCount -
-                                     aCopyToSpec.mFrameOffset);
+    size_t framePerPlane = aSource.Length() / aSourceChannelCount;
+    size_t offset = aCopyToSpec.mPlaneIndex * framePerPlane;
+    MOZ_ASSERT(aDest.Length() >= aCopyToSpec.mFrameCount,
+               "Destination buffer too small");
+    MOZ_ASSERT(aSource.Length() >= offset + aCopyToSpec.mFrameCount,
+               "Source buffer too small");
     for (uint32_t i = 0; i < aCopyToSpec.mFrameCount; i++) {
       aDest[i] =
           ConvertAudioSample<D>(aSource[offset + aCopyToSpec.mFrameOffset + i]);
@@ -462,18 +470,18 @@ nsCString AudioData::ToString() const {
   if (!mResource) {
     return nsCString("AudioData[detached]");
   }
-  return nsPrintfCString("AudioData[%zu bytes %s %fHz %" PRIu32 "x%" PRIu32
-                         "ch]",
-                         mResource->Data().LengthBytes(),
-                         GetEnumString(mAudioSampleFormat.value()).get(),
-                         mSampleRate, mNumberOfFrames, mNumberOfChannels);
+  return nsFmtCString(FMT_STRING("AudioData[{} bytes {} {}Hz {} x {}ch]"),
+                      mResource->Data().LengthBytes(),
+                      GetEnumString(mAudioSampleFormat.value()).get(),
+                      mSampleRate, mNumberOfFrames, mNumberOfChannels);
 }
 
 nsCString CopyToToString(size_t aDestBufSize,
                          const AudioDataCopyToOptions& aOptions) {
-  return nsPrintfCString(
-      "AudioDataCopyToOptions[data: %zu bytes %s frame count:%" PRIu32
-      " frame offset: %" PRIu32 "  plane: %" PRIu32 "]",
+  return nsFmtCString(
+      FMT_STRING(
+          "AudioDataCopyToOptions[data: {} bytes, {}, frame count: {}, frame "
+          "offset: {}, plane: {}]"),
       aDestBufSize,
       aOptions.mFormat.WasPassed()
           ? GetEnumString(aOptions.mFormat.Value()).get()
@@ -527,9 +535,9 @@ void DoCopy(Span<uint8_t> aSource, Span<uint8_t> aDest,
 }
 
 // https://w3c.github.io/webcodecs/#dom-audiodata-copyto
-void AudioData::CopyTo(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDestination,
-    const AudioDataCopyToOptions& aOptions, ErrorResult& aRv) {
+void AudioData::CopyTo(const AllowSharedBufferSource& aDestination,
+                       const AudioDataCopyToOptions& aOptions,
+                       ErrorResult& aRv) {
   AssertIsOnOwningThread();
 
   size_t destLength = ProcessTypedArraysFixed(
@@ -537,12 +545,12 @@ void AudioData::CopyTo(
         return aData.LengthBytes();
       });
 
-  LOGD("AudioData::CopyTo %s -> %s", ToString().get(),
-       CopyToToString(destLength, aOptions).get());
+  LOGD("AudioData::CopyTo {} -> {}", ToString().get(),
+       CopyToToString(destLength, aOptions).get(), 4);
 
   if (!mResource) {
     auto msg = "copyTo called on closed AudioData"_ns;
-    LOGD("%s", msg.get());
+    LOGD("{}", msg.get());
     aRv.ThrowInvalidStateError(msg);
     return;
   }
@@ -561,11 +569,10 @@ void AudioData::CopyTo(
   CheckedInt<uint32_t> copyLength = bytesPerSample;
   copyLength *= copyElementCount;
   if (copyLength.value() > destLength) {
-    auto msg = nsPrintfCString(
-        "destination buffer of length %zu too small for copying %" PRIu64
-        "  elements",
-        destLength, bytesPerSample * copyElementCount);
-    LOGD("%s", msg.get());
+    auto msg = nsFmtCString(FMT_STRING("destination buffer of length {} too "
+                                       "small for copying {} elements"),
+                            destLength, bytesPerSample * copyElementCount);
+    LOGD("{}", msg.get());
     aRv.ThrowRangeError(msg);
     return;
   }
@@ -592,7 +599,7 @@ already_AddRefed<AudioData> AudioData::Clone(ErrorResult& aRv) {
 
   if (!mResource) {
     auto msg = "No media resource in the AudioData now"_ns;
-    LOGD("%s", msg.get());
+    LOGD("{}", msg.get());
     aRv.ThrowInvalidStateError(msg);
     return nullptr;
   }
@@ -690,30 +697,31 @@ void AudioData::CloseIfNeeded() {
 RefPtr<mozilla::AudioData> AudioData::ToAudioData() const {
   // Always convert to f32 interleaved for now, as this Gecko's prefered
   // internal audio representation for encoding and decoding.
+  // mResource can be bigger than needed.
   Span<uint8_t> data = mResource->Data();
-  DebugOnly<uint32_t> frames = mNumberOfFrames;
-  uint32_t bytesPerSample = BytesPerSamples(mAudioSampleFormat.value());
-  uint32_t samples = data.Length() / bytesPerSample;
-  DebugOnly<uint32_t> computedFrames = samples / mNumberOfChannels;
-  MOZ_ASSERT(frames == computedFrames);
-  AlignedAudioBuffer buf(samples);
-  Span<uint8_t> storage(reinterpret_cast<uint8_t*>(buf.Data()),
-                        samples * sizeof(float));
+  CheckedUint64 sampleCount = mNumberOfFrames;
+  sampleCount *= mNumberOfChannels;
+  if (!sampleCount.isValid()) {
+    LOGE("Overflow AudioData::ToAudioData when computing the number of frames");
+    return nullptr;
+  }
+  AlignedAudioBuffer buf(sampleCount.value());
+  if (!buf.Length()) {
+    LOGE("OOM when allocating storage for AudioData conversion");
+    return nullptr;
+  }
+  Span<uint8_t> storage(reinterpret_cast<uint8_t*>(buf.Data()), buf.Size());
 
   CopyToSpec spec(mNumberOfFrames, 0, 0, AudioSampleFormat::F32);
-#ifdef DEBUG
-  spec.mFromScript = false;
-#endif
 
   DoCopy(data, storage, mNumberOfChannels, mAudioSampleFormat.value(), spec);
 
   return MakeRefPtr<mozilla::AudioData>(
       0, media::TimeUnit::FromMicroseconds(mTimestamp), std::move(buf),
-      mNumberOfChannels, mSampleRate);
+      mNumberOfChannels, SaturatingCast<uint32_t>(mSampleRate));
 }
 
 #undef LOGD
 #undef LOGE
-#undef LOG_INTERNAL
 
 }  // namespace mozilla::dom

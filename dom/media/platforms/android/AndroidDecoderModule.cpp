@@ -11,7 +11,6 @@
 #endif
 #include "MediaInfo.h"
 #include "RemoteDataDecoder.h"
-#include "TheoraDecoder.h"
 #include "VPXDecoder.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Components.h"
@@ -106,12 +105,9 @@ DecodeSupportSet AndroidDecoderModule::SupportsMimeType(
       }
       break;
 
-    // Prefer the gecko decoder for theora/opus/vorbis; stagefright crashes
+    // Prefer the gecko decoder for opus/vorbis; stagefright crashes
     // on content demuxed from mp4.
-    // Not all android devices support FLAC/theora even when they say they do.
-    case MediaCodec::Theora:
-      SLOG("Rejecting video of type %s", aMimeType.Data());
-      return media::DecodeSupportSet{};
+    // Not all android devices support FLAC even when they say they do.
     // Always use our own software decoder (in ffvpx) for audio except for AAC
     case MediaCodec::MP3:
       [[fallthrough]];
@@ -128,6 +124,13 @@ DecodeSupportSet AndroidDecoderModule::SupportsMimeType(
     // H264 always reports software decode
     case MediaCodec::H264:
       return DecodeSupport::SoftwareDecode;
+
+    case MediaCodec::HEVC:
+      if (!StaticPrefs::media_hevc_enabled()) {
+        SLOG("Rejecting HEVC as the preference is disabled");
+        return media::DecodeSupportSet{};
+      }
+      break;
 
     // AV1 doesn't need any special handling.
     case MediaCodec::AV1:
@@ -312,6 +315,16 @@ media::DecodeSupportSet AndroidDecoderModule::Supports(
              : media::DecodeSupportSet{};
 }
 
+static bool IsAV1MainProfile(const MediaByteBuffer* aBox) {
+  if (!aBox || aBox->IsEmpty()) {
+    return false;
+  }
+  AOMDecoder::AV1SequenceInfo av1Info;
+  MediaResult seqHdrResult;
+  AOMDecoder::TryReadAV1CBox(aBox, av1Info, seqHdrResult);
+  return seqHdrResult.Code() == NS_OK && av1Info.mProfile == 0;
+}
+
 already_AddRefed<MediaDataDecoder> AndroidDecoderModule::CreateVideoDecoder(
     const CreateDecoderParams& aParams) {
   // Temporary - forces use of VPXDecoder when alpha is present.
@@ -319,6 +332,11 @@ already_AddRefed<MediaDataDecoder> AndroidDecoderModule::CreateVideoDecoder(
   // the check for alpha to PDMFactory but not itself remove the need for a
   // check.
   if (aParams.VideoConfig().HasAlpha()) {
+    return nullptr;
+  }
+
+  if (AOMDecoder::IsAV1(aParams.mConfig.mMimeType) &&
+      !IsAV1MainProfile(aParams.VideoConfig().mExtraData)) {
     return nullptr;
   }
 
@@ -335,11 +353,6 @@ already_AddRefed<MediaDataDecoder> AndroidDecoderModule::CreateVideoDecoder(
 already_AddRefed<MediaDataDecoder> AndroidDecoderModule::CreateAudioDecoder(
     const CreateDecoderParams& aParams) {
   const AudioInfo& config = aParams.AudioConfig();
-  if (config.mBitDepth != 16) {
-    // We only handle 16-bit audio.
-    return nullptr;
-  }
-
   LOG("CreateAudioFormat with mimeType=%s, mRate=%d, channels=%d",
       config.mMimeType.Data(), config.mRate, config.mChannels);
 

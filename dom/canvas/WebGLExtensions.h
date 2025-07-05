@@ -12,7 +12,6 @@
 #include "nsWrapperCache.h"
 #include "WebGLObjectModel.h"
 #include "WebGLTypes.h"
-#include "WebGLFormats.h"
 
 namespace mozilla {
 class ErrorResult;
@@ -25,6 +24,7 @@ class Sequence;
 }  // namespace dom
 
 namespace webgl {
+struct FormatRenderableState;
 class FormatUsageAuthority;
 }  // namespace webgl
 
@@ -116,6 +116,11 @@ class WebGLExtensionDebugShaders : public WebGLExtensionBase {
  public:
   explicit WebGLExtensionDebugShaders(WebGLContext* webgl)
       : WebGLExtensionBase(webgl) {}
+};
+
+class WebGLExtensionDepthClamp : public WebGLExtensionBase {
+ public:
+  explicit WebGLExtensionDepthClamp(WebGLContext* webgl);
 };
 
 class WebGLExtensionDepthTexture : public WebGLExtensionBase {
@@ -245,7 +250,7 @@ class WebGLExtensionColorBufferFloat : public WebGLExtensionBase {
   explicit WebGLExtensionColorBufferFloat(WebGLContext*);
   static bool IsSupported(const WebGLContext*);
 
-  void SetRenderable(const webgl::FormatRenderableState);
+  void SetRenderable(const webgl::FormatRenderableState&);
   void OnSetExplicit() override;
 };
 
@@ -254,7 +259,7 @@ class WebGLExtensionColorBufferHalfFloat : public WebGLExtensionBase {
   explicit WebGLExtensionColorBufferHalfFloat(WebGLContext*);
   static bool IsSupported(const WebGLContext*);
 
-  void SetRenderable(const webgl::FormatRenderableState);
+  void SetRenderable(const webgl::FormatRenderableState&);
   void OnSetExplicit() override;
 };
 

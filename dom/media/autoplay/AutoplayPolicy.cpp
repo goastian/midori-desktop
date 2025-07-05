@@ -101,16 +101,25 @@ static bool IsWindowAllowedToPlayByTraits(nsPIDOMWindowInner* aWindow) {
     return false;
   }
 
+#ifndef MOZ_WIDGET_ANDROID
+  // On Android, we'd like to prevent top level video document from autoplaying.
   bool isTopLevelContent = !aWindow->GetBrowsingContext()->GetParent();
   if (currentDoc->MediaDocumentKind() == Document::MediaDocumentKind::Video &&
       isTopLevelContent) {
     AUTOPLAY_LOG("Allow top-level video document to autoplay.");
     return true;
   }
+#endif
 
   if (StaticPrefs::media_autoplay_allow_extension_background_pages() &&
       currentDoc->IsExtensionPage()) {
     AUTOPLAY_LOG("Allow autoplay as in extension document.");
+    return true;
+  }
+
+  if (currentDoc->GetPrincipal()->Equals(
+          nsContentUtils::GetFingerprintingProtectionPrincipal())) {
+    AUTOPLAY_LOG("Allow autoplay as in fingerprinting protection document.");
     return true;
   }
 
@@ -146,12 +155,6 @@ static bool IsMediaElementInaudible(const HTMLMediaElement& aElement) {
   }
 
   return false;
-}
-
-static bool IsAudioContextAllowedToPlay(const AudioContext& aContext) {
-  // Offline context won't directly output sound to audio devices.
-  return aContext.IsOffline() ||
-         IsWindowAllowedToPlayOverall(aContext.GetParentObject());
 }
 
 static bool IsEnableBlockingWebAudioByUserGesturePolicy() {
@@ -297,7 +300,7 @@ bool AutoplayPolicy::IsAllowedToPlay(const AudioContext& aContext) {
     return true;
   }
 
-  nsPIDOMWindowInner* window = aContext.GetParentObject();
+  nsPIDOMWindowInner* window = aContext.GetOwnerWindow();
   uint32_t sitePermission = SiteAutoplayPerm(window);
 
   if (sitePermission == nsIPermissionManager::ALLOW_ACTION) {
@@ -393,12 +396,6 @@ uint32_t AutoplayPolicy::GetSiteAutoplayPermission(nsIPrincipal* aPrincipal) {
   permMgr->TestExactPermissionFromPrincipal(aPrincipal, "autoplay-media"_ns,
                                             &perm);
   return perm;
-}
-
-/* static */
-bool AutoplayPolicyTelemetryUtils::WouldBeAllowedToPlayIfAutoplayDisabled(
-    const AudioContext& aContext) {
-  return IsAudioContextAllowedToPlay(aContext);
 }
 
 /* static */

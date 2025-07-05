@@ -13,7 +13,6 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/IntegerRange.h"
 #include "mozilla/ipc/ProtocolUtils.h"
-#include "mozilla/ipc/SharedMemoryBasic.h"
 #include "mozilla/Logging.h"
 #include "mozilla/TimeStamp.h"
 #include "nsExceptionHandler.h"
@@ -383,7 +382,7 @@ struct QueueParamTraits<webgl::TexUnpackBlobDesc> {
   static bool Write(ProducerView<U>& view, const ParamType& in) {
     MOZ_RELEASE_ASSERT(!in.image);
     MOZ_RELEASE_ASSERT(!in.sd);
-    const bool isDataSurf = bool(in.dataSurf);
+    const bool isDataSurf = bool(in.sourceSurf);
     if (!view.WriteParam(in.imageTarget) || !view.WriteParam(in.size) ||
         !view.WriteParam(in.srcAlphaType) || !view.WriteParam(in.unpacking) ||
         !view.WriteParam(in.cpuData) || !view.WriteParam(in.pboOffset) ||
@@ -393,7 +392,11 @@ struct QueueParamTraits<webgl::TexUnpackBlobDesc> {
       return false;
     }
     if (isDataSurf) {
-      const auto& surf = in.dataSurf;
+      const RefPtr<gfx::DataSourceSurface> surf =
+          in.sourceSurf->GetDataSurface();
+      if (!surf) {
+        return false;
+      }
       gfx::DataSourceSurface::ScopedMap map(surf, gfx::DataSourceSurface::READ);
       if (!map.IsMapped()) {
         return false;
@@ -441,9 +444,9 @@ struct QueueParamTraits<webgl::TexUnpackBlobDesc> {
 
       // DataSourceSurface demands pointer-to-mutable.
       const auto bytes = const_cast<uint8_t*>(range->begin().get());
-      out->dataSurf = gfx::Factory::CreateWrappingDataSourceSurface(
+      out->sourceSurf = gfx::Factory::CreateWrappingDataSourceSurface(
           bytes, stride, surfSize, format);
-      MOZ_ASSERT(out->dataSurf);
+      MOZ_ASSERT(out->sourceSurf);
     }
     return true;
   }
@@ -746,6 +749,66 @@ struct QueueParamTraits<std::pair<TypeA, TypeB>> {
   static bool Read(ConsumerView<U>& aConsumerView, ParamType* aArg) {
     aConsumerView.ReadParam(aArg->first());
     return aConsumerView.ReadParam(aArg->second());
+  }
+};
+
+// -
+
+template <class... T>
+struct QueueParamTraits<std::tuple<T...>> {
+  using ParamType = std::tuple<T...>;
+
+  template <typename U>
+  static bool Write(ProducerView<U>& aProducerView, const ParamType& aArg) {
+    bool ok = true;
+    mozilla::MapTuple(aArg, [&](const auto& field) {
+      ok &= aProducerView.WriteParam(field);
+      return true;  // ignored
+    });
+    return ok;
+  }
+
+  template <typename U>
+  static bool Read(ConsumerView<U>& aConsumerView, ParamType* aArg) {
+    bool ok = true;
+    mozilla::MapTuple(*aArg, [&](auto& field) {
+      ok &= aConsumerView.ReadParam(&field);
+      return true;  // ignored
+    });
+    return ok;
+  }
+};
+
+// -
+
+template <class K, class V, class H, class E>
+struct QueueParamTraits<std::unordered_map<K, V, H, E>> {
+  using ParamType = std::unordered_map<K, V, H, E>;
+
+  template <typename U>
+  static bool Write(ProducerView<U>& aProducerView, const ParamType& aArg) {
+    bool ok = aProducerView.WriteParam(uint64_t{aArg.size()});
+    for (const auto& pair : aArg) {
+      ok &= aProducerView.WriteParam(pair);
+    }
+    return ok;
+  }
+
+  template <typename U>
+  static bool Read(ConsumerView<U>& aConsumerView, ParamType* aArg) {
+    aArg->clear();
+
+    auto size = uint64_t{0};
+    if (!aConsumerView.ReadParam(&size)) return false;
+
+    aArg->reserve(size);
+    for (const auto i : IntegerRange(size)) {
+      (void)i;
+      auto pair = std::pair<K, V>{};
+      if (!aConsumerView.ReadParam(&pair)) return false;
+      aArg->insert(pair);
+    }
+    return true;
   }
 };
 

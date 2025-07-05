@@ -8,6 +8,7 @@
 #include "FFmpegLibWrapper.h"
 #include "FFmpegLog.h"
 #include "mozilla/FileUtils.h"
+#include "mozilla/ToString.h"
 #include "nsLocalFile.h"
 #include "nsXPCOMPrivate.h"
 #include "prlink.h"
@@ -17,6 +18,7 @@ namespace mozilla {
 template <int V>
 class FFmpegDecoderModule {
  public:
+  static void Init(FFmpegLibWrapper*);
   static already_AddRefed<PlatformDecoderModule> Create(FFmpegLibWrapper*);
 };
 
@@ -86,8 +88,8 @@ bool FFVPXRuntimeLinker::Init() {
   if (path.IsEmpty()) {
     return false;
   }
-  nsCOMPtr<nsIFile> libFile = new nsLocalFile(path);
-  if (libFile->NativePath().IsEmpty()) {
+  nsCOMPtr<nsIFile> libFile;
+  if (NS_FAILED(NS_NewPathStringLocalFile(path, getter_AddRefs(libFile)))) {
     return false;
   }
 
@@ -120,9 +122,10 @@ bool FFVPXRuntimeLinker::Init() {
   }
   sFFVPXLib.mAVCodecLib = MozAVLink(libFile);
   FFmpegLibWrapper::LinkResult res = sFFVPXLib.Link();
-  FFMPEGP_LOG("Link result: %s", FFmpegLibWrapper::LinkResultToString(res));
+  FFMPEGP_LOG("Link result: %s", ToString(res).c_str());
   if (res == FFmpegLibWrapper::LinkResult::Success) {
     sLinkStatus = LinkStatus_SUCCEEDED;
+    FFmpegDecoderModule<FFVPX_VERSION>::Init(&sFFVPXLib);
     return true;
   }
   return false;

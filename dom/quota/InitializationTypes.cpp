@@ -34,9 +34,25 @@ nsLiteralCString StringGenerator::GetString(
       return "UpgradeFromIndexedDBDirectory"_ns;
     case Initialization::UpgradeFromPersistentStorageDirectory:
       return "UpgradeFromPersistentStorageDirectory"_ns;
+    case Initialization::PersistentRepository:
+      return "PersistentRepository"_ns;
 
     default:
       MOZ_CRASH("Bad initialization value!");
+  }
+}
+
+// static
+nsLiteralCString StringGenerator::GetString(
+    const GroupInitialization aGroupInitialization) {
+  switch (aGroupInitialization) {
+    case GroupInitialization::PersistentGroup:
+      return "PersistentGroup"_ns;
+    case GroupInitialization::TemporaryGroup:
+      return "TemporaryGroup"_ns;
+
+    default:
+      MOZ_CRASH("Bad group initialization value!");
   }
 }
 

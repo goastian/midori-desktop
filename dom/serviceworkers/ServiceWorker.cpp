@@ -27,7 +27,6 @@
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/StorageAccess.h"
 
 #ifdef XP_WIN
 #  undef PostMessage
@@ -51,7 +50,6 @@ ServiceWorker::ServiceWorker(nsIGlobalObject* aGlobal,
       mDescriptor(aDescriptor),
       mShutdown(false),
       mLastNotifiedState(ServiceWorkerState::Installing) {
-  MOZ_ASSERT(NS_IsMainThread());
   MOZ_DIAGNOSTIC_ASSERT(aGlobal);
 
   PBackgroundChild* parentActor =
@@ -118,10 +116,7 @@ ServiceWorker::ServiceWorker(nsIGlobalObject* aGlobal,
   }
 }
 
-ServiceWorker::~ServiceWorker() {
-  MOZ_ASSERT(NS_IsMainThread());
-  Shutdown();
-}
+ServiceWorker::~ServiceWorker() { Shutdown(); }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ServiceWorker, DOMEventTargetHelper,
                                    mRegistration);
@@ -135,8 +130,6 @@ NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 JSObject* ServiceWorker::WrapObject(JSContext* aCx,
                                     JS::Handle<JSObject*> aGivenProto) {
-  MOZ_ASSERT(NS_IsMainThread());
-
   return ServiceWorker_Binding::Wrap(aCx, this, aGivenProto);
 }
 
@@ -181,28 +174,17 @@ void ServiceWorker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
     return;
   }
 
-  nsPIDOMWindowInner* window = GetOwner();
-  if (NS_WARN_IF(!window || !window->GetExtantDoc())) {
+  nsIGlobalObject* global = GetOwnerGlobal();
+  if (NS_WARN_IF(!global)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 
-  auto storageAllowed = StorageAllowedForWindow(window);
-  if (storageAllowed != StorageAccess::eAllow &&
-      (!StaticPrefs::privacy_partition_serviceWorkers() ||
-       !StoragePartitioningEnabled(
-           storageAllowed, window->GetExtantDoc()->CookieJarSettings()))) {
+  if (!ServiceWorkersStorageAllowedForGlobal(global)) {
     ServiceWorkerManager::LocalizeAndReportToAllClients(
         mDescriptor.Scope(), "ServiceWorkerPostMessageStorageError",
         nsTArray<nsString>{NS_ConvertUTF8toUTF16(mDescriptor.Scope())});
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
-    return;
-  }
-
-  Maybe<ClientInfo> clientInfo = window->GetClientInfo();
-  Maybe<ClientState> clientState = window->GetClientState();
-  if (NS_WARN_IF(clientInfo.isNothing() || clientState.isNothing())) {
-    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 
@@ -221,7 +203,7 @@ void ServiceWorker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   // deserialization and sharing memory objects are not propagated to the other
   // process.
   JS::CloneDataPolicy clonePolicy;
-  if (nsGlobalWindowInner::Cast(window)->IsSharedMemoryAllowed()) {
+  if (global->IsSharedMemoryAllowed()) {
     clonePolicy.allowSharedMemoryObjects();
   }
 
@@ -231,14 +213,13 @@ void ServiceWorker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
     return;
   }
 
-  // The value of CloneScope() is set while StructuredCloneData::Write(). If the
-  // aValue contiains a shared memory object, then the scope will be restricted
-  // and thus return SameProcess. If not, it will return DifferentProcess.
-  //
-  // When we postMessage a shared memory object from a window to a service
-  // worker, the object must be sent from a cross-origin isolated process to
-  // another one. So, we mark mark this data as an error message data if the
-  // scope is limited to same process.
+  // If StructuredCloneData::Write() ended up deciding on a scope of SameProcess
+  // then we must convert this to an error on deserialization.  This is because
+  // such payloads fundamentally can't be sent cross-process (they involve
+  // pointers / local resources).  However, this will also correlate with the
+  // spec for situations like SharedArrayBuffer which are limited to being sent
+  // within the same agent cluster and where ServiceWorkers are always spawned
+  // in their own agent cluster.
   if (data->CloneScope() ==
       StructuredCloneHolder::StructuredCloneScope::SameProcess) {
     data->SetAsErrorMessageData();
@@ -253,9 +234,29 @@ void ServiceWorker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
     return;
   }
 
-  mActor->SendPostMessage(
-      clonedData,
-      ClientInfoAndState(clientInfo.ref().ToIPC(), clientState.ref().ToIPC()));
+  // ServiceWorkersStorageAllowedForGlobal will have already validated these as
+  // both being isSome().
+  Maybe<ClientInfo> clientInfo = global->GetClientInfo();
+  Maybe<ClientState> clientState = global->GetClientState();
+
+  // If this global is a ServiceWorker, we need this global's
+  // ServiceWorkerDescriptor.  While we normally try and normalize things
+  // through nsIGlobalObject, this is fairly one-off right now, so starting from
+  // worker-specific logic.
+  PostMessageSource source;
+  if (WorkerPrivate* wp = GetCurrentThreadWorkerPrivate()) {
+    if (wp->IsServiceWorker()) {
+      source = wp->GetServiceWorkerDescriptor().ToIPC();
+    } else {
+      source = ClientInfoAndState(clientInfo.ref().ToIPC(),
+                                  clientState.ref().ToIPC());
+    }
+  } else {
+    source =
+        ClientInfoAndState(clientInfo.ref().ToIPC(), clientState.ref().ToIPC());
+  }
+
+  mActor->SendPostMessage(clonedData, source);
 }
 
 void ServiceWorker::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,

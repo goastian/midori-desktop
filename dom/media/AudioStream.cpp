@@ -16,7 +16,6 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/Unused.h"
 #include <algorithm>
-#include "mozilla/Telemetry.h"
 #include "CubebUtils.h"
 #include "nsNativeCharsetUtils.h"
 #include "nsPrintfCString.h"
@@ -611,8 +610,8 @@ long AudioStream::DataCallback(void* aBuffer, long aFrames) {
     mCallbacksStarted = true;
   }
 
-  TRACE_AUDIO_CALLBACK_BUDGET("AudioStream real-time budget", aFrames,
-                              mAudioClock.GetInputRate());
+  TRACE_AUDIO_CALLBACK_FRAME_COUNT("AudioStream real-time budget", aFrames,
+                                   mAudioClock.GetInputRate());
   TRACE("AudioStream::DataCallback");
   MOZ_ASSERT(mState != SHUTDOWN, "No data callback after shutdown");
 

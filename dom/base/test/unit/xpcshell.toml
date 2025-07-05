@@ -27,20 +27,22 @@ support-files = [
 
 ["test_blockParsing.js"]
 prefs = ["dom.security.https_first=false"]
-skip-if = [
-  "debug", # We fail an assertion if we block parsing on a self-closing element
-  "os == 'android'",
-]
+run-if = ["!debug"] # We fail an assertion if we block parsing on a self-closing element
 
 ["test_bug553888.js"]
 
 ["test_bug737966.js"]
+prefs = ["network.xhr.block_sync_system_requests=false"] # Bug 721336
 
 ["test_cancelPrefetch.js"]
 
 ["test_chromeutils_base64.js"]
 
+["test_chromeutils_callFunctionAndLogException.js"]
+
 ["test_chromeutils_defineLazyGetter.js"]
+
+["test_chromeutils_isJSIdentifier.js"]
 
 ["test_chromeutils_getXPCOMErrorName.js"]
 
@@ -48,8 +50,6 @@ skip-if = [
 
 ["test_error_codes.js"]
 run-sequentially = "Hardcoded 4444 port."
-# Bug 1018414: hardcoded localhost doesn't work properly on some OS X installs
-skip-if = ["os == 'mac'"]
 
 ["test_generate_xpath.js"]
 head = "head_xml.js"

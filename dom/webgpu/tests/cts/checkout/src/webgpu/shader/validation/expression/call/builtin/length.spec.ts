@@ -83,11 +83,6 @@ the input scalar value always compiles without error
       .beginSubcases()
       .expand('value', u => fullRangeForType(kScalarTypes[u.type]))
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(kScalarTypes[t.params.type]) === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     // We only validate with numbers known to be representable by the type
     const expectedResult = true;
@@ -119,11 +114,6 @@ Validates that constant evaluation and override evaluation of ${builtin}() with 
       .expand('_result', u => [calculate([u.x, u.y], scalarTypeOf(kVec2Types[u.type]))])
       .filter(u => u._result.isResultRepresentable === u._result.isIntermediateRepresentable)
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(kVec2Types[t.params.type]) === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     const expectedResult = t.params._result.isResultRepresentable;
     validateConstOrOverrideBuiltinEval(
@@ -155,11 +145,6 @@ Validates that constant evaluation and override evaluation of ${builtin}() with 
       .expand('_result', u => [calculate([u.x, u.y, u.z], scalarTypeOf(kVec3Types[u.type]))])
       .filter(u => u._result.isResultRepresentable === u._result.isIntermediateRepresentable)
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(kVec3Types[t.params.type]) === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     const expectedResult = t.params._result.isResultRepresentable;
     validateConstOrOverrideBuiltinEval(
@@ -192,11 +177,6 @@ Validates that constant evaluation and override evaluation of ${builtin}() with 
       .expand('_result', u => [calculate([u.x, u.y, u.z, u.w], scalarTypeOf(kVec4Types[u.type]))])
       .filter(u => u._result.isResultRepresentable === u._result.isIntermediateRepresentable)
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(kVec4Types[t.params.type]) === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     const expectedResult = t.params._result.isResultRepresentable;
     validateConstOrOverrideBuiltinEval(
@@ -226,4 +206,38 @@ Validates that scalar and vector integer arguments are rejected by ${builtin}()
       [type.create(1)],
       'constant'
     );
+  });
+
+const kArgCases = {
+  good: '(1.1)',
+  bad_no_parens: '',
+  // Bad number of args
+  bad_0args: '()',
+  bad_2args: '(1.0,2.0)',
+  // Bad value type for arg 0
+  bad_0i32: '(1i)',
+  bad_0u32: '(1u)',
+  bad_0bool: '(false)',
+  bad_0vec2u: '(vec2u())',
+  bad_0mat: '(mat2x2f())',
+  bad_0array: '(array(1.1,2.2))',
+  bad_0struct: '(modf(2.2))',
+};
+
+g.test('args')
+  .desc(`Test compilation failure of ${builtin} with variously shaped and typed arguments`)
+  .params(u => u.combine('arg', keysOf(kArgCases)))
+  .fn(t => {
+    t.expectCompileResult(
+      t.params.arg === 'good',
+      `const c = ${builtin}${kArgCases[t.params.arg]};`
+    );
+  });
+
+g.test('must_use')
+  .desc(`Result of ${builtin} must be used`)
+  .params(u => u.combine('use', [true, false]))
+  .fn(t => {
+    const use_it = t.params.use ? '_ = ' : '';
+    t.expectCompileResult(t.params.use, `fn f() { ${use_it}${builtin}${kArgCases['good']}; }`);
   });

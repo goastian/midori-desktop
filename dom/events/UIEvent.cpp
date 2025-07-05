@@ -30,10 +30,7 @@ UIEvent::UIEvent(EventTarget* aOwner, nsPresContext* aPresContext,
                  WidgetGUIEvent* aEvent)
     : Event(aOwner, aPresContext,
             aEvent ? aEvent : new InternalUIEvent(false, eVoidEvent, nullptr)),
-      mDefaultClientPoint(0, 0),
-      mLayerPoint(0, 0),
-      mPagePoint(0, 0),
-      mMovementPoint(0, 0) {
+      mLayerPoint(0, 0) {
   if (aEvent) {
     mEventIsInternal = false;
   } else {
@@ -89,34 +86,6 @@ NS_IMPL_RELEASE_INHERITED(UIEvent, Event)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(UIEvent)
 NS_INTERFACE_MAP_END_INHERITING(Event)
-
-static nsIntPoint DevPixelsToCSSPixels(const LayoutDeviceIntPoint& aPoint,
-                                       nsPresContext* aContext) {
-  return nsIntPoint(aContext->DevPixelsToIntCSSPixels(aPoint.x),
-                    aContext->DevPixelsToIntCSSPixels(aPoint.y));
-}
-
-nsIntPoint UIEvent::GetMovementPoint() {
-  if (mEvent->mFlags.mIsPositionless) {
-    return nsIntPoint(0, 0);
-  }
-
-  if (mPrivateDataDuplicated || mEventIsInternal) {
-    return mMovementPoint;
-  }
-
-  if (!mEvent || !mEvent->AsGUIEvent()->mWidget ||
-      (mEvent->mMessage != eMouseMove && mEvent->mMessage != ePointerMove)) {
-    // Pointer Lock spec defines that movementX/Y must be zero for all mouse
-    // events except mousemove.
-    return nsIntPoint(0, 0);
-  }
-
-  // Calculate the delta between the last screen point and the current one.
-  nsIntPoint current = DevPixelsToCSSPixels(mEvent->mRefPoint, mPresContext);
-  nsIntPoint last = DevPixelsToCSSPixels(mEvent->mLastRefPoint, mPresContext);
-  return current - last;
-}
 
 void UIEvent::InitUIEvent(const nsAString& typeArg, bool canBubbleArg,
                           bool cancelableArg, nsGlobalWindowInner* viewArg,
@@ -187,23 +156,25 @@ nsIntPoint UIEvent::GetLayerPoint() const {
 }
 
 void UIEvent::DuplicatePrivateData() {
-  mDefaultClientPoint = Event::GetClientCoords(
-      mPresContext, mEvent, mEvent->mRefPoint, mDefaultClientPoint);
-  mMovementPoint = GetMovementPoint();
   mLayerPoint = GetLayerPoint();
-  mPagePoint = Event::GetPageCoords(mPresContext, mEvent, mEvent->mRefPoint,
-                                    mDefaultClientPoint);
-  // GetScreenPoint converts mEvent->mRefPoint to right coordinates.
-  CSSIntPoint screenPoint =
+
+  // GetScreenCoords() converts mEvent->mRefPoint to right coordinates.
+  // Note that mPresContext will be cleared by Event::DuplicatePrivateData().
+  // Therefore, we need to use mPresContext before calling it.
+  const CSSIntPoint screenPoint = RoundedToInt(
       Event::GetScreenCoords(mPresContext, mEvent, mEvent->mRefPoint)
-          .valueOr(CSSIntPoint{0, 0});
+          .valueOr(CSSIntPoint{0, 0}));
 
   Event::DuplicatePrivateData();
+  MOZ_ASSERT_IF(!mEventIsInternal, !mPresContext);
 
-  CSSToLayoutDeviceScale scale = mPresContext
-                                     ? mPresContext->CSSToDevPixelScale()
-                                     : CSSToLayoutDeviceScale(1);
-  mEvent->mRefPoint = RoundedToInt(screenPoint * scale);
+  // GetScreenCoords() has already computed the screen point in CSS pixels which
+  // applied the scale of mPresContext.  Additionally, we don't have the widget
+  // anymore.  Therefore, we need to cache the point as in the screen
+  // coordinates.
+  MOZ_ASSERT(!mEvent || !mEvent->AsGUIEvent() ||
+             !mEvent->AsGUIEvent()->mWidget);
+  mEvent->mRefPoint = RoundedToInt(screenPoint * CSSToLayoutDeviceScale(1));
 }
 
 void UIEvent::Serialize(IPC::MessageWriter* aWriter,
@@ -225,7 +196,7 @@ bool UIEvent::Deserialize(IPC::MessageReader* aReader) {
 
 // XXX Following struct and array are used only in
 //     UIEvent::ComputeModifierState(), but if we define them in it,
-//     we fail to build on Mac at calling mozilla::ArrayLength().
+//     we fail to build on Mac at calling std::size().
 struct ModifierPair {
   Modifier modifier;
   const char* name;
@@ -263,7 +234,7 @@ Modifiers UIEvent::ComputeModifierState(const nsAString& aModifiersList) {
   aModifiersList.BeginReading(listStart);
   aModifiersList.EndReading(listEnd);
 
-  for (uint32_t i = 0; i < ArrayLength(kPairs); i++) {
+  for (uint32_t i = 0; i < std::size(kPairs); i++) {
     nsAString::const_iterator start(listStart), end(listEnd);
     if (!FindInReadable(NS_ConvertASCIItoUTF16(kPairs[i].name), start, end)) {
       continue;

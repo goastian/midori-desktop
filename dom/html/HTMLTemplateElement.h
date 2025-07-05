@@ -72,8 +72,14 @@ class HTMLTemplateElement final : public nsGenericHTMLElement {
     SetHTMLBoolAttr(nsGkAtoms::shadowrootserializable, aValue, aRv);
   }
 
+  void SetHTML(const nsAString& aInnerHTML, const SetHTMLOptions& aOptions,
+               ErrorResult& aError) final;
+
   MOZ_CAN_RUN_SCRIPT
-  void SetHTMLUnsafe(const nsAString& aHTML) final;
+  void SetHTMLUnsafe(const TrustedHTMLOrString& aHTML,
+                     const SetHTMLUnsafeOptions& aOptions,
+                     nsIPrincipal* aSubjectPrincipal,
+                     ErrorResult& aError) final;
 
  protected:
   virtual ~HTMLTemplateElement();

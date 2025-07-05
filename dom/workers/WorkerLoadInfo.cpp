@@ -90,10 +90,6 @@ WorkerLoadInfoData::WorkerLoadInfoData()
       mAssociatedBrowsingContextID(0),
       mReferrerInfo(new ReferrerInfo(nullptr)),
       mFromWindow(false),
-      mEvalAllowed(false),
-      mReportEvalCSPViolations(false),
-      mWasmEvalAllowed(false),
-      mReportWasmEvalCSPViolations(false),
       mXHRParamsAllowed(false),
       mWatchedByDevTools(false),
       mStorageAccess(StorageAccess::eDeny),
@@ -116,18 +112,12 @@ nsresult WorkerLoadInfo::SetPrincipalsAndCSPOnMainThread(
   mCSP = aCsp;
 
   if (mCSP) {
-    mCSP->GetAllowsEval(&mReportEvalCSPViolations, &mEvalAllowed);
-    mCSP->GetAllowsWasmEval(&mReportWasmEvalCSPViolations, &mWasmEvalAllowed);
-    mCSPInfo = MakeUnique<CSPInfo>();
-    nsresult rv = CSPToCSPInfo(aCsp, mCSPInfo.get());
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    Result<UniquePtr<WorkerCSPContext>, nsresult> ctx =
+        WorkerCSPContext::CreateFromCSP(aCsp);
+    if (NS_WARN_IF(ctx.isErr())) {
+      return ctx.unwrapErr();
     }
-  } else {
-    mEvalAllowed = true;
-    mReportEvalCSPViolations = false;
-    mWasmEvalAllowed = true;
-    mReportWasmEvalCSPViolations = false;
+    mCSPContext = ctx.unwrap();
   }
 
   mLoadGroup = aLoadGroup;
@@ -330,20 +320,6 @@ bool WorkerLoadInfo::PrincipalURIMatchesScriptURL() {
   }
 
   if (mPrincipal->IsSameOrigin(mBaseURI)) {
-    return true;
-  }
-
-  // If strict file origin policy is in effect, local files will always fail
-  // IsSameOrigin unless they are identical. Explicitly check file origin
-  // policy, in that case.
-
-  bool allowsRelaxedOriginPolicy = false;
-  rv = mPrincipal->AllowsRelaxStrictFileOriginPolicy(
-      mBaseURI, &allowsRelaxedOriginPolicy);
-
-  if (nsScriptSecurityManager::GetStrictFileOriginPolicy() &&
-      NS_URIIsLocalFile(mBaseURI) &&
-      (NS_SUCCEEDED(rv) && allowsRelaxedOriginPolicy)) {
     return true;
   }
 

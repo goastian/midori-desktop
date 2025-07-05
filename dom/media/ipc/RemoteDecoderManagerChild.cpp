@@ -57,7 +57,7 @@ static EnumeratedArray<RemoteDecodeIn, StaticRefPtr<GenericNonExclusivePromise>,
 // Only modified on the main-thread, read on any thread. While it could be read
 // on the main thread directly, for clarity we force access via the DataMutex
 // wrapper.
-static StaticDataMutex<StaticRefPtr<nsIThread>>
+MOZ_RUNINIT static StaticDataMutex<StaticRefPtr<nsIThread>>
     sRemoteDecoderManagerChildThread("sRemoteDecoderManagerChildThread");
 
 // Only accessed from sRemoteDecoderManagerChildThread
@@ -70,8 +70,9 @@ static StaticAutoPtr<nsTArray<RefPtr<Runnable>>> sRecreateTasks;
 // Used for protecting codec support information collected from different remote
 // processes.
 StaticMutex sProcessSupportedMutex;
-static EnumeratedArray<RemoteDecodeIn, Maybe<media::MediaCodecsSupported>,
-                       size_t(RemoteDecodeIn::SENTINEL)>
+MOZ_GLOBINIT static EnumeratedArray<RemoteDecodeIn,
+                                    Maybe<media::MediaCodecsSupported>,
+                                    size_t(RemoteDecodeIn::SENTINEL)>
     sProcessSupported MOZ_GUARDED_BY(sProcessSupportedMutex);
 
 class ShutdownObserver final : public nsIObserver {
@@ -271,15 +272,14 @@ bool RemoteDecoderManagerChild::Supports(
       // process. As HEVC support is still a experimental feature, we don't want
       // to report support for it arbitrarily.
       if (MP4Decoder::IsHEVC(aParams.mConfig.mMimeType)) {
-#if defined(XP_WIN)
-        if (!StaticPrefs::media_wmf_hevc_enabled()) {
+        if (!StaticPrefs::media_hevc_enabled()) {
           return false;
         }
+#if defined(XP_WIN)
         return aLocation == RemoteDecodeIn::UtilityProcess_MFMediaEngineCDM ||
                aLocation == RemoteDecodeIn::GpuProcess;
 #else
-        // TODO : in the future, we need to add HEVC check on other platforms.
-        return false;
+        return trackSupport.contains(TrackSupport::Video);
 #endif
       }
       return trackSupport.contains(TrackSupport::Video);
@@ -910,7 +910,7 @@ void RemoteDecoderManagerChild::DeallocateSurfaceDescriptor(
 }
 
 void RemoteDecoderManagerChild::HandleFatalError(const char* aMsg) {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherChildID());
 }
 
 void RemoteDecoderManagerChild::SetSupported(

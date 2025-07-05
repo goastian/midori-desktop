@@ -2,17 +2,20 @@ import {
   depthStencilFormatCopyableAspects,
   DepthStencilFormat,
   SizedTextureFormat,
-  kTextureFormatInfo,
   isCompressedTextureFormat,
+  getBlockInfoForTextureFormat,
+  isDepthOrStencilTextureFormat,
+  canCopyFromAllAspectsOfTextureFormat,
+  canCopyToAllAspectsOfTextureFormat,
 } from '../../../format_info.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 import { align } from '../../../util/math.js';
 import { ImageCopyType } from '../../../util/texture/layout.js';
-import { ValidationTest } from '../validation_test.js';
 
-export class ImageCopyTest extends ValidationTest {
+export class ImageCopyTest extends AllFeaturesMaxLimitsGPUTest {
   testRun(
-    textureCopyView: GPUImageCopyTexture,
-    textureDataLayout: GPUImageDataLayout,
+    textureCopyView: GPUTexelCopyTextureInfo,
+    textureDataLayout: GPUTexelCopyBufferLayout,
     size: GPUExtent3D,
     {
       method,
@@ -39,11 +42,10 @@ export class ImageCopyTest extends ValidationTest {
         break;
       }
       case 'CopyB2T': {
-        const buffer = this.device.createBuffer({
+        const buffer = this.createBufferTracked({
           size: dataSize,
           usage: GPUBufferUsage.COPY_SRC,
         });
-        this.trackForCleanup(buffer);
 
         const encoder = this.device.createCommandEncoder();
         encoder.copyBufferToTexture({ buffer, ...textureDataLayout }, textureCopyView, size);
@@ -67,11 +69,10 @@ export class ImageCopyTest extends ValidationTest {
             'copyTextureToBuffer is not supported for compressed texture formats in compatibility mode.'
           );
         }
-        const buffer = this.device.createBuffer({
+        const buffer = this.createBufferTracked({
           size: dataSize,
           usage: GPUBufferUsage.COPY_DST,
         });
-        this.trackForCleanup(buffer);
 
         const encoder = this.device.createCommandEncoder();
         encoder.copyTextureToBuffer(textureCopyView, { buffer, ...textureDataLayout }, size);
@@ -107,13 +108,13 @@ export class ImageCopyTest extends ValidationTest {
     origin: Required<GPUOrigin3DDict> = { x: 0, y: 0, z: 0 },
     dimension: Required<GPUTextureDimension> = '2d'
   ): GPUTexture {
-    const info = kTextureFormatInfo[format];
+    const info = getBlockInfoForTextureFormat(format);
     const alignedSize = {
       width: align(Math.max(1, size.width + origin.x), info.blockWidth),
       height: align(Math.max(1, size.height + origin.y), info.blockHeight),
       depthOrArrayLayers: Math.max(1, size.depthOrArrayLayers + origin.z),
     };
-    return this.device.createTexture({
+    return this.createTextureTracked({
       size: alignedSize,
       dimension,
       format,
@@ -124,7 +125,7 @@ export class ImageCopyTest extends ValidationTest {
   testBuffer(
     buffer: GPUBuffer,
     texture: GPUTexture,
-    textureDataLayout: GPUImageDataLayout,
+    textureDataLayout: GPUTexelCopyBufferLayout,
     size: GPUExtent3D,
     {
       method,
@@ -211,17 +212,16 @@ interface WithFormatAndMethod extends WithFormat {
 
 // This is a helper function used for expanding test parameters for offset alignment, by spec
 export function texelBlockAlignmentTestExpanderForOffset({ format }: WithFormat) {
-  const info = kTextureFormatInfo[format];
-  if (info.depth || info.stencil) {
+  if (isDepthOrStencilTextureFormat(format)) {
     return valuesToTestDivisibilityBy(4);
   }
 
-  return valuesToTestDivisibilityBy(kTextureFormatInfo[format].bytesPerBlock);
+  return valuesToTestDivisibilityBy(getBlockInfoForTextureFormat(format).bytesPerBlock!);
 }
 
 // This is a helper function used for expanding test parameters for texel block alignment tests on rowsPerImage
 export function texelBlockAlignmentTestExpanderForRowsPerImage({ format }: WithFormat) {
-  return valuesToTestDivisibilityBy(kTextureFormatInfo[format].blockHeight);
+  return valuesToTestDivisibilityBy(getBlockInfoForTextureFormat(format).blockHeight);
 }
 
 // This is a helper function used for expanding test parameters for texel block alignment tests on origin and size
@@ -232,11 +232,11 @@ export function texelBlockAlignmentTestExpanderForValueToCoordinate({
   switch (coordinateToTest) {
     case 'x':
     case 'width':
-      return valuesToTestDivisibilityBy(kTextureFormatInfo[format].blockWidth);
+      return valuesToTestDivisibilityBy(getBlockInfoForTextureFormat(format).blockWidth);
 
     case 'y':
     case 'height':
-      return valuesToTestDivisibilityBy(kTextureFormatInfo[format].blockHeight);
+      return valuesToTestDivisibilityBy(getBlockInfoForTextureFormat(format).blockHeight);
 
     case 'z':
     case 'depthOrArrayLayers':
@@ -246,8 +246,7 @@ export function texelBlockAlignmentTestExpanderForValueToCoordinate({
 
 // This is a helper function used for filtering test parameters
 export function formatCopyableWithMethod({ format, method }: WithFormatAndMethod): boolean {
-  const info = kTextureFormatInfo[format];
-  if (info.depth || info.stencil) {
+  if (isDepthOrStencilTextureFormat(format)) {
     const supportedAspects: readonly GPUTextureAspect[] = depthStencilFormatCopyableAspects(
       method,
       format as DepthStencilFormat
@@ -255,9 +254,9 @@ export function formatCopyableWithMethod({ format, method }: WithFormatAndMethod
     return supportedAspects.length > 0;
   }
   if (method === 'CopyT2B') {
-    return info.color.copySrc;
+    return canCopyFromAllAspectsOfTextureFormat(format);
   } else {
-    return info.color.copyDst;
+    return canCopyToAllAspectsOfTextureFormat(format);
   }
 }
 
@@ -266,8 +265,7 @@ export function getACopyableAspectWithMethod({
   format,
   method,
 }: WithFormatAndMethod): GPUTextureAspect {
-  const info = kTextureFormatInfo[format];
-  if (info.depth || info.stencil) {
+  if (isDepthOrStencilTextureFormat(format)) {
     const supportedAspects: readonly GPUTextureAspect[] = depthStencilFormatCopyableAspects(
       method,
       format as DepthStencilFormat

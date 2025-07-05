@@ -72,9 +72,19 @@ void HTMLStyleElement::ContentInserted(nsIContent* aChild) {
   ContentChanged(aChild);
 }
 
-void HTMLStyleElement::ContentRemoved(nsIContent* aChild,
-                                      nsIContent* aPreviousSibling) {
-  ContentChanged(aChild);
+void HTMLStyleElement::ContentWillBeRemoved(nsIContent* aChild,
+                                            const BatchRemovalState* aState) {
+  mTriggeringPrincipal = nullptr;
+  if (!nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
+    return;
+  }
+  if (aState && !aState->mIsFirst) {
+    return;
+  }
+  // Make sure to run this once the removal has taken place.
+  nsContentUtils::AddScriptRunner(NS_NewRunnableFunction(
+      "HTMLStyleElement::ContentWillBeRemoved",
+      [self = RefPtr{this}] { self->UpdateStyleSheetInternal(); }));
 }
 
 void HTMLStyleElement::ContentChanged(nsIContent* aContent) {
@@ -137,10 +147,10 @@ void HTMLStyleElement::GetInnerHTML(nsAString& aInnerHTML,
   }
 }
 
-void HTMLStyleElement::SetInnerHTML(const nsAString& aInnerHTML,
-                                    nsIPrincipal* aScriptedPrincipal,
-                                    ErrorResult& aError) {
-  SetTextContentInternal(aInnerHTML, aScriptedPrincipal, aError);
+void HTMLStyleElement::SetInnerHTMLTrusted(const nsAString& aInnerHTML,
+                                           nsIPrincipal* aSubjectPrincipal,
+                                           ErrorResult& aError) {
+  SetTextContentInternal(aInnerHTML, aSubjectPrincipal, aError);
 }
 
 void HTMLStyleElement::SetTextContentInternal(const nsAString& aTextContent,

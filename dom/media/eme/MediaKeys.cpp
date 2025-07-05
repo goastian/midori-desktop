@@ -10,7 +10,6 @@
 #include "GMPCrashHelper.h"
 #include "mozilla/EMEUtils.h"
 #include "mozilla/JSONStringWriteFuncs.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLMediaElement.h"
@@ -845,6 +844,10 @@ void MediaKeys::ResolvePromiseWithKeyStatus(PromiseId aId,
       ", keystatus=%" PRIu8,
       this, aId, static_cast<uint8_t>(aMediaKeyStatus));
   promise->MaybeResolve(aMediaKeyStatus);
+}
+
+nsCString MediaKeys::GetMediaKeySystemConfigurationString() const {
+  return MediaKeySystemAccess::ToCString(mConfig);
 }
 
 }  // namespace mozilla::dom

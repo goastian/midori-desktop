@@ -339,8 +339,7 @@ bool UDPSocket::Send(const StringOrBlobOrArrayBufferOrArrayBufferView& aData,
     }
 
     if (aData.IsString()) {
-      NS_ConvertUTF16toUTF8 data(aData.GetAsString());
-      aRv = strStream->SetData(data.BeginReading(), data.Length());
+      aRv = strStream->SetUTF8Data(NS_ConvertUTF16toUTF8(aData.GetAsString()));
     } else {
       Vector<char> data;
       if (!AppendTypedArrayDataTo(aData, data)) {
@@ -374,16 +373,15 @@ bool UDPSocket::Send(const StringOrBlobOrArrayBufferOrArrayBufferView& aData,
 nsresult UDPSocket::InitLocal(const nsAString& aLocalAddress,
                               const uint16_t& aLocalPort) {
   nsresult rv;
-
   nsCOMPtr<nsIUDPSocket> sock =
       do_CreateInstance("@mozilla.org/network/udp-socket;1", &rv);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetOwner(), &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
+  nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
+  if (!global) {
+    return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull();
@@ -458,25 +456,23 @@ nsresult UDPSocket::InitLocal(const nsAString& aLocalAddress,
 
 nsresult UDPSocket::InitRemote(const nsAString& aLocalAddress,
                                const uint16_t& aLocalPort) {
-  nsresult rv;
-
   RefPtr<UDPSocketChild> sock = new UDPSocketChild();
 
   mListenerProxy = new ListenerProxy(this);
 
-  nsCOMPtr<nsIGlobalObject> obj = do_QueryInterface(GetOwner(), &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
+  nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
+  if (!global) {
+    return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIPrincipal> principal = obj->PrincipalOrNull();
+  nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull();
   if (!principal) {
     return NS_ERROR_FAILURE;
   }
 
-  rv = sock->Bind(mListenerProxy, principal,
-                  NS_ConvertUTF16toUTF8(aLocalAddress), aLocalPort,
-                  mAddressReuse, mLoopback, 0, 0);
+  nsresult rv = sock->Bind(mListenerProxy, principal,
+                           NS_ConvertUTF16toUTF8(aLocalAddress), aLocalPort,
+                           mAddressReuse, mLoopback, 0, 0);
 
   if (NS_FAILED(rv)) {
     return rv;
@@ -497,9 +493,9 @@ nsresult UDPSocket::Init(const nsString& aLocalAddress,
   mAddressReuse = aAddressReuse;
   mLoopback = aLoopback;
 
-  ErrorResult rv;
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetOwner());
+  nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
 
+  ErrorResult rv;
   mOpened = Promise::Create(global, rv);
   if (NS_WARN_IF(rv.Failed())) {
     return rv.StealNSResult();
@@ -571,7 +567,7 @@ nsresult UDPSocket::DispatchReceivedData(const nsACString& aRemoteAddress,
                                          const nsTArray<uint8_t>& aData) {
   AutoJSAPI jsapi;
 
-  if (NS_WARN_IF(!jsapi.Init(GetOwner()))) {
+  if (NS_WARN_IF(!jsapi.Init(GetOwnerWindow()))) {
     return NS_ERROR_FAILURE;
   }
 
@@ -581,6 +577,7 @@ nsresult UDPSocket::DispatchReceivedData(const nsACString& aRemoteAddress,
   ErrorResult error;
   JS::Rooted<JSObject*> arrayBuf(cx, ArrayBuffer::Create(cx, aData, error));
 
+  error.WouldReportJSException();
   if (NS_WARN_IF(error.Failed())) {
     return error.StealNSResult();
   }

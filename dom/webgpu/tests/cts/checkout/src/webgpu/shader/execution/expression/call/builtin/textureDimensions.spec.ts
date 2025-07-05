@@ -9,16 +9,27 @@ If level is outside the range [0, textureNumLevels(t)) then any valid value for 
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import {
+  getBlockInfoForTextureFormat,
+  isDepthTextureFormat,
+  isStencilTextureFormat,
+  isTextureFormatPossiblyMultisampled,
+  isTextureFormatPossiblyStorageReadWritable,
   kAllTextureFormats,
-  kColorTextureFormats,
-  kTextureFormatInfo,
+  kDepthTextureFormats,
+  kPossibleStorageTextureFormats,
   sampleTypeForFormatAndAspect,
-  textureDimensionAndFormatCompatible,
+  textureFormatAndDimensionPossiblyCompatible,
 } from '../../../../../format_info.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest, GPUTest } from '../../../../../gpu_test.js';
 import { align } from '../../../../../util/math.js';
+import { kShaderStages, ShaderStage } from '../../../../validation/decl/util.js';
 
-export const g = makeTestGroup(GPUTest);
+import {
+  executeTextureQueryAndExpectResult,
+  skipIfNoStorageTexturesInStage,
+} from './texture_utils.js';
+
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 /// The maximum number of texture mipmap levels to test.
 /// Keep this small to reduce memory and test permutations.
@@ -39,8 +50,7 @@ const kAllViewDimensions: readonly GPUTextureViewDimension[] = [
 
 /** @returns the aspects to test for the given format */
 function aspectsForFormat(format: GPUTextureFormat): readonly GPUTextureAspect[] {
-  const formatInfo = kTextureFormatInfo[format];
-  if (formatInfo.depth !== undefined && formatInfo.stencil !== undefined) {
+  if (isDepthTextureFormat(format) && isStencilTextureFormat(format)) {
     return ['depth-only', 'stencil-only'];
   }
   return ['all'];
@@ -48,8 +58,7 @@ function aspectsForFormat(format: GPUTextureFormat): readonly GPUTextureAspect[]
 
 /** @returns the sample counts to test for the given format */
 function samplesForFormat(format: GPUTextureFormat): readonly number[] {
-  const info = kTextureFormatInfo[format];
-  return info.multisample ? [1, kMaxSamplesForTest] : [1];
+  return isTextureFormatPossiblyMultisampled(format) ? [1, kMaxSamplesForTest] : [1];
 }
 
 /**
@@ -117,7 +126,10 @@ function viewDimensions(params: {
   }
 
   return kAllViewDimensions.filter(dim =>
-    textureDimensionAndFormatCompatible(textureDimensionsForViewDimensions(dim), params.format)
+    textureFormatAndDimensionPossiblyCompatible(
+      textureDimensionsForViewDimensions(dim),
+      params.format
+    )
   );
 }
 
@@ -155,7 +167,7 @@ function testValues(params: {
   const kMinLen = 1 << kMaxMipsForTest;
   const kNumCubeFaces = 6;
 
-  const formatInfo = kTextureFormatInfo[params.format];
+  const formatInfo = getBlockInfoForTextureFormat(params.format);
   const bw = formatInfo.blockWidth;
   const bh = formatInfo.blockHeight;
   let mip = params.baseMipLevel;
@@ -219,7 +231,9 @@ function testValues(params: {
  */
 function run(
   t: GPUTest,
-  view: GPUTextureView,
+  stage: ShaderStage,
+  texture: GPUTexture | GPUExternalTexture,
+  viewDescriptor: GPUTextureViewDescriptor | undefined,
   textureType: string,
   levelArg: number | undefined,
   values: TestValues
@@ -227,44 +241,16 @@ function run(
   const outputType = values.expected.length > 1 ? `vec${values.expected.length}u` : 'u32';
   const wgsl = `
 @group(0) @binding(0) var texture : ${textureType};
-@group(0) @binding(1) var<storage, read_write> output : ${outputType};
 
-@compute @workgroup_size(1)
-fn main() {
-output = ${
+fn getValue() -> ${outputType} {
+  return ${
     levelArg !== undefined
       ? `textureDimensions(texture, ${levelArg})`
       : 'textureDimensions(texture)'
   };
 }
 `;
-  const module = t.device.createShaderModule({
-    code: wgsl,
-  });
-  const pipeline = t.device.createComputePipeline({
-    compute: { module },
-    layout: 'auto',
-  });
-  const outputBuffer = t.device.createBuffer({
-    size: 32,
-    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE,
-  });
-  const bindgroup = t.device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: view },
-      { binding: 1, resource: { buffer: outputBuffer } },
-    ],
-  });
-  const encoder = t.device.createCommandEncoder();
-  const pass = encoder.beginComputePass();
-  pass.setPipeline(pipeline);
-  pass.setBindGroup(0, bindgroup);
-  pass.dispatchWorkgroups(1);
-  pass.end();
-  t.device.queue.submit([encoder.finish()]);
-
-  t.expectGPUBufferValuesEqual(outputBuffer, new Uint32Array(values.expected));
+  executeTextureQueryAndExpectResult(t, stage, wgsl, texture, viewDescriptor, values.expected);
 }
 
 /** @returns true if the GPUTextureViewDimension is valid for a storage texture */
@@ -310,24 +296,27 @@ Parameters:
   .params(u =>
     u
       .combine('format', kAllTextureFormats)
-      .unless(p => kTextureFormatInfo[p.format].color?.type === 'unfilterable-float')
       .expand('aspect', u => aspectsForFormat(u.format))
       .expand('samples', u => samplesForFormat(u.format))
       .beginSubcases()
+      .combine('stage', kShaderStages)
       .expand('dimensions', viewDimensions)
       .expand('textureMipCount', textureMipCount)
       .expand('baseMipLevel', baseMipLevel)
       .expand('textureDimensionsLevel', textureDimensionsLevel)
   )
-  .beforeAllSubcases(t => {
-    const info = kTextureFormatInfo[t.params.format];
-    t.skipIfTextureFormatNotSupported(t.params.format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
+    t.skipIfTextureFormatNotSupported(t.params.format);
     t.skipIfTextureViewDimensionNotSupported(t.params.dimensions);
+    t.skipIfTextureFormatAndDimensionNotCompatible(
+      t.params.format,
+      textureDimensionsForViewDimensions(t.params.dimensions)
+    );
+    if (t.params.samples > 1) {
+      t.skipIfTextureFormatNotMultisampled(t.params.format);
+    }
     const values = testValues(t.params);
-    const texture = t.device.createTexture({
+    const texture = t.createTextureTracked({
       size: values.size,
       dimension: textureDimensionsForViewDimensions(t.params.dimensions),
       ...(t.isCompatibility && { textureBindingViewDimension: t.params.dimensions }),
@@ -339,11 +328,11 @@ Parameters:
       sampleCount: t.params.samples,
       mipLevelCount: t.params.textureMipCount,
     });
-    const textureView = texture.createView({
+    const viewDescriptor: GPUTextureViewDescriptor = {
       dimension: t.params.dimensions,
       aspect: t.params.aspect,
       baseMipLevel: t.params.baseMipLevel,
-    });
+    };
 
     function wgslSampledTextureType(): string {
       const base = t.params.samples !== 1 ? 'texture_multisampled' : 'texture';
@@ -352,17 +341,24 @@ Parameters:
       switch (sampleType) {
         case 'depth':
         case 'float':
+        case 'unfilterable-float':
           return `${base}_${dimensions}<f32>`;
         case 'uint':
           return `${base}_${dimensions}<u32>`;
         case 'sint':
           return `${base}_${dimensions}<i32>`;
-        case 'unfilterable-float':
-          throw new Error(`'${t.params.format}' does not support sampling`);
       }
     }
 
-    run(t, textureView, wgslSampledTextureType(), t.params.textureDimensionsLevel, values);
+    run(
+      t,
+      t.params.stage,
+      texture,
+      viewDescriptor,
+      wgslSampledTextureType(),
+      t.params.textureDimensionsLevel,
+      values
+    );
   });
 
 g.test('depth')
@@ -388,26 +384,22 @@ Parameters:
   )
   .params(u =>
     u
-      .combine('format', kAllTextureFormats)
-      .filter(p => !!kTextureFormatInfo[p.format].depth)
+      .combine('format', kDepthTextureFormats)
       .expand('aspect', u => aspectsForFormat(u.format))
       .unless(u => u.aspect === 'stencil-only')
       .expand('samples', u => samplesForFormat(u.format))
       .beginSubcases()
+      .combine('stage', kShaderStages)
       .expand('dimensions', viewDimensions)
       .expand('textureMipCount', textureMipCount)
       .expand('baseMipLevel', baseMipLevel)
       .expand('textureDimensionsLevel', textureDimensionsLevel)
   )
-  .beforeAllSubcases(t => {
-    const info = kTextureFormatInfo[t.params.format];
-    t.skipIfTextureFormatNotSupported(t.params.format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
   .fn(t => {
+    t.skipIfTextureFormatNotSupported(t.params.format);
     t.skipIfTextureViewDimensionNotSupported(t.params.dimensions);
     const values = testValues(t.params);
-    const texture = t.device.createTexture({
+    const texture = t.createTextureTracked({
       size: values.size,
       dimension: textureDimensionsForViewDimensions(t.params.dimensions),
       ...(t.isCompatibility && { textureBindingViewDimension: t.params.dimensions }),
@@ -419,11 +411,11 @@ Parameters:
       sampleCount: t.params.samples,
       mipLevelCount: t.params.textureMipCount,
     });
-    const textureView = texture.createView({
+    const viewDescriptor: GPUTextureViewDescriptor = {
       dimension: t.params.dimensions,
       aspect: t.params.aspect,
       baseMipLevel: t.params.baseMipLevel,
-    });
+    };
 
     function wgslDepthTextureType(): string {
       const base = t.params.samples !== 1 ? 'texture_depth_multisampled' : 'texture_depth';
@@ -431,7 +423,15 @@ Parameters:
       return `${base}_${dimensions}`;
     }
 
-    run(t, textureView, wgslDepthTextureType(), t.params.textureDimensionsLevel, values);
+    run(
+      t,
+      t.params.stage,
+      texture,
+      viewDescriptor,
+      wgslDepthTextureType(),
+      t.params.textureDimensionsLevel,
+      values
+    );
   });
 
 g.test('storage')
@@ -467,42 +467,47 @@ Parameters:
   )
   .params(u =>
     u
-      .combine('format', kColorTextureFormats)
-      .filter(p => kTextureFormatInfo[p.format].color?.storage === true)
+      .combine('format', kPossibleStorageTextureFormats)
       .expand('aspect', u => aspectsForFormat(u.format))
       .beginSubcases()
+      .combine('stage', kShaderStages)
+      .combine('access', ['read', 'write', 'read_write'] as const)
+      // vertex stage can not use writable storage.
+      .unless(t => t.stage === 'vertex' && t.access !== 'read')
+      // Only some formats support read_write
+      .unless(
+        t => !isTextureFormatPossiblyStorageReadWritable(t.format) && t.access === 'read_write'
+      )
       .expand('dimensions', u => viewDimensions(u).filter(dimensionsValidForStorage))
       .expand('textureMipCount', textureMipCount)
       .expand('baseMipLevel', baseMipLevel)
   )
-  .beforeAllSubcases(t => {
-    const info = kTextureFormatInfo[t.params.format];
+  .fn(t => {
+    skipIfNoStorageTexturesInStage(t, t.params.stage);
     t.skipIfTextureFormatNotSupported(t.params.format);
     t.skipIfTextureFormatNotUsableAsStorageTexture(t.params.format);
-    t.selectDeviceOrSkipTestCase(info.feature);
-  })
-  .fn(t => {
+
     const values = testValues(t.params);
-    const texture = t.device.createTexture({
+    const texture = t.createTextureTracked({
       size: values.size,
       dimension: textureDimensionsForViewDimensions(t.params.dimensions),
       usage: GPUTextureUsage.STORAGE_BINDING,
       format: t.params.format,
       mipLevelCount: t.params.textureMipCount,
     });
-    const textureView = texture.createView({
+    const viewDescriptor: GPUTextureViewDescriptor = {
       dimension: t.params.dimensions,
       aspect: t.params.aspect,
       mipLevelCount: 1,
       baseMipLevel: t.params.baseMipLevel,
-    });
+    };
 
     function wgslStorageTextureType(): string {
       const dimensions = t.params.dimensions.replace('-', '_');
-      return `texture_storage_${dimensions}<${t.params.format}, write>`;
+      return `texture_storage_${dimensions}<${t.params.format}, ${t.params.access}>`;
     }
 
-    run(t, textureView, wgslStorageTextureType(), undefined, values);
+    run(t, t.params.stage, texture, viewDescriptor, wgslStorageTextureType(), undefined, values);
   });
 
 g.test('external')
@@ -515,4 +520,44 @@ Parameters:
  * t: the external texture
 `
   )
-  .unimplemented();
+  .params(u =>
+    u
+      .beginSubcases()
+      .combine('stage', kShaderStages)
+      .combine('importExternalTexture', [false, true])
+      .combine('width', [8, 16, 24] as const)
+      .combine('height', [8, 16, 24] as const)
+  )
+  .fn(t => {
+    const { stage, importExternalTexture, width, height } = t.params;
+    const size = [width, height];
+
+    t.skipIf(typeof OffscreenCanvas === 'undefined', 'OffscreenCanvas is not supported');
+    const canvas = new OffscreenCanvas(width, height);
+
+    // We have to make a context so that VideoFrame and copyExternalImageToTexture accept the canvas.
+    canvas.getContext('2d');
+    let texture: GPUExternalTexture | GPUTexture;
+    let videoFrame: VideoFrame | undefined;
+    if (importExternalTexture) {
+      t.skipIf(typeof VideoFrame === 'undefined', 'VideoFrames are not supported');
+
+      videoFrame = new VideoFrame(canvas, { timestamp: 0 });
+      texture = t.device.importExternalTexture({ source: videoFrame });
+    } else {
+      texture = t.createTextureTracked({
+        format: 'rgba8unorm',
+        size,
+        usage:
+          GPUTextureUsage.COPY_DST |
+          GPUTextureUsage.RENDER_ATTACHMENT |
+          GPUTextureUsage.TEXTURE_BINDING,
+      });
+      t.queue.copyExternalImageToTexture({ source: canvas }, { texture }, size);
+    }
+
+    run(t, stage, texture, undefined, 'texture_external', undefined, {
+      size,
+      expected: size,
+    });
+  });

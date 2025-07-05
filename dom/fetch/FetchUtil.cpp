@@ -77,6 +77,52 @@ static bool PushOverLine(nsACString::const_iterator& aStart,
 }
 
 // static
+bool FetchUtil::IncrementPendingKeepaliveRequestSize(
+    nsILoadGroup* aLoadGroup, const uint64_t aBodyLength) {
+  uint64_t pendingKeepaliveRequestSize = 0;
+  MOZ_ASSERT(aLoadGroup);
+
+  aLoadGroup->GetTotalKeepAliveBytes(&pendingKeepaliveRequestSize);
+  pendingKeepaliveRequestSize += aBodyLength;
+
+  if (pendingKeepaliveRequestSize > FETCH_KEEPALIVE_MAX_SIZE) {
+    return false;
+  }
+
+  aLoadGroup->SetTotalKeepAliveBytes(pendingKeepaliveRequestSize);
+  return true;
+}
+
+// static
+void FetchUtil::DecrementPendingKeepaliveRequestSize(
+    nsILoadGroup* aLoadGroup, const uint64_t aBodyLength) {
+  MOZ_ASSERT(aLoadGroup);
+
+  uint64_t pendingKeepaliveRequestSize = 0;
+  aLoadGroup->GetTotalKeepAliveBytes(&pendingKeepaliveRequestSize);
+  MOZ_ASSERT(pendingKeepaliveRequestSize >= aBodyLength);
+  pendingKeepaliveRequestSize -= aBodyLength;
+  aLoadGroup->SetTotalKeepAliveBytes(pendingKeepaliveRequestSize);
+}
+
+// static
+nsCOMPtr<nsILoadGroup> FetchUtil::GetLoadGroupFromGlobal(
+    nsIGlobalObject* aGlobalObject) {
+  MOZ_ASSERT(NS_IsMainThread());
+  nsCOMPtr<nsILoadGroup> loadGroup = nullptr;
+  auto* innerWindow = aGlobalObject->GetAsInnerWindow();
+
+  if (innerWindow) {
+    Document* doc = innerWindow->GetExtantDoc();
+    if (doc) {
+      loadGroup = doc->GetDocumentLoadGroup();
+    }
+  }
+
+  return loadGroup;
+}
+
+// static
 bool FetchUtil::ExtractHeader(nsACString::const_iterator& aStart,
                               nsACString::const_iterator& aEnd,
                               nsCString& aHeaderName, nsCString& aHeaderValue,
@@ -184,7 +230,7 @@ class StoreOptimizedEncodingRunnable final : public Runnable {
     nsresult rv;
 
     nsCOMPtr<nsIAsyncOutputStream> stream;
-    rv = mCache->OpenAlternativeOutputStream(FetchUtil::WasmAltDataType,
+    rv = mCache->OpenAlternativeOutputStream(FetchUtil::GetWasmAltDataType(),
                                              int64_t(mBytes.length()),
                                              getter_AddRefs(stream));
     if (NS_FAILED(rv)) {
@@ -204,82 +250,47 @@ class StoreOptimizedEncodingRunnable final : public Runnable {
   };
 };
 
-class WindowStreamOwner final : public nsIObserver,
-                                public nsSupportsWeakReference {
+class WindowStreamOwner final : public GlobalTeardownObserver {
+ private:
   // Read from any thread but only set/cleared on the main thread. The lifecycle
   // of WindowStreamOwner prevents concurrent read/clear.
   nsCOMPtr<nsIAsyncInputStream> mStream;
 
-  nsCOMPtr<nsIGlobalObject> mGlobal;
-
-  ~WindowStreamOwner() {
-    MOZ_ASSERT(NS_IsMainThread());
-
-    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-    if (obs) {
-      obs->RemoveObserver(this, DOM_WINDOW_DESTROYED_TOPIC);
-    }
-  }
+  ~WindowStreamOwner() { MOZ_ASSERT(NS_IsMainThread()); }
 
  public:
   NS_DECL_ISUPPORTS
 
   WindowStreamOwner(nsIAsyncInputStream* aStream, nsIGlobalObject* aGlobal)
-      : mStream(aStream), mGlobal(aGlobal) {
-    MOZ_DIAGNOSTIC_ASSERT(mGlobal);
+      : GlobalTeardownObserver(aGlobal), mStream(aStream) {
+    MOZ_DIAGNOSTIC_ASSERT(aGlobal);
     MOZ_ASSERT(NS_IsMainThread());
   }
 
-  static already_AddRefed<WindowStreamOwner> Create(
-      nsIAsyncInputStream* aStream, nsIGlobalObject* aGlobal) {
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-    if (NS_WARN_IF(!os)) {
-      return nullptr;
-    }
+  // GlobalTeardownObserver:
 
-    RefPtr<WindowStreamOwner> self = new WindowStreamOwner(aStream, aGlobal);
-
-    // Holds nsIWeakReference to self.
-    nsresult rv = os->AddObserver(self, DOM_WINDOW_DESTROYED_TOPIC, true);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return nullptr;
-    }
-
-    return self.forget();
-  }
-
-  // nsIObserver:
-
-  NS_IMETHOD
-  Observe(nsISupports* aSubject, const char* aTopic,
-          const char16_t* aData) override {
+  void DisconnectFromOwner() override {
     MOZ_ASSERT(NS_IsMainThread());
-    MOZ_DIAGNOSTIC_ASSERT(strcmp(aTopic, DOM_WINDOW_DESTROYED_TOPIC) == 0);
 
     if (!mStream) {
-      return NS_OK;
-    }
-
-    nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(mGlobal);
-    if (!SameCOMIdentity(aSubject, window)) {
-      return NS_OK;
+      return;
     }
 
     // mStream->Close() will call JSStreamConsumer::OnInputStreamReady which may
-    // then destory itself, dropping the last reference to 'this'.
-    RefPtr<WindowStreamOwner> keepAlive(this);
+    // then destory itself, but GTO should be strongly grabbing us right as it's
+    // calling DisconnectFromOwner.
 
     mStream->Close();
     mStream = nullptr;
-    mGlobal = nullptr;
-    return NS_OK;
+
+    GlobalTeardownObserver::DisconnectFromOwner();
   }
 };
 
-NS_IMPL_ISUPPORTS(WindowStreamOwner, nsIObserver, nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS0(WindowStreamOwner)
 
 inline nsISupports* ToSupports(WindowStreamOwner* aObj) {
-  return static_cast<nsIObserver*>(aObj);
+  return static_cast<GlobalTeardownObserver*>(aObj);
 }
 
 class WorkerStreamOwner final {
@@ -506,7 +517,7 @@ class JSStreamConsumer final : public nsIInputStreamCallback,
                                       std::move(aCache), aOptimizedEncoding);
     } else {
       RefPtr<WindowStreamOwner> owner =
-          WindowStreamOwner::Create(asyncStream, aGlobal);
+          new WindowStreamOwner(asyncStream, aGlobal);
       if (!owner) {
         return false;
       }
@@ -644,26 +655,25 @@ class JSStreamConsumer final : public nsIInputStreamCallback,
 NS_IMPL_ISUPPORTS(JSStreamConsumer, nsIInputStreamCallback)
 
 // static
-const nsCString FetchUtil::WasmAltDataType;
+MOZ_CONSTINIT nsCString FetchUtil::WasmAltDataType;
 
 // static
 void FetchUtil::InitWasmAltDataType() {
-  nsCString& type = const_cast<nsCString&>(WasmAltDataType);
-  MOZ_ASSERT(type.IsEmpty());
+  MOZ_ASSERT(WasmAltDataType.IsEmpty());
 
   RunOnShutdown([]() {
     // Avoid StringBuffer leak tests failures.
-    const_cast<nsCString&>(WasmAltDataType).Truncate();
+    WasmAltDataType.Truncate();
   });
 
-  type.Append(nsLiteralCString("wasm-"));
+  WasmAltDataType.Append(nsLiteralCString("wasm-"));
 
   JS::BuildIdCharVector buildId;
   if (!JS::GetOptimizedEncodingBuildId(&buildId)) {
     MOZ_CRASH("build id oom");
   }
 
-  type.Append(buildId.begin(), buildId.length());
+  WasmAltDataType.Append(buildId.begin(), buildId.length());
 }
 
 static bool ThrowException(JSContext* aCx, unsigned errorNumber) {

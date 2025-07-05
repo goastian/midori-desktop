@@ -21,7 +21,7 @@ namespace mozilla::dom {
 class Proxy;
 class DOMString;
 class SendRunnable;
-class StrongWorkerRef;
+class ThreadSafeWorkerRef;
 class WorkerPrivate;
 
 class XMLHttpRequestWorker final : public SupportsWeakPtr,
@@ -47,21 +47,24 @@ class XMLHttpRequestWorker final : public SupportsWeakPtr,
   };
 
   struct StateData {
-    nsString mResponseURL;
-    uint32_t mStatus;
+    nsCString mResponseURL;
+    uint32_t mStatus{0};
     nsCString mStatusText;
-    uint16_t mReadyState;
-    bool mFlagSend;
-    nsresult mStatusResult;
-
-    StateData()
-        : mStatus(0), mReadyState(0), mFlagSend(false), mStatusResult(NS_OK) {}
+    uint16_t mReadyState{0};
+    nsresult mStatusResult{NS_OK};
   };
 
  private:
   RefPtr<XMLHttpRequestUpload> mUpload;
-  WorkerPrivate* mWorkerPrivate;
-  RefPtr<StrongWorkerRef> mWorkerRef;
+
+  // This is set by SendRunnable::RunOnMainThread when the send process starts
+  // and is cleared by Proxy::Teardown and is held for the duration of the send.
+  // Additionally, it will be temporarily saved off by various sync runnables
+  // and replaced with their own reference to make a ThreadSafeWorkerRef
+  // available to the proxy for the duration of the sync runnables.
+  // They will restore the state when their sync runnable completes its main
+  // thread work.
+  RefPtr<ThreadSafeWorkerRef> mWorkerRef;
   RefPtr<XMLHttpRequestWorker> mPinnedSelfRef;
   RefPtr<Proxy> mProxy;
 
@@ -74,11 +77,13 @@ class XMLHttpRequestWorker final : public SupportsWeakPtr,
   JS::Heap<JSObject*> mResponseArrayBufferValue;
   JS::Heap<JS::Value> mResponseJSONValue;
 
+  uint32_t mEventStreamId{0};
   uint32_t mTimeout;
 
   bool mBackgroundRequest;
   bool mWithCredentials;
   bool mCanceled;
+  bool mFlagSend{false};  // spec flag
   bool mFlagSendActive;
 
   bool mMozAnon;
@@ -97,29 +102,29 @@ class XMLHttpRequestWorker final : public SupportsWeakPtr,
 
   void Unpin();
 
-  virtual uint16_t ReadyState() const override {
-    return mStateData->mReadyState;
-  }
+  virtual uint16_t ReadyState() const override;
 
-  virtual void Open(const nsACString& aMethod, const nsAString& aUrl,
+  virtual void Open(const nsACString& aMethod, const nsACString& aUrl,
                     ErrorResult& aRv) override {
-    Open(aMethod, aUrl, true, Optional<nsAString>(), Optional<nsAString>(),
+    Open(aMethod, aUrl, true, Optional<nsACString>(), Optional<nsACString>(),
          aRv);
   }
 
-  virtual void Open(const nsACString& aMethod, const nsAString& aUrl,
-                    bool aAsync, const nsAString& aUsername,
-                    const nsAString& aPassword, ErrorResult& aRv) override {
-    Optional<nsAString> username;
+  uint32_t EventStreamId() const { return mEventStreamId; }
+
+  virtual void Open(const nsACString& aMethod, const nsACString& aUrl,
+                    bool aAsync, const nsACString& aUsername,
+                    const nsACString& aPassword, ErrorResult& aRv) override {
+    Optional<nsACString> username;
     username = &aUsername;
-    Optional<nsAString> password;
+    Optional<nsACString> password;
     password = &aPassword;
     Open(aMethod, aUrl, aAsync, username, password, aRv);
   }
 
-  void Open(const nsACString& aMethod, const nsAString& aUrl, bool aAsync,
-            const Optional<nsAString>& aUser,
-            const Optional<nsAString>& aPassword, ErrorResult& aRv);
+  void Open(const nsACString& aMethod, const nsACString& aUrl, bool aAsync,
+            const Optional<nsACString>& aUser,
+            const Optional<nsACString>& aPassword, ErrorResult& aRv);
 
   virtual void SetRequestHeader(const nsACString& aHeader,
                                 const nsACString& aValue,
@@ -160,7 +165,7 @@ class XMLHttpRequestWorker final : public SupportsWeakPtr,
 
   virtual void Abort(ErrorResult& aRv) override;
 
-  virtual void GetResponseURL(nsAString& aUrl) override {
+  virtual void GetResponseURL(nsACString& aUrl) override {
     aUrl = mStateData->mResponseURL;
   }
 
@@ -239,9 +244,13 @@ class XMLHttpRequestWorker final : public SupportsWeakPtr,
 
   void MaybePin(ErrorResult& aRv);
 
-  void MaybeDispatchPrematureAbortEvents(ErrorResult& aRv);
+  void SetResponseToNetworkError();
 
-  void FireEvent(EventTarget* aTarget, const EventType& aEventType,
+  void RequestErrorSteps(ErrorResult& aRv,
+                         const ErrorProgressEventType& aEventType,
+                         nsresult aException = NS_ERROR_DOM_INVALID_STATE_ERR);
+
+  bool FireEvent(EventTarget* aTarget, const EventType& aEventType,
                  bool aUploadTarget, ErrorResult& aRv);
 
   void Send(JSContext* aCx, JS::Handle<JSObject*> aBody, ErrorResult& aRv);

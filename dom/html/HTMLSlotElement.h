@@ -9,9 +9,11 @@
 
 #include "nsGenericHTMLElement.h"
 #include "nsTArray.h"
-#include "mozilla/dom/HTMLSlotElementBinding.h"
 
 namespace mozilla::dom {
+
+struct AssignedNodesOptions;
+class OwningElementOrText;
 
 class HTMLSlotElement final : public nsGenericHTMLElement {
  public:
@@ -66,6 +68,8 @@ class HTMLSlotElement final : public nsGenericHTMLElement {
   void FireSlotChangeEvent();
 
   void RemoveManuallyAssignedNode(nsIContent&);
+
+  void RecalculateHasSlottedState();
 
  protected:
   virtual ~HTMLSlotElement();

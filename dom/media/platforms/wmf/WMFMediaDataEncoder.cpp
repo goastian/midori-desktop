@@ -137,18 +137,18 @@ HRESULT WMFMediaDataEncoder::InitMFTEncoder(RefPtr<MFTEncoder>& aEncoder) {
     return hr;
   }
 
-  hr = SetMediaTypes(aEncoder, mConfig);
+  hr = aEncoder->SetModes(mConfig);
   if (FAILED(hr)) {
     _com_error error(hr);
-    WMF_ENC_LOGE("MFTEncoder::SetMediaType: error = 0x%lX, %ls", hr,
+    WMF_ENC_LOGE("MFTEncoder::SetMode: error = 0x%lX, %ls", hr,
                  error.ErrorMessage());
     return hr;
   }
 
-  hr = aEncoder->SetModes(mConfig.mBitrate);
+  hr = SetMediaTypes(aEncoder, mConfig);
   if (FAILED(hr)) {
     _com_error error(hr);
-    WMF_ENC_LOGE("MFTEncoder::SetMode: error = 0x%lX, %ls", hr,
+    WMF_ENC_LOGE("MFTEncoder::SetMediaType: error = 0x%lX, %ls", hr,
                  error.ErrorMessage());
     return hr;
   }
@@ -160,10 +160,12 @@ void WMFMediaDataEncoder::FillConfigData() {
   nsTArray<UINT8> header;
   NS_ENSURE_TRUE_VOID(SUCCEEDED(mEncoder->GetMPEGSequenceHeader(header)));
 
+  if (mConfig.mCodec != CodecType::H264) {
+    return;
+  }
+
   mConfigData =
-      header.Length() > 0
-          ? ParseH264Parameters(header, mConfig.mUsage == Usage::Realtime)
-          : nullptr;
+      header.Length() > 0 ? ParseH264Parameters(header, IsAnnexB()) : nullptr;
 }
 
 RefPtr<EncodePromise> WMFMediaDataEncoder::ProcessEncode(
@@ -172,10 +174,15 @@ RefPtr<EncodePromise> WMFMediaDataEncoder::ProcessEncode(
   MOZ_ASSERT(mEncoder);
   MOZ_ASSERT(aSample);
 
-  WMF_ENC_LOGD("ProcessEncode ts=%s", aSample->mTime.ToString().get());
+  WMF_ENC_LOGD("ProcessEncode ts=%s duration=%s",
+               aSample->mTime.ToString().get(),
+               aSample->mDuration.ToString().get());
 
   RefPtr<IMFSample> nv12 = ConvertToNV12InputSample(std::move(aSample));
-  if (!nv12 || FAILED(mEncoder->PushInput(std::move(nv12)))) {
+
+  MFTEncoder::InputSample inputSample{nv12, aSample->mKeyframe};
+
+  if (!nv12 || FAILED(mEncoder->PushInput(inputSample))) {
     WMF_ENC_LOGE("failed to process input sample");
     return EncodePromise::CreateAndReject(
         MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
@@ -203,56 +210,38 @@ already_AddRefed<IMFSample> WMFMediaDataEncoder::ConvertToNV12InputSample(
   AssertOnTaskQueue();
   MOZ_ASSERT(mEncoder);
 
-  struct NV12Info {
-    int32_t mYStride = 0;
-    int32_t mUVStride = 0;
-    size_t mYLength = 0;
-    size_t mBufferLength = 0;
-  } info;
+  size_t mBufferLength = 0;
 
-  if (const layers::PlanarYCbCrImage* image =
-          aData->mImage->AsPlanarYCbCrImage()) {
-    // Assume this is I420. If it's not, the whole process fails in
-    // ConvertToNV12 below.
-    const layers::PlanarYCbCrData* yuv = image->GetData();
-    info.mYStride = yuv->mYStride;
-    info.mUVStride = yuv->mCbCrStride * 2;
-    info.mYLength = info.mYStride * yuv->YDataSize().height;
-    info.mBufferLength =
-        info.mYLength + (info.mUVStride * yuv->CbCrDataSize().height);
-  } else {
-    info.mYStride = aData->mImage->GetSize().width;
-    info.mUVStride = info.mYStride;
+  const int32_t ySrtride = mConfig.mSize.width;
+  const int32_t uvStride = ySrtride;
 
-    const int32_t yHeight = aData->mImage->GetSize().height;
-    const int32_t uvHeight = yHeight / 2;
+  const int32_t yHeight = mConfig.mSize.height;
+  const int32_t uvHeight = yHeight / 2 + (yHeight % 2);
 
-    CheckedInt<size_t> yLength(info.mYStride);
-    yLength *= yHeight;
-    if (!yLength.isValid()) {
-      WMF_ENC_LOGE("yLength overflows");
-      return nullptr;
-    }
-    info.mYLength = yLength.value();
-
-    CheckedInt<size_t> uvLength(info.mUVStride);
-    uvLength *= uvHeight;
-    if (!uvLength.isValid()) {
-      WMF_ENC_LOGE("uvLength overflows");
-      return nullptr;
-    }
-
-    CheckedInt<size_t> length(yLength);
-    length += uvLength;
-    if (!length.isValid()) {
-      WMF_ENC_LOGE("length overflows");
-      return nullptr;
-    }
-    info.mBufferLength = length.value();
+  CheckedInt<size_t> yLength(ySrtride);
+  yLength *= yHeight;
+  if (!yLength.isValid()) {
+    WMF_ENC_LOGE("dest yLength overflows");
+    return nullptr;
   }
 
+  CheckedInt<size_t> uvLength(uvStride);
+  uvLength *= uvHeight;
+  if (!uvLength.isValid()) {
+    WMF_ENC_LOGE("dest uvLength overflows");
+    return nullptr;
+  }
+
+  CheckedInt<size_t> length(yLength);
+  length += uvLength;
+  if (!length.isValid()) {
+    WMF_ENC_LOGE("dest length overflows");
+    return nullptr;
+  }
+  mBufferLength = length.value();
+
   RefPtr<IMFSample> input;
-  HRESULT hr = mEncoder->CreateInputSample(&input, info.mBufferLength);
+  HRESULT hr = mEncoder->CreateInputSample(&input, mBufferLength);
   if (FAILED(hr)) {
     _com_error error(hr);
     WMF_ENC_LOGE("CreateInputSample: error = 0x%lX, %ls", hr,
@@ -269,7 +258,7 @@ already_AddRefed<IMFSample> WMFMediaDataEncoder::ConvertToNV12InputSample(
     return nullptr;
   }
 
-  hr = buffer->SetCurrentLength(info.mBufferLength);
+  hr = buffer->SetCurrentLength(mBufferLength);
   if (FAILED(hr)) {
     _com_error error(hr);
     WMF_ENC_LOGE("SetCurrentLength: error = 0x%lX, %ls", hr,
@@ -285,9 +274,9 @@ already_AddRefed<IMFSample> WMFMediaDataEncoder::ConvertToNV12InputSample(
     return nullptr;
   }
 
-  nsresult rv =
-      ConvertToNV12(aData->mImage, lockBuffer.Data(), info.mYStride,
-                    lockBuffer.Data() + info.mYLength, info.mUVStride);
+  nsresult rv = ConvertToNV12(aData->mImage, lockBuffer.Data(), ySrtride,
+                              lockBuffer.Data() + yLength.value(), uvStride,
+                              mConfig.mSize);
   if (NS_FAILED(rv)) {
     WMF_ENC_LOGE("Failed to convert to NV12");
     return nullptr;
@@ -353,6 +342,14 @@ already_AddRefed<MediaRawData> WMFMediaDataEncoder::IMFSampleToMediaData(
       MFGetAttributeUINT32(aSample, MFSampleExtension_CleanPoint, false);
 
   auto frame = MakeRefPtr<MediaRawData>();
+
+  if (mConfig.mCodec == CodecType::H264 &&
+      mConfig.mScalabilityMode != ScalabilityMode::None) {
+    auto maybeId =
+        H264::ExtractSVCTemporalId(lockBuffer.Data(), lockBuffer.Length());
+    frame->mTemporalLayerId = Some(maybeId.unwrapOr(0));
+  }
+
   if (!WriteFrameData(frame, lockBuffer, isKeyframe)) {
     return nullptr;
   }
@@ -366,14 +363,27 @@ already_AddRefed<MediaRawData> WMFMediaDataEncoder::IMFSampleToMediaData(
   return frame.forget();
 }
 
+bool WMFMediaDataEncoder::IsAnnexB() const {
+  MOZ_ASSERT(mConfig.mCodec == CodecType::H264);
+  return mConfig.mCodecSpecific->as<H264Specific>().mFormat ==
+         H264BitStreamFormat::ANNEXB;
+}
+
 bool WMFMediaDataEncoder::WriteFrameData(RefPtr<MediaRawData>& aDest,
                                          LockBuffer& aSrc, bool aIsKeyframe) {
+  // From raw encoded data, write in avCC or AnnexB format depending on the
+  // config.
+
   if (mConfig.mCodec == CodecType::H264) {
     size_t prependLength = 0;
     RefPtr<MediaByteBuffer> avccHeader;
     if (aIsKeyframe && mConfigData) {
-      if (mConfig.mUsage == Usage::Realtime) {
-        prependLength = mConfigData->Length();
+      if (IsAnnexB()) {
+        const nsTArray<NAL_TYPES> aTypes = {H264_NAL_SPS, H264_NAL_PPS};
+        if (!AnnexB::FindAllNalTypes(
+                Span<const uint8_t>(aSrc.Data(), aSrc.Length()), aTypes)) {
+          prependLength = mConfigData->Length();
+        }
       } else {
         avccHeader = mConfigData;
       }
@@ -390,8 +400,7 @@ bool WMFMediaDataEncoder::WriteFrameData(RefPtr<MediaRawData>& aDest,
     }
     PodCopy(writer->Data() + prependLength, aSrc.Data(), aSrc.Length());
 
-    if (mConfig.mUsage != Usage::Realtime &&
-        !AnnexB::ConvertSampleToAVCC(aDest, avccHeader)) {
+    if (!IsAnnexB() && !AnnexB::ConvertSampleToAVCC(aDest, avccHeader)) {
       WMF_ENC_LOGE("fail to convert annex-b sample to AVCC");
       return false;
     }

@@ -916,6 +916,20 @@ struct IpcFailCustomRetVal {
 
 // QM_INFOONLY_TRY_INSPECT doesn't make sense.
 
+/**
+ * QM_VERBOSEONLY_TRY_UNWRAP is like QM_WARNONLY_TRY_UNWRAP. The only
+ * difference is that failures are reported using the lowest severity which is
+ * currently ignored in LogError, so nothing goes to the console, browser
+ * console and telemetry. Since nothing goes to the telemetry, the macro can't
+ * signal the end of the underlying error stack or change the type of the error
+ * stack in the telemetry. For that reason, the expression shouldn't contain
+ * nested QM_TRY macro uses.
+ */
+#define QM_VERBOSEONLY_TRY_UNWRAP(...) \
+  QM_REPORTONLY_TRY_ASSIGN_GLUE(Verbose, __VA_ARGS__)
+
+// QM_VERBOSEONLY_TRY_INSPECT doesn't make sense.
+
 // QM_OR_ELSE_REPORT macro is an implementation detail of
 // QM_OR_ELSE_WARN/QM_OR_ELSE_INFO/QM_OR_ELSE_LOG_VERBOSE and shouldn't be used
 // directly.
@@ -1036,7 +1050,8 @@ auto OrElseIf(Result<V, E>&& aResult, P&& aPred, F&& aFunc) -> Result<V, E> {
     return Err(NS_FAILED(_status) ? (_status) : (_rv))
 #else
 #  define RECORD_IN_NIGHTLY(_dummy, _status) \
-    {}
+    {                                        \
+    }
 
 #  define OK_IN_NIGHTLY_PROPAGATE_IN_OTHERS QM_PROPAGATE
 
@@ -1128,8 +1143,8 @@ auto ErrToDefaultOk(const nsresult aValue) -> Result<V, nsresult> {
 }
 
 template <typename MozPromiseType, typename RejectValueT = nsresult>
-auto CreateAndRejectMozPromise(StaticString aFunc,
-                               const RejectValueT& aRv) -> decltype(auto) {
+auto CreateAndRejectMozPromise(StaticString aFunc, const RejectValueT& aRv)
+    -> decltype(auto) {
   if constexpr (std::is_same_v<RejectValueT, nsresult>) {
     return MozPromiseType::CreateAndReject(aRv, aFunc);
   } else if constexpr (std::is_same_v<RejectValueT, QMResult>) {
@@ -1221,8 +1236,8 @@ auto Reduce(Range&& aRange, T aInit, const BinaryOp& aBinaryOp) {
 }
 
 template <typename Range, typename Body>
-auto CollectEachInRange(Range&& aRange,
-                        const Body& aBody) -> Result<mozilla::Ok, nsresult> {
+auto CollectEachInRange(Range&& aRange, const Body& aBody)
+    -> Result<mozilla::Ok, nsresult> {
   for (auto&& element : aRange) {
     MOZ_TRY(aBody(element));
   }
@@ -1279,27 +1294,6 @@ extern const nsLiteralCString kQuotaExternalError;
 #  define kQuotaInternalError
 #  define kQuotaExternalError
 #endif
-
-class BackgroundThreadObject {
- protected:
-  nsCOMPtr<nsISerialEventTarget> mOwningThread;
-
- public:
-  void AssertIsOnOwningThread() const
-#ifdef DEBUG
-      ;
-#else
-  {
-  }
-#endif
-
-  nsISerialEventTarget* OwningThread() const;
-
- protected:
-  BackgroundThreadObject();
-
-  explicit BackgroundThreadObject(nsISerialEventTarget* aOwningThread);
-};
 
 MOZ_COLD void ReportInternalError(const char* aFile, uint32_t aLine,
                                   const char* aStr);

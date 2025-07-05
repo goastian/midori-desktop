@@ -3,7 +3,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-function* testSteps() {
+async function testSteps() {
   const origins = [
     {
       origin: "http://example.com",
@@ -84,15 +84,17 @@ function* testSteps() {
     }
   }
 
+  function dummy() {}
+
   info("Clearing");
 
-  clear(continueToNextStepSync);
-  yield undefined;
+  let request = clear();
+  await requestFinished(request);
 
   info("Getting usage");
 
-  getUsage(grabResultAndContinueHandler, /* getAll */ true);
-  let result = yield undefined;
+  request = getUsage(dummy, /* getAll */ true);
+  let result = await requestFinished(request);
 
   info("Verifying result");
 
@@ -100,8 +102,8 @@ function* testSteps() {
 
   info("Clearing");
 
-  clear(continueToNextStepSync);
-  yield undefined;
+  request = clear();
+  await requestFinished(request);
 
   info("Installing package");
 
@@ -113,8 +115,8 @@ function* testSteps() {
 
   info("Getting usage");
 
-  getUsage(grabResultAndContinueHandler, /* getAll */ false);
-  result = yield undefined;
+  request = getUsage(dummy, /* getAll */ false);
+  result = await requestFinished(request);
 
   info("Verifying result");
 
@@ -122,12 +124,39 @@ function* testSteps() {
 
   info("Getting usage");
 
-  getUsage(grabResultAndContinueHandler, /* getAll */ true);
-  result = yield undefined;
+  request = getUsage(dummy, /* getAll */ true);
+  result = await requestFinished(request);
 
   info("Verifying result");
 
   verifyResult(result, allOrigins);
 
-  finishTest();
+  info("Getting usage");
+
+  Services.prefs.setIntPref(
+    "dom.quotaManager.originOperations.pauseOnIOThreadMs",
+    1000
+  );
+
+  request = getUsage(dummy, /* getAll */ true);
+
+  info("Cancelling request");
+
+  request.cancel();
+
+  try {
+    result = await requestFinished(request);
+    ok(false, "Should have thrown");
+  } catch (e) {
+    ok(true, "Should have thrown");
+    Assert.strictEqual(
+      e.resultCode,
+      NS_ERROR_FAILURE,
+      "Threw right result code"
+    );
+  }
+
+  Services.prefs.clearUserPref(
+    "dom.quotaManager.originOperations.pauseOnIOThreadMs"
+  );
 }

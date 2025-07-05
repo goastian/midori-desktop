@@ -46,7 +46,7 @@ mfcdm:
       dropped_frames:
         description: The amount of video frames don't get rendered but dropped
         type: quantity
-    expires: 130
+    expires: 146
     telemetry_mirror: Mfcdm_EmePlayback_Gecko
   error:
     type: event
@@ -84,5 +84,30 @@ mfcdm:
       key_system:
         description: The key system was being used when the error or crash happened
         type: string
-    expires: 130
+      platform_error:
+        description: The platform specific error code, eg. HResult on Windows
+        type: quantity
+    expires: 146
     telemetry_mirror: Mfcdm_Error_Gecko
+
+media:
+  decoder_backend_used:
+    type: custom_distribution
+    description: >
+      Media decoder backend (0=WMF Software, 1=DXVA2D3D9, 2=DXVA2D3D11)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram MEDIA_DECODER_BACKEND_USED.
+    range_min: 0
+    range_max: 10
+    bucket_count: 11
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1259695
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1259695
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: MEDIA_DECODER_BACKEND_USED

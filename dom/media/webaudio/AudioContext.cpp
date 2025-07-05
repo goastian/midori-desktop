@@ -19,6 +19,7 @@
 #include "mozilla/dom/AnalyserNodeBinding.h"
 #include "mozilla/dom/AudioBufferSourceNodeBinding.h"
 #include "mozilla/dom/AudioContextBinding.h"
+#include "mozilla/dom/AudioWorklet.h"
 #include "mozilla/dom/BaseAudioContextBinding.h"
 #include "mozilla/dom/BiquadFilterNodeBinding.h"
 #include "mozilla/dom/BrowsingContext.h"
@@ -43,7 +44,6 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/StereoPannerNodeBinding.h"
 #include "mozilla/dom/WaveShaperNodeBinding.h"
-#include "mozilla/dom/Worklet.h"
 
 #include "AudioBuffer.h"
 #include "AudioBufferSourceNode.h"
@@ -176,10 +176,7 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow, bool aIsOffline,
       mTracksAreSuspended(!aIsOffline),
       mWasAllowedToStart(true),
       mSuspendedByContent(false),
-      mSuspendedByChrome(aWindow->IsSuspended()),
-      mWasEverAllowedToStart(false),
-      mWasEverBlockedToStart(false),
-      mWouldBeAllowedToStart(true) {
+      mSuspendedByChrome(nsGlobalWindowInner::Cast(aWindow)->IsSuspended()) {
   bool mute = aWindow->AddAudioContext(this);
 
   // Note: AudioDestinationNode needs an AudioContext that must already be
@@ -204,14 +201,11 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow, bool aIsOffline,
     Mute();
   }
 
-  UpdateAutoplayAssumptionStatus();
-
   FFTBlock::MainThreadInit();
 }
 
 void AudioContext::StartBlockedAudioContextIfAllowed() {
   MOZ_ASSERT(NS_IsMainThread());
-  MaybeUpdateAutoplayTelemetry();
   // Only try to start AudioContext when AudioContext was not allowed to start.
   if (mWasAllowedToStart) {
     return;
@@ -233,8 +227,7 @@ void AudioContext::StartBlockedAudioContextIfAllowed() {
 
 void AudioContext::DisconnectFromWindow() {
   MaybeClearPageAwakeRequest();
-  nsPIDOMWindowInner* window = GetOwner();
-  if (window) {
+  if (nsGlobalWindowInner* window = GetOwnerWindow()) {
     window->RemoveAudioContext(this);
   }
 }
@@ -249,9 +242,8 @@ JSObject* AudioContext::WrapObject(JSContext* aCx,
                                    JS::Handle<JSObject*> aGivenProto) {
   if (mIsOffline) {
     return OfflineAudioContext_Binding::Wrap(aCx, this, aGivenProto);
-  } else {
-    return AudioContext_Binding::Wrap(aCx, this, aGivenProto);
   }
+  return AudioContext_Binding::Wrap(aCx, this, aGivenProto);
 }
 
 static bool CheckFullyActive(nsPIDOMWindowInner* aWindow, ErrorResult& aRv) {
@@ -374,7 +366,7 @@ already_AddRefed<AudioBuffer> AudioContext::CreateBuffer(
     return nullptr;
   }
 
-  return AudioBuffer::Create(GetOwner(), aNumberOfChannels, aLength,
+  return AudioBuffer::Create(GetOwnerWindow(), aNumberOfChannels, aLength,
                              aSampleRate, aRv);
 }
 
@@ -591,8 +583,8 @@ void AudioContext::GetOutputTimestamp(AudioTimestamp& aTimeStamp) {
   // output latency. The resolution of CurrentTime() is already reduced.
   aTimeStamp.mContextTime.Construct(
       std::max(0.0, CurrentTime() - OutputLatency()));
-  nsPIDOMWindowInner* parent = GetParentObject();
-  Performance* perf = parent ? parent->GetPerformance() : nullptr;
+  nsGlobalWindowInner* win = GetOwnerWindow();
+  Performance* perf = win ? win->GetPerformance() : nullptr;
   if (perf) {
     // perf->Now() already has reduced resolution here, no need to do it again.
     aTimeStamp.mPerformanceTime.Construct(
@@ -602,7 +594,7 @@ void AudioContext::GetOutputTimestamp(AudioTimestamp& aTimeStamp) {
   }
 }
 
-Worklet* AudioContext::GetAudioWorklet(ErrorResult& aRv) {
+AudioWorklet* AudioContext::GetAudioWorklet(ErrorResult& aRv) {
   if (!mWorklet) {
     mWorklet = AudioWorkletImpl::CreateWorklet(this, aRv);
   }
@@ -615,7 +607,8 @@ bool AudioContext::IsRunning() const {
 
 already_AddRefed<Promise> AudioContext::CreatePromise(ErrorResult& aRv) {
   // Get the relevant global for the promise from the wrapper cache because
-  // DOMEventTargetHelper::GetOwner() returns null if the document is unloaded.
+  // DOMEventTargetHelper::GetOwnerWindow() returns null if the document is
+  // unloaded.
   // We know the wrapper exists because it is being used for |this| from JS.
   // See https://github.com/heycam/webidl/issues/932 for why the relevant
   // global is used instead of the current global.
@@ -765,8 +758,8 @@ double AudioContext::CurrentTime() {
 }
 
 nsISerialEventTarget* AudioContext::GetMainThread() const {
-  if (nsPIDOMWindowInner* window = GetParentObject()) {
-    return window->AsGlobal()->SerialEventTarget();
+  if (nsIGlobalObject* global = GetOwnerGlobal()) {
+    return global->SerialEventTarget();
   }
   return GetCurrentSerialEventTarget();
 }
@@ -779,10 +772,6 @@ void AudioContext::DisconnectFromOwner() {
 }
 
 void AudioContext::OnWindowDestroy() {
-  // Avoid resend the Telemetry data.
-  if (!mIsShutDown) {
-    MaybeUpdateAutoplayTelemetryWhenShutdown();
-  }
   mIsShutDown = true;
 
   CloseInternal(nullptr, AudioContextOperationFlags::None);
@@ -830,12 +819,12 @@ class OnStateChangeTask final : public Runnable {
 
   NS_IMETHODIMP
   Run() override {
-    nsPIDOMWindowInner* parent = mAudioContext->GetParentObject();
-    if (!parent) {
+    nsGlobalWindowInner* win = mAudioContext->GetOwnerWindow();
+    if (!win) {
       return NS_ERROR_FAILURE;
     }
 
-    Document* doc = parent->GetExtantDoc();
+    Document* doc = win->GetExtantDoc();
     if (!doc) {
       return NS_ERROR_FAILURE;
     }
@@ -903,7 +892,7 @@ void AudioContext::OnStateChanged(void* aPromise, AudioContextState aNewState) {
 }
 
 BrowsingContext* AudioContext::GetTopLevelBrowsingContext() {
-  nsCOMPtr<nsPIDOMWindowInner> window = GetParentObject();
+  nsGlobalWindowInner* window = GetOwnerWindow();
   if (!window) {
     return nullptr;
   }
@@ -1084,8 +1073,6 @@ already_AddRefed<Promise> AudioContext::Resume(ErrorResult& aRv) {
     ReportBlocked();
   }
 
-  MaybeUpdateAutoplayTelemetry();
-
   return promise.forget();
 }
 
@@ -1123,47 +1110,6 @@ void AudioContext::ResumeInternal() {
           [] {});  // Promise may be rejected after graph shutdown.
 }
 
-void AudioContext::UpdateAutoplayAssumptionStatus() {
-  if (media::AutoplayPolicyTelemetryUtils::
-          WouldBeAllowedToPlayIfAutoplayDisabled(*this)) {
-    mWasEverAllowedToStart |= true;
-    mWouldBeAllowedToStart = true;
-  } else {
-    mWasEverBlockedToStart |= true;
-    mWouldBeAllowedToStart = false;
-  }
-}
-
-void AudioContext::MaybeUpdateAutoplayTelemetry() {
-  // Exclude offline AudioContext because it's always allowed to start.
-  if (mIsOffline) {
-    return;
-  }
-
-  if (media::AutoplayPolicyTelemetryUtils::
-          WouldBeAllowedToPlayIfAutoplayDisabled(*this) &&
-      !mWouldBeAllowedToStart) {
-    AccumulateCategorical(
-        mozilla::Telemetry::LABELS_WEB_AUDIO_AUTOPLAY::AllowedAfterBlocked);
-  }
-  UpdateAutoplayAssumptionStatus();
-}
-
-void AudioContext::MaybeUpdateAutoplayTelemetryWhenShutdown() {
-  // Exclude offline AudioContext because it's always allowed to start.
-  if (mIsOffline) {
-    return;
-  }
-
-  if (mWasEverAllowedToStart && !mWasEverBlockedToStart) {
-    AccumulateCategorical(
-        mozilla::Telemetry::LABELS_WEB_AUDIO_AUTOPLAY::NeverBlocked);
-  } else if (!mWasEverAllowedToStart && mWasEverBlockedToStart) {
-    AccumulateCategorical(
-        mozilla::Telemetry::LABELS_WEB_AUDIO_AUTOPLAY::NeverAllowed);
-  }
-}
-
 void AudioContext::ReportBlocked() {
   ReportToConsole(nsIScriptError::warningFlag,
                   "BlockAutoplayWebAudioStartError");
@@ -1173,15 +1119,14 @@ void AudioContext::ReportBlocked() {
     return;
   }
 
-  RefPtr<AudioContext> self = this;
-  RefPtr<nsIRunnable> r =
-      NS_NewRunnableFunction("AudioContext::AutoplayBlocked", [self]() {
-        nsPIDOMWindowInner* parent = self->GetParentObject();
-        if (!parent) {
+  RefPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "AudioContext::AutoplayBlocked", [self = RefPtr{this}]() {
+        nsGlobalWindowInner* win = self->GetOwnerWindow();
+        if (!win) {
           return;
         }
 
-        Document* doc = parent->GetExtantDoc();
+        Document* doc = win->GetExtantDoc();
         if (!doc) {
           return;
         }
@@ -1365,8 +1310,7 @@ BasicWaveFormCache* AudioContext::GetBasicWaveFormCache() {
 void AudioContext::ReportToConsole(uint32_t aErrorFlags,
                                    const char* aMsg) const {
   MOZ_ASSERT(aMsg);
-  Document* doc =
-      GetParentObject() ? GetParentObject()->GetExtantDoc() : nullptr;
+  Document* doc = GetOwnerWindow() ? GetOwnerWindow()->GetExtantDoc() : nullptr;
   nsContentUtils::ReportToConsole(aErrorFlags, "Media"_ns, doc,
                                   nsContentUtils::eDOM_PROPERTIES, aMsg);
 }

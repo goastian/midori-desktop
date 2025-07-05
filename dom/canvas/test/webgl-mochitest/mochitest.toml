@@ -18,13 +18,18 @@ support-files = [
 
 ["ensure-exts/test_EXT_color_buffer_half_float.html"]
 
+["ensure-exts/test_EXT_depth_clamp.html"]
+fail-if = [
+  "os == 'android'",
+  "os == 'win'",
+]
+
 ["ensure-exts/test_EXT_disjoint_timer_query.html"]
 fail-if = ["true"]
 
 ["ensure-exts/test_EXT_float_blend.html"]
 
 ["ensure-exts/test_EXT_frag_depth.html"]
-fail-if = ["os == 'android'"]
 
 ["ensure-exts/test_EXT_sRGB.html"]
 
@@ -34,15 +39,17 @@ fail-if = ["os == 'android'"]
 ["ensure-exts/test_EXT_texture_compression_bptc.html"]
 fail-if = [
   "os == 'android'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
 ]
 
 ["ensure-exts/test_EXT_texture_compression_rgtc.html"]
 fail-if = ["os == 'android'"]
 
 ["ensure-exts/test_EXT_texture_filter_anisotropic.html"]
-fail-if = ["os == 'linux' && display != 'wayland'"]
+fail-if = ["os == 'linux'  && os_version == '18.04' && processor == 'x86_64'"]
 
 ["ensure-exts/test_OES_draw_buffers_indexed.html"]
 
@@ -52,46 +59,70 @@ fail-if = ["os == 'linux' && display != 'wayland'"]
 
 ["ensure-exts/test_OVR_multiview2.html"]
 fail-if = [
-  "os == 'linux'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
 ]
 
 ["ensure-exts/test_WEBGL_color_buffer_float.html"]
 
 ["ensure-exts/test_WEBGL_compressed_texture_astc.html"]
 fail-if = [
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "win10_2009",
   "win11_2009",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86'",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'",
 ]
 
 ["ensure-exts/test_WEBGL_compressed_texture_etc.html"]
 fail-if = [
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "win10_2009",
   "win11_2009",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86'",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'",
 ]
 
 ["ensure-exts/test_WEBGL_compressed_texture_etc1.html"]
 fail-if = [
-  "os == 'linux'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "win10_2009",
   "win11_2009",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86'",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'",
 ]
 
 ["ensure-exts/test_WEBGL_compressed_texture_pvrtc.html"]
 fail-if = [
   "os == 'android'",
-  "os == 'linux'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "win10_2009",
   "win11_2009",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86'",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'",
 ]
 
 ["ensure-exts/test_WEBGL_compressed_texture_s3tc.html"]
@@ -105,7 +136,9 @@ fail-if = ["os == 'android'"]
 ["ensure-exts/test_WEBGL_provoking_vertex.html"]
 fail-if = [
   "os == 'android'",
-  "os == 'linux'",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
 ]
 
 ["ensure-exts/test_common.html"]
@@ -119,6 +152,7 @@ fail-if = [
 ["test_backbuffer_channels.html"]
 
 ["test_backends.html"]
+tags = "os_integration"
 
 ["test_canvas_size.html"]
 
@@ -146,9 +180,13 @@ support-files = ["../captureStream_common.js"]
 
 ["test_has_rbab.html"]
 fail-if = [
-  "os == 'linux'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
 ]
 
 ["test_hidden_alpha.html"]
@@ -169,15 +207,20 @@ fail-if = [
 skip-if = [
   "win10_2009", # Unofficial DXGL support regressed by bug 1632249
   "win11_2009", # Unofficial DXGL support regressed by bug 1632249
-  "apple_silicon",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
 ]
 
 ["test_privileged_exts.html"]
+
+["test_read_pixels_naive_impl_read_formats.html"]
+tags = "os_integration"
 
 ["test_read_pixels_no_format.html"]
 
 ["test_renderer_strings.html"]
 skip-if = ["display == 'wayland'"]
+tags = "os_integration"
 
 ["test_sab_with_webgl.html"]
 
@@ -200,17 +243,17 @@ skip-if = ["win11_2009 && bits == 32"] # No fast video path for h264 decoder (do
 
 ["test_video_fastpath_vp8.html"]
 skip-if = [
-  "os == 'linux' && os_version == '18.04'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
   "win11_2009 && bits == 32", # No fast video path for vp8 decoder (done in RDD, can't be read in content)
 ]
 
 ["test_video_fastpath_vp9.html"]
 skip-if = [
-  "os == 'linux' && os_version == '18.04'",
-  "apple_catalina",
-  "apple_silicon",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
   "win11_2009 && bits == 32", # No fast video path for vp9 decoder (done in RDD, can't be read in content)
 ]
 

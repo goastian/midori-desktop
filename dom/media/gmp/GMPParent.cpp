@@ -13,6 +13,7 @@
 #include "GMPTimerParent.h"
 #include "MediaResult.h"
 #include "mozIGeckoMediaPluginService.h"
+#include "mozilla/Casting.h"
 #include "mozilla/dom/KeySystemNames.h"
 #include "mozilla/dom/WidevineCDMManifestBinding.h"
 #include "mozilla/FOGIPC.h"
@@ -21,12 +22,13 @@
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/SandboxInfo.h"
-#  include "base/shared_memory.h"
+#  include "mozilla/ipc/SharedMemoryHandle.h"
 #endif
 #include "mozilla/Services.h"
 #include "mozilla/SSE.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/SyncRunnable.h"
+#include "mozilla/glean/IpcMetrics.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "nsComponentManagerUtils.h"
@@ -40,6 +42,7 @@
 #ifdef XP_WIN
 #  include "mozilla/FileUtilsWin.h"
 #  include "mozilla/WinDllServices.h"
+#  include "PDMFactory.h"
 #  include "WMFDecoderModule.h"
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
@@ -301,7 +304,7 @@ class NotifyGMPProcessLoadedTask : public Runnable {
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
     if (SandboxInfo::Get().Test(SandboxInfo::kEnabledForMedia) &&
-        base::SharedMemory::UsingPosixShm()) {
+        ipc::shared_memory::UsingPosixShm()) {
       canProfile = false;
     }
 #endif
@@ -741,7 +744,8 @@ bool GMPCapability::Supports(const nsTArray<GMPCapability>& aCapabilities,
         // certain services packs.
         if (tag.EqualsLiteral(kClearKeyKeySystemName)) {
           if (capabilities.mAPIName.EqualsLiteral(GMP_API_VIDEO_DECODER)) {
-            if (!WMFDecoderModule::CanCreateMFTDecoder(WMFStreamType::H264)) {
+            auto pdmFactory = MakeRefPtr<PDMFactory>();
+            if (pdmFactory->SupportsMimeType("video/avc"_ns).isEmpty()) {
               continue;
             }
           }
@@ -786,7 +790,7 @@ void GMPParent::AddCrashAnnotations() {
 
 void GMPParent::GetCrashID(nsString& aResult) {
   AddCrashAnnotations();
-  GenerateCrashReport(OtherPid(), &aResult);
+  GenerateCrashReport(&aResult);
 }
 
 static void GMPNotifyObservers(const uint32_t aPluginID,
@@ -811,11 +815,11 @@ static void GMPNotifyObservers(const uint32_t aPluginID,
 
 void GMPParent::ActorDestroy(ActorDestroyReason aWhy) {
   MOZ_ASSERT(GMPEventTarget()->IsOnCurrentThread());
-  GMP_PARENT_LOG_DEBUG("%s: (%d)", __FUNCTION__, (int)aWhy);
+  GMP_PARENT_LOG_DEBUG("%s: (%d), state=%u", __FUNCTION__, (int)aWhy,
+                       uint32_t(GMPState(mState)));
 
   if (AbnormalShutdown == aWhy) {
-    Telemetry::Accumulate(Telemetry::SUBPROCESS_ABNORMAL_ABORT, "gmplugin"_ns,
-                          1);
+    glean::subprocess::abnormal_abort.Get("gmplugin"_ns).Add(1);
     nsString dumpID;
     GetCrashID(dumpID);
     if (dumpID.IsEmpty()) {
@@ -836,7 +840,8 @@ void GMPParent::ActorDestroy(ActorDestroyReason aWhy) {
   mAbnormalShutdownInProgress = true;
   CloseActive(false);
 
-  // Normal Shutdown() will delete the process on unwind.
+  // Normal Shutdown() will delete the process on unwind. GMPProcessParent
+  // blocks shutdown to avoid races.
   if (AbnormalShutdown == aWhy) {
     RefPtr<GMPParent> self(this);
     // Must not call Close() again in DeleteProcess(), as we'll recurse
@@ -959,6 +964,38 @@ static void ApplyOleaut32(nsCString& aLibs) {
 }
 #endif
 
+static constexpr uint64_t MakeVersion(uint16_t aA, uint16_t aB, uint16_t aC,
+                                      uint16_t aD) {
+  return (static_cast<uint64_t>(aA) << 48) | (static_cast<uint64_t>(aB) << 32) |
+         (static_cast<uint64_t>(aC) << 16) | aD;
+}
+
+static nsresult ParseVersion(const nsACString& aVersion,
+                             uint64_t* aParsedVersion) {
+  MOZ_ASSERT(aParsedVersion);
+
+  uint64_t version = 0;
+  uint32_t fragmentCount = 0;
+  nsresult rv = NS_OK;
+
+  for (const auto& fragment : aVersion.Split('.')) {
+    ++fragmentCount;
+    if (NS_WARN_IF(fragmentCount >= 5)) {
+      return NS_ERROR_FAILURE;
+    }
+
+    uint32_t fragmentInt = fragment.ToUnsignedInteger(&rv, /* aRadix */ 10);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    version = (version << 16) | SaturatingCast<uint16_t>(fragmentInt);
+  }
+
+  *aParsedVersion = version << (4 - fragmentCount) * 16;
+  return NS_OK;
+}
+
 RefPtr<GenericPromise> GMPParent::ReadGMPInfoFile(nsIFile* aFile) {
   MOZ_ASSERT(GMPEventTarget()->IsOnCurrentThread());
   GMPInfoFileParser parser;
@@ -980,6 +1017,25 @@ RefPtr<GenericPromise> GMPParent::ReadGMPInfoFile(nsIFile* aFile) {
 #endif
 
   UpdatePluginType();
+
+  // We check the version for OpenH264 because we may need to add additional API
+  // tags to indicate we support more advanced modes for newer versions of the
+  // plugin.
+  bool addMozSupportsH264Advanced = false;
+  bool addMozSupportsH264TemporalSVC = false;
+  if (mPluginType == GMPPluginType::OpenH264) {
+    uint64_t parsedVersion = 0;
+    nsresult rv = ParseVersion(mVersion, &parsedVersion);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return GenericPromise::CreateAndReject(rv, __func__);
+    }
+
+    // Earlier versions only supported decoding/encoding constrained baseline.
+    addMozSupportsH264Advanced = parsedVersion >= MakeVersion(2, 3, 2, 0);
+
+    // Earlier versions did not expose the encoded SVC temporal layer ID.
+    addMozSupportsH264TemporalSVC = parsedVersion > MakeVersion(2, 5, 0, 0);
+  }
 
 #ifdef XP_LINUX
   // The glibc workaround (see above) isn't needed for clearkey
@@ -1024,6 +1080,17 @@ RefPtr<GenericPromise> GMPParent::ReadGMPInfoFile(nsIFile* aFile) {
         for (nsCString tag : tagTokens) {
           cap.mAPITags.AppendElement(tag);
         }
+      }
+    }
+
+    if (mPluginType == GMPPluginType::OpenH264) {
+      if (addMozSupportsH264Advanced &&
+          !cap.mAPITags.Contains("moz-h264-advanced"_ns)) {
+        cap.mAPITags.AppendElement("moz-h264-advanced"_ns);
+      }
+      if (addMozSupportsH264TemporalSVC &&
+          !cap.mAPITags.Contains("moz-h264-temporal-svc"_ns)) {
+        cap.mAPITags.AppendElement("moz-h264-temporal-svc"_ns);
       }
     }
 
@@ -1274,7 +1341,8 @@ bool GMPParent::OpenPGMPContent() {
   Endpoint<PGMPContentParent> parent;
   Endpoint<PGMPContentChild> child;
   if (NS_WARN_IF(NS_FAILED(PGMPContent::CreateEndpoints(
-          base::GetCurrentProcId(), OtherPid(), &parent, &child)))) {
+          mozilla::ipc::EndpointProcInfo::Current(), OtherEndpointProcInfo(),
+          &parent, &child)))) {
     return false;
   }
 

@@ -18,9 +18,9 @@ TODO:
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { objectEquals } from '../../../../common/util/util.js';
-import { ValidationTest } from '../validation_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 
-class F extends ValidationTest {
+class F extends AllFeaturesMaxLimitsGPUTest {
   beginRenderPass(commandEncoder: GPUCommandEncoder, view: GPUTextureView): GPURenderPassEncoder {
     return commandEncoder.beginRenderPass({
       colorAttachments: [
@@ -35,12 +35,11 @@ class F extends ValidationTest {
   }
 
   createAttachmentTextureView(): GPUTextureView {
-    const texture = this.device.createTexture({
+    const texture = this.createTextureTracked({
       format: 'rgba8unorm',
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    this.trackForCleanup(texture);
     return texture.createView();
   }
 }

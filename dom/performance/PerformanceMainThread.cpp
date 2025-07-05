@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "PerformanceMainThread.h"
+#include "PerformanceInteractionMetrics.h"
 #include "PerformanceNavigation.h"
 #include "PerformancePaintTiming.h"
 #include "jsapi.h"
@@ -16,18 +17,20 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventCounts.h"
+#include "mozilla/dom/FragmentDirective.h"
 #include "mozilla/dom/PerformanceEventTimingBinding.h"
 #include "mozilla/dom/PerformanceNavigationTiming.h"
 #include "mozilla/dom/PerformanceResourceTiming.h"
 #include "mozilla/dom/PerformanceTiming.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/PresShell.h"
+#include "nsGkAtoms.h"
 #include "nsIChannel.h"
 #include "nsIHttpChannel.h"
 #include "nsIDocShell.h"
-#include "nsTextFrame.h"
+#include "nsGlobalWindowInner.h"
 #include "nsContainerFrame.h"
+#include "mozilla/TextEvents.h"
 
 namespace mozilla::dom {
 
@@ -50,7 +53,7 @@ void GetURLSpecFromChannel(nsITimedChannel* aChannel, nsAString& aSpec) {
   }
 
   nsAutoCString spec;
-  rv = uri->GetSpec(spec);
+  rv = FragmentDirective::GetSpecIgnoringFragmentDirective(uri, spec);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -67,8 +70,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(PerformanceMainThread,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(
       mTiming, mNavigation, mDocEntry, mFCPTiming, mEventTimingEntries,
       mLargestContentfulPaintEntries, mFirstInputEvent, mPendingPointerDown,
-      mPendingEventTimingEntries, mEventCounts)
-  tmp->mImageLCPEntryMap.Clear();
+      mPendingEventTimingEntries, mEventCounts, mInteractionMetrics)
   tmp->mTextFrameUnions.Clear();
   mozilla::DropJSObjects(tmp);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -78,8 +80,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(PerformanceMainThread,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(
       mTiming, mNavigation, mDocEntry, mFCPTiming, mEventTimingEntries,
       mLargestContentfulPaintEntries, mFirstInputEvent, mPendingPointerDown,
-      mPendingEventTimingEntries, mEventCounts, mImageLCPEntryMap,
-      mTextFrameUnions)
+      mPendingEventTimingEntries, mEventCounts, mTextFrameUnions,
+      mInteractionMetrics)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -110,7 +112,7 @@ PerformanceMainThread::PerformanceMainThread(nsPIDOMWindowInner* aWindow,
   CreateNavigationTimingEntry();
 
   if (StaticPrefs::dom_enable_largest_contentful_paint()) {
-    nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
+    nsGlobalWindowInner* owner = GetOwnerWindow();
     MarkerInnerWindowId innerWindowID =
         owner ? MarkerInnerWindowId(owner->WindowID())
               : MarkerInnerWindowId::NoId();
@@ -291,47 +293,93 @@ void PerformanceMainThread::BufferLargestContentfulPaintEntryIfNeeded(
 void PerformanceMainThread::DispatchPendingEventTimingEntries() {
   DOMHighResTimeStamp renderingTime = NowUnclamped();
 
-  while (!mPendingEventTimingEntries.isEmpty()) {
-    RefPtr<PerformanceEventTiming> entry =
-        mPendingEventTimingEntries.popFirst();
-
-    entry->SetDuration(renderingTime - entry->RawStartTime());
-    IncEventCount(entry->GetName());
-
-    if (entry->RawDuration() >= kDefaultEventTimingMinDuration) {
-      QueueEntry(entry);
+  auto entriesToBeQueuedEnd = mPendingEventTimingEntries.end();
+  for (auto it = mPendingEventTimingEntries.begin();
+       it != mPendingEventTimingEntries.end(); ++it) {
+    // Set its duration if it's not set already.
+    PerformanceEventTiming* entry = *it;
+    if (entry->RawDuration() == 0) {
+      entry->SetDuration(renderingTime - entry->RawStartTime());
     }
 
-    if (!mHasDispatchedInputEvent) {
-      switch (entry->GetMessage()) {
-        case ePointerDown: {
-          mPendingPointerDown = entry->Clone();
-          mPendingPointerDown->SetEntryType(u"first-input"_ns);
-          break;
-        }
-        case ePointerUp: {
-          if (mPendingPointerDown) {
-            MOZ_ASSERT(!mFirstInputEvent);
-            mFirstInputEvent = mPendingPointerDown.forget();
-            QueueEntry(mFirstInputEvent);
-            SetHasDispatchedInputEvent();
-          }
-          break;
-        }
-        case eMouseClick:
-        case eKeyDown:
-        case eMouseDown: {
+    if (!(mPendingEventTimingEntries.end() != entriesToBeQueuedEnd) &&
+        !entry->HasKnownInteractionId()) {
+      entriesToBeQueuedEnd = it;
+    }
+  }
+
+  if (!StaticPrefs::dom_performance_event_timing_enable_interactionid() ||
+      mPendingEventTimingEntries.begin() != entriesToBeQueuedEnd) {
+    while (mPendingEventTimingEntries.begin() != entriesToBeQueuedEnd) {
+      RefPtr<PerformanceEventTiming> entry =
+          mPendingEventTimingEntries.popFirst();
+      if (entry->RawDuration() >= kDefaultEventTimingMinDuration) {
+        QueueEntry(entry);
+      }
+
+      // Perform the following steps to update the event counts:
+      IncEventCount(entry->GetName());
+
+      // If window’s has dispatched input event is false, run the following
+      // steps:
+      if (StaticPrefs::dom_performance_event_timing_enable_interactionid()) {
+        if (!mHasDispatchedInputEvent && entry->InteractionId() != 0) {
           mFirstInputEvent = entry->Clone();
           mFirstInputEvent->SetEntryType(u"first-input"_ns);
           QueueEntry(mFirstInputEvent);
           SetHasDispatchedInputEvent();
-          break;
         }
-        default:
-          break;
+      } else {
+        if (!mHasDispatchedInputEvent) {
+          switch (entry->GetMessage()) {
+            case ePointerDown: {
+              mPendingPointerDown = entry->Clone();
+              mPendingPointerDown->SetEntryType(u"first-input"_ns);
+              break;
+            }
+            case ePointerUp: {
+              if (mPendingPointerDown) {
+                MOZ_ASSERT(!mFirstInputEvent);
+                mFirstInputEvent = mPendingPointerDown.forget();
+                QueueEntry(mFirstInputEvent);
+                SetHasDispatchedInputEvent();
+              }
+              break;
+            }
+            case ePointerClick:
+            case eKeyDown:
+            case eMouseDown: {
+              mFirstInputEvent = entry->Clone();
+              mFirstInputEvent->SetEntryType(u"first-input"_ns);
+              QueueEntry(mFirstInputEvent);
+              SetHasDispatchedInputEvent();
+              break;
+            }
+            default:
+              break;
+          }
+        }
       }
     }
   }
+}
+
+PerformanceInteractionMetrics&
+PerformanceMainThread::GetPerformanceInteractionMetrics() {
+  return mInteractionMetrics;
+}
+
+void PerformanceMainThread::SetInteractionId(
+    PerformanceEventTiming* aEventTiming, const WidgetEvent* aEvent) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!StaticPrefs::dom_performance_event_timing_enable_interactionid() ||
+      aEvent->mFlags.mOnlyChromeDispatch || !aEvent->IsTrusted()) {
+    aEventTiming->SetInteractionId(0);
+    return;
+  }
+
+  aEventTiming->SetInteractionId(
+      mInteractionMetrics.ComputeInteractionId(aEventTiming, aEvent));
 }
 
 DOMHighResTimeStamp PerformanceMainThread::GetPerformanceTimingFromString(
@@ -418,7 +466,7 @@ void PerformanceMainThread::InsertUserEntry(PerformanceEntry* aEntry) {
   if (StaticPrefs::dom_performance_enable_user_timing_logging() ||
       StaticPrefs::dom_performance_enable_notify_performance_timing()) {
     nsresult rv = NS_ERROR_FAILURE;
-    nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
+    nsGlobalWindowInner* owner = GetOwnerWindow();
     if (owner && owner->GetDocumentURI()) {
       rv = owner->GetDocumentURI()->GetHost(uri);
     }
@@ -505,6 +553,11 @@ void PerformanceMainThread::QueueLargestContentfulPaintEntry(
 EventCounts* PerformanceMainThread::EventCounts() {
   MOZ_ASSERT(StaticPrefs::dom_enable_event_timing());
   return mEventCounts;
+}
+
+uint64_t PerformanceMainThread::InteractionCount() {
+  MOZ_ASSERT(StaticPrefs::dom_performance_event_timing_enable_interactionid());
+  return mInteractionMetrics.InteractionCount();
 }
 
 void PerformanceMainThread::GetEntries(
@@ -606,13 +659,14 @@ void PerformanceMainThread::IncEventCount(const nsAtom* aType) {
     return;
   }
 
-  ErrorResult rv;
+  IgnoredErrorResult rv;
   uint64_t count = EventCounts_Binding::MaplikeHelpers::Get(
       mEventCounts, nsDependentAtomString(aType), rv);
-  MOZ_ASSERT(!rv.Failed());
+  if (rv.Failed()) {
+    return;
+  }
   EventCounts_Binding::MaplikeHelpers::Set(
       mEventCounts, nsDependentAtomString(aType), ++count, rv);
-  MOZ_ASSERT(!rv.Failed());
 }
 
 size_t PerformanceMainThread::SizeOfEventEntries(
@@ -630,8 +684,7 @@ void PerformanceMainThread::ProcessElementTiming() {
   }
   const bool shouldLCPDataEmpty =
       HasDispatchedInputEvent() || HasDispatchedScrollEvent();
-  MOZ_ASSERT_IF(shouldLCPDataEmpty,
-                mTextFrameUnions.IsEmpty() && mImageLCPEntryMap.IsEmpty());
+  MOZ_ASSERT_IF(shouldLCPDataEmpty, mTextFrameUnions.IsEmpty());
 
   if (shouldLCPDataEmpty) {
     return;
@@ -666,9 +719,8 @@ void PerformanceMainThread::ProcessElementTiming() {
     MOZ_ASSERT(imagePendingRendering.mLoadTime <= rawNowTime);
     if (imgRequestProxy* requestProxy =
             imagePendingRendering.GetImgRequestProxy()) {
-      LCPHelpers::CreateLCPEntryForImage(
-          this, element, requestProxy, imagePendingRendering.mLoadTime,
-          rawNowTime, imagePendingRendering.mLCPImageEntryKey);
+      requestProxy->GetLCPTimings().Set(imagePendingRendering.mLoadTime,
+                                        rawNowTime);
     }
   }
 
@@ -693,32 +745,21 @@ void PerformanceMainThread::FinalizeLCPEntriesForText() {
   MOZ_ASSERT(GetTextFrameUnions().IsEmpty());
 }
 
-void PerformanceMainThread::StoreImageLCPEntry(
-    Element* aElement, imgRequestProxy* aImgRequestProxy,
-    LargestContentfulPaint* aEntry) {
-  mImageLCPEntryMap.InsertOrUpdate({aElement, aImgRequestProxy}, aEntry);
-}
-
-already_AddRefed<LargestContentfulPaint>
-PerformanceMainThread::GetImageLCPEntry(Element* aElement,
-                                        imgRequestProxy* aImgRequestProxy) {
-  Maybe<RefPtr<LargestContentfulPaint>> entry =
-      mImageLCPEntryMap.Extract({aElement, aImgRequestProxy});
-  if (entry.isNothing()) {
-    return nullptr;
-  }
-
+bool PerformanceMainThread::IsPendingLCPCandidate(
+    Element* aElement, imgRequestProxy* aImgRequestProxy) {
   Document* doc = aElement->GetComposedDoc();
   MOZ_ASSERT(doc, "Element should be connected when it's painted");
-
-  Maybe<LCPImageEntryKey>& contentIdentifier =
-      entry.value()->GetLCPImageEntryKey();
-  if (contentIdentifier.isSome()) {
-    doc->ContentIdentifiersForLCP().EnsureRemoved(contentIdentifier.value());
-    contentIdentifier.reset();
+  if (!aElement->HasFlag(ELEMENT_IN_CONTENT_IDENTIFIER_FOR_LCP)) {
+    MOZ_ASSERT(!doc->ContentIdentifiersForLCP().Contains(aElement));
+    return false;
   }
 
-  return entry.value().forget();
+  if (auto entry = doc->ContentIdentifiersForLCP().Lookup(aElement)) {
+    return entry.Data().Contains(aImgRequestProxy);
+  }
+
+  MOZ_ASSERT_UNREACHABLE("we should always have an entry when the flag exists");
+  return false;
 }
 
 bool PerformanceMainThread::UpdateLargestContentfulPaintSize(double aSize) {
@@ -741,7 +782,6 @@ void PerformanceMainThread::SetHasDispatchedInputEvent() {
 
 void PerformanceMainThread::ClearGeneratedTempDataForLCP() {
   mTextFrameUnions.Clear();
-  mImageLCPEntryMap.Clear();
   mImagesPendingRendering.Clear();
 
   nsIGlobalObject* ownerGlobal = GetOwnerGlobal();

@@ -54,8 +54,8 @@ interface MediaController : EventTarget {
   undefined stop();
   undefined prevTrack();
   undefined nextTrack();
-  undefined seekBackward();
-  undefined seekForward();
+  undefined seekBackward(double seekOffset);
+  undefined seekForward(double seekOffset);
   undefined skipAd();
   undefined seekTo(double seekTime, optional boolean fastSeek = false);
 };
@@ -63,7 +63,7 @@ interface MediaController : EventTarget {
 [ChromeOnly,Exposed=Window,HeaderFile="mozilla/dom/MediaControlService.h"]
 namespace MediaControlService {
   // This is used to generate fake media control keys event in testing.
-  undefined generateMediaControlKey(MediaControlKey aKey);
+  undefined generateMediaControlKey(MediaControlKey aKey, optional double aSeekValue = 0.0);
 
   // This is used to get the media metadata from the current main controller in
   // testing.

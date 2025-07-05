@@ -19,17 +19,14 @@ enum ShadowRootMode {
 enum SlotAssignmentMode { "manual", "named" };
 
 // https://dom.spec.whatwg.org/#shadowroot
-[Exposed=Window,
- InstrumentedProps=(pictureInPictureElement)]
+[Exposed=Window]
 interface ShadowRoot : DocumentFragment
 {
   // Shadow DOM v1
   readonly attribute ShadowRootMode mode;
   readonly attribute boolean delegatesFocus;
   readonly attribute SlotAssignmentMode slotAssignment;
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
   readonly attribute boolean clonable;
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
   readonly attribute boolean serializable;
   readonly attribute Element host;
   attribute EventHandler onslotchange;
@@ -37,8 +34,8 @@ interface ShadowRoot : DocumentFragment
   Element? getElementById(DOMString elementId);
 
   // https://w3c.github.io/DOM-Parsing/#the-innerhtml-mixin
-  [CEReactions, SetterThrows]
-  attribute [LegacyNullToEmptyString] DOMString innerHTML;
+  [CEReactions, SetterThrows, SetterNeedsSubjectPrincipal=NonSystem]
+  attribute (TrustedHTML or [LegacyNullToEmptyString] DOMString) innerHTML;
 
   // When JS invokes importNode or createElement, the binding code needs to
   // create a reflector, and so invoking those methods directly on the content
@@ -60,11 +57,16 @@ interface ShadowRoot : DocumentFragment
   boolean isUAWidget();
 };
 
+// Sanitizer API, https://wicg.github.io/sanitizer-api/
+partial interface ShadowRoot {
+  [Throws, Pref="dom.security.sanitizer.enabled"]
+  undefined setHTML(DOMString aInnerHTML, optional SetHTMLOptions options = {});
+};
+
 partial interface ShadowRoot {
   // https://html.spec.whatwg.org/#dom-shadowroot-sethtmlunsafe
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
-  undefined setHTMLUnsafe(DOMString html);
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  [NeedsSubjectPrincipal=NonSystem, Throws]
+  undefined setHTMLUnsafe((TrustedHTML or DOMString) html, optional SetHTMLUnsafeOptions options = {});
   DOMString getHTML(optional GetHTMLOptions options = {});
 };
 

@@ -17,6 +17,7 @@
  * https://w3c.github.io/requestidlecallback/
  * https://drafts.css-houdini.org/css-paint-api-1/#dom-window-paintworklet
  * https://wicg.github.io/visual-viewport/#the-visualviewport-interface
+ * https://wicg.github.io/cookie-store/#Window
  */
 
 interface Principal;
@@ -204,6 +205,7 @@ interface nsIPrintSettings;
   [PutForwards=href, LegacyUnforgeable, CrossOriginReadable,
    CrossOriginWritable] readonly attribute Location location;
   [Throws] readonly attribute History history;
+  [Func="Navigation::IsAPIEnabled"] readonly attribute Navigation navigation;
   readonly attribute CustomElementRegistry customElements;
   [Replaceable, Throws] readonly attribute BarProp locationbar;
   [Replaceable, Throws] readonly attribute BarProp menubar;
@@ -234,7 +236,7 @@ interface nsIPrintSettings;
 
   // the user agent
   readonly attribute Navigator navigator;
-  [Pref="dom.window.clientinformation.enabled", BinaryName="Navigator"]
+  [Replaceable, BinaryName="Navigator"]
   readonly attribute Navigator clientInformation;
 
   [Replaceable] readonly attribute External external;
@@ -403,18 +405,12 @@ partial interface Window {
    */
   undefined                 scrollByPages(long numPages, optional ScrollOptions options = {});
 
-  // Gecko specific API that allows a web page to resize the browser window.
-  // Dropping support in bug 1600400.
-  [Throws, NeedsCallerType,
-   Deprecated="SizeToContent",
-   Func="nsGlobalWindowInner::IsSizeToContentEnabled"]
-  undefined sizeToContent();
 
   /**
-   * Chrome-only method for sizing to content with a maximum-size constraint on
-   * either (or both) directions.
+   * Chrome-only method for sizing to content with an optional
+   * maximum-size constraint on either (or both) directions.
    */
-  [Throws, ChromeOnly] undefined sizeToContentConstrained(optional SizeToContentConstraints constraints = {});
+  [Throws, ChromeOnly] undefined sizeToContent(optional SizeToContentConstraints constraints = {});
 
   [ChromeOnly, Replaceable, Throws] readonly attribute XULControllers controllers;
 
@@ -809,4 +805,15 @@ partial interface Window {
 
 dictionary WindowPostMessageOptions : StructuredSerializeOptions {
   USVString targetOrigin = "/";
+};
+
+// https://wicg.github.io/cookie-store/#Window
+[SecureContext]
+partial interface Window {
+  [SameObject, Pref="dom.cookieStore.enabled"] readonly attribute CookieStore cookieStore;
+};
+
+// https://html.spec.whatwg.org/multipage/browsers.html#origin-keyed-agent-clusters
+partial interface Window {
+  [Pref="dom.origin_agent_cluster.enabled"] readonly attribute boolean originAgentCluster;
 };

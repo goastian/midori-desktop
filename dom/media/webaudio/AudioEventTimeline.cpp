@@ -124,14 +124,16 @@ AudioTimelineEvent::AudioTimelineEvent(Type aType,
   MOZ_ASSERT(aType == AudioTimelineEvent::SetValueCurve);
 }
 
-// cppcoreguidelines-pro-type-member-init does not know PodCopy().
-// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 AudioTimelineEvent::AudioTimelineEvent(const AudioTimelineEvent& rhs)
-    : mType(rhs.mType) {
-  PodCopy(this, &rhs, 1);
-
-  if (rhs.mType == AudioTimelineEvent::SetValueCurve) {
+    : mType(rhs.mType), mTime(rhs.mTime) {
+  if (mType == AudioTimelineEvent::SetValueCurve) {
+    mCurveLength = rhs.mCurveLength;
     mCurve = NewCurveCopy(Span(rhs.mCurve, rhs.mCurveLength));
+    mDuration = rhs.mDuration;
+  } else {
+    mValue = rhs.mValue;
+    mTimeConstant = rhs.mTimeConstant;
+    mPerTickRatio = rhs.mPerTickRatio;
   }
 }
 
@@ -482,7 +484,6 @@ void AudioEventTimeline::GetValuesAtTimeHelperInternal(
       case AudioTimelineEvent::SetTarget:
       case AudioTimelineEvent::SetValueCurve:
         break;
-      case AudioTimelineEvent::SetValue:
       case AudioTimelineEvent::Cancel:
       case AudioTimelineEvent::Track:
         MOZ_ASSERT(false, "Should have been handled earlier.");
@@ -500,7 +501,6 @@ void AudioEventTimeline::GetValuesAtTimeHelperInternal(
       break;
     case AudioTimelineEvent::SetTarget:
       MOZ_FALLTHROUGH_ASSERT("AudioTimelineEvent::SetTarget");
-    case AudioTimelineEvent::SetValue:
     case AudioTimelineEvent::Cancel:
     case AudioTimelineEvent::Track:
       MOZ_ASSERT(false, "Should have been handled earlier.");

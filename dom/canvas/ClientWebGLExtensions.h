@@ -105,6 +105,8 @@ class ClientWebGLExtensionDebugShaders : public ClientWebGLExtensionBase {
   }
 };
 
+DECLARE_SIMPLE_WEBGL_EXTENSION(WebGLExtensionDepthClamp)
+
 DECLARE_SIMPLE_WEBGL_EXTENSION(WebGLExtensionDepthTexture)
 
 DECLARE_SIMPLE_WEBGL_EXTENSION(WebGLExtensionElementIndexUint)
@@ -194,11 +196,14 @@ class ClientWebGLExtensionVertexArray : public ClientWebGLExtensionBase {
   explicit ClientWebGLExtensionVertexArray(ClientWebGLContext&);
 
   already_AddRefed<WebGLVertexArrayJS> CreateVertexArrayOES() {
+    RefPtr<WebGLVertexArrayJS> ret;
     if (MOZ_UNLIKELY(!mContext)) {
       AutoJsWarning("createVertexArrayOES: Extension is `invalidated`.");
-      return nullptr;
+      ret = new WebGLVertexArrayJS(nullptr);
+    } else {
+      ret = mContext->CreateVertexArray();
     }
-    return mContext->CreateVertexArray();
+    return ret.forget();
   }
   void DeleteVertexArrayOES(WebGLVertexArrayJS* array) {
     if (MOZ_UNLIKELY(!mContext)) {
@@ -263,11 +268,14 @@ class ClientWebGLExtensionDisjointTimerQuery : public ClientWebGLExtensionBase {
   explicit ClientWebGLExtensionDisjointTimerQuery(ClientWebGLContext&);
 
   already_AddRefed<WebGLQueryJS> CreateQueryEXT() const {
+    RefPtr<WebGLQueryJS> ret;
     if (MOZ_UNLIKELY(!mContext)) {
       AutoJsWarning("createQueryEXT: Extension is `invalidated`.");
-      return nullptr;
+      ret = new WebGLQueryJS(nullptr);
+    } else {
+      ret = mContext->CreateQuery();
     }
-    return mContext->CreateQuery();
+    return ret.forget();
   }
   void DeleteQueryEXT(WebGLQueryJS* query) const {
     if (MOZ_UNLIKELY(!mContext)) {

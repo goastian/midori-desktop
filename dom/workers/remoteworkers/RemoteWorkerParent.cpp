@@ -6,12 +6,11 @@
 
 #include "RemoteWorkerParent.h"
 #include "RemoteWorkerController.h"
+#include "RemoteWorkerServiceParent.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/PFetchEventOpProxyParent.h"
 #include "mozilla/ipc/BackgroundParent.h"
-#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
-#include "nsProxyRelease.h"
 
 namespace mozilla {
 
@@ -19,34 +18,9 @@ using namespace ipc;
 
 namespace dom {
 
-namespace {
-
-class UnregisterActorRunnable final : public Runnable {
- public:
-  explicit UnregisterActorRunnable(
-      already_AddRefed<ThreadsafeContentParentHandle> aParent)
-      : Runnable("UnregisterActorRunnable"), mContentHandle(aParent) {
-    AssertIsOnBackgroundThread();
-  }
-
-  NS_IMETHOD
-  Run() override {
-    AssertIsOnMainThread();
-    if (RefPtr<ContentParent> contentParent =
-            mContentHandle->GetContentParent()) {
-      contentParent->UnregisterRemoveWorkerActor();
-    }
-
-    return NS_OK;
-  }
-
- private:
-  RefPtr<ThreadsafeContentParentHandle> mContentHandle;
-};
-
-}  // namespace
-
-RemoteWorkerParent::RemoteWorkerParent() {
+RemoteWorkerParent::RemoteWorkerParent(
+    UniqueThreadsafeContentParentKeepAlive aKeepAlive)
+    : mContentParentKeepAlive(std::move(aKeepAlive)) {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(XRE_IsParentProcess());
 }
@@ -56,19 +30,9 @@ RemoteWorkerParent::~RemoteWorkerParent() {
   MOZ_ASSERT(XRE_IsParentProcess());
 }
 
-void RemoteWorkerParent::Initialize(bool aAlreadyRegistered) {
-  RefPtr<ThreadsafeContentParentHandle> parent =
-      BackgroundParent::GetContentParentHandle(Manager());
-
-  // Parent is null if the child actor runs on the parent process.
-  if (parent) {
-    if (!aAlreadyRegistered) {
-      parent->RegisterRemoteWorkerActor();
-    }
-
-    NS_ReleaseOnMainThread("RemoteWorkerParent::Initialize ContentParent",
-                           parent.forget());
-  }
+RemoteWorkerServiceParent* RemoteWorkerParent::Manager() const {
+  return static_cast<RemoteWorkerServiceParent*>(
+      PRemoteWorkerParent::Manager());
 }
 
 already_AddRefed<PFetchEventOpProxyParent>
@@ -82,15 +46,7 @@ void RemoteWorkerParent::ActorDestroy(IProtocol::ActorDestroyReason) {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(XRE_IsParentProcess());
 
-  RefPtr<ThreadsafeContentParentHandle> parent =
-      BackgroundParent::GetContentParentHandle(Manager());
-
-  // Parent is null if the child actor runs on the parent process.
-  if (parent) {
-    RefPtr<UnregisterActorRunnable> r =
-        new UnregisterActorRunnable(parent.forget());
-    SchedulerGroup::Dispatch(r.forget());
-  }
+  mContentParentKeepAlive = nullptr;
 
   if (mController) {
     mController->NoteDeadWorkerActor();

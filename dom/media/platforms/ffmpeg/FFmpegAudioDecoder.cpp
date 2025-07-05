@@ -17,7 +17,6 @@
 #  include "libavutil/channel_layout.h"
 #endif
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/Telemetry.h"
 
 namespace mozilla {
 
@@ -48,8 +47,6 @@ FFmpegAudioDecoder<LIBAV_VER>::FFmpegAudioDecoder(
   }
 
   if (mCodecID == AV_CODEC_ID_FLAC) {
-    MOZ_DIAGNOSTIC_ASSERT(
-        mAudioInfo.mCodecSpecificConfig.is<FlacCodecSpecificData>());
     // Gracefully handle bad data. If don't hit the preceding assert once this
     // has been shipped for awhile, we can remove it and make the following code
     // non-conditional.
@@ -70,7 +67,8 @@ FFmpegAudioDecoder<LIBAV_VER>::FFmpegAudioDecoder(
     }
   }
 
-  // Vorbis and Opus are handled by this case.
+  // Vorbis, Opus are handled by this case, as well as any codec that has
+  // non-tagged variant, because the data comes from Web Codecs.
   RefPtr<MediaByteBuffer> audioCodecSpecificBinaryBlob =
       GetAudioCodecSpecificBlob(mAudioInfo.mCodecSpecificConfig);
   if (audioCodecSpecificBinaryBlob && audioCodecSpecificBinaryBlob->Length()) {
@@ -98,9 +96,20 @@ RefPtr<MediaDataDecoder::InitPromise> FFmpegAudioDecoder<LIBAV_VER>::Init() {
         DecideAudioPlaybackChannels(mAudioInfo) == 1) {
       mLib->av_dict_set(&options, "apply_phase_inv", "false", 0);
     }
+    // extradata is required for Opus when the number of channels is > 2.
+    // FFmpeg will happily (but incorrectly) initialize a decoder without a
+    // description, but it will have only two channels.
+    if (mAudioInfo.mChannels > 2 &&
+        (!mExtraData || mExtraData->Length() < 10)) {
+      FFMPEG_LOG(
+          "Cannot initialize decoder with %d channels without extradata of at "
+          "least 10 bytes",
+          mAudioInfo.mChannels);
+      return InitPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
+    }
   }
 
-  MediaResult rv = InitDecoder(&options);
+  MediaResult rv = InitSWDecoder(&options);
 
   mLib->av_dict_free(&options);
 

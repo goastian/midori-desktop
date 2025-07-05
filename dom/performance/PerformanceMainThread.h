@@ -11,14 +11,12 @@
 #include "PerformanceStorage.h"
 #include "LargestContentfulPaint.h"
 #include "nsTextFrame.h"
+#include "PerformanceInteractionMetrics.h"
 
 namespace mozilla::dom {
 
 class PerformanceNavigationTiming;
 class PerformanceEventTiming;
-
-using ImageLCPEntryMap =
-    nsTHashMap<LCPEntryHashEntry, RefPtr<LargestContentfulPaint>>;
 
 using TextFrameUnions = nsTHashMap<nsRefPtrHashKey<Element>, nsRect>;
 
@@ -57,6 +55,11 @@ class PerformanceMainThread final : public Performance,
   void InsertEventTimingEntry(PerformanceEventTiming*) override;
   void BufferEventTimingEntryIfNeeded(PerformanceEventTiming*) override;
   void DispatchPendingEventTimingEntries() override;
+
+  PerformanceInteractionMetrics& GetPerformanceInteractionMetrics() override;
+
+  void SetInteractionId(PerformanceEventTiming* aEventTiming,
+                        const WidgetEvent* aEvent) override;
 
   void BufferLargestContentfulPaintEntryIfNeeded(LargestContentfulPaint*);
 
@@ -109,6 +112,8 @@ class PerformanceMainThread final : public Performance,
 
   class EventCounts* EventCounts() override;
 
+  uint64_t InteractionCount() override;
+
   bool IsGlobalObjectWindow() const override { return true; };
 
   bool HasDispatchedInputEvent() const { return mHasDispatchedInputEvent; }
@@ -122,11 +127,8 @@ class PerformanceMainThread final : public Performance,
     mImagesPendingRendering.AppendElement(aImagePendingRendering);
   }
 
-  void StoreImageLCPEntry(Element* aElement, imgRequestProxy* aImgRequestProxy,
-                          LargestContentfulPaint* aEntry);
-
-  already_AddRefed<LargestContentfulPaint> GetImageLCPEntry(
-      Element* aElement, imgRequestProxy* aImgRequestProxy);
+  bool IsPendingLCPCandidate(Element* aElement,
+                             imgRequestProxy* aImgRequestProxy);
 
   bool UpdateLargestContentfulPaintSize(double aSize);
   double GetLargestContentfulPaintSize() const {
@@ -172,6 +174,8 @@ class PerformanceMainThread final : public Performance,
   RefPtr<PerformanceEventTiming> mFirstInputEvent;
   RefPtr<PerformanceEventTiming> mPendingPointerDown;
 
+  PerformanceInteractionMetrics mInteractionMetrics;
+
  private:
   void SetHasDispatchedInputEvent();
 
@@ -183,19 +187,6 @@ class PerformanceMainThread final : public Performance,
   PresShell* GetPresShell();
 
   nsTArray<ImagePendingRendering> mImagesPendingRendering;
-
-  // The key is the pair of the element initiates the image loading
-  // and the imgRequestProxy of the image, and the value is
-  // the LCP entry for this image. When the image is
-  // completely loaded, we add it to mImageLCPEntryMap.
-  // Later, when the image is painted, we get the LCP entry from it
-  // to update the size and queue the entry if needed.
-  //
-  // When the initiating element is disconnected from the document,
-  // we keep the orphan entry because if the same memory address is
-  // reused by a different LCP candidate, it'll update
-  // mImageLCPEntryMap precedes before it tries to get the LCP entry.
-  ImageLCPEntryMap mImageLCPEntryMap;
 
   // Keeps track of the rendered size of the largest contentful paint that
   // we have processed so far.
@@ -210,22 +201,12 @@ class PerformanceMainThread final : public Performance,
 };
 
 inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback, ImageLCPEntryMap& aField,
-    const char* aName, uint32_t aFlags = 0) {
-  for (auto& entry : aField) {
-    RefPtr<LargestContentfulPaint>* lcpEntry = entry.GetModifiableData();
-    ImplCycleCollectionTraverse(aCallback, *lcpEntry, "ImageLCPEntryMap.mData",
-                                aCallback.Flags());
-  }
-}
-
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback, TextFrameUnions& aField,
-    const char* aName, uint32_t aFlags = 0) {
-  for (auto& entry : aField) {
-    ImplCycleCollectionTraverse(
-        aCallback, entry, "TextFrameUnions's key (nsRefPtrHashKey<Element>)",
-        aFlags);
+    nsCycleCollectionTraversalCallback& aCallback,
+    const TextFrameUnions& aField, const char* aName, uint32_t aFlags = 0) {
+  for (const auto& entry : aField) {
+    CycleCollectionNoteChild(aCallback, entry.GetKey(),
+                             "TextFrameUnions's key (nsRefPtrHashKey<Element>)",
+                             aFlags);
   }
 }
 

@@ -479,7 +479,12 @@ CustomElementRegistry::RunCustomElementCreationCallback::Run() {
 
   RefPtr<CustomElementDefinition> definition =
       mRegistry->mCustomDefinitions.Get(mAtom);
-  MOZ_ASSERT(definition, "Callback should define the definition of type.");
+  if (!definition) {
+    // Callback should set the definition of the type.
+    MOZ_DIAGNOSTIC_CRASH("Callback should set the definition of the type.");
+    return NS_ERROR_FAILURE;
+  }
+
   MOZ_ASSERT(!mRegistry->mElementCreationCallbacks.GetWeak(mAtom),
              "Callback should be removed.");
 
@@ -730,7 +735,7 @@ DocGroup* CustomElementRegistry::GetDocGroup() const {
 int32_t CustomElementRegistry::InferNamespace(
     JSContext* aCx, JS::Handle<JSObject*> constructor) {
   JS::Rooted<JSObject*> XULConstructor(
-      aCx, XULElement_Binding::GetConstructorObject(aCx));
+      aCx, XULElement_Binding::GetConstructorObjectHandle(aCx));
 
   JS::Rooted<JSObject*> proto(aCx, constructor);
   while (proto) {
@@ -1238,9 +1243,10 @@ already_AddRefed<Promise> CustomElementRegistry::WhenDefined(
   uint32_t nameSpaceID =
       doc ? doc->GetDefaultNamespaceID() : kNameSpaceID_XHTML;
   if (!nsContentUtils::IsCustomElementName(nameAtom, nameSpaceID)) {
-    return createPromise([](const RefPtr<Promise>& promise) {
-      promise->MaybeReject(NS_ERROR_DOM_SYNTAX_ERR);
-    });
+    aRv.ThrowSyntaxError(
+        nsPrintfCString("'%s' is not a valid custom element name",
+                        NS_ConvertUTF16toUTF8(aName).get()));
+    return nullptr;
   }
 
   if (CustomElementDefinition* definition =

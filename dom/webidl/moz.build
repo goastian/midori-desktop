@@ -142,6 +142,9 @@ with Files("Glean*.webidl"):
 with Files("Grid.webidl"):
     BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
 
+with Files("GPUUncapturedErrorEvent.webidl"):
+    BUG_COMPONENT = ("Core", "Graphics: WebGPU")
+
 with Files("HTML*"):
     BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
@@ -165,6 +168,9 @@ with Files("ImageBitmap*"):
 
 with Files("ImageCapture*"):
     BUG_COMPONENT = ("Core", "Audio/Video")
+
+with Files("ImageDecoder.webidl"):
+    BUG_COMPONENT = ("Core", "Audio/Video: Web Codecs")
 
 with Files("InputEvent.webidl"):
     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
@@ -355,6 +361,9 @@ with Files("VRDisplay.webidl"):
 with Files("Video*"):
     BUG_COMPONENT = ("Core", "Audio/Video")
 
+with Files("ViewTransition.webidl"):
+    BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
+
 with Files("WaveShaperNode.webidl"):
     BUG_COMPONENT = ("Core", "Web Audio")
 
@@ -393,6 +402,8 @@ with Files("WebTransport*"):
 
 GENERATED_WEBIDL_FILES = [
     "CSS2Properties.webidl",
+    "CSSPageDescriptors.webidl",
+    "CSSPositionTryDescriptors.webidl",
 ]
 
 PREPROCESSED_WEBIDL_FILES = [
@@ -415,7 +426,6 @@ WEBIDL_FILES = [
     "AnimationTimeline.webidl",
     "AnonymousContent.webidl",
     "AppInfo.webidl",
-    "AppNotificationServiceOptions.webidl",
     "APZTestData.webidl",
     "ARIAMixin.webidl",
     "Attr.webidl",
@@ -449,7 +459,7 @@ WEBIDL_FILES = [
     "BiquadFilterNode.webidl",
     "Blob.webidl",
     "BroadcastChannel.webidl",
-    "BrowserElementDictionaries.webidl",
+    "BufferSource.webidl",
     "Cache.webidl",
     "CacheStorage.webidl",
     "CancelContentJSOptions.webidl",
@@ -466,12 +476,16 @@ WEBIDL_FILES = [
     "Clients.webidl",
     "Clipboard.webidl",
     "ClipboardEvent.webidl",
+    "CloseWatcher.webidl",
     "Comment.webidl",
     "CompositionEvent.webidl",
     "CompressionStream.webidl",
     "Console.webidl",
     "ConstantSourceNode.webidl",
     "ConvolverNode.webidl",
+    "CookieChangeEvent.webidl",
+    "CookieStore.webidl",
+    "CookieStoreManager.webidl",
     "CreateOfferRequest.webidl",
     "CredentialManagement.webidl",
     "Crypto.webidl",
@@ -495,7 +509,9 @@ WEBIDL_FILES = [
     "CSSMediaRule.webidl",
     "CSSMozDocumentRule.webidl",
     "CSSNamespaceRule.webidl",
+    "CSSNestedDeclarations.webidl",
     "CSSPageRule.webidl",
+    "CSSPositionTryRule.webidl",
     "CSSPropertyRule.webidl",
     "CSSPseudoElement.webidl",
     "CSSRule.webidl",
@@ -545,11 +561,11 @@ WEBIDL_FILES = [
     "EventListener.webidl",
     "EventSource.webidl",
     "EventTarget.webidl",
+    "ExtendableCookieChangeEvent.webidl",
     "ExtendableEvent.webidl",
     "ExtendableMessageEvent.webidl",
     "External.webidl",
     "FailedCertSecurityInfo.webidl",
-    "FakePluginTagInit.webidl",
     "FeaturePolicy.webidl",
     "Fetch.webidl",
     "FetchEvent.webidl",
@@ -691,6 +707,7 @@ WEBIDL_FILES = [
     "ImageBitmapRenderingContext.webidl",
     "ImageCapture.webidl",
     "ImageData.webidl",
+    "ImageDecoder.webidl",
     "ImageDocument.webidl",
     "InputEvent.webidl",
     "IntersectionObserver.webidl",
@@ -709,6 +726,7 @@ WEBIDL_FILES = [
     "Location.webidl",
     "Lock.webidl",
     "LockManager.webidl",
+    "LoginStatus.webidl",
     "MathMLElement.webidl",
     "MediaCapabilities.webidl",
     "MediaDebugInfo.webidl",
@@ -735,6 +753,7 @@ WEBIDL_FILES = [
     "MediaStreamError.webidl",
     "MediaStreamTrack.webidl",
     "MediaStreamTrackAudioSourceNode.webidl",
+    "MediaTrackCapabilities.webidl",
     "MediaTrackSettings.webidl",
     "MediaTrackSupportedConstraints.webidl",
     "MerchantValidationEvent.webidl",
@@ -751,13 +770,20 @@ WEBIDL_FILES = [
     "MIDIPort.webidl",
     "MimeType.webidl",
     "MimeTypeArray.webidl",
+    "MLS.webidl",
     "MouseEvent.webidl",
     "MouseScrollEvent.webidl",
     "MozFrameLoaderOwner.webidl",
     "MutationEvent.webidl",
     "MutationObserver.webidl",
     "NamedNodeMap.webidl",
+    "NavigateEvent.webidl",
+    "Navigation.webidl",
+    "NavigationActivation.webidl",
+    "NavigationDestination.webidl",
+    "NavigationHistoryEntry.webidl",
     "NavigationPreloadManager.webidl",
+    "NavigationTransition.webidl",
     "Navigator.webidl",
     "NetErrorInfo.webidl",
     "NetworkInformation.webidl",
@@ -775,6 +801,7 @@ WEBIDL_FILES = [
     "OscillatorNode.webidl",
     "PaintRequest.webidl",
     "PaintRequestList.webidl",
+    "PaintTimingMixin.webidl",
     "PaintWorkletGlobalScope.webidl",
     "PannerNode.webidl",
     "ParentNode.webidl",
@@ -866,7 +893,6 @@ WEBIDL_FILES = [
     "SVGAnimatedLengthList.webidl",
     "SVGAnimatedNumber.webidl",
     "SVGAnimatedNumberList.webidl",
-    "SVGAnimatedPathData.webidl",
     "SVGAnimatedPoints.webidl",
     "SVGAnimatedPreserveAspectRatio.webidl",
     "SVGAnimatedRect.webidl",
@@ -929,8 +955,6 @@ WEBIDL_FILES = [
     "SVGNumber.webidl",
     "SVGNumberList.webidl",
     "SVGPathElement.webidl",
-    "SVGPathSeg.webidl",
-    "SVGPathSegList.webidl",
     "SVGPatternElement.webidl",
     "SVGPoint.webidl",
     "SVGPointList.webidl",
@@ -1007,6 +1031,7 @@ WEBIDL_FILES = [
     "VideoPlaybackQuality.webidl",
     "VideoTrack.webidl",
     "VideoTrackList.webidl",
+    "ViewTransition.webidl",
     "VisualViewport.webidl",
     "VRDisplay.webidl",
     "VRDisplayEvent.webidl",
@@ -1082,7 +1107,6 @@ if CONFIG["MOZ_WEBRTC"]:
         "RTCSessionDescription.webidl",
         "RTCStatsReport.webidl",
         "RTCTransformEvent.webidl",
-        "WebrtcGlobalInformation.webidl",
     ]
 
 if CONFIG["MOZ_WEBSPEECH"]:
@@ -1147,6 +1171,11 @@ if CONFIG["FUZZING"]:
         "FuzzingFunctions.webidl",
     ]
 
+if CONFIG["FUZZING_SNAPSHOT"]:
+    WEBIDL_FILES += [
+        "Nyx.webidl",
+    ]
+
 GENERATED_EVENTS_WEBIDL_FILES = [
     "AddonEvent.webidl",
     "AnimationPlaybackEvent.webidl",
@@ -1171,6 +1200,8 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     "MediaStreamEvent.webidl",
     "MediaStreamTrackEvent.webidl",
     "MIDIConnectionEvent.webidl",
+    "NavigationCurrentEntryChangeEvent.webidl",
+    "NotificationEvent.webidl",
     "OfflineAudioCompletionEvent.webidl",
     "PageTransitionEvent.webidl",
     "PerformanceEntryEvent.webidl",
@@ -1179,7 +1210,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     "PositionStateEvent.webidl",
     "ProgressEvent.webidl",
     "PromiseRejectionEvent.webidl",
-    "ScrollViewChangeEvent.webidl",
+    "PushSubscriptionChangeEvent.webidl",
     "SecurityPolicyViolationEvent.webidl",
     "SubmitEvent.webidl",
     "TaskPriorityChangeEvent.webidl",

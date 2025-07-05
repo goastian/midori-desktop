@@ -11,7 +11,6 @@
 #include "mozilla/dom/PFetchChild.h"
 #include "mozilla/dom/SerializedStackHolder.h"
 #include "nsIConsoleReportCollector.h"
-#include "nsIContentSecurityPolicy.h"
 #include "nsISupports.h"
 #include "nsIWorkerChannelInfo.h"
 
@@ -50,10 +49,16 @@ class FetchChild final : public PFetchChild, public AbortFollower {
 
   void SetCSPEventListener(nsICSPEventListener* aListener);
 
-  static RefPtr<FetchChild> Create(WorkerPrivate* aWorkerPrivate,
-                                   RefPtr<Promise> aPromise,
-                                   RefPtr<AbortSignalImpl> aSignalImpl,
-                                   RefPtr<FetchObserver> aObserver);
+  // Creates the actor for worker fetch requests
+  static RefPtr<FetchChild> CreateForWorker(WorkerPrivate* aWorkerPrivate,
+                                            RefPtr<Promise> aPromise,
+                                            RefPtr<AbortSignalImpl> aSignalImpl,
+                                            RefPtr<FetchObserver> aObserver);
+
+  // Creates the actor for main thread fetch requests
+  static RefPtr<FetchChild> CreateForMainThread(
+      RefPtr<Promise> aPromise, RefPtr<AbortSignalImpl> aSignalImpl,
+      RefPtr<FetchObserver> aObserver);
 
   FetchChild(RefPtr<Promise>&& aPromise, RefPtr<AbortSignalImpl>&& aSignalImpl,
              RefPtr<FetchObserver>&& aObserver);
@@ -76,6 +81,8 @@ class FetchChild final : public PFetchChild, public AbortFollower {
   void ActorDestroy(ActorDestroyReason aReason) override;
 
   RefPtr<ThreadSafeWorkerRef> mWorkerRef;
+  bool mIsKeepAliveRequest{false};
+  uint64_t mKeepaliveRequestSize{0};
   RefPtr<Promise> mPromise;
   RefPtr<AbortSignalImpl> mSignalImpl;
   RefPtr<FetchObserver> mFetchObserver;

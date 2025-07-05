@@ -27,7 +27,7 @@ bool WMFEncoderModule::Supports(const EncoderConfig& aConfig) const {
     return false;
   }
   if (aConfig.mScalabilityMode != ScalabilityMode::None) {
-    return false;
+    return aConfig.mCodec == CodecType::H264;
   }
   return SupportsCodec(aConfig.mCodec);
 }

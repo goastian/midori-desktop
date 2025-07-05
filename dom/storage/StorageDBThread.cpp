@@ -24,6 +24,7 @@
 #include "mozIStorageValueArray.h"
 #include "mozIStorageFunction.h"
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/glean/DomStorageMetrics.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "nsIObserverService.h"
 #include "nsThread.h"
@@ -214,12 +215,7 @@ nsresult StorageDBThread::Init(const nsString& aProfilePath) {
       profilePath = aProfilePath;
     }
 
-    mDatabaseFile = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-
-    rv = mDatabaseFile->InitWithPath(profilePath);
+    rv = NS_NewLocalFile(profilePath, getter_AddRefs(mDatabaseFile));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -253,7 +249,7 @@ nsresult StorageDBThread::Shutdown() {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  Telemetry::AutoTimer<Telemetry::LOCALDOMSTORAGE_SHUTDOWN_DATABASE_MS> timer;
+  auto timer = glean::localdomstorage::shutdown_database.Measure();
 
   {
     MonitorAutoLock monitor(mThreadObserver->GetMonitor());

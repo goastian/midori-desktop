@@ -18,6 +18,7 @@
 #include "nsIVariant.h"
 #include "nsStringFwd.h"
 #include "nscore.h"
+#include "mozilla/dom/quota/QuotaUsageRequestChild.h"
 
 namespace mozilla {
 class Runnable;

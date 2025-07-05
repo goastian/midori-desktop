@@ -5,11 +5,11 @@
 #include "MediaStatusManager.h"
 
 #include "MediaControlService.h"
+#include "mozilla/StaticPrefs_media.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MediaControlUtils.h"
 #include "mozilla/dom/WindowGlobalParent.h"
-#include "mozilla/StaticPrefs_media.h"
 #include "nsContentUtils.h"
 #include "nsIChromeRegistry.h"
 #include "nsIObserverService.h"
@@ -199,6 +199,7 @@ bool MediaStatusManager::IsSessionOwningAudioFocus(
 MediaMetadataBase MediaStatusManager::CreateDefaultMetadata() const {
   MediaMetadataBase metadata;
   metadata.mTitle = GetDefaultTitle();
+  metadata.mUrl = GetUrl();
   metadata.mArtwork.AppendElement()->mSrc = GetDefaultFaviconURL();
 
   LOG("Default media metadata, title=%s, album src=%s",
@@ -234,6 +235,32 @@ nsString MediaStatusManager::GetDefaultTitle() const {
     globalParent->GetDocumentTitle(documentTitle);
   }
   return documentTitle.IsEmpty() ? defaultTitle : documentTitle;
+}
+
+nsCString MediaStatusManager::GetUrl() const {
+  nsCString defaultUrl;
+
+  RefPtr<CanonicalBrowsingContext> bc =
+      CanonicalBrowsingContext::Get(mTopLevelBrowsingContextId);
+  if (!bc) {
+    return defaultUrl;
+  }
+
+  RefPtr<WindowGlobalParent> globalParent = bc->GetCurrentWindowGlobal();
+  if (!globalParent) {
+    return defaultUrl;
+  }
+
+  if (IsInPrivateBrowsing()) {
+    return defaultUrl;
+  }
+
+  nsIURI* documentURI = globalParent->GetDocumentURI();
+  if (!documentURI) {
+    return defaultUrl;
+  }
+
+  return documentURI->GetSpecOrDefault();
 }
 
 nsString MediaStatusManager::GetDefaultFaviconURL() const {
@@ -288,7 +315,7 @@ MediaSessionPlaybackState MediaStatusManager::GetCurrentDeclaredPlaybackState()
 void MediaStatusManager::NotifyMediaPlaybackChanged(uint64_t aBrowsingContextId,
                                                     MediaPlaybackState aState) {
   LOG("UpdateMediaPlaybackState %s for context %" PRIu64,
-      ToMediaPlaybackStateStr(aState), aBrowsingContextId);
+      EnumValueToString(aState), aBrowsingContextId);
   const bool oldPlaying = mPlaybackStatusDelegate.IsPlaying();
   mPlaybackStatusDelegate.UpdateMediaPlaybackState(aBrowsingContextId, aState);
 
@@ -446,6 +473,7 @@ MediaMetadataBase MediaStatusManager::GetCurrentMediaMetadata() const {
     }
     MediaMetadataBase& metadata = *(info.mMetadata);
     FillMissingTitleAndArtworkIfNeeded(metadata);
+    metadata.mUrl = GetUrl();
     return metadata;
   }
   return CreateDefaultMetadata();
@@ -486,7 +514,7 @@ bool MediaStatusManager::IsInPrivateBrowsing() const {
   if (!element) {
     return false;
   }
-  return nsContentUtils::IsInPrivateBrowsing(element->OwnerDoc());
+  return element->OwnerDoc()->IsInPrivateBrowsing();
 }
 
 MediaSessionPlaybackState MediaStatusManager::PlaybackState() const {

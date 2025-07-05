@@ -37,6 +37,7 @@
 
 class nsIGlobalObject;
 class nsIPrincipal;
+class nsIPushSubscription;
 
 namespace mozilla {
 class ErrorResult;
@@ -48,6 +49,12 @@ class Promise;
 class PushManagerImpl;
 struct PushSubscriptionOptionsInit;
 class WorkerPrivate;
+
+nsresult GetSubscriptionParams(nsIPushSubscription* aSubscription,
+                               nsAString& aEndpoint,
+                               nsTArray<uint8_t>& aRawP256dhKey,
+                               nsTArray<uint8_t>& aAuthSecret,
+                               nsTArray<uint8_t>& aAppServerKey);
 
 class PushManager final : public nsISupports, public nsWrapperCache {
  public:
@@ -81,6 +88,12 @@ class PushManager final : public nsISupports, public nsWrapperCache {
 
   already_AddRefed<Promise> PerformSubscriptionActionFromWorker(
       SubscriptionAction aAction, const PushSubscriptionOptionsInit& aOptions,
+      ErrorResult& aRv);
+
+  // Web IDL members:
+
+  static void GetSupportedContentEncodings(
+      GlobalObject& aGlobal, JS::MutableHandle<JSObject*> aEncodings,
       ErrorResult& aRv);
 
   already_AddRefed<Promise> Subscribe(

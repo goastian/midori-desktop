@@ -33,6 +33,7 @@ class MediaMetadataBase {
   nsString mTitle;
   nsString mArtist;
   nsString mAlbum;
+  nsCString mUrl;
   CopyableTArray<MediaImage> mArtwork;
 };
 
@@ -41,7 +42,7 @@ class MediaMetadata final : public nsISupports,
                             private MediaMetadataBase {
  public:
   // Ref counting and cycle collection
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
   NS_DECL_CYCLE_COLLECTION_WRAPPERCACHE_CLASS(MediaMetadata)
 
   // WebIDL methods

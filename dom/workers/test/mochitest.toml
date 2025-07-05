@@ -50,10 +50,6 @@ support-files = [
   "navigator_languages_worker.js",
   "navigator_worker.js",
   "newError_worker.js",
-  "notification_worker.js",
-  "notification_worker_child-child.js",
-  "notification_worker_child-parent.js",
-  "notification_permission_worker.js",
   "onLine_worker.js",
   "onLine_worker_child.js",
   "onLine_worker_head.js",
@@ -112,7 +108,6 @@ support-files = [
   "multi_sharedWorker_frame_nobfcache.html^headers^",
   "multi_sharedWorker_frame_bfcache.html",
   "navigate.html",
-  "!/dom/notification/test/mochitest/MockServices.js",
   "!/dom/notification/test/mochitest/NotificationTest.js",
   "!/dom/xhr/tests/relativeLoad_import.js",
   "!/dom/xhr/tests/relativeLoad_worker.js",
@@ -121,6 +116,8 @@ support-files = [
   "!/dom/xhr/tests/subdir/relativeLoad_sub_worker2.js",
   "!/dom/xhr/tests/subdir/relativeLoad_sub_import.js",
   "!/dom/events/test/event_leak_utils.js",
+  "test_worker_in_background.js",
+  "test_worker_in_background_child.js",
 ]
 
 ["test_404.html"]
@@ -279,12 +276,6 @@ support-files = [
 
 ["test_newError.html"]
 
-["test_notification.html"]
-
-["test_notification_child.html"]
-
-["test_notification_permission.html"]
-
 ["test_onLine.html"]
 
 ["test_promise.html"]
@@ -359,6 +350,11 @@ scheme = "https"
 ["test_timeoutTracing.html"]
 
 ["test_transferable.html"]
+
+["test_worker_in_background.html"]
+skip-if = [
+"os == 'android'", # since geckoview does not support multiple tabs
+]
 
 ["test_worker_interfaces.html"]
 skip-if = [

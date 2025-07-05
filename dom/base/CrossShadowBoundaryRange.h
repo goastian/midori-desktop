@@ -35,11 +35,11 @@ class CrossShadowBoundaryRange final : public StaticRange,
       const RangeBoundaryBase<EPT, ERT>& aEndBoundary, nsRange* aOwner);
 
   void NotifyNodeBecomesShadowHost(nsINode* aNode) {
-    if (aNode == mStart.Container()) {
+    if (aNode == mStart.GetContainer()) {
       mStart.NotifyParentBecomesShadowHost();
     }
 
-    if (aNode == mEnd.Container()) {
+    if (aNode == mEnd.GetContainer()) {
       mEnd.NotifyParentBecomesShadowHost();
     }
   }
@@ -56,11 +56,14 @@ class CrossShadowBoundaryRange final : public StaticRange,
     return StaticRange::SetStartAndEnd(aStartBoundary, aEndBoundary);
   }
 
+  NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
   NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
+  NS_DECL_NSIMUTATIONOBSERVER_PARENTCHAINCHANGED
 
  private:
   explicit CrossShadowBoundaryRange(nsINode* aNode, nsRange* aOwner)
-      : StaticRange(aNode), mOwner(aOwner) {}
+      : StaticRange(aNode, RangeBoundaryIsMutationObserved::Yes),
+        mOwner(aOwner) {}
   virtual ~CrossShadowBoundaryRange() = default;
 
   /**

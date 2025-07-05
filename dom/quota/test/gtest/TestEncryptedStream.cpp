@@ -57,6 +57,7 @@ class ArrayBufferInputStream : public nsIInputStream,
                                public nsICloneableInputStream {
  public:
   explicit ArrayBufferInputStream(mozilla::Span<const uint8_t> aData);
+  bool SetCloseOnEOF(bool value) { return mCloseOnEOF = value; }
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIINPUTSTREAM
@@ -71,6 +72,7 @@ class ArrayBufferInputStream : public nsIInputStream,
   uint32_t mBufferLength;
   uint32_t mPos;
   bool mClosed;
+  bool mCloseOnEOF;
 };
 
 NS_IMPL_ADDREF(ArrayBufferInputStream);
@@ -88,7 +90,8 @@ ArrayBufferInputStream::ArrayBufferInputStream(
     : mArrayBuffer(MakeUnique<char[]>(aData.Length())),
       mBufferLength(aData.Length()),
       mPos(0),
-      mClosed(false) {
+      mClosed(false),
+      mCloseOnEOF(false) {
   std::copy(aData.cbegin(), aData.cend(), mArrayBuffer.get());
 }
 
@@ -131,7 +134,8 @@ ArrayBufferInputStream::ReadSegments(nsWriteSegmentFun writer, void* closure,
   MOZ_RELEASE_ASSERT(mBufferLength >= mPos, "bad stream state");
 
   if (mClosed) {
-    return NS_BASE_STREAM_CLOSED;
+    *result = 0;
+    return NS_OK;
   }
 
   MOZ_RELEASE_ASSERT(mArrayBuffer || (mPos == mBufferLength),
@@ -163,6 +167,10 @@ ArrayBufferInputStream::ReadSegments(nsWriteSegmentFun writer, void* closure,
     aCount -= written;
   }
 
+  if (*result == 0 && mCloseOnEOF) {
+    Close();
+  }
+
   return NS_OK;
 }
 
@@ -177,6 +185,9 @@ ArrayBufferInputStream::IsNonBlocking(bool* aNonBlocking) {
 NS_IMETHODIMP ArrayBufferInputStream::Tell(int64_t* const aRetval) {
   MOZ_RELEASE_ASSERT(aRetval);
 
+  if (mClosed) {
+    return NS_BASE_STREAM_CLOSED;
+  }
   *aRetval = mPos;
 
   return NS_OK;
@@ -184,6 +195,10 @@ NS_IMETHODIMP ArrayBufferInputStream::Tell(int64_t* const aRetval) {
 
 NS_IMETHODIMP ArrayBufferInputStream::Seek(const int32_t aWhence,
                                            const int64_t aOffset) {
+  if (mClosed) {
+    return NS_BASE_STREAM_CLOSED;
+  }
+
   // XXX This is not safe. it's hard to use CheckedInt here, though. As long as
   // the class is only used for testing purposes, that's probably fine.
 
@@ -251,7 +266,8 @@ class DOM_Quota_EncryptedStream : public ::testing::Test {
   struct NSSInitContextDeleter {
     void operator()(NSSInitContext* p) { NSS_ShutdownContext(p); }
   };
-  inline static std::unique_ptr<NSSInitContext, NSSInitContextDeleter>
+  MOZ_RUNINIT inline static std::unique_ptr<NSSInitContext,
+                                            NSSInitContextDeleter>
       sNssContext;
 };
 
@@ -259,7 +275,7 @@ enum struct FlushMode { AfterEachChunk, Never };
 enum struct ChunkSize { SingleByte, Unaligned, DataSize };
 
 using PackedTestParams =
-    std::tuple<size_t, ChunkSize, ChunkSize, size_t, FlushMode>;
+    std::tuple<size_t, ChunkSize, ChunkSize, size_t, FlushMode, bool>;
 
 static size_t EffectiveChunkSize(const ChunkSize aChunkSize,
                                  const size_t aDataSize) {
@@ -280,7 +296,8 @@ struct TestParams {
         mWriteChunkSize(std::get<1>(aPackedParams)),
         mReadChunkSize(std::get<2>(aPackedParams)),
         mBlockSize(std::get<3>(aPackedParams)),
-        mFlushMode(std::get<4>(aPackedParams)) {}
+        mFlushMode(std::get<4>(aPackedParams)),
+        mCloseOnEOF(std::get<5>(aPackedParams)) {}
 
   constexpr size_t DataSize() const { return mDataSize; }
 
@@ -296,6 +313,8 @@ struct TestParams {
 
   constexpr enum FlushMode FlushMode() const { return mFlushMode; }
 
+  constexpr bool CloseOnEOF() const { return mCloseOnEOF; }
+
  private:
   size_t mDataSize;
 
@@ -304,6 +323,7 @@ struct TestParams {
 
   size_t mBlockSize;
   enum FlushMode mFlushMode;
+  bool mCloseOnEOF;
 };
 
 std::string TestParamToString(
@@ -325,6 +345,8 @@ std::string TestParamToString(
       ss << "FlushAfterEachChunk";
       break;
   };
+  ss << kSeparator
+     << (testParams.CloseOnEOF() ? "closeOnEOF" : "keepOpenOnEOF");
   return ss.str();
 }
 
@@ -381,6 +403,12 @@ static void ReadTestData(
     const ExtraChecks& aExtraChecks = NoExtraChecks<CipherStrategy>) {
   auto readData = nsTArray<uint8_t>();
   readData.SetLength(aReadChunkSize);
+
+  // sanity check: total file length and expectedData length must always match
+  uint64_t availableBytes = 0;
+  EXPECT_EQ(NS_OK, aDecryptingInputStream.Available(&availableBytes));
+  EXPECT_EQ(aExpectedData.LengthBytes(), availableBytes);
+
   for (auto remainder = aExpectedData; !remainder.IsEmpty();) {
     auto [currentExpected, newExpectedRemainder] =
         remainder.SplitAt(std::min(aReadChunkSize, remainder.Length()));
@@ -427,6 +455,7 @@ static RefPtr<FixedBufferOutputStream> DoRoundtripTest(
     const size_t aDataSize, const size_t aWriteChunkSize,
     const size_t aReadChunkSize, const size_t aBlockSize,
     const typename CipherStrategy::KeyType& aKey, const FlushMode aFlushMode,
+    bool aCloseOnEOF,
     const ExtraChecks& aExtraChecks = NoExtraChecks<CipherStrategy>) {
   // XXX Add deduction guide for RefPtr from already_AddRefed
   const auto baseOutputStream = WrapNotNull(
@@ -440,6 +469,8 @@ static RefPtr<FixedBufferOutputStream> DoRoundtripTest(
 
   const auto baseInputStream =
       MakeRefPtr<ArrayBufferInputStream>(baseOutputStream->WrittenData());
+
+  baseInputStream->SetCloseOnEOF(aCloseOnEOF);
 
   ReadTestData<CipherStrategy>(
       WrapNotNull(nsCOMPtr<nsIInputStream>{baseInputStream}), Span{data},
@@ -458,7 +489,25 @@ TEST_P(ParametrizedCryptTest, NSSCipherStrategy) {
   DoRoundtripTest<CipherStrategy>(
       testParams.DataSize(), testParams.EffectiveWriteChunkSize(),
       testParams.EffectiveReadChunkSize(), testParams.BlockSize(),
-      keyOrErr.unwrap(), testParams.FlushMode());
+      keyOrErr.unwrap(), testParams.FlushMode(), testParams.CloseOnEOF());
+}
+
+TEST_P(ParametrizedCryptTest, NSSCipherStrategy_Available) {
+  using CipherStrategy = NSSCipherStrategy;
+  const TestParams& testParams = GetParam();
+
+  DoRoundtripTest<CipherStrategy>(
+      testParams.DataSize(), testParams.EffectiveWriteChunkSize(),
+      testParams.EffectiveReadChunkSize(), testParams.BlockSize(),
+      CipherStrategy::KeyType{}, testParams.FlushMode(),
+      testParams.CloseOnEOF(),
+      [](auto& inStream, Span<const uint8_t> expectedData,
+         Span<const uint8_t> remainder) {
+        // Check that Available tells the right remainder.
+        uint64_t available;
+        EXPECT_EQ(NS_OK, inStream.Available(&available));
+        EXPECT_EQ(remainder.Length(), available);
+      });
 }
 
 TEST_P(ParametrizedCryptTest, DummyCipherStrategy_CheckOutput) {
@@ -468,7 +517,8 @@ TEST_P(ParametrizedCryptTest, DummyCipherStrategy_CheckOutput) {
   const auto encryptedDataStream = DoRoundtripTest<CipherStrategy>(
       testParams.DataSize(), testParams.EffectiveWriteChunkSize(),
       testParams.EffectiveReadChunkSize(), testParams.BlockSize(),
-      CipherStrategy::KeyType{}, testParams.FlushMode());
+      CipherStrategy::KeyType{}, testParams.FlushMode(),
+      testParams.CloseOnEOF());
 
   if (HasFailure()) {
     return;
@@ -520,6 +570,7 @@ TEST_P(ParametrizedCryptTest, DummyCipherStrategy_Tell) {
       testParams.DataSize(), testParams.EffectiveWriteChunkSize(),
       testParams.EffectiveReadChunkSize(), testParams.BlockSize(),
       CipherStrategy::KeyType{}, testParams.FlushMode(),
+      testParams.CloseOnEOF(),
       [](auto& inStream, Span<const uint8_t> expectedData,
          Span<const uint8_t> remainder) {
         // Check that Tell tells the right position.
@@ -538,11 +589,14 @@ TEST_P(ParametrizedCryptTest, DummyCipherStrategy_Available) {
       testParams.DataSize(), testParams.EffectiveWriteChunkSize(),
       testParams.EffectiveReadChunkSize(), testParams.BlockSize(),
       CipherStrategy::KeyType{}, testParams.FlushMode(),
+      testParams.CloseOnEOF(),
       [](auto& inStream, Span<const uint8_t> expectedData,
          Span<const uint8_t> remainder) {
         // Check that Available tells the right remainder.
         uint64_t available;
         EXPECT_EQ(NS_OK, inStream.Available(&available));
+        // stream should still be valid.
+        EXPECT_EQ(NS_OK, inStream.BaseStreamStatus());
         EXPECT_EQ(remainder.Length(), available);
       });
 }
@@ -622,21 +676,27 @@ enum struct SeekOffset {
   MinusHalfDataSize,
   PlusHalfDataSize,
   PlusDataSize,
-  MinusDataSize
+  MinusDataSize,
+  MinusDataSizeAndOne,
+  PlusOne,
+  MinusOne
 };
-using SeekOp = std::pair<int32_t, SeekOffset>;
+using SeekOp = std::tuple<int32_t, SeekOffset, nsresult>;
 
-using PackedSeekTestParams = std::tuple<size_t, size_t, std::vector<SeekOp>>;
+using PackedSeekTestParams =
+    std::tuple<size_t, size_t, std::vector<SeekOp>, bool>;
 
 struct SeekTestParams {
   size_t mDataSize;
   size_t mBlockSize;
   std::vector<SeekOp> mSeekOps;
+  bool mCloseOnEOF;
 
   MOZ_IMPLICIT SeekTestParams(const PackedSeekTestParams& aPackedParams)
       : mDataSize(std::get<0>(aPackedParams)),
         mBlockSize(std::get<1>(aPackedParams)),
-        mSeekOps(std::get<2>(aPackedParams)) {}
+        mSeekOps(std::get<2>(aPackedParams)),
+        mCloseOnEOF(std::get<3>(aPackedParams)) {}
 };
 
 std::string SeekTestParamToString(
@@ -649,7 +709,7 @@ std::string SeekTestParamToString(
   ss << "data" << testParams.mDataSize << kSeparator << "writechunk"
      << testParams.mBlockSize << kSeparator;
   for (const auto& seekOp : testParams.mSeekOps) {
-    switch (seekOp.first) {
+    switch (std::get<0>(seekOp)) {
       case nsISeekableStream::NS_SEEK_SET:
         ss << "Set";
         break;
@@ -659,8 +719,10 @@ std::string SeekTestParamToString(
       case nsISeekableStream::NS_SEEK_END:
         ss << "End";
         break;
+      default:
+        MOZ_CRASH("Unknown whence");
     };
-    switch (seekOp.second) {
+    switch (std::get<1>(seekOp)) {
       case SeekOffset::Zero:
         ss << "Zero";
         break;
@@ -673,94 +735,158 @@ std::string SeekTestParamToString(
       case SeekOffset::MinusDataSize:
         ss << "MinusDataSize";
         break;
+      case SeekOffset::MinusDataSizeAndOne:
+        ss << "MinusDataSizeAndOne";
+        break;
       case SeekOffset::PlusDataSize:
         ss << "PlusDataSize";
         break;
+      case SeekOffset::PlusOne:
+        ss << "PlusOne";
+        break;
+      case SeekOffset::MinusOne:
+        ss << "MinusOne";
+        break;
     };
   }
+  ss << kSeparator << (testParams.mCloseOnEOF ? "closeOnEOF" : "keepOpenOnEOF");
+
   return ss.str();
 }
 
 class ParametrizedSeekCryptTest
     : public DOM_Quota_EncryptedStream,
-      public testing::WithParamInterface<PackedSeekTestParams> {};
+      public testing::WithParamInterface<PackedSeekTestParams> {
+ public:
+  template <typename CipherStrategy>
+  void DoSeekTest() {
+    const SeekTestParams& testParams = GetParam();
+
+    const auto baseOutputStream = WrapNotNull(
+        RefPtr<FixedBufferOutputStream>{FixedBufferOutputStream::Create(2048)});
+
+    const auto data = MakeTestData(testParams.mDataSize);
+
+    WriteTestData<CipherStrategy>(
+        nsCOMPtr<nsIOutputStream>{baseOutputStream.get()}, Span{data},
+        testParams.mDataSize, testParams.mBlockSize,
+        typename CipherStrategy::KeyType{}, FlushMode::Never);
+
+    const auto baseInputStream =
+        MakeRefPtr<ArrayBufferInputStream>(baseOutputStream->WrittenData());
+
+    const auto inStream = MakeSafeRefPtr<DecryptingInputStream<CipherStrategy>>(
+        WrapNotNull(nsCOMPtr<nsIInputStream>{baseInputStream}),
+        testParams.mBlockSize, typename CipherStrategy::KeyType{});
+
+    baseInputStream->SetCloseOnEOF(testParams.mCloseOnEOF);
+
+    uint32_t accumulatedOffset = 0;
+    for (const auto& seekOp : testParams.mSeekOps) {
+      const auto offset = [offsetKind = std::get<1>(seekOp),
+                           dataSize = testParams.mDataSize]() -> int64_t {
+        switch (offsetKind) {
+          case SeekOffset::Zero:
+            return 0;
+          case SeekOffset::MinusHalfDataSize:
+            return -static_cast<int64_t>(dataSize) / 2;
+          case SeekOffset::PlusHalfDataSize:
+            return static_cast<int64_t>(dataSize) / 2;
+          case SeekOffset::MinusDataSize:
+            return -static_cast<int64_t>(dataSize);
+          case SeekOffset::MinusDataSizeAndOne:
+            return -static_cast<int64_t>(dataSize + 1);
+          case SeekOffset::PlusDataSize:
+            return static_cast<int64_t>(dataSize);
+          case SeekOffset::PlusOne:
+            return 1;
+          case SeekOffset::MinusOne:
+            return -1;
+        }
+        MOZ_CRASH("Unknown SeekOffset");
+      }();
+      nsresult rv = inStream->Seek(std::get<0>(seekOp), offset);
+      EXPECT_EQ(std::get<2>(seekOp), rv);
+      if (NS_SUCCEEDED(rv)) {
+        switch (std::get<0>(seekOp)) {
+          case nsISeekableStream::NS_SEEK_SET:
+            accumulatedOffset = offset;
+            break;
+          case nsISeekableStream::NS_SEEK_CUR:
+            accumulatedOffset += offset;
+            break;
+          case nsISeekableStream::NS_SEEK_END:
+            accumulatedOffset = testParams.mDataSize + offset;
+            break;
+          default:
+            MOZ_CRASH("Unknown whence");
+        }
+      }
+    }
+
+    {
+      int64_t actualOffset;
+      EXPECT_EQ(NS_OK, inStream->Tell(&actualOffset));
+
+      EXPECT_EQ(actualOffset, accumulatedOffset);
+    }
+
+    auto readData = nsTArray<uint8_t>();
+    readData.SetLength(data.Length());
+    uint32_t read;
+    EXPECT_EQ(NS_OK,
+              inStream->Read(reinterpret_cast<char*>(readData.Elements()),
+                             readData.Length(), &read));
+    // XXX Or should 'read' indicate the actual number of bytes read,
+    // including the encryption overhead?
+    EXPECT_EQ(testParams.mDataSize - accumulatedOffset, read);
+    EXPECT_EQ(Span{data}.SplitAt(accumulatedOffset).second,
+              Span{readData}.First(read).AsConst());
+
+    // For some closeOnEOF combinations, above Read method can lead to stream
+    // closure. Skip calling Tell method below if the underlying stream was
+    // already closed.
+    if (!testParams.mCloseOnEOF ||
+        baseInputStream->StreamStatus() != NS_BASE_STREAM_CLOSED) {
+      int64_t actualOffset;
+      EXPECT_EQ(NS_OK, inStream->Tell(&actualOffset));
+
+      EXPECT_EQ(static_cast<uint64_t>(actualOffset), data.Length());
+    }
+  }
+};
 
 TEST_P(ParametrizedSeekCryptTest, DummyCipherStrategy_Seek) {
-  using CipherStrategy = DummyCipherStrategy;
-  const SeekTestParams& testParams = GetParam();
-
-  const auto baseOutputStream = WrapNotNull(
-      RefPtr<FixedBufferOutputStream>{FixedBufferOutputStream::Create(2048)});
-
-  const auto data = MakeTestData(testParams.mDataSize);
-
-  WriteTestData<CipherStrategy>(
-      nsCOMPtr<nsIOutputStream>{baseOutputStream.get()}, Span{data},
-      testParams.mDataSize, testParams.mBlockSize, CipherStrategy::KeyType{},
-      FlushMode::Never);
-
-  const auto baseInputStream =
-      MakeRefPtr<ArrayBufferInputStream>(baseOutputStream->WrittenData());
-
-  const auto inStream = MakeSafeRefPtr<DecryptingInputStream<CipherStrategy>>(
-      WrapNotNull(nsCOMPtr<nsIInputStream>{baseInputStream}),
-      testParams.mBlockSize, CipherStrategy::KeyType{});
-
-  uint32_t accumulatedOffset = 0;
-  for (const auto& seekOp : testParams.mSeekOps) {
-    const auto offset = [offsetKind = seekOp.second,
-                         dataSize = testParams.mDataSize]() -> int64_t {
-      switch (offsetKind) {
-        case SeekOffset::Zero:
-          return 0;
-        case SeekOffset::MinusHalfDataSize:
-          return -static_cast<int64_t>(dataSize) / 2;
-        case SeekOffset::PlusHalfDataSize:
-          return dataSize / 2;
-        case SeekOffset::MinusDataSize:
-          return -static_cast<int64_t>(dataSize);
-        case SeekOffset::PlusDataSize:
-          return dataSize;
-      }
-      MOZ_CRASH("Unknown SeekOffset");
-    }();
-    switch (seekOp.first) {
-      case nsISeekableStream::NS_SEEK_SET:
-        accumulatedOffset = offset;
-        break;
-      case nsISeekableStream::NS_SEEK_CUR:
-        accumulatedOffset += offset;
-        break;
-      case nsISeekableStream::NS_SEEK_END:
-        accumulatedOffset = testParams.mDataSize + offset;
-        break;
-    }
-    EXPECT_EQ(NS_OK, inStream->Seek(seekOp.first, offset));
-  }
-
-  {
-    int64_t actualOffset;
-    EXPECT_EQ(NS_OK, inStream->Tell(&actualOffset));
-
-    EXPECT_EQ(actualOffset, accumulatedOffset);
-  }
-
-  auto readData = nsTArray<uint8_t>();
-  readData.SetLength(data.Length());
-  uint32_t read;
-  EXPECT_EQ(NS_OK, inStream->Read(reinterpret_cast<char*>(readData.Elements()),
-                                  readData.Length(), &read));
-  // XXX Or should 'read' indicate the actual number of bytes read,
-  // including the encryption overhead?
-  EXPECT_EQ(testParams.mDataSize - accumulatedOffset, read);
-  EXPECT_EQ(Span{data}.SplitAt(accumulatedOffset).second,
-            Span{readData}.First(read).AsConst());
+  DoSeekTest<DummyCipherStrategy>();
 }
+
+TEST_P(ParametrizedSeekCryptTest, NSSCipherStrategy_Seek) {
+  DoSeekTest<NSSCipherStrategy>();
+}
+
+// The data size 244 has been calculated as 256 (block size) minus 8
+// (DummyCipherStrategy::BlockPrefixLength) minus 4
+// (DummyCipherStrategy::BasicBlockSize).
+// The data size 1012 has been calculated as 1024 (block size) minus 8
+// (DummyCipherStrategy::BlockPrefixLength) minus 4
+// (DummyCipherStrategy::BasicBlockSize).
+static_assert(DummyCipherStrategy::BlockPrefixLength == 8);
+static_assert(DummyCipherStrategy::BasicBlockSize == 4);
+
+// The data size 208 has been calculated as 256 (block size) minus 32
+// (NSSCipherStrategy::BlockPrefixLength) minus 16
+// (NSSCipherStrategy::BasicBlockSize).
+// The data size 976 has been calculated as 1024 (block size) minus 32
+// (NSSCipherStrategy::BlockPrefixLength) minus 16
+// (NSSCipherStrategy::BasicBlockSize).
+static_assert(NSSCipherStrategy::BlockPrefixLength == 32);
+static_assert(NSSCipherStrategy::BasicBlockSize == 16);
 
 INSTANTIATE_TEST_SUITE_P(
     DOM_Quota_EncryptedStream_Parametrized, ParametrizedCryptTest,
     testing::Combine(
-        /* dataSize */ testing::Values(0u, 16u, 256u, 512u, 513u),
+        /* dataSize */ testing::Values(0u, 16u, 208u, 244u, 256u, 512u, 513u,
+                                       976u, 1012u),
         /* writeChunkSize */
         testing::Values(ChunkSize::SingleByte, ChunkSize::Unaligned,
                         ChunkSize::DataSize),
@@ -769,37 +895,55 @@ INSTANTIATE_TEST_SUITE_P(
                         ChunkSize::DataSize),
         /* blockSize */ testing::Values(256u, 1024u /*, 8192u*/),
         /* flushMode */
-        testing::Values(FlushMode::Never, FlushMode::AfterEachChunk)),
+        testing::Values(FlushMode::Never, FlushMode::AfterEachChunk),
+        /* closeOnEOF */
+        testing::Values(true, false)),
     TestParamToString);
 
 INSTANTIATE_TEST_SUITE_P(
     DOM_IndexedDB_EncryptedStream_ParametrizedSeek, ParametrizedSeekCryptTest,
     testing::Combine(
-        /* dataSize */ testing::Values(0u, 16u, 256u, 512u, 513u),
+        /* dataSize */ testing::Values(0u, 16u, 208u, 244u, 256u, 512u, 513u,
+                                       976u, 1012u),
         /* blockSize */ testing::Values(256u, 1024u /*, 8192u*/),
         /* seekOperations */
         testing::Values(/* NS_SEEK_SET only, single ops */
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_SET,
-                                             SeekOffset::PlusDataSize}},
+                                             SeekOffset::PlusDataSize, NS_OK}},
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_SET,
-                                             SeekOffset::PlusHalfDataSize}},
+                                             SeekOffset::PlusHalfDataSize,
+                                             NS_OK}},
                         /* NS_SEEK_SET only, multiple ops */
                         std::vector<SeekOp>{
                             {nsISeekableStream::NS_SEEK_SET,
-                             SeekOffset::PlusHalfDataSize},
-                            {nsISeekableStream::NS_SEEK_SET, SeekOffset::Zero}},
+                             SeekOffset::PlusHalfDataSize, NS_OK},
+                            {nsISeekableStream::NS_SEEK_SET, SeekOffset::Zero,
+                             NS_OK}},
                         /* NS_SEEK_CUR only, single ops */
-                        std::vector<SeekOp>{
-                            {nsISeekableStream::NS_SEEK_CUR, SeekOffset::Zero}},
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_CUR,
-                                             SeekOffset::PlusDataSize}},
+                                             SeekOffset::Zero, NS_OK}},
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_CUR,
-                                             SeekOffset::PlusHalfDataSize}},
+                                             SeekOffset::PlusDataSize, NS_OK}},
+                        std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_CUR,
+                                             SeekOffset::PlusHalfDataSize,
+                                             NS_OK}},
+                        std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_CUR,
+                                             SeekOffset::MinusOne,
+                                             NS_ERROR_ILLEGAL_VALUE}},
                         /* NS_SEEK_END only, single ops */
-                        std::vector<SeekOp>{
-                            {nsISeekableStream::NS_SEEK_END, SeekOffset::Zero}},
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_END,
-                                             SeekOffset::MinusDataSize}},
+                                             SeekOffset::Zero, NS_OK}},
                         std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_END,
-                                             SeekOffset::MinusHalfDataSize}})),
+                                             SeekOffset::MinusDataSize, NS_OK}},
+                        std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_END,
+                                             SeekOffset::MinusDataSizeAndOne,
+                                             NS_ERROR_ILLEGAL_VALUE}},
+                        std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_END,
+                                             SeekOffset::MinusHalfDataSize,
+                                             NS_OK}},
+                        std::vector<SeekOp>{{nsISeekableStream::NS_SEEK_END,
+                                             SeekOffset::PlusOne,
+                                             NS_ERROR_ILLEGAL_VALUE}}),
+        /* closeOnEOF */
+        testing::Values(true, false)),
     SeekTestParamToString);

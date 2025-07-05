@@ -34,6 +34,15 @@ interface nsIQuotaManagerService : nsISupports
   storageInitialized();
 
   /**
+   * Check if persistent storage is initialized.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   */
+  [must_use] nsIQuotaRequest
+  persistentStorageInitialized();
+
+  /**
    * Check if temporary storage is initialized.
    *
    * If the dom.quotaManager.testing preference is not true the call will be
@@ -41,6 +50,43 @@ interface nsIQuotaManagerService : nsISupports
    */
   [must_use] nsIQuotaRequest
   temporaryStorageInitialized();
+
+  /**
+   * Check if temporary group is initialized.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   */
+  [must_use] nsIQuotaRequest
+  temporaryGroupInitialized(in nsIPrincipal aPrincipal);
+
+  /**
+   * Check if persistent origin is initialized.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   *
+   * @param aPrincipal
+   *        A principal for the persistent origin whose state is to be checked.
+   */
+  [must_use] nsIQuotaRequest
+  persistentOriginInitialized(in nsIPrincipal aPrincipal);
+
+  /**
+   * Check if temporary origin is initialized.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   *
+   * @param aPersistenceType
+   *        A string that tells what persistence type will be checked (either
+   *        "temporary" or "default").
+   * @param aPrincipal
+   *        A principal for the temporary origin whose state is to be checked.
+   */
+  [must_use] nsIQuotaRequest
+  temporaryOriginInitialized(in ACString aPersistenceType,
+                             in nsIPrincipal aPrincipal);
 
   /**
    * Initializes storage directory. This can be used in tests to verify
@@ -53,6 +99,16 @@ interface nsIQuotaManagerService : nsISupports
   init();
 
   /**
+   * Initializes persistent storage. This can be used in tests to verify
+   * persistent storage initialization.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   */
+  [must_use] nsIQuotaRequest
+  initializePersistentStorage();
+
+  /**
    * Initializes temporary storage. This can be used in tests to verify
    * temporary storage initialization.
    *
@@ -61,6 +117,33 @@ interface nsIQuotaManagerService : nsISupports
    */
   [must_use] nsIQuotaRequest
   initTemporaryStorage();
+
+  /**
+   * Initializes all temporary origins. Only used in tests to verify the
+   * initialization of all temporary origins.
+   *
+   * Calling this method only makes sense when lazy origin initialization is
+   * enabled, as initTemporaryStorage does not initialize origins in that case.
+   *
+   * If the dom.quotaManager.testing preference is not set to true, this call
+   * will be a no-op.
+   */
+  [must_use] nsIQuotaRequest
+  initializeAllTemporaryOrigins();
+
+  /**
+   * Initializes temporary origin directories for the given group. This can be
+   * used in tests to verify group initialization.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   *
+   * @param aPrincipal
+   *        A principal for the group whose origin directories are to be
+   *        initialized.
+   */
+  [must_use] nsIQuotaRequest
+  initializeTemporaryGroup(in nsIPrincipal aPrincipal);
 
   /**
    * Initializes persistent origin directory for the given origin. This can be
@@ -88,10 +171,15 @@ interface nsIQuotaManagerService : nsISupports
    *
    * @param aPrincipal
    *        A principal for the origin whose directory is to be initialized.
+   *
+   * @param aCreateIfNonExistent
+   *        An optional boolean to indicate creation of origin directory if it
+   *        doesn't exist yet.
    */
   [must_use] nsIQuotaRequest
   initializeTemporaryOrigin(in ACString aPersistenceType,
-                            in nsIPrincipal aPrincipal);
+                            in nsIPrincipal aPrincipal,
+                            [optional] in boolean aCreateIfNonExistent);
 
   /**
    * Initializes persistent client directory for the given origin and client.
@@ -125,11 +213,15 @@ interface nsIQuotaManagerService : nsISupports
    *        initialized.
    * @param aClientType
    *        A string that tells what client type will be initialized.
+   * @param aCreateIfNonExistent
+   *        An optional boolean to indicate creation of client directory if it
+   *        doesn't exist yet.
    */
   [must_use] nsIQuotaRequest
   initializeTemporaryClient(in ACString aPersistenceType,
                             in nsIPrincipal aPrincipal,
-                            in AString aClientType);
+                            in AString aClientType,
+                            [optional] in boolean aCreateIfNonExistent);
 
   /**
    * Gets full origin metadata cached in memory for the given persistence type
@@ -172,24 +264,37 @@ interface nsIQuotaManagerService : nsISupports
    *        A principal for the origin whose usage is being queried.
    * @param aCallback
    *        The callback that will be called when the usage is available.
-   * @param aFromMemory
-   *        An optional flag to indicate whether the cached usage should be
-   *        obtained. The default value is false.  Note that this operation may
-   *        still be delayed by other operations on the QM I/O thread that are
-   *        peforming I/O.
-   * Note:  Origin usage here represents total usage of an origin. However,
-   *        cached usage here represents only non-persistent usage of an origin.
+   * Note:  Origin usage here represents total usage of an origin.
    */
   [must_use] nsIQuotaUsageRequest
   getUsageForPrincipal(in nsIPrincipal aPrincipal,
-                       in nsIQuotaUsageCallback aCallback,
-                       [optional] in boolean aFromMemory);
+                       in nsIQuotaUsageCallback aCallback);
+
+  /**
+   * Gets usage cached in memory for the given origin.
+   *
+   * This mechanism uses cached quota usage and does not perform any I/O on its
+   * own, but it may be delayed by QuotaManager operations that do need to
+   * perform I/O on the QuotaManager I/O thread.
+   *
+   * @param aPrincipal
+   *        A principal for the origin whose cached usage is being queried.
+   * Note:  Origin usage here represents only non-persistent usage of an origin.
+   */
+  [must_use] nsIQuotaRequest
+  getCachedUsageForPrincipal(in nsIPrincipal aPrincipal);
 
   /**
    * Asynchronously lists all origins and returns them as plain strings.
    */
   [must_use] nsIQuotaRequest
   listOrigins();
+
+  /**
+   * Asynchronously lists all cached origins and returns them as plain strings.
+   */
+  [must_use] nsIQuotaRequest
+  listCachedOrigins();
 
   /**
    * Removes all storages. The files may not be deleted immediately depending
@@ -245,18 +350,33 @@ interface nsIQuotaManagerService : nsISupports
    *        "persistent" is different than being "persisted" via persist() and
    *        is only for chrome principals.  See bug 1354500 for more info.
    *        In general, null is the right thing to pass here.
-   * @param aClientType
-   *        An optional string that tells what client type of storages
-   *        will be cleared.  If omitted (or void), all client types will be
-   *        cleared for the principal.  If a single client type is provided
-   *        from Client.h, then only that client's storage will be cleared.
-   *        If you want to clear multiple client types (but not all), then you
-   *        must call this method multiple times.
    */
   [must_use] nsIQuotaRequest
   clearStoragesForPrincipal(in nsIPrincipal aPrincipal,
-                            [optional] in ACString aPersistenceType,
-                            [optional] in AString aClientType);
+                            [optional] in ACString aPersistenceType);
+
+  /**
+   * Removes all storages stored for the given client. The files may not be
+   * deleted immediately depending on prohibitive concurrent operations.
+   *
+   * @param aPrincipal
+   *        A principal for the origin whose storages are to be cleared.
+   * @param aClientType
+   *        A string that tells what client type of storages will be cleared.
+   * @param aPersistenceType
+   *        An optional string that tells what persistence type of storages
+   *        will be cleared.  If omitted (or void), all persistence types will
+   *        be cleared for the principal and client type.  If a single
+   *        persistence type ("persistent", "temporary", or "default") is
+   *        provided, then only that persistence directory will be considered.
+   *        Note that "persistent" is different than being "persisted" via
+   *        persist() and is only for chrome principals.  See bug 1354500 for
+   *        more info.  In general, null is the right thing to pass here.
+   */
+  [must_use] nsIQuotaRequest
+  clearStoragesForClient(in nsIPrincipal aPrincipal,
+                         in AString aClientType,
+                         [optional] in ACString aPersistenceType);
 
   /**
    * Removes all storages stored for the given prefix. The files may not be
@@ -312,18 +432,35 @@ interface nsIQuotaManagerService : nsISupports
    *        "persistent" is different than being "persisted" via persist() and
    *        is only for chrome principals.  See bug 1354500 for more info.
    *        In general, null is the right thing to pass here.
-   * @param aClientType
-   *        An optional string that tells what client type of storages
-   *        will be reset.  If omitted (or void), all client types will be
-   *        cleared for the principal.  If a single client type is provided
-   *        from Client.h, then only that client's storage will be cleared.
-   *        If you want to clear multiple client types (but not all), then you
-   *        must call this method multiple times.
    */
   [must_use] nsIQuotaRequest
   resetStoragesForPrincipal(in nsIPrincipal aPrincipal,
-                            [optional] in ACString aPersistenceType,
-                            [optional] in AString aClientType);
+                            [optional] in ACString aPersistenceType);
+
+  /**
+   * Resets all storages stored for the given client.
+   *
+   * If the dom.quotaManager.testing preference is not true the call will be
+   * a no-op.
+   *
+   * @param aPrincipal
+   *        A principal for the origin whose storages are to be reset.
+   * @param aClientType
+   *        A string that tells what client type of storages will be reset.
+   * @param aPersistenceType
+   *        An optional string that tells what persistence type of storages
+   *        will be reset.  If omitted (or void), all persistence types will
+   *        be cleared for the principal and client type.  If a single
+   *        persistence type ("persistent", "temporary", or "default") is
+   *        provided, then only that persistence directory will be considered.
+   *        Note that "persistent" is different than being "persisted" via
+   *        persist() and is only for chrome principals.  See bug 1354500 for
+   *        more info.  In general, null is the right thing to pass here.
+   */
+  [must_use] nsIQuotaRequest
+  resetStoragesForClient(in nsIPrincipal aPrincipal,
+                         in AString aClientType,
+                         [optional] in ACString aPersistenceType);
 
   /**
    * Check if given origin is persisted.

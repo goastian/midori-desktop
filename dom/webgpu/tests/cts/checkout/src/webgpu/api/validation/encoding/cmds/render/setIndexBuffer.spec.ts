@@ -4,12 +4,12 @@ Validation tests for setIndexBuffer on render pass and render bundle.
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { GPUConst } from '../../../../../constants.js';
-import { kResourceStates } from '../../../../../gpu_test.js';
-import { ValidationTest } from '../../../validation_test.js';
+import { kResourceStates, AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import * as vtu from '../../../validation_test_utils.js';
 
 import { kRenderEncodeTypeParams, buildBufferOffsetAndSizeOOBTestParams } from './render.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('index_buffer_state')
   .desc(
@@ -20,7 +20,7 @@ Tests index buffer must be valid.
   .paramsSubcasesOnly(kRenderEncodeTypeParams.combine('state', kResourceStates))
   .fn(t => {
     const { encoderType, state } = t.params;
-    const indexBuffer = t.createBufferWithState(state, {
+    const indexBuffer = vtu.createBufferWithState(t, state, {
       size: 16,
       usage: GPUBufferUsage.INDEX,
     });
@@ -33,18 +33,17 @@ Tests index buffer must be valid.
 g.test('index_buffer,device_mismatch')
   .desc('Tests setIndexBuffer cannot be called with an index buffer created from another device')
   .paramsSubcasesOnly(kRenderEncodeTypeParams.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { encoderType, mismatched } = t.params;
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
 
-    const indexBuffer = sourceDevice.createBuffer({
-      size: 16,
-      usage: GPUBufferUsage.INDEX,
-    });
-    t.trackForCleanup(indexBuffer);
+    const indexBuffer = t.trackForCleanup(
+      sourceDevice.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.INDEX,
+      })
+    );
 
     const { encoder, validateFinish } = t.createEncoder(encoderType);
     encoder.setIndexBuffer(indexBuffer, 'uint32');
@@ -66,7 +65,7 @@ Tests index buffer must have 'Index' usage.
   )
   .fn(t => {
     const { encoderType, usage } = t.params;
-    const indexBuffer = t.device.createBuffer({
+    const indexBuffer = t.createBufferTracked({
       size: 16,
       usage,
     });
@@ -91,7 +90,7 @@ Tests offset must be a multiple of index format’s byte size.
   )
   .fn(t => {
     const { encoderType, indexFormat, offset } = t.params;
-    const indexBuffer = t.device.createBuffer({
+    const indexBuffer = t.createBufferTracked({
       size: 16,
       usage: GPUBufferUsage.INDEX,
     });
@@ -113,7 +112,7 @@ Tests offset and size cannot be larger than index buffer size.
   .paramsSubcasesOnly(buildBufferOffsetAndSizeOOBTestParams(4, 256))
   .fn(t => {
     const { encoderType, offset, size, _valid } = t.params;
-    const indexBuffer = t.device.createBuffer({
+    const indexBuffer = t.createBufferTracked({
       size: 256,
       usage: GPUBufferUsage.INDEX,
     });

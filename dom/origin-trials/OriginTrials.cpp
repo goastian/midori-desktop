@@ -212,8 +212,10 @@ static int32_t PrefState(OriginTrial aTrial) {
       return StaticPrefs::dom_origin_trials_test_trial_state();
     case OriginTrial::CoepCredentialless:
       return StaticPrefs::dom_origin_trials_coep_credentialless_state();
-    case OriginTrial::PrivateAttribution:
+    case OriginTrial::PrivateAttributionV2:
       return StaticPrefs::dom_origin_trials_private_attribution_state();
+    case OriginTrial::MLS:
+      return StaticPrefs::dom_origin_trials_mls_state();
     case OriginTrial::MAX:
       MOZ_ASSERT_UNREACHABLE("Unknown trial!");
       break;

@@ -4,15 +4,96 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/WebAuthnTransactionParent.h"
-#include "mozilla/ipc/PBackgroundParent.h"
-#include "mozilla/ipc/BackgroundParent.h"
+#include "mozilla/Base64.h"
+#include "mozilla/JSONStringWriteFuncs.h"
+#include "mozilla/JSONWriter.h"
 #include "mozilla/StaticPrefs_security.h"
+#include "mozilla/dom/PWindowGlobalParent.h"
+#include "mozilla/dom/WebAuthnTransactionParent.h"
+#include "mozilla/dom/WindowGlobalParent.h"
 
 #include "nsThreadUtils.h"
 #include "WebAuthnArgs.h"
+#include "WebAuthnUtil.h"
 
 namespace mozilla::dom {
+
+nsresult AssembleClientData(WindowGlobalParent* aManager,
+                            const nsACString& aType,
+                            const nsTArray<uint8_t>& aChallenge,
+                            /* out */ nsACString& aJsonOut) {
+  nsAutoCString challengeBase64;
+  nsresult rv =
+      Base64URLEncode(aChallenge.Length(), aChallenge.Elements(),
+                      Base64URLEncodePaddingPolicy::Omit, challengeBase64);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsIPrincipal* principal = aManager->DocumentPrincipal();
+  nsIPrincipal* topPrincipal =
+      aManager->TopWindowContext()->DocumentPrincipal();
+
+  nsCString origin;
+  rv = principal->GetWebExposedOriginSerialization(origin);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  bool crossOrigin = !principal->Equals(topPrincipal);
+
+  // Serialize the collected client data using the algorithm from
+  // https://www.w3.org/TR/webauthn-3/#clientdatajson-serialization.
+  // Please update the definition of CollectedClientData in
+  // dom/webidl/WebAuthentication.webidl when changes are made here.
+  JSONStringRefWriteFunc f(aJsonOut);
+  JSONWriter w(f, JSONWriter::CollectionStyle::SingleLineStyle);
+  w.Start();
+  // Steps 2 and 3
+  w.StringProperty("type", aType);
+  // Steps 4 and 5
+  w.StringProperty("challenge", challengeBase64);
+  // Steps 6 and 7
+  w.StringProperty("origin", origin);
+  // Steps 8 - 10
+  w.BoolProperty("crossOrigin", crossOrigin);
+  // Step 11. The description of the algorithm says "If topOrigin is present",
+  // but the definition of topOrigin says that topOrigin "is set only if [...]
+  // crossOrigin is true." so we use the latter condition instead.
+  if (crossOrigin) {
+    nsCString topOrigin;
+    rv = topPrincipal->GetWebExposedOriginSerialization(topOrigin);
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_FAILURE;
+    }
+    w.StringProperty("topOrigin", topOrigin);
+  }
+  w.End();
+
+  return NS_OK;
+}
+
+bool GetAssertionRequestIncludesLargeBlobRead(
+    const WebAuthnGetAssertionInfo& aInfo) {
+  for (const WebAuthnExtension& ext : aInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionLargeBlob) {
+      if (ext.get_WebAuthnExtensionLargeBlob().flag().isSome()) {
+        return ext.get_WebAuthnExtensionLargeBlob().flag().ref();
+      }
+    }
+  }
+  return false;
+}
+
+bool MakeCredentialRequestIncludesPrfExtension(
+    const WebAuthnMakeCredentialInfo& aInfo) {
+  for (const WebAuthnExtension& ext : aInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      return true;
+    }
+  }
+  return false;
+}
 
 void WebAuthnTransactionParent::CompleteTransaction() {
   if (mTransactionId.isSome()) {
@@ -40,79 +121,122 @@ void WebAuthnTransactionParent::DisconnectTransaction() {
 }
 
 mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
-    const uint64_t& aTransactionId,
-    const WebAuthnMakeCredentialInfo& aTransactionInfo) {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
+    const WebAuthnMakeCredentialInfo& aTransactionInfo,
+    RequestRegisterResolver&& aResolver) {
+  MOZ_ASSERT(NS_IsMainThread());
 
   if (!mWebAuthnService) {
     mWebAuthnService = do_GetService("@mozilla.org/webauthn/service;1");
     if (!mWebAuthnService) {
-      return IPC_FAIL_NO_REASON(this);
+      aResolver(NS_ERROR_NOT_AVAILABLE);
+      return IPC_OK();
     }
   }
 
   // If there's an ongoing transaction, abort it.
   if (mTransactionId.isSome()) {
     DisconnectTransaction();
-    Unused << SendAbort(mTransactionId.ref(), NS_ERROR_DOM_ABORT_ERR);
   }
+  uint64_t aTransactionId = NextId();
   mTransactionId = Some(aTransactionId);
+
+  WindowGlobalParent* manager = static_cast<WindowGlobalParent*>(Manager());
+  nsIPrincipal* principal = manager->DocumentPrincipal();
+
+  WindowGlobalParent* windowContext = manager;
+  while (windowContext) {
+    nsITransportSecurityInfo* securityInfo = windowContext->GetSecurityInfo();
+    if (securityInfo &&
+        !IsWebAuthnAllowedForTransportSecurityInfo(securityInfo)) {
+      aResolver(NS_ERROR_DOM_SECURITY_ERR);
+      return IPC_OK();
+    }
+    windowContext = windowContext->GetParentWindowContext();
+  }
+
+  if (!IsWebAuthnAllowedForPrincipal(principal)) {
+    aResolver(NS_ERROR_DOM_SECURITY_ERR);
+    return IPC_OK();
+  }
+
+  if (!IsValidRpId(principal, aTransactionInfo.RpId())) {
+    aResolver(NS_ERROR_DOM_SECURITY_ERR);
+    return IPC_OK();
+  }
+
+  nsCString origin;
+  nsresult rv = principal->GetWebExposedOriginSerialization(origin);
+  if (NS_FAILED(rv)) {
+    aResolver(NS_ERROR_FAILURE);
+    return IPC_OK();
+  }
+
+  nsCString clientDataJSON;
+  rv = AssembleClientData(manager, "webauthn.create"_ns,
+                          aTransactionInfo.Challenge(), clientDataJSON);
+  if (NS_FAILED(rv)) {
+    aResolver(NS_ERROR_FAILURE);
+    return IPC_OK();
+  }
+
+  bool requestIncludesPrfExtension =
+      MakeCredentialRequestIncludesPrfExtension(aTransactionInfo);
 
   RefPtr<WebAuthnRegisterPromiseHolder> promiseHolder =
       new WebAuthnRegisterPromiseHolder(GetCurrentSerialEventTarget());
 
-  PWebAuthnTransactionParent* parent = this;
   RefPtr<WebAuthnRegisterPromise> promise = promiseHolder->Ensure();
   promise
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [this, parent, aTransactionId,
-           inputClientData = aTransactionInfo.ClientDataJSON()](
-              const WebAuthnRegisterPromise::ResolveValueType& aValue) {
-            CompleteTransaction();
+          [self = RefPtr{this}, inputClientData = clientDataJSON,
+           requestIncludesPrfExtension, resolver = std::move(aResolver)](
+              const WebAuthnRegisterPromise::ResolveOrRejectValue& aValue) {
+            self->CompleteTransaction();
+
+            if (aValue.IsReject()) {
+              resolver(aValue.RejectValue());
+              return;
+            }
+
+            auto rejectWithNotAllowed = MakeScopeExit(
+                [&]() { resolver(NS_ERROR_DOM_NOT_ALLOWED_ERR); });
+
+            RefPtr<nsIWebAuthnRegisterResult> registerResult =
+                aValue.ResolveValue();
 
             nsCString clientData;
-            nsresult rv = aValue->GetClientDataJSON(clientData);
+            nsresult rv = registerResult->GetClientDataJSON(clientData);
             if (rv == NS_ERROR_NOT_AVAILABLE) {
               clientData = inputClientData;
             } else if (NS_FAILED(rv)) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> attObj;
-            rv = aValue->GetAttestationObject(attObj);
+            rv = registerResult->GetAttestationObject(attObj);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> credentialId;
-            rv = aValue->GetCredentialId(credentialId);
+            rv = registerResult->GetCredentialId(credentialId);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<nsString> transports;
-            rv = aValue->GetTransports(transports);
+            rv = registerResult->GetTransports(transports);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             Maybe<nsString> authenticatorAttachment;
             nsString maybeAuthenticatorAttachment;
-            rv = aValue->GetAuthenticatorAttachment(
+            rv = registerResult->GetAuthenticatorAttachment(
                 maybeAuthenticatorAttachment);
             if (rv != NS_ERROR_NOT_AVAILABLE) {
               if (NS_WARN_IF(NS_FAILED(rv))) {
-                Unused << parent->SendAbort(aTransactionId,
-                                            NS_ERROR_DOM_NOT_ALLOWED_ERR);
                 return;
               }
               authenticatorAttachment = Some(maybeAuthenticatorAttachment);
@@ -120,11 +244,9 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
 
             nsTArray<WebAuthnExtensionResult> extensions;
             bool credPropsRk;
-            rv = aValue->GetCredPropsRk(&credPropsRk);
+            rv = registerResult->GetCredPropsRk(&credPropsRk);
             if (rv != NS_ERROR_NOT_AVAILABLE) {
               if (NS_WARN_IF(NS_FAILED(rv))) {
-                Unused << parent->SendAbort(aTransactionId,
-                                            NS_ERROR_DOM_NOT_ALLOWED_ERR);
                 return;
               }
               extensions.AppendElement(
@@ -132,35 +254,75 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
             }
 
             bool hmacCreateSecret;
-            rv = aValue->GetHmacCreateSecret(&hmacCreateSecret);
+            rv = registerResult->GetHmacCreateSecret(&hmacCreateSecret);
             if (rv != NS_ERROR_NOT_AVAILABLE) {
               if (NS_WARN_IF(NS_FAILED(rv))) {
-                Unused << parent->SendAbort(aTransactionId,
-                                            NS_ERROR_DOM_NOT_ALLOWED_ERR);
                 return;
               }
               extensions.AppendElement(
                   WebAuthnExtensionResultHmacSecret(hmacCreateSecret));
             }
 
+            bool largeBlobSupported;
+            rv = registerResult->GetLargeBlobSupported(&largeBlobSupported);
+            if (rv != NS_ERROR_NOT_AVAILABLE) {
+              if (NS_FAILED(rv)) {
+                return;
+              }
+              nsTArray<uint8_t> blob;  // unused
+              extensions.AppendElement(WebAuthnExtensionResultLargeBlob(
+                  largeBlobSupported, blob, false));
+            }
+
+            if (requestIncludesPrfExtension) {
+              Maybe<WebAuthnExtensionPrfValues> prfResults = Nothing();
+
+              bool prfEnabled = false;
+              rv = registerResult->GetPrfEnabled(&prfEnabled);
+              if (rv != NS_ERROR_NOT_AVAILABLE && NS_FAILED(rv)) {
+                return;
+              }
+
+              nsTArray<uint8_t> prfResultsFirst;
+              rv = registerResult->GetPrfResultsFirst(prfResultsFirst);
+              if (rv != NS_ERROR_NOT_AVAILABLE) {
+                if (NS_WARN_IF(NS_FAILED(rv))) {
+                  return;
+                }
+
+                bool prfResultsSecondMaybe = false;
+                nsTArray<uint8_t> prfResultsSecond;
+                rv = registerResult->GetPrfResultsSecond(prfResultsSecond);
+                if (rv != NS_ERROR_NOT_AVAILABLE) {
+                  if (NS_WARN_IF(NS_FAILED(rv))) {
+                    return;
+                  }
+                  prfResultsSecondMaybe = true;
+                }
+
+                prfResults = Some(WebAuthnExtensionPrfValues(
+                    prfResultsFirst, prfResultsSecondMaybe, prfResultsSecond));
+              }
+
+              extensions.AppendElement(
+                  WebAuthnExtensionResultPrf(Some(prfEnabled), prfResults));
+            }
+
             WebAuthnMakeCredentialResult result(
                 clientData, attObj, credentialId, transports, extensions,
                 authenticatorAttachment);
 
-            Unused << parent->SendConfirmRegister(aTransactionId, result);
-          },
-          [this, parent, aTransactionId](
-              const WebAuthnRegisterPromise::RejectValueType aValue) {
-            CompleteTransaction();
-            Unused << parent->SendAbort(aTransactionId, aValue);
+            rejectWithNotAllowed.release();
+            resolver(result);
           })
       ->Track(mRegisterPromiseRequest);
 
-  uint64_t browsingContextId = aTransactionInfo.BrowsingContextId();
-  RefPtr<WebAuthnRegisterArgs> args(new WebAuthnRegisterArgs(aTransactionInfo));
-
-  nsresult rv = mWebAuthnService->MakeCredential(
-      aTransactionId, browsingContextId, args, promiseHolder);
+  uint64_t browsingContextId = manager->GetBrowsingContext()->Top()->Id();
+  bool privateBrowsing = principal->GetIsInPrivateBrowsing();
+  auto args = MakeRefPtr<WebAuthnRegisterArgs>(
+      origin, clientDataJSON, privateBrowsing, aTransactionInfo);
+  rv = mWebAuthnService->MakeCredential(aTransactionId, browsingContextId, args,
+                                        promiseHolder);
   if (NS_FAILED(rv)) {
     promiseHolder->Reject(NS_ERROR_DOM_NOT_ALLOWED_ERR);
   }
@@ -169,116 +331,222 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
 }
 
 mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestSign(
-    const uint64_t& aTransactionId,
-    const WebAuthnGetAssertionInfo& aTransactionInfo) {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
+    const WebAuthnGetAssertionInfo& aTransactionInfo,
+    RequestSignResolver&& aResolver) {
+  MOZ_ASSERT(NS_IsMainThread());
 
   if (!mWebAuthnService) {
     mWebAuthnService = do_GetService("@mozilla.org/webauthn/service;1");
     if (!mWebAuthnService) {
-      return IPC_FAIL_NO_REASON(this);
+      aResolver(NS_ERROR_NOT_AVAILABLE);
+      return IPC_OK();
     }
   }
 
   if (mTransactionId.isSome()) {
     DisconnectTransaction();
-    Unused << SendAbort(mTransactionId.ref(), NS_ERROR_DOM_ABORT_ERR);
   }
-  mTransactionId = Some(aTransactionId);
+  uint64_t transactionId = NextId();
+  mTransactionId = Some(transactionId);
+
+  WindowGlobalParent* manager = static_cast<WindowGlobalParent*>(Manager());
+  nsIPrincipal* principal = manager->DocumentPrincipal();
+
+  WindowGlobalParent* windowContext = manager;
+  while (windowContext) {
+    nsITransportSecurityInfo* securityInfo = windowContext->GetSecurityInfo();
+    if (securityInfo &&
+        !IsWebAuthnAllowedForTransportSecurityInfo(securityInfo)) {
+      aResolver(NS_ERROR_DOM_SECURITY_ERR);
+      return IPC_OK();
+    }
+    windowContext = windowContext->GetParentWindowContext();
+  }
+
+  if (!IsWebAuthnAllowedForPrincipal(principal)) {
+    aResolver(NS_ERROR_DOM_SECURITY_ERR);
+    return IPC_OK();
+  }
+
+  if (!IsValidRpId(principal, aTransactionInfo.RpId())) {
+    aResolver(NS_ERROR_DOM_SECURITY_ERR);
+    return IPC_OK();
+  }
+
+  if (aTransactionInfo.AppId().isSome() &&
+      !IsValidAppId(principal, aTransactionInfo.AppId().ref())) {
+    aResolver(NS_ERROR_DOM_SECURITY_ERR);
+    return IPC_OK();
+  }
+
+  nsCString origin;
+  nsresult rv = principal->GetWebExposedOriginSerialization(origin);
+  if (NS_FAILED(rv)) {
+    aResolver(NS_ERROR_FAILURE);
+    return IPC_OK();
+  }
+
+  nsCString clientDataJSON;
+  rv = AssembleClientData(manager, "webauthn.get"_ns,
+                          aTransactionInfo.Challenge(), clientDataJSON);
+  if (NS_FAILED(rv)) {
+    aResolver(NS_ERROR_FAILURE);
+    return IPC_OK();
+  }
+
+  bool requestIncludesAppId = aTransactionInfo.AppId().isSome();
+
+  bool requestIncludesLargeBlobRead =
+      GetAssertionRequestIncludesLargeBlobRead(aTransactionInfo);
 
   RefPtr<WebAuthnSignPromiseHolder> promiseHolder =
       new WebAuthnSignPromiseHolder(GetCurrentSerialEventTarget());
 
-  PWebAuthnTransactionParent* parent = this;
   RefPtr<WebAuthnSignPromise> promise = promiseHolder->Ensure();
   promise
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [this, parent, aTransactionId,
-           inputClientData = aTransactionInfo.ClientDataJSON()](
-              const WebAuthnSignPromise::ResolveValueType& aValue) {
-            CompleteTransaction();
+          [self = RefPtr{this}, inputClientData = clientDataJSON,
+           requestIncludesAppId, requestIncludesLargeBlobRead,
+           resolver = std::move(aResolver)](
+              const WebAuthnSignPromise::ResolveOrRejectValue& aValue) {
+            self->CompleteTransaction();
+
+            if (aValue.IsReject()) {
+              resolver(aValue.RejectValue());
+              return;
+            }
+
+            auto rejectWithNotAllowed = MakeScopeExit(
+                [&]() { resolver(NS_ERROR_DOM_NOT_ALLOWED_ERR); });
+
+            RefPtr<nsIWebAuthnSignResult> signResult = aValue.ResolveValue();
 
             nsCString clientData;
-            nsresult rv = aValue->GetClientDataJSON(clientData);
+            nsresult rv = signResult->GetClientDataJSON(clientData);
             if (rv == NS_ERROR_NOT_AVAILABLE) {
               clientData = inputClientData;
             } else if (NS_FAILED(rv)) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> credentialId;
-            rv = aValue->GetCredentialId(credentialId);
+            rv = signResult->GetCredentialId(credentialId);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> signature;
-            rv = aValue->GetSignature(signature);
+            rv = signResult->GetSignature(signature);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> authenticatorData;
-            rv = aValue->GetAuthenticatorData(authenticatorData);
+            rv = signResult->GetAuthenticatorData(authenticatorData);
             if (NS_WARN_IF(NS_FAILED(rv))) {
-              Unused << parent->SendAbort(aTransactionId,
-                                          NS_ERROR_DOM_NOT_ALLOWED_ERR);
               return;
             }
 
             nsTArray<uint8_t> userHandle;
-            Unused << aValue->GetUserHandle(userHandle);  // optional
+            Unused << signResult->GetUserHandle(userHandle);  // optional
 
             Maybe<nsString> authenticatorAttachment;
             nsString maybeAuthenticatorAttachment;
-            rv = aValue->GetAuthenticatorAttachment(
+            rv = signResult->GetAuthenticatorAttachment(
                 maybeAuthenticatorAttachment);
             if (rv != NS_ERROR_NOT_AVAILABLE) {
               if (NS_WARN_IF(NS_FAILED(rv))) {
-                Unused << parent->SendAbort(aTransactionId,
-                                            NS_ERROR_DOM_NOT_ALLOWED_ERR);
                 return;
               }
               authenticatorAttachment = Some(maybeAuthenticatorAttachment);
             }
 
             nsTArray<WebAuthnExtensionResult> extensions;
-            bool usedAppId;
-            rv = aValue->GetUsedAppId(&usedAppId);
-            if (rv != NS_ERROR_NOT_AVAILABLE) {
-              if (NS_FAILED(rv)) {
-                Unused << parent->SendAbort(aTransactionId,
-                                            NS_ERROR_DOM_NOT_ALLOWED_ERR);
+            if (requestIncludesAppId) {
+              bool usedAppId = false;
+              rv = signResult->GetUsedAppId(&usedAppId);
+              if (rv != NS_ERROR_NOT_AVAILABLE && NS_FAILED(rv)) {
                 return;
               }
               extensions.AppendElement(WebAuthnExtensionResultAppId(usedAppId));
+            }
+
+            nsTArray<uint8_t> largeBlobValue;
+            rv = signResult->GetLargeBlobValue(largeBlobValue);
+            if (rv != NS_ERROR_NOT_AVAILABLE) {
+              if (NS_FAILED(rv)) {
+                return;
+              }
+              extensions.AppendElement(WebAuthnExtensionResultLargeBlob(
+                  true, largeBlobValue, false));
+            } else if (requestIncludesLargeBlobRead) {
+              // Signal a read error by setting both flags.
+              extensions.AppendElement(
+                  WebAuthnExtensionResultLargeBlob(true, largeBlobValue, true));
+            } else {
+              // Read and write operations are mutually exclusive, so we only
+              // check for a write result if the read result is not available.
+              bool largeBlobWritten;
+              rv = signResult->GetLargeBlobWritten(&largeBlobWritten);
+              if (rv != NS_ERROR_NOT_AVAILABLE) {
+                if (NS_FAILED(rv)) {
+                  return;
+                }
+                extensions.AppendElement(WebAuthnExtensionResultLargeBlob(
+                    false, largeBlobValue, largeBlobWritten));
+              }
+            }
+
+            {
+              Maybe<WebAuthnExtensionPrfValues> prfResults;
+              bool prfMaybe = false;
+              rv = signResult->GetPrfMaybe(&prfMaybe);
+              if (rv == NS_OK && prfMaybe) {
+                nsTArray<uint8_t> prfResultsFirst;
+                rv = signResult->GetPrfResultsFirst(prfResultsFirst);
+                if (rv != NS_ERROR_NOT_AVAILABLE) {
+                  if (NS_WARN_IF(NS_FAILED(rv))) {
+                    return;
+                  }
+
+                  bool prfResultsSecondMaybe = false;
+                  nsTArray<uint8_t> prfResultsSecond;
+                  rv = signResult->GetPrfResultsSecond(prfResultsSecond);
+                  if (rv != NS_ERROR_NOT_AVAILABLE) {
+                    if (NS_WARN_IF(NS_FAILED(rv))) {
+                      return;
+                    }
+                    prfResultsSecondMaybe = true;
+                  }
+
+                  prfResults = Some(WebAuthnExtensionPrfValues(
+                      prfResultsFirst, prfResultsSecondMaybe,
+                      prfResultsSecond));
+                } else {
+                  prfResults = Nothing();
+                }
+
+                extensions.AppendElement(
+                    WebAuthnExtensionResultPrf(Nothing(), prfResults));
+              }
             }
 
             WebAuthnGetAssertionResult result(
                 clientData, credentialId, signature, authenticatorData,
                 extensions, userHandle, authenticatorAttachment);
 
-            Unused << parent->SendConfirmSign(aTransactionId, result);
-          },
-          [this, parent,
-           aTransactionId](const WebAuthnSignPromise::RejectValueType aValue) {
-            CompleteTransaction();
-            Unused << parent->SendAbort(aTransactionId, aValue);
+            rejectWithNotAllowed.release();
+            resolver(result);
           })
       ->Track(mSignPromiseRequest);
 
-  RefPtr<WebAuthnSignArgs> args(new WebAuthnSignArgs(aTransactionInfo));
-
-  nsresult rv = mWebAuthnService->GetAssertion(
-      aTransactionId, aTransactionInfo.BrowsingContextId(), args,
-      promiseHolder);
+  uint64_t browsingContextId = manager->GetBrowsingContext()->Top()->Id();
+  bool privateBrowsing = principal->GetIsInPrivateBrowsing();
+  auto args = MakeRefPtr<WebAuthnSignArgs>(origin, clientDataJSON,
+                                           privateBrowsing, aTransactionInfo);
+  rv = mWebAuthnService->GetAssertion(transactionId, browsingContextId, args,
+                                      promiseHolder);
   if (NS_FAILED(rv)) {
     promiseHolder->Reject(NS_ERROR_DOM_NOT_ALLOWED_ERR);
   }
@@ -286,12 +554,10 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestSign(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestCancel(
-    const Tainted<uint64_t>& aTransactionId) {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
+mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestCancel() {
+  MOZ_ASSERT(NS_IsMainThread());
 
-  if (mTransactionId.isNothing() ||
-      !MOZ_IS_VALID(aTransactionId, mTransactionId.ref() == aTransactionId)) {
+  if (mTransactionId.isNothing()) {
     return IPC_OK();
   }
 
@@ -301,6 +567,8 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestCancel(
 
 mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestIsUVPAA(
     RequestIsUVPAAResolver&& aResolver) {
+  MOZ_ASSERT(NS_IsMainThread());
+
 #ifdef MOZ_WIDGET_ANDROID
   // Try the nsIWebAuthnService. If we're configured for tests we
   // will get a result. Otherwise we expect NS_ERROR_NOT_IMPLEMENTED.
@@ -321,33 +589,24 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestIsUVPAA(
   }
 
   // The GeckoView implementation of
-  // isUserVerifiyingPlatformAuthenticatorAvailable does not block, but we must
-  // call it on the main thread. It returns a MozPromise which we can ->Then to
-  // call aResolver on the IPDL background thread.
-  //
-  // Bug 1550788: there is an unnecessary layer of dispatching here: ipdl ->
-  // main -> a background thread. Other platforms just do ipdl -> a background
-  // thread.
+  // isUserVerifiyingPlatformAuthenticatorAvailable dispatches the work to a
+  // background thread and returns a MozPromise which we can ->Then to call
+  // aResolver on the current thread.
   nsCOMPtr<nsISerialEventTarget> target = GetCurrentSerialEventTarget();
-  nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
-      __func__, [target, resolver = std::move(aResolver)]() {
-        auto result = java::WebAuthnTokenManager::
-            WebAuthnIsUserVerifyingPlatformAuthenticatorAvailable();
-        auto geckoResult = java::GeckoResult::LocalRef(std::move(result));
-        MozPromise<bool, bool, false>::FromGeckoResult(geckoResult)
-            ->Then(
-                target, __func__,
-                [resolver](
-                    const MozPromise<bool, bool, false>::ResolveOrRejectValue&
-                        aValue) {
-                  if (aValue.IsResolve()) {
-                    resolver(aValue.ResolveValue());
-                  } else {
-                    resolver(false);
-                  }
-                });
-      }));
-  NS_DispatchToMainThread(runnable.forget());
+  auto result = java::WebAuthnTokenManager::
+      WebAuthnIsUserVerifyingPlatformAuthenticatorAvailable();
+  auto geckoResult = java::GeckoResult::LocalRef(std::move(result));
+  MozPromise<bool, bool, false>::FromGeckoResult(geckoResult)
+      ->Then(target, __func__,
+             [resolver = std::move(aResolver)](
+                 const MozPromise<bool, bool, false>::ResolveOrRejectValue&
+                     aValue) {
+               if (aValue.IsResolve()) {
+                 resolver(aValue.ResolveValue());
+               } else {
+                 resolver(false);
+               }
+             });
   return IPC_OK();
 
 #else
@@ -377,29 +636,10 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestIsUVPAA(
 #endif
 }
 
-mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvDestroyMe() {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
-
-  // The child was disconnected from the WebAuthnManager instance and will send
-  // no further messages. It is kept alive until we delete it explicitly.
-
-  // The child should have cancelled any active transaction. This means
-  // we expect no more messages to the child. We'll crash otherwise.
-
-  // The IPC roundtrip is complete. No more messages, hopefully.
-  IProtocol* mgr = Manager();
-  if (!Send__delete__(this)) {
-    return IPC_FAIL_NO_REASON(mgr);
-  }
-
-  return IPC_OK();
-}
-
 void WebAuthnTransactionParent::ActorDestroy(ActorDestroyReason aWhy) {
-  ::mozilla::ipc::AssertIsOnBackgroundThread();
-
   // Called either by Send__delete__() in RecvDestroyMe() above, or when
   // the channel disconnects. Ensure the token manager forgets about us.
+  MOZ_ASSERT(NS_IsMainThread());
 
   if (mTransactionId.isSome()) {
     DisconnectTransaction();

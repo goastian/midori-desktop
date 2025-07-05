@@ -4,10 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ipc/IOThreadChild.h"
-
 #include "ContentProcess.h"
-#include "base/shared_memory.h"
 #include "mozilla/Preferences.h"
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
@@ -22,8 +19,6 @@
 #include "mozilla/GeckoArgs.h"
 #include "mozilla/Omnijar.h"
 #include "nsCategoryManagerUtils.h"
-
-using mozilla::ipc::IOThreadChild;
 
 namespace mozilla::dom {
 
@@ -58,21 +53,28 @@ static nsresult GetGREDir(nsIFile** aResult) {
   return NS_OK;
 }
 
-ContentProcess::ContentProcess(ProcessId aParentPid,
+ContentProcess::ContentProcess(IPC::Channel::ChannelHandle aClientChannel,
+                               ProcessId aParentPid,
                                const nsID& aMessageChannelId)
-    : ProcessChild(aParentPid, aMessageChannelId) {
+    : ProcessChild(std::move(aClientChannel), aParentPid, aMessageChannelId) {
   NS_LogInit();
 }
 
 ContentProcess::~ContentProcess() { NS_LogTerm(); }
 
 bool ContentProcess::Init(int aArgc, char* aArgv[]) {
-  Maybe<uint64_t> childID = geckoargs::sChildID.Get(aArgc, aArgv);
+  InfallibleInit(aArgc, aArgv);
+  return true;
+}
+
+void ContentProcess::InfallibleInit(int aArgc, char* aArgv[]) {
   Maybe<bool> isForBrowser = Nothing();
   Maybe<const char*> parentBuildID =
       geckoargs::sParentBuildID.Get(aArgc, aArgv);
-  Maybe<uint64_t> jsInitHandle;
-  Maybe<uint64_t> jsInitLen = geckoargs::sJsInitLen.Get(aArgc, aArgv);
+
+  // command line: -jsInitHandle handle
+  Maybe<mozilla::ipc::ReadOnlySharedMemoryHandle> jsInitHandle =
+      geckoargs::sJsInitHandle.Get(aArgc, aArgv);
 
   nsCOMPtr<nsIFile> appDirArg;
   Maybe<const char*> appDir = geckoargs::sAppDir.Get(aArgc, aArgv);
@@ -99,11 +101,6 @@ bool ContentProcess::Init(int aArgc, char* aArgv[]) {
     isForBrowser = Some(false);
   }
 
-  // command line: [-jsInitHandle handle] -jsInitLen length
-#ifdef XP_WIN
-  jsInitHandle = geckoargs::sJsInitHandle.Get(aArgc, aArgv);
-#endif
-
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   nsCOMPtr<nsIFile> profileDir;
   bool flag;
@@ -122,33 +119,35 @@ bool ContentProcess::Init(int aArgc, char* aArgv[]) {
 #endif /* XP_MACOSX && MOZ_SANDBOX */
 
   // Did we find all the mandatory flags?
-  if (childID.isNothing() || isForBrowser.isNothing() ||
-      parentBuildID.isNothing()) {
-    return false;
+  if (isForBrowser.isNothing()) {
+    MOZ_CRASH("isForBrowser flag missing");
+  }
+  if (parentBuildID.isNothing()) {
+    MOZ_CRASH("parentBuildID flag missing");
   }
 
   if (!ProcessChild::InitPrefs(aArgc, aArgv)) {
-    return false;
+    MOZ_CRASH("InitPrefs failed");
   }
 
-  if (!::mozilla::ipc::ImportSharedJSInit(jsInitHandle.valueOr(0),
-                                          jsInitLen.valueOr(0))) {
-    return false;
+  if (jsInitHandle &&
+      !::mozilla::ipc::ImportSharedJSInit(jsInitHandle.extract())) {
+    MOZ_CRASH("ImportSharedJSInit failed");
   }
 
-  mContent.Init(TakeInitialEndpoint(), *parentBuildID, *childID, *isForBrowser);
+  mContent.Init(TakeInitialEndpoint(), *parentBuildID, *isForBrowser);
 
   nsCOMPtr<nsIFile> greDir;
   nsresult rv = GetGREDir(getter_AddRefs(greDir));
   if (NS_FAILED(rv)) {
-    return false;
+    MOZ_CRASH("GetGREDir failed");
   }
 
   nsCOMPtr<nsIFile> xpcomAppDir = appDirArg ? appDirArg : greDir;
 
   rv = mDirProvider.Initialize(xpcomAppDir, greDir);
   if (NS_FAILED(rv)) {
-    return false;
+    MOZ_CRASH("mDirProvider.Initialize failed");
   }
 
   // Handle the -greomni/-appomni flags (unless the forkserver already
@@ -159,7 +158,7 @@ bool ContentProcess::Init(int aArgc, char* aArgv[]) {
 
   rv = NS_InitXPCOM(nullptr, xpcomAppDir, &mDirProvider);
   if (NS_FAILED(rv)) {
-    return false;
+    MOZ_CRASH("NS_InitXPCOM failed");
   }
 
   // "app-startup" is the name of both the category and the event
@@ -178,8 +177,6 @@ bool ContentProcess::Init(int aArgc, char* aArgv[]) {
   // background thread since we'll likely need database information very soon.
   mozilla::ipc::BackgroundChild::Startup();
   mozilla::ipc::BackgroundChild::InitContentStarter(&mContent);
-
-  return true;
 }
 
 // Note: CleanUp() never gets called in non-debug builds because we exit early

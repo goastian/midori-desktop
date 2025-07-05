@@ -46,6 +46,7 @@ class nsIHttpChannel;
 class nsIRequest;
 class nsISerialEventTarget;
 class nsIWebProgress;
+class nsPIDOMWindowInner;
 class nsWebBrowser;
 class nsDocShellLoadState;
 
@@ -85,12 +86,8 @@ class SessionStoreChild;
 class RequestData;
 class WebProgressData;
 
-#define DOM_BROWSERCHILD_IID                         \
-  {                                                  \
-    0x58a5775d, 0xba05, 0x45bf, {                    \
-      0xbd, 0xb8, 0xd7, 0x61, 0xf9, 0x01, 0x01, 0x31 \
-    }                                                \
-  }
+#define DOM_BROWSERCHILD_IID \
+  {0x58a5775d, 0xba05, 0x45bf, {0xbd, 0xb8, 0xd7, 0x61, 0xf9, 0x01, 0x01, 0x31}}
 
 class BrowserChildMessageManager : public ContentFrameMessageManager,
                                    public nsIMessageSender,
@@ -188,7 +185,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
     return mUniqueId;
   }
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(DOM_BROWSERCHILD_IID)
+  NS_INLINE_DECL_STATIC_IID(DOM_BROWSERCHILD_IID)
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIWEBBROWSERCHROME
   NS_DECL_NSIINTERFACEREQUESTOR
@@ -284,6 +281,11 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   mozilla::ipc::IPCResult RecvDynamicToolbarOffsetChanged(
       const mozilla::ScreenIntCoord& aOffset);
 
+  mozilla::ipc::IPCResult RecvKeyboardHeightChanged(
+      const mozilla::ScreenIntCoord& aHeight);
+
+  mozilla::ipc::IPCResult RecvAndroidPipModeChanged(bool aPipMode);
+
   mozilla::ipc::IPCResult RecvActivate(uint64_t aActionId);
 
   mozilla::ipc::IPCResult RecvDeactivate(uint64_t aActionId);
@@ -314,6 +316,13 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   mozilla::ipc::IPCResult RecvNormalPriorityRealMouseButtonEvent(
       const mozilla::WidgetMouseEvent& aEvent, const ScrollableLayerGuid& aGuid,
       const uint64_t& aInputBlockId);
+
+  mozilla::ipc::IPCResult RecvRealPointerButtonEvent(
+      const mozilla::WidgetPointerEvent& aEvent,
+      const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId);
+  mozilla::ipc::IPCResult RecvNormalPriorityRealPointerButtonEvent(
+      const mozilla::WidgetPointerEvent& aEvent,
+      const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId);
 
   mozilla::ipc::IPCResult RecvRealMouseEnterExitWidgetEvent(
       const mozilla::WidgetMouseEvent& aEvent, const ScrollableLayerGuid& aGuid,
@@ -390,6 +399,12 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   mozilla::ipc::IPCResult RecvNormalPrioritySelectionEvent(
       const mozilla::WidgetSelectionEvent& aEvent);
 
+  mozilla::ipc::IPCResult RecvSimpleContentCommandEvent(
+      const mozilla::EventMessage& aMessage);
+
+  mozilla::ipc::IPCResult RecvNormalPrioritySimpleContentCommandEvent(
+      const mozilla::EventMessage& aMessage);
+
   mozilla::ipc::IPCResult RecvInsertText(const nsAString& aStringToInsert);
 
   mozilla::ipc::IPCResult RecvUpdateRemoteStyle(
@@ -397,6 +412,15 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
 
   mozilla::ipc::IPCResult RecvNormalPriorityInsertText(
       const nsAString& aStringToInsert);
+
+  mozilla::ipc::IPCResult RecvReplaceText(const nsString& aReplaceSrcString,
+                                          const nsString& aStringToInsert,
+                                          uint32_t aOffset,
+                                          bool aPreventSetSelection);
+
+  mozilla::ipc::IPCResult RecvNormalPriorityReplaceText(
+      const nsString& aReplaceSrcString, const nsString& aStringToInsert,
+      uint32_t aOffset, bool aPreventSetSelection);
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvPasteTransferable(
@@ -411,7 +435,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       const IPCTabContext& aContext);
 
   mozilla::ipc::IPCResult RecvSafeAreaInsetsChanged(
-      const mozilla::ScreenIntMargin& aSafeAreaInsets);
+      const mozilla::LayoutDeviceIntMargin& aSafeAreaInsets);
 
 #ifdef ACCESSIBILITY
   PDocAccessibleChild* AllocPDocAccessibleChild(
@@ -536,13 +560,16 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   ScreenIntCoord GetDynamicToolbarMaxHeight() const {
     return mDynamicToolbarMaxHeight;
   };
+  mozilla::ScreenIntCoord GetKeyboardHeight() const { return mKeyboardHeight; }
+
+  bool InAndroidPipMode() const { return mInAndroidPipMode; }
 
   bool IPCOpen() const { return mIPCOpen; }
 
   const mozilla::layers::CompositorOptions& GetCompositorOptions() const;
   bool AsyncPanZoomEnabled() const;
 
-  ScreenIntSize GetInnerSize();
+  LayoutDeviceIntSize GetInnerSize();
   CSSSize GetUnscaledInnerSize() { return mUnscaledInnerSize; }
 
   Maybe<nsRect> GetVisibleRect() const;
@@ -614,13 +641,35 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   // may reentry the event loop and access to the same hashtable. It's
   // called when dispatching some mouse events other than mousemove.
   void FlushAllCoalescedMouseData();
+
   void ProcessPendingCoalescedMouseDataAndDispatchEvents();
 
   void ProcessPendingCoalescedTouchData();
 
+  /**
+   * Dispatch an eMouseRawUpdate event for dispatching ePointerRawUpdate event
+   * into the DOM immediately when aPendingEvent will be dispatched later.
+   * This does nothing if there is no window which has at least one
+   * `pointerrawupdate` event listener.
+   */
+  void HandleMouseRawUpdateEvent(const WidgetMouseEvent& aPendingMouseEvent,
+                                 const ScrollableLayerGuid& aGuid,
+                                 const uint64_t& aInputBlockId);
+
   void HandleRealMouseButtonEvent(const WidgetMouseEvent& aEvent,
                                   const ScrollableLayerGuid& aGuid,
                                   const uint64_t& aInputBlockId);
+
+  /**
+   * Dispatch an eTouchRawUpdate event for dispatching ePointerRawUpdate event
+   * into the DOM immediately when aPendingEvent will be dispatched later.
+   * This does nothing if there is no window which has at least one
+   * `pointerrawupdate` event listener.
+   */
+  void HandleTouchRawUpdateEvent(const WidgetTouchEvent& aPendingTouchEvent,
+                                 const ScrollableLayerGuid& aGuid,
+                                 const uint64_t& aInputBlockId,
+                                 const nsEventStatus& aApzResponse);
 
   void SetCancelContentJSEpoch(int32_t aEpoch) {
     mCancelContentJSEpoch = aEpoch;
@@ -681,9 +730,17 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       const LayoutDeviceIntPoint& aPt, uint32_t aDropEffect,
       uint32_t aDragAction, nsIPrincipal* aPrincipal,
       nsIContentSecurityPolicy* aCsp);
+
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvDispatchToDropTargetAndResumeEndDragSession(
-      bool aShouldDrop);
+      bool aShouldDrop, nsTHashSet<nsString>&& aAllowedFilesPaths);
+
+  void OnPointerRawUpdateEventListenerAdded(const nsPIDOMWindowInner* aWindow);
+  void OnPointerRawUpdateEventListenerRemoved(
+      const nsPIDOMWindowInner* aWindow);
+  [[nodiscard]] bool HasPointerRawUpdateEventListeners() const {
+    return !!mPointerRawUpdateWindowCount;
+  }
 
  protected:
   virtual ~BrowserChild();
@@ -731,7 +788,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
 
   bool HasValidInnerSize();
 
-  ScreenIntRect GetOuterRect();
+  LayoutDeviceIntRect GetOuterRect();
 
   void SetUnscaledInnerSize(const CSSSize& aSize) {
     mUnscaledInnerSize = aSize;
@@ -796,6 +853,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   Maybe<CodeNameIndex> mPreviousConsumedKeyDownCode;
   uint32_t mChromeFlags;
   uint32_t mMaxTouchPoints;
+  // The number of windows which may have ePointerRawUpdate event listener.
+  uint32_t mPointerRawUpdateWindowCount = 0;
   layers::LayersId mLayersId;
   CSSRect mUnscaledOuterRect;
   Maybe<bool> mLayersConnected;
@@ -810,15 +869,19 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   // NOTE: This value is valuable only for the top level browser.
   LayoutDeviceIntPoint mChromeOffset;
   ScreenIntCoord mDynamicToolbarMaxHeight;
+  // The software keyboard height.
+  ScreenIntCoord mKeyboardHeight;
   TabId mUniqueId;
 
-    // Position of a delayed drop event.
+  // Position of a delayed drop event.
   LayoutDeviceIntPoint mDelayedDropPoint;
 
   bool mDidFakeShow : 1;
   bool mTriedBrowserInit : 1;
   bool mHasValidInnerSize : 1;
   bool mDestroyed : 1;
+  // Whether we're in Android's PiP mode.
+  bool mInAndroidPipMode : 1;
 
   // Whether or not this browser is the child part of the top level PBrowser
   // actor in a remote browser.
@@ -897,8 +960,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
 
   DISALLOW_EVIL_CONSTRUCTORS(BrowserChild);
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(BrowserChild, DOM_BROWSERCHILD_IID)
 
 }  // namespace dom
 }  // namespace mozilla

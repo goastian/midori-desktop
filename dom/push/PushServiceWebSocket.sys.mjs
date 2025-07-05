@@ -41,13 +41,18 @@ const kDELIVERY_REASON_TO_CODE = {
   [Ci.nsIPushErrorReporter.DELIVERY_INTERNAL_ERROR]: 303,
 };
 
+const kERROR_CODE_TO_GLEAN_LABEL = {
+  [Ci.nsIPushErrorReporter.ACK_DECRYPTION_ERROR]: "decryption_error",
+  [Ci.nsIPushErrorReporter.ACK_NOT_DELIVERED]: "not_delivered",
+  [Ci.nsIPushErrorReporter.DELIVERY_UNCAUGHT_EXCEPTION]: "uncaught_exception",
+  [Ci.nsIPushErrorReporter.DELIVERY_UNHANDLED_REJECTION]: "unhandled_rejection",
+  [Ci.nsIPushErrorReporter.DELIVERY_INTERNAL_ERROR]: "internal_error",
+};
+
 const prefs = Services.prefs.getBranch("dom.push.");
 
 ChromeUtils.defineLazyGetter(lazy, "console", () => {
-  let { ConsoleAPI } = ChromeUtils.importESModule(
-    "resource://gre/modules/Console.sys.mjs"
-  );
-  return new ConsoleAPI({
+  return console.createInstance({
     maxLogLevelPref: "dom.push.loglevel",
     prefix: "PushServiceWebSocket",
   });
@@ -137,7 +142,7 @@ export var PushServiceWebSocket = {
   },
 
   observe(aSubject, aTopic, aData) {
-    if (aTopic == "nsPref:changed" && aData == "dom.push.userAgentID") {
+    if (aTopic == "nsPref:changed" && aData == "userAgentID") {
       this._onUAIDChanged();
     } else if (aTopic == "timer-callback") {
       this._onTimerFired(aSubject);
@@ -720,6 +725,7 @@ export var PushServiceWebSocket = {
           "handleDataUpdate: Ignoring duplicate message",
           update.version
         );
+        Glean.webPush.detectedDuplicatedMessageIds.add();
         return null;
       }
       record.noteRecentMessageID(update.version);
@@ -846,6 +852,7 @@ export var PushServiceWebSocket = {
     if (!code) {
       throw new Error("Invalid delivery error reason");
     }
+    Glean.webPush.errorCode[kERROR_CODE_TO_GLEAN_LABEL[reason]].add();
     let data = { messageType: "nack", version: messageID, code };
     this._queueRequest(data);
   },
@@ -855,6 +862,9 @@ export var PushServiceWebSocket = {
     let code = kACK_STATUS_TO_CODE[status];
     if (!code) {
       throw new Error("Invalid ack status");
+    }
+    if (code > 100) {
+      Glean.webPush.errorCode[kERROR_CODE_TO_GLEAN_LABEL[status]].add();
     }
     let data = { messageType: "ack", updates: [{ channelID, version, code }] };
     this._queueRequest(data);
@@ -877,15 +887,16 @@ export var PushServiceWebSocket = {
       });
     }
 
-    return this._sendRequestForReply(record, data).then(record => {
+    return this._sendRequestForReply(record, data).then(requestRecord => {
       if (!this._dataEnabled) {
-        return record;
+        return requestRecord;
       }
       return PushCrypto.generateKeys().then(([publicKey, privateKey]) => {
-        record.p256dhPublicKey = publicKey;
-        record.p256dhPrivateKey = privateKey;
-        record.authenticationSecret = PushCrypto.generateAuthenticationSecret();
-        return record;
+        requestRecord.p256dhPublicKey = publicKey;
+        requestRecord.p256dhPrivateKey = privateKey;
+        requestRecord.authenticationSecret =
+          PushCrypto.generateAuthenticationSecret();
+        return requestRecord;
       });
     });
   },

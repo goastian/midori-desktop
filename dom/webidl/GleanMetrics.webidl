@@ -50,9 +50,11 @@ interface GleanDatetime : GleanMetric {
    * The internal value will store the local timezone.
    *
    * Note: The metric's time_unit affects the resolution of the value, not the
-   *       unit of this function's parameter (which is always PRTime/nanos).
+   *       unit of this function's parameter (which is always PRTime/
+   *       microseconds).
    *
-   * @param aValue The (optional) time value as PRTime (nanoseconds since epoch).
+   * @param aValue The (optional) time value as PRTime (microseconds since
+   *        epoch).
    *        Defaults to local now.
    */
   undefined set(optional long long aValue);
@@ -143,6 +145,30 @@ interface GleanTimingDistribution : GleanMetric {
    * @param aId The TimerID whose `start` you wish to abort.
    */
   undefined cancel(unsigned long long aId);
+
+  /**
+   * Accumulates the provided signed samples in the metric.
+   *
+   * Sample values must be in the unit declared declared by the instance of the metric type.
+   *
+   * @param aSamples - The vector holding the samples to be recorded by the metric.
+   *
+   * Notes: Discards any negative value in `samples`
+   * and report an `ErrorType::InvalidValue` for each of them.
+   */
+  undefined accumulateSamples(sequence<long long> aSamples);
+
+  /**
+   * Accumulates the provided single signed sample in the metric.
+   *
+   * Sample values must be in the unit declared declared by the instance of the metric type.
+   *
+   * @param aSample - The sample to be recorded by the metric.
+   *
+   * Notes: Discards any negative value of `sample` and reports an
+   * `ErrorType::InvalidValue`.
+   */
+  undefined accumulateSingleSample(long long aSample);
 
   /**
    * **Test-only API**
@@ -434,7 +460,7 @@ interface GleanEvent : GleanMetric {
    *
    * @param aExtra An (optional) map of extra values.
    */
-  undefined _record(optional record<UTF8String, UTF8String?> aExtra);
+  undefined _record(optional record<UTF8String, UTF8String?>? aExtra);
 
   /**
    * **Test-only API**

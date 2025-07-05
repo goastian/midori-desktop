@@ -224,7 +224,7 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   void BindToTree(mozilla::dom::BindContext&, nsINode& aParent);
   void UnbindFromTree();
 
-  void OnLoadComplete(imgIRequest* aRequest, nsresult aStatus);
+  void OnLoadComplete(imgIRequest* aRequest, uint32_t aImageStatus);
   void OnUnlockedDraw();
   void OnImageIsAnimated(imgIRequest* aRequest);
 
@@ -263,8 +263,13 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
     Sync,
   };
 
-  static const nsAttrValue::EnumTable kDecodingTable[];
-  static const nsAttrValue::EnumTable* kDecodingTableDefault;
+  static constexpr nsAttrValue::EnumTableEntry kDecodingTable[] = {
+      {"auto", nsImageLoadingContent::ImageDecodingType::Auto},
+      {"async", nsImageLoadingContent::ImageDecodingType::Async},
+      {"sync", nsImageLoadingContent::ImageDecodingType::Sync},
+  };
+  static constexpr const nsAttrValue::EnumTableEntry* kDecodingTableDefault =
+      &nsImageLoadingContent::kDecodingTable[0];
 
  private:
   /**
@@ -331,25 +336,6 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   };
 
   /**
-   * Struct to report state changes
-   */
-  struct AutoStateChanger {
-    AutoStateChanger(nsImageLoadingContent* aImageContent, bool aNotify)
-        : mImageContent(aImageContent), mNotify(aNotify) {
-      mImageContent->mStateChangerDepth++;
-    }
-    ~AutoStateChanger() {
-      mImageContent->mStateChangerDepth--;
-      mImageContent->UpdateImageState(mNotify);
-    }
-
-    nsImageLoadingContent* mImageContent;
-    bool mNotify;
-  };
-
-  friend struct AutoStateChanger;
-
-  /**
    * Method to fire an event once we know what's going on with the image load.
    *
    * @param aEventType "load", or "error" depending on how things went
@@ -391,8 +377,9 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
    * request.
    *
    * @param aImageLoadType The ImageLoadType for this request
+   * @param aNewURI The uri that we're going to load
    */
-  RefPtr<imgRequestProxy>& PrepareNextRequest(ImageLoadType aImageLoadType);
+  RefPtr<imgRequestProxy>& PrepareNextRequest(ImageLoadType, nsIURI* aNewURI);
 
   /**
    * Returns a COMPtr reference to the current/pending image requests, cleaning
@@ -401,9 +388,11 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
    * Clear*Request(NS_BINDING_ABORTED) instead.
    *
    * @param aImageLoadType The ImageLoadType for this request
+   * @param aNewURI The uri that we're going to load
    */
-  RefPtr<imgRequestProxy>& PrepareCurrentRequest(ImageLoadType aImageLoadType);
-  RefPtr<imgRequestProxy>& PreparePendingRequest(ImageLoadType aImageLoadType);
+  RefPtr<imgRequestProxy>& PrepareCurrentRequest(ImageLoadType,
+                                                 nsIURI* aNewURI);
+  RefPtr<imgRequestProxy>& PreparePendingRequest(ImageLoadType);
 
   /**
    * Switch our pending request to be our current request.
@@ -423,13 +412,6 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   void ClearPendingRequest(
       nsresult aReason,
       const Maybe<OnNonvisible>& aNonvisibleAction = Nothing());
-
-  /**
-   * Reset animation of the current request if
-   * |mNewRequestsWillNeedAnimationReset| was true when the request was
-   * prepared.
-   */
-  void ResetAnimationIfNeeded();
 
   /**
    * Static helper method to tell us if we have the size of a request. The
@@ -467,13 +449,11 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   uint8_t mPendingRequestFlags = 0;
 
   enum {
-    // Set if the request needs ResetAnimation called on it.
-    REQUEST_NEEDS_ANIMATION_RESET = 1 << 0,
     // Set if the request is currently tracked with the document.
-    REQUEST_IS_TRACKED = 1 << 1,
+    REQUEST_IS_TRACKED = 1 << 0,
     // Set if this is an imageset request, such as from <img srcset> or
     // <picture>
-    REQUEST_IS_IMAGESET = 1 << 2,
+    REQUEST_IS_IMAGESET = 1 << 1,
   };
 
   // If the image was blocked or if there was an error loading, it's nice to
@@ -556,25 +536,8 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
    */
   uint32_t mRequestGeneration;
 
-  bool mLoadingEnabled : 1;
-
  protected:
-  /**
-   * The state we had the last time we checked whether we needed to notify the
-   * document of a state change.  These are maintained by UpdateImageState.
-   */
-  bool mLoading : 1;
-
-  /**
-   * A hack to get animations to reset, see bug 594771. On requests
-   * that originate from setting .src, we mark them for needing their animation
-   * reset when they are ready. mNewRequestsWillNeedAnimationReset is set to
-   * true while preparing such requests (as a hack around needing to change an
-   * interface), and the other two booleans store which of the current
-   * and pending requests are of the sort that need their animation restarted.
-   */
-  bool mNewRequestsWillNeedAnimationReset : 1;
-
+  bool mLoadingEnabled : 1;
   /**
    * Flag to indicate whether the channel should be mark as urgent-start.
    * It should be set in *Element and passed to nsContentUtils::LoadImage.
@@ -586,29 +549,20 @@ class nsImageLoadingContent : public nsIImageLoadingContent {
   // Represents the image is deferred loading until this element gets visible.
   bool mLazyLoading : 1;
 
- private:
-  /* The number of nested AutoStateChangers currently tracking our state. */
-  uint8_t mStateChangerDepth;
+  // Whether we have a pending load task scheduled (HTMLImageElement only).
+  bool mHasPendingLoadTask : 1;
 
+  // If true, force frames to synchronously decode images on draw.
+  bool mSyncDecodingHint : 1;
+
+  // Whether we're in the doc responsive content set (HTMLImageElement only).
+  bool mInDocResponsiveContent : 1;
+
+ private:
   // Flags to indicate whether each of the current and pending requests are
   // registered with the refresh driver.
   bool mCurrentRequestRegistered;
   bool mPendingRequestRegistered;
-
-  // TODO:
-  // Bug 1353685: Should ServiceWorker call SetBlockedRequest?
-  //
-  // This member is used in SetBlockedRequest, if it's true, then this call is
-  // triggered from LoadImage.
-  // If this is false, it means this call is from other places like
-  // ServiceWorker, then we will ignore call to SetBlockedRequest for now.
-  //
-  // Also we use this variable to check if some evil code is reentering
-  // LoadImage.
-  bool mIsStartingImageLoad;
-
-  // If true, force frames to synchronously decode images on draw.
-  bool mSyncDecodingHint;
 };
 
 #endif  // nsImageLoadingContent_h__

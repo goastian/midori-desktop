@@ -84,14 +84,13 @@ class VideoSink : public MediaSink {
 
   void EnsureHighResTimersOnOnlyIfPlaying();
 
-  // Sets VideoQueue images into the VideoFrameContainer. Called on the shared
-  // state machine thread. The first aMaxFrames (at most) are set.
+  // Sets images and frame dimensions into the VideoFrameContainer. Called on
+  // the shared state machine thread.
   // aClockTime and aClockTimeStamp are used as the baseline for deriving
-  // timestamps for the frames; when omitted, aMaxFrames must be 1 and
-  // a null timestamp is passed to the VideoFrameContainer.
-  // If the VideoQueue is empty, this does nothing.
-  void RenderVideoFrames(int32_t aMaxFrames, int64_t aClockTime = 0,
-                         const TimeStamp& aClickTimeStamp = TimeStamp());
+  // timestamps for the frames.
+  // If aFrames is empty, this does nothing.
+  void RenderVideoFrames(Span<const RefPtr<VideoData>> aFrames,
+                         int64_t aClockTime, const TimeStamp& aClockTimeStamp);
 
   // Triggered while videosink is started, videosink becomes "playing" status,
   // or VideoQueue event arrived.
@@ -132,6 +131,10 @@ class VideoSink : public MediaSink {
   // The presentation end time of the last video frame which has been displayed.
   media::TimeUnit mVideoFrameEndTime;
 
+  // Total duration of sequential frames that have been dropped in this sink
+  // without any sent to the compositor
+  media::TimeUnit mDroppedInSinkSequenceDuration;
+  // Accounting for frames dropped in the compositor
   uint32_t mOldCompositorDroppedCount;
   uint32_t mPendingDroppedCount;
 
@@ -143,20 +146,11 @@ class VideoSink : public MediaSink {
   bool mHasVideo;
 
   // Used to trigger another update of rendered frames in next round.
-  DelayedScheduler mUpdateScheduler;
+  DelayedScheduler<TimeStamp> mUpdateScheduler;
 
   // Max frame number sent to compositor at a time.
   // Based on the pref value obtained in MDSM.
   const uint32_t mVideoQueueSendToCompositorSize;
-
-  // Talos tests for the compositor require at least one frame in the
-  // video queue so that the compositor has something to composit during
-  // the talos test when the decode is stressed. We have a minimum size
-  // on the video queue in order to facilitate this talos test.
-  // Note: Normal playback should not have a queue size of more than 0,
-  // otherwise A/V sync will be ruined! *Only* make this non-zero for
-  // testing purposes.
-  const uint32_t mMinVideoQueueSize;
 
 #ifdef XP_WIN
   // Whether we've called timeBeginPeriod(1) to request high resolution

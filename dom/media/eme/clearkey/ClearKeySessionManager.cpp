@@ -35,7 +35,7 @@ using std::function;
 using std::string;
 using std::vector;
 
-ClearKeySessionManager::ClearKeySessionManager(Host_10* aHost)
+ClearKeySessionManager::ClearKeySessionManager(Host_11* aHost)
     : mDecryptionManager(ClearKeyDecryptionManager::Get()) {
   CK_LOGD("ClearKeySessionManager ctor %p", this);
   AddRef();
@@ -142,6 +142,7 @@ void ClearKeySessionManager::CreateSession(uint32_t aPromiseId,
     // request, whether or not another session has sent a request with the same
     // key ID. Otherwise a script can end up waiting for another script to
     // respond to the request (which may not necessarily happen).
+    CK_LOGARRAY("Key ID: ", it->data(), it->size());
     neededKeys.push_back(*it);
     mDecryptionManager->ExpectKeyId(*it);
   }
@@ -263,14 +264,14 @@ void ClearKeySessionManager::PersistentSessionDataLoaded(
     keyPairs.push_back(keyPair);
 
     KeyInformation keyInfo = {};
-    keyInfo.key_id = &keyPairs.back().mKeyId[0];
+    keyInfo.key_id = keyPairs.back().mKeyId.data();
     keyInfo.key_id_size = keyPair.mKeyId.size();
     keyInfo.status = KeyStatus::kUsable;
 
     keyInfos.push_back(keyInfo);
   }
 
-  mHost->OnSessionKeysChange(&aSessionId[0], aSessionId.size(), true,
+  mHost->OnSessionKeysChange(aSessionId.data(), aSessionId.size(), true,
                              keyInfos.data(), keyInfos.size());
 
   mHost->OnResolveNewSessionPromise(aPromiseId, aSessionId.c_str(),
@@ -351,7 +352,7 @@ void ClearKeySessionManager::UpdateSession(uint32_t aPromiseId,
     mKeyIds.insert(keyPair.mKeyId);
 
     KeyInformation keyInfo = {};
-    keyInfo.key_id = &keyPair.mKeyId[0];
+    keyInfo.key_id = keyPair.mKeyId.data();
     keyInfo.key_id_size = keyPair.mKeyId.size();
     keyInfo.status = KeyStatus::kUsable;
 

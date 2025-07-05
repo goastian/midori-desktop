@@ -11,9 +11,10 @@
 #include "VideoUtils.h"
 #include "mozilla/EMEUtils.h"
 #include "mozilla/Logging.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomMediaEmeMetrics.h"
+#include "mozilla/glean/DomMediaMetrics.h"
+#include "mozilla/glean/DomMediaPlatformsWmfMetrics.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla {
@@ -22,33 +23,6 @@ LazyLogModule gTelemetryProbesReporterLog("TelemetryProbesReporter");
 #define LOG(msg, ...)                                   \
   MOZ_LOG(gTelemetryProbesReporterLog, LogLevel::Debug, \
           ("TelemetryProbesReporter=%p, " msg, this, ##__VA_ARGS__))
-
-static const char* ToVisibilityStr(
-    TelemetryProbesReporter::Visibility aVisibility) {
-  switch (aVisibility) {
-    case TelemetryProbesReporter::Visibility::eVisible:
-      return "visible";
-    case TelemetryProbesReporter::Visibility::eInvisible:
-      return "invisible";
-    case TelemetryProbesReporter::Visibility::eInitial:
-      return "initial";
-    default:
-      MOZ_ASSERT_UNREACHABLE("invalid visibility");
-      return "unknown";
-  }
-}
-static const char* ToAudibilityStr(
-    TelemetryProbesReporter::AudibleState aAudibleState) {
-  switch (aAudibleState) {
-    case TelemetryProbesReporter::AudibleState::eAudible:
-      return "audible";
-    case TelemetryProbesReporter::AudibleState::eNotAudible:
-      return "inaudible";
-    default:
-      MOZ_ASSERT_UNREACHABLE("invalid audibility");
-      return "unknown";
-  }
-}
 
 static const char* ToMutedStr(bool aMuted) {
   return aMuted ? "muted" : "unmuted";
@@ -157,7 +131,8 @@ void TelemetryProbesReporter::OnPause(Visibility aVisibility) {
 void TelemetryProbesReporter::OnVisibilityChanged(Visibility aVisibility) {
   AssertOnMainThreadAndNotShutdown();
   LOG("Corresponding media element visibility change=%s -> %s",
-      ToVisibilityStr(mMediaElementVisibility), ToVisibilityStr(aVisibility));
+      EnumValueToString(mMediaElementVisibility),
+      EnumValueToString(aVisibility));
   if (aVisibility == Visibility::eInvisible) {
     StartInvisibleVideoTimeAccumulator();
   } else {
@@ -172,7 +147,8 @@ void TelemetryProbesReporter::OnVisibilityChanged(Visibility aVisibility) {
 
 void TelemetryProbesReporter::OnAudibleChanged(AudibleState aAudibleState) {
   AssertOnMainThreadAndNotShutdown();
-  LOG("Audibility changed, now %s", ToAudibilityStr(aAudibleState));
+  LOG("Audibility changed, now %s",
+      dom::AudioChannelService::EnumValueToString(aAudibleState));
   if (aAudibleState == AudibleState::eNotAudible) {
     if (!mInaudibleAudioPlayTime.IsStarted()) {
       StartInaudibleAudioTimeAccumulator();
@@ -271,32 +247,11 @@ void TelemetryProbesReporter::OnMediaContentChanged(MediaContent aContent) {
   mMediaContent = aContent;
 }
 
-void TelemetryProbesReporter::OnDecodeSuspended() {
-  AssertOnMainThreadAndNotShutdown();
-  // Suspended time should only be counted after starting accumulating invisible
-  // time.
-  if (!mInvisibleVideoPlayTime.IsStarted()) {
-    return;
-  }
-  LOG("Start time accumulation for video decoding suspension");
-  mVideoDecodeSuspendedTime.Start();
-  mOwner->DispatchAsyncTestingEvent(u"mozvideodecodesuspendedstarted"_ns);
-}
-
-void TelemetryProbesReporter::OnDecodeResumed() {
-  AssertOnMainThreadAndNotShutdown();
-  if (!mVideoDecodeSuspendedTime.IsStarted()) {
-    return;
-  }
-  LOG("Pause time accumulation for video decoding suspension");
-  mVideoDecodeSuspendedTime.Pause();
-  mOwner->DispatchAsyncTestingEvent(u"mozvideodecodesuspendedpaused"_ns);
-}
-
-void TelemetryProbesReporter::OntFirstFrameLoaded(
+void TelemetryProbesReporter::OnFirstFrameLoaded(
     const double aLoadedFirstFrameTime, const double aLoadedMetadataTime,
     const double aTotalWaitingDataTime, const double aTotalBufferingTime,
-    const FirstFrameLoadedFlagSet aFlags, const MediaInfo& aInfo) {
+    const FirstFrameLoadedFlagSet aFlags, const MediaInfo& aInfo,
+    const nsCString& aVideoDecoderName) {
   MOZ_ASSERT(aInfo.HasVideo());
   nsCString resolution;
   DetermineResolutionForTelemetry(aInfo, resolution);
@@ -330,9 +285,8 @@ void TelemetryProbesReporter::OntFirstFrameLoaded(
   if (const auto keySystem = mOwner->GetKeySystem()) {
     extraData.keySystem = Some(NS_ConvertUTF16toUTF8(*keySystem));
   }
-  if (aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding)) {
-    extraData.isHardwareDecoding = Some(true);
-  }
+  extraData.isHardwareDecoding =
+      Some(aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding));
 
 #ifdef MOZ_WIDGET_ANDROID
   if (aFlags.contains(FirstFrameLoadedFlag::IsHLS)) {
@@ -340,12 +294,17 @@ void TelemetryProbesReporter::OntFirstFrameLoaded(
   }
 #endif
 
+  extraData.decoderName = Some(aVideoDecoderName);
+  extraData.isHdr = Some(static_cast<bool>(
+      mMediaContent & MediaContent::MEDIA_HAS_COLOR_DEPTH_ABOVE_8));
+
   if (MOZ_LOG_TEST(gTelemetryProbesReporterLog, LogLevel::Debug)) {
     nsPrintfCString logMessage{
         "Media_Playabck First_Frame_Loaded event, time(ms)=["
         "full:%f, loading-meta:%f, waiting-data:%f, buffering:%f], "
         "playback-type=%s, "
-        "videoCodec=%s, resolution=%s, hardware=%d",
+        "videoCodec=%s, resolution=%s, hardwareAccelerated=%d, decoderName=%s, "
+        "hdr=%d",
         aLoadedFirstFrameTime,
         aLoadedMetadataTime,
         aTotalWaitingDataTime,
@@ -353,10 +312,12 @@ void TelemetryProbesReporter::OntFirstFrameLoaded(
         extraData.playbackType->get(),
         extraData.videoCodec->get(),
         extraData.resolution->get(),
-        aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding)};
+        aFlags.contains(FirstFrameLoadedFlag::IsHardwareDecoding),
+        aVideoDecoderName.get(),
+        *extraData.isHdr};
     if (const auto keySystem = mOwner->GetKeySystem()) {
-      logMessage.Append(nsPrintfCString{
-          ", keySystem=%s", NS_ConvertUTF16toUTF8(*keySystem).get()});
+      logMessage.AppendPrintf(", keySystem=%s",
+                              NS_ConvertUTF16toUTF8(*keySystem).get());
     }
     LOG("%s", logMessage.get());
   }
@@ -387,7 +348,6 @@ void TelemetryProbesReporter::PauseInvisibleVideoTimeAccumulator() {
   if (!mInvisibleVideoPlayTime.IsStarted()) {
     return;
   }
-  OnDecodeResumed();
   LOG("Pause time accumulation for invisible video");
   mInvisibleVideoPlayTime.Pause();
   mOwner->DispatchAsyncTestingEvent(u"mozinvisibleplaytimepaused"_ns);
@@ -457,8 +417,6 @@ void TelemetryProbesReporter::ReportResultForVideo() {
 
   const double totalVideoPlayTimeS = mTotalVideoPlayTime.GetAndClearTotal();
   const double invisiblePlayTimeS = mInvisibleVideoPlayTime.GetAndClearTotal();
-  const double videoDecodeSuspendTimeS =
-      mVideoDecodeSuspendedTime.GetAndClearTotal();
   const double totalVideoHDRPlayTimeS =
       mTotalVideoHDRPlayTime.GetAndClearTotal();
 
@@ -469,26 +427,26 @@ void TelemetryProbesReporter::ReportResultForVideo() {
   MOZ_ASSERT(totalVideoPlayTimeS >= invisiblePlayTimeS);
 
   LOG("VIDEO_PLAY_TIME_S = %f", totalVideoPlayTimeS);
-  Telemetry::Accumulate(Telemetry::VIDEO_PLAY_TIME_MS,
-                        SECONDS_TO_MS(totalVideoPlayTimeS));
+  glean::media::video_play_time.AccumulateRawDuration(
+      TimeDuration::FromSeconds(totalVideoPlayTimeS));
 
   LOG("VIDEO_HIDDEN_PLAY_TIME_S = %f", invisiblePlayTimeS);
-  Telemetry::Accumulate(Telemetry::VIDEO_HIDDEN_PLAY_TIME_MS,
-                        SECONDS_TO_MS(invisiblePlayTimeS));
+  glean::media::video_hidden_play_time.AccumulateRawDuration(
+      TimeDuration::FromSeconds(invisiblePlayTimeS));
 
   // We only want to accumulate non-zero samples for HDR playback.
   // This is different from the other timings tracked here, but
   // we don't need 0-length play times to do our calculations.
   if (totalVideoHDRPlayTimeS > 0.0) {
     LOG("VIDEO_HDR_PLAY_TIME_S = %f", totalVideoHDRPlayTimeS);
-    Telemetry::Accumulate(Telemetry::VIDEO_HDR_PLAY_TIME_MS,
-                          SECONDS_TO_MS(totalVideoHDRPlayTimeS));
+    glean::media::video_hdr_play_time.AccumulateRawDuration(
+        TimeDuration::FromSeconds(totalVideoHDRPlayTimeS));
   }
 
   if (mOwner->IsEncrypted()) {
     LOG("VIDEO_ENCRYPTED_PLAY_TIME_S = %f", totalVideoPlayTimeS);
-    Telemetry::Accumulate(Telemetry::VIDEO_ENCRYPTED_PLAY_TIME_MS,
-                          SECONDS_TO_MS(totalVideoPlayTimeS));
+    glean::media::video_encrypted_play_time.AccumulateRawDuration(
+        TimeDuration::FromSeconds(totalVideoPlayTimeS));
   }
 
   // TODO: deprecate the old probes.
@@ -497,13 +455,13 @@ void TelemetryProbesReporter::ReportResultForVideo() {
   if (keySystem) {
     if (IsClearkeyKeySystem(*keySystem)) {
       LOG("VIDEO_CLEARKEY_PLAY_TIME_S = %f", totalVideoPlayTimeS);
-      Telemetry::Accumulate(Telemetry::VIDEO_CLEARKEY_PLAY_TIME_MS,
-                            SECONDS_TO_MS(totalVideoPlayTimeS));
+      glean::media::video_clearkey_play_time.AccumulateRawDuration(
+          TimeDuration::FromSeconds(totalVideoPlayTimeS));
 
     } else if (IsWidevineKeySystem(*keySystem)) {
       LOG("VIDEO_WIDEVINE_PLAY_TIME_S = %f", totalVideoPlayTimeS);
-      Telemetry::Accumulate(Telemetry::VIDEO_WIDEVINE_PLAY_TIME_MS,
-                            SECONDS_TO_MS(totalVideoPlayTimeS));
+      glean::media::video_widevine_play_time.AccumulateRawDuration(
+          TimeDuration::FromSeconds(totalVideoPlayTimeS));
     }
   }
 
@@ -515,30 +473,21 @@ void TelemetryProbesReporter::ReportResultForVideo() {
   auto visiblePlayTimeS = totalVideoPlayTimeS - invisiblePlayTimeS;
   LOG("VIDEO_VISIBLE_PLAY_TIME = %f, keys: '%s' and 'All'", visiblePlayTimeS,
       key.get());
-  Telemetry::Accumulate(Telemetry::VIDEO_VISIBLE_PLAY_TIME_MS, key,
-                        SECONDS_TO_MS(visiblePlayTimeS));
+  glean::media::video_visible_play_time.Get(key).AccumulateRawDuration(
+      TimeDuration::FromSeconds(visiblePlayTimeS));
   // Also accumulate result in an "All" key.
-  Telemetry::Accumulate(Telemetry::VIDEO_VISIBLE_PLAY_TIME_MS, "All"_ns,
-                        SECONDS_TO_MS(visiblePlayTimeS));
+  glean::media::video_visible_play_time.Get("All"_ns).AccumulateRawDuration(
+      TimeDuration::FromSeconds(visiblePlayTimeS));
 
   const uint32_t hiddenPercentage =
       lround(invisiblePlayTimeS / totalVideoPlayTimeS * 100.0);
-  Telemetry::Accumulate(Telemetry::VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE, key,
-                        hiddenPercentage);
+  glean::media::video_hidden_play_time_percentage.Get(key)
+      .AccumulateSingleSample(hiddenPercentage);
   // Also accumulate all percentages in an "All" key.
-  Telemetry::Accumulate(Telemetry::VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE, "All"_ns,
-                        hiddenPercentage);
+  glean::media::video_hidden_play_time_percentage.Get("All"_ns)
+      .AccumulateSingleSample(hiddenPercentage);
   LOG("VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE = %u, keys: '%s' and 'All'",
       hiddenPercentage, key.get());
-
-  const uint32_t videoDecodeSuspendPercentage =
-      lround(videoDecodeSuspendTimeS / totalVideoPlayTimeS * 100.0);
-  Telemetry::Accumulate(Telemetry::VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE,
-                        key, videoDecodeSuspendPercentage);
-  Telemetry::Accumulate(Telemetry::VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE,
-                        "All"_ns, videoDecodeSuspendPercentage);
-  LOG("VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE = %u, keys: '%s' and 'All'",
-      videoDecodeSuspendPercentage, key.get());
 
   ReportResultForVideoFrameStatistics(totalVideoPlayTimeS, key);
 #ifdef MOZ_WMF_CDM
@@ -577,17 +526,15 @@ void TelemetryProbesReporter::ReportResultForMFCDMPlaybackIfNeeded(
   if (MOZ_LOG_TEST(gTelemetryProbesReporterLog, LogLevel::Debug)) {
     nsPrintfCString logMessage{
         "MFCDM EME_Playback event, keySystem=%s, videoCodec=%s, resolution=%s, "
-        "playedTime=%s",
+        "playedTime=%lf",
         NS_ConvertUTF16toUTF8(*keySystem).get(),
         mOwner->GetMediaInfo().mVideo.mMimeType.get(), aResolution.get(),
-        std::to_string(aTotalPlayTimeS).c_str()};
+        aTotalPlayTimeS};
     if (renderedFrames) {
-      logMessage.Append(
-          nsPrintfCString{", renderedFrames=%" PRIu64, *renderedFrames});
+      logMessage.AppendPrintf(", renderedFrames=%" PRIu64, *renderedFrames);
     }
     if (droppedFrames) {
-      logMessage.Append(
-          nsPrintfCString{", droppedFrames=%" PRIu64, *droppedFrames});
+      logMessage.AppendPrintf(", droppedFrames=%" PRIu64, *droppedFrames);
     }
     LOG("%s", logMessage.get());
   }
@@ -661,16 +608,16 @@ void TelemetryProbesReporter::ReportResultForAudio() {
         "%u\npercentage unmuted: %u\n",
         totalAudioPlayTimeS, audiblePlayTimeS, inaudiblePlayTimeS,
         mutedPlayTimeS, audiblePercentage, unmutedPercentage);
-    Telemetry::Accumulate(Telemetry::MEDIA_PLAY_TIME_MS, key,
-                          SECONDS_TO_MS(totalAudioPlayTimeS));
-    Telemetry::Accumulate(Telemetry::MUTED_PLAY_TIME_PERCENT, avKey,
-                          100 - unmutedPercentage);
-    Telemetry::Accumulate(Telemetry::AUDIBLE_PLAY_TIME_PERCENT, avKey,
-                          audiblePercentage);
+    glean::media::media_play_time.Get(key).AccumulateRawDuration(
+        TimeDuration::FromSeconds(totalAudioPlayTimeS));
+    glean::media::muted_play_time_percent.Get(avKey).AccumulateSingleSample(
+        100 - unmutedPercentage);
+    glean::media::audible_play_time_percent.Get(avKey).AccumulateSingleSample(
+        audiblePercentage);
   } else {
     MOZ_ASSERT(mMediaContent & MediaContent::MEDIA_HAS_VIDEO);
-    Telemetry::Accumulate(Telemetry::MEDIA_PLAY_TIME_MS, key,
-                          SECONDS_TO_MS(totalVideoPlayTimeS));
+    glean::media::media_play_time.Get(key).AccumulateRawDuration(
+        TimeDuration::FromSeconds(totalVideoPlayTimeS));
   }
 }
 
@@ -681,42 +628,6 @@ void TelemetryProbesReporter::ReportResultForVideoFrameStatistics(
     return;
   }
 
-  FrameStatisticsData data = stats->GetFrameStatisticsData();
-  if (data.mInterKeyframeCount != 0) {
-    const uint32_t average_ms = uint32_t(
-        std::min<uint64_t>(lround(double(data.mInterKeyframeSum_us) /
-                                  double(data.mInterKeyframeCount) / 1000.0),
-                           UINT32_MAX));
-    Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_AVERAGE_MS, key,
-                          average_ms);
-    Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_AVERAGE_MS, "All"_ns,
-                          average_ms);
-    LOG("VIDEO_INTER_KEYFRAME_AVERAGE_MS = %u, keys: '%s' and 'All'",
-        average_ms, key.get());
-
-    const uint32_t max_ms = uint32_t(std::min<uint64_t>(
-        (data.mInterKeyFrameMax_us + 500) / 1000, UINT32_MAX));
-    Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, key, max_ms);
-    Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, "All"_ns,
-                          max_ms);
-    LOG("VIDEO_INTER_KEYFRAME_MAX_MS = %u, keys: '%s' and 'All'", max_ms,
-        key.get());
-  } else {
-    // Here, we have played *some* of the video, but didn't get more than 1
-    // keyframe. Report '0' if we have played for longer than the video-
-    // decode-suspend delay (showing recovery would be difficult).
-    const uint32_t suspendDelay_ms =
-        StaticPrefs::media_suspend_background_video_delay_ms();
-    if (uint32_t(aTotalPlayTimeS * 1000.0) > suspendDelay_ms) {
-      Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, key, 0);
-      Telemetry::Accumulate(Telemetry::VIDEO_INTER_KEYFRAME_MAX_MS, "All"_ns,
-                            0);
-      LOG("VIDEO_INTER_KEYFRAME_MAX_MS = 0 (only 1 keyframe), keys: '%s' and "
-          "'All'",
-          key.get());
-    }
-  }
-
   const uint64_t parsedFrames = stats->GetParsedFrames();
   if (parsedFrames) {
     const uint64_t droppedFrames = stats->GetDroppedFrames();
@@ -725,32 +636,29 @@ void TelemetryProbesReporter::ReportResultForVideoFrameStatistics(
     // 100 and therefore can fit in a uint32_t (that Telemetry takes).
     const uint32_t percentage = 100 * droppedFrames / parsedFrames;
     LOG("DROPPED_FRAMES_IN_VIDEO_PLAYBACK = %u", percentage);
-    Telemetry::Accumulate(Telemetry::VIDEO_DROPPED_FRAMES_PROPORTION,
-                          percentage);
+    glean::media::video_dropped_frames_proportion.AccumulateSingleSample(
+        percentage);
     const uint32_t proportion = 10000 * droppedFrames / parsedFrames;
-    Telemetry::Accumulate(
-        Telemetry::VIDEO_DROPPED_FRAMES_PROPORTION_EXPONENTIAL, proportion);
+    glean::media::video_dropped_frames_proportion_exponential
+        .AccumulateSingleSample(proportion);
 
     {
       const uint64_t droppedFrames = stats->GetDroppedDecodedFrames();
       const uint32_t proportion = 10000 * droppedFrames / parsedFrames;
-      Telemetry::Accumulate(
-          Telemetry::VIDEO_DROPPED_DECODED_FRAMES_PROPORTION_EXPONENTIAL,
-          proportion);
+      glean::media::video_dropped_decoded_frames_proportion_exponential
+          .AccumulateSingleSample(proportion);
     }
     {
       const uint64_t droppedFrames = stats->GetDroppedSinkFrames();
       const uint32_t proportion = 10000 * droppedFrames / parsedFrames;
-      Telemetry::Accumulate(
-          Telemetry::VIDEO_DROPPED_SINK_FRAMES_PROPORTION_EXPONENTIAL,
-          proportion);
+      glean::media::video_dropped_sink_frames_proportion_exponential
+          .AccumulateSingleSample(proportion);
     }
     {
       const uint64_t droppedFrames = stats->GetDroppedCompositorFrames();
       const uint32_t proportion = 10000 * droppedFrames / parsedFrames;
-      Telemetry::Accumulate(
-          Telemetry::VIDEO_DROPPED_COMPOSITOR_FRAMES_PROPORTION_EXPONENTIAL,
-          proportion);
+      glean::media::video_dropped_compositor_frames_proportion_exponential
+          .AccumulateSingleSample(proportion);
     }
   }
 }
@@ -770,10 +678,6 @@ double TelemetryProbesReporter::GetVisibleVideoPlayTimeInSeconds() const {
 
 double TelemetryProbesReporter::GetInvisibleVideoPlayTimeInSeconds() const {
   return mInvisibleVideoPlayTime.PeekTotal();
-}
-
-double TelemetryProbesReporter::GetVideoDecodeSuspendedTimeInSeconds() const {
-  return mVideoDecodeSuspendedTime.PeekTotal();
 }
 
 double TelemetryProbesReporter::GetTotalAudioPlayTimeInSeconds() const {

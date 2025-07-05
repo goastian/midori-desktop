@@ -26,7 +26,7 @@ enum H264_PROFILE {
   H264_PROFILE_HIGH = 0x64,
 };
 
-enum H264_LEVEL {
+enum class H264_LEVEL {
   H264_LEVEL_1 = 10,
   H264_LEVEL_1_b = 11,
   H264_LEVEL_1_1 = 11,
@@ -43,7 +43,10 @@ enum H264_LEVEL {
   H264_LEVEL_4_2 = 42,
   H264_LEVEL_5 = 50,
   H264_LEVEL_5_1 = 51,
-  H264_LEVEL_5_2 = 52
+  H264_LEVEL_5_2 = 52,
+  H264_LEVEL_6 = 60,
+  H264_LEVEL_6_1 = 61,
+  H264_LEVEL_6_2 = 62
 };
 
 // Spec 7.4.2.1
@@ -513,7 +516,14 @@ class H264 {
       const mozilla::MediaByteBuffer* aExtraData);
 
   enum class FrameType {
-    I_FRAME,
+    // IDR is a special iframe, according to the spec T-REC-H.264-202408, 3.69 :
+    // "An IDR picture causes the decoding process to mark all reference
+    // pictures as "unused for reference" immediately after the decoding of the
+    // IDR picture. All coded pictures that follow an IDR picture in decoding
+    // order can be decoded without inter prediction from any picture that
+    // precedes the IDR picture in decoding order."
+    I_FRAME_IDR,
+    I_FRAME_OTHER,
     OTHER,
     INVALID,
   };
@@ -521,10 +531,15 @@ class H264 {
   // Returns the frame type. Returns I_FRAME if the sample is an IDR
   // (Instantaneous Decoding Refresh) Picture.
   static FrameType GetFrameType(const mozilla::MediaRawData* aSample);
+
+  /* From a NAL, extract the SVC temporal id, per H264 spec Annex G, 7.3.1.1 */
+  static Result<int, nsresult> ExtractSVCTemporalId(const uint8_t* aData,
+                                                    size_t aLength);
+
   // Create a dummy extradata, useful to create a decoder and test the
   // capabilities of the decoder.
   static already_AddRefed<mozilla::MediaByteBuffer> CreateExtraData(
-      uint8_t aProfile, uint8_t aConstraints, uint8_t aLevel,
+      uint8_t aProfile, uint8_t aConstraints, H264_LEVEL aLevel,
       const gfx::IntSize& aSize);
   static void WriteExtraData(mozilla::MediaByteBuffer* aDestExtraData,
                              const uint8_t aProfile, const uint8_t aConstraints,
@@ -534,6 +549,7 @@ class H264 {
 
  private:
   friend class SPSNAL;
+
   /* Extract RAW BYTE SEQUENCE PAYLOAD from NAL content.
      Returns nullptr if invalid content.
      This is compliant to ITU H.264 7.3.1 Syntax in tabular form NAL unit syntax

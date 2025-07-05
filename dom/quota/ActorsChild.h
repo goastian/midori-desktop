@@ -12,7 +12,6 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/quota/PQuotaChild.h"
 #include "mozilla/dom/quota/PQuotaRequestChild.h"
-#include "mozilla/dom/quota/PQuotaUsageRequestChild.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "nsCOMPtr.h"
 #include "nsStringFwd.h"
@@ -63,51 +62,10 @@ class QuotaChild final : public PQuotaChild {
   // IPDL methods are only called by IPDL.
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual PQuotaUsageRequestChild* AllocPQuotaUsageRequestChild(
-      const UsageRequestParams& aParams) override;
-
-  virtual bool DeallocPQuotaUsageRequestChild(
-      PQuotaUsageRequestChild* aActor) override;
-
   virtual PQuotaRequestChild* AllocPQuotaRequestChild(
       const RequestParams& aParams) override;
 
   virtual bool DeallocPQuotaRequestChild(PQuotaRequestChild* aActor) override;
-};
-
-class QuotaUsageRequestChild final : public PQuotaUsageRequestChild {
-  friend class QuotaChild;
-  friend class QuotaManagerService;
-
-  RefPtr<UsageRequest> mRequest;
-
- public:
-  void AssertIsOnOwningThread() const
-#ifdef DEBUG
-      ;
-#else
-  {
-  }
-#endif
-
- private:
-  // Only created by QuotaManagerService.
-  explicit QuotaUsageRequestChild(UsageRequest* aRequest);
-
-  // Only destroyed by QuotaChild.
-  ~QuotaUsageRequestChild();
-
-  void HandleResponse(nsresult aResponse);
-
-  void HandleResponse(const nsTArray<OriginUsage>& aResponse);
-
-  void HandleResponse(const OriginUsageResponse& aResponse);
-
-  // IPDL methods are only called by IPDL.
-  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-
-  virtual mozilla::ipc::IPCResult Recv__delete__(
-      const UsageRequestResponse& aResponse) override;
 };
 
 class QuotaRequestChild final : public PQuotaRequestChild {
@@ -141,8 +99,6 @@ class QuotaRequestChild final : public PQuotaRequestChild {
   void HandleResponse(const nsAString& aResponse);
 
   void HandleResponse(const EstimateResponse& aResponse);
-
-  void HandleResponse(const nsTArray<nsCString>& aResponse);
 
   void HandleResponse(const GetFullOriginMetadataResponse& aResponse);
 

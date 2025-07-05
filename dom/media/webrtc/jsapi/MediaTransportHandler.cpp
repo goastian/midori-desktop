@@ -34,7 +34,6 @@
 #include "transport/runnable_utils.h"
 
 #include "mozilla/Algorithm.h"
-#include "mozilla/Telemetry.h"
 
 #include "mozilla/dom/RTCStatsReportBinding.h"
 
@@ -51,10 +50,11 @@
 #ifdef MOZ_GECKO_PROFILER
 #  include "mozilla/ProfilerMarkers.h"
 
-#  define MEDIA_TRANSPORT_HANDLER_PACKET_RECEIVED(aPacket)              \
-    PROFILER_MARKER_TEXT("WebRTC Packet Received", MEDIA_RT, {},        \
-                         ProfilerString8View::WrapNullTerminatedString( \
-                             PacketTypeToString((aPacket).type())));
+#  define MEDIA_TRANSPORT_HANDLER_PACKET_RECEIVED(aPacket) \
+    PROFILER_MARKER_TEXT(                                  \
+        "WebRTC Packet Received", MEDIA_RT, {},            \
+        ProfilerString8View::WrapNullTerminatedString(     \
+            MediaPacket::EnumValueToString((aPacket).type())));
 #else
 #  define MEDIA_TRANSPORT_HANDLER_PACKET_RECEIVED(aPacket)
 #endif
@@ -360,9 +360,10 @@ static nsresult addNrIceServer(const nsString& aIceUrl,
       path.SetLength(questionmark);
     }
 
-    rv = net_GetAuthURLParser()->ParseAuthority(
-        path.get(), static_cast<int>(path.Length()), nullptr, nullptr, nullptr,
-        nullptr, &hostPos, &hostLen, &port);
+    nsCOMPtr<nsIURLParser> parser = net_GetAuthURLParser();
+    rv = parser->ParseAuthority(path.get(), static_cast<int>(path.Length()),
+                                nullptr, nullptr, nullptr, nullptr, &hostPos,
+                                &hostLen, &port);
     NS_ENSURE_SUCCESS(rv, rv);
     if (!hostLen) {
       return NS_ERROR_FAILURE;
@@ -503,11 +504,14 @@ static Maybe<NrIceCtx::NatSimulatorConfig> GetNatConfig() {
   nsAutoCString redirect_targets;
   (void)Preferences::GetCString(
       "media.peerconnection.nat_simulator.redirect_targets", redirect_targets);
+  int network_delay_ms = Preferences::GetInt(
+      "media.peerconnection.nat_simulator.network_delay_ms", 0);
 
   if (block_udp || block_tcp || block_tls || !mapping_type.IsEmpty() ||
       !filtering_type.IsEmpty() || !redirect_address.IsEmpty()) {
     CSFLogDebug(LOGTAG, "NAT filtering type: %s", filtering_type.get());
     CSFLogDebug(LOGTAG, "NAT mapping type: %s", mapping_type.get());
+    CSFLogDebug(LOGTAG, "NAT network delay: %d", network_delay_ms);
     NrIceCtx::NatSimulatorConfig natConfig;
     natConfig.mBlockUdp = block_udp;
     natConfig.mBlockTcp = block_tcp;
@@ -515,6 +519,7 @@ static Maybe<NrIceCtx::NatSimulatorConfig> GetNatConfig() {
     natConfig.mErrorCodeForDrop = error_code_for_drop;
     natConfig.mFilteringType = filtering_type;
     natConfig.mMappingType = mapping_type;
+    natConfig.mNetworkDelayMs = network_delay_ms;
     if (redirect_address.Length()) {
       CSFLogDebug(LOGTAG, "Redirect address: %s", redirect_address.get());
       CSFLogDebug(LOGTAG, "Redirect targets: %s", redirect_targets.get());
@@ -1123,9 +1128,10 @@ void MediaTransportHandlerSTS::SendPacket(const std::string& aTransportId,
 
         MOZ_ASSERT(layer);
 
-        if (layer->SendPacket(aPacket) < 0) {
-          CSFLogError(LOGTAG, "%s: Transport flow (%s) failed to send packet",
-                      mIceCtx->name().c_str(), aTransportId.c_str());
+        if (int error = layer->SendPacket(aPacket); error < 0) {
+          CSFLogError(LOGTAG,
+                      "%s: Transport flow (%s) failed to send packet. error=%d",
+                      mIceCtx->name().c_str(), aTransportId.c_str(), error);
         }
       },
       [](const std::string& aError) {});
@@ -1687,28 +1693,6 @@ void MediaTransportHandlerSTS::OnStateChange(TransportLayer* aLayer,
 void MediaTransportHandlerSTS::OnRtcpStateChange(TransportLayer* aLayer,
                                                  TransportLayer::State aState) {
   MediaTransportHandler::OnRtcpStateChange(aLayer->flow_id(), aState);
-}
-
-constexpr static const char* PacketTypeToString(MediaPacket::Type type) {
-  switch (type) {
-    case MediaPacket::Type::UNCLASSIFIED:
-      return "UNCLASSIFIED";
-    case MediaPacket::Type::SRTP:
-      return "SRTP";
-    case MediaPacket::Type::SRTCP:
-      return "SRTCP";
-    case MediaPacket::Type::DTLS:
-      return "DTLS";
-    case MediaPacket::Type::RTP:
-      return "RTP";
-    case MediaPacket::Type::RTCP:
-      return "RTCP";
-    case MediaPacket::Type::SCTP:
-      return "SCTP";
-    default:
-      MOZ_ASSERT(false, "unreached");
-      return "";
-  }
 }
 
 void MediaTransportHandlerSTS::PacketReceived(TransportLayer* aLayer,

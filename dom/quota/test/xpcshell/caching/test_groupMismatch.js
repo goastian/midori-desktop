@@ -38,8 +38,20 @@ async function testSteps() {
   // 4. Remove the file "storage/ls-archive.sqlite".
   installPackage("groupMismatch_profile");
 
-  request = getOriginUsage(principal, /* fromMemory */ true);
+  info("Initializing");
+
+  request = init();
   await requestFinished(request);
 
-  is(request.result.usage, originUsage, "Correct origin usage");
+  info("Initializing temporary storage");
+
+  request = initTemporaryStorage();
+  await requestFinished(request);
+
+  info("Getting origin usage");
+
+  request = getCachedOriginUsage(principal);
+  await requestFinished(request);
+
+  is(request.result, originUsage, "Correct origin usage");
 }

@@ -9,10 +9,12 @@
 
 #include "mozilla/dom/Timeout.h"
 #include "nsTArray.h"
+#include "nsISerialEventTarget.h"
+#include "mozilla/dom/TimeoutBudgetManager.h"
 
 class nsIEventTarget;
 class nsITimer;
-class nsGlobalWindowInner;
+class nsIGlobalObject;
 
 namespace mozilla {
 
@@ -27,15 +29,32 @@ class TimeoutManager final {
   struct Timeouts;
 
  public:
-  TimeoutManager(nsGlobalWindowInner& aWindow, uint32_t aMaxIdleDeferMS);
+  TimeoutManager(nsIGlobalObject& aHandle, uint32_t aMaxIdleDeferMS,
+                 nsISerialEventTarget* aEventTarget);
   ~TimeoutManager();
   TimeoutManager(const TimeoutManager& rhs) = delete;
   void operator=(const TimeoutManager& rhs) = delete;
 
   bool IsRunningTimeout() const;
 
-  static uint32_t GetNestingLevel() { return sNestingLevel; }
-  static void SetNestingLevel(uint32_t aLevel) { sNestingLevel = aLevel; }
+  uint32_t GetNestingLevelForWorker() {
+    MOZ_ASSERT(!NS_IsMainThread());
+    return mNestingLevel;
+  }
+  uint32_t GetNestingLevelForWindow() {
+    MOZ_ASSERT(NS_IsMainThread());
+    return sNestingLevel;
+  }
+
+  void SetNestingLevelForWorker(uint32_t aLevel) {
+    MOZ_ASSERT(!NS_IsMainThread());
+    mNestingLevel = aLevel;
+  }
+
+  void SetNestingLevelForWindow(uint32_t aLevel) {
+    MOZ_ASSERT(NS_IsMainThread());
+    sNestingLevel = aLevel;
+  }
 
   bool HasTimeouts() const {
     return !mTimeouts.IsEmpty() || !mIdleTimeouts.IsEmpty();
@@ -55,7 +74,7 @@ class TimeoutManager final {
                   bool aProcessIdle);
 
   void ClearAllTimeouts();
-  uint32_t GetTimeoutId(mozilla::dom::Timeout::Reason aReason);
+  int32_t GetTimeoutId(mozilla::dom::Timeout::Reason aReason);
 
   TimeDuration CalculateDelay(Timeout* aTimeout) const;
 
@@ -103,6 +122,13 @@ class TimeoutManager final {
 
  private:
   void MaybeStartThrottleTimeout();
+
+  // get nsGlobalWindowInner
+  // if the method returns nullptr, then we have a worker,
+  // which should be handled differently according to TimeoutManager logic
+  nsGlobalWindowInner* GetInnerWindow() const {
+    return nsGlobalWindowInner::Cast(mGlobalObject.GetAsInnerWindow());
+  }
 
   // Return true if |aTimeout| needs to be reinserted into the timeout list.
   bool RescheduleTimeout(mozilla::dom::Timeout* aTimeout,
@@ -182,7 +208,7 @@ class TimeoutManager final {
       return false;
     }
 
-    Timeout* GetTimeout(uint32_t aTimeoutId, Timeout::Reason aReason) {
+    Timeout* GetTimeout(int32_t aTimeoutId, Timeout::Reason aReason) {
       Timeout::TimeoutIdAndReason key = {aTimeoutId, aReason};
       return mTimeouts->Get(key);
     }
@@ -204,9 +230,9 @@ class TimeoutManager final {
     RefPtr<Timeout::TimeoutSet> mTimeouts;
   };
 
-  // Each nsGlobalWindowInner object has a TimeoutManager member.  This
+  // Each nsIGlobalObject object has a TimeoutManager member.  This
   // reference points to that holder object.
-  nsGlobalWindowInner& mWindow;
+  nsIGlobalObject& mGlobalObject;
   // The executor is specific to the nsGlobalWindow/TimeoutManager, but it
   // can live past the destruction of the window if its scheduled.  Therefore
   // it must be a separate ref-counted object.
@@ -215,7 +241,7 @@ class TimeoutManager final {
   RefPtr<TimeoutExecutor> mIdleExecutor;
   // The list of timeouts coming from non-tracking scripts.
   Timeouts mTimeouts;
-  uint32_t mTimeoutIdCounter;
+  int32_t mTimeoutIdCounter;
   uint32_t mNextFiringId;
 #ifdef DEBUG
   int64_t mFiringIndex;
@@ -229,7 +255,7 @@ class TimeoutManager final {
   Timeouts mIdleTimeouts;
 
   // The current idle request callback timeout handle
-  uint32_t mIdleCallbackTimeoutCounter;
+  int32_t mIdleCallbackTimeoutCounter;
 
   nsCOMPtr<nsITimer> mThrottleTimeoutsTimer;
   mozilla::TimeStamp mLastBudgetUpdate;
@@ -240,8 +266,16 @@ class TimeoutManager final {
   bool mBudgetThrottleTimeouts;
 
   bool mIsLoading;
+  nsCOMPtr<nsISerialEventTarget> mEventTarget;
+
+  const bool mIsWindow;
+
+  uint32_t mNestingLevel{0};
 
   static uint32_t sNestingLevel;
+
+  TimeoutBudgetManager mBudgetManager;
+  static TimeoutBudgetManager sBudgetManager;
 };
 
 }  // namespace dom

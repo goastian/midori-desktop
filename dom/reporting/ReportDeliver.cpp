@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <algorithm>
+
 #include "mozilla/JSONStringWriteFuncs.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/EndpointForReportChild.h"
@@ -30,6 +32,10 @@ namespace mozilla::dom {
 namespace {
 
 StaticRefPtr<ReportDeliver> gReportDeliver;
+
+// This is the same value as the default value of
+// dom.min_timeout_value, so it's not that random.
+constexpr double gMinReportAgeInMs = 4.0;
 
 class ReportFetchHandler final : public PromiseNativeHandler {
  public:
@@ -149,8 +155,13 @@ void SendReports(nsTArray<ReportDeliver::ReportData>& aReports,
     MOZ_ASSERT(report.mPrincipal == aPrincipal);
     MOZ_ASSERT(report.mEndpointURL == aEndPointUrl);
     w.StartObjectElement();
-    w.IntProperty("age",
-                  (TimeStamp::Now() - report.mCreationTime).ToMilliseconds());
+    // It looks like in rare cases, TimeStamp::Now() may be the same
+    // as report.mCreationTime, so we introduce a constant number to
+    // make sure "age" is always not 0.
+    w.IntProperty(
+        "age",
+        std::max((TimeStamp::Now() - report.mCreationTime).ToMilliseconds(),
+                 gMinReportAgeInMs));
     w.StringProperty("type", NS_ConvertUTF16toUTF8(report.mType));
     w.StringProperty("url", NS_ConvertUTF16toUTF8(report.mURL));
     w.StringProperty("user_agent", NS_ConvertUTF16toUTF8(report.mUserAgent));
@@ -208,7 +219,7 @@ void SendReports(nsTArray<ReportDeliver::ReportData>& aReports,
   internalRequest->SetSkipServiceWorker();
   // TODO: internalRequest->SetContentPolicyType(TYPE_REPORT);
   internalRequest->SetMode(RequestMode::Cors);
-  internalRequest->SetCredentialsMode(RequestCredentials::Include);
+  internalRequest->SetCredentialsMode(RequestCredentials::Same_origin);
 
   RefPtr<Request> request =
       new Request(globalObject, std::move(internalRequest), nullptr);
@@ -325,18 +336,16 @@ void ReportDeliver::AppendReportData(const ReportData& aReportData) {
     mReportQueue.RemoveElementAt(0);
   }
 
-  if (!mTimer) {
-    uint32_t timeout = StaticPrefs::dom_reporting_delivering_timeout() * 1000;
-    nsresult rv = NS_NewTimerWithCallback(getter_AddRefs(mTimer), this, timeout,
-                                          nsITimer::TYPE_ONE_SHOT);
-    Unused << NS_WARN_IF(NS_FAILED(rv));
-  }
+  RefPtr<ReportDeliver> self{this};
+  nsCOMPtr<nsIRunnable> runnable = NS_NewRunnableFunction(
+      "ReportDeliver::CallNotify", [self]() { self->Notify(); });
+
+  NS_DispatchToCurrentThreadQueue(
+      runnable.forget(), StaticPrefs::dom_reporting_delivering_timeout() * 1000,
+      EventQueuePriority::Idle);
 }
 
-NS_IMETHODIMP
-ReportDeliver::Notify(nsITimer* aTimer) {
-  mTimer = nullptr;
-
+void ReportDeliver::Notify() {
   nsTArray<ReportData> reports = std::move(mReportQueue);
 
   // group reports by endpoint and nsIPrincipal
@@ -362,8 +371,6 @@ ReportDeliver::Notify(nsITimer* aTimer) {
     nsAutoCString u(url);
     SendReports(value, url, principal);
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -384,11 +391,6 @@ ReportDeliver::Observe(nsISupports* aSubject, const char* aTopic,
 
   obs->RemoveObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
 
-  if (mTimer) {
-    mTimer->Cancel();
-    mTimer = nullptr;
-  }
-
   gReportDeliver = nullptr;
   return NS_OK;
 }
@@ -400,7 +402,6 @@ ReportDeliver::~ReportDeliver() = default;
 NS_INTERFACE_MAP_BEGIN(ReportDeliver)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
-  NS_INTERFACE_MAP_ENTRY(nsITimerCallback)
   NS_INTERFACE_MAP_ENTRY(nsINamed)
 NS_INTERFACE_MAP_END
 

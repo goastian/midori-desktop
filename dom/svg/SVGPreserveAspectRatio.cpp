@@ -26,7 +26,7 @@ static const char* sAlignStrings[] = {
 static const char* sMeetOrSliceStrings[] = {"meet", "slice"};
 
 static uint16_t GetAlignForString(const nsAString& aAlignString) {
-  for (uint32_t i = 0; i < ArrayLength(sAlignStrings); i++) {
+  for (uint32_t i = 0; i < std::size(sAlignStrings); i++) {
     if (aAlignString.EqualsASCII(sAlignStrings[i])) {
       return (i + SVG_ALIGN_MIN_VALID);
     }
@@ -36,7 +36,7 @@ static uint16_t GetAlignForString(const nsAString& aAlignString) {
 }
 
 static uint16_t GetMeetOrSliceForString(const nsAString& aMeetOrSlice) {
-  for (uint32_t i = 0; i < ArrayLength(sMeetOrSliceStrings); i++) {
+  for (uint32_t i = 0; i < std::size(sMeetOrSliceStrings); i++) {
     if (aMeetOrSlice.EqualsASCII(sMeetOrSliceStrings[i])) {
       return (i + SVG_MEETORSLICE_MIN_VALID);
     }
@@ -55,18 +55,14 @@ nsresult SVGPreserveAspectRatio::FromString(const nsAString& aString,
   }
   const nsAString& token = tokenizer.nextToken();
 
-  nsresult rv;
   SVGPreserveAspectRatio val;
 
-  rv = val.SetAlign(GetAlignForString(token));
-
-  if (NS_FAILED(rv)) {
+  if (!val.SetAlign(GetAlignForString(token))) {
     return NS_ERROR_DOM_SYNTAX_ERR;
   }
 
   if (tokenizer.hasMoreTokens()) {
-    rv = val.SetMeetOrSlice(GetMeetOrSliceForString(tokenizer.nextToken()));
-    if (NS_FAILED(rv)) {
+    if (!val.SetMeetOrSlice(GetMeetOrSliceForString(tokenizer.nextToken()))) {
       return NS_ERROR_DOM_SYNTAX_ERR;
     }
   } else {
@@ -116,12 +112,12 @@ uint16_t DOMSVGPreserveAspectRatio::Align() {
   return mVal->GetAnimValue().GetAlign();
 }
 
-void DOMSVGPreserveAspectRatio::SetAlign(uint16_t aAlign, ErrorResult& rv) {
+void DOMSVGPreserveAspectRatio::SetAlign(uint16_t aAlign, ErrorResult& aRv) {
   if (!mIsBaseValue) {
-    rv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
-  rv = mVal->SetBaseAlign(aAlign, mSVGElement);
+  aRv = mVal->SetBaseAlign(aAlign, mSVGElement);
 }
 
 uint16_t DOMSVGPreserveAspectRatio::MeetOrSlice() {
@@ -134,12 +130,12 @@ uint16_t DOMSVGPreserveAspectRatio::MeetOrSlice() {
 }
 
 void DOMSVGPreserveAspectRatio::SetMeetOrSlice(uint16_t aMeetOrSlice,
-                                               ErrorResult& rv) {
+                                               ErrorResult& aRv) {
   if (!mIsBaseValue) {
-    rv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
-  rv = mVal->SetBaseMeetOrSlice(aMeetOrSlice, mSVGElement);
+  aRv = mVal->SetBaseMeetOrSlice(aMeetOrSlice, mSVGElement);
 }
 
 }  // namespace mozilla

@@ -90,8 +90,7 @@ void HTMLFieldSetElement::GetType(nsAString& aType) const {
 bool HTMLFieldSetElement::MatchListedElements(Element* aElement,
                                               int32_t aNamespaceID,
                                               nsAtom* aAtom, void* aData) {
-  nsCOMPtr<nsIFormControl> formControl = do_QueryInterface(aElement);
-  return formControl;
+  return nsIFormControl::FromNodeOrNull(aElement) != nullptr;
 }
 
 nsIHTMLCollection* HTMLFieldSetElement::Elements() {
@@ -143,7 +142,8 @@ void HTMLFieldSetElement::InsertChildBefore(nsIContent* aChild,
   }
 }
 
-void HTMLFieldSetElement::RemoveChildNode(nsIContent* aKid, bool aNotify) {
+void HTMLFieldSetElement::RemoveChildNode(nsIContent* aKid, bool aNotify,
+                                          const BatchRemovalState* aState) {
   bool firstLegendHasChanged = false;
 
   if (mFirstLegend && aKid == mFirstLegend) {
@@ -160,7 +160,7 @@ void HTMLFieldSetElement::RemoveChildNode(nsIContent* aKid, bool aNotify) {
     }
   }
 
-  nsGenericHTMLFormControlElement::RemoveChildNode(aKid, aNotify);
+  nsGenericHTMLFormControlElement::RemoveChildNode(aKid, aNotify, aState);
 
   if (firstLegendHasChanged) {
     NotifyElementsForFirstLegendChange(aNotify);

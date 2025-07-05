@@ -8,6 +8,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/WindowsProcessMitigations.h"
 #include "mozilla/StaticPrefs_media.h"
+#include "mozilla/mscom/COMWrappers.h"
 #include "mozilla/mscom/Utils.h"
 #include "WMFUtils.h"
 #include <comdef.h>
@@ -166,7 +167,7 @@ static void PopulateEncoderInfo(const GUID& aSubtype,
     activates[i]->Release();
     activates[i] = nullptr;
   }
-  CoTaskMemFree(activates);
+  mscom::wrapped::CoTaskMemFree(activates);
 }
 
 Maybe<MFTEncoder::Info> MFTEncoder::GetInfo(const GUID& aSubtype) {
@@ -221,7 +222,7 @@ already_AddRefed<IMFActivate> MFTEncoder::CreateFactory(const GUID& aSubtype) {
     activates[i]->Release();
     activates[i] = nullptr;
   }
-  CoTaskMemFree(activates);
+  mscom::wrapped::CoTaskMemFree(activates);
 
   return factory.forget();
 }
@@ -425,19 +426,57 @@ MFTEncoder::SendMFTMessage(MFT_MESSAGE_TYPE aMsg, ULONG_PTR aData) {
   return mEncoder->ProcessMessage(aMsg, aData);
 }
 
-HRESULT MFTEncoder::SetModes(UINT32 aBitsPerSec) {
+HRESULT MFTEncoder::SetModes(const EncoderConfig& aConfig) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   MOZ_ASSERT(mConfig);
 
   VARIANT var;
   var.vt = VT_UI4;
-  var.ulVal = eAVEncCommonRateControlMode_CBR;
+  switch (aConfig.mBitrateMode) {
+    case BitrateMode::Constant:
+      var.ulVal = eAVEncCommonRateControlMode_CBR;
+      break;
+    case BitrateMode::Variable:
+      if (aConfig.mCodec == CodecType::VP8 ||
+          aConfig.mCodec == CodecType::VP9) {
+        MFT_ENC_LOGE(
+            "Overriding requested VRB bitrate mode, forcing CBR for VP8/VP9 "
+            "encoding.");
+        var.ulVal = eAVEncCommonRateControlMode_CBR;
+      } else {
+        var.ulVal = eAVEncCommonRateControlMode_PeakConstrainedVBR;
+      }
+      break;
+  }
   HRESULT hr = mConfig->SetValue(&CODECAPI_AVEncCommonRateControlMode, &var);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-  var.ulVal = aBitsPerSec;
-  hr = mConfig->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-  NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+  if (aConfig.mBitrate) {
+    var.ulVal = aConfig.mBitrate;
+    hr = mConfig->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+    if (FAILED(hr)) {
+      MFT_ENC_LOGE("Couln't set bitrate to %d", aConfig.mBitrate);
+      return hr;
+    }
+  }
+
+  switch (aConfig.mScalabilityMode) {
+    case ScalabilityMode::None:
+      var.ulVal = 1;
+      break;
+    case ScalabilityMode::L1T2:
+      var.ulVal = 2;
+      break;
+    case ScalabilityMode::L1T3:
+      var.ulVal = 3;
+      break;
+  }
+
+  bool isIntel = false;  // TODO check this
+  if (aConfig.mScalabilityMode != ScalabilityMode::None || isIntel) {
+    hr = mConfig->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var);
+    NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+  }
 
   if (SUCCEEDED(mConfig->IsModifiable(&CODECAPI_AVEncAdaptiveMode))) {
     var.ulVal = eAVEncAdaptiveMode_Resolution;
@@ -447,7 +486,8 @@ HRESULT MFTEncoder::SetModes(UINT32 aBitsPerSec) {
 
   if (SUCCEEDED(mConfig->IsModifiable(&CODECAPI_AVLowLatencyMode))) {
     var.vt = VT_BOOL;
-    var.boolVal = VARIANT_TRUE;
+    var.boolVal =
+        aConfig.mUsage == Usage::Realtime ? VARIANT_TRUE : VARIANT_FALSE;
     hr = mConfig->SetValue(&CODECAPI_AVLowLatencyMode, &var);
     NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
   }
@@ -496,12 +536,11 @@ MFTEncoder::CreateInputSample(RefPtr<IMFSample>* aSample, size_t aSize) {
 }
 
 HRESULT
-MFTEncoder::PushInput(RefPtr<IMFSample>&& aInput) {
+MFTEncoder::PushInput(const InputSample& aInput) {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   MOZ_ASSERT(mEncoder);
-  MOZ_ASSERT(aInput);
 
-  mPendingInputs.Push(aInput.forget());
+  mPendingInputs.push_back(aInput);
   if (mEventSource.IsSync() && mNumNeedInput == 0) {
     // To step 2 in
     // https://docs.microsoft.com/en-us/windows/win32/medfound/basic-mft-processing-model#process-data
@@ -518,12 +557,19 @@ HRESULT MFTEncoder::ProcessInput() {
   MOZ_ASSERT(mscom::IsCurrentThreadMTA());
   MOZ_ASSERT(mEncoder);
 
-  if (mNumNeedInput == 0 || mPendingInputs.GetSize() == 0) {
+  if (mNumNeedInput == 0 || mPendingInputs.empty()) {
     return S_OK;
   }
 
-  RefPtr<IMFSample> input = mPendingInputs.PopFront();
-  HRESULT hr = mEncoder->ProcessInput(mInputStreamID, input, 0);
+  auto input = mPendingInputs.front();
+  mPendingInputs.pop_front();
+
+  HRESULT hr = mEncoder->ProcessInput(mInputStreamID, input.mSample, 0);
+
+  if (input.mKeyFrameRequested) {
+    VARIANT v = {.vt = VT_UI4, .ulVal = 1};
+    mConfig->SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &v);
+  }
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
   --mNumNeedInput;
 
@@ -664,7 +710,7 @@ HRESULT MFTEncoder::Drain(nsTArray<RefPtr<IMFSample>>& aOutput) {
   switch (mDrainState) {
     case DrainState::DRAINABLE:
       // Exhaust pending inputs.
-      while (mPendingInputs.GetSize() > 0) {
+      while (!mPendingInputs.empty()) {
         if (mEventSource.IsSync()) {
           // Step 5 in
           // https://docs.microsoft.com/en-us/windows/win32/medfound/basic-mft-processing-model#process-data

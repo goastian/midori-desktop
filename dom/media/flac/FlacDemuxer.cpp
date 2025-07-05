@@ -618,12 +618,10 @@ bool FlacTrackDemuxer::Init() {
   do {
     uint32_t read = 0;
     nsresult ret = mSource.ReadAt(offset, buffer, BUFFER_SIZE, &read);
-    if (NS_FAILED(ret) || read < BUFFER_SIZE) {
-      // Assume that if we can't read that many bytes while parsing the header,
-      // that something is wrong.
+    if (NS_FAILED(ret)) {
       return false;
     }
-    if (!mParser->IsHeaderBlock(ubuffer, BUFFER_SIZE)) {
+    if (!mParser->IsHeaderBlock(ubuffer, read)) {
       // Not a header and we haven't reached the end of the metadata blocks.
       // Will fall back to using the frames header instead.
       break;
@@ -853,7 +851,7 @@ RefPtr<FlacTrackDemuxer::SamplesPromise> FlacTrackDemuxer::GetSamples(
       return SamplesPromise::CreateAndReject(NS_ERROR_DOM_MEDIA_DEMUXER_ERR,
                                              __func__);
     }
-    frames->AppendSample(frame);
+    frames->AppendSample(std::move(frame));
   }
 
   LOGV("GetSamples() End mSamples.Length=%zu aNumSamples=%d offset=%" PRId64

@@ -14,12 +14,14 @@
 #include "MediaElementEventRunners.h"
 #include "MediaPlaybackDelayPolicy.h"
 #include "MediaPromiseDefs.h"
+#include "MediaTimer.h"
 #include "TelemetryProbesReporter.h"
 #include "nsCycleCollectionParticipant.h"
 #include "Visibility.h"
 #include "mozilla/CORSMode.h"
 #include "DecoderTraits.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/AwakeTimeStamp.h"
 #include "mozilla/StateWatching.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/dom/DecoderDoctorNotificationBinding.h"
@@ -92,6 +94,7 @@ namespace mozilla::dom {
 // Number of milliseconds between timeupdate events as defined by spec
 #define TIMEUPDATE_MS 250
 
+class HTMLVideoElement;
 class MediaError;
 class MediaSource;
 class PlayPromise;
@@ -106,6 +109,25 @@ enum class StreamCaptureBehavior : uint8_t {
   CONTINUE_WHEN_ENDED,
   FINISH_WHEN_ENDED
 };
+
+/**
+ * Possible values of the 'preload' attribute.
+ */
+enum MediaPreloadAttrValue : uint8_t {
+  PRELOAD_ATTR_NONE,      // set to "none"
+  PRELOAD_ATTR_METADATA,  // set to "metadata"
+  PRELOAD_ATTR_AUTO       // set to "auto"
+};
+
+// Mappings from 'preload' attribute strings to an enumeration.
+static const nsAttrValue::EnumTableEntry kPreloadTable[] = {
+    {"none", MediaPreloadAttrValue::PRELOAD_ATTR_NONE},
+    {"metadata", MediaPreloadAttrValue::PRELOAD_ATTR_METADATA},
+    {"auto", MediaPreloadAttrValue::PRELOAD_ATTR_AUTO},
+};
+
+static constexpr const nsAttrValue::EnumTableEntry* kPreloadDefaultType =
+    &kPreloadTable[std::size(kPreloadTable) - 1];
 
 class HTMLMediaElement : public nsGenericHTMLElement,
                          public MediaDecoderOwner,
@@ -151,6 +173,8 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   explicit HTMLMediaElement(
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
   void Init();
+
+  virtual HTMLVideoElement* AsHTMLVideoElement() { return nullptr; };
 
   // `eMandatory`: `timeupdate` occurs according to the spec requirement.
   // Eg.
@@ -305,9 +329,11 @@ class HTMLMediaElement : public nsGenericHTMLElement,
       VideoFrameContainer* aContainer,
       const PrincipalHandle& aNewPrincipalHandle) override;
 
-  // Dispatch events
-  void DispatchAsyncEvent(const nsAString& aName) final;
-  void DispatchAsyncEvent(RefPtr<nsMediaEventRunner> aRunner);
+  // Queue a media element task to fire an event targeted at the media element.
+  void QueueEvent(const nsAString& aName) final;
+  // Queue a media element task.
+  // The task is blocked while the document is in B/F cache.
+  void QueueTask(RefPtr<nsMediaEventRunner> aRunner);
 
   // Triggers a recomputation of readyState.
   void UpdateReadyState() override {
@@ -514,7 +540,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
       nsGkAtoms::none->ToString(aValue);
       return;
     }
-    GetEnumAttr(nsGkAtoms::preload, nullptr, aValue);
+    GetEnumAttr(nsGkAtoms::preload, kPreloadDefaultType->tag, aValue);
   }
   void SetPreload(const nsAString& aValue, ErrorResult& aRv) {
     if (mSrcAttrStream) {
@@ -556,6 +582,8 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
 #ifdef MOZ_WMF_CDM
   bool IsUsingWMFCDM() const override;
+
+  CDMProxy* GetCDMProxy() const override;
 #endif
 
   bool Paused() const { return mPaused; }
@@ -666,7 +694,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   double TotalVideoHDRPlayTime() const;
   double VisiblePlayTime() const;
   double InvisiblePlayTime() const;
-  double VideoDecodeSuspendedTime() const;
   double TotalAudioPlayTime() const;
   double AudiblePlayTime() const;
   double InaudiblePlayTime() const;
@@ -794,8 +821,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   void DispatchAsyncTestingEvent(const nsAString& aName) override;
 
-  AbstractThread* AbstractMainThread() const final;
-
   // Log the usage of a {visible / invisible} video element as
   // the source of {drawImage(), createPattern(), createImageBitmap() and
   // captureStream()} APIs. This function can be used to collect telemetries for
@@ -879,6 +904,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   void CreateAudioWakeLockIfNeeded();
   void ReleaseAudioWakeLockIfExists();
+  void ReleaseAudioWakeLockInternal();
   RefPtr<WakeLock> mWakeLock;
 
   /**
@@ -1072,8 +1098,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
    * state to NETWORK_NO_SOURCE, and sends error event with code
    * MEDIA_ERR_SRC_NOT_SUPPORTED.
    */
-  void NoSupportedMediaSourceError(
-      const nsACString& aErrorDetails = nsCString());
+  void NoSupportedMediaSourceError(const nsACString& aErrorDetails);
 
   /**
    * Per spec, Failed with elements: Queue a task, using the DOM manipulation
@@ -1117,7 +1142,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
    * When loading a new source on an existing media element, make sure to reset
    * everything that is accessible using the media element API.
    */
-  void ResetState();
+  virtual void ResetState();
 
   /**
    * The resource-fetch algorithm step of the load algorithm.
@@ -1158,16 +1183,6 @@ class HTMLMediaElement : public nsGenericHTMLElement,
    * Called when "xpcom-shutdown" event is received.
    */
   void NotifyShutdownEvent();
-
-  /**
-   * Possible values of the 'preload' attribute.
-   */
-  enum PreloadAttrValue : uint8_t {
-    PRELOAD_ATTR_EMPTY,     // set to ""
-    PRELOAD_ATTR_NONE,      // set to "none"
-    PRELOAD_ATTR_METADATA,  // set to "metadata"
-    PRELOAD_ATTR_AUTO       // set to "auto"
-  };
 
   /**
    * The preloading action to perform. These dictate how we react to the
@@ -1235,14 +1250,15 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   /**
    * Dispatches an error event to a child source element.
    */
-  void DispatchAsyncSourceError(nsIContent* aSourceElement);
+  void DispatchAsyncSourceError(nsIContent* aSourceElement,
+                                const nsACString& aErrorDetails);
 
   /**
    * Resets the media element for an error condition as per aErrorCode.
    * aErrorCode must be one of WebIDL HTMLMediaElement error codes.
    */
   void Error(uint16_t aErrorCode,
-             const nsACString& aErrorDetails = nsCString());
+             const Maybe<MediaResult>& aResult = Nothing());
 
   /**
    * Returns the URL spec of the currentSrc.
@@ -1318,7 +1334,8 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   using nsGenericHTMLElement::DispatchEvent;
   // For nsAsyncEventRunner.
-  nsresult DispatchEvent(const nsAString& aName);
+  // The event is blocked while the document is in B/F cache.
+  MOZ_CAN_RUN_SCRIPT nsresult FireEvent(const nsAString& aName);
 
   already_AddRefed<nsMediaEventRunner> GetEventRunner(
       const nsAString& aName, EventFlag aFlag = EventFlag::eNone);
@@ -1414,6 +1431,10 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // This function is used to update the status of media control when the media
   // changes its status of being used in the Picture-in-Picture mode.
   void UpdateMediaControlAfterPictureInPictureModeChanged();
+
+  // Return true if the element has pending callbacks that should prevent the
+  // suspension of video playback.
+  virtual bool HasPendingCallbacks() const { return false; }
 
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
@@ -1806,7 +1827,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   already_AddRefed<PlayPromise> CreatePlayPromise(ErrorResult& aRv) const;
 
-  virtual void MaybeBeginCloningVisually(){};
+  virtual void MaybeBeginCloningVisually() {};
 
   uint32_t GetPreloadDefault() const;
   uint32_t GetPreloadDefaultAuto() const;
@@ -1927,15 +1948,27 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // Return true if we should queue a 'timeupdate' event runner to main thread.
   bool ShouldQueueTimeupdateAsyncTask(TimeupdateType aType) const;
 
+  // In order to avoid the back-button intervention resulting in history
+  // entries with autoplayed videos from being skipped, we make sure that an
+  // entry which has played a video is considered to have been interacted
+  // with. See bug 1946547.
+  void MaybeMarkSHEntryAsUserInteracted();
+
 #ifdef MOZ_WMF_CDM
   // It's used to record telemetry probe for WMFCDM playback.
   bool mIsUsingWMFCDM = false;
 #endif
+
+  Maybe<DelayedScheduler<AwakeTimeStamp>> mAudioWakelockReleaseScheduler;
 };
 
 // Check if the context is chrome or has the debugger or tabs permission
 bool HasDebuggerOrTabsPrivilege(JSContext* aCx, JSObject* aObj);
 
 }  // namespace mozilla::dom
+
+inline nsISupports* ToSupports(mozilla::dom::HTMLMediaElement* aElement) {
+  return static_cast<mozilla::dom::EventTarget*>(aElement);
+}
 
 #endif  // mozilla_dom_HTMLMediaElement_h

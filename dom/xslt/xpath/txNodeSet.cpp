@@ -82,12 +82,12 @@ txNodeSet::~txNodeSet() {
   }
 }
 
-nsresult txNodeSet::add(const txXPathNode& aNode) {
+nsresult txNodeSet::add(txXPathNode&& aNode) {
   NS_ASSERTION(mDirection == kForward,
                "only append(aNode) is supported on reversed nodesets");
 
   if (isEmpty()) {
-    return append(aNode);
+    return append(std::move(aNode));
   }
 
   bool dupe;
@@ -108,10 +108,12 @@ nsresult txNodeSet::add(const txXPathNode& aNode) {
 
   if (moveSize > 0) {
     LOG_CHUNK_MOVE(pos, pos + 1, moveSize);
-    memmove(pos + 1, pos, moveSize * sizeof(txXPathNode));
+    // This move is okay even though txXPathNode is not trivially copyable as
+    // the created hole at `pos` is used for inplace new below.
+    memmove((void*)(pos + 1), pos, moveSize * sizeof(txXPathNode));
   }
 
-  new (pos) txXPathNode(aNode);
+  new (pos) txXPathNode(std::move(aNode));
   ++mEnd;
 
   return NS_OK;
@@ -273,7 +275,7 @@ nsresult txNodeSet::add(const txNodeSet& aNodes, transferOp aTransfer,
     if (count > 0) {
       insertPos -= count;
       LOG_CHUNK_MOVE(pos, insertPos, count);
-      memmove(insertPos, pos, count * sizeof(txXPathNode));
+      memmove((void*)insertPos, pos, count * sizeof(txXPathNode));
       thisPos -= count;
     }
   }
@@ -293,19 +295,19 @@ nsresult txNodeSet::add(const txNodeSet& aNodes, transferOp aTransfer,
  * order info operations will be performed.
  */
 
-nsresult txNodeSet::append(const txXPathNode& aNode) {
+nsresult txNodeSet::append(txXPathNode&& aNode) {
   if (!ensureGrowSize(1)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
   if (mDirection == kForward) {
-    new (mEnd) txXPathNode(aNode);
+    new (mEnd) txXPathNode(std::move(aNode));
     ++mEnd;
 
     return NS_OK;
   }
 
-  new (--mStart) txXPathNode(aNode);
+  new (--mStart) txXPathNode(std::move(aNode));
 
   return NS_OK;
 }
@@ -371,7 +373,8 @@ nsresult txNodeSet::sweep() {
     // move chunk
     if (chunk > 0) {
       LOG_CHUNK_MOVE(mStart + pos - chunk, insertion, chunk);
-      memmove(insertion, mStart + pos - chunk, chunk * sizeof(txXPathNode));
+      memmove((void*)insertion, mStart + pos - chunk,
+              chunk * sizeof(txXPathNode));
       insertion += chunk;
     }
   }
@@ -465,7 +468,7 @@ bool txNodeSet::ensureGrowSize(int32_t aSize) {
       dest = mEndBuffer - oldSize;
     }
     LOG_CHUNK_MOVE(mStart, dest, oldSize);
-    memmove(dest, mStart, oldSize * sizeof(txXPathNode));
+    memmove((void*)dest, mStart, oldSize * sizeof(txXPathNode));
     mStart = dest;
     mEnd = dest + oldSize;
 
@@ -490,12 +493,13 @@ bool txNodeSet::ensureGrowSize(int32_t aSize) {
 
   if (oldSize > 0) {
     LOG_CHUNK_MOVE(mStart, dest, oldSize);
-    memcpy(dest, mStart, oldSize * sizeof(txXPathNode));
+    memcpy((void*)dest, mStart, oldSize * sizeof(txXPathNode));
   }
 
   if (mStartBuffer) {
 #ifdef DEBUG
-    memset(mStartBuffer, 0, (mEndBuffer - mStartBuffer) * sizeof(txXPathNode));
+    memset((void*)mStartBuffer, 0,
+           (mEndBuffer - mStartBuffer) * sizeof(txXPathNode));
 #endif
     free(mStartBuffer);
   }
@@ -563,5 +567,5 @@ void txNodeSet::copyElements(txXPathNode* aDest, const txXPathNode* aStart,
 void txNodeSet::transferElements(txXPathNode* aDest, const txXPathNode* aStart,
                                  const txXPathNode* aEnd) {
   LOG_CHUNK_MOVE(aStart, aDest, (aEnd - aStart));
-  memcpy(aDest, aStart, (aEnd - aStart) * sizeof(txXPathNode));
+  memcpy((void*)aDest, aStart, (aEnd - aStart) * sizeof(txXPathNode));
 }

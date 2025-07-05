@@ -236,8 +236,7 @@ nsObjectLoadingContent::nsObjectLoadingContent()
       mIsStopping(false),
       mIsLoading(false),
       mScriptRequested(false),
-      mRewrittenYoutubeEmbed(false),
-      mLoadingSyntheticDocument(false) {}
+      mRewrittenYoutubeEmbed(false) {}
 
 nsObjectLoadingContent::~nsObjectLoadingContent() {
   // Should have been unbound from the tree at this point, and
@@ -540,8 +539,8 @@ void nsObjectLoadingContent::MaybeRewriteYoutubeEmbed(nsIURI* aURI,
   }
 
   // See if requester is planning on using the JS API.
-  nsAutoCString uri;
-  nsresult rv = aURI->GetSpec(uri);
+  nsAutoCString prePath;
+  nsresult rv = aURI->GetPrePath(prePath);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -552,10 +551,10 @@ void nsObjectLoadingContent::MaybeRewriteYoutubeEmbed(nsIURI* aURI,
   // URLs, convert the parameters to query in order to make the video load
   // correctly as an iframe. In either case, warn about it in the
   // developer console.
-  int32_t ampIndex = uri.FindChar('&', 0);
+  int32_t ampIndex = path.FindChar('&', 0);
   bool replaceQuery = false;
   if (ampIndex != -1) {
-    int32_t qmIndex = uri.FindChar('?', 0);
+    int32_t qmIndex = path.FindChar('?', 0);
     if (qmIndex == -1 || qmIndex > ampIndex) {
       replaceQuery = true;
     }
@@ -571,19 +570,21 @@ void nsObjectLoadingContent::MaybeRewriteYoutubeEmbed(nsIURI* aURI,
     return;
   }
 
-  nsAutoString utf16OldURI = NS_ConvertUTF8toUTF16(uri);
+  NS_ConvertUTF8toUTF16 utf16OldURI(prePath);
+  AppendUTF8toUTF16(path, utf16OldURI);
   // If we need to convert the URL, it means an ampersand comes first.
   // Use the index we found earlier.
   if (replaceQuery) {
     // Replace question marks with ampersands.
-    uri.ReplaceChar('?', '&');
+    path.ReplaceChar('?', '&');
     // Replace the first ampersand with a question mark.
-    uri.SetCharAt('?', ampIndex);
+    path.SetCharAt('?', ampIndex);
   }
   // Switch out video access url formats, which should possibly allow HTML5
   // video loading.
-  uri.ReplaceSubstring("/v/"_ns, "/embed/"_ns);
-  nsAutoString utf16URI = NS_ConvertUTF8toUTF16(uri);
+  path.ReplaceSubstring("/v/"_ns, "/embed/"_ns);
+  NS_ConvertUTF8toUTF16 utf16URI(prePath);
+  AppendUTF8toUTF16(path, utf16URI);
   rv = nsContentUtils::NewURIWithDocumentCharset(aRewrittenURI, utf16URI, doc,
                                                  aBaseURI);
   if (NS_FAILED(rv)) {
@@ -614,11 +615,15 @@ bool nsObjectLoadingContent::CheckLoadPolicy(int16_t* aContentPolicy) {
 
   nsContentPolicyType contentPolicyType = GetContentPolicyType();
 
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo =
-      new LoadInfo(doc->NodePrincipal(),  // loading principal
-                   doc->NodePrincipal(),  // triggering principal
-                   el, nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
-                   contentPolicyType);
+  Result<RefPtr<LoadInfo>, nsresult> maybeLoadInfo =
+      LoadInfo::Create(doc->NodePrincipal(),  // loading principal
+                       doc->NodePrincipal(),  // triggering principal
+                       el, nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
+                       contentPolicyType);
+  if (NS_WARN_IF(maybeLoadInfo.isErr())) {
+    return false;
+  }
+  RefPtr<LoadInfo> secCheckLoadInfo = maybeLoadInfo.unwrap();
 
   *aContentPolicy = nsIContentPolicy::ACCEPT;
   nsresult rv =
@@ -654,10 +659,14 @@ bool nsObjectLoadingContent::CheckProcessPolicy(int16_t* aContentPolicy) {
       return false;
   }
 
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = new LoadInfo(
+  Result<RefPtr<LoadInfo>, nsresult> maybeLoadInfo = LoadInfo::Create(
       doc->NodePrincipal(),  // loading principal
       doc->NodePrincipal(),  // triggering principal
       el, nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK, objectType);
+  if (NS_WARN_IF(maybeLoadInfo.isErr())) {
+    return false;
+  }
+  RefPtr<LoadInfo> secCheckLoadInfo = maybeLoadInfo.unwrap();
 
   *aContentPolicy = nsIContentPolicy::ACCEPT;
   nsresult rv = NS_CheckContentProcessPolicy(
@@ -671,6 +680,15 @@ bool nsObjectLoadingContent::CheckProcessPolicy(int16_t* aContentPolicy) {
   }
 
   return true;
+}
+
+bool nsObjectLoadingContent::IsSyntheticImageDocument() const {
+  if (mType != ObjectType::Document || !mFrameLoader) {
+    return false;
+  }
+
+  BrowsingContext* browsingContext = mFrameLoader->GetExtantBrowsingContext();
+  return browsingContext && browsingContext->GetIsSyntheticDocumentContainer();
 }
 
 nsObjectLoadingContent::ParameterUpdateFlags
@@ -700,7 +718,7 @@ nsObjectLoadingContent::UpdateObjectParameters() {
   // already opened a channel or tried to instantiate content, whereas channel
   // parameter changes require re-opening the channel even if we haven't gotten
   // that far.
-  nsObjectLoadingContent::ParameterUpdateFlags retval = eParamNoChange;
+  ParameterUpdateFlags retval = eParamNoChange;
 
   ///
   /// Initial MIME Type
@@ -764,6 +782,7 @@ nsObjectLoadingContent::UpdateObjectParameters() {
   }
 
   mRewrittenYoutubeEmbed = false;
+
   // Note that the baseURI changing could affect the newURI, even if uriStr did
   // not change.
   if (!uriStr.IsEmpty()) {
@@ -954,9 +973,6 @@ nsObjectLoadingContent::UpdateObjectParameters() {
     newType = ObjectType::Fallback;
     LOG(("OBJLC [%p]: NewType #4: %u", this, uint32_t(newType)));
   }
-
-  mLoadingSyntheticDocument = newType == ObjectType::Document &&
-                              imgLoader::SupportImageWithMimeType(newMime);
 
   ///
   /// Handle existing channels
@@ -1396,7 +1412,7 @@ nsresult nsObjectLoadingContent::OpenChannel() {
       true,                 // aInheritForAboutBlank
       false);               // aForceInherit
 
-  bool inheritPrincipal = inheritAttrs && !SchemeIsData(mURI);
+  bool inheritPrincipal = inheritAttrs && !mURI->SchemeIs("data");
 
   nsSecurityFlags securityFlags =
       nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL;
@@ -1427,7 +1443,7 @@ nsresult nsObjectLoadingContent::OpenChannel() {
   }
 
   // --- Create LoadInfo
-  RefPtr<LoadInfo> loadInfo = new LoadInfo(
+  RefPtr<LoadInfo> loadInfo = MOZ_TRY(LoadInfo::Create(
       /*aLoadingPrincipal = aLoadingContext->NodePrincipal() */ nullptr,
       /*aTriggeringPrincipal = aLoadingPrincipal */ nullptr,
       /*aLoadingContext = */ el,
@@ -1435,7 +1451,7 @@ nsresult nsObjectLoadingContent::OpenChannel() {
       /*aContentPolicyType = */ contentPolicyType,
       /*aLoadingClientInfo = */ Nothing(),
       /*aController = */ Nothing(),
-      /*aSandboxFlags = */ sandboxFlags);
+      /*aSandboxFlags = */ sandboxFlags));
 
   if (inheritAttrs) {
     loadInfo->SetPrincipalToInherit(el->NodePrincipal());
@@ -1461,6 +1477,19 @@ nsresult nsObjectLoadingContent::OpenChannel() {
     // Is the ...WithoutClone(...) important?
     auto referrerInfo = MakeRefPtr<ReferrerInfo>(*doc);
     loadState->SetReferrerInfo(referrerInfo);
+
+    loadState->SetShouldCheckForRecursion(true);
+
+    // When loading using DocumentChannel, ensure that the MIME type hint is
+    // propagated to DocumentLoadListener. Object elements can override MIME
+    // handling in some scenarios.
+    if (!mOriginalContentType.IsEmpty()) {
+      nsAutoCString parsedMime, dummy;
+      NS_ParseResponseContentType(mOriginalContentType, parsedMime, dummy);
+      if (!parsedMime.IsEmpty()) {
+        loadState->SetTypeHint(parsedMime);
+      }
+    }
 
     chan =
         DocumentChannel::CreateForObject(loadState, loadInfo, loadFlags, shim);
@@ -1618,6 +1647,8 @@ nsObjectLoadingContent::ObjectType nsObjectLoadingContent::GetTypeOfContent(
   Element* el = AsElement();
   NS_ASSERTION(el, "must be a content");
 
+  Document* doc = el->OwnerDoc();
+
   // Images and documents are always supported.
   MOZ_ASSERT((GetCapabilities() & (eSupportImages | eSupportDocuments)) ==
              (eSupportImages | eSupportDocuments));
@@ -1626,8 +1657,9 @@ nsObjectLoadingContent::ObjectType nsObjectLoadingContent::GetTypeOfContent(
       ("OBJLC [%p]: calling HtmlObjectContentTypeForMIMEType: aMIMEType: %s - "
        "el: %p\n",
        this, aMIMEType.get(), el));
-  auto ret = static_cast<ObjectType>(
-      nsContentUtils::HtmlObjectContentTypeForMIMEType(aMIMEType));
+  auto ret =
+      static_cast<ObjectType>(nsContentUtils::HtmlObjectContentTypeForMIMEType(
+          aMIMEType, doc->GetSandboxFlags()));
   LOG(("OBJLC [%p]: called HtmlObjectContentTypeForMIMEType\n", this));
   return ret;
 }
@@ -1806,8 +1838,6 @@ void nsObjectLoadingContent::SubdocumentIntrinsicSizeOrRatioChanged(
 
 void nsObjectLoadingContent::SubdocumentImageLoadComplete(nsresult aResult) {
   ObjectType oldType = mType;
-  mLoadingSyntheticDocument = false;
-
   if (NS_FAILED(aResult)) {
     UnloadObject();
     mType = ObjectType::Fallback;

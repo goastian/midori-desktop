@@ -34,6 +34,10 @@ class MediaRawData;
 class MediaSourceDemuxer;
 class SourceBufferResource;
 
+namespace dom {
+enum class MediaSourceEndOfStreamError : uint8_t;
+}  // namespace dom
+
 class SourceBufferTaskQueue {
  public:
   SourceBufferTaskQueue() = default;
@@ -111,6 +115,11 @@ class TrackBuffersManager final
   EvictDataResult EvictData(const media::TimeUnit& aPlaybackTime, int64_t aSize,
                             TrackType aType);
 
+  // Schedule data eviction if necessary and the size of eviction would be
+  // determined automatically. This is currently used when the buffer's size is
+  // close to full and the normal procedure to evict data is not enough.
+  void EvictDataWithoutSize(TrackType aType, const media::TimeUnit& aTarget);
+
   // Queue a task to run ChangeType
   void ChangeType(const MediaContainerType& aType);
 
@@ -126,7 +135,7 @@ class TrackBuffersManager final
   int64_t GetSize() const;
 
   // Indicate that the MediaSource parent object got into "ended" state.
-  void Ended();
+  void SetEnded(const dom::Optional<dom::MediaSourceEndOfStreamError>& aError);
 
   // The parent SourceBuffer is about to be destroyed.
   void Detach();
@@ -145,7 +154,7 @@ class TrackBuffersManager final
   const media::TimeIntervals& Buffered(TrackInfo::TrackType) const;
   const media::TimeUnit& HighestStartTime(TrackInfo::TrackType) const;
   media::TimeIntervals SafeBuffered(TrackInfo::TrackType) const;
-  bool IsEnded() const { return mEnded; }
+  bool HaveAllData() const { return mHaveAllData; }
   uint32_t Evictable(TrackInfo::TrackType aTrack) const;
   media::TimeUnit Seek(TrackInfo::TrackType aTrack,
                        const media::TimeUnit& aTime,
@@ -185,6 +194,9 @@ class TrackBuffersManager final
   using CodedFrameProcessingPromise = MozPromise<bool, MediaResult, true>;
 
   ~TrackBuffersManager();
+  // main thread:
+  void Reopen();
+
   // All following functions run on the taskqueue.
   RefPtr<AppendPromise> DoAppendData(already_AddRefed<MediaByteBuffer> aData,
                                      const SourceBufferAttributes& aAttributes);
@@ -296,7 +308,8 @@ class TrackBuffersManager final
   void MaybeDispatchEncryptedEvent(
       const nsTArray<RefPtr<MediaRawData>>& aSamples);
 
-  void DoEvictData(const media::TimeUnit& aPlaybackTime, int64_t aSizeToEvict)
+  void DoEvictData(const media::TimeUnit& aPlaybackTime,
+                   Maybe<int64_t> aSizeToEvict)
       MOZ_REQUIRES(mTaskQueueCapability);
 
   void GetDebugInfo(dom::TrackBuffersManagerDebugInfo& aInfo) const
@@ -523,7 +536,7 @@ class TrackBuffersManager final
       MOZ_GUARDED_BY(mTaskQueueCapability);
   // The current sourcebuffer append window. It's content is equivalent to
   // mSourceBufferAttributes.mAppendWindowStart/End
-  media::TimeInterval mAppendWindow MOZ_GUARDED_BY(mTaskQueueCapability);
+  media::Interval<double> mAppendWindow MOZ_GUARDED_BY(mTaskQueueCapability);
 
   // Strong references to external objects.
   nsMainThreadPtrHandle<MediaSourceDecoder> mParentDecoder;
@@ -535,13 +548,15 @@ class TrackBuffersManager final
   media::TimeUnit HighestEndTime(
       nsTArray<const media::TimeIntervals*>& aTracks) const;
 
-  // Set to true if mediasource state changed to ended.
-  Atomic<bool> mEnded;
+  // true if endOfStream() has been called without error.
+  Atomic<bool> mHaveAllData{false};
 
   // Global size of this source buffer content.
   Atomic<int64_t> mSizeSourceBuffer;
   const int64_t mVideoEvictionThreshold;
   const int64_t mAudioEvictionThreshold;
+  // A ratio of buffer fullness that we use for the auto eviction,
+  const double mEvictionBufferWatermarkRatio;
   enum class EvictionState {
     NO_EVICTION_NEEDED,
     EVICTION_NEEDED,
@@ -560,6 +575,8 @@ class TrackBuffersManager final
   media::TimeIntervals mAudioBufferedRanges;
   // MediaInfo of the first init segment read.
   MediaInfo mInfo;
+  // Set to true if MediaSource readyState has changed to ended.
+  bool mEnded MOZ_GUARDED_BY(mMutex) = false;
   // End mutex protected members.
 
   // EventTargetCapability used to ensure we're running on the task queue

@@ -284,7 +284,7 @@ nsresult nsDOMDataChannel::DoOnMessageAvailable(const nsACString& aData,
   }
 
   AutoJSAPI jsapi;
-  if (NS_WARN_IF(!jsapi.Init(GetOwner()))) {
+  if (NS_WARN_IF(!jsapi.Init(GetOwnerWindow()))) {
     return NS_ERROR_FAILURE;
   }
   JSContext* cx = jsapi.cx();
@@ -305,7 +305,7 @@ nsresult nsDOMDataChannel::DoOnMessageAvailable(const nsACString& aData,
     } else if (mBinaryType == DC_BINARY_TYPE_ARRAYBUFFER) {
       ErrorResult error;
       JS::Rooted<JSObject*> arrayBuf(cx, ArrayBuffer::Create(cx, aData, error));
-      ENSURE_SUCCESS(error, error.StealNSResult());
+      RETURN_NSRESULT_ON_FAILURE(error);
       jsData.setObject(*arrayBuf);
     } else {
       MOZ_CRASH("Unknown binary type!");

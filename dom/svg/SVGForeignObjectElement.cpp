@@ -68,31 +68,16 @@ already_AddRefed<DOMSVGAnimatedLength> SVGForeignObjectElement::Height() {
 //----------------------------------------------------------------------
 // SVGElement methods
 
-/* virtual */
-gfxMatrix SVGForeignObjectElement::PrependLocalTransformsTo(
-    const gfxMatrix& aMatrix, SVGTransformTypes aWhich) const {
-  // 'transform' attribute:
-  gfxMatrix fromUserSpace =
-      SVGGraphicsElement::PrependLocalTransformsTo(aMatrix, aWhich);
-  if (aWhich == eUserSpaceToParent) {
-    return fromUserSpace;
-  }
+gfxMatrix SVGForeignObjectElement::ChildToUserSpaceTransform() const {
   // our 'x' and 'y' attributes:
   float x, y;
-
   if (!SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y>(this, &x, &y)) {
     // This function might be called for element in display:none subtree
     // (e.g. getScreenCTM), we fall back to use SVG attributes.
     const_cast<SVGForeignObjectElement*>(this)->GetAnimatedLengthValues(
         &x, &y, nullptr);
   }
-
-  gfxMatrix toUserSpace = gfxMatrix::Translation(x, y);
-  if (aWhich == eChildToUserSpace) {
-    return toUserSpace * aMatrix;
-  }
-  MOZ_ASSERT(aWhich == eAllTransforms, "Unknown TransformTypes");
-  return toUserSpace * fromUserSpace;
+  return gfxMatrix::Translation(x, y);
 }
 
 /* virtual */
@@ -120,7 +105,7 @@ SVGForeignObjectElement::IsAttributeMapped(const nsAtom* name) const {
 
 SVGElement::LengthAttributesInfo SVGForeignObjectElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              ArrayLength(sLengthInfo));
+                              std::size(sLengthInfo));
 }
 
 nsCSSPropertyID SVGForeignObjectElement::GetCSSPropertyIdForAttrEnum(

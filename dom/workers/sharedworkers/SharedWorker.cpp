@@ -19,6 +19,8 @@
 #include "mozilla/dom/RemoteWorkerTypes.h"
 #include "mozilla/dom/SharedWorkerBinding.h"
 #include "mozilla/dom/SharedWorkerChild.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
 #include "mozilla/dom/WorkerBinding.h"
 #include "mozilla/dom/WorkerLoadInfo.h"
 #include "mozilla/dom/WorkerPrivate.h"
@@ -58,8 +60,24 @@ SharedWorker::~SharedWorker() {
 
 // static
 already_AddRefed<SharedWorker> SharedWorker::Constructor(
-    const GlobalObject& aGlobal, const nsAString& aScriptURL,
+    const GlobalObject& aGlobal, const TrustedScriptURLOrUSVString& aScriptURL,
     const StringOrWorkerOptions& aOptions, ErrorResult& aRv) {
+  AssertIsOnMainThread();
+
+  if (aOptions.IsString()) {
+    WorkerOptions options;
+    options.mName = aOptions.GetAsString();
+    return SharedWorker::Constructor(aGlobal, aScriptURL, options, aRv);
+  }
+
+  return SharedWorker::Constructor(aGlobal, aScriptURL,
+                                   aOptions.GetAsWorkerOptions(), aRv);
+}
+
+// static
+already_AddRefed<SharedWorker> SharedWorker::Constructor(
+    const GlobalObject& aGlobal, const TrustedScriptURLOrUSVString& aScriptURL,
+    const WorkerOptions& aOptions, ErrorResult& aRv) {
   AssertIsOnMainThread();
 
   nsCOMPtr<nsPIDOMWindowInner> window =
@@ -112,24 +130,24 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
     return nullptr;
   }
 
-  nsAutoString name;
-  WorkerType workerType = WorkerType::Classic;
-  RequestCredentials credentials = RequestCredentials::Omit;
-  if (aOptions.IsString()) {
-    name = aOptions.GetAsString();
-  } else {
-    MOZ_ASSERT(aOptions.IsWorkerOptions());
-    name = aOptions.GetAsWorkerOptions().mName;
-    workerType = aOptions.GetAsWorkerOptions().mType;
-    credentials = aOptions.GetAsWorkerOptions().mCredentials;
-  }
-
   JSContext* cx = aGlobal.Context();
 
+  constexpr nsLiteralString sink = u"SharedWorker constructor"_ns;
+  Maybe<nsAutoString> compliantStringHolder;
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(window);
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aScriptURL, sink, kTrustedTypesOnlySinkGroup, *global, principal,
+          compliantStringHolder, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
   WorkerLoadInfo loadInfo;
-  aRv = WorkerPrivate::GetLoadInfo(
-      cx, window, nullptr, aScriptURL, workerType, credentials, false,
-      WorkerPrivate::OverrideLoadGroup, WorkerKindShared, &loadInfo);
+  aRv = WorkerPrivate::GetLoadInfo(cx, window, nullptr, *compliantString,
+                                   aOptions.mType, aOptions.mCredentials, false,
+                                   WorkerPrivate::OverrideLoadGroup,
+                                   WorkerKindShared, &loadInfo);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -199,7 +217,6 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
 
   // We don't actually care about this MessageChannel, but we use it to 'steal'
   // its 2 connected ports.
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(window);
   RefPtr<MessageChannel> channel = MessageChannel::Constructor(global, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
@@ -236,20 +253,20 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
     return nullptr;
   }
 
-  Maybe<uint64_t> overriddenFingerprintingSettingsArg;
+  Maybe<RFPTargetSet> overriddenFingerprintingSettingsArg;
   if (loadInfo.mOverriddenFingerprintingSettings.isSome()) {
     overriddenFingerprintingSettingsArg.emplace(
-        uint64_t(loadInfo.mOverriddenFingerprintingSettings.ref()));
+        loadInfo.mOverriddenFingerprintingSettings.ref());
   }
 
   RemoteWorkerData remoteWorkerData(
-      nsString(aScriptURL), baseURL, resolvedScriptURL, name, workerType,
-      credentials, loadingPrincipalInfo, principalInfo,
-      partitionedPrincipalInfo, loadInfo.mUseRegularPrincipal,
-      loadInfo.mUsingStorageAccess, cjsData, loadInfo.mDomain, isSecureContext,
-      ipcClientInfo, loadInfo.mReferrerInfo, storageAllowed,
-      AntiTrackingUtils::IsThirdPartyWindow(window, nullptr),
+      nsString(*compliantString), baseURL, resolvedScriptURL, aOptions,
+      loadingPrincipalInfo, principalInfo, partitionedPrincipalInfo,
+      loadInfo.mUseRegularPrincipal, loadInfo.mUsingStorageAccess, cjsData,
+      loadInfo.mDomain, isSecureContext, ipcClientInfo, loadInfo.mReferrerInfo,
+      storageAllowed, AntiTrackingUtils::IsThirdPartyWindow(window, nullptr),
       loadInfo.mShouldResistFingerprinting, overriddenFingerprintingSettingsArg,
+      loadInfo.mIsOn3PCBExceptionList,
       OriginTrials::FromWindow(nsGlobalWindowInner::Cast(window)),
       void_t() /* OptionalServiceWorkerData */, agentClusterId,
       remoteType.unwrap());

@@ -46,30 +46,26 @@ def write_commit_message_file(
     print(f"github_sha: {github_sha}")
     print(f"bug_number: {bug_number}")
 
-    cmd = "git show --format=%H --no-patch {}".format(github_sha)
+    cmd = f"git show --format=%H --no-patch {github_sha}"
     stdout_lines = run_git(cmd, github_path)
     github_long_sha = stdout_lines[0]
     print(f"github_long_sha: {github_long_sha}")
 
-    cmd = "git show --format=%s%n%n%b --no-patch {}".format(github_sha)
+    cmd = f"git show --format=%s%n%n%b --no-patch {github_sha}"
     github_commit_msg_lines = run_git(cmd, github_path)
 
     with open(commit_message_filename, "w") as ofile:
         ofile.write(
-            "Bug {} - Cherry-pick upstream libwebrtc commit {} r?{}".format(
-                bug_number, github_sha, reviewers
-            )
+            f"Bug {bug_number} - Cherry-pick upstream libwebrtc commit {github_sha} r?{reviewers}"
         )
         ofile.write("\n")
         ofile.write("\n")
         ofile.write(
-            "Upstream commit: https://webrtc.googlesource.com/src/+/{}".format(
-                github_long_sha
-            )
+            f"Upstream commit: https://webrtc.googlesource.com/src/+/{github_long_sha}"
         )
         ofile.write("\n")
         for line in github_commit_msg_lines:
-            ofile.write("       {}".format(line))
+            ofile.write(f"       {line}")
             ofile.write("\n")
 
 
@@ -82,10 +78,10 @@ def cherry_pick_commit(
     print(f"github_path: {github_path}")
     print(f"github_sha: {github_sha}")
 
-    cmd = "git cherry-pick --no-commit {}".format(github_sha)
+    cmd = f"git cherry-pick --no-commit {github_sha}"
     run_git(cmd, github_path)
 
-    cmd = "git commit --file {}".format(os.path.abspath(commit_message_filename))
+    cmd = f"git commit --file {os.path.abspath(commit_message_filename)}"
     run_git(cmd, github_path)
 
 
@@ -93,16 +89,16 @@ def write_noop_tracking_file(
     github_sha,
     bug_number,
 ):
-    noop_basename = "{}.no-op-cherry-pick-msg".format(github_sha)
+    noop_basename = f"{github_sha}.no-op-cherry-pick-msg"
     noop_filename = os.path.join(args.state_path, noop_basename)
     print(f"noop_filename: {noop_filename}")
     with open(noop_filename, "w") as ofile:
-        ofile.write("We cherry-picked this in bug {}".format(bug_number))
+        ofile.write(f"We cherry-picked this in bug {bug_number}")
         ofile.write("\n")
     shutil.copy(noop_filename, args.patch_path)
-    cmd = "hg add {}".format(os.path.join(args.patch_path, noop_basename))
+    cmd = f"hg add {os.path.join(args.patch_path, noop_basename)}"
     run_hg(cmd)
-    cmd = "hg amend {}".format(os.path.join(args.patch_path, noop_basename))
+    cmd = f"hg amend {os.path.join(args.patch_path, noop_basename)}"
     run_hg(cmd)
 
 
@@ -122,37 +118,37 @@ if __name__ == "__main__":
     parser.add_argument(
         "--target-path",
         default=default_target_dir,
-        help="target path for vendoring (defaults to {})".format(default_target_dir),
+        help=f"target path for vendoring (defaults to {default_target_dir})",
     )
     parser.add_argument(
         "--state-path",
         default=default_state_dir,
-        help="path to state directory (defaults to {})".format(default_state_dir),
+        help=f"path to state directory (defaults to {default_state_dir})",
     )
     parser.add_argument(
         "--log-path",
         default=default_log_dir,
-        help="path to log directory (defaults to {})".format(default_log_dir),
+        help=f"path to log directory (defaults to {default_log_dir})",
     )
     parser.add_argument(
         "--tmp-path",
         default=default_tmp_dir,
-        help="path to tmp directory (defaults to {})".format(default_tmp_dir),
+        help=f"path to tmp directory (defaults to {default_tmp_dir})",
     )
     parser.add_argument(
         "--script-path",
         default=default_script_dir,
-        help="path to script directory (defaults to {})".format(default_script_dir),
+        help=f"path to script directory (defaults to {default_script_dir})",
     )
     parser.add_argument(
         "--repo-path",
         default=default_repo_dir,
-        help="path to moz-libwebrtc repo (defaults to {})".format(default_repo_dir),
+        help=f"path to moz-libwebrtc repo (defaults to {default_repo_dir})",
     )
     parser.add_argument(
         "--tar-name",
         default=default_tar_name,
-        help="name of tar file (defaults to {})".format(default_tar_name),
+        help=f"name of tar file (defaults to {default_tar_name})",
     )
     parser.add_argument(
         "--commit-sha",
@@ -173,7 +169,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch-path",
         default=default_patch_dir,
-        help="path to save patches (defaults to {})".format(default_patch_dir),
+        help=f"path to save patches (defaults to {default_patch_dir})",
     )
     parser.add_argument(
         "--reviewers",
@@ -228,25 +224,25 @@ if __name__ == "__main__":
     # handle aborting cherry-pick
     if args.abort:
         run_hg("hg revert --all")
-        run_hg("hg purge {}".format(args.target_path))
+        run_hg(f"hg purge {args.target_path}")
         # If the resume_state is not resume2 or resume3 that means we may
         # have committed something to mercurial.  First we need to check
         # for our cherry-pick commit message, and if found, remove
         # that commit.
-        if not (resume_state == "resume2" or resume_state == "resume3"):
+        if resume_state not in ("resume2", "resume3"):
             # check for committed mercurial patch and backout
             stdout_lines = run_hg("hg log --template {desc|firstline}\n -r .")
             # check for "Cherry-pick upstream libwebrtc commit"
-            print("stdout_lines before filter: {}".format(stdout_lines))
+            print(f"stdout_lines before filter: {stdout_lines}")
             stdout_lines = [
                 line
                 for line in stdout_lines
                 if re.findall("Cherry-pick upstream libwebrtc commit", line)
             ]
-            print("looking for commit: {}".format(stdout_lines))
+            print(f"looking for commit: {stdout_lines}")
             if len(stdout_lines) > 0:
                 cmd = "hg prune ."
-                print("calling '{}'".format(cmd))
+                print(f"calling '{cmd}'")
                 run_hg(cmd)
         print("restoring patch stack")
         restore_patch_stack(
@@ -255,7 +251,6 @@ if __name__ == "__main__":
             os.path.abspath(args.patch_path),
             args.state_path,
             args.tar_name,
-            "https",  # unused in this case
         )
         # reset the resume file
         print("reset resume file")
@@ -264,35 +259,22 @@ if __name__ == "__main__":
         atexit.unregister(early_exit_handler)
         sys.exit(0)
 
-    # make sure the mercurial repo is clean before beginning
+    # make sure the relevant bits of the mercurial repo is clean before beginning
     error_help = (
-        "There are modified or untracked files in the mercurial repo.\n"
-        f"Please start with a clean repo before running {script_name}"
+        f"There are modified or untracked files under {args.target_path}.\n"
+        f"Please cleanup the repo under {args.target_path} before running {script_name}"
     )
-    stdout_lines = run_hg("hg status")
+    stdout_lines = run_hg(f"hg status {args.target_path}")
     if len(stdout_lines) != 0:
         sys.exit(1)
     error_help = None
 
     if len(resume_state) == 0:
-        update_resume_state("resume2", resume_state_filename)
         if args.skip_restore is False:
             # Restoring is done with each new cherry-pick to ensure that
             # guidance from verify_vendoring (the next step) is
             # accurate.  If living dangerously is your thing, you can
             # skip this step.
-            #
-            # Note: we're defaulting to fetching using https.
-            # In the most common use case, this is going to be run in
-            # moz-central (not elm) and is only using the repo to figure
-            # out how to do the cherry-pick.  In other words, we'd never
-            # be pushing from the repo fetched here.
-            # If a cherry-pick needs to happen when doing a fast-forward
-            # (from elm), the user would likely have already had the
-            # repo fetched in their preferred protocol and
-            # restore_patch_stack reuses the saved repo (from the
-            # .tar.gz file) and thus preserves the original protocol
-            # choice made when calling prep_repo.sh.
             print("restoring patch stack")
             restore_patch_stack(
                 args.repo_path,
@@ -300,8 +282,8 @@ if __name__ == "__main__":
                 os.path.abspath(args.patch_path),
                 args.state_path,
                 args.tar_name,
-                "https",  # unused if a previous restore has completed
             )
+        update_resume_state("resume2", resume_state_filename)
 
     # make sure the github repo exists
     error_help = (
@@ -406,18 +388,18 @@ if __name__ == "__main__":
         resume_state = ""
         update_resume_state("resume7", resume_state_filename)
         error_help = (
-            "Reverting change to 'third_party/libwebrtc/README.mozilla'\n"
+            "Reverting change to 'third_party/libwebrtc/README.mozilla.last-vendor'\n"
             "has failed.  The cherry-pick commit should not modify\n"
             "'third_party/libwebrtc/README.mozilla'.  If necessary\n"
             "manually revert changes to 'third_party/libwebrtc/README.mozilla'\n"
-            f"and re-run {script_name}\n"
+            f"in the cherry-pick commit and re-run {script_name}\n"
             "to complete the cherry-pick processing."
         )
         # The normal vendoring process updates README.mozilla with info
         # on what commit was vendored and the command line used to do
         # the vendoring.  Since we're only reusing the vendoring script
         # here, we don't want to update the README.mozilla file.
-        cmd = "hg revert -r tip^ third_party/libwebrtc/README.mozilla"
+        cmd = "hg revert -r tip^ third_party/libwebrtc/README.mozilla.last-vendor"
         run_hg(cmd)
         cmd = "hg amend"
         run_hg(cmd)
@@ -430,13 +412,13 @@ if __name__ == "__main__":
         # commit in mercurial
         cmd = "hg status --change tip --exclude '**/README.*'"
         stdout_lines = run_shell(cmd)  # run_shell to allow file wildcard
-        print("Mercurial changes:\n{}".format(stdout_lines))
+        print(f"Mercurial changes:\n{stdout_lines}")
         hg_file_change_cnt = len(stdout_lines)
 
         # get the files changed from the original cherry-picked patch in
         # our github repo (moz-libwebrtc)
         git_paths_changed = filter_git_changes(args.repo_path, args.commit_sha, None)
-        print("github changes:\n{}".format(git_paths_changed))
+        print(f"github changes:\n{git_paths_changed}")
         git_file_change_cnt = len(git_paths_changed)
 
         error_help = (

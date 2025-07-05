@@ -8,7 +8,23 @@
 #define mozilla_dom_page_load_event_utils_h__
 
 #include "ipc/IPCMessageUtils.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomMetrics.h"
+
+#include <cstdint>
+
+namespace mozilla {
+namespace pageload_event {
+
+/*
+ *  Features utilized within a document, represented as bitfield in the pageload
+ * event.
+ */
+enum FeatureBits : uint32_t {
+  FETCH_PRIORITY_IMAGES = 1 << 0,
+  USING_A11Y = 1 << 1
+};
+}  // namespace pageload_event
+}  // namespace mozilla
 
 namespace IPC {
 
@@ -22,6 +38,8 @@ struct ParamTraits<mozilla::glean::perf::PageLoadExtra> {
     WriteParam(aWriter, aParam.jsExecTime);
     WriteParam(aWriter, aParam.loadTime);
     WriteParam(aWriter, aParam.loadType);
+    WriteParam(aWriter, aParam.timeToRequestStart);
+    WriteParam(aWriter, aParam.tlsHandshakeTime);
     WriteParam(aWriter, aParam.responseTime);
     WriteParam(aWriter, aParam.httpVer);
     WriteParam(aWriter, aParam.redirectCount);
@@ -29,6 +47,7 @@ struct ParamTraits<mozilla::glean::perf::PageLoadExtra> {
     WriteParam(aWriter, aParam.sameOriginNav);
     WriteParam(aWriter, aParam.trrDomain);
     WriteParam(aWriter, aParam.dnsLookupTime);
+    WriteParam(aWriter, aParam.features);
   }
 
   static bool Read(MessageReader* aReader, paramType* aResult) {
@@ -37,13 +56,16 @@ struct ParamTraits<mozilla::glean::perf::PageLoadExtra> {
            ReadParam(aReader, &aResult->jsExecTime) &&
            ReadParam(aReader, &aResult->loadTime) &&
            ReadParam(aReader, &aResult->loadType) &&
+           ReadParam(aReader, &aResult->timeToRequestStart) &&
+           ReadParam(aReader, &aResult->tlsHandshakeTime) &&
            ReadParam(aReader, &aResult->responseTime) &&
            ReadParam(aReader, &aResult->httpVer) &&
            ReadParam(aReader, &aResult->redirectCount) &&
            ReadParam(aReader, &aResult->redirectTime) &&
            ReadParam(aReader, &aResult->sameOriginNav) &&
            ReadParam(aReader, &aResult->trrDomain) &&
-           ReadParam(aReader, &aResult->dnsLookupTime);
+           ReadParam(aReader, &aResult->dnsLookupTime) &&
+           ReadParam(aReader, &aResult->features);
   }
 };
 

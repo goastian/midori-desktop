@@ -11,6 +11,7 @@
 #include "PrincipalHandle.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
+#include "mozilla/dom/MediaTrackCapabilitiesBinding.h"
 #include "mozilla/dom/MediaTrackSettingsBinding.h"
 #include "mozilla/media/MediaUtils.h"
 #include "mozilla/WeakPtr.h"
@@ -40,6 +41,7 @@ namespace dom {
 
 class AudioStreamTrack;
 class VideoStreamTrack;
+class RTCStatsTimestampMaker;
 enum class CallerType : uint32_t;
 
 /**
@@ -141,6 +143,14 @@ class MediaStreamTrackSource : public nsISupports {
   virtual const PeerIdentity* GetPeerIdentity() const { return nullptr; }
 
   /**
+   * This is used in WebRTC. The timestampMaker can convert between different
+   * timestamp types used during the session.
+   */
+  virtual const RTCStatsTimestampMaker* GetTimestampMaker() const {
+    return nullptr;
+  }
+
+  /**
    * MediaStreamTrack::GetLabel (see spec) calls through to here.
    */
   void GetLabel(nsAString& aLabel) { aLabel.Assign(mLabel); }
@@ -173,7 +183,9 @@ class MediaStreamTrackSource : public nsISupports {
   /**
    * Same for GetSettings (no-op).
    */
-  virtual void GetSettings(dom::MediaTrackSettings& aResult){};
+  virtual void GetSettings(dom::MediaTrackSettings& aResult) {};
+
+  virtual void GetCapabilities(dom::MediaTrackCapabilities& aResult) {};
 
   /**
    * Called by the source interface when all registered sinks with
@@ -343,12 +355,12 @@ class MediaStreamTrackConsumer : public SupportsWeakPtr {
    * Unlike the "ended" event exposed to script this is called for any reason,
    * including MediaStreamTrack::Stop().
    */
-  virtual void NotifyEnded(MediaStreamTrack* aTrack){};
+  virtual void NotifyEnded(MediaStreamTrack* aTrack) {};
 
   /**
    * Called when the track's enabled state changes.
    */
-  virtual void NotifyEnabledChanged(MediaStreamTrack* aTrack, bool aEnabled){};
+  virtual void NotifyEnabledChanged(MediaStreamTrack* aTrack, bool aEnabled) {};
 };
 
 // clang-format off
@@ -429,6 +441,7 @@ class MediaStreamTrack : public DOMEventTargetHelper, public SupportsWeakPtr {
   void SetEnabled(bool aEnabled);
   bool Muted() { return mMuted; }
   void Stop();
+  void GetCapabilities(MediaTrackCapabilities& aResult, CallerType aCallerType);
   void GetConstraints(dom::MediaTrackConstraints& aResult);
   void GetSettings(dom::MediaTrackSettings& aResult, CallerType aCallerType);
 
@@ -457,6 +470,13 @@ class MediaStreamTrack : public DOMEventTargetHelper, public SupportsWeakPtr {
    */
   const PeerIdentity* GetPeerIdentity() const {
     return GetSource().GetPeerIdentity();
+  }
+
+  /**
+   * Get this track's RTCStatsTimestampMaker.
+   */
+  const RTCStatsTimestampMaker* GetTimestampMaker() const {
+    return GetSource().GetTimestampMaker();
   }
 
   ProcessedMediaTrack* GetTrack() const;

@@ -5,6 +5,7 @@
 
 interface URI;
 interface nsIDocShell;
+interface nsIDOMGeoPosition;
 interface nsISecureBrowserUI;
 interface nsISHEntry;
 interface nsIPrintSettings;
@@ -51,6 +52,14 @@ enum PrefersColorSchemeOverride {
   "none",
   "light",
   "dark",
+};
+
+/**
+ * CSS forced-colors values.
+ */
+enum ForcedColorsOverride {
+  "none",
+  "active",
 };
 
 /**
@@ -196,6 +205,11 @@ interface BrowsingContext {
   // while in RDM.
   [Throws] undefined setRDMPaneMaxTouchPoints(octet maxTouchPoints);
 
+  // Geolocation emulation for WebDriver BiDi and DevTools.
+  // Note: in case of watchPosition emulation, the override has to be set
+  // before the watcher is started.
+  undefined setGeolocationServiceOverride(optional nsIDOMGeoPosition position);
+
   // The watchedByDevTools flag indicates whether or not DevTools are currently
   // debugging this browsing context.
   [SetterThrows] attribute boolean watchedByDevTools;
@@ -208,6 +222,9 @@ interface BrowsingContext {
 
   // Color-scheme simulation, for DevTools.
   [SetterThrows] attribute PrefersColorSchemeOverride prefersColorSchemeOverride;
+
+  // Forced-colors simulation, for DevTools
+  [SetterThrows] attribute ForcedColorsOverride forcedColorsOverride;
 
   /**
    * A unique identifier for the browser element that is hosting this
@@ -430,6 +447,11 @@ interface CanonicalBrowsingContext : BrowsingContext {
    * visibility, or no frame.
    */
   readonly attribute boolean isUnderHiddenEmbedderElement;
+
+  /**
+   * Indicates whether opening a modal picker is permitted.
+   */
+  readonly attribute boolean canOpenModalPicker;
 };
 
 [Exposed=Window, ChromeOnly]

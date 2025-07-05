@@ -4,6 +4,8 @@
 
 include protocol PBackground;
 
+include ClientIPCTypes;
+include DOMTypes;
 include IPCNavigationPreloadState;
 include IPCServiceWorkerRegistrationDescriptor;
 
@@ -18,11 +20,10 @@ protocol PServiceWorkerRegistration
   manager PBackground;
 
 parent:
-  async Teardown();
-
   async Unregister() returns (bool aSuccess, CopyableErrorResult aRv);
   async Update(nsCString aNewestWorkerScriptUrl) returns (
     IPCServiceWorkerRegistrationDescriptorOrCopyableErrorResult aResult);
+  async GetNotifications(nsString aTag) returns (IPCNotificationsOrError aResult);
 
   // For NavigationPreload interface
   async SetNavigationPreloadEnabled(bool aEnabled) returns (bool aSuccess);
@@ -30,10 +31,11 @@ parent:
   async GetNavigationPreloadState() returns (IPCNavigationPreloadState? aState);
 
 child:
-  async __delete__();
-
   async UpdateState(IPCServiceWorkerRegistrationDescriptor aDescriptor);
   async FireUpdateFound();
+
+both:
+  async __delete__();
 };
 
 } // namespace dom

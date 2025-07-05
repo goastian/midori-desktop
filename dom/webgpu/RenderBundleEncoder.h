@@ -40,19 +40,28 @@ class RenderBundleEncoder final : public ObjectBase, public ChildOf<Device> {
   nsTArray<RefPtr<const BindGroup>> mUsedBindGroups;
   nsTArray<RefPtr<const Buffer>> mUsedBuffers;
   nsTArray<RefPtr<const RenderPipeline>> mUsedPipelines;
-  nsTArray<RefPtr<const TextureView>> mUsedTextureViews;
+
+  // programmable pass encoder
+ private:
+  void SetBindGroup(uint32_t aSlot, BindGroup* const aBindGroup,
+                    const uint32_t* aDynamicOffsets,
+                    uint64_t aDynamicOffsetsLength);
 
  public:
-  // programmable pass encoder
-  void SetBindGroup(uint32_t aSlot, const BindGroup& aBindGroup,
-                    const dom::Sequence<uint32_t>& aDynamicOffsets);
+  void SetBindGroup(uint32_t aSlot, BindGroup* const aBindGroup,
+                    const dom::Sequence<uint32_t>& aDynamicOffsets,
+                    ErrorResult& aRv);
+  void SetBindGroup(uint32_t aSlot, BindGroup* const aBindGroup,
+                    const dom::Uint32Array& aDynamicOffsetsData,
+                    uint64_t aDynamicOffsetsDataStart,
+                    uint64_t aDynamicOffsetsDataLength, ErrorResult& aRv);
   // render encoder base
   void SetPipeline(const RenderPipeline& aPipeline);
   void SetIndexBuffer(const Buffer& aBuffer,
                       const dom::GPUIndexFormat& aIndexFormat, uint64_t aOffset,
-                      uint64_t aSize);
+                      const dom::Optional<uint64_t>& aSize);
   void SetVertexBuffer(uint32_t aSlot, const Buffer& aBuffer, uint64_t aOffset,
-                       uint64_t aSize);
+                       const dom::Optional<uint64_t>& aSize);
   void Draw(uint32_t aVertexCount, uint32_t aInstanceCount,
             uint32_t aFirstVertex, uint32_t aFirstInstance);
   void DrawIndexed(uint32_t aIndexCount, uint32_t aInstanceCount,

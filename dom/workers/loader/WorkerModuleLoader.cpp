@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "js/experimental/JSStencil.h"  // JS::Stencil, JS::CompileModuleScriptToStencil, JS::InstantiateModuleStencil
+#include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
 #include "js/loader/ModuleLoadRequest.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/WorkerLoadContext.h"
@@ -40,7 +41,8 @@ nsIURI* WorkerModuleLoader::GetBaseURI() const {
 }
 
 already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateStaticImport(
-    nsIURI* aURI, ModuleLoadRequest* aParent) {
+    nsIURI* aURI, JS::ModuleType aModuleType, ModuleLoadRequest* aParent,
+    const mozilla::dom::SRIMetadata& aSriMetadata) {
   // We are intentionally deviating from the specification here and using the
   // worker's CSP rather than the document CSP. The spec otherwise requires our
   // service worker integration to be changed, and additionally the decision
@@ -54,10 +56,10 @@ already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateStaticImport(
       aParent->GetWorkerLoadContext()->mScriptLoader,
       aParent->GetWorkerLoadContext()->mOnlyExistingCachedResourcesAllowed);
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      aURI, aParent->ReferrerPolicy(), aParent->mFetchOptions, SRIMetadata(),
-      aParent->mURI, loadContext, false, /* is top level */
-      false,                             /* is dynamic import */
-      this, aParent->mVisitedSet, aParent->GetRootModule());
+      aURI, aModuleType, aParent->ReferrerPolicy(), aParent->mFetchOptions,
+      SRIMetadata(), aParent->mURI, loadContext,
+      ModuleLoadRequest::Kind::StaticImport, this, aParent->mVisitedSet,
+      aParent->GetRootModule());
 
   request->mURL = request->mURI->GetSpecOrDefault();
   request->NoCacheEntryFound();
@@ -81,8 +83,9 @@ bool WorkerModuleLoader::CreateDynamicImportLoader() {
 }
 
 already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateDynamicImport(
-    JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-    JS::Handle<JSString*> aSpecifier, JS::Handle<JSObject*> aPromise) {
+    JSContext* aCx, nsIURI* aURI, JS::ModuleType aModuleType,
+    LoadedScript* aMaybeActiveScript, JS::Handle<JSString*> aSpecifier,
+    JS::Handle<JSObject*> aPromise) {
   WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
 
   if (!CreateDynamicImportLoader()) {
@@ -135,11 +138,14 @@ already_AddRefed<ModuleLoadRequest> WorkerModuleLoader::CreateDynamicImport(
       // used during installation.)
       true);
 
+  RefPtr<JS::loader::VisitedURLSet> visitedSet =
+      ModuleLoadRequest::NewVisitedSetForTopLevelImport(aURI, aModuleType);
+
   ReferrerPolicy referrerPolicy = workerPrivate->GetReferrerPolicy();
   RefPtr<ModuleLoadRequest> request = new ModuleLoadRequest(
-      aURI, referrerPolicy, options, SRIMetadata(), baseURL, context, true,
-      /* is top level */ true, /* is dynamic import */
-      this, ModuleLoadRequest::NewVisitedSetForTopLevelImport(aURI), nullptr);
+      aURI, aModuleType, referrerPolicy, options, SRIMetadata(), baseURL,
+      context, ModuleLoadRequest::Kind::DynamicImport, this, visitedSet,
+      nullptr);
 
   request->SetDynamicImport(aMaybeActiveScript, aSpecifier, aPromise);
   request->NoCacheEntryFound();
@@ -171,12 +177,28 @@ nsresult WorkerModuleLoader::StartFetch(ModuleLoadRequest* aRequest) {
 nsresult WorkerModuleLoader::CompileFetchedModule(
     JSContext* aCx, JS::Handle<JSObject*> aGlobal, JS::CompileOptions& aOptions,
     ModuleLoadRequest* aRequest, JS::MutableHandle<JSObject*> aModuleScript) {
-  RefPtr<JS::Stencil> stencil;
+  switch (aRequest->mModuleType) {
+    case JS::ModuleType::Unknown:
+      MOZ_CRASH("Unexpected module type");
+    case JS::ModuleType::JavaScript:
+      return CompileJavaScriptModule(aCx, aOptions, aRequest, aModuleScript);
+    case JS::ModuleType::JSON:
+      return CompileJsonModule(aCx, aOptions, aRequest, aModuleScript);
+  }
+
+  MOZ_CRASH("Unhandled module type");
+}
+
+nsresult WorkerModuleLoader::CompileJavaScriptModule(
+    JSContext* aCx, JS::CompileOptions& aOptions, ModuleLoadRequest* aRequest,
+    JS::MutableHandle<JSObject*> aModuleScript) {
   MOZ_ASSERT(aRequest->IsTextSource());
   MaybeSourceText maybeSource;
   nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource,
                                           aRequest->mLoadContext.get());
   NS_ENSURE_SUCCESS(rv, rv);
+
+  RefPtr<JS::Stencil> stencil;
 
   auto compile = [&](auto& source) {
     return JS::CompileModuleScriptToStencil(aCx, aOptions, source);
@@ -194,6 +216,28 @@ nsresult WorkerModuleLoader::CompileFetchedModule(
     return NS_ERROR_FAILURE;
   }
 
+  return NS_OK;
+}
+
+nsresult WorkerModuleLoader::CompileJsonModule(
+    JSContext* aCx, JS::CompileOptions& aOptions, ModuleLoadRequest* aRequest,
+    JS::MutableHandle<JSObject*> aModuleScript) {
+  MOZ_ASSERT(aRequest->IsTextSource());
+  MaybeSourceText maybeSource;
+  nsresult rv = aRequest->GetScriptSource(aCx, &maybeSource,
+                                          aRequest->mLoadContext.get());
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  auto compile = [&](auto& source) {
+    return JS::CompileJsonModule(aCx, aOptions, source);
+  };
+
+  auto* jsonModule = maybeSource.mapNonEmpty(compile);
+  if (!jsonModule) {
+    return NS_ERROR_FAILURE;
+  }
+
+  aModuleScript.set(jsonModule);
   return NS_OK;
 }
 

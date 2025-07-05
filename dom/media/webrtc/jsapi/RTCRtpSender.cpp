@@ -63,7 +63,7 @@
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/RTCRtpParametersBinding.h"
 #include "mozilla/dom/RTCStatsReportBinding.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomMediaWebrtcMetrics.h"
 #include "js/RootingAPI.h"
 #include "jsep/JsepTransceiver.h"
 #include "RTCStatsReport.h"
@@ -122,7 +122,9 @@ RTCRtpSender::RTCRtpSender(nsPIDOMWindowInner* aWindow, PeerConnectionImpl* aPc,
       INIT_CANONICAL(mVideoCodecMode, webrtc::VideoCodecMode::kRealtimeVideo),
       INIT_CANONICAL(mCname, std::string()),
       INIT_CANONICAL(mTransmitting, false),
-      INIT_CANONICAL(mFrameTransformerProxy, nullptr) {
+      INIT_CANONICAL(mFrameTransformerProxy, nullptr),
+      INIT_CANONICAL(mVideoDegradationPreference,
+                     webrtc::DegradationPreference::DISABLED) {
   mPipeline = MediaPipelineTransmit::Create(
       mPc->GetHandle(), aTransportHandler, aCallThread, aStsThread,
       aConduit->type() == MediaSessionConduit::VIDEO, aConduit);
@@ -197,11 +199,6 @@ already_AddRefed<Promise> RTCRtpSender::GetStats(ErrorResult& aError) {
     return promise.forget();
   }
 
-  if (!mSenderTrack) {
-    promise->MaybeResolve(new RTCStatsReport(mWindow));
-    return promise.forget();
-  }
-
   mTransceiver->ChainToDomPromiseWithCodecStats(GetStatsInternal(), promise);
   return promise.forget();
 }
@@ -210,13 +207,24 @@ nsTArray<RefPtr<dom::RTCStatsPromise>> RTCRtpSender::GetStatsInternal(
     bool aSkipIceStats) {
   MOZ_ASSERT(NS_IsMainThread());
   nsTArray<RefPtr<RTCStatsPromise>> promises(2);
-  if (!mSenderTrack || !mPipeline) {
+  if (!mPipeline) {
     return promises;
   }
 
   nsAutoString trackName;
   if (auto track = mPipeline->GetTrack()) {
     track->GetId(trackName);
+  }
+
+  std::string mid = mTransceiver->GetMidAscii();
+  std::map<uint32_t, std::string> videoSsrcToRidMap;
+  const auto encodings = mVideoCodec.Ref().andThen(
+      [](const auto& aCodec) { return SomeRef(aCodec.mEncodings); });
+  if (encodings && !encodings->empty() && encodings->front().rid != "") {
+    for (size_t i = 0; i < std::min(mSsrcs.Ref().size(), encodings->size());
+         ++i) {
+      videoSsrcToRidMap.insert({mSsrcs.Ref()[i], (*encodings)[i].rid});
+    }
   }
 
   {
@@ -246,7 +254,9 @@ nsTArray<RefPtr<dom::RTCStatsPromise>> RTCRtpSender::GetStatsInternal(
   }
 
   promises.AppendElement(InvokeAsync(
-      mPipeline->mCallThread, __func__, [pipeline = mPipeline, trackName] {
+      mPipeline->mCallThread, __func__,
+      [pipeline = mPipeline, trackName, mid = std::move(mid),
+       videoSsrcToRidMap = std::move(videoSsrcToRidMap)] {
         auto report = MakeUnique<dom::RTCStatsCollection>();
         auto asAudio = pipeline->mConduit->AsAudioSessionConduit();
         auto asVideo = pipeline->mConduit->AsVideoSessionConduit();
@@ -305,6 +315,9 @@ nsTArray<RefPtr<dom::RTCStatsPromise>> RTCRtpSender::GetStatsInternal(
                     kind);  // mediaType is the old name for kind.
                 if (remoteId.Length()) {
                   aLocal.mRemoteId.Construct(remoteId);
+                }
+                if (!mid.empty()) {
+                  aLocal.mMid.Construct(NS_ConvertUTF8toUTF16(mid).get());
                 }
               };
 
@@ -475,6 +488,10 @@ nsTArray<RefPtr<dom::RTCStatsPromise>> RTCRtpSender::GetStatsInternal(
             // present)
             RTCOutboundRtpStreamStats local;
             constructCommonOutboundRtpStats(local);
+            if (auto it = videoSsrcToRidMap.find(ssrc);
+                it != videoSsrcToRidMap.end() && it->second != "") {
+              local.mRid.Construct(NS_ConvertUTF8toUTF16(it->second).get());
+            }
             local.mPacketsSent.Construct(
                 streamStats->rtp_stats.transmitted.packets);
             local.mBytesSent.Construct(
@@ -525,11 +542,10 @@ nsTArray<RefPtr<dom::RTCStatsPromise>> RTCRtpSender::GetStatsInternal(
             videoSourceStats.mFramesPerSecond.Construct(
                 videoStats->input_frame_rate);
             auto resolution = aConduit->GetLastResolution();
-            resolution.apply(
-                [&](const VideoSessionConduit::Resolution& aResolution) {
-                  videoSourceStats.mWidth.Construct(aResolution.width);
-                  videoSourceStats.mHeight.Construct(aResolution.height);
-                });
+            resolution.apply([&](const auto& aResolution) {
+              videoSourceStats.mWidth.Construct(aResolution.width);
+              videoSourceStats.mHeight.Construct(aResolution.height);
+            });
             if (!report->mVideoSourceStats.AppendElement(
                     std::move(videoSourceStats), fallible)) {
               mozalloc_handle_oom(0);
@@ -614,11 +630,6 @@ already_AddRefed<Promise> RTCRtpSender::SetParameters(
         mHaveWarnedBecauseNoGetParameters = true;
         mozilla::glean::rtcrtpsender_setparameters::warn_no_getparameters
             .AddToNumerator(1);
-#ifdef EARLY_BETA_OR_EARLIER
-        mozilla::glean::rtcrtpsender_setparameters::blame_no_getparameters
-            .Get(GetEffectiveTLDPlus1())
-            .Add(1);
-#endif
       }
       WarnAboutBadSetParameters(error);
     } else {
@@ -684,11 +695,6 @@ already_AddRefed<Promise> RTCRtpSender::SetParameters(
       mHaveWarnedBecauseEncodingCountChange = true;
       mozilla::glean::rtcrtpsender_setparameters::warn_length_changed
           .AddToNumerator(1);
-#ifdef EARLY_BETA_OR_EARLIER
-      mozilla::glean::rtcrtpsender_setparameters::blame_length_changed
-          .Get(GetEffectiveTLDPlus1())
-          .Add(1);
-#endif
     }
     WarnAboutBadSetParameters(error);
   } else {
@@ -726,11 +732,6 @@ already_AddRefed<Promise> RTCRtpSender::SetParameters(
       mHaveWarnedBecauseNoTransactionId = true;
       mozilla::glean::rtcrtpsender_setparameters::warn_no_transactionid
           .AddToNumerator(1);
-#ifdef EARLY_BETA_OR_EARLIER
-      mozilla::glean::rtcrtpsender_setparameters::blame_no_transactionid
-          .Get(GetEffectiveTLDPlus1())
-          .Add(1);
-#endif
     }
     WarnAboutBadSetParameters(error);
   } else if (oldParams->mTransactionId.WasPassed() &&
@@ -834,6 +835,28 @@ already_AddRefed<Promise> RTCRtpSender::SetParameters(
   uint32_t serialNumber = ++mNumSetParametersCalls;
   MaybeUpdateConduit();
 
+  // If we have a degradation value passed convert it from a
+  // dom::RTCDegradationPreference to a webrtc::DegradationPreference and set
+  // mVideoDegradationPreference which will trigger the onconfigure change in
+  // the videoConduit.
+  if (paramsCopy.mDegradationPreference.WasPassed()) {
+    const auto degradationPreference = [&] {
+      switch (paramsCopy.mDegradationPreference.Value()) {
+        case mozilla::dom::RTCDegradationPreference::Balanced:
+          return webrtc::DegradationPreference::BALANCED;
+        case mozilla::dom::RTCDegradationPreference::Maintain_framerate:
+          return webrtc::DegradationPreference::MAINTAIN_FRAMERATE;
+        case mozilla::dom::RTCDegradationPreference::Maintain_resolution:
+          return webrtc::DegradationPreference::MAINTAIN_RESOLUTION;
+      }
+      MOZ_CRASH("Unexpected RTCDegradationPreference");
+    };
+    mVideoDegradationPreference = degradationPreference();
+  } else {
+    // Default to disabled when unset to allow for correct degradation
+    mVideoDegradationPreference = webrtc::DegradationPreference::DISABLED;
+  }
+
   // If the media stack is successfully configured with parameters,
   // queue a task to run the following steps:
   GetMainThreadSerialEventTarget()->Dispatch(NS_NewRunnableFunction(
@@ -844,6 +867,13 @@ already_AddRefed<Promise> RTCRtpSender::SetParameters(
         // Set sender.[[SendEncodings]] to parameters.encodings.
         mParameters.mEncodings = paramsCopy.mEncodings;
         UpdateRestorableEncodings(mParameters.mEncodings);
+        // If we had a valid degradation preference passed in store it in
+        // mParameters so we can return it if needed via GetParameters calls.
+        mParameters.mDegradationPreference.Reset();
+        if (paramsCopy.mDegradationPreference.WasPassed()) {
+          mParameters.mDegradationPreference.Construct(
+              paramsCopy.mDegradationPreference.Value());
+        }
         // Only clear mPendingParameters if it matches; there could have been
         // back-to-back calls to setParameters, and we only want to clear this
         // if no subsequent setParameters is pending.
@@ -980,6 +1010,10 @@ void RTCRtpSender::GetParameters(RTCRtpSendParameters& aParameters) {
   aParameters.mRtcp.Construct();
   aParameters.mRtcp.Value().mCname.Construct();
   aParameters.mRtcp.Value().mReducedSize.Construct(false);
+  if (mParameters.mDegradationPreference.WasPassed()) {
+    aParameters.mDegradationPreference.Construct(
+        mParameters.mDegradationPreference.Value());
+  }
   aParameters.mHeaderExtensions.Construct();
   if (mParameters.mCodecs.WasPassed()) {
     aParameters.mCodecs.Construct(mParameters.mCodecs.Value());
@@ -1354,7 +1388,7 @@ void RTCRtpSender::UpdateTransport() {
   }
 
   mPipeline->UpdateTransport_m(GetJsepTransceiver().mTransport.mTransportId,
-                               nullptr);
+                               nullptr, true);
 }
 
 void RTCRtpSender::MaybeUpdateConduit() {

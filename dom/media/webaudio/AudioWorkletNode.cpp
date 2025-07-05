@@ -8,6 +8,7 @@
 
 #include "AudioNodeEngine.h"
 #include "AudioParamMap.h"
+#include "AudioWorklet.h"
 #include "AudioWorkletImpl.h"
 #include "js/Array.h"  // JS::{Get,Set}ArrayLength, JS::NewArrayLength
 #include "js/CallAndConstruct.h"  // JS::Call, JS::IsCallable
@@ -52,7 +53,7 @@ struct ProcessorErrorDetails {
   unsigned mLineno;
   // Column number in UTF-16 code units (1-origin).
   unsigned mColno;
-  nsString mFilename;
+  nsCString mFilename;
   nsString mMessage;
 };
 
@@ -231,11 +232,7 @@ void WorkletNodeEngine::SendProcessorError(AudioNodeTrack* aTrack,
     }
 
     ProcessorErrorDetails details;
-
-    CopyUTF8toUTF16(
-        mozilla::MakeStringSpan(jsReport.report()->filename.c_str()),
-        details.mFilename);
-
+    details.mFilename.Assign(jsReport.report()->filename.c_str());
     xpc::ErrorReport::ErrorReportToMessageString(jsReport.report(),
                                                  details.mMessage);
     details.mLineno = jsReport.report()->lineno;

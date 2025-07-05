@@ -202,7 +202,8 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
                        int32_t* aTabIndex) override;
   void InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
                          bool aNotify, ErrorResult& aRv) override;
-  void RemoveChildNode(nsIContent* aKid, bool aNotify) override;
+  void RemoveChildNode(nsIContent* aKid, bool aNotify,
+                       const BatchRemovalState*) override;
 
   // nsGenericHTMLElement
   bool IsDisabledForEvents(WidgetEvent* aEvent) override;
@@ -322,7 +323,10 @@ class HTMLSelectElement final : public nsGenericHTMLFormControlElementWithState,
   bool IsCombobox() const { return !Multiple() && Size() <= 1; }
 
   bool OpenInParentProcess() const { return mIsOpenInParentProcess; }
-  void SetOpenInParentProcess(bool aVal) { mIsOpenInParentProcess = aVal; }
+  void SetOpenInParentProcess(bool aVal) {
+    mIsOpenInParentProcess = aVal;
+    SetStates(ElementState::OPEN, aVal);
+  }
 
   void GetPreviewValue(nsAString& aValue) { aValue = mPreviewValue; }
   void SetPreviewValue(const nsAString& aValue);

@@ -128,6 +128,11 @@ void nsFrameLoaderOwner::ChangeRemotenessCommon(
       // or want, so we use the initial (possibly pending) browsing context
       // directly, instead.
       bc = mFrameLoader->GetMaybePendingBrowsingContext();
+
+      if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
+        fm->FixUpFocusBeforeFrameLoaderChange(*owner, bc);
+      }
+
       networkCreated = mFrameLoader->IsNetworkCreated();
 
       MOZ_ASSERT_IF(aOptions.mTryUseBFCache, aOptions.mReplaceBrowsingContext);
@@ -231,10 +236,9 @@ void nsFrameLoaderOwner::UpdateFocusAndMouseEnterStateAfterFrameLoaderChange(
     Element* aOwner) {
   // If the element is focused, or the current mouse over target then
   // we need to update that state for the new BrowserParent too.
-  if (nsFocusManager* fm = nsFocusManager::GetFocusManager()) {
+  if (RefPtr<nsFocusManager> fm = nsFocusManager::GetFocusManager()) {
     if (fm->GetFocusedElement() == aOwner) {
-      fm->ActivateRemoteFrameIfNeeded(*aOwner,
-                                      nsFocusManager::GenerateFocusActionId());
+      fm->FixUpFocusAfterFrameLoaderChange(*aOwner);
     }
   }
 
@@ -257,7 +261,8 @@ void nsFrameLoaderOwner::ChangeRemoteness(
     if (aOptions.mPendingSwitchID.WasPassed()) {
       mFrameLoader->ResumeLoad(aOptions.mPendingSwitchID.Value());
     } else {
-      mFrameLoader->LoadFrame(false);
+      mFrameLoader->LoadFrame(/* aOriginalSrc */ false,
+                              /* aShouldCheckForRecursion */ false);
     }
   };
 

@@ -8,6 +8,7 @@
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLSlotElement.h"
+#include "mozilla/dom/HTMLSlotElementBinding.h"
 #include "mozilla/dom/HTMLUnknownElement.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/Text.h"
@@ -302,14 +303,39 @@ void HTMLSlotElement::InsertAssignedNode(uint32_t aIndex, nsIContent& aNode) {
   MOZ_ASSERT(!aNode.GetAssignedSlot(), "Losing track of a slot");
   mAssignedNodes.InsertElementAt(aIndex, &aNode);
   aNode.SetAssignedSlot(this);
-  SlotAssignedNodeChanged(this, aNode);
+  RecalculateHasSlottedState();
+  SlotAssignedNodeAdded(this, aNode);
 }
 
 void HTMLSlotElement::AppendAssignedNode(nsIContent& aNode) {
   MOZ_ASSERT(!aNode.GetAssignedSlot(), "Losing track of a slot");
   mAssignedNodes.AppendElement(&aNode);
   aNode.SetAssignedSlot(this);
-  SlotAssignedNodeChanged(this, aNode);
+  RecalculateHasSlottedState();
+  SlotAssignedNodeAdded(this, aNode);
+}
+
+void HTMLSlotElement::RecalculateHasSlottedState() {
+  bool hasSlotted = false;
+  // Find the first node that makes this a slotted element.
+  for (const RefPtr<nsINode>& assignedNode : mAssignedNodes) {
+    if (auto* slot = HTMLSlotElement::FromNode(assignedNode)) {
+      if (slot->IsInShadowTree() &&
+          !slot->State().HasState(ElementState::HAS_SLOTTED)) {
+        continue;
+      }
+    }
+    hasSlotted = true;
+    break;
+  }
+  if (State().HasState(ElementState::HAS_SLOTTED) != hasSlotted) {
+    SetStates(ElementState::HAS_SLOTTED, hasSlotted);
+    // If slot is a slotted node itself, the assigned slot needs to
+    // RecalculateHasSlottedState:
+    if (auto* slot = GetAssignedSlot()) {
+      slot->RecalculateHasSlottedState();
+    }
+  }
 }
 
 void HTMLSlotElement::RemoveAssignedNode(nsIContent& aNode) {
@@ -319,7 +345,9 @@ void HTMLSlotElement::RemoveAssignedNode(nsIContent& aNode) {
              "How exactly?");
   mAssignedNodes.RemoveElement(&aNode);
   aNode.SetAssignedSlot(nullptr);
-  SlotAssignedNodeChanged(this, aNode);
+
+  RecalculateHasSlottedState();
+  SlotAssignedNodeRemoved(this, aNode);
 }
 
 void HTMLSlotElement::ClearAssignedNodes() {
@@ -331,6 +359,7 @@ void HTMLSlotElement::ClearAssignedNodes() {
   }
 
   mAssignedNodes.Clear();
+  RecalculateHasSlottedState();
 }
 
 void HTMLSlotElement::EnqueueSlotChangeEvent() {

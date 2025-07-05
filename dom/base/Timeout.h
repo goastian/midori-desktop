@@ -35,10 +35,11 @@ class Timeout final : protected LinkedListElement<RefPtr<Timeout>> {
     eIdleCallbackTimeout,
     eAbortSignalTimeout,
     eDelayedWebTaskTimeout,
+    eJSTimeout,
   };
 
   struct TimeoutIdAndReason {
-    uint32_t mId;
+    int32_t mId;
     Reason mReason;
   };
 
@@ -143,8 +144,8 @@ class Timeout final : protected LinkedListElement<RefPtr<Timeout>> {
   // is necessary as we migrate members to private while still trying to
   // keep decent binary packing.
 
-  // Window for which this timeout fires
-  RefPtr<nsGlobalWindowInner> mWindow;
+  // Global object for which this timeout fires
+  RefPtr<nsIGlobalObject> mGlobal;
 
   // The language-specific information about the callback.
   RefPtr<TimeoutHandler> mScriptHandler;
@@ -157,7 +158,7 @@ class Timeout final : protected LinkedListElement<RefPtr<Timeout>> {
   UniquePtr<ProfileChunkedBuffer> mCause;
 
   // Returned as value of setTimeout()
-  uint32_t mTimeoutId;
+  int32_t mTimeoutId;
 
   // Identifies which firing level this Timeout is being processed in
   // when sync loops trigger nested firing.

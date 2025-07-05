@@ -9,7 +9,6 @@
 #include <algorithm>
 
 #include "mozilla/CheckedInt.h"
-#include "nsAlgorithm.h"
 #include "nsThreadUtils.h"
 
 extern mozilla::LazyLogModule gMediaDemuxerLog;
@@ -67,6 +66,12 @@ WebMBufferedParser::WebMBufferedParser(int64_t aOffset)
   if (mStartOffset != 0) {
     mState = FIND_CLUSTER_SYNC;
   }
+}
+
+void WebMBufferedParser::SetTimecodeScale(uint32_t aTimecodeScale) {
+  mTimecodeScale = aTimecodeScale;
+  WEBM_DEBUG("%" PRIu32, mTimecodeScale);
+  mGotTimecodeScale = true;
 }
 
 MediaResult WebMBufferedParser::Append(const unsigned char* aBuffer,
@@ -266,6 +271,7 @@ MediaResult WebMBufferedParser::Append(const unsigned char* aBuffer,
                              "TimecodeScale appeared before SegmentInfo");
         }
         mTimecodeScale = mVInt.mValue;
+        WEBM_DEBUG("READ_TIMECODESCALE %" PRIu32, mTimecodeScale);
         mState = READ_ELEMENT_ID;
         break;
       case READ_CLUSTER_TIMECODE:

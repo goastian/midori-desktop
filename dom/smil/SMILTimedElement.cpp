@@ -192,18 +192,6 @@ void SMILTimedElement::RemoveInstanceTimes(InstanceTimeList& aArray,
 //----------------------------------------------------------------------
 // Static members
 
-const nsAttrValue::EnumTable SMILTimedElement::sFillModeTable[] = {
-    {"remove", FILL_REMOVE}, {"freeze", FILL_FREEZE}, {nullptr, 0}};
-
-const nsAttrValue::EnumTable SMILTimedElement::sRestartModeTable[] = {
-    {"always", RESTART_ALWAYS},
-    {"whenNotActive", RESTART_WHENNOTACTIVE},
-    {"never", RESTART_NEVER},
-    {nullptr, 0}};
-
-const SMILMilestone SMILTimedElement::sMaxMilestone(
-    std::numeric_limits<SMILTime>::max(), false);
-
 // The thresholds at which point we start filtering intervals and instance times
 // indiscriminately.
 // See FilterIntervals and FilterInstanceTimes.
@@ -302,7 +290,8 @@ nsresult SMILTimedElement::BeginElementAt(double aOffsetSeconds) {
   if (!container) return NS_ERROR_FAILURE;
 
   SMILTime currentTime = container->GetCurrentTimeAsSMILTime();
-  return AddInstanceTimeFromCurrentTime(currentTime, aOffsetSeconds, true);
+  AddInstanceTimeFromCurrentTime(currentTime, aOffsetSeconds, true);
+  return NS_OK;
 }
 
 nsresult SMILTimedElement::EndElementAt(double aOffsetSeconds) {
@@ -310,7 +299,8 @@ nsresult SMILTimedElement::EndElementAt(double aOffsetSeconds) {
   if (!container) return NS_ERROR_FAILURE;
 
   SMILTime currentTime = container->GetCurrentTimeAsSMILTime();
-  return AddInstanceTimeFromCurrentTime(currentTime, aOffsetSeconds, false);
+  AddInstanceTimeFromCurrentTime(currentTime, aOffsetSeconds, false);
+  return NS_OK;
 }
 
 //----------------------------------------------------------------------
@@ -1735,17 +1725,7 @@ SMILTimeValue SMILTimedElement::ApplyMinAndMax(
     return aDuration;
   }
 
-  SMILTimeValue result;
-
-  if (aDuration > mMax) {
-    result = mMax;
-  } else if (aDuration < mMin) {
-    result = mMin;
-  } else {
-    result = aDuration;
-  }
-
-  return result;
+  return std::clamp(aDuration, mMin, mMax);
 }
 
 SMILTime SMILTimedElement::ActiveTimeToSimpleTime(SMILTime aActiveTime,
@@ -1916,6 +1896,7 @@ void SMILTimedElement::SampleFillValue() {
   if (mFillMode != FILL_FREEZE || !mClient) return;
 
   SMILTime activeTime;
+  SMILTimeValue repeatDuration = GetRepeatDuration();
 
   if (mElementState == STATE_WAITING || mElementState == STATE_POSTACTIVE) {
     const SMILInterval* prevInterval = GetPreviousInterval();
@@ -1933,7 +1914,6 @@ void SMILTimedElement::SampleFillValue() {
     // If the interval's repeat duration was shorter than its active duration,
     // use the end of the repeat duration to determine the frozen animation's
     // state.
-    SMILTimeValue repeatDuration = GetRepeatDuration();
     if (repeatDuration.IsDefinite()) {
       activeTime = std::min(repeatDuration.GetMillis(), activeTime);
     }
@@ -1943,12 +1923,12 @@ void SMILTimedElement::SampleFillValue() {
         "Attempting to sample fill value when we're in an unexpected state "
         "(probably STATE_STARTUP)");
 
-    // If we are being asked to sample the fill value while active we *must*
-    // have a repeat duration shorter than the active duration so use that.
-    MOZ_ASSERT(GetRepeatDuration().IsDefinite(),
-               "Attempting to sample fill value of an active animation with "
-               "an indefinite repeat duration");
-    activeTime = GetRepeatDuration().GetMillis();
+    if (!repeatDuration.IsDefinite()) {
+      // Normally we'd expect a definite repeat duration here so presumably
+      // it's only just been set to indefinite.
+      return;
+    }
+    activeTime = repeatDuration.GetMillis();
   }
 
   uint32_t repeatIteration;
@@ -1961,23 +1941,18 @@ void SMILTimedElement::SampleFillValue() {
   }
 }
 
-nsresult SMILTimedElement::AddInstanceTimeFromCurrentTime(SMILTime aCurrentTime,
-                                                          double aOffsetSeconds,
-                                                          bool aIsBegin) {
+void SMILTimedElement::AddInstanceTimeFromCurrentTime(SMILTime aCurrentTime,
+                                                      double aOffsetSeconds,
+                                                      bool aIsBegin) {
   double offset = NS_round(aOffsetSeconds * PR_MSEC_PER_SEC);
 
-  // Check we won't overflow the range of SMILTime
-  if (aCurrentTime + offset > double(std::numeric_limits<SMILTime>::max()))
-    return NS_ERROR_ILLEGAL_VALUE;
-
-  SMILTimeValue timeVal(aCurrentTime + int64_t(offset));
+  SMILTimeValue timeVal(std::clamp<SMILTime>(
+      aCurrentTime + offset, 0, std::numeric_limits<SMILTime>::max()));
 
   RefPtr<SMILInstanceTime> instanceTime =
       new SMILInstanceTime(timeVal, SMILInstanceTime::SOURCE_DOM);
 
   AddInstanceTime(instanceTime, aIsBegin);
-
-  return NS_OK;
 }
 
 void SMILTimedElement::RegisterMilestone() {
@@ -2117,9 +2092,18 @@ void SMILTimedElement::NotifyChangedInterval(SMILInterval* aInterval,
 void SMILTimedElement::FireTimeEventAsync(EventMessage aMsg, int32_t aDetail) {
   if (!mAnimationElement) return;
 
+  Document* ownerDoc = mAnimationElement->OwnerDoc();
+  if (ownerDoc->IsBeingUsedAsImage() || !ownerDoc->IsScriptEnabled()) {
+    // Without scripting the only listeners would be from SMIL itself
+    // and they would exist for the life of the document.
+    nsPIDOMWindowInner* inner = ownerDoc->GetInnerWindow();
+    if (inner && !inner->HasSMILTimeEventListeners()) {
+      return;
+    }
+  }
   nsCOMPtr<nsIRunnable> event =
       new AsyncTimeEventRunner(mAnimationElement, aMsg, aDetail);
-  mAnimationElement->OwnerDoc()->Dispatch(event.forget());
+  ownerDoc->Dispatch(event.forget());
 }
 
 const SMILInstanceTime* SMILTimedElement::GetEffectiveBeginInstance() const {

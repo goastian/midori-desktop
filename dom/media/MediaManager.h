@@ -25,6 +25,7 @@
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
 #include "mozilla/dom/MediaStreamError.h"
+#include "mozilla/dom/MediaTrackCapabilitiesBinding.h"
 #include "mozilla/dom/NavigatorBinding.h"
 #include "mozilla/media/MediaChild.h"
 #include "mozilla/media/MediaParent.h"
@@ -48,8 +49,9 @@ namespace mozilla {
 class MediaEngine;
 class MediaEngineSource;
 class TaskQueue;
-class MediaTimer;
 class MediaTrack;
+template <typename T>
+class MediaTimer;
 namespace dom {
 struct AudioOutputOptions;
 struct MediaStreamConstraints;
@@ -147,7 +149,7 @@ class LocalMediaDevice final : public nsIMediaDevice {
   nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
                     const MediaEnginePrefs& aPrefs, uint64_t aWindowId,
                     const char** aOutBadConstraint);
-  void SetTrack(const RefPtr<MediaTrack>& aTrack,
+  void SetTrack(const RefPtr<mozilla::MediaTrack>& aTrack,
                 const nsMainThreadPtrHandle<nsIPrincipal>& aPrincipal);
   nsresult Start();
   nsresult Reconfigure(const dom::MediaTrackConstraints& aConstraints,
@@ -158,6 +160,7 @@ class LocalMediaDevice final : public nsIMediaDevice {
   nsresult Deallocate();
 
   void GetSettings(dom::MediaTrackSettings& aOutSettings);
+  void GetCapabilities(dom::MediaTrackCapabilities& aOutCapabilities);
   MediaEngineSource* Source();
   const TrackingId& GetTrackingId() const;
   // Returns null if not a physical audio device.
@@ -444,7 +447,7 @@ class MediaManager final : public nsIMediaManagerService,
       mPendingDevicesPromises;
   RefPtr<MediaDeviceSetRefCnt> mPhysicalDevices;
   TimeStamp mUnhandledDeviceChangeTime;
-  RefPtr<MediaTimer> mDeviceChangeTimer;
+  RefPtr<MediaTimer<TimeStamp>> mDeviceChangeTimer;
   bool mCamerasMuted = false;
   bool mMicrophonesMuted = false;
 

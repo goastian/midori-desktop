@@ -21,15 +21,18 @@
 #include "mozilla/NotNull.h"
 #include "mozilla/PerfStats.h"
 #include "mozilla/ScopeExit.h"
+#include "mozilla/SharedSubResourceCache.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/Utf8.h"
 #include "mozilla/Vector.h"
+#include "mozilla/dom/CacheExpirationTime.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/SRICheck.h"
 #include "mozilla/dom/ScriptDecoding.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nsDebug.h"
+#include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsICacheInfoChannel.h"
 #include "nsIChannel.h"
 #include "nsIHttpChannel.h"
@@ -123,7 +126,17 @@ ScriptLoadHandler::ScriptLoadHandler(
 
 ScriptLoadHandler::~ScriptLoadHandler() = default;
 
-NS_IMPL_ISUPPORTS(ScriptLoadHandler, nsIIncrementalStreamLoaderObserver)
+NS_IMPL_ISUPPORTS(ScriptLoadHandler, nsIIncrementalStreamLoaderObserver,
+                  nsIChannelEventSink, nsIInterfaceRequestor)
+
+NS_IMETHODIMP
+ScriptLoadHandler::OnStartRequest(nsIRequest* aRequest) {
+  mRequest->SetMinimumExpirationTime(
+      nsContentUtils::GetSubresourceCacheExpirationTime(aRequest,
+                                                        mRequest->mURI));
+
+  return NS_OK;
+}
 
 NS_IMETHODIMP
 ScriptLoadHandler::OnIncrementalData(nsIIncrementalStreamLoader* aLoader,
@@ -361,6 +374,14 @@ ScriptLoadHandler::OnStreamComplete(nsIIncrementalStreamLoader* aLoader,
   nsCOMPtr<nsIRequest> channelRequest;
   aLoader->GetRequest(getter_AddRefs(channelRequest));
 
+  mRequest->mNetworkMetadata =
+      new SubResourceNetworkMetadataHolder(channelRequest);
+
+  {
+    nsCOMPtr<nsIChannel> channel = do_QueryInterface(channelRequest);
+    channel->SetNotificationCallbacks(nullptr);
+  }
+
   auto firstMessage = !mPreloadStartNotified;
   if (!mPreloadStartNotified) {
     mPreloadStartNotified = true;
@@ -408,8 +429,8 @@ ScriptLoadHandler::OnStreamComplete(nsIIncrementalStreamLoader* aLoader,
       LOG(("ScriptLoadRequest (%p): Bytecode length = %u", mRequest.get(),
            unsigned(bytecode.length())));
 
-      // If we abort while decoding the SRI, we fallback on explictly requesting
-      // the source. Thus, we should not continue in
+      // If we abort while decoding the SRI, we fallback on explicitly
+      // requesting the source. Thus, we should not continue in
       // ScriptLoader::OnStreamComplete, which removes the request from the
       // waiting lists.
       //
@@ -461,6 +482,26 @@ ScriptLoadHandler::OnStreamComplete(nsIIncrementalStreamLoader* aLoader,
   }
 
   return rv;
+}
+
+NS_IMETHODIMP
+ScriptLoadHandler::GetInterface(const nsIID& aIID, void** aResult) {
+  if (aIID.Equals(NS_GET_IID(nsIChannelEventSink))) {
+    return QueryInterface(aIID, aResult);
+  }
+
+  return NS_NOINTERFACE;
+}
+
+nsresult ScriptLoadHandler::AsyncOnChannelRedirect(
+    nsIChannel* aOld, nsIChannel* aNew, uint32_t aFlags,
+    nsIAsyncVerifyRedirectCallback* aCallback) {
+  mRequest->SetMinimumExpirationTime(
+      nsContentUtils::GetSubresourceCacheExpirationTime(aOld, mRequest->mURI));
+
+  aCallback->OnRedirectVerifyCallback(NS_OK);
+
+  return NS_OK;
 }
 
 #undef LOG_ENABLED

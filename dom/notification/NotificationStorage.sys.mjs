@@ -68,46 +68,31 @@ export class NotificationStorage {
     }
   }
 
-  put(
-    origin,
-    id,
-    title,
-    dir,
-    lang,
-    body,
-    tag,
-    icon,
-    alertName,
-    data,
-    behavior,
-    serviceWorkerRegistrationScope
-  ) {
-    lazy.console.debug(`PUT: ${origin} ${id}: ${title}`);
-    var notification = {
-      id,
-      title,
-      dir,
-      lang,
-      body,
-      tag,
-      icon,
-      alertName,
+  put(aOrigin, aEntry, aScope) {
+    lazy.console.debug(`PUT: ${aOrigin} ${aEntry.id}: ${aEntry.title}`);
+    let notification = {
+      ...aEntry,
+
+      // XPCOM objects cannot be sent as-is. See also bug 1937194 to skip this step
+      actions: aEntry.actions.map(rawAction => {
+        let actionEntry = { ...rawAction };
+        delete actionEntry.QueryInterface;
+        return actionEntry;
+      }),
       timestamp: new Date().getTime(),
-      origin,
-      data,
-      mozbehavior: behavior,
-      serviceWorkerRegistrationScope,
+      serviceWorkerRegistrationScope: aScope,
     };
+    delete notification.QueryInterface;
 
     Services.cpmm.sendAsyncMessage(this.formatMessageType("Save"), {
-      origin,
+      origin: aOrigin,
       notification,
     });
   }
 
-  get(origin, tag, callback) {
+  get(origin, scope, tag, callback) {
     lazy.console.debug(`GET: ${origin} ${tag}`);
-    this.#fetchFromDB(origin, tag, callback);
+    this.#fetchFromDB(origin, scope, tag, callback);
   }
 
   delete(origin, id) {
@@ -155,9 +140,10 @@ export class NotificationStorage {
     return this.#requestCount;
   }
 
-  #fetchFromDB(origin, tag, callback) {
+  #fetchFromDB(origin, scope, tag, callback) {
     var request = {
       origin,
+      scope,
       tag,
       callback,
     };
@@ -165,6 +151,7 @@ export class NotificationStorage {
     this.#requests[requestID] = request;
     Services.cpmm.sendAsyncMessage(this.formatMessageType("GetAll"), {
       origin,
+      scope,
       tag,
       requestID,
     });
@@ -174,31 +161,10 @@ export class NotificationStorage {
     // Pass each notification back separately.
     // The callback is called asynchronously to match the behaviour when
     // fetching from the database.
-    notifications.forEach(function (notification) {
-      try {
-        Services.tm.dispatchToMainThread(
-          callback.handle.bind(
-            callback,
-            notification.id,
-            notification.title,
-            notification.dir,
-            notification.lang,
-            notification.body,
-            notification.tag,
-            notification.icon,
-            notification.data,
-            notification.mozbehavior,
-            notification.serviceWorkerRegistrationScope
-          )
-        );
-      } catch (e) {
-        lazy.console.debug(`Error calling callback handle: ${e}`);
-      }
-    });
     try {
-      Services.tm.dispatchToMainThread(callback.done);
+      Services.tm.dispatchToMainThread(() => callback.done(notifications));
     } catch (e) {
-      lazy.console.debug(`Error calling callback done: ${e}`);
+      lazy.console.debug(`Error calling callback handle: ${e}`);
     }
   }
 

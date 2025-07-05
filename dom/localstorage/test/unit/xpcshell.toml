@@ -1,21 +1,28 @@
 [DEFAULT]
 head = "head.js"
-tags = "condprof"
+tags = "condprof inc-origin-init"
 support-files = [
   "archive_profile.zip",
   "corruptedDatabase_profile.zip",
   "corruptedDatabase_missingUsageFile_profile.zip",
   "groupMismatch_profile.zip",
   "migration_profile.zip",
+  "open_and_multiple_preloads_child.js",
   "schema3upgrade_profile.zip",
   "schema4upgrade_profile.zip",
+  "slowDatabaseInitialization_child.js",
+  "slowRequestFinalization_child.js",
+  "somedata_profile.zip",
   "stringLength2_profile.zip",
   "stringLength_profile.zip",
   "usageAfterMigration_profile.zip",
 ]
 
 ["make_migration_emptyValue.js"]
-skip-if = ["true"] # Only used for recreating migration_emptyValue_profile.zip
+run-if = ["false"] # Only used for recreating migration_emptyValue_profile.zip
+
+["make_somedata.js"]
+run-if = ["false"] # Only used for recreating somedata_profile.zip
 
 ["test_archive.js"]
 
@@ -51,6 +58,8 @@ run-sequentially = "test_databaseShadowing_clearOriginsByPrefix2.js depends on a
 ["test_databaseShadowing_clearOriginsByPrefix2.js"]
 run-sequentially = "this test depends on a file produced by test_databaseShadowing_clearOriginsByPrefix1.js"
 
+["test_databaseWorkStarted.js"]
+
 ["test_eviction.js"]
 
 ["test_flushing.js"]
@@ -64,11 +73,15 @@ run-sequentially = "this test depends on a file produced by test_databaseShadowi
 ["test_lsng_enabled.js"]
 
 ["test_migration.js"]
+prefs = ["dom.storage.enable_migration_from_unsupported_legacy_implementation=true"]
 
 ["test_migration_emptyValue.js"]
+prefs = ["dom.storage.enable_migration_from_unsupported_legacy_implementation=true"]
 support-files = ["migration_emptyValue_profile.zip",]
 
 ["test_old_lsng_pref.js"]
+
+["test_open_and_multiple_preloads.js"]
 
 ["test_orderingAfterRemoveAdd.js"]
 
@@ -76,17 +89,28 @@ support-files = ["migration_emptyValue_profile.zip",]
 
 ["test_preloading.js"]
 
+["test_requestFinalizationStarted.js"]
+
 ["test_schema3upgrade.js"]
 
 ["test_schema4upgrade.js"]
 
+["test_shutdownDuringRequestFinalization.js"]
+
+["test_slowDatabaseInitialization.js"]
+
+["test_slowRequestFinalization.js"]
+
+["test_slowStorageInitialization.js"]
+
 ["test_snapshotting.js"]
-skip-if = ["tsan"] # Unreasonably slow, bug 1612707
 requesttimeoutfactor = 4
 
 ["test_stringLength.js"]
+prefs = ["dom.storage.enable_migration_from_unsupported_legacy_implementation=true"]
 
 ["test_stringLength2.js"]
+prefs = ["dom.storage.enable_migration_from_unsupported_legacy_implementation=true"]
 
 ["test_unicodeCharacters.js"]
 
@@ -95,3 +119,4 @@ requesttimeoutfactor = 4
 ["test_usage.js"]
 
 ["test_usageAfterMigration.js"]
+prefs = ["dom.storage.enable_migration_from_unsupported_legacy_implementation=true"]

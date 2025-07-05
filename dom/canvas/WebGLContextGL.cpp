@@ -38,6 +38,7 @@
 #include "WebGLTexelConversions.h"
 #include "WebGLValidateStrings.h"
 #include <algorithm>
+#include <fmt/format.h>
 
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/BindingUtils.h"
@@ -45,7 +46,6 @@
 #include "mozilla/dom/WebGLRenderingContextBinding.h"
 #include "mozilla/EndianUtils.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/StaticPrefs_webgl.h"
 
 namespace mozilla {
@@ -985,13 +985,14 @@ static webgl::PackingInfo DefaultReadPixelPI(
     case webgl::ComponentType::Float:
       return {LOCAL_GL_RGBA, LOCAL_GL_FLOAT};
 
-    default:
-      MOZ_CRASH();
+    case webgl::ComponentType::NormInt:
+      MOZ_RELEASE_ASSERT(false, "SNORM formats are never color-renderable!");
+      break;
   }
+  MOZ_CRASH("bad webgl::ComponentType");
 }
 
-static bool ArePossiblePackEnums(const WebGLContext* webgl,
-                                 const webgl::PackingInfo& pi) {
+static bool ArePossiblePackEnums(const webgl::PackingInfo& pi) {
   // OpenGL ES 2.0 $4.3.1 - IMPLEMENTATION_COLOR_READ_{TYPE/FORMAT} is a valid
   // combination for glReadPixels()...
 
@@ -1018,27 +1019,49 @@ static bool ArePossiblePackEnums(const WebGLContext* webgl,
 
 webgl::PackingInfo WebGLContext::ValidImplementationColorReadPI(
     const webgl::FormatUsageInfo* usage) const {
+  if (const auto implPI = usage->implReadPiCache) return *implPI;
+
   const auto defaultPI = DefaultReadPixelPI(usage);
+  usage->implReadPiCache = [&]() {
+    if (StaticPrefs::webgl_porting_strict_readpixels_formats())
+      return defaultPI;
+    auto implPI = defaultPI;
+    // ES2_compatibility always returns RGBA/UNSIGNED_BYTE, so branch on actual
+    // IsGLES(). Also OSX+NV generates an error here.
+    if (gl->IsGLES()) {
+      gl->GetInt(LOCAL_GL_IMPLEMENTATION_COLOR_READ_FORMAT, &implPI.format);
+      gl->GetInt(LOCAL_GL_IMPLEMENTATION_COLOR_READ_TYPE, &implPI.type);
+    } else {
+      if (StaticPrefs::webgl_porting_strict_readpixels_formats_non_es())
+        return defaultPI;
+      // Non-ES GL is way more open, and basically supports reading anything.
+      // (Sucks to be their driver team!)
+      if (usage->idealUnpack) {
+        for (const auto& [validPi, validDui] : usage->validUnpacks) {
+          if (validDui != *usage->idealUnpack) continue;
+          implPI = validPi;
+          break;
+        }
+      }
+    }
+    // Normalize HALF_FLOAT_OES to HALF_FLOAT internally.
+    if (implPI.type == LOCAL_GL_HALF_FLOAT_OES) {
+      implPI.type = LOCAL_GL_HALF_FLOAT;
+    }
+    if (!ArePossiblePackEnums(implPI)) return defaultPI;
+    return implPI;
+  }();
+  return *usage->implReadPiCache;
+}
 
-  // ES2_compatibility always returns RGBA/UNSIGNED_BYTE, so branch on actual
-  // IsGLES(). Also OSX+NV generates an error here.
-  if (!gl->IsGLES()) return defaultPI;
-
-  webgl::PackingInfo implPI;
-  gl->fGetIntegerv(LOCAL_GL_IMPLEMENTATION_COLOR_READ_FORMAT,
-                   (GLint*)&implPI.format);
-  gl->fGetIntegerv(LOCAL_GL_IMPLEMENTATION_COLOR_READ_TYPE,
-                   (GLint*)&implPI.type);
-
-  if (!ArePossiblePackEnums(this, implPI)) return defaultPI;
-
-  return implPI;
+std::string webgl::format_as(const PackingInfo& pi) {
+  return fmt::format(FMT_STRING("{}/{}"), pi.format, pi.type);
 }
 
 static bool ValidateReadPixelsFormatAndType(
     const webgl::FormatUsageInfo* srcUsage, const webgl::PackingInfo& pi,
-    gl::GLContext* gl, WebGLContext* webgl) {
-  if (!ArePossiblePackEnums(webgl, pi)) {
+    WebGLContext* webgl) {
+  if (!ArePossiblePackEnums(pi)) {
     webgl->ErrorInvalidEnum("Unexpected format or type.");
     return false;
   }
@@ -1051,32 +1074,48 @@ static bool ValidateReadPixelsFormatAndType(
   // OpenGL ES 3.0.4 p194 - When the internal format of the rendering surface is
   // RGB10_A2, a third combination of format RGBA and type
   // UNSIGNED_INT_2_10_10_10_REV is accepted.
-
-  if (webgl->IsWebGL2() &&
-      srcUsage->format->effectiveFormat == webgl::EffectiveFormat::RGB10_A2 &&
-      pi.format == LOCAL_GL_RGBA &&
-      pi.type == LOCAL_GL_UNSIGNED_INT_2_10_10_10_REV) {
-    return true;
+  std::optional<webgl::PackingInfo> bonusValidPi;
+  if (srcUsage->format->effectiveFormat == webgl::EffectiveFormat::RGB10_A2) {
+    bonusValidPi =
+        webgl::PackingInfo{LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_INT_2_10_10_10_REV};
   }
+  if (bonusValidPi && pi == *bonusValidPi) return true;
 
   ////
 
   const auto implPI = webgl->ValidImplementationColorReadPI(srcUsage);
+  MOZ_ASSERT(pi.type != LOCAL_GL_HALF_FLOAT_OES);      // HALF_FLOAT-only
+  MOZ_ASSERT(implPI.type != LOCAL_GL_HALF_FLOAT_OES);  // HALF_FLOAT-only
   if (pi == implPI) return true;
 
   ////
 
-  // clang-format off
-  webgl->ErrorInvalidOperation(
-      "Format and type %s/%s incompatible with this %s attachment."
-      " This framebuffer requires either %s/%s or"
-      " getParameter(IMPLEMENTATION_COLOR_READ_FORMAT/_TYPE) %s/%s.",
-      EnumString(pi.format).c_str(), EnumString(pi.type).c_str(),
-      srcUsage->format->name,
-      EnumString(defaultPI.format).c_str(), EnumString(defaultPI.type).c_str(),
-      EnumString(implPI.format).c_str(), EnumString(implPI.type).c_str());
-  // clang-format on
+  // Map HALF_FLOAT to HALF_FLOAT_OES for error messages in webgl1.
+  webgl::PackingInfo clientImplPI = implPI;
+  if (clientImplPI.type == LOCAL_GL_HALF_FLOAT && !webgl->IsWebGL2()) {
+    clientImplPI.type = LOCAL_GL_HALF_FLOAT_OES;
+  }
 
+  auto validPiStr =
+      fmt::format(FMT_STRING("{} (spec-required baseline for format {})"),
+                  defaultPI, srcUsage->format->name);
+  if (implPI != defaultPI) {
+    validPiStr += fmt::format(
+        FMT_STRING(
+            ", or {} (spec-optional implementation-chosen format-dependant"
+            " IMPLEMENTATION_COLOR_READ_FORMAT/_TYPE)"),
+        clientImplPI);
+  }
+  if (bonusValidPi) {
+    validPiStr +=
+        fmt::format(FMT_STRING(", or {} (spec-required bonus for format {})"),
+                    *bonusValidPi, srcUsage->format->name);
+  }
+
+  webgl->ErrorInvalidOperation(
+      "Format/type %s/%s incompatible with this %s framebuffer. Must use: %s.",
+      EnumString(pi.format).c_str(), EnumString(pi.type).c_str(),
+      srcUsage->format->name, validPiStr.c_str());
   return false;
 }
 
@@ -1090,7 +1129,7 @@ webgl::ReadPixelsResult WebGLContext::ReadPixelsImpl(
 
   //////
 
-  if (!ValidateReadPixelsFormatAndType(srcFormat, desc.pi, gl, this)) return {};
+  if (!ValidateReadPixelsFormatAndType(srcFormat, desc.pi, this)) return {};
 
   //////
 
@@ -1291,7 +1330,10 @@ void WebGLContext::UniformData(
   // -
 
   const auto& link = mActiveProgramLinkInfo;
-  if (!link) return;
+  if (!link) {
+    GenerateError(LOCAL_GL_INVALID_OPERATION, "Active program is not linked.");
+    return;
+  }
 
   const auto locInfo = MaybeFind(link->locationMap, loc);
   if (!locInfo) {
@@ -1452,48 +1494,6 @@ void WebGLContext::CompileShader(WebGLShader& shader) {
   if (!ValidateObject("shader", shader)) return;
 
   shader.CompileShader();
-}
-
-Maybe<webgl::ShaderPrecisionFormat> WebGLContext::GetShaderPrecisionFormat(
-    GLenum shadertype, GLenum precisiontype) const {
-  const FuncScope funcScope(*this, "getShaderPrecisionFormat");
-  if (IsContextLost()) return Nothing();
-
-  switch (shadertype) {
-    case LOCAL_GL_FRAGMENT_SHADER:
-    case LOCAL_GL_VERTEX_SHADER:
-      break;
-    default:
-      ErrorInvalidEnumInfo("shadertype", shadertype);
-      return Nothing();
-  }
-
-  switch (precisiontype) {
-    case LOCAL_GL_LOW_FLOAT:
-    case LOCAL_GL_MEDIUM_FLOAT:
-    case LOCAL_GL_HIGH_FLOAT:
-    case LOCAL_GL_LOW_INT:
-    case LOCAL_GL_MEDIUM_INT:
-    case LOCAL_GL_HIGH_INT:
-      break;
-    default:
-      ErrorInvalidEnumInfo("precisiontype", precisiontype);
-      return Nothing();
-  }
-
-  GLint range[2], precision;
-
-  if (mDisableFragHighP && shadertype == LOCAL_GL_FRAGMENT_SHADER &&
-      (precisiontype == LOCAL_GL_HIGH_FLOAT ||
-       precisiontype == LOCAL_GL_HIGH_INT)) {
-    precision = 0;
-    range[0] = 0;
-    range[1] = 0;
-  } else {
-    gl->fGetShaderPrecisionFormat(shadertype, precisiontype, range, &precision);
-  }
-
-  return Some(webgl::ShaderPrecisionFormat{range[0], range[1], precision});
 }
 
 void WebGLContext::ShaderSource(WebGLShader& shader,

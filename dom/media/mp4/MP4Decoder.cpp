@@ -23,9 +23,12 @@
 namespace mozilla {
 
 static bool IsWhitelistedH264Codec(const nsAString& aCodec) {
-  uint8_t profile = 0, constraint = 0, level = 0;
+  uint8_t profile = 0, constraint = 0;
+  H264_LEVEL level;
 
-  if (!ExtractH264CodecDetails(aCodec, profile, constraint, level)) {
+  // Don't validate too much here, validation happens below
+  if (!ExtractH264CodecDetails(aCodec, profile, constraint, level,
+                               H264CodecStringStrictness::Lenient)) {
     return false;
   }
 
@@ -35,11 +38,12 @@ static bool IsWhitelistedH264Codec(const nsAString& aCodec) {
   // http://msdn.microsoft.com/en-us/library/windows/desktop/dd797815%28v=vs.85%29.aspx
   // "The Media Foundation H.264 video decoder is a Media Foundation Transform
   // that supports decoding of Baseline, Main, and High profiles, up to level
-  // 5.1.". We extend the limit to level 5.2, relying on the decoder to handle
+  // 5.1.". We extend the limit to level 6.2, relying on the decoder to handle
   // any potential errors, the level limit being rather arbitrary.
   // We also report that we can play Extended profile, as there are
   // bitstreams that are Extended compliant that are also Baseline compliant.
-  return level >= H264_LEVEL_1 && level <= H264_LEVEL_5_2 &&
+  return level >= H264_LEVEL::H264_LEVEL_1 &&
+         level <= H264_LEVEL::H264_LEVEL_6_2 &&
          (profile == H264_PROFILE_BASE || profile == H264_PROFILE_MAIN ||
           profile == H264_PROFILE_EXTENDED || profile == H264_PROFILE_HIGH);
 }
@@ -120,22 +124,22 @@ nsTArray<UniquePtr<TrackInfo>> MP4Decoder::GetTracksInfo(
       continue;
     }
 #endif
-#ifdef MOZ_WMF
-    if (StaticPrefs::media_wmf_hevc_enabled() && IsH265CodecString(codec)) {
+    if (StaticPrefs::media_hevc_enabled() && IsH265CodecString(codec)) {
       auto trackInfo =
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
               "video/hevc"_ns, aType);
       tracks.AppendElement(std::move(trackInfo));
       continue;
     }
-#endif
     if (isVideo && IsWhitelistedH264Codec(codec)) {
       auto trackInfo =
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
               "video/avc"_ns, aType);
-      uint8_t profile = 0, constraint = 0, level = 0;
+      uint8_t profile = 0, constraint = 0;
+      H264_LEVEL level;
       MOZ_ALWAYS_TRUE(
-          ExtractH264CodecDetails(codec, profile, constraint, level));
+          ExtractH264CodecDetails(codec, profile, constraint, level,
+                                  H264CodecStringStrictness::Lenient));
       uint32_t width = aType.ExtendedType().GetWidth().refOr(1280);
       uint32_t height = aType.ExtendedType().GetHeight().refOr(720);
       trackInfo->GetAsVideoInfo()->mExtraData =
@@ -193,13 +197,11 @@ bool MP4Decoder::IsSupportedType(const MediaContainerType& aType,
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
               "video/av1"_ns, aType));
     }
-#ifdef MOZ_WMF
-    if (StaticPrefs::media_wmf_hevc_enabled()) {
+    if (StaticPrefs::media_hevc_enabled()) {
       tracks.AppendElement(
           CreateTrackInfoWithMIMETypeAndContainerTypeExtraParameters(
               "video/hevc"_ns, aType));
     }
-#endif
   }
 
   // Check that something is supported at least.

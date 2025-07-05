@@ -11,13 +11,18 @@
     setupTest("empty_provider_list")
       .then(
       function () {
+        SpecialPowers.wrap(document).notifyUserGestureActivation();
         return navigator.credentials.get({
           identity: {
             providers: []
           }
         });
       }
-    ).then(() => {
+    ).then((x) => {
+      if (!x) {
+        ok(true, "correctly got null");
+        return;
+      }
       ok(false, "incorrectly got a credential");
     }).catch(() => {
       ok(true, "correctly got an error");

@@ -20,4 +20,26 @@ nsCString MakeErrorString(const FFmpegLibWrapper* aLib, int aErrNum) {
   return nsCString(errStr);
 }
 
+#define ENUM_TO_STR(enumVal) \
+  if (aCodec == (enumVal)) { \
+    return #enumVal;         \
+  }
+
+const char* AVCodecToString(const AVCodecID& aCodec) {
+  ENUM_TO_STR(AV_CODEC_ID_H264);
+#if LIBAVCODEC_VERSION_MAJOR >= 54
+  ENUM_TO_STR(AV_CODEC_ID_VP8);
+#endif
+#if LIBAVCODEC_VERSION_MAJOR >= 55
+  ENUM_TO_STR(AV_CODEC_ID_VP9);
+  ENUM_TO_STR(AV_CODEC_ID_HEVC);
+#endif
+#if LIBAVCODEC_VERSION_MAJOR >= 59
+  ENUM_TO_STR(AV_CODEC_ID_AV1);
+#endif
+  return "unknown";
+}
+
+#undef ENUM_TO_STR
+
 }  // namespace mozilla

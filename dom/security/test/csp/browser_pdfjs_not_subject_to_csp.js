@@ -40,6 +40,13 @@ add_task(async function () {
         ok(cspJSON.includes("script-src"), "found script-src directive");
         ok(cspJSON.includes("allowPDF"), "found script-src nonce value");
       });
+
+      await SpecialPowers.spawn(browser, [], async () => {
+        const pdfFrame = content.document.getElementById("pdfFrame");
+        const viewer =
+          pdfFrame.contentWindow.wrappedJSObject.PDFViewerApplication;
+        await viewer.testingClose();
+      });
     }
   );
 });

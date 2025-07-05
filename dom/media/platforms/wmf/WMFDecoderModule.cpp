@@ -21,13 +21,13 @@
 #include "WMFVideoMFTManager.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/mscom/EnsureMTA.h"
-#include "mozilla/ProfilerMarkers.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIXULRuntime.h"
 #include "nsIXULRuntime.h"  // for BrowserTabsRemoteAutostart
@@ -143,13 +143,13 @@ void WMFDecoderModule::Init(Config aConfig) {
       if (SUCCEEDED(hr)) {
         sSupportedTypes += type;
         WmfDecoderModuleMarkerAndLog("WMFInit Decoder Supported",
-                                     "%s is enabled", StreamTypeToString(type));
+                                     "%s is enabled", EnumValueToString(type));
       } else if (hr != E_FAIL) {
         // E_FAIL should be logged by CreateMFTDecoder. Skipping those codes
         // will help to keep the logs readable.
         WmfDecoderModuleMarkerAndLog("WMFInit Decoder Failed",
                                      "%s failed with code 0x%lx",
-                                     StreamTypeToString(type), hr);
+                                     EnumValueToString(type), hr);
         if (hr == WINCODEC_ERR_COMPONENTNOTFOUND &&
             type == WMFStreamType::AV1) {
           WmfDecoderModuleMarkerAndLog("No AV1 extension",
@@ -222,7 +222,7 @@ HRESULT WMFDecoderModule::CreateMFTDecoder(const WMFStreamType& aType,
       if (!sDXVAEnabled) {
         WmfDecoderModuleMarkerAndLog("CreateMFTDecoder, VPx Disabled",
                                      "%s MFT requires DXVA",
-                                     StreamTypeToString(aType));
+                                     EnumValueToString(aType));
         return E_FAIL;
       }
 
@@ -482,7 +482,7 @@ media::DecodeSupportSet WMFDecoderModule::SupportsMimeType(
 
 /* static */
 bool WMFDecoderModule::IsHEVCSupported() {
-  return sForceEnableHEVC || StaticPrefs::media_wmf_hevc_enabled() == 1;
+  return sForceEnableHEVC || StaticPrefs::media_hevc_enabled();
 }
 
 /* static */

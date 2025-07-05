@@ -5,6 +5,7 @@
 //! DOM types to be shared between Rust and C++.
 
 use bitflags::bitflags;
+use malloc_size_of::malloc_size_of_is_0;
 
 bitflags! {
     /// Event-based element states.
@@ -130,6 +131,12 @@ bitflags! {
         /// https://html.spec.whatwg.org/#selector-popover-open
         /// Match element's popover visibility state of showing
         const POPOVER_OPEN = 1u64 << 47;
+        /// https://drafts.csswg.org/css-scoping-1/#the-has-slotted-pseudo
+        /// Match whether a slot element has assigned nodes
+        const HAS_SLOTTED = 1u64 << 48;
+        /// https://drafts.csswg.org/selectors-4/#open-state
+        /// Match whether an openable element is currently open
+        const OPEN = 1u64 << 49;
 
         /// Some convenience unions.
         const DIR_STATES = Self::LTR.bits() | Self::RTL.bits();
@@ -160,3 +167,5 @@ bitflags! {
         const ALL_LOCALEDIR_BITS = Self::LTR_LOCALE.bits() | Self::RTL_LOCALE.bits();
     }
 }
+
+malloc_size_of_is_0!(ElementState, DocumentState);

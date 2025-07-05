@@ -79,7 +79,6 @@ void HTMLEmbedElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
     AfterMaybeChangeAttr(aNamespaceID, aName, aNotify);
   }
 
-
   if (aName == nsGkAtoms::src) {
     RefreshFeaturePolicy();
   }

@@ -300,8 +300,7 @@ nsresult KeyEventHandler::DispatchXBLCommand(dom::EventTarget* aTarget,
 
     // If the focus is in a form control, don't scroll.
     for (nsIContent* c = focusedContent; c; c = c->GetParent()) {
-      nsCOMPtr<nsIFormControl> formControl = do_QueryInterface(c);
-      if (formControl) {
+      if (nsIFormControl::FromNode(c)) {
         return NS_OK;
       }
     }
@@ -488,7 +487,7 @@ int32_t KeyEventHandler::GetMatchingKeyCode(const nsAString& aKeyName) {
 
   uint32_t keyNameLength = keyName.Length();
   const char* keyNameStr = keyName.get();
-  for (unsigned long i = 0; i < ArrayLength(gKeyCodes) - 1; ++i) {
+  for (unsigned long i = 0; i < std::size(gKeyCodes) - 1; ++i) {
     if (keyNameLength == gKeyCodes[i].strlength &&
         !nsCRT::strcmp(gKeyCodes[i].str, keyNameStr)) {
       return gKeyCodes[i].keycode;
@@ -668,10 +667,9 @@ void KeyEventHandler::ReportKeyConflict(const char16_t* aKey,
   params.AppendElement(aKey);
   params.AppendElement(aModifiers);
   params.AppendElement(id);
-  nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
-                                  "Key dom::Event Handler"_ns, doc,
-                                  nsContentUtils::eDOM_PROPERTIES, aMessageName,
-                                  params, nullptr, u""_ns, 0);
+  nsContentUtils::ReportToConsole(
+      nsIScriptError::warningFlag, "Key dom::Event Handler"_ns, doc,
+      nsContentUtils::eDOM_PROPERTIES, aMessageName, params);
 }
 
 bool KeyEventHandler::ModifiersMatchMask(

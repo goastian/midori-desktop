@@ -68,7 +68,11 @@ dictionary LoadURIOptions {
    */
   boolean hasValidUserGestureActivation = false;
 
-
+  /**
+   * Indicates if there is a user activation for text directives,
+   * which would allow to scroll to the first text directive.
+   */
+  boolean textDirectiveUserActivation = false;
   /**
   * The SandboxFlags of the entity thats
   * responsible for causing the load.
@@ -111,6 +115,7 @@ dictionary LoadURIOptions {
 
   /**
    * Whether the search/URL term was without an explicit scheme.
+   * This holds enum values for SchemelessInputType from nsILoadInfo.idl.
    */
-  boolean wasSchemelessInput = false;
+  octet schemelessInput = 0;
 };

@@ -60,6 +60,11 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(Performance, DOMEventTargetHelper,
 NS_IMPL_ADDREF_INHERITED(Performance, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(Performance, DOMEventTargetHelper)
 
+// Used to dump performance timing information to a local file.
+// Only defined when the env variable MOZ_USE_PERFORMANCE_MARKER_FILE
+// is set and initialized by MaybeOpenMarkerFile().
+static FILE* sMarkerFile = nullptr;
+
 /* static */
 already_AddRefed<Performance> Performance::CreateForMainThread(
     nsPIDOMWindowInner* aWindow, nsIPrincipal* aPrincipal,
@@ -344,10 +349,10 @@ already_AddRefed<PerformanceMark> Performance::Mark(
 
   InsertUserEntry(performanceMark);
 
-  if (profiler_is_collecting_markers()) {
+  if (profiler_thread_is_being_profiled_for_markers()) {
     Maybe<uint64_t> innerWindowId;
-    if (GetOwner()) {
-      innerWindowId = Some(GetOwner()->WindowID());
+    if (nsGlobalWindowInner* owner = GetOwnerWindow()) {
+      innerWindowId = Some(owner->WindowID());
     }
     TimeStamp startTimeStamp =
         CreationTimeStamp() +
@@ -524,6 +529,10 @@ DOMHighResTimeStamp Performance::ResolveEndTimeForMeasure(
     }
 
     endTime = start + duration;
+  } else if (aReturnUnclamped) {
+    MOZ_DIAGNOSTIC_ASSERT(sMarkerFile ||
+                          profiler_thread_is_being_profiled_for_markers());
+    endTime = NowUnclamped();
   } else {
     endTime = Now();
   }
@@ -581,37 +590,61 @@ static std::string GetMarkerFilename() {
   return s.str();
 }
 
-std::pair<TimeStamp, TimeStamp> Performance::GetTimeStampsForMarker(
+Maybe<std::pair<TimeStamp, TimeStamp>> Performance::GetTimeStampsForMarker(
     const Maybe<const nsAString&>& aStartMark,
     const Optional<nsAString>& aEndMark,
-    const Maybe<const PerformanceMeasureOptions&>& aOptions, ErrorResult& aRv) {
+    const Maybe<const PerformanceMeasureOptions&>& aOptions) {
+  ErrorResult err;
   const DOMHighResTimeStamp unclampedStartTime = ResolveStartTimeForMeasure(
-      aStartMark, aOptions, aRv, /* aReturnUnclamped */ true);
+      aStartMark, aOptions, err, /* aReturnUnclamped */ true);
   const DOMHighResTimeStamp unclampedEndTime =
-      ResolveEndTimeForMeasure(aEndMark, aOptions, aRv, /* aReturnUnclamped */
-                               true);
+      ResolveEndTimeForMeasure(aEndMark, aOptions, /* aReturnUnclamped */
+                               err, true);
+
+  if (err.Failed()) {
+    return Nothing();
+  }
+
+  // Performance.measure() can receive user-supplied timestamps and those
+  // timestamps might not be relative to 'navigation start'. This is
+  // (potentially) valid but, if we treat them as relative, we will end up
+  // placing them far into the future which causes problems for the profiler
+  // later so we report that as an error. (See bug 1925191 for details.)
+  // kMaxFuture_ms represents approximately 10 years worth of milliseconds.
+  static constexpr double kMaxFuture_ms = 31536000000.0;
+  if (unclampedStartTime > kMaxFuture_ms || unclampedEndTime > kMaxFuture_ms) {
+    return Nothing();
+  }
 
   TimeStamp startTimeStamp =
       CreationTimeStamp() + TimeDuration::FromMilliseconds(unclampedStartTime);
   TimeStamp endTimeStamp =
       CreationTimeStamp() + TimeDuration::FromMilliseconds(unclampedEndTime);
 
-  return std::make_pair(startTimeStamp, endTimeStamp);
+  return Some(std::make_pair(startTimeStamp, endTimeStamp));
 }
 
-static FILE* MaybeOpenMarkerFile() {
+// Try to open the marker file for writing performance markers.
+// If successful, returns true and sMarkerFile will be defined
+// to the file handle.  Otherwise, return false and sMarkerFile
+// is NULL.
+static bool MaybeOpenMarkerFile() {
   if (!getenv("MOZ_USE_PERFORMANCE_MARKER_FILE")) {
-    return nullptr;
+    return false;
+  }
+
+  // Check if it's already open.
+  if (sMarkerFile) {
+    return true;
   }
 
 #ifdef XP_LINUX
   // We treat marker files similar to Jitdump files (see PerfSpewer.cpp) and
   // mmap them if needed.
   int fd = open(GetMarkerFilename().c_str(), O_CREAT | O_TRUNC | O_RDWR, 0666);
-  FILE* markerFile = fdopen(fd, "w+");
-
-  if (!markerFile) {
-    return nullptr;
+  sMarkerFile = fdopen(fd, "w+");
+  if (!sMarkerFile) {
+    return false;
   }
 
   // On Linux and Android, we need to mmap the file so that the path makes it
@@ -633,10 +666,10 @@ static FILE* MaybeOpenMarkerFile() {
   long page_size = sysconf(_SC_PAGESIZE);
   void* mmap_address = mmap(nullptr, page_size, protection, MAP_PRIVATE, fd, 0);
   if (mmap_address == MAP_FAILED) {
-    fclose(markerFile);
-    return nullptr;
+    fclose(sMarkerFile);
+    sMarkerFile = nullptr;
+    return false;
   }
-  return markerFile;
 #else
   // On macOS, we just need to `open` or `fopen` the marker file, and samply
   // will know its path because it hooks those functions - no mmap needed.
@@ -644,8 +677,12 @@ static FILE* MaybeOpenMarkerFile() {
   // we have ETW trace events for UserTiming measures. Still, we want this code
   // to compile successfully on Windows, so we use fopen rather than
   // open+fdopen.
-  return fopen(GetMarkerFilename().c_str(), "w+");
+  sMarkerFile = fopen(GetMarkerFilename().c_str(), "w+");
+  if (!sMarkerFile) {
+    return false;
+  }
 #endif
+  return true;
 }
 
 // This emits markers to an external marker-[pid].txt file for use by an
@@ -653,19 +690,17 @@ static FILE* MaybeOpenMarkerFile() {
 void Performance::MaybeEmitExternalProfilerMarker(
     const nsAString& aName, Maybe<const PerformanceMeasureOptions&> aOptions,
     Maybe<const nsAString&> aStartMark, const Optional<nsAString>& aEndMark) {
-  static FILE* markerFile = MaybeOpenMarkerFile();
-  if (!markerFile) {
+  if (!MaybeOpenMarkerFile()) {
     return;
   }
 
 #if defined(XP_LINUX) || defined(XP_WIN) || defined(XP_MACOSX)
-  ErrorResult rv;
-  auto [startTimeStamp, endTimeStamp] =
-      GetTimeStampsForMarker(aStartMark, aEndMark, aOptions, rv);
-
-  if (NS_WARN_IF(rv.Failed())) {
+  Maybe<std::pair<TimeStamp, TimeStamp>> tsPair =
+      GetTimeStampsForMarker(aStartMark, aEndMark, aOptions);
+  if (tsPair.isNothing()) {
     return;
   }
+  auto [startTimeStamp, endTimeStamp] = tsPair.value();
 #endif
 
 #ifdef XP_LINUX
@@ -688,9 +723,47 @@ void Performance::MaybeEmitExternalProfilerMarker(
   // `<raw_start_timestamp> <raw_end_timestamp> <measure_name>`
   //
   // The timestamp value is OS specific.
-  fprintf(markerFile, "%" PRIu64 " %" PRIu64 " %s\n", rawStart, rawEnd,
+  fprintf(sMarkerFile, "%" PRIu64 " %" PRIu64 " %s\n", rawStart, rawEnd,
           NS_ConvertUTF16toUTF8(aName).get());
-  fflush(markerFile);
+  fflush(sMarkerFile);
+}
+
+void MOZ_ALWAYS_INLINE Performance::MaybeAddProfileMarker(
+    const nsAString& aName,
+    const Maybe<const PerformanceMeasureOptions&>& options,
+    const Maybe<const nsAString&>& aStartMark,
+    const Optional<nsAString>& aEndMark) {
+  if (profiler_thread_is_being_profiled_for_markers()) {
+    AddProfileMarker(aName, options, aStartMark, aEndMark);
+  }
+}
+
+void MOZ_NEVER_INLINE Performance::AddProfileMarker(
+    const nsAString& aName,
+    const Maybe<const PerformanceMeasureOptions&>& options,
+    const Maybe<const nsAString&>& aStartMark,
+    const Optional<nsAString>& aEndMark) {
+  Maybe<std::pair<TimeStamp, TimeStamp>> tsPair =
+      GetTimeStampsForMarker(aStartMark, aEndMark, options);
+  if (tsPair.isNothing()) {
+    return;
+  }
+  auto [startTimeStamp, endTimeStamp] = tsPair.value();
+
+  Maybe<nsString> endMark;
+  if (aEndMark.WasPassed()) {
+    endMark.emplace(aEndMark.Value());
+  }
+
+  Maybe<uint64_t> innerWindowId;
+  if (nsGlobalWindowInner* owner = GetOwnerWindow()) {
+    innerWindowId = Some(owner->WindowID());
+  }
+  profiler_add_marker("UserTiming", geckoprofiler::category::DOM,
+                      {MarkerTiming::Interval(startTimeStamp, endTimeStamp),
+                       MarkerInnerWindowId(innerWindowId)},
+                      UserTimingMarker{}, aName, /* aIsMeasure */ true,
+                      aStartMark, endMark);
 }
 
 already_AddRefed<PerformanceMeasure> Performance::Measure(
@@ -790,25 +863,7 @@ already_AddRefed<PerformanceMeasure> Performance::Measure(
 
   MaybeEmitExternalProfilerMarker(aName, options, startMark, aEndMark);
 
-  if (profiler_is_collecting_markers()) {
-    auto [startTimeStamp, endTimeStamp] =
-        GetTimeStampsForMarker(startMark, aEndMark, options, aRv);
-
-    Maybe<nsString> endMark;
-    if (aEndMark.WasPassed()) {
-      endMark.emplace(aEndMark.Value());
-    }
-
-    Maybe<uint64_t> innerWindowId;
-    if (GetOwner()) {
-      innerWindowId = Some(GetOwner()->WindowID());
-    }
-    profiler_add_marker("UserTiming", geckoprofiler::category::DOM,
-                        {MarkerTiming::Interval(startTimeStamp, endTimeStamp),
-                         MarkerInnerWindowId(innerWindowId)},
-                        UserTimingMarker{}, aName, /* aIsMeasure */ true,
-                        startMark, endMark);
-  }
+  MaybeAddProfileMarker(aName, options, startMark, aEndMark);
 
   return performanceMeasure.forget();
 }
@@ -842,10 +897,8 @@ void Performance::TimingNotification(PerformanceEntry* aEntry,
 
   RefPtr<PerformanceEntryEvent> perfEntryEvent =
       PerformanceEntryEvent::Constructor(this, u"performanceentry"_ns, init);
-
-  nsCOMPtr<EventTarget> et = do_QueryInterface(GetOwner());
-  if (et) {
-    et->DispatchEvent(*perfEntryEvent);
+  if (RefPtr<nsGlobalWindowInner> owner = GetOwnerWindow()) {
+    owner->DispatchEvent(*perfEntryEvent);
   }
 }
 

@@ -17,8 +17,13 @@ class FileSystemBackgroundRequestHandler;
 
 class FileSystemManagerChild : public PFileSystemManagerChild {
  public:
+  using ActorPromise =
+      MozPromise<RefPtr<FileSystemManagerChild>, nsresult, false>;
+
   NS_INLINE_DECL_REFCOUNTING_WITH_DESTROY(FileSystemManagerChild, Destroy(),
                                           override)
+
+  bool CloseAllReceived() const { return mCloseAllReceived; }
 
   void SetBackgroundRequestHandler(
       FileSystemBackgroundRequestHandler* aBackgroundRequestHandler);
@@ -55,6 +60,8 @@ class FileSystemManagerChild : public PFileSystemManagerChild {
  private:
   template <class T>
   void CloseAllWritablesImpl(T& aPromises);
+
+  bool mCloseAllReceived = false;
 };
 
 }  // namespace mozilla::dom

@@ -13,6 +13,7 @@ EXPORTS.mozilla.dom += [
     "TrustedScriptURL.h",
     "TrustedTypePolicy.h",
     "TrustedTypePolicyFactory.h",
+    "TrustedTypesConstants.h",
     "TrustedTypeUtils.h",
 ]
 
@@ -22,6 +23,9 @@ UNIFIED_SOURCES += [
     "TrustedScriptURL.cpp",
     "TrustedTypePolicy.cpp",
     "TrustedTypePolicyFactory.cpp",
+    "TrustedTypeUtils.cpp",
 ]
+
+include("/ipc/chromium/chromium-config.mozbuild")
 
 FINAL_LIBRARY = "xul"

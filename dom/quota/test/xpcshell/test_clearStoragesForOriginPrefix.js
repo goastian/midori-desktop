@@ -60,7 +60,7 @@ async function testSteps() {
     getRelativeFile("storage/permanent/invalid+++example.com").remove(false);
     getRelativeFile("storage/temporary/invalid+++example.com").remove(false);
 
-    info("Clearing origin by prefix");
+    info("Clearing by origin prefix");
 
     request = clearOriginsByPrefix(getPrincipal(item.origin), item.persistence);
     await requestFinished(request);

@@ -36,6 +36,7 @@ class PerformanceService;
 class PerformanceStorage;
 class PerformanceTiming;
 class PerformanceEventTiming;
+class PerformanceInteractionMetrics;
 class WorkerGlobalScope;
 class EventCounts;
 
@@ -148,11 +149,18 @@ class Performance : public DOMEventTargetHelper {
 
   virtual class EventCounts* EventCounts() = 0;
 
+  virtual uint64_t InteractionCount() = 0;
+
   virtual void QueueNavigationTimingEntry() = 0;
 
   virtual void UpdateNavigationTimingEntry() = 0;
 
   virtual void DispatchPendingEventTimingEntries() = 0;
+
+  virtual PerformanceInteractionMetrics& GetPerformanceInteractionMetrics() = 0;
+
+  virtual void SetInteractionId(PerformanceEventTiming* aEventTiming,
+                                const WidgetEvent* aEvent) = 0;
 
   void QueueNotificationObserversTask();
 
@@ -218,6 +226,15 @@ class Performance : public DOMEventTargetHelper {
   void MaybeEmitExternalProfilerMarker(
       const nsAString& aName, Maybe<const PerformanceMeasureOptions&> aOptions,
       Maybe<const nsAString&> aStartMark, const Optional<nsAString>& aEndMark);
+  void MaybeAddProfileMarker(
+      const nsAString& aName,
+      const Maybe<const PerformanceMeasureOptions&>& options,
+      const Maybe<const nsAString&>& startMark,
+      const Optional<nsAString>& aEndMark);
+  void AddProfileMarker(const nsAString& aName,
+                        const Maybe<const PerformanceMeasureOptions&>& options,
+                        const Maybe<const nsAString&>& startMark,
+                        const Optional<nsAString>& aEndMark);
 
   // The attributes of a PerformanceMeasureOptions that we call
   // ResolveTimestamp* on.
@@ -246,11 +263,10 @@ class Performance : public DOMEventTargetHelper {
       const Maybe<const PerformanceMeasureOptions&>& aOptions, ErrorResult& aRv,
       bool aReturnUnclamped);
 
-  std::pair<TimeStamp, TimeStamp> GetTimeStampsForMarker(
+  Maybe<std::pair<TimeStamp, TimeStamp>> GetTimeStampsForMarker(
       const Maybe<const nsAString&>& aStartMark,
       const Optional<nsAString>& aEndMark,
-      const Maybe<const PerformanceMeasureOptions&>& aOptions,
-      ErrorResult& aRv);
+      const Maybe<const PerformanceMeasureOptions&>& aOptions);
 };
 
 }  // namespace dom

@@ -24,20 +24,25 @@ support-files = [
 ]
 
 ["browser_audio_focus_management.js"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64'"] # Bug 1866742
 
 ["browser_control_page_with_audible_and_inaudible_media.js"]
 
 ["browser_default_action_handler.js"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64'"] # Bug 1866742
 
 ["browser_media_control_audio_focus_within_a_page.js"]
 
 ["browser_media_control_before_media_starts.js"]
+tags = "os_integration"
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64'"] # Bug 1866742
 
 ["browser_media_control_captured_audio.js"]
 
 ["browser_media_control_keys_event.js"]
 
 ["browser_media_control_main_controller.js"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64'"] # Bug 1866742
 
 ["browser_media_control_metadata.js"]
 
@@ -47,9 +52,16 @@ skip-if = ["os == 'mac' && os_version == '10.15' && processor == 'x86_64' && ver
 ["browser_media_control_playback_state.js"]
 
 ["browser_media_control_position_state.js"]
-skip-if = ["os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt"] # Bug 1775892
+skip-if = [
+  "os == 'linux' && os_version == '22.04' && processor == 'x86_64'", # Bug 1673527
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt", # Bug 1775892
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1775892
+]
 
-["browser_media_control_seekto.js"]
+["browser_media_control_seek.js"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1961556
+]
 
 ["browser_media_control_stop_timer.js"]
 

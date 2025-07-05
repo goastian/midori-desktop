@@ -53,6 +53,7 @@
 #include "mozilla/dom/ProcessingInstruction.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/txMozillaXSLTProcessor.h"
+#include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/UseCounter.h"
@@ -340,7 +341,7 @@ nsresult nsXMLContentSink::OnDocumentCreated(Document* aSourceDocument,
 
   nsCOMPtr<nsIDocumentViewer> viewer;
   mDocShell->GetDocViewer(getter_AddRefs(viewer));
-  // Make sure that we haven't loaded a new document into the contentviewer
+  // Make sure that we haven't loaded a new document into the documentviewer
   // after starting the XSLT transform.
   if (viewer && viewer->GetDocument() == aSourceDocument) {
     return viewer->SetDocumentInternal(aResultDocument, true);
@@ -362,7 +363,7 @@ nsresult nsXMLContentSink::OnTransformDone(Document* aSourceDocument,
   RefPtr<Document> originalDocument = mDocument;
   bool blockingOnload = mIsBlockingOnload;
 
-  // Make sure that we haven't loaded a new document into the contentviewer
+  // Make sure that we haven't loaded a new document into the documentviewer
   // after starting the XSLT transform.
   if (viewer && (viewer->GetDocument() == aSourceDocument ||
                  viewer->GetDocument() == aResultDocument)) {
@@ -516,7 +517,9 @@ nsresult nsXMLContentSink::CreateElement(
     // Since we are possibly going to run a script for the custom element
     // constructor, we should first flush any remaining elements.
     FlushTags();
-    { nsAutoMicroTask mt; }
+    {
+      nsAutoMicroTask mt;
+    }
 
     Maybe<AutoCEReaction> autoCEReaction;
     if (auto* docGroup = mDocument->GetDocGroup()) {
@@ -760,12 +763,12 @@ nsresult nsXMLContentSink::MaybeProcessXSLTLink(
                                          mDocument->InnerWindowID());
   NS_ENSURE_SUCCESS(rv, NS_OK);
 
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo =
-      new net::LoadInfo(mDocument->NodePrincipal(),  // loading principal
-                        mDocument->NodePrincipal(),  // triggering principal
-                        aProcessingInstruction,
-                        nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
-                        nsIContentPolicy::TYPE_XSLT);
+  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = MOZ_TRY(
+      net::LoadInfo::Create(mDocument->NodePrincipal(),  // loading principal
+                            mDocument->NodePrincipal(),  // triggering principal
+                            aProcessingInstruction,
+                            nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK,
+                            nsIContentPolicy::TYPE_XSLT));
 
   // Do content policy check
   int16_t decision = nsIContentPolicy::ACCEPT;
@@ -788,8 +791,6 @@ void nsXMLContentSink::SetDocumentCharset(NotNull<const Encoding*> aEncoding) {
 }
 
 nsISupports* nsXMLContentSink::GetTarget() { return ToSupports(mDocument); }
-
-bool nsXMLContentSink::IsScriptExecuting() { return IsScriptExecutingImpl(); }
 
 nsresult nsXMLContentSink::FlushText(bool aReleaseTextNode) {
   nsresult rv = NS_OK;
@@ -1229,6 +1230,13 @@ nsXMLContentSink::HandleProcessingInstruction(const char16_t* aTarget,
   nsresult rv = AddContentAsLeaf(node);
   NS_ENSURE_SUCCESS(rv, rv);
   DidAddContent();
+
+  // Handles the special chrome-only <?csp ?> PI, which will be handled before
+  // creating any element with potential inline style or scripts.
+  if (mState == eXMLContentSinkState_InProlog && target.EqualsLiteral("csp") &&
+      mDocument->NodePrincipal()->IsSystemPrincipal()) {
+    CSP_ApplyMetaCSPToDoc(*mDocument, data);
+  }
 
   if (linkStyle) {
     // This is an xml-stylesheet processing instruction... but it might not be

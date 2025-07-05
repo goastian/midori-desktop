@@ -12,7 +12,7 @@ interface nsIWorkerDebuggerListener : nsISupports
 {
   void onClose();
 
-  void onError(in AString filename, in unsigned long lineno,
+  void onError(in ACString filename, in unsigned long lineno,
                in AString message);
 
   void onMessage(in AString message);
@@ -28,6 +28,8 @@ interface nsIWorkerDebugger : nsISupports
   readonly attribute boolean isClosed;
 
   readonly attribute boolean isChrome;
+
+  readonly attribute boolean isRemote;
 
   readonly attribute boolean isInitialized;
 
@@ -48,6 +50,8 @@ interface nsIWorkerDebugger : nsISupports
   readonly attribute unsigned long serviceWorkerID;
 
   readonly attribute AString id;
+
+  readonly attribute AString name;
 
   void initialize(in AString url);
 

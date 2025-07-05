@@ -9,7 +9,6 @@ support-files = [
   "download_canceled/server-stream-download.sjs",
   "download_canceled/sw_download_canceled.js",
   "fetch.js",
-  "file_userContextId_openWindow.js",
   "force_refresh_browser_worker.js",
   "ForceRefreshChild.sys.mjs",
   "ForceRefreshParent.sys.mjs",
@@ -21,8 +20,11 @@ support-files = [
   "network_with_utils.html",
   "page_post_controlled.html",
   "redirect.sjs",
+  "service_worker_etp.js",
   "simple_fetch_worker.js",
   "storage_recovery_worker.sjs",
+  "sw_always_updating_inter_sw_postmessage.sjs",
+  "sw_inter_sw_postmessage.js",
   "sw_respondwith_serviceworker.js",
   "sw_with_navigationPreload.js",
   "utils.js",
@@ -33,12 +35,14 @@ support-files = [
 ["browser_antitracking_subiframes.js"]
 
 ["browser_devtools_serviceworker_interception.js"]
-skip-if = ["serviceworker_e10s"]
+skip-if = ["true"]
 
 ["browser_download.js"]
 
 ["browser_download_canceled.js"]
 skip-if = ["verify"]
+
+["browser_etp_permission.js"]
 
 ["browser_force_refresh.js"]
 skip-if = ["verify"] # Bug 1603340
@@ -58,7 +62,7 @@ skip-if = ["true"] # Crashes: @ mozilla::dom::ServiceWorkerManagerService::Propa
 
 ["browser_storage_recovery.js"]
 
-["browser_unregister_with_containers.js"]
+["browser_sw_lifetime_extension.js"]
+disabled = "Pending re-enabling, remove from browser.toml when enabled."
 
-["browser_userContextId_openWindow.js"]
-skip-if = ["true"] # See bug 1769437.
+["browser_unregister_with_containers.js"]

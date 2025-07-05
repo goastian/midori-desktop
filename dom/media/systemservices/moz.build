@@ -22,8 +22,8 @@ if CONFIG["MOZ_WEBRTC"]:
         "/dom/media/webrtc",
         "/media/libyuv/libyuv/include",
         "/mfbt",
+        "/third_party/abseil-cpp",
         "/third_party/libwebrtc",
-        "/third_party/libwebrtc/third_party/abseil-cpp",
         "/tools/profiler/public",
     ]
 
@@ -50,10 +50,12 @@ if CONFIG["MOZ_WEBRTC"]:
         ]
 
     if CONFIG["OS_TARGET"] != "Android":
-        UNIFIED_SOURCES += [
+        SOURCES += [
             "video_engine/desktop_capture_impl.cc",
-            "video_engine/desktop_device_info.cc",
             "video_engine/tab_capturer.cc",
+        ]
+        UNIFIED_SOURCES += [
+            "video_engine/desktop_device_info.cc",
         ]
 
     if "WEBRTC_USE_PIPEWIRE" in DEFINES:
@@ -104,6 +106,9 @@ IPDL_SOURCES += [
     "PMedia.ipdl",
     "PMediaSystemResourceManager.ipdl",
 ]
+
+if CONFIG["MOZ_SYSTEM_AV1"]:
+    CXXFLAGS += CONFIG["MOZ_SYSTEM_LIBAOM_CFLAGS"]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

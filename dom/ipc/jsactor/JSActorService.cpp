@@ -61,6 +61,13 @@ void JSActorService::RegisterWindowActor(const nsACString& aName,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(XRE_IsParentProcess());
 
+  if (mProcessActorDescriptors.Contains(aName)) {
+    aRv.ThrowNotSupportedError(
+        nsPrintfCString("'%s' actor is already registered as a process actor.",
+                        PromiseFlatCString(aName).get()));
+    return;
+  }
+
   const auto proto = mWindowActorDescriptors.WithEntryHandle(
       aName, [&](auto&& entry) -> RefPtr<JSWindowActorProtocol> {
         if (entry) {
@@ -126,8 +133,10 @@ void JSActorService::UnregisterWindowActor(const nsACString& aName) {
     // potential managers, to have the actor disabled.
     nsTArray<RefPtr<JSActorManager>> managers;
     if (XRE_IsParentProcess()) {
-      for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-        Unused << cp->SendUnregisterJSWindowActor(name);
+      for (auto* cp : ContentParent::AllProcesses(ContentParent::eAll)) {
+        if (cp->CanSend()) {
+          Unused << cp->SendUnregisterJSWindowActor(name);
+        }
         for (const auto& bp : cp->ManagedPBrowserParent()) {
           for (const auto& wgp : bp->ManagedPWindowGlobalParent()) {
             managers.AppendElement(static_cast<WindowGlobalParent*>(wgp));
@@ -228,6 +237,13 @@ void JSActorService::RegisterProcessActor(const nsACString& aName,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(XRE_IsParentProcess());
 
+  if (mWindowActorDescriptors.Contains(aName)) {
+    aRv.ThrowNotSupportedError(
+        nsPrintfCString("'%s' actor is already registered as a window actor.",
+                        PromiseFlatCString(aName).get()));
+    return;
+  }
+
   const auto proto = mProcessActorDescriptors.WithEntryHandle(
       aName, [&](auto&& entry) -> RefPtr<JSProcessActorProtocol> {
         if (entry) {
@@ -283,8 +299,10 @@ void JSActorService::UnregisterProcessActor(const nsACString& aName) {
     // potential managers, to have the actor disabled.
     nsTArray<RefPtr<JSActorManager>> managers;
     if (XRE_IsParentProcess()) {
-      for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-        Unused << cp->SendUnregisterJSProcessActor(name);
+      for (auto* cp : ContentParent::AllProcesses(ContentParent::eAll)) {
+        if (cp->CanSend()) {
+          Unused << cp->SendUnregisterJSProcessActor(name);
+        }
         managers.AppendElement(cp);
       }
       managers.AppendElement(InProcessChild::Singleton());

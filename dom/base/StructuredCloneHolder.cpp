@@ -389,7 +389,7 @@ void StructuredCloneHolder::Read(nsIGlobalObject* aGlobal, JSContext* aCx,
   auto errorMessageGuard = MakeScopeExit([&] { mErrorMessage.Truncate(); });
   mGlobal = aGlobal;
 
-  if (!StructuredCloneHolderBase::Read(aCx, aValue, aCloneDataPolicy)) {  
+  if (!StructuredCloneHolderBase::Read(aCx, aValue, aCloneDataPolicy)) {
     mTransferredPorts.Clear();
     JS_ClearPendingException(aCx);
     aRv.ThrowDataCloneError(mErrorMessage);
@@ -696,7 +696,7 @@ already_AddRefed<Directory> ReadDirectoryInternal(
   }
 
   nsCOMPtr<nsIFile> file;
-  nsresult rv = NS_NewLocalFile(path, true, getter_AddRefs(file));
+  nsresult rv = NS_NewLocalFile(path, getter_AddRefs(file));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return nullptr;
   }
@@ -1110,8 +1110,7 @@ JSObject* StructuredCloneHolder::CustomReadHandler(
     return ClonedErrorHolder::ReadStructuredClone(aCx, aReader, this);
   }
 
-  if (StaticPrefs::dom_media_webcodecs_enabled() &&
-      aTag == SCTAG_DOM_VIDEOFRAME &&
+  if (VideoFrame::PrefEnabled() && aTag == SCTAG_DOM_VIDEOFRAME &&
       CloneScope() == StructuredCloneScope::SameProcess &&
       aCloneDataPolicy.areIntraClusterClonableSharedObjectsAllowed()) {
     JS::Rooted<JSObject*> global(aCx, mGlobal->GetGlobalJSObject());
@@ -1251,7 +1250,7 @@ bool StructuredCloneHolder::CustomWriteHandler(
   }
 
   // See if this is a VideoFrame object.
-  if (StaticPrefs::dom_media_webcodecs_enabled()) {
+  if (VideoFrame::PrefEnabled()) {
     VideoFrame* videoFrame = nullptr;
     if (NS_SUCCEEDED(UNWRAP_OBJECT(VideoFrame, &obj, videoFrame))) {
       SameProcessScopeRequired(aSameProcessScopeRequired);
@@ -1447,8 +1446,7 @@ StructuredCloneHolder::CustomReadTransferHandler(
                                             aReturnObject);
   }
 
-  if (StaticPrefs::dom_media_webcodecs_enabled() &&
-      aTag == SCTAG_DOM_VIDEOFRAME &&
+  if (VideoFrame::PrefEnabled() && aTag == SCTAG_DOM_VIDEOFRAME &&
       CloneScope() == StructuredCloneScope::SameProcess &&
       aCloneDataPolicy.areIntraClusterClonableSharedObjectsAllowed()) {
     MOZ_ASSERT(aContent);
@@ -1593,7 +1591,7 @@ StructuredCloneHolder::CustomWriteTransferHandler(
         return true;
       }
 
-      if (StaticPrefs::dom_media_webcodecs_enabled()) {
+      if (VideoFrame::PrefEnabled()) {
         VideoFrame* videoFrame = nullptr;
         rv = UNWRAP_OBJECT(VideoFrame, &obj, videoFrame);
         if (NS_SUCCEEDED(rv)) {
@@ -1760,8 +1758,7 @@ void StructuredCloneHolder::CustomFreeTransferHandler(
     return;
   }
 
-  if (StaticPrefs::dom_media_webcodecs_enabled() &&
-      aTag == SCTAG_DOM_VIDEOFRAME &&
+  if (VideoFrame::PrefEnabled() && aTag == SCTAG_DOM_VIDEOFRAME &&
       CloneScope() == StructuredCloneScope::SameProcess) {
     if (aContent) {
       VideoFrame::TransferredData* data =
@@ -1854,7 +1851,7 @@ bool StructuredCloneHolder::CustomCanTransferHandler(
     }
   }
 
-  if (StaticPrefs::dom_media_webcodecs_enabled()) {
+  if (VideoFrame::PrefEnabled()) {
     VideoFrame* videoframe = nullptr;
     nsresult rv = UNWRAP_OBJECT(VideoFrame, &obj, videoframe);
     if (NS_SUCCEEDED(rv)) {

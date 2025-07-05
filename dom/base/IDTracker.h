@@ -51,47 +51,60 @@ class IDTracker {
   /**
    * Find which element, if any, is referenced.
    */
-  Element* get() { return mElement; }
+  Element* get() const { return mElement; }
 
   /**
-   * Set up the reference. This can be called multiple times to
-   * change which reference is being tracked, but these changes
-   * do not trigger ElementChanged.
-   * @param aFrom the source element for context
-   * @param aURI the URI containing a hash-reference to the element
-   * @param aReferrerInfo the referrerInfo for loading external resource
-   * @param aWatch if false, then we do not set up the notifications to track
-   * changes, so ElementChanged won't fire and get() will always return the same
-   * value, the current element for the ID.
-   * @param aReferenceImage whether the ID references image elements which are
-   * subject to the document's mozSetImageElement overriding mechanism.
+   * Set up a reference to another element, identified by the fragment
+   * identifier in aURI. If aURI identifies an element in a document that is
+   * not aFrom's document, then an ExternalResourceLoad object will be created
+   * to load and store that document in the background as a resource document
+   * (until we, and any other observers, no longer observe it).
+   *
+   * This can be called multiple times with different URIs to change which
+   * element is being tracked, but these changes do not trigger ElementChanged.
+   *
+   * @param aFrom The source element that has made the reference to aURI.
+   * @param aURI A URI containing a fragment identifier that identifies the
+   *   target element.
+   * @param aReferrerInfo The referrerInfo for the source element. Needed if
+   *   the referenced element is in an external resource document.
+   * @param aReferenceImage Whether the reference comes from a -moz-element
+   *   property (that is, we're creating a reference an "image element", which
+   *   is subject to the document's mozSetImageElement overriding mechanism).
    */
-  void ResetToURIFragmentID(nsIContent* aFrom, nsIURI* aURI,
-                            nsIReferrerInfo* aReferrerInfo, bool aWatch = true,
-                            bool aReferenceImage = false);
+  void ResetToURIWithFragmentID(Element& aFrom, nsIURI* aURI,
+                                nsIReferrerInfo* aReferrerInfo,
+                                bool aReferenceImage = false);
 
   /**
-   * A variation on ResetToURIFragmentID() to set up a reference that consists
-   * of a local reference of an element in the same document as aFrom.
-   * @param aFrom the source element for context
-   * @param aLocalRef the local reference of the element
-   * @param aWatch if false, then we do not set up the notifications to track
-   * changes, so ElementChanged won't fire and get() will always return the same
-   * value, the current element for the ID.
+   * A variation on ResetToURIWithFragmentID() to set up a reference that
+   * consists only of a fragment identifier, referencing an element in the same
+   * document as aFrom.
+   *
+   * @param aFrom The source element that is making the reference.
+   * @param aLocalRef The fragment identifier that identifies the target
+   *   element. Must begin with "#".
+   * @param aBaseURI The URI this url was specified from. Only used to determine
+   *   whether we need to reference the source resource document.
+   * @param aReferrerInfo The referrerInfo for the source element. Needed if
+   *   the referenced element is in an external resource document.
+   * @param aReferenceImage See above.
    */
-  void ResetWithLocalRef(Element& aFrom, const nsAString& aLocalRef,
-                         bool aWatch = true);
+  void ResetToLocalFragmentID(Element& aFrom, const nsAString& aLocalRef,
+                              nsIURI* aBaseURI = nullptr,
+                              nsIReferrerInfo* aReferrerInfo = nullptr,
+                              bool aReferenceImage = false);
 
   /**
-   * A variation on ResetToURIFragmentID() to set up a reference that consists
-   * of the ID of an element in the same document as aFrom.
-   * @param aFrom the source element for context
-   * @param aID the ID of the element
-   * @param aWatch if false, then we do not set up the notifications to track
-   * changes, so ElementChanged won't fire and get() will always return the same
-   * value, the current element for the ID.
+   * A variation on ResetToURIWithFragmentID() to set up a reference that
+   * consists of a pre-parsed ID, referencing an element in the same document
+   * as aFrom.
+   *
+   * @param aFrom The source element that is making the reference.
+   * @param aID The ID of the target element.
+   * @param aReferenceImage See above.
    */
-  void ResetWithID(Element& aFrom, nsAtom* aID, bool aWatch = true);
+  void ResetToID(Element& aFrom, nsAtom* aID, bool aReferenceImage = false);
 
   /**
    * Clears the reference. ElementChanged is not triggered. get() will return
@@ -102,6 +115,11 @@ class IDTracker {
   void Traverse(nsCycleCollectionTraversalCallback* aCB);
 
  protected:
+  /** Requests and maybe watches an external resource doc. */
+  void ResetToExternalResource(nsIURI* aURI, nsIReferrerInfo* aReferrerInfo,
+                               nsAtom* aRef, Element& aFrom,
+                               bool aReferenceImage);
+
   /**
    * Override this to be notified of element changes. Don't forget
    * to call this superclass method to change mElement. This is called
@@ -120,7 +138,7 @@ class IDTracker {
    * null.  Either aWatch must be false or aRef must be empty.
    */
   void HaveNewDocumentOrShadowRoot(DocumentOrShadowRoot*, bool aWatch,
-                                   const nsString& aRef);
+                                   nsAtom* aID);
 
  private:
   static bool Observe(Element* aOldElement, Element* aNewElement, void* aData);
@@ -165,7 +183,7 @@ class IDTracker {
 
   class DocumentLoadNotification : public Notification, public nsIObserver {
    public:
-    DocumentLoadNotification(IDTracker* aTarget, const nsString& aRef)
+    DocumentLoadNotification(IDTracker* aTarget, nsAtom* aRef)
         : Notification(aTarget) {
       if (!mTarget->IsPersistent()) {
         mRef = aRef;
@@ -179,7 +197,7 @@ class IDTracker {
 
     virtual void SetTo(Element* aTo) override {}
 
-    nsString mRef;
+    RefPtr<nsAtom> mRef;
   };
   friend class DocumentLoadNotification;
 

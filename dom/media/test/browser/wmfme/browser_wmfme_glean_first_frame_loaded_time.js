@@ -1,8 +1,5 @@
 "use strict";
 
-// Disabling undef warning because in `run()` we use functions from head.js
-/* eslint-disable no-undef */
-
 /**
  * This test is used to ensure that Glean probe 'first_frame_loaded' can be
  * recorded correctly in different situations.
@@ -28,7 +25,7 @@ const testCases = [
   {
     expected: {
       playback_type: "Non-MSE media-engine playback",
-      video_codec: "video/avc",
+      video_codec: "video/vp9",
       resolution: "AV,240<h<=480",
       key_system: undefined,
     },
@@ -39,8 +36,8 @@ const testCases = [
   {
     expected: {
       playback_type: "MSE media-engine playback",
-      video_codec: "video/avc",
-      resolution: "AV,240<h<=480",
+      video_codec: "video/vp9",
+      resolution: "V,240<h<=480",
       key_system: undefined,
     },
     async run(tab) {

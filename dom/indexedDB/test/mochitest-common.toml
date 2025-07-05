@@ -6,6 +6,7 @@
 prefs = [
   "extensions.blocklist.enabled=false",
 ]
+tags = "inc-origin-init"
 support-files = [
   "bfcache_page1.html",
   "bfcache_page2.html",
@@ -64,6 +65,7 @@ support-files = [
   "unit/test_locale_aware_index_getAll.js",
   "unit/test_locale_aware_index_getAllObjects.js",
   "unit/test_maximal_serialized_object_size.js",
+  "unit/test_maximal_structured_clone_size.js",
   "unit/test_multientry.js",
   "unit/test_names_sorted.js",
   "unit/test_objectCursors.js",
@@ -207,6 +209,7 @@ skip-if = [
 skip-if = ["verify"]
 
 ["test_event_listener_leaks.html"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt"] # Bug 1930730
 
 ["test_event_propagation.html"]
 skip-if = ["verify"]
@@ -220,22 +223,35 @@ skip-if = ["verify"]
 ["test_file_cross_database_copying.html"]
 
 ["test_file_delete.html"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt"] # Bug 1930730 (secondary)
+
+["test_file_filelist.html"]
 
 ["test_file_put_get_object.html"]
 
 ["test_file_put_get_values.html"]
 
+["test_file_repeated_add_delete.html"]
+
 ["test_file_replace.html"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt"] # Bug 1930730 (secondary)
 
 ["test_file_resurrection_delete.html"]
-skip-if = ["os == 'android'"]
+skip-if = [
+  "os == 'android'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1930730 (secondary)
+]
 
 ["test_file_resurrection_transaction_abort.html"]
-skip-if = ["os == 'android'"]
+skip-if = [
+  "os == 'android'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1930730 (secondary)
+]
 
 ["test_file_sharing.html"]
 
 ["test_file_transaction_abort.html"]
+skip-if = ["os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt"] # Bug 1930730 (secondary)
 
 ["test_getAll.html"]
 
@@ -276,14 +292,16 @@ skip-if = ["true"] # disabled for the moment
 
 ["test_maximal_serialized_object_size.html"]
 
+["test_maximal_structured_clone_size.html"]
+
 ["test_message_manager_ipc.html"]
 
 ["test_multientry.html"]
 
 ["test_names_sorted.html"]
 skip-if = [
-  "xorigin && !debug", # Hangs
-  "os == 'linux' && os_version == '18.04' && bits == 64 && !debug", # Bug 1602927
+  "xorigin && opt", # Hangs
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1602927
 ]
 
 ["test_objectCursors.html"]
@@ -325,7 +343,7 @@ skip-if = [
 ["test_remove_objectStore.html"]
 
 ["test_rename_index.html"]
-skip-if = ["os == 'linux' && os_version == '18.04'"] #Bug 1601601
+skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64'"] #Bug 1601601
 
 ["test_rename_index_errors.html"]
 
@@ -336,7 +354,10 @@ skip-if = ["os == 'linux' && os_version == '18.04'"] #Bug 1601601
 ["test_request_readyState.html"]
 
 ["test_sandbox.html"]
-skip-if = ["verify"]
+skip-if = [
+  "verify",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1930730 (secondary)
+]
 
 ["test_setVersion.html"]
 
@@ -384,15 +405,20 @@ skip-if = [
 ["test_unique_index_update.html"]
 
 ["test_upgrade_add_index.html"]
-skip-if = [
-  "os == 'linux' && os_version == '18.04' && bits == 64 && !debug",
-  "apple_silicon && !debug",
-  "apple_catalina && !debug",
-  "os == 'win'", #Bug 1637715
-]
 scheme = "https"
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1930730 (secondary)
+  "os == 'win'", # Bug 1637715
+]
 
 ["test_view_put_get_values.html"]
+skip-if = [
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1930730 (secondary)
+]
 
 ["test_wasm_put_get_values.html"]
 

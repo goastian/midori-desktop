@@ -5,8 +5,9 @@ Test all culling combinations of GPUFrontFace and GPUCullMode show the correct o
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { kTextureFormatInfo, SizedTextureFormat } from '../../../format_info.js';
-import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
+import { isStencilTextureFormat, SizedTextureFormat } from '../../../format_info.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as ttu from '../../../texture_test_utils.js';
 
 function faceIsCulled(face: 'cw' | 'ccw', frontFace: GPUFrontFace, cullMode: GPUCullMode): boolean {
   return cullMode !== 'none' && (frontFace === face) === (cullMode === 'front');
@@ -24,13 +25,13 @@ function faceColor(face: 'cw' | 'ccw', frontFace: GPUFrontFace, cullMode: GPUCul
   }
 }
 
-class CullingTest extends TextureTestMixin(GPUTest) {
+class CullingTest extends AllFeaturesMaxLimitsGPUTest {
   checkCornerPixels(
     texture: GPUTexture,
     expectedTopLeftColor: Uint8Array,
     expectedBottomRightColor: Uint8Array
   ) {
-    this.expectSinglePixelComparisonsAreOkInTexture({ texture }, [
+    ttu.expectSinglePixelComparisonsAreOkInTexture(this, { texture }, [
       { coord: { x: 0, y: 0 }, exp: expectedTopLeftColor },
       { coord: { x: texture.width - 1, y: texture.height - 1 }, exp: expectedBottomRightColor },
     ]);
@@ -140,18 +141,18 @@ g.test('culling')
     const size = 4;
     const format = 'rgba8unorm';
 
-    const texture = t.device.createTexture({
+    const texture = t.createTextureTracked({
       size: { width: size, height: size, depthOrArrayLayers: 1 },
       format,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
 
-    const haveStencil = depthStencilFormat && kTextureFormatInfo[depthStencilFormat].stencil;
+    const haveStencil = depthStencilFormat && isStencilTextureFormat(depthStencilFormat);
     let depthTexture: GPUTexture | undefined = undefined;
     let depthStencilAttachment: GPURenderPassDepthStencilAttachment | undefined = undefined;
     let depthStencil: GPUDepthStencilState | undefined = undefined;
     if (depthStencilFormat) {
-      depthTexture = t.device.createTexture({
+      depthTexture = t.createTextureTracked({
         size: { width: size, height: size, depthOrArrayLayers: 1 },
         format: depthStencilFormat,
         usage: GPUTextureUsage.RENDER_ATTACHMENT,

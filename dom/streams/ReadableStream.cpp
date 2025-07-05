@@ -32,7 +32,7 @@
 #include "mozilla/dom/ReadableStreamBYOBReader.h"
 #include "mozilla/dom/ReadableStreamBYOBRequest.h"
 #include "mozilla/dom/ReadableStreamBinding.h"
-#include "mozilla/dom/ReadableStreamController.h"
+#include "mozilla/dom/ReadableStreamControllerBase.h"
 #include "mozilla/dom/ReadableStreamDefaultController.h"
 #include "mozilla/dom/ReadableStreamDefaultReader.h"
 #include "mozilla/dom/RootedDictionary.h"
@@ -260,7 +260,7 @@ class ReadableStreamFromAlgorithms final
 
   // Step 4. Let pullAlgorithm be the following steps:
   MOZ_CAN_RUN_SCRIPT already_AddRefed<Promise> PullCallbackImpl(
-      JSContext* aCx, ReadableStreamController& aController,
+      JSContext* aCx, ReadableStreamControllerBase& aController,
       ErrorResult& aRv) override {
     aRv.MightThrowJSException();
 
@@ -375,8 +375,8 @@ class ReadableStreamFromAlgorithms final
     }
 
     JS::Rooted<JS::Value> returnResult(aCx);
-    if (!JS::Call(aCx, iterator, returnMethod,
-                  JS::HandleValueArray(reason), &returnResult)) {
+    if (!JS::Call(aCx, iterator, returnMethod, JS::HandleValueArray(reason),
+                  &returnResult)) {
       // Step 6. If returnResult is an abrupt completion, return a promise
       // rejected with returnResult.[[Value]].
       aRv.StealExceptionFromJSContext(aCx);
@@ -622,7 +622,7 @@ already_AddRefed<Promise> ReadableStreamCancel(JSContext* aCx,
   }
 
   // Step 7.
-  RefPtr<ReadableStreamController> controller(aStream->Controller());
+  RefPtr<ReadableStreamControllerBase> controller(aStream->Controller());
   RefPtr<Promise> sourceCancelPromise =
       controller->CancelSteps(aCx, aError, aRv);
   if (aRv.Failed()) {

@@ -1,8 +1,7 @@
 [DEFAULT]
-head = "head.js head-http2.js"
-# Push notifications and alarms are currently disabled on Android.
-skip-if = ["os == 'android'"]
+head = "head.js"
 support-files = ["broadcast_handler.sys.mjs"]
+skip-if = ["os == 'android'"] # Push notifications and alarms are currently disabled on Android.
 
 ["test_broadcast_success.js"]
 
@@ -10,7 +9,6 @@ support-files = ["broadcast_handler.sys.mjs"]
 # This used to be hasNode, but that caused too many issues with tests being
 # silently disabled, so now we explicitly call out the platforms not known
 # to have node installed.
-skip-if = ["os == 'android'"]
 run-sequentially = "This will delete all existing push subscriptions."
 
 ["test_clear_forgetAboutSite.js"]
@@ -40,7 +38,7 @@ run-sequentially = "This will delete all existing push subscriptions."
 ["test_observer_data.js"]
 
 ["test_observer_remoting.js"]
-skip-if = ["serviceworker_e10s"]
+skip-if = ["true"]
 
 ["test_permissions.js"]
 run-sequentially = "This will delete all existing push subscriptions."
@@ -54,8 +52,6 @@ run-sequentially = "This will delete all existing push subscriptions."
 ["test_reconnect_retry.js"]
 
 ["test_record.js"]
-
-["test_register_5xxCode_http2.js"]
 
 ["test_register_case.js"]
 
@@ -89,17 +85,9 @@ run-sequentially = "This will delete all existing push subscriptions."
 
 ["test_registration_success.js"]
 
-["test_resubscribe_4xxCode_http2.js"]
-
-["test_resubscribe_5xxCode_http2.js"]
-
-["test_resubscribe_listening_for_msg_error_http2.js"]
-
 ["test_retry_ws.js"]
 
 ["test_service_child.js"]
-
-#http2 test
 
 ["test_service_parent.js"]
 
@@ -108,14 +96,9 @@ run-sequentially = "This will delete all existing push subscriptions."
 ["test_unregister_error.js"]
 
 ["test_unregister_invalid_json.js"]
-skip-if = ["os == 'win'"] # Bug 1627379
-run-sequentially = "very high failure rate in parallel"
 
 ["test_unregister_not_found.js"]
 
 ["test_unregister_success.js"]
 
-["test_updateRecordNoEncryptionKeys_http2.js"]
-
 ["test_updateRecordNoEncryptionKeys_ws.js"]
-skip-if = ["os == 'linux'"] # Bug 1265233

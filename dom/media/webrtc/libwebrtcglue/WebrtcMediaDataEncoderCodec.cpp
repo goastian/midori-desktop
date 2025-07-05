@@ -13,6 +13,7 @@
 #include "MediaData.h"
 #include "modules/video_coding/utility/vp8_header_parser.h"
 #include "modules/video_coding/utility/vp9_uncompressed_header_parser.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/media/MediaUtils.h"
@@ -46,9 +47,14 @@ CodecType ConvertWebrtcCodecTypeToCodecType(
       return CodecType::VP9;
     case webrtc::VideoCodecType::kVideoCodecH264:
       return CodecType::H264;
-    default:
-      MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Unsupported codec type");
+    case webrtc::VideoCodecType::kVideoCodecAV1:
+      return CodecType::AV1;
+    case webrtc::VideoCodecType::kVideoCodecGeneric:
+    case webrtc::VideoCodecType::kVideoCodecH265:
+      return CodecType::Unknown;
   }
+  MOZ_CRASH("Unsupported codec type");
+  return CodecType::Unknown;
 }
 
 bool WebrtcMediaDataEncoder::CanCreate(
@@ -76,7 +82,7 @@ static const char* PacketModeStr(const webrtc::CodecSpecificInfo& aInfo) {
 
 static std::pair<H264_PROFILE, H264_LEVEL> ConvertProfileLevel(
     const webrtc::CodecParameterMap& aParameters) {
-  const absl::optional<webrtc::H264ProfileLevelId> profileLevel =
+  const std::optional<webrtc::H264ProfileLevelId> profileLevel =
       webrtc::ParseSdpForH264ProfileLevelId(aParameters);
 
   if (!profileLevel) {
@@ -289,7 +295,7 @@ already_AddRefed<MediaDataEncoder> WebrtcMediaDataEncoder::CreateEncoder(
   }
   EncoderConfig config(
       type, {aCodecSettings->width, aCodecSettings->height}, Usage::Realtime,
-      dom::ImageBitmapFormat::YUV420P, dom::ImageBitmapFormat::YUV420P,
+      EncoderConfig::SampleFormat(dom::ImageBitmapFormat::YUV420P),
       aCodecSettings->maxFramerate, keyframeInterval,
       mBitrateAdjuster.GetTargetBitrateBps(), mMinBitrateBps, mMaxBitrateBps,
       BitrateMode::Variable, HardwarePreference::None, ScalabilityMode::None,
@@ -364,7 +370,7 @@ static already_AddRefed<VideoData> CreateVideoDataFromWebrtcVideoFrame(
   // discontinuous time and confuses the video receiver when switching from
   // platform to libwebrtc encoder.
   TimeUnit timestamp =
-      media::TimeUnit(aFrame.timestamp(), cricket::kVideoCodecClockrate);
+      media::TimeUnit(aFrame.rtp_timestamp(), cricket::kVideoCodecClockrate);
   return VideoData::CreateFromImage(image->GetSize(), 0, timestamp, aDuration,
                                     image, aIsKeyFrame, timestamp);
 }

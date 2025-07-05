@@ -53,6 +53,7 @@ add_setup(function () {
 });
 
 function enableTesting() {
+  Services.prefs.setBoolPref("dom.caches.testing.enabled", true);
   Services.prefs.setBoolPref("dom.simpleDB.enabled", true);
   Services.prefs.setBoolPref("dom.quotaManager.testing", true);
 }
@@ -60,6 +61,7 @@ function enableTesting() {
 function resetTesting() {
   Services.prefs.clearUserPref("dom.quotaManager.testing");
   Services.prefs.clearUserPref("dom.simpleDB.enabled");
+  Services.prefs.clearUserPref("dom.caches.testing.enabled");
 }
 
 function initStorage() {
@@ -74,8 +76,12 @@ function initPersistentOrigin(principal) {
   return Services.qms.initializePersistentOrigin(principal);
 }
 
-function initTemporaryOrigin(principal) {
-  return Services.qms.initializeTemporaryOrigin("default", principal);
+function initTemporaryOrigin(principal, createIfNonExistent = true) {
+  return Services.qms.initializeTemporaryOrigin(
+    "default",
+    principal,
+    createIfNonExistent
+  );
 }
 
 function clearOrigin(principal, persistence) {

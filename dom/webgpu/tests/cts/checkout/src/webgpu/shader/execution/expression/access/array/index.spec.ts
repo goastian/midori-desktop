@@ -3,7 +3,7 @@ Execution Tests for array indexing expressions
 `;
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
 import {
   False,
   True,
@@ -17,7 +17,7 @@ import { align } from '../../../../../util/math.js';
 import { Case } from '../../case.js';
 import { allInputSources, basicExpressionBuilder, run } from '../../expression.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('concrete_scalar')
   .specURL('https://www.w3.org/TR/WGSL/#array-access-expr')
@@ -32,12 +32,10 @@ g.test('concrete_scalar')
       .combine('elementType', ['i32', 'u32', 'f32', 'f16'] as const)
       .combine('indexType', ['i32', 'u32'] as const)
   )
-  .beforeAllSubcases(t => {
-    if (t.params.elementType === 'f16') {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.elementType === 'f16') {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const elementType = Type[t.params.elementType];
     const indexType = Type[t.params.indexType];
     const cases: Case[] = [
@@ -196,16 +194,15 @@ g.test('runtime_sized')
       ] as const)
       .combine('indexType', ['i32', 'u32'] as const)
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(Type[t.params.elementType]).kind === 'f16') {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     const elementType = Type[t.params.elementType];
     const valueArrayType = Type.array(0, elementType);
     const indexType = Type[t.params.indexType];
     const indexArrayType = Type.array(0, indexType);
+
+    if (scalarTypeOf(elementType).kind === 'f16') {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
 
     const wgsl = `
 ${scalarTypeOf(elementType).kind === 'f16' ? 'enable f16;' : ''}
@@ -262,7 +259,7 @@ fn main(@builtin(local_invocation_index) invocation_id : u32) {
       toArray(inputIndices),
       GPUBufferUsage.STORAGE
     );
-    const outputBuffer = t.device.createBuffer({
+    const outputBuffer = t.createBufferTracked({
       size: bufferSize(expected),
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
@@ -300,14 +297,13 @@ g.test('vector')
       )
       .combine('indexType', ['i32', 'u32'] as const)
   )
-  .beforeAllSubcases(t => {
-    if (t.params.elementType === 'vec4h') {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.elementType === 'vec4h') {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const elementType = Type[t.params.elementType];
     const indexType = Type[t.params.indexType];
+
     const cases: Case[] = [
       {
         input: [
@@ -350,5 +346,56 @@ g.test('vector')
       elementType,
       t.params,
       cases
+    );
+  });
+
+g.test('matrix')
+  .specURL('https://www.w3.org/TR/WGSL/#array-access-expr')
+  .desc(`Test indexing of an array of matrices`)
+  .params(u =>
+    u
+      .combine('inputSource', allInputSources)
+      .combine('elementType', ['f16', 'f32'] as const)
+      .beginSubcases()
+      .combine('columns', [2, 3, 4] as const)
+      .combine('rows', [2, 3, 4] as const)
+      .combine('indexType', ['i32', 'u32'] as const)
+      .filter(u => {
+        if (u.inputSource !== 'uniform') {
+          return true;
+        }
+        const mat = Type.mat(u.columns, u.rows, Type[u.elementType]);
+        return (align(mat.size, mat.alignment) & 15) === 0;
+      })
+  )
+  .fn(async t => {
+    if (t.params.elementType === 'f16') {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
+    const elementType = Type[t.params.elementType];
+    const indexType = Type[t.params.indexType];
+    const matrixType = Type.mat(t.params.columns, t.params.rows, elementType);
+    const buildMat = (index: number) => {
+      const elements = [];
+      for (let c = 0; c < t.params.rows; c++) {
+        for (let r = 0; r < t.params.columns; r++) {
+          elements.push(index * 100 + c * 10 + r);
+        }
+      }
+      return matrixType.create(elements);
+    };
+    const matrices = [buildMat(0), buildMat(1), buildMat(2)];
+    await run(
+      t,
+      basicExpressionBuilder(ops => `${ops[0]}[${ops[1]}]`),
+      [Type.array(3, matrixType), indexType],
+      matrixType,
+      t.params,
+      [
+        {
+          input: [array(...matrices), indexType.create(1)],
+          expected: matrices[1],
+        },
+      ]
     );
   });

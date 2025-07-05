@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-include protocol PBackground;
 include protocol PBackgroundLSSnapshot;
 
 include PBackgroundLSSharedTypes;
@@ -92,24 +91,12 @@ struct LSSnapshotInitInfo
  * ContentParent::AboutToLoadHttpDocumentForChild, the central place
  * for pre-loading.)
  */
-[ChildImpl=virtual, ParentImpl=virtual]
+[ChildImpl=virtual, ParentImpl=virtual, ChildProc=anydom]
 sync protocol PBackgroundLSDatabase
 {
-  manager PBackground;
   manages PBackgroundLSSnapshot;
 
 parent:
-  // The DeleteMe message is used to avoid a race condition between the parent
-  // actor and the child actor. The PBackgroundLSDatabase protocol could be
-  // simply destroyed by sending the __delete__ message from the child side.
-  // However, that would destroy the child actor immediatelly and the parent
-  // could be sending a message to the child at the same time resulting in a
-  // routing error since the child actor wouldn't exist anymore. A routing
-  // error typically causes a crash. The race can be prevented by doing the
-  // teardown in two steps. First, we send the DeleteMe message to the parent
-  // and the parent then sends the __delete__ message to the child.
-  async DeleteMe();
-
   /**
    * Sent in response to a `RequestAllowToClose` message once the snapshot
    * cleanup has happened OR from LSDatabase's destructor if AllowToClose has
@@ -147,11 +134,6 @@ parent:
     returns (LSSnapshotInitInfo initInfo);
 
 child:
-  /**
-   * Only sent by the parent in response to the child's DeleteMe request.
-   */
-  async __delete__();
-
   /**
    * Request to close the LSDatabase, checkpointing and finishing any
    * outstanding snapshots so no state is lost.  This request is issued when

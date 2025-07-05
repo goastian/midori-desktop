@@ -129,12 +129,6 @@ CheckedInt64 UsecsToFrames(int64_t aUsecs, uint32_t aRate);
 // Format TimeUnit as number of frames at given rate.
 CheckedInt64 TimeUnitToFrames(const media::TimeUnit& aTime, uint32_t aRate);
 
-// Converts milliseconds to seconds.
-#define MS_TO_SECONDS(ms) ((double)(ms) / (PR_MSEC_PER_SEC))
-
-// Converts seconds to milliseconds.
-#define SECONDS_TO_MS(s) ((int)((s) * (PR_MSEC_PER_SEC)))
-
 // Converts from seconds to microseconds. Returns failure if the resulting
 // integer is too big to fit in an int64_t.
 nsresult SecondsToUsecs(double aSeconds, int64_t& aOutUsecs);
@@ -202,8 +196,14 @@ already_AddRefed<SharedThreadPool> GetMediaThreadPool(MediaThreadType aType);
 // http://blog.pearce.org.nz/2013/11/what-does-h264avc1-codecs-parameters.html
 // for more details.
 // Returns false on failure.
+enum class H264CodecStringStrictness {
+  Lenient,  // Allow and returns invalid profile, constraint and level values.
+            // It is necessary to accept those strings for Web Compat reasons.
+  Strict    // Rejects invalid profile, constraint and level values.
+};
 bool ExtractH264CodecDetails(const nsAString& aCodecs, uint8_t& aProfile,
-                             uint8_t& aConstraint, uint8_t& aLevel);
+                             uint8_t& aConstraint, H264_LEVEL& aLevel,
+                             H264CodecStringStrictness aStrictness);
 
 struct VideoColorSpace {
   // Default values are set according to

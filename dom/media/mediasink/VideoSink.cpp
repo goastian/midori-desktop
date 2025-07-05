@@ -70,8 +70,7 @@ VideoSink::VideoSink(AbstractThread* aThread, MediaSink* aAudioSink,
       mPendingDroppedCount(0),
       mHasVideo(false),
       mUpdateScheduler(aThread),
-      mVideoQueueSendToCompositorSize(aVQueueSentToCompositerSize),
-      mMinVideoQueueSize(StaticPrefs::media_ruin_av_sync_enabled() ? 1 : 0)
+      mVideoQueueSendToCompositorSize(aVQueueSentToCompositerSize)
 #ifdef XP_WIN
       ,
       mHiResTimersRequested(false)
@@ -204,7 +203,11 @@ void VideoSink::SetPlaying(bool aPlaying) {
     // Since playback is paused, tell compositor to render only current frame.
     TimeStamp nowTime;
     const auto clockTime = mAudioSink->GetPosition(&nowTime);
-    RenderVideoFrames(1, clockTime.ToMicroseconds(), nowTime);
+    RefPtr<VideoData> currentFrame = VideoQueue().PeekFront();
+    if (currentFrame) {
+      RenderVideoFrames(Span(&currentFrame, 1), clockTime.ToMicroseconds(),
+                        nowTime);
+    }
     if (mContainer) {
       mContainer->ClearCachedResources();
     }
@@ -349,9 +352,12 @@ void VideoSink::Redraw(const VideoInfo& aInfo) {
       video->mImage = mBlankImage;
     }
     video->MarkSentToCompositor();
-    mContainer->SetCurrentFrame(video->mDisplay, video->mImage, now);
+    mContainer->SetCurrentFrame(video->mDisplay, video->mImage, now,
+                                media::TimeUnit::Invalid(), video->mTime);
     if (mSecondaryContainer) {
-      mSecondaryContainer->SetCurrentFrame(video->mDisplay, video->mImage, now);
+      mSecondaryContainer->SetCurrentFrame(video->mDisplay, video->mImage, now,
+                                           media::TimeUnit::Invalid(),
+                                           video->mTime);
     }
     return;
   }
@@ -362,10 +368,14 @@ void VideoSink::Redraw(const VideoInfo& aInfo) {
 
   RefPtr<Image> blank =
       mContainer->GetImageContainer()->CreatePlanarYCbCrImage();
-  mContainer->SetCurrentFrame(aInfo.mDisplay, blank, now);
+  mContainer->SetCurrentFrame(aInfo.mDisplay, blank, now,
+                              media::TimeUnit::Invalid(),
+                              media::TimeUnit::Invalid());
 
   if (mSecondaryContainer) {
-    mSecondaryContainer->SetCurrentFrame(aInfo.mDisplay, blank, now);
+    mSecondaryContainer->SetCurrentFrame(aInfo.mDisplay, blank, now,
+                                         media::TimeUnit::Invalid(),
+                                         media::TimeUnit::Invalid());
   }
 }
 
@@ -422,22 +432,24 @@ void VideoSink::DisconnectListener() {
   mFinishListener.Disconnect();
 }
 
-void VideoSink::RenderVideoFrames(int32_t aMaxFrames, int64_t aClockTime,
+void VideoSink::RenderVideoFrames(Span<const RefPtr<VideoData>> aFrames,
+                                  int64_t aClockTime,
                                   const TimeStamp& aClockTimeStamp) {
   AUTO_PROFILER_LABEL("VideoSink::RenderVideoFrames", MEDIA_PLAYBACK);
   AssertOwnerThread();
 
-  AutoTArray<RefPtr<VideoData>, 16> frames;
-  VideoQueue().GetFirstElements(aMaxFrames, &frames);
-  if (frames.IsEmpty() || !mContainer) {
+  if (aFrames.IsEmpty() || !mContainer) {
     return;
   }
+
+  PROFILER_MARKER("VideoSink::RenderVideoFrames", MEDIA_PLAYBACK, {},
+                  VideoSinkRenderMarker, aClockTime);
 
   AutoTArray<ImageContainer::NonOwningImage, 16> images;
   TimeStamp lastFrameTime;
   double playbackRate = mAudioSink->PlaybackRate();
-  for (uint32_t i = 0; i < frames.Length(); ++i) {
-    VideoData* frame = frames[i];
+  for (uint32_t i = 0; i < aFrames.Length(); ++i) {
+    VideoData* frame = aFrames[i];
     bool wasSent = frame->IsSentToCompositor();
     frame->MarkSentToCompositor();
 
@@ -473,6 +485,7 @@ void VideoSink::RenderVideoFrames(int32_t aMaxFrames, int64_t aClockTime,
     }
     img->mFrameID = frame->mFrameID;
     img->mProducerID = mProducerID;
+    img->mMediaTime = frame->mTime;
 
     VSINK_LOG_V("playing video frame %" PRId64
                 " (id=%x, vq-queued=%zu, clock=%" PRId64 ")",
@@ -487,10 +500,10 @@ void VideoSink::RenderVideoFrames(int32_t aMaxFrames, int64_t aClockTime,
   }
 
   if (images.Length() > 0) {
-    mContainer->SetCurrentFrames(frames[0]->mDisplay, images);
+    mContainer->SetCurrentFrames(aFrames[0]->mDisplay, images);
 
     if (mSecondaryContainer) {
-      mSecondaryContainer->SetCurrentFrames(frames[0]->mDisplay, images);
+      mSecondaryContainer->SetCurrentFrames(aFrames[0]->mDisplay, images);
     }
   }
 }
@@ -509,15 +522,19 @@ void VideoSink::UpdateRenderedVideoFrames() {
   uint32_t droppedInSink = 0;
 
   // Skip frames up to the playback position.
-  media::TimeUnit lastFrameEndTime;
-  while (VideoQueue().GetSize() > mMinVideoQueueSize &&
+  // At least the last frame is retained, even when out of date, because it
+  // will be used if no more frames are received before the queue finishes or
+  // the video is paused.
+  RefPtr<VideoData> lastExpiredFrameInCompositor;
+  while (VideoQueue().GetSize() > 1 &&
          clockTime >= VideoQueue().PeekFront()->GetEndTime()) {
     RefPtr<VideoData> frame = VideoQueue().PopFront();
-    lastFrameEndTime = frame->GetEndTime();
     if (frame->IsSentToCompositor()) {
+      lastExpiredFrameInCompositor = frame;
       sentToCompositorCount++;
     } else {
       droppedInSink++;
+      mDroppedInSinkSequenceDuration += frame->mDuration;
       VSINK_LOG_V("discarding video frame mTime=%" PRId64
                   " clock_time=%" PRId64,
                   frame->mTime.ToMicroseconds(), clockTime.ToMicroseconds());
@@ -572,24 +589,59 @@ void VideoSink::UpdateRenderedVideoFrames() {
                             droppedInSink, droppedInCompositor});
   }
 
-  // The presentation end time of the last video frame displayed is either
-  // the end time of the current frame, or if we dropped all frames in the
-  // queue, the end time of the last frame we removed from the queue.
+  AutoTArray<RefPtr<VideoData>, 16> frames;
   RefPtr<VideoData> currentFrame = VideoQueue().PeekFront();
-  mVideoFrameEndTime =
-      std::max(mVideoFrameEndTime,
-               currentFrame ? currentFrame->GetEndTime() : lastFrameEndTime);
+  if (currentFrame) {
+    // The presentation end time of the last video frame consumed is the end
+    // time of the current frame.
+    mVideoFrameEndTime =
+        std::max(mVideoFrameEndTime, currentFrame->GetEndTime());
 
-  RenderVideoFrames(mVideoQueueSendToCompositorSize, clockTime.ToMicroseconds(),
-                    nowTime);
+    // Gecko doesn't support VideoPlaybackQuality.totalFrameDelay
+    // (bug 962353), and so poor video quality from presenting frames late
+    // would not be reported to content.  If frames are late, then throttle
+    // the number of frames sent to the compositor, so that the
+    // droppedVideoFrames are reported.  Perhaps the reduced number of frames
+    // composited might free up some resources for decode.
+    if (  // currentFrame is on time, or almost so, or
+        currentFrame->GetEndTime() >= clockTime ||
+        // there is only one frame in the VideoQueue() because the current
+        // frame would have otherwise been removed above.  Send this frame if
+        // it has already been sent to the compositor because it has not been
+        // dropped and sending it again now, without any preceding frames, will
+        // drop references to any preceding frames and update the intrinsic
+        // size on the VideoFrameContainer.
+        currentFrame->IsSentToCompositor() ||
+        // Send this frame if its lateness is less than the duration that has
+        // been skipped for throttling, or
+        clockTime - currentFrame->GetEndTime() <
+            mDroppedInSinkSequenceDuration ||
+        // in a talos test for the compositor, which requires that the most
+        // recently decoded frame is passed to the compositor so that the
+        // compositor has something to composite during the talos test when the
+        // decode is stressed.
+        StaticPrefs::media_ruin_av_sync_enabled()) {
+      mDroppedInSinkSequenceDuration = media::TimeUnit::Zero();
+      VideoQueue().GetFirstElements(
+          std::max(2u, mVideoQueueSendToCompositorSize), &frames);
+    } else if (lastExpiredFrameInCompositor) {
+      // Release references to all but the last frame passed to the
+      // compositor.  Passing this frame to RenderVideoFrames() as the first
+      // in frames also updates the intrinsic size on the VideoFrameContainer
+      // to that of this frame.
+      frames.AppendElement(lastExpiredFrameInCompositor);
+    }
+    RenderVideoFrames(Span(frames.Elements(),
+                           std::min<size_t>(frames.Length(),
+                                            mVideoQueueSendToCompositorSize)),
+                      clockTime.ToMicroseconds(), nowTime);
+  }
 
   MaybeResolveEndPromise();
 
   // Get the timestamp of the next frame. Schedule the next update at
   // the start time of the next frame. If we don't have a next frame,
   // we will run render loops again upon incoming frames.
-  nsTArray<RefPtr<VideoData>> frames;
-  VideoQueue().GetFirstElements(2, &frames);
   if (frames.Length() < 2) {
     return;
   }
@@ -611,28 +663,23 @@ void VideoSink::MaybeResolveEndPromise() {
   // All frames are rendered, Let's resolve the promise.
   if (VideoQueue().IsFinished() && VideoQueue().GetSize() <= 1 &&
       !mVideoSinkEndRequest.Exists()) {
+    TimeStamp nowTime;
+    const auto clockTime = mAudioSink->GetPosition(&nowTime);
+
     if (VideoQueue().GetSize() == 1) {
-      // Remove the last frame since we have sent it to compositor.
+      // The last frame is no longer required in the VideoQueue().
       RefPtr<VideoData> frame = VideoQueue().PopFront();
+      // Ensure that the last frame and its dimensions have been set on the
+      // VideoFrameContainer, even if the frame was decoded late.  This also
+      // removes references to any other frames currently held by the
+      // VideoFrameContainer.
+      RenderVideoFrames(Span(&frame, 1), clockTime.ToMicroseconds(), nowTime);
       if (mPendingDroppedCount > 0) {
         mFrameStats.Accumulate({0, 0, 0, 0, 0, 1});
         mPendingDroppedCount--;
       } else {
         mFrameStats.NotifyPresentedFrame();
       }
-    }
-
-    TimeStamp nowTime;
-    const auto clockTime = mAudioSink->GetPosition(&nowTime);
-
-    // Clear future frames from the compositor, in case the playback position
-    // unexpectedly jumped to the end, and all frames between the previous
-    // playback position and the end were discarded. Old frames based on the
-    // previous playback position might still be queued in the compositor. See
-    // bug 1598143 for when this can happen.
-    mContainer->ClearFutureFrames(nowTime);
-    if (mSecondaryContainer) {
-      mSecondaryContainer->ClearFutureFrames(nowTime);
     }
 
     if (clockTime < mVideoFrameEndTime) {
@@ -657,6 +704,13 @@ void VideoSink::MaybeResolveEndPromise() {
 
 void VideoSink::SetSecondaryVideoContainer(VideoFrameContainer* aSecondary) {
   AssertOwnerThread();
+  // Clear all images of secondary ImageContainer, when it is removed from
+  // VideoSink.
+  if (mSecondaryContainer && aSecondary != mSecondaryContainer) {
+    ImageContainer* secondaryImageContainer =
+        mSecondaryContainer->GetImageContainer();
+    secondaryImageContainer->ClearImagesInHost(layers::ClearImagesType::All);
+  }
   mSecondaryContainer = aSecondary;
   if (!IsPlaying() && mSecondaryContainer) {
     ImageContainer* mainImageContainer = mContainer->GetImageContainer();
@@ -669,11 +723,14 @@ void VideoSink::SetSecondaryVideoContainer(VideoFrameContainer* aSecondary) {
     // that in the secondary container as well.
     AutoLockImage lockImage(mainImageContainer);
     TimeStamp now = TimeStamp::Now();
-    if (RefPtr<Image> image = lockImage.GetImage(now)) {
+    if (const auto* owningImage = lockImage.GetOwningImage(now)) {
       AutoTArray<ImageContainer::NonOwningImage, 1> currentFrame;
       currentFrame.AppendElement(ImageContainer::NonOwningImage(
-          image, now, /* frameID */ 1,
-          /* producerId */ ImageContainer::AllocateProducerID()));
+          owningImage->mImage, now, /* frameID */ 1,
+          /* producerId */ ImageContainer::AllocateProducerID(),
+          owningImage->mProcessingDuration, owningImage->mMediaTime,
+          owningImage->mWebrtcCaptureTime, owningImage->mWebrtcReceiveTime,
+          owningImage->mRtpTimestamp));
       secondaryImageContainer->SetCurrentImages(currentFrame);
     }
   }

@@ -53,61 +53,50 @@ dictionary WebGLContextAttributes {
     GLboolean failIfMajorPerformanceCaveat = false;
     WebGLPowerPreference powerPreference = "default";
 
-    // We are experimenting here, though this should be close to where we end up.
-    [Pref="webgl.colorspaces.prototype"]
-    PredefinedColorSpace colorSpace; // = "srgb"; Default is gfx::ColorSpace2::UNKNOWN for now.
+    [Func="nsRFPService::IsSystemPrincipalOrAboutFingerprintingProtection"]
+    GLboolean forceSoftwareRendering = false;
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLBuffer {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLFramebuffer {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLProgram {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLRenderbuffer {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLShader {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLTexture {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLUniformLocation {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLVertexArrayObject {
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLActiveInfo {
     readonly attribute GLint size;
     readonly attribute GLenum type;
     readonly attribute DOMString name;
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLShaderPrecisionFormat {
     readonly attribute GLint rangeMin;
     readonly attribute GLint rangeMax;
@@ -548,8 +537,9 @@ interface mixin WebGLRenderingContextBase {
 
     /* Upon context creation, drawingBufferColorSpace and unpackColorSpace both
        default to the value "srgb". */
+    [Pref="webgl.drawing_buffer_color_space"]
     attribute PredefinedColorSpace drawingBufferColorSpace;
-    //attribute PredefinedColorSpace unpackColorSpace;
+    attribute PredefinedColorSpace unpackColorSpace;
 
     [WebGLHandlesContextLoss] WebGLContextAttributes? getContextAttributes();
     [WebGLHandlesContextLoss] boolean isContextLost();
@@ -588,12 +578,12 @@ interface mixin WebGLRenderingContextBase {
     undefined copyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
                                 GLint x, GLint y, GLsizei width, GLsizei height);
 
-    WebGLBuffer? createBuffer();
-    WebGLFramebuffer? createFramebuffer();
-    WebGLProgram? createProgram();
-    WebGLRenderbuffer? createRenderbuffer();
+    WebGLBuffer createBuffer();
+    WebGLFramebuffer createFramebuffer();
+    WebGLProgram createProgram();
+    WebGLRenderbuffer createRenderbuffer();
     WebGLShader? createShader(GLenum type);
-    WebGLTexture? createTexture();
+    WebGLTexture createTexture();
 
     undefined cullFace(GLenum mode);
 
@@ -725,8 +715,7 @@ interface mixin WebGLRenderingContextBase {
     undefined viewport(GLint x, GLint y, GLsizei width, GLsizei height);
 };
 
-[Exposed=(Window,Worker),
- Func="mozilla::dom::OffscreenCanvas::PrefEnabledOnWorkerThread"]
+[Exposed=(Window,Worker)]
 interface WebGLRenderingContext {
     // bufferData has WebGL2 overloads.
     undefined bufferData(GLenum target, GLsizeiptr size, GLenum usage);
@@ -1120,7 +1109,7 @@ interface EXT_color_buffer_half_float
 interface OES_vertex_array_object {
     const GLenum VERTEX_ARRAY_BINDING_OES = 0x85B5;
 
-    WebGLVertexArrayObject? createVertexArrayOES();
+    WebGLVertexArrayObject createVertexArrayOES();
     undefined deleteVertexArrayOES(WebGLVertexArrayObject? arrayObject);
     [WebGLHandlesContextLoss] GLboolean isVertexArrayOES(WebGLVertexArrayObject? arrayObject);
     undefined bindVertexArrayOES(WebGLVertexArrayObject? arrayObject);
@@ -1158,7 +1147,7 @@ interface EXT_disjoint_timer_query {
     const GLenum TIMESTAMP_EXT = 0x8E28;
     const GLenum GPU_DISJOINT_EXT = 0x8FBB;
 
-    WebGLQuery? createQueryEXT();
+    WebGLQuery createQueryEXT();
     undefined deleteQueryEXT(WebGLQuery? query);
     [WebGLHandlesContextLoss] boolean isQueryEXT(WebGLQuery? query);
     undefined beginQueryEXT(GLenum target, WebGLQuery query);
@@ -1176,6 +1165,7 @@ interface MOZ_debug {
     const GLenum WSI_INFO   = 0x10000;
     const GLenum UNPACK_REQUIRE_FASTPATH = 0x10001;
     const GLenum DOES_INDEX_VALIDATION   = 0x10002;
+    const GLenum CONTEXT_TYPE   = 0x10003;
 
     [Throws]
     any getParameter(GLenum pname);
@@ -1227,6 +1217,11 @@ interface WEBGL_provoking_vertex {
     const GLenum PROVOKING_VERTEX_WEBGL        = 0x8E4F;
 
     undefined provokingVertexWEBGL(GLenum provokeMode);
+};
+
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface EXT_depth_clamp {
+    const GLenum DEPTH_CLAMP_EXT = 0x864F;
 };
 
 // https://immersive-web.github.io/webxr/#dom-webglcontextattributes-xrcompatible

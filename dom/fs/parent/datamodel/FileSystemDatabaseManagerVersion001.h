@@ -55,6 +55,8 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
   static Result<Usage, QMResult> GetFileUsage(
       const FileSystemConnection& aConnection);
 
+  Result<quota::UsageInfo, QMResult> GetUsage() const override;
+
   nsresult UpdateUsage(const FileId& aFileId) override;
 
   Result<EntryId, QMResult> GetOrCreateDirectory(
@@ -87,6 +89,8 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
   Result<Path, QMResult> Resolve(
       const FileSystemEntryPair& aEndpoints) const override;
 
+  Result<bool, QMResult> DoesFileExist(const EntryId& aEntryId) const override;
+
   Result<EntryId, QMResult> GetEntryId(
       const FileSystemChildMetadata& aHandle) const override;
 
@@ -115,11 +119,11 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
 
   virtual nsresult RemoveFileId(const FileId& aFileId);
 
-  virtual Result<Usage, QMResult> GetUsagesOfDescendants(
-      const EntryId& aEntryId) const;
+  virtual Result<std::pair<nsTArray<FileId>, Usage>, QMResult>
+  FindFilesWithoutDeprecatedLocksUnderEntry(const EntryId& aEntryId) const;
 
-  virtual Result<nsTArray<FileId>, QMResult> FindFilesUnderEntry(
-      const EntryId& aEntryId) const;
+  virtual Result<nsTArray<std::pair<EntryId, FileId>>, QMResult>
+  FindFileEntriesUnderDirectory(const EntryId& aEntryId) const;
 
   nsresult SetUsageTracking(const FileId& aFileId, bool aTracked);
 
@@ -131,6 +135,8 @@ class FileSystemDatabaseManagerVersion001 : public FileSystemDatabaseManager {
 
   nsresult UpdateCachedQuotaUsage(const FileId& aFileId, Usage aOldUsage,
                                   Usage aNewUsage) const;
+
+  Result<bool, QMResult> RemoveDirectoryImpl(const EntryId& aEntryId);
 
   nsresult ClearDestinationIfNotLocked(
       const FileSystemConnection& aConnection,
@@ -172,9 +178,6 @@ Result<bool, QMResult> ApplyEntryExistsQuery(
 Result<bool, QMResult> ApplyEntryExistsQuery(
     const FileSystemConnection& aConnection, const nsACString& aQuery,
     const EntryId& aEntry);
-
-Result<bool, QMResult> DoesFileExist(const FileSystemConnection& aConnection,
-                                     const EntryId& aEntryId);
 
 Result<bool, QMResult> IsFile(const FileSystemConnection& aConnection,
                               const EntryId& aEntryId);

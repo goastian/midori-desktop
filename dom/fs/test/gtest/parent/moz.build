@@ -7,8 +7,11 @@
 TEST_DIRS += ["datamodel"]
 
 UNIFIED_SOURCES = [
+    "FileSystemParentTest.cpp",
+    "FileSystemParentTestHelpers.cpp",
     "TestFileSystemHashSource.cpp",
-    "TestFileSystemQuotaClient.cpp",
+    "TestFileSystemOriginInitialization.cpp",
+    "TestFileSystemUsageTracking.cpp",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")

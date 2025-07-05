@@ -5,6 +5,7 @@ TODO:
     - x= {superset, subset}
 `;
 
+import { AllFeaturesMaxLimitsGPUTest } from '../.././gpu_test.js';
 import { makeTestGroup } from '../../../common/framework/test_group.js';
 import {
   kShaderStageCombinations,
@@ -13,7 +14,7 @@ import {
 } from '../../capability_info.js';
 import { GPUConst } from '../../constants.js';
 
-import { ValidationTest } from './validation_test.js';
+import * as vtu from './validation_test_utils.js';
 
 type BindableResourceType = ValidBindableResource | 'readonlyStorageBuf';
 const kBindableResources = [
@@ -92,7 +93,7 @@ const bindGroupLayoutEntryContents = {
   },
 } as const;
 
-class F extends ValidationTest {
+class F extends AllFeaturesMaxLimitsGPUTest {
   createPipelineLayout(
     bindingInPipelineLayout: BindableResourceType,
     visibility: number
@@ -195,6 +196,46 @@ g.test('pipeline_layout_shader_exact_match')
       isBindingStaticallyUsed,
     } = t.params;
 
+    if (t.isCompatibility) {
+      const bindingUsedWithVertexStage =
+        (shaderStageWithBinding & GPUShaderStage.VERTEX) !== 0 ||
+        (pipelineLayoutVisibility & GPUShaderStage.VERTEX) !== 0;
+      const bindingUsedWithFragmentStage =
+        (shaderStageWithBinding & GPUShaderStage.FRAGMENT) !== 0 ||
+        (pipelineLayoutVisibility & GPUShaderStage.FRAGMENT) !== 0;
+      const bindingIsStorageBuffer =
+        bindingInPipelineLayout === 'readonlyStorageBuf' ||
+        bindingInPipelineLayout === 'storageBuf';
+      const bindingIsStorageTexture =
+        bindingInPipelineLayout === 'readonlyStorageTex' ||
+        bindingInPipelineLayout === 'readwriteStorageTex' ||
+        bindingInPipelineLayout === 'writeonlyStorageTex';
+      t.skipIf(
+        bindingUsedWithVertexStage &&
+          bindingIsStorageBuffer &&
+          t.device.limits.maxStorageBuffersInVertexStage === 0,
+        'Storage buffers can not be used in vertex shaders because maxStorageBuffersInVertexStage === 0'
+      );
+      t.skipIf(
+        bindingUsedWithVertexStage &&
+          bindingIsStorageTexture &&
+          t.device.limits.maxStorageTexturesInVertexStage === 0,
+        'Storage textures can not be used in vertex shaders because maxStorageTexturesInVertexStage === 0'
+      );
+      t.skipIf(
+        bindingUsedWithFragmentStage &&
+          bindingIsStorageBuffer &&
+          t.device.limits.maxStorageBuffersInFragmentStage === 0,
+        'Storage buffers can not be used in fragment shaders because maxStorageBuffersInFragmentStage === 0'
+      );
+      t.skipIf(
+        bindingUsedWithFragmentStage &&
+          bindingIsStorageTexture &&
+          t.device.limits.maxStorageTexturesInFragmentStage === 0,
+        'Storage textures can not be used in fragment shaders because maxStorageTexturesInFragmentStage === 0'
+      );
+    }
+
     const layout = t.createPipelineLayout(bindingInPipelineLayout, pipelineLayoutVisibility);
     const bindResourceDeclaration = `@group(0) @binding(0) ${t.GetBindableResourceShaderDeclaration(
       bindingInShader
@@ -227,7 +268,7 @@ g.test('pipeline_layout_shader_exact_match')
           ${staticallyUseBinding}
         }
         `;
-        t.doCreateComputePipelineTest(isAsync, success, {
+        vtu.doCreateComputePipelineTest(t, isAsync, success, {
           layout,
           compute: {
             module: t.device.createShaderModule({
@@ -246,13 +287,14 @@ g.test('pipeline_layout_shader_exact_match')
           return vec4f();
         }
         `;
-        t.doCreateRenderPipelineTest(isAsync, success, {
+        vtu.doCreateRenderPipelineTest(t, isAsync, success, {
           layout,
           vertex: {
             module: t.device.createShaderModule({
               code: vertexShader,
             }),
           },
+          depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'always' },
         });
         break;
       }
@@ -265,7 +307,7 @@ g.test('pipeline_layout_shader_exact_match')
           return vec4f();
         }
         `;
-        t.doCreateRenderPipelineTest(isAsync, success, {
+        vtu.doCreateRenderPipelineTest(t, isAsync, success, {
           layout,
           vertex: {
             module: t.device.createShaderModule({

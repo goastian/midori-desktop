@@ -10,8 +10,10 @@
     SimpleTest.waitForExplicitFinish();
     setupTest("two_providers").then(
       function () {
+        SpecialPowers.wrap(document).notifyUserGestureActivation();
         return navigator.credentials.get({
           identity: {
+            mode: "active",
             providers: [{
               configURL: "https://example.net/tests/dom/credentialmanagement/identity/tests/mochitest/server_manifest.sjs",
               clientId: "mochitest",
@@ -29,7 +31,7 @@
     ).then((cred) => {
       ok(true, "successfully got a credential");
       is(cred.token,
-        "account_id=1234&client_id=mochitest&nonce=nonce&disclosure_text_shown=false",
+        "account_id=1234&client_id=mochitest&nonce=nonce&disclosure_text_shown=false&is_auto_selected=false",
         "Correct token on the credential.");
       is(cred.id,
         "1234",

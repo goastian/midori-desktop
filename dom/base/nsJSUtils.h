@@ -19,7 +19,6 @@
 #include "jsapi.h"
 #include "js/CompileOptions.h"
 #include "js/Conversions.h"
-#include "js/SourceText.h"
 #include "js/String.h"  // JS::{,Lossy}CopyLinearStringChars, JS::CopyStringChars, JS::Get{,Linear}StringLength, JS::MaxStringLength, JS::StringHasLatin1Chars
 #include "js/Utility.h"  // JS::FreePolicy
 #include "nsString.h"
@@ -29,6 +28,10 @@ class nsIScriptContext;
 class nsIScriptElement;
 class nsIScriptGlobalObject;
 class nsXBLPrototypeBinding;
+
+namespace JS {
+class JS_PUBLIC_API EnvironmentChain;
+};
 
 namespace mozilla {
 union Utf8Unit;
@@ -41,13 +44,6 @@ class Element;
 
 class nsJSUtils {
  public:
-  static bool GetCallingLocation(JSContext* aContext, nsACString& aFilename,
-                                 uint32_t* aLineno = nullptr,
-                                 uint32_t* aColumn = nullptr);
-  static bool GetCallingLocation(JSContext* aContext, nsAString& aFilename,
-                                 uint32_t* aLineno = nullptr,
-                                 uint32_t* aColumn = nullptr);
-
   /**
    * Retrieve the inner window ID based on the given JSContext.
    *
@@ -59,7 +55,7 @@ class nsJSUtils {
   static uint64_t GetCurrentlyRunningCodeInnerWindowID(JSContext* aContext);
 
   static nsresult CompileFunction(mozilla::dom::AutoJSAPI& jsapi,
-                                  JS::HandleVector<JSObject*> aScopeChain,
+                                  const JS::EnvironmentChain& aEnvChain,
                                   JS::CompileOptions& aOptions,
                                   const nsACString& aName, uint32_t aArgCount,
                                   const char** aArgArray,
@@ -74,10 +70,10 @@ class nsJSUtils {
   static bool IsScriptable(JS::Handle<JSObject*> aEvaluationGlobal);
 
   // Returns false if an exception got thrown on aCx.  Passing a null
-  // aElement is allowed; that wil produce an empty aScopeChain.
-  static bool GetScopeChainForElement(
-      JSContext* aCx, mozilla::dom::Element* aElement,
-      JS::MutableHandleVector<JSObject*> aScopeChain);
+  // aElement is allowed; that wil produce an empty aEnvChain.
+  static bool GetEnvironmentChainForElement(JSContext* aCx,
+                                            mozilla::dom::Element* aElement,
+                                            JS::EnvironmentChain& aEnvChain);
 
   static void ResetTimeZone();
 

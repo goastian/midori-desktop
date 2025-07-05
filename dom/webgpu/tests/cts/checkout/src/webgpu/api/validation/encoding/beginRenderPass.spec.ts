@@ -22,9 +22,10 @@ Notes:
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { ValidationTest } from '../validation_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as vtu from '../validation_test_utils.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('color_attachments,device_mismatch')
   .desc(
@@ -62,25 +63,23 @@ g.test('color_attachments,device_mismatch')
       target1Mismatched: true,
     },
   ])
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { view0Mismatched, target0Mismatched, view1Mismatched, target1Mismatched } = t.params;
     const mismatched = view0Mismatched || target0Mismatched || view1Mismatched || target1Mismatched;
 
     const view0Texture = view0Mismatched
-      ? t.getDeviceMismatchedRenderTexture(4)
-      : t.getRenderTexture(4);
+      ? vtu.getDeviceMismatchedRenderTexture(t, 4)
+      : vtu.getRenderTexture(t, 4);
     const target0Texture = target0Mismatched
-      ? t.getDeviceMismatchedRenderTexture()
-      : t.getRenderTexture();
+      ? vtu.getDeviceMismatchedRenderTexture(t)
+      : vtu.getRenderTexture(t);
     const view1Texture = view1Mismatched
-      ? t.getDeviceMismatchedRenderTexture(4)
-      : t.getRenderTexture(4);
+      ? vtu.getDeviceMismatchedRenderTexture(t, 4)
+      : vtu.getRenderTexture(t, 4);
     const target1Texture = target1Mismatched
-      ? t.getDeviceMismatchedRenderTexture()
-      : t.getRenderTexture();
+      ? vtu.getDeviceMismatchedRenderTexture(t)
+      : vtu.getRenderTexture(t);
 
     const encoder = t.createEncoder('non-pass');
     const pass = encoder.encoder.beginRenderPass({
@@ -111,9 +110,7 @@ g.test('depth_stencil_attachment,device_mismatch')
     'Tests beginRenderPass cannot be called with a depth stencil attachment whose texture view is created from another device'
   )
   .paramsSubcasesOnly(u => u.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { mismatched } = t.params;
 
@@ -124,8 +121,8 @@ g.test('depth_stencil_attachment,device_mismatch')
     };
 
     const depthStencilTexture = mismatched
-      ? t.getDeviceMismatchedTexture(descriptor)
-      : t.device.createTexture(descriptor);
+      ? vtu.getDeviceMismatchedTexture(t, descriptor)
+      : t.createTextureTracked(descriptor);
 
     const encoder = t.createEncoder('non-pass');
     const pass = encoder.encoder.beginRenderPass({
@@ -150,18 +147,17 @@ g.test('occlusion_query_set,device_mismatch')
     'Tests beginRenderPass cannot be called with an occlusion query set created from another device'
   )
   .paramsSubcasesOnly(u => u.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
     const { mismatched } = t.params;
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
 
-    const occlusionQuerySet = sourceDevice.createQuerySet({
-      type: 'occlusion',
-      count: 1,
-    });
-    t.trackForCleanup(occlusionQuerySet);
+    const occlusionQuerySet = t.trackForCleanup(
+      sourceDevice.createQuerySet({
+        type: 'occlusion',
+        count: 1,
+      })
+    );
 
     const encoder = t.createEncoder('render pass', { occlusionQuerySet });
     encoder.validateFinish(!mismatched);
@@ -174,25 +170,25 @@ g.test('timestamp_query_set,device_mismatch')
   `
   )
   .paramsSubcasesOnly(u => u.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectDeviceOrSkipTestCase(['timestamp-query']);
-    t.selectMismatchedDeviceOrSkipTestCase('timestamp-query');
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(t => {
+    t.skipIfDeviceDoesNotSupportQueryType('timestamp');
     const { mismatched } = t.params;
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
 
-    const timestampQuerySet = sourceDevice.createQuerySet({
-      type: 'timestamp',
-      count: 1,
-    });
+    const timestampQuerySet = t.trackForCleanup(
+      sourceDevice.createQuerySet({
+        type: 'timestamp',
+        count: 1,
+      })
+    );
 
     const timestampWrites = {
       querySet: timestampQuerySet,
       beginningOfPassWriteIndex: 0,
     };
 
-    const colorTexture = t.device.createTexture({
+    const colorTexture = t.createTextureTracked({
       format: 'rgba8unorm',
       size: { width: 4, height: 4, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.RENDER_ATTACHMENT,

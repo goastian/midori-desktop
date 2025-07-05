@@ -13,14 +13,14 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WebTaskSchedulingBinding.h"
 
 namespace mozilla::dom {
 
 class WebTaskWorkerRunnable final : public WorkerSameThreadRunnable {
  public:
-  WebTaskWorkerRunnable(WorkerPrivate* aWorkerPrivate,
-                        WebTaskSchedulerWorker* aSchedulerWorker);
+  explicit WebTaskWorkerRunnable(WebTaskSchedulerWorker* aSchedulerWorker);
 
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override;
@@ -32,17 +32,34 @@ class WebTaskWorkerRunnable final : public WorkerSameThreadRunnable {
 
 class WebTaskSchedulerWorker final : public WebTaskScheduler {
  public:
+  static RefPtr<WebTaskSchedulerWorker> Create(WorkerPrivate* aWorkerPrivate);
+
   explicit WebTaskSchedulerWorker(WorkerPrivate* aWorkerPrivate);
 
   void Disconnect() override;
 
+  void IncreaseNumNormalOrHighPriorityQueuesHaveTaskScheduled() override;
+  void DecreaseNumNormalOrHighPriorityQueuesHaveTaskScheduled() override;
+
+  bool HasScheduledNormalOrHighPriorityWebTasks() const {
+    return mNumHighPriorityQueuesHaveTaskScheduled;
+  }
+
  private:
   ~WebTaskSchedulerWorker() = default;
 
-  nsresult SetTimeoutForDelayedTask(WebTask* aTask, uint64_t aDelay) override;
-  bool DispatchEventLoopRunnable() override;
+  nsresult SetTimeoutForDelayedTask(WebTask* aTask, uint64_t aDelay,
+                                    EventQueuePriority aPriority) override;
+  bool DispatchEventLoopRunnable(EventQueuePriority aPriority) override;
 
-  CheckedUnsafePtr<WorkerPrivate> mWorkerPrivate;
+  RefPtr<StrongWorkerRef> mWorkerRef;
+  bool mWorkerIsShuttingDown{false};
+
+  // Unlike window global where multiple globals can share the
+  // same event loop, worker globals don't share event loops,
+  // so it's okay to have this counter lives inside the
+  // scheduler for workers.
+  uint32_t mNumHighPriorityQueuesHaveTaskScheduled = 0;
 };
 }  // namespace mozilla::dom
 #endif

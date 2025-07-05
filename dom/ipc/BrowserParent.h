@@ -19,6 +19,7 @@
 #include "mozilla/dom/BrowserBridgeParent.h"
 #include "mozilla/dom/PBrowserParent.h"
 #include "mozilla/dom/TabContext.h"
+#include "mozilla/dom/UniqueContentParentKeepAlive.h"
 #include "mozilla/dom/VsyncParent.h"
 #include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/layout/RemoteLayerTreeOwner.h"
@@ -77,12 +78,8 @@ namespace ipc {
 class StructuredCloneData;
 }  // namespace ipc
 
-#define DOM_BROWSERPARENT_IID                        \
-  {                                                  \
-    0x58b47b52, 0x77dc, 0x44cf, {                    \
-      0x8b, 0xe5, 0x8e, 0x78, 0x24, 0xd9, 0xae, 0xc5 \
-    }                                                \
-  }
+#define DOM_BROWSERPARENT_IID \
+  {0x58b47b52, 0x77dc, 0x44cf, {0x8b, 0xe5, 0x8e, 0x78, 0x24, 0xd9, 0xae, 0xc5}}
 
 /**
  * BrowserParent implements the parent actor part of the PBrowser protocol. See
@@ -105,7 +102,7 @@ class BrowserParent final : public PBrowserParent,
   // Helper class for ContentParent::RecvCreateWindow.
   struct AutoUseNewTab;
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(DOM_BROWSERPARENT_IID)
+  NS_INLINE_DECL_STATIC_IID(DOM_BROWSERPARENT_IID)
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIAUTHPROMPTPROVIDER
   // nsIDOMEventListener interfaces
@@ -301,7 +298,7 @@ class BrowserParent final : public PBrowserParent,
   mozilla::ipc::IPCResult RecvOnLocationChange(
       const WebProgressData& aWebProgressData, const RequestData& aRequestData,
       nsIURI* aLocation, const uint32_t aFlags, const bool aCanGoBack,
-      const bool aCanGoForward,
+      const bool aCanGoBackIgnoringUserInteraction, const bool aCanGoForward,
       const Maybe<WebProgressLocationChangeData>& aLocationChangeData);
 
   mozilla::ipc::IPCResult RecvOnStatusChange(const nsString& aMessage);
@@ -425,6 +422,7 @@ class BrowserParent final : public PBrowserParent,
       const int32_t& aAppUnitsPerDevPixel);
 
   already_AddRefed<PColorPickerParent> AllocPColorPickerParent(
+      const MaybeDiscarded<BrowsingContext>& aBrowsingContext,
       const nsString& aTitle, const nsString& aInitialColor,
       const nsTArray<nsString>& aDefaultColors);
 
@@ -467,25 +465,23 @@ class BrowserParent final : public PBrowserParent,
 
   bool Show(const OwnerShowInfo&);
 
-  void UpdateDimensions(const nsIntRect& aRect, const ScreenIntSize& aSize);
+  void UpdateDimensions(const LayoutDeviceIntRect& aRect,
+                        const LayoutDeviceIntSize& aSize);
 
   DimensionInfo GetDimensionInfo();
 
   nsresult UpdatePosition();
-
-  // Notify position update to all descendant documents in this browser parent.
-  // NOTE: This should use only for browsers in popup windows attached to the
-  // main browser window.
-  void NotifyPositionUpdatedForContentsInPopup();
 
   void SizeModeChanged(const nsSizeMode& aSizeMode);
 
   void HandleAccessKey(const WidgetKeyboardEvent& aEvent,
                        nsTArray<uint32_t>& aCharCodes);
 
-#if defined(MOZ_WIDGET_ANDROID)
+#ifdef MOZ_WIDGET_ANDROID
   void DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight);
   void DynamicToolbarOffsetChanged(ScreenIntCoord aOffset);
+  void KeyboardHeightChanged(ScreenIntCoord aHeight);
+  void AndroidPipModeChanged(bool);
 #endif
 
   void Activate(uint64_t aActionId);
@@ -611,7 +607,10 @@ class BrowserParent final : public PBrowserParent,
 
   bool HandleQueryContentEvent(mozilla::WidgetQueryContentEvent& aEvent);
 
-  bool SendInsertText(const nsString& aStringToInsert);
+  bool SendSimpleContentCommandEvent(
+      const mozilla::WidgetContentCommandEvent& aEvent);
+  bool SendInsertText(const mozilla::WidgetContentCommandEvent& aEvent);
+  bool SendReplaceText(const mozilla::WidgetContentCommandEvent& aEvent);
 
   bool SendPasteTransferable(IPCTransferable&& aTransferable);
 
@@ -888,6 +887,12 @@ class BrowserParent final : public PBrowserParent,
   // non-null.
   BrowserHost* mBrowserHost;
 
+  // KeepAlive for the containing process.
+  // NOTE: While this is a strong reference to ContentParent, which is
+  // cycle-collected, it is cleared as the BrowserParent's IPC connection is
+  // destroyed, so does not need to be cycle-collected.
+  UniqueContentParentKeepAlive mContentParentKeepAlive;
+
   ContentCacheInParent mContentCache;
 
   layout::RemoteLayerTreeOwner mRemoteLayerTreeOwner;
@@ -911,8 +916,8 @@ class BrowserParent final : public PBrowserParent,
   };
   nsTArray<SentKeyEventData> mWaitingReplyKeyboardEvents;
 
-  nsIntRect mRect;
-  ScreenIntSize mDimensions;
+  LayoutDeviceIntRect mRect;
+  LayoutDeviceIntSize mDimensions;
   float mDPI;
   int32_t mRounding;
   CSSToLayoutDeviceScale mDefaultScale;
@@ -1003,8 +1008,6 @@ class BrowserParent final : public PBrowserParent,
   // True between ShowTooltip and HideTooltip messages.
   bool mShowingTooltip : 1;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(BrowserParent, DOM_BROWSERPARENT_IID)
 
 struct MOZ_STACK_CLASS BrowserParent::AutoUseNewTab final {
  public:

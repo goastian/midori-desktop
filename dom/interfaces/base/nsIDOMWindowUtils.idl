@@ -507,6 +507,7 @@ interface nsIDOMWindowUtils : nsISupports {
   const unsigned long WHEEL_EVENT_CAUSED_BY_NO_LINE_OR_PAGE_DELTA_DEVICE = 0x0001;
   const unsigned long WHEEL_EVENT_CAUSED_BY_MOMENTUM                     = 0x0002;
   const unsigned long WHEEL_EVENT_CUSTOMIZED_BY_USER_PREFS               = 0x0004;
+  const unsigned long WHEEL_EVENT_ASYNC_ENABLED                          = 0x0008;
   // If any of the following flags is specified this method will throw an
   // exception in case the relevant overflowDelta has an unexpected value.
   const unsigned long WHEEL_EVENT_EXPECTED_OVERFLOW_DELTA_X_ZERO      = 0x0010;
@@ -693,16 +694,17 @@ interface nsIDOMWindowUtils : nsISupports {
    *
    * Widget support: Windows 8.0+, Winrt/Win32. Other widgets will throw.
    *
-   * NOTE: The synthesized native event will be fired asynchronously, and upon
-   * completion the observer, if provided, will be notified with a "touchpoint"
-   * topic.
-   *
    * @param aPointerId The touch point id to create or update.
    * @param aTouchState one or more of the touch states listed above
    * @param aScreenX, aScreenY screen coords of this event
    * @param aPressure 0.0 -> 1.0 float val indicating pressure
    * @param aOrientation 0 -> 359 degree value indicating the
    * orientation of the pointer. Use 90 for normal taps.
+   * @param aObserver The synthesized native event will be fired asynchronously,
+   * and upon completion the observer, if provided, will be notified with a
+   * "touchpoint" topic.
+   * @param aElement If the touch point needs to happen on a popup window,
+   * aElement inside the popup window needs to be specified.
    */
   void sendNativeTouchPoint(in unsigned long aPointerId,
                             in unsigned long aTouchState,
@@ -710,7 +712,8 @@ interface nsIDOMWindowUtils : nsISupports {
                             in long aScreenY,
                             in double aPressure,
                             in unsigned long aOrientation,
-                            [optional] in nsIObserver aObserver);
+                            [optional] in nsIObserver aObserver,
+                            [optional] in Element aElement);
   /**
    * These values indicate touchpad pinch phase states :
    * PHASE_BEGIN
@@ -788,7 +791,8 @@ interface nsIDOMWindowUtils : nsISupports {
                           in long aTiltX,
                           in long aTiltY,
                           in long aButton,
-                          [optional] in nsIObserver aObserver);
+                          [optional] in nsIObserver aObserver,
+                          [optional] in Element aElement);
 
   /**
    * Cancel any existing touch points or long tap delays. Calling this is safe
@@ -835,11 +839,6 @@ interface nsIDOMWindowUtils : nsISupports {
                              in double aDeltaY,
                              in long aModifierFlags,
                              [optional] in nsIObserver aObserver);
-
-  /**
-   * Clears the SharedStyleSheetCache.
-   */
-  void clearSharedStyleSheetCache();
 
   /**
    * Returns the number of stylesheets that have been parsed on this document.
@@ -1009,6 +1008,10 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   readonly attribute boolean isMozAfterPaintPending;
 
+  readonly attribute boolean isWindowFullyOccluded;
+
+  readonly attribute boolean isCompositorPaused;
+
   /**
    * Returns true if the InputTaskManager is suspended.
    */
@@ -1062,6 +1065,9 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   DOMRect getBoundsWithoutFlushing(in Element aElement);
 
+  /** Returns the opaque region, for testing */
+  Array<DOMRect> getWidgetOpaqueRegion();
+
   /**
    * Scroll the visual viewport to the given coordinates, relative to the
    * document origin.
@@ -1111,6 +1117,13 @@ interface nsIDOMWindowUtils : nsISupports {
    */
   DOMRect toScreenRect(in float aX, in float aY,
                        in float aWidth, in float aHeight);
+
+  /**
+   * Transform a rectangle given in coordinates relative to the top level widget
+   * coordinates of this document (i.e. browser.xhml).
+   */
+  DOMRect toTopLevelWidgetRect(in float aX, in float aY,
+                          in float aWidth, in float aHeight);
 
   /**
    * Transform a rectangle given in coordinates relative to the top level
@@ -1236,22 +1249,36 @@ interface nsIDOMWindowUtils : nsISupports {
   [implicit_jscontext] string getClassName(in jsval aObject);
 
   /**
+   * If sendContentCommanedEvent()'s aAdditionalFlags argument has no
+   * CONTENT_COMMAND_FLAG_PREVENT_SET_SELECTION, after executing replaceText,
+   * selection is next of replaced text. If set this with aReplaceSrcString,
+   * we keeps selection position if selection isn't into replaced text.
+   */
+  const unsigned long CONTENT_COMMAND_FLAG_PREVENT_SET_SELECTION = 0x0002;
+
+  /**
    * Generate a content command event.
    *
    * Cannot be accessed from unprivileged context (not content-accessible)
    * Will throw a DOM security error if called without chrome privileges.
    *
    * @param aType Type of command content event to send.  Can be one of "cut",
-   *        "copy", "paste", "delete", "undo", "redo", "insertText" or
-   *        "pasteTransferable".
+   *        "copy", "paste", "delete", "undo", "redo", "insertText",
+   *        "pasteTransferable", or "replaceText"
    * @param aTransferable an instance of nsITransferable when aType is
    *        "pasteTransferable"
    * @param aString The string to be inserted into focused editor when aType is
-   *        "insertText"
+   *        "insertText" or "replaceText"
+   * @Param aOffset The relative to start of selection
+   * @param aReplaceSrcString the source string of replaceText. If not matched, do nothing.
+   * @param aAdditionalFlags See the description of CONTENT_COMMAND_FLAG_*.
    */
   void sendContentCommandEvent(in AString aType,
                                [optional] in nsITransferable aTransferable,
-                               [optional] in AString aString);
+                               [optional] in AString aString,
+                               [optional] in uint32_t aOffset,
+                               [optional] in AString aReplaceSrcString,
+                               [optional] in unsigned long aAdditionalFlags);
 
   /**
    * If sendQueryContentEvent()'s aAdditionalFlags argument is
@@ -1681,8 +1708,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * the observer service once the flush is complete. If the function returns
    * false, an error occurred or a flush is not needed, and the notification
    * will not fire. This is intended to be used by test code only!
+   *
+   * @param aElement if you want to do the flush inside popup windows, you need to
+   *        the element inside the poup window.
    */
-  boolean flushApzRepaints();
+  boolean flushApzRepaints([optional] in Element aElement);
 
   /**
    * Sets a flag on the element to forcibly disable APZ on it. This affects
@@ -1748,6 +1778,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * Get the autocapitalize of the currently focused editing host, if any.
    */
   readonly attribute AString focusedAutocapitalize;
+
+  /**
+   * Get the autocorrect of the currently focused editing host, if any.
+   */
+  readonly attribute boolean focusedAutocorrect;
 
   /**
    * Find the view ID for a given element. This is the reverse of
@@ -1961,9 +1996,28 @@ interface nsIDOMWindowUtils : nsISupports {
   /**
    * Get the content- and compositor-side APZ test data instances.
    * The return values are of type APZTestData (see APZTestData.webidl).
+   *
+   * |aElement| is an optional argument for popup window where APZ is enabled.
+   * |aElement| would be a popup element for popup
    */
-  [implicit_jscontext] jsval getContentAPZTestData();
-  [implicit_jscontext] jsval getCompositorAPZTestData();
+  [implicit_jscontext] jsval getContentAPZTestData([optional] in Element aElement);
+
+  /*
+   * |aElement| is an optional argument for popup window where APZ is enabled.
+   * |aElement| would be a popup element for popup
+   */
+  [implicit_jscontext] jsval getCompositorAPZTestData([optional] in Element aElement);
+
+  /**
+   * Send a MozMouseHittest event hit on the given (x, y) on this window.
+   * The event is sent to the corresponding APZCTreeManager and the manager
+   * performs a hit testing in APZ. The hit testing result can be via obtained
+   * by above getCompositorAPZTestData().
+   * |aElement| is an optional argument for popup window where APZ is enabled.
+   * |aElement| would be a popup element for popup
+   */
+  [can_run_script]
+  void sendMozMouseHitTestEvent(in float aX, in float aY, [optional] in Element aElement);
 
   /**
    * Posts an RestyleHint::RESTYLE_SELF restyle event for the given element.
@@ -2018,14 +2072,11 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute boolean refreshDriverHasPendingTick;
 
   /**
-   * Controls the amount of chrome that should be visible on each side of
-   * the window. Works like the chromemargin xul:window attribute.
+   * Controls whether we paint to the titlebar of the window.
+   * Works like the customtitlebar xul:window attribute.
    * This should only be used with non-XUL windows.
    */
-  void setChromeMargin(in int32_t aTop,
-                       in int32_t aRight,
-                       in int32_t aBottom,
-                       in int32_t aLeft);
+  void setCustomTitlebar(in boolean aCustomTitlebar);
 
   /**
    * Controls the amount of space on each edge of the window that can be
@@ -2095,24 +2146,9 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute int32_t gpuProcessPid;
 
   /**
-   * Adds an ElementState bit to the element.
-   *
-   * The state string must be one of the following:
-   *   * (none yet; but for example "higlighted" for ElementState::HIGHLIGHTED)
-   *
-   * The supported state strings are defined in kManuallyManagedStates
-   * in nsDOMWindowUtils.cpp.
-   */
-  void addManuallyManagedState(in Element element,
-                               in AString state);
-
-  /**
-   * Removes the specified ElementState bits from the element.
-   *
-   * See above for the strings that can be passed for |state|.
-   */
-  void removeManuallyManagedState(in Element element,
-                                  in AString state);
+    * Returns the RDD process pid, or -1 if there is no RDD process.
+    */
+  readonly attribute int32_t rddProcessPid;
 
   /**
    * Returns usage data for a given storage object.
@@ -2283,7 +2319,9 @@ interface nsIDOMWindowUtils : nsISupports {
 
   void syncFlushCompositor();
 
-  unsigned long long getLayersId();
+  // |aElement| is an optional argument for popup window where APZ is enabled.
+  // |aElement| would be a popup element for popup.
+  unsigned long long getLayersId([optional] in Element aElement);
 
   // Returns true if we are effectively throttling frame requests.
   readonly attribute boolean effectivelyThrottlesFrameRequests;
@@ -2317,6 +2355,10 @@ interface nsIDOMWindowUtils : nsISupports {
 
   // The current drag session on this widget of this window (if any).
   readonly attribute nsIDragSession dragSession;
+
+  // Get/Set microtask level. If you don't know how microtasks work both in the
+  // specification and Gecko, please don't use this.
+  attribute unsigned long microTaskLevel;
 };
 
 [scriptable, uuid(c694e359-7227-4392-a138-33c0cc1f15a6)]

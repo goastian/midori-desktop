@@ -13,21 +13,19 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsString.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/HoldDropJSObjects.h"
+#include "mozilla/SourceLocation.h"
 #include "mozilla/dom/FunctionBinding.h"
+#include "js/Promise.h"  // JS::Dispatchable
 
 namespace mozilla::dom {
 
 /**
  * Utility class for implementing nsITimeoutHandlers, designed to be subclassed.
  */
-class TimeoutHandler : public nsISupports {
+class TimeoutHandler : public nsISupports, public JSHolderBase {
  public:
   MOZ_CAN_RUN_SCRIPT virtual bool Call(const char* /* unused */);
-  // Get the location of the script.
-  // Note: The memory pointed to by aFileName is owned by the
-  // nsITimeoutHandler and should not be freed by the caller.
-  virtual void GetLocation(const char** aFileName, uint32_t* aLineNo,
-                           uint32_t* aColumn);
   // Append a UTF-8 string to aOutString that describes the callback function,
   // for use in logging or profiler markers.
   // The string contains the function name and its source location, if
@@ -37,16 +35,15 @@ class TimeoutHandler : public nsISupports {
   virtual void MarkForCC() {}
 
  protected:
-  TimeoutHandler() : mFileName(""), mLineNo(0), mColumn(1) {}
-  explicit TimeoutHandler(JSContext* aCx);
+  TimeoutHandler() = default;
+  explicit TimeoutHandler(JSContext* aCx)
+      : mCaller(JSCallingLocation::Get(aCx)) {}
 
   virtual ~TimeoutHandler() = default;
 
   // filename, line number and JS language version string of the
   // caller of setTimeout()
-  nsCString mFileName;
-  uint32_t mLineNo;
-  uint32_t mColumn;
+  const JSCallingLocation mCaller = {};
 
  private:
   TimeoutHandler(const TimeoutHandler&) = delete;
@@ -78,7 +75,7 @@ class ScriptTimeoutHandler : public TimeoutHandler {
 
 class CallbackTimeoutHandler final : public TimeoutHandler {
  public:
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(CallbackTimeoutHandler)
 
   CallbackTimeoutHandler(JSContext* aCx, nsIGlobalObject* aGlobal,
@@ -97,6 +94,21 @@ class CallbackTimeoutHandler final : public TimeoutHandler {
   nsCOMPtr<nsIGlobalObject> mGlobal;
   RefPtr<Function> mFunction;
   nsTArray<JS::Heap<JS::Value>> mArgs;
+};
+
+class DelayedJSDispatchableHandler final : public TimeoutHandler {
+ public:
+  DelayedJSDispatchableHandler(JSContext* aCx,
+                               js::UniquePtr<JS::Dispatchable>&& aDispatchable)
+      : TimeoutHandler(aCx), mDispatchable(std::move(aDispatchable)) {}
+
+  NS_DECL_ISUPPORTS
+
+  MOZ_CAN_RUN_SCRIPT bool Call(const char* /* unused */) override;
+
+ private:
+  ~DelayedJSDispatchableHandler() override;
+  js::UniquePtr<JS::Dispatchable> mDispatchable;
 };
 
 }  // namespace mozilla::dom

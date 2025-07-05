@@ -6,6 +6,7 @@
 #include "WebGLContext.h"
 
 #include <algorithm>
+#include <array>
 #include <bitset>
 #include <queue>
 #include <regex>
@@ -43,7 +44,7 @@
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_webgl.h"
 #include "mozilla/SVGObserverUtils.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/DomCanvasMetrics.h"
 #include "nsContentUtils.h"
 #include "nsDisplayList.h"
 #include "nsError.h"
@@ -102,7 +103,7 @@ WebGLContextOptions::WebGLContextOptions() {
 }
 
 StaticMutex WebGLContext::sLruMutex;
-std::list<WebGLContext*> WebGLContext::sLru;
+MOZ_RUNINIT std::list<WebGLContext*> WebGLContext::sLru;
 
 WebGLContext::LruPosition::LruPosition() {
   StaticMutexAutoLock lock(sLruMutex);
@@ -287,6 +288,11 @@ bool WebGLContext::CreateAndInitGL(
     flags |= gl::CreateContextFlags::FORBID_SOFTWARE;
   }
 
+  if (mOptions.forceSoftwareRendering) {
+    flags |= gl::CreateContextFlags::FORBID_HARDWARE;
+    flags &= ~gl::CreateContextFlags::FORBID_SOFTWARE;
+  }
+
   if (forceEnabled) {
     flags &= ~gl::CreateContextFlags::FORBID_HARDWARE;
     flags &= ~gl::CreateContextFlags::FORBID_SOFTWARE;
@@ -310,8 +316,10 @@ bool WebGLContext::CreateAndInitGL(
   if (IsWebGL2()) {
     flags |= gl::CreateContextFlags::PREFER_ES3;
   } else {
-    // Request and prefer ES2 context for WebGL1.
-    flags |= gl::CreateContextFlags::PREFER_EXACT_VERSION;
+    if (StaticPrefs::webgl_1_request_es2()) {
+      // Request and prefer ES2 context for WebGL1.
+      flags |= gl::CreateContextFlags::PREFER_EXACT_VERSION;
+    }
 
     if (!StaticPrefs::webgl_1_allow_core_profiles()) {
       flags |= gl::CreateContextFlags::REQUIRE_COMPAT_PROFILE;
@@ -509,7 +517,7 @@ void WebGLContext::Resize(uvec2 requestedSize) {
   mResetLayer = true;  // New size means new Layer.
 }
 
-UniquePtr<webgl::FormatUsageAuthority> WebGLContext::CreateFormatUsage(
+std::unique_ptr<webgl::FormatUsageAuthority> WebGLContext::CreateFormatUsage(
     gl::GLContext* gl) const {
   return webgl::FormatUsageAuthority::CreateForWebGL1(gl);
 }
@@ -554,10 +562,11 @@ RefPtr<WebGLContext> WebGLContext::Create(HostWebGLContext* host,
       for (const auto& cur : failReasons) {
         // Don't try to accumulate using an empty key if |cur.key| is empty.
         if (cur.key.IsEmpty()) {
-          Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_FAILURE_ID,
-                                "FEATURE_FAILURE_REASON_UNKNOWN"_ns);
+          glean::canvas::webgl_failure_id
+              .Get("FEATURE_FAILURE_REASON_UNKNOWN"_ns)
+              .Add(1);
         } else {
-          Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_FAILURE_ID, cur.key);
+          glean::canvas::webgl_failure_id.Get(cur.key).Add(1);
         }
 
         const auto str = nsPrintfCString("\n* %s (%s)", cur.info.BeginReading(),
@@ -601,7 +610,7 @@ RefPtr<WebGLContext> WebGLContext::Create(HostWebGLContext* host,
   if (res.isOk()) {
     failureId = "SUCCESS"_ns;
   }
-  Telemetry::Accumulate(Telemetry::CANVAS_WEBGL_FAILURE_ID, failureId);
+  glean::canvas::webgl_failure_id.Get(failureId).Add(1);
 
   if (!res.isOk()) {
     out->error = res.unwrapErr();
@@ -622,15 +631,29 @@ RefPtr<WebGLContext> WebGLContext::Create(HostWebGLContext* host,
   const auto UploadableSdTypes = [&]() {
     webgl::EnumMask<layers::SurfaceDescriptor::Type> types;
     types[layers::SurfaceDescriptor::TSurfaceDescriptorBuffer] = true;
+    // Only support canvas surface interchange if using AC2D. This guarantees
+    // that WebGL and AC2D commands are sequenced and processed on the same
+    // thread, so that there is no mal-ordering between AC2D and WebGL
+    // processing. We can flush out AC2D commands to produce a surface in time
+    // for WebGL to use without requiring any blocking to occur.
+    types[layers::SurfaceDescriptor::TSurfaceDescriptorCanvasSurface] =
+        gfx::gfxVars::UseAcceleratedCanvas2D();
     // This is conditional on not using the Compositor thread because we may
     // need to synchronize with the RDD process over the PVideoBridge protocol
     // to wait for the texture to be available in the compositor process. We
     // cannot block on the Compositor thread, so in that configuration, we would
     // prefer to do the readback from the RDD which is guaranteed to work, and
     // only block the owning thread for WebGL.
+    const bool offCompositorThread = gfx::gfxVars::UseCanvasRenderThread() ||
+                                     !gfx::gfxVars::SupportsThreadsafeGL();
     types[layers::SurfaceDescriptor::TSurfaceDescriptorGPUVideo] =
-        gfx::gfxVars::UseCanvasRenderThread() ||
-        !gfx::gfxVars::SupportsThreadsafeGL();
+        offCompositorThread;
+    // Similarly to the PVideoBridge protocol, we may need to synchronize with
+    // the content process over the PCompositorManager protocol to wait for the
+    // shared surface to be available in the compositor process, and we cannot
+    // block on the Compositor thread.
+    types[layers::SurfaceDescriptor::TSurfaceDescriptorExternalImage] =
+        offCompositorThread;
     if (webgl->gl->IsANGLE()) {
       types[layers::SurfaceDescriptor::TSurfaceDescriptorD3D10] = true;
       types[layers::SurfaceDescriptor::TSurfaceDescriptorDXGIYCbCr] = true;
@@ -646,6 +669,39 @@ RefPtr<WebGLContext> WebGLContext::Create(HostWebGLContext* host,
     }
     return types;
   };
+
+  // -
+
+  constexpr GLenum SHADER_TYPES[] = {
+      LOCAL_GL_VERTEX_SHADER,
+      LOCAL_GL_FRAGMENT_SHADER,
+  };
+  constexpr GLenum PRECISIONS[] = {
+      LOCAL_GL_LOW_FLOAT, LOCAL_GL_MEDIUM_FLOAT, LOCAL_GL_HIGH_FLOAT,
+      LOCAL_GL_LOW_INT,   LOCAL_GL_MEDIUM_INT,   LOCAL_GL_HIGH_INT,
+  };
+  for (const auto& shaderType : SHADER_TYPES) {
+    for (const auto& precisionType : PRECISIONS) {
+      auto spf = webgl::ShaderPrecisionFormat{};
+
+      GLint range[2] = {};
+      GLint precision = 0;
+      webgl->gl->fGetShaderPrecisionFormat(shaderType, precisionType, range,
+                                           &precision);
+      spf.rangeMin = LazyAssertedCast(range[0]);
+      spf.rangeMax = LazyAssertedCast(range[1]);
+      spf.precision = LazyAssertedCast(precision);
+
+      out->shaderPrecisions->insert({{shaderType, precisionType}, spf});
+    }
+  }
+
+  if (webgl->mDisableFragHighP) {
+    out->shaderPrecisions->at(
+        {LOCAL_GL_FRAGMENT_SHADER, LOCAL_GL_HIGH_FLOAT}) = {};
+    out->shaderPrecisions->at(
+        {LOCAL_GL_FRAGMENT_SHADER, LOCAL_GL_HIGH_INT}) = {};
+  }
 
   // -
 
@@ -694,6 +750,13 @@ void WebGLContext::FinishInit() {
 
   mScissorRect = {0, 0, size.width, size.height};
   mScissorRect.Apply(*gl);
+
+  {
+    const auto& isEnabledMap = webgl::MakeIsEnabledMap(IsWebGL2());
+    for (const auto& pair : isEnabledMap) {
+      mIsEnabledMapKeys.insert(pair.first);
+    }
+  }
 
   //////
   // Check everything
@@ -997,7 +1060,7 @@ bool WebGLContext::PresentInto(gl::SwapChain& swapChain) {
   const auto size = mDefaultFB->mSize;
 
   const auto error = [&]() -> std::optional<std::string> {
-    const auto canvasCspace = ToColorSpace2ForOutput(mOptions.colorSpace);
+    const auto canvasCspace = ToColorSpace2ForOutput(mDrawingBufferColorSpace);
     auto presenter = swapChain.Acquire(size, canvasCspace);
     if (!presenter) {
       return "Swap chain surface creation failed.";
@@ -1097,7 +1160,7 @@ bool WebGLContext::PresentIntoXR(gl::SwapChain& swapChain,
                                  const gl::MozFramebuffer& fb) {
   OnEndOfFrame();
 
-  const auto colorSpace = ToColorSpace2ForOutput(mOptions.colorSpace);
+  const auto colorSpace = ToColorSpace2ForOutput(mDrawingBufferColorSpace);
   auto presenter = swapChain.Acquire(fb.mSize, colorSpace);
   if (!presenter) {
     GenerateWarning("Swap chain surface creation failed.");
@@ -1227,8 +1290,8 @@ bool WebGLContext::CopyToSwapChain(
   }
 
   {
-    // ColorSpace will need to be part of SwapChainOptions for DTWebgl.
-    const auto colorSpace = ToColorSpace2ForOutput(mOptions.colorSpace);
+    // TODO: ColorSpace will need to be part of SwapChainOptions for DTWebgl.
+    const auto colorSpace = ToColorSpace2ForOutput(mDrawingBufferColorSpace);
     auto presenter = srcFb->mSwapChain.Acquire(size, colorSpace);
     if (!presenter) {
       GenerateWarning("Swap chain surface creation failed.");
@@ -1368,6 +1431,7 @@ bool WebGLContext::PushRemoteTexture(
     case layers::SurfaceDescriptor::TSurfaceDescriptorMacIOSurface:
     case layers::SurfaceDescriptor::TSurfaceTextureDescriptor:
     case layers::SurfaceDescriptor::TSurfaceDescriptorAndroidHardwareBuffer:
+    case layers::SurfaceDescriptor::TEGLImageDescriptor:
     case layers::SurfaceDescriptor::TSurfaceDescriptorDMABuf:
       keepAlive = surf;
       break;
@@ -1546,6 +1610,72 @@ Maybe<uvec2> WebGLContext::SnapshotInto(GLuint srcFb, const gfx::IntSize& size,
   return Some(*uvec2::FromSize(size));
 }
 
+already_AddRefed<gfx::SourceSurface> WebGLContext::GetBackBufferSnapshot(
+    const bool requireAlphaPremult) {
+  if (IsContextLost()) {
+    return nullptr;
+  }
+
+  const auto surfSize = DrawingBufferSize();
+  if (surfSize.x <= 0 || surfSize.y <= 0) {
+    return nullptr;
+  }
+
+  const auto surfFormat = mOptions.alpha ? gfx::SurfaceFormat::B8G8R8A8
+                                         : gfx::SurfaceFormat::B8G8R8X8;
+
+  RefPtr<gfx::DataSourceSurface> dataSurf =
+      gfx::Factory::CreateDataSourceSurface(
+          gfx::IntSize(surfSize.x, surfSize.y), surfFormat);
+  if (!dataSurf) {
+    NS_WARNING("Failed to alloc DataSourceSurface for GetBackBufferSnapshot");
+    return nullptr;
+  }
+
+  {
+    gfx::DataSourceSurface::ScopedMap map(dataSurf,
+                                          gfx::DataSourceSurface::READ_WRITE);
+    if (!map.IsMapped()) {
+      NS_WARNING("Failed to map DataSourceSurface for GetBackBufferSnapshot");
+      return nullptr;
+    }
+
+    // GetDefaultFBForRead might overwrite FB state if it needs to resolve a
+    // multisampled FB, so save/restore the FB state here just in case.
+    const gl::ScopedBindFramebuffer bindFb(gl);
+    const auto fb = GetDefaultFBForRead();
+    if (!fb) {
+      gfxCriticalNote << "GetDefaultFBForRead failed for GetBackBufferSnapshot";
+      return nullptr;
+    }
+    const auto byteCount = CheckedInt<size_t>(map.GetStride()) * surfSize.y;
+    if (!byteCount.isValid()) {
+      gfxCriticalNote << "Invalid byte count for GetBackBufferSnapshot";
+      return nullptr;
+    }
+    const Range<uint8_t> range = {map.GetData(), byteCount.value()};
+    if (!SnapshotInto(fb->mFB, fb->mSize, range,
+                      Some(size_t(map.GetStride())))) {
+      gfxCriticalNote << "SnapshotInto failed for GetBackBufferSnapshot";
+      return nullptr;
+    }
+
+    if (requireAlphaPremult && mOptions.alpha && !mOptions.premultipliedAlpha) {
+      bool rv = gfx::PremultiplyYFlipData(
+          map.GetData(), map.GetStride(), gfx::SurfaceFormat::R8G8B8A8,
+          map.GetData(), map.GetStride(), surfFormat, dataSurf->GetSize());
+      MOZ_RELEASE_ASSERT(rv, "PremultiplyYFlipData failed!");
+    } else {
+      bool rv = gfx::SwizzleYFlipData(
+          map.GetData(), map.GetStride(), gfx::SurfaceFormat::R8G8B8A8,
+          map.GetData(), map.GetStride(), surfFormat, dataSurf->GetSize());
+      MOZ_RELEASE_ASSERT(rv, "SwizzleYFlipData failed!");
+    }
+  }
+
+  return dataSurf.forget();
+}
+
 void WebGLContext::ClearVRSwapChain() { mWebVRSwapChain.ClearPool(); }
 
 // ------------------------
@@ -1565,6 +1695,15 @@ void WebGLContext::DummyReadFramebufferOperation() {
   if (status != LOCAL_GL_FRAMEBUFFER_COMPLETE) {
     ErrorInvalidFramebufferOperation("Framebuffer must be complete.");
   }
+}
+
+layers::SharedSurfacesHolder* WebGLContext::GetSharedSurfacesHolder() const {
+  const auto* outOfProcess = mHost ? mHost->mOwnerData.outOfProcess : nullptr;
+  if (outOfProcess) {
+    return outOfProcess->mSharedSurfacesHolder;
+  }
+  MOZ_ASSERT_UNREACHABLE("Unexpected use of SharedSurfacesHolder in process!");
+  return nullptr;
 }
 
 dom::ContentParentId WebGLContext::GetContentId() const {
@@ -1727,7 +1866,7 @@ bool WebGLContext::ValidateAndInitFB(const WebGLFramebuffer* const fb,
 
 void WebGLContext::DoBindFB(const WebGLFramebuffer* const fb,
                             const GLenum target) const {
-  const GLenum driverFB = fb ? fb->mGLName : mDefaultFB->mFB;
+  const GLenum driverFB = fb ? fb->mGLName : (mDefaultFB ? mDefaultFB->mFB : 0);
   gl->fBindFramebuffer(target, driverFB);
 }
 
@@ -2193,6 +2332,25 @@ Maybe<std::string> WebGLContext::GetString(const GLenum pname) const {
       nsCString info;
       gl->GetWSIInfo(&info);
       return Some(std::string(info.BeginReading()));
+    }
+
+    case dom::MOZ_debug_Binding::CONTEXT_TYPE: {
+      gl::GLContextType ctxType = gl->GetContextType();
+      switch (ctxType) {
+        case gl::GLContextType::Unknown:
+          return Some("unknown"_ns);
+        case gl::GLContextType::WGL:
+          return Some("wgl"_ns);
+        case gl::GLContextType::CGL:
+          return Some("cgl"_ns);
+        case gl::GLContextType::GLX:
+          return Some("glx"_ns);
+        case gl::GLContextType::EGL:
+          return Some("egl"_ns);
+        case gl::GLContextType::EAGL:
+          return Some("eagl"_ns);
+      }
+      return Some("unknown"_ns);
     }
 
     default:

@@ -22,14 +22,7 @@ enum SelectionMode {
 
 interface XULControllers;
 
-[Exposed=Window,
- InstrumentedProps=(capture,
-                    incremental,
-                    onsearch,
-                    popoverTargetAction,
-                    popoverTargetElement,
-                    webkitEntries,
-                    webkitdirectory)]
+[Exposed=Window]
 interface HTMLInputElement : HTMLElement {
   [HTMLConstructor] constructor();
 
@@ -283,6 +276,9 @@ partial interface HTMLInputElement {
 
   [Func="IsChromeOrUAWidget"]
   undefined closeDateTimePicker();
+
+  [Func="IsChromeOrUAWidget"]
+  undefined setDateTimePickerState(boolean aIsOpen);
 
   [Func="IsChromeOrUAWidget"]
   undefined setFocusState(boolean aIsFocused);

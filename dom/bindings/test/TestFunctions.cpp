@@ -272,11 +272,14 @@ void TestFunctions::TestAllowShared(const ArrayBuffer& aBuffer) {}
 void TestFunctions::TestDictWithAllowShared(
     const DictWithAllowSharedBufferSource& aDict) {}
 
-void TestFunctions::TestUnionOfBuffferSource(
+void TestFunctions::TestUnionOfBufferSource(
     const ArrayBufferOrArrayBufferViewOrString& aUnion) {}
 
-void TestFunctions::TestUnionOfAllowSharedBuffferSource(
-    const MaybeSharedArrayBufferOrMaybeSharedArrayBufferView& aUnion) {}
+void TestFunctions::TestUnionOfAllowSharedBufferSource(
+    const AllowSharedBufferSource& aUnion) {}
+
+void TestFunctions::TestUnionWithAllowShared(
+    const MaybeSharedInt8ArrayOrMaybeSharedInt16Array& aUnion) {}
 
 bool TestFunctions::ObjectFromAboutBlank(JSContext* aCx, JSObject* aObj) {
   // We purposefully don't use WindowOrNull here, because we want to

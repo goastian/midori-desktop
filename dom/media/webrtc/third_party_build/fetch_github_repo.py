@@ -5,7 +5,6 @@ import argparse
 import os
 import re
 import shutil
-import sys
 
 from run_operations import run_git, run_shell
 
@@ -17,41 +16,25 @@ from run_operations import run_git, run_shell
 # the data, a tar of the repo is made and used if available.
 
 
-def fetch_repo(github_path, clone_protocol, force_fetch, tar_path):
+def fetch_repo(github_path, force_fetch, tar_path):
     capture_output = False
 
     # check for pre-existing repo - make sure we force the removal
     if force_fetch and os.path.exists(github_path):
-        print("Removing existing repo: {}".format(github_path))
+        print(f"Removing existing repo: {github_path}")
         shutil.rmtree(github_path)
-
-    # To test with ssh (and not give away your default public key):
-    # ssh-keygen -t rsa -f ~/.ssh/id_moz_github -q -N ""
-    # git -c core.sshCommand="ssh -i ~/.ssh/id_moz_github -o IdentitiesOnly=yes" clone git@github.com:mozilla/libwebrtc.git moz-libwebrtc
-    # (cd moz-libwebrtc && git config core.sshCommand "ssh -i ~/.ssh/id_moz_github -o IdentitiesOnly=yes")
 
     # clone https://github.com/mozilla/libwebrtc
     if not os.path.exists(github_path):
         # check for pre-existing tar, use it if we have it
         if os.path.exists(tar_path):
             print("Using tar file to reconstitute repo")
-            cmd = "cd {} ; tar --extract --gunzip --file={}".format(
-                os.path.dirname(github_path), os.path.basename(tar_path)
-            )
+            cmd = f"cd {os.path.dirname(github_path)} ; tar --extract --gunzip --file={os.path.basename(tar_path)}"
             run_shell(cmd, capture_output)
         else:
             print("Cloning github repo")
-            # sure would be nice to have python 3.10's match
-            if clone_protocol == "ssh":
-                url_prefix = "git@github.com:"
-            elif clone_protocol == "https":
-                url_prefix = "https://github.com/"
-            else:
-                print("clone protocol should be either https or ssh")
-                sys.exit(1)
-
             run_shell(
-                "git clone {}mozilla/libwebrtc {}".format(url_prefix, github_path),
+                f"git clone https://github.com/mozilla/libwebrtc {github_path}",
                 capture_output,
             )
 
@@ -105,11 +88,7 @@ def fetch_repo(github_path, clone_protocol, force_fetch, tar_path):
     # create tar to avoid time refetching
     if not os.path.exists(tar_path):
         print("Creating tar file for quicker restore")
-        cmd = "cd {} ; tar --create --gzip --file={} {}".format(
-            os.path.dirname(github_path),
-            os.path.basename(tar_path),
-            os.path.basename(github_path),
-        )
+        cmd = f"cd {os.path.dirname(github_path)} ; tar --create --gzip --file={os.path.basename(tar_path)} {os.path.basename(github_path)}"
         run_shell(cmd, capture_output)
 
 
@@ -132,26 +111,19 @@ if __name__ == "__main__":
         help="force rebuild an existing repo directory",
     )
     parser.add_argument(
-        "--clone-protocol",
-        choices=["https", "ssh"],
-        required=True,
-        help="Use either https or ssh to clone the git repo",
-    )
-    parser.add_argument(
         "--tar-name",
         default=default_tar_name,
-        help="name of tar file (defaults to {})".format(default_tar_name),
+        help=f"name of tar file (defaults to {default_tar_name})",
     )
     parser.add_argument(
         "--state-path",
         default=default_state_dir,
-        help="path to state directory (defaults to {})".format(default_state_dir),
+        help=f"path to state directory (defaults to {default_state_dir})",
     )
     args = parser.parse_args()
 
     fetch_repo(
         args.repo_path,
-        args.clone_protocol,
         args.force_fetch,
         os.path.join(args.state_path, args.tar_name),
     )

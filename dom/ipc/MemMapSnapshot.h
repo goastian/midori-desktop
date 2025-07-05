@@ -9,17 +9,13 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/RangedPtr.h"
 #include "mozilla/Result.h"
-#include "base/shared_memory.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "ErrorList.h"
 
-namespace mozilla {
-namespace loader {
-class AutoMemMap;
-}
-
-namespace ipc {
+namespace mozilla::ipc {
 
 /**
  * A helper class for creating a read-only snapshot of memory-mapped data.
@@ -27,7 +23,7 @@ namespace ipc {
  * The Init() method initializes a read-write memory mapped region of the given
  * size, which can be initialized with arbitrary data. The Finalize() method
  * remaps that region as read-only (and backs it with a read-only file
- * descriptor), and initializes an AutoMemMap with the new contents.
+ * descriptor), and returns a handle to it.
  *
  * The file descriptor for the resulting AutoMemMap can be shared among
  * processes, to safely access a shared, read-only copy of the data snapshot.
@@ -35,20 +31,19 @@ namespace ipc {
 class MOZ_RAII MemMapSnapshot {
  public:
   Result<Ok, nsresult> Init(size_t aSize);
-  Result<Ok, nsresult> Finalize(loader::AutoMemMap& aMap);
+  Result<ReadOnlySharedMemoryHandle, nsresult> Finalize();
 
   template <typename T>
   RangedPtr<T> Get() {
-    MOZ_ASSERT(mInitialized);
-    return {static_cast<T*>(mMem.memory()), mMem.max_size() / sizeof(T)};
+    MOZ_ASSERT(mMem);
+    auto span = mMem.DataAsSpan<T>();
+    return {span.data(), span.size()};
   }
 
  private:
-  base::SharedMemory mMem;
-  bool mInitialized = false;
+  FreezableSharedMemoryMapping mMem;
 };
 
-}  // namespace ipc
-}  // namespace mozilla
+}  // namespace mozilla::ipc
 
 #endif  // dom_ipc_MemMapSnapshot_h

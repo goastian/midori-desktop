@@ -7,7 +7,8 @@
 // Microsoft's API Name hackery sucks
 #undef CreateEvent
 
-#include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
+#include "js/ColumnNumber.h"      // JS::ColumnNumberOneOrigin
+#include "js/EnvironmentChain.h"  // JS::EnvironmentChain
 #include "js/loader/LoadedScript.h"
 #include "js/loader/ScriptFetchOptions.h"
 #include "mozilla/Assertions.h"
@@ -24,8 +25,12 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScopeExit.h"
+#include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/dom/AbortSignal.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/ChromeUtils.h"
 #include "mozilla/dom/EventCallbackDebuggerNotification.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
@@ -36,9 +41,6 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "mozilla/dom/UserActivation.h"
-#include "mozilla/ScopeExit.h"
-#include "mozilla/TimeStamp.h"
-#include "mozilla/dom/ChromeUtils.h"
 
 #include "EventListenerService.h"
 #include "nsCOMPtr.h"
@@ -138,13 +140,13 @@ uint32_t EventListenerManager::sMainThreadCreatedCount = 0;
 
 EventListenerManagerBase::EventListenerManagerBase()
     : mMayHaveDOMActivateEventListener(false),
-      mMayHavePaintEventListener(false),
       mMayHaveMutationListeners(false),
       mMayHaveCapturingListeners(false),
       mMayHaveSystemGroupListeners(false),
       mMayHaveTouchEventListener(false),
       mMayHaveMouseEnterLeaveEventListener(false),
       mMayHavePointerEnterLeaveEventListener(false),
+      mMayHavePointerRawUpdateEventListener(false),
       mMayHaveSelectionChangeEventListener(false),
       mMayHaveFormSelectEventListener(false),
       mMayHaveTransitionEventListener(false),
@@ -358,12 +360,6 @@ void EventListenerManager::AddEventListenerInternal(
     }
 
     switch (resolvedEventMessage) {
-      case eAfterPaint:
-        mMayHavePaintEventListener = true;
-        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
-          window->SetHasPaintEventListeners();
-        }
-        break;
       case eLegacyDOMActivate:
         mMayHaveDOMActivateEventListener = true;
         if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
@@ -417,6 +413,18 @@ void EventListenerManager::AddEventListenerInternal(
               "Please do not use pointerenter/leave events in chrome. "
               "They are slower than pointerover/out!");
           window->SetHasPointerEnterLeaveEventListeners();
+        }
+        break;
+      case ePointerRawUpdate:
+        if (!StaticPrefs::dom_event_pointer_rawupdate_enabled()) {
+          break;
+        }
+        mMayHavePointerRawUpdateEventListener = true;
+        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
+          NS_WARNING_ASSERTION(
+              !nsContentUtils::IsChromeDoc(window->GetExtantDoc()),
+              "Please do not use pointerrawupdate event in chrome.");
+          window->MaybeSetHasPointerRawUpdateEventListeners();
         }
         break;
       case eGamepadButtonDown:
@@ -479,20 +487,6 @@ void EventListenerManager::AddEventListenerInternal(
           window->SetHasFormSelectEventListeners();
         }
         break;
-      case eScrollPortOverflow:
-        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
-          if (Document* doc = window->GetExtantDoc()) {
-            doc->SetUseCounter(eUseCounter_custom_onoverflow);
-          }
-        }
-        break;
-      case eScrollPortUnderflow:
-        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
-          if (Document* doc = window->GetExtantDoc()) {
-            doc->SetUseCounter(eUseCounter_custom_onunderflow);
-          }
-        }
-        break;
       case eLegacyMouseLineOrPageScroll:
         if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
           if (Document* doc = window->GetExtantDoc()) {
@@ -530,6 +524,34 @@ void EventListenerManager::AddEventListenerInternal(
         break;
       case eFormRadioStateChange:
         nsContentUtils::SetMayHaveFormRadioStateChangeListeners();
+        break;
+      case eAfterScriptExecute:
+        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
+          if (Document* doc = window->GetExtantDoc()) {
+            doc->SetUseCounter(eUseCounter_AfterScriptExecuteEvent);
+            if (StaticPrefs::dom_events_script_execute_enabled()) {
+              doc->WarnOnceAbout(
+                  DeprecatedOperations::eAfterScriptExecuteEvent);
+            } else {
+              doc->WarnOnceAbout(
+                  Document::eAfterScriptExecuteEventNotSupported);
+            }
+          }
+        }
+        break;
+      case eBeforeScriptExecute:
+        if (nsPIDOMWindowInner* window = GetInnerWindowForTarget()) {
+          if (Document* doc = window->GetExtantDoc()) {
+            doc->SetUseCounter(eUseCounter_BeforeScriptExecuteEvent);
+            if (StaticPrefs::dom_events_script_execute_enabled()) {
+              doc->WarnOnceAbout(
+                  DeprecatedOperations::eBeforeScriptExecuteEvent);
+            } else {
+              doc->WarnOnceAbout(
+                  Document::eBeforeScriptExecuteEventNotSupported);
+            }
+          }
+        }
         break;
       default:
         // XXX Use NS_ASSERTION here to print resolvedEventMessage since
@@ -619,14 +641,6 @@ void EventListenerManager::AddEventListenerInternal(
                      nsPrintfCString("resolvedEventMessage=%s",
                                      ToChar(resolvedEventMessage))
                          .get());
-        NS_ASSERTION(aTypeAtom != nsGkAtoms::onoverflow,
-                     nsPrintfCString("resolvedEventMessage=%s",
-                                     ToChar(resolvedEventMessage))
-                         .get());
-        NS_ASSERTION(aTypeAtom != nsGkAtoms::onunderflow,
-                     nsPrintfCString("resolvedEventMessage=%s",
-                                     ToChar(resolvedEventMessage))
-                         .get());
         NS_ASSERTION(aTypeAtom != nsGkAtoms::onDOMMouseScroll,
                      nsPrintfCString("resolvedEventMessage=%s",
                                      ToChar(resolvedEventMessage))
@@ -670,7 +684,7 @@ void EventListenerManager::ProcessApzAwareEventListenerAdd() {
   }
   if (!doc) {
     if (nsCOMPtr<DOMEventTargetHelper> helper = do_QueryInterface(mTarget)) {
-      if (nsPIDOMWindowInner* window = helper->GetOwner()) {
+      if (nsPIDOMWindowInner* window = helper->GetOwnerWindow()) {
         doc = window->GetExtantDoc();
       }
     }
@@ -862,6 +876,15 @@ void EventListenerManager::RemoveEventListenerInternal(
       DisableDevice(aUserType);
     }
   }
+
+  // XXX Should we clear mMayHavePointerRawUpdateEventListener if the last
+  // pointerrawupdate event listener is removed?  If so, nsPIDOMWindowInner
+  // needs to count how may event listener managers had some pointerrawupdate
+  // event listener.  If we've notified the window of having a pointerrawupdate
+  // event listener, some behavior is changed because pointerrawupdate event
+  // dispatcher needs to handle some things before dispatching an event to the
+  // DOM.  However, it is expected that web apps using `pointerrawupdate` don't
+  // remove the event listeners.
 }
 
 static bool IsDefaultPassiveWhenOnRoot(EventMessage aMessage) {
@@ -1030,8 +1053,8 @@ nsresult EventListenerManager::SetEventHandler(nsAtom* aName,
     JS::ColumnNumberOneOrigin columnNum;
 
     JSContext* cx = nsContentUtils::GetCurrentJSContext();
-    if (cx && !JS::DescribeScriptedCaller(cx, nullptr, &lineNum, &columnNum)) {
-      JS_ClearPendingException(cx);
+    if (cx) {
+      JS::DescribeScriptedCaller(nullptr, cx, &lineNum, &columnNum);
     }
 
     if (csp) {
@@ -1219,12 +1242,12 @@ nsresult EventListenerManager::CompileEventHandlerInternal(
   JSAutoRealm ar(cx, target);
 
   // Now that we've entered the realm we actually care about, create our
-  // scope chain.  Note that we start with |element|, not aElement, because
-  // mTarget is different from aElement in the <body> case, where mTarget is a
-  // Window, and in that case we do not want the scope chain to include the body
-  // or the document.
-  JS::RootedVector<JSObject*> scopeChain(cx);
-  if (!nsJSUtils::GetScopeChainForElement(cx, element, &scopeChain)) {
+  // environment chain.  Note that we start with |element|, not aElement,
+  // because mTarget is different from aElement in the <body> case, where
+  // mTarget is a Window, and in that case we do not want the environment chain
+  // to include the body or the document.
+  JS::EnvironmentChain envChain(cx, JS::SupportUnscopables::Yes);
+  if (!nsJSUtils::GetEnvironmentChainForElement(cx, element, envChain)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -1257,7 +1280,7 @@ nsresult EventListenerManager::CompileEventHandlerInternal(
       .setDeferDebugMetadata(true);
 
   JS::Rooted<JSObject*> handler(cx);
-  result = nsJSUtils::CompileFunction(jsapi, scopeChain, options,
+  result = nsJSUtils::CompileFunction(jsapi, envChain, options,
                                       nsAtomCString(aTypeAtom), argCount,
                                       argNames, *body, handler.address());
   NS_ENSURE_SUCCESS(result, result);
@@ -1328,7 +1351,7 @@ bool EventListenerManager::HandleEventSingleListener(
 
   if (NS_SUCCEEDED(result)) {
     Maybe<EventCallbackDebuggerNotificationGuard> dbgGuard;
-    if (dom::ChromeUtils::IsDevToolsOpened()) {
+    if (dom::ChromeUtils::IsDevToolsOpened() || profiler_is_active()) {
       dbgGuard.emplace(aCurrentTarget, aDOMEvent);
     }
     nsAutoMicroTask mt;
@@ -1529,11 +1552,7 @@ void EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
         PopupBlocker::GetEventPopupControlState(aEvent, *aDOMEvent));
   }
 
-  EventMessage eventMessage = aEvent->mMessage;
-  RefPtr<nsAtom> typeAtom =
-      eventMessage == eUnidentifiedEvent
-          ? aEvent->mSpecifiedEventType.get()
-          : nsContentUtils::GetEventTypeFromMessage(eventMessage);
+  RefPtr<nsAtom> typeAtom = nsContentUtils::GetEventType(aEvent);
   if (!typeAtom) {
     // Some messages don't have a corresponding type atom, e.g.
     // eMouseEnterIntoWidget. These events can't have a listener, so we
@@ -1541,6 +1560,7 @@ void EventListenerManager::HandleEventInternal(nsPresContext* aPresContext,
     return;
   }
 
+  EventMessage eventMessage = aEvent->mMessage;
   bool hasAnyListenerForEventType = false;
 
   // First, notify any "all events" listeners.
@@ -1623,15 +1643,7 @@ bool EventListenerManager::HandleEventWithListenerArray(
 
   for (Listener& listenerRef : aListeners->EndLimitedRange()) {
     Listener* listener = &listenerRef;
-    if (listener->mListenerType == Listener::eNoListener) {
-      // The listener is a placeholder value of a removed "once" listener.
-      continue;
-    }
-    if (!listener->mEnabled) {
-      // The listener has been disabled, for example by devtools.
-      continue;
-    }
-    if (!listener->MatchesEventGroup(aEvent)) {
+    if (!ListenerCanHandle(listener, aEvent)) {
       continue;
     }
     hasAnyListenerMatchingGroup = true;
@@ -1824,6 +1836,61 @@ bool EventListenerManager::HasListenersFor(const nsAString& aEventName) const {
 
 bool EventListenerManager::HasListenersFor(nsAtom* aEventNameWithOn) const {
   return HasListenersForInternal(aEventNameWithOn, false);
+}
+
+bool EventListenerManager::HasNonPassiveListenersFor(
+    const WidgetEvent* aEvent) const {
+  if (RefPtr<nsAtom> typeAtom = nsContentUtils::GetEventType(aEvent)) {
+    if (const auto& listeners = mListenerMap.GetListenersForType(typeAtom)) {
+      for (const Listener& listener : listeners->NonObservingRange()) {
+        if (!listener.mFlags.mPassive && ListenerCanHandle(&listener, aEvent)) {
+          return true;
+        }
+      }
+    }
+
+    // After dispatching wheel, legacy mouse scroll events are dispatched
+    // and listeners on those can also default prevent the behavior.
+    if (aEvent->mMessage == eWheel) {
+      if (const auto& listeners =
+              mListenerMap.GetListenersForType(nsGkAtoms::onDOMMouseScroll)) {
+        for (const Listener& listener : listeners->NonObservingRange()) {
+          if (!listener.mFlags.mPassive &&
+              ListenerCanHandle(&listener, aEvent)) {
+            return true;
+          }
+        }
+      }
+      if (const auto& listeners = mListenerMap.GetListenersForType(
+              nsGkAtoms::onMozMousePixelScroll)) {
+        for (const Listener& listener : listeners->NonObservingRange()) {
+          if (!listener.mFlags.mPassive &&
+              ListenerCanHandle(&listener, aEvent)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+bool EventListenerManager::ListenerCanHandle(const Listener* aListener,
+                                             const WidgetEvent* aEvent) const {
+  if (aListener->mListenerType == Listener::eNoListener) {
+    // The listener is a placeholder value of a removed "once" listener.
+    return false;
+  }
+  if (!aListener->mEnabled) {
+    // The listener has been disabled, for example by devtools.
+    return false;
+  }
+  if (!aListener->MatchesEventGroup(aEvent)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool EventListenerManager::HasNonSystemGroupListenersFor(

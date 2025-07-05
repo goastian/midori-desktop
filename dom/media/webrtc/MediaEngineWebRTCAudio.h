@@ -19,6 +19,7 @@ namespace mozilla {
 
 class AudioInputProcessing;
 class AudioProcessingTrack;
+class WebrtcEnvironmentWrapper;
 
 // This class is created and used exclusively on the Media Manager thread, with
 // exactly two exceptions:
@@ -50,6 +51,9 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
    * Main thread only.
    */
   void GetSettings(dom::MediaTrackSettings& aOutSettings) const override;
+
+  void GetCapabilities(
+      dom::MediaTrackCapabilities& aOutCapabilities) const override;
 
   nsresult TakePhoto(MediaEnginePhotoCallback* aCallback) override {
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -87,6 +91,12 @@ class MediaEngineWebRTCMicrophoneSource : public MediaEngineSource {
   // main thread.
   const nsMainThreadPtrHandle<media::Refcountable<dom::MediaTrackSettings>>
       mSettings;
+
+  // The media capabilities for the underlying device.
+  // Constructed on the MediaManager thread, and then only ever accessed on the
+  // main thread.
+  const nsMainThreadPtrHandle<media::Refcountable<dom::MediaTrackCapabilities>>
+      mCapabilities;
 
   // Current state of the resource for this source.
   MediaEngineSourceState mState;
@@ -135,8 +145,20 @@ class AudioInputProcessing : public AudioDataListener {
 
   void Disconnect(MediaTrackGraph* aGraph) override;
 
+  // Prepare for a change to platform processing params by assuming the platform
+  // applies the intersection of the already applied params and
+  // aRequestedParams, and set the software config accordingly.
+  void NotifySetRequestedInputProcessingParams(
+      MediaTrackGraph* aGraph, int aGeneration,
+      cubeb_input_processing_params aRequestedParams) override;
+
+  // Handle the result of an async operation to set processing params on a cubeb
+  // stream. If the operation succeeded, disable the applied processing params
+  // from the software processing config. If the operation failed, request
+  // platform processing to be disabled so as to not prevent a cubeb stream from
+  // being created.
   void NotifySetRequestedInputProcessingParamsResult(
-      MediaTrackGraph* aGraph, cubeb_input_processing_params aRequestedParams,
+      MediaTrackGraph* aGraph, int aGeneration,
       const Result<cubeb_input_processing_params, int>& aResult) override;
 
   void PacketizeAndProcess(AudioProcessingTrack* aTrack,
@@ -173,6 +195,9 @@ class AudioInputProcessing : public AudioDataListener {
   // For testing:
   bool HadAECAndDrift() const { return mHadAECAndDrift; }
 
+  void SetEnvironmentWrapper(AudioProcessingTrack* aTrack,
+                             RefPtr<WebrtcEnvironmentWrapper> aEnvWrapper);
+
  private:
   ~AudioInputProcessing() = default;
   webrtc::AudioProcessing::Config ConfigForPrefs(
@@ -204,12 +229,15 @@ class AudioInputProcessing : public AudioDataListener {
   // When false, RequestedInputProcessingParams() returns no params, resulting
   // in platform processing getting disabled in the platform.
   bool mPlatformProcessingEnabled = false;
+  // The generation tracking the latest requested set of platform processing
+  // params.
+  int mPlatformProcessingSetGeneration = -1;
   // The latest error notified to us through
   // NotifySetRequestedInputProcessingParamsResult, or Nothing if the latest
   // request was successful, or if a request is pending a result.
   Maybe<int> mPlatformProcessingSetError;
-  // The processing params currently applied in the platform. This allows
-  // adapting the AudioProcessingConfig accordingly.
+  // The processing params currently applied, or about to be applied, in the
+  // platform. This allows adapting the AudioProcessingConfig accordingly.
   cubeb_input_processing_params mPlatformProcessingSetParams =
       CUBEB_INPUT_PROCESSING_PARAM_NONE;
   // Buffer for up to one 10ms packet of planar mixed audio output for the
@@ -251,6 +279,7 @@ class AudioInputProcessing : public AudioDataListener {
       mInterleavedBuffer;
   // Tracks the pending frames with paired principals piled up in packetizer.
   std::deque<std::pair<TrackTime, PrincipalHandle>> mChunksInPacketizer;
+  RefPtr<WebrtcEnvironmentWrapper> mEnvWrapper;
 };
 
 // MediaTrack subclass tailored for MediaEngineWebRTCMicrophoneSource.
@@ -318,6 +347,9 @@ class MediaEngineWebRTCAudioCaptureSource : public MediaEngineSource {
   }
 
   void GetSettings(dom::MediaTrackSettings& aOutSettings) const override;
+
+  void GetCapabilities(
+      dom::MediaTrackCapabilities& aOutCapabilities) const override {}
 
  protected:
   virtual ~MediaEngineWebRTCAudioCaptureSource() = default;

@@ -1,8 +1,10 @@
 [DEFAULT]
 head = "head.js"
-tags = "condprof"
+tags = "condprof inc-origin-init"
 support-files = [
   "basics_profile.zip",
+  "clearStoragesForClient_profile.json",
+  "clearStoragesForClient_profile.zip",
   "clearStoragesForOriginPrefix_profile.json",
   "clearStoragesForOriginPrefix_profile.zip",
   "clearStoragesForPrincipal_profile.zip",
@@ -11,6 +13,8 @@ support-files = [
   "createLocalStorage_profile.zip",
   "defaultStorageDirectory_shared.json",
   "defaultStorageDirectory_shared.zip",
+  "getCachedUsageForPrincipal_profile.zip",
+  "getUsageForPrincipal_profile.zip",
   "getUsage_profile.zip",
   "groupMismatch_profile.zip",
   "indexedDBDirectory_shared.json",
@@ -25,17 +29,27 @@ support-files = [
   "unknownFiles_profile.zip",
 ]
 
+["make_getCachedUsageForPrincipal.js"]
+run-if = ["false"] # Only used for recreating getCachedUsageForPrincipal_profile.zip
+
+["make_getUsageForPrincipal.js"]
+run-if = ["false"] # Only used for recreating getCachedUsageForPrincipal_profile.zip
+
 ["make_unknownFiles.js"]
-skip-if = ["true"] # Only used for recreating unknownFiles_profile.zip
+run-if = ["false"] # Only used for recreating unknownFiles_profile.zip
 
 ["make_unsetLastAccessTime.js"]
-skip-if = ["true"] # Only used for recreating unsetLastAccessTime_profile.zip
+run-if = ["false"] # Only used for recreating unsetLastAccessTime_profile.zip
 
 ["test_allowListFiles.js"]
+
+["test_artificialFailure.js"]
 
 ["test_bad_origin_directory.js"]
 
 ["test_basics.js"]
+
+["test_clearStoragesForClient.js"]
 
 ["test_clearStoragesForOriginAttributesPattern.js"]
 
@@ -45,27 +59,59 @@ skip-if = ["true"] # Only used for recreating unsetLastAccessTime_profile.zip
 
 ["test_clearStoragesForPrivateBrowsing.js"]
 
+["test_clientDirectoryOpeningStarted.js"]
+
 ["test_createLocalStorage.js"]
 
 ["test_estimateOrigin.js"]
 
+["test_getCachedUsageForPrincipal.js"]
+
 ["test_getUsage.js"]
 
+["test_getUsageForPrincipal.js"]
+
+["test_groupInitializationStarted.js"]
+
 ["test_groupMismatch.js"]
-skip-if = ["true"] # The group is now always empty, so metadata can't differ anymore.
+run-if = ["false"] # The group is now always empty, so metadata can't differ anymore.
+
+["test_idle_maintenance.js"]
 
 ["test_initTemporaryStorage.js"]
-skip-if = ["condprof"] # frequent perma fail, then goes away.
+
+["test_initializeAllTemporaryOrigins.js"]
+# The test cannot function correctly with incremental origin initialization
+# enabled  because incremental origin initialization automatically triggers
+# lazy initialization of all temporary origins after temporary storage
+# initialization is complete.
+skip-if = ["inc_origin_init"]
 
 ["test_initializePersistentClient.js"]
 
+["test_initializePersistentOrigin.js"]
+
+["test_initializePersistentStorage.js"]
+
 ["test_initializeTemporaryClient.js"]
+
+["test_initializeTemporaryOrigin.js"]
+
+["test_initializeTemporaryOrigin_failure.js"]
+# bug 1942791
+skip-if = ["inc_origin_init"]
+
+["test_listCachedOrigins.js"]
 
 ["test_listOrigins.js"]
 
 ["test_originEndsWithDot.js"]
 
+["test_originInitializationStarted.js"]
+
 ["test_originMismatch.js"]
+# bug 1942793
+skip-if = ["inc_origin_init"]
 
 ["test_originWithCaret.js"]
 
@@ -79,16 +125,42 @@ skip-if = ["condprof"] # frequent perma fail, then goes away.
 
 ["test_persist_groupLimit.js"]
 
+["test_quotaClientInteractions.js"]
+
+["test_quotaUtilsService.js"]
+
 ["test_removeLocalStorage.js"]
+
+["test_shutdownDuringAllTemporaryOriginsInitialization.js"]
+# The test cannot function correctly with incremental origin initialization
+# enabled  because incremental origin initialization automatically triggers
+# lazy initialization of all temporary origins after temporary storage
+# initialization is complete.
+skip-if = ["inc_origin_init"]
+
+["test_shutdownDuringAllTemporaryOriginsInitialization2.js"]
+# The test cannot function correctly with incremental origin initialization
+# enabled  because incremental origin initialization automatically triggers
+# lazy initialization of all temporary origins after temporary storage
+# initialization is complete.
+skip-if = ["inc_origin_init"]
 
 ["test_simpledb.js"]
 
 ["test_specialOrigins.js"]
 
 ["test_storagePressure.js"]
-skip-if = ["condprof"]
+run-if = ["!condprof"] # Bug 1960788
+skip-if = ["inc_origin_init"]
 
 ["test_tempMetadataCleanup.js"]
+
+["test_temporaryStorageEviction.js"]
+# This test requires precise control over storage size, which isn't compatible
+# with conditioned profiles that use a much larger default size. While the test
+# could clear storage at the start, doing so would defeat the purpose of using
+# a conditioned profile in the first place.
+run-if = ["!condprof"]
 
 ["test_unaccessedOrigins.js"]
 

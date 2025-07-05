@@ -4,50 +4,43 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/AnimationFrameProvider.h"
-#include "nsThreadUtils.h"
+#include "AnimationFrameProvider.h"
+#include "MainThreadUtils.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/dom/HTMLVideoElement.h"
 
 namespace mozilla::dom {
 
-FrameRequest::FrameRequest(FrameRequestCallback& aCallback, int32_t aHandle)
-    : mCallback(&aCallback), mHandle(aHandle) {
-  LogFrameRequestCallback::LogDispatch(mCallback);
-}
+FrameRequestManager::FrameRequestManager() = default;
+FrameRequestManager::~FrameRequestManager() = default;
 
-FrameRequest::~FrameRequest() = default;
-
-nsresult FrameRequestManager::Schedule(FrameRequestCallback& aCallback,
-                                       int32_t* aHandle) {
-  if (mCallbackCounter == INT32_MAX) {
-    // Can't increment without overflowing; bail out
-    return NS_ERROR_NOT_AVAILABLE;
+void FrameRequestManager::Schedule(HTMLVideoElement* aElement) {
+  if (!mVideoCallbacks.Contains(aElement)) {
+    mVideoCallbacks.AppendElement(aElement);
   }
-  int32_t newHandle = ++mCallbackCounter;
-
-  mCallbacks.AppendElement(FrameRequest(aCallback, newHandle));
-
-  *aHandle = newHandle;
-  return NS_OK;
 }
 
-bool FrameRequestManager::Cancel(int32_t aHandle) {
-  // mCallbacks is stored sorted by handle
-  if (mCallbacks.RemoveElementSorted(aHandle)) {
-    return true;
-  }
-
-  Unused << mCanceledCallbacks.put(aHandle);
-  return false;
+bool FrameRequestManager::Cancel(HTMLVideoElement* aElement) {
+  return mVideoCallbacks.RemoveElement(aElement);
 }
 
-void FrameRequestManager::Unlink() { mCallbacks.Clear(); }
+void FrameRequestManager::Unlink() {
+  FrameRequestManagerBase::Unlink();
+  mVideoCallbacks.Clear();
+}
 
 void FrameRequestManager::Traverse(nsCycleCollectionTraversalCallback& aCB) {
-  for (auto& i : mCallbacks) {
-    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCB,
-                                       "FrameRequestManager::mCallbacks[i]");
-    aCB.NoteXPCOMChild(i.mCallback);
+  FrameRequestManagerBase::Traverse(aCB);
+  for (auto& i : mVideoCallbacks) {
+    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(
+        aCB, "FrameRequestManager::mVideoCallbacks[i]");
+    aCB.NoteXPCOMChild(ToSupports(i));
   }
+}
+void FrameRequestManager::Take(
+    nsTArray<RefPtr<HTMLVideoElement>>& aVideoCallbacks) {
+  MOZ_ASSERT(NS_IsMainThread());
+  aVideoCallbacks = std::move(mVideoCallbacks);
 }
 
 }  // namespace mozilla::dom

@@ -25,10 +25,8 @@
 #include "nsIConstraintValidation.h"
 #include "nsIControllers.h"
 #include "mozilla/dom/Document.h"
-#include "nsIFormControlFrame.h"
 #include "nsIFormControl.h"
 #include "nsIFrame.h"
-#include "nsITextControlFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsLinebreakConverter.h"
 #include "nsPresContext.h"
@@ -50,6 +48,7 @@ HTMLTextAreaElement::HTMLTextAreaElement(
       mDoneAddingChildren(!aFromParser),
       mInhibitStateRestoration(!!(aFromParser & FROM_PARSER_FRAGMENT)),
       mAutocompleteAttrState(nsContentUtils::eAutocompleteAttrState_Unknown),
+      mAutocompleteInfoState(nsContentUtils::eAutocompleteAttrState_Unknown),
       mState(TextControlState::Construct(this)) {
   AddMutationObserver(this);
 
@@ -118,19 +117,15 @@ void HTMLTextAreaElement::Select() {
     }
   }
 
-  SetSelectionRange(0, UINT32_MAX, mozilla::dom::Optional<nsAString>(),
-                    IgnoreErrors());
+  SetSelectionRange(0, UINT32_MAX, Optional<nsAString>(), IgnoreErrors());
 }
 
-NS_IMETHODIMP
-HTMLTextAreaElement::SelectAll(nsPresContext* aPresContext) {
-  nsIFormControlFrame* formControlFrame = GetFormControlFrame(true);
-
-  if (formControlFrame) {
-    formControlFrame->SetFormProperty(nsGkAtoms::select, u""_ns);
+void HTMLTextAreaElement::SelectAll() {
+  // FIXME(emilio): Should we try to call Select(), which will avoid flushing?
+  if (nsTextControlFrame* tf =
+          do_QueryFrame(GetPrimaryFrame(FlushType::Frames))) {
+    tf->SelectAll();
   }
-
-  return NS_OK;
 }
 
 bool HTMLTextAreaElement::IsHTMLFocusable(IsFocusableFlags aFlags,
@@ -175,9 +170,9 @@ TextEditor* HTMLTextAreaElement::GetTextEditor() {
   return mState->GetTextEditor();
 }
 
-TextEditor* HTMLTextAreaElement::GetTextEditorWithoutCreation() const {
+TextEditor* HTMLTextAreaElement::GetExtantTextEditor() const {
   MOZ_ASSERT(mState);
-  return mState->GetTextEditorWithoutCreation();
+  return mState->GetExtantTextEditor();
 }
 
 nsISelectionController* HTMLTextAreaElement::GetSelectionController() {
@@ -185,9 +180,9 @@ nsISelectionController* HTMLTextAreaElement::GetSelectionController() {
   return mState->GetSelectionController();
 }
 
-nsFrameSelection* HTMLTextAreaElement::GetConstFrameSelection() {
+nsFrameSelection* HTMLTextAreaElement::GetIndependentFrameSelection() const {
   MOZ_ASSERT(mState);
-  return mState->GetConstFrameSelection();
+  return mState->GetIndependentFrameSelection();
 }
 
 nsresult HTMLTextAreaElement::BindToFrame(nsTextControlFrame* aFrame) {
@@ -419,9 +414,7 @@ nsMapRuleToAttributesFunc HTMLTextAreaElement::GetAttributeMappingFunction()
 }
 
 bool HTMLTextAreaElement::IsDisabledForEvents(WidgetEvent* aEvent) {
-  nsIFormControlFrame* formControlFrame = GetFormControlFrame(false);
-  nsIFrame* formFrame = do_QueryFrame(formControlFrame);
-  return IsElementDisabledForEvents(aEvent, formFrame);
+  return IsElementDisabledForEvents(aEvent, GetPrimaryFrame());
 }
 
 void HTMLTextAreaElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
@@ -532,7 +525,7 @@ nsIControllers* HTMLTextAreaElement::GetControllers(ErrorResult& aError) {
     mControllers->AppendController(commandController);
   }
 
-  return mControllers;
+  return GetExtantControllers();
 }
 
 nsresult HTMLTextAreaElement::GetControllers(nsIControllers** aResult) {
@@ -626,16 +619,6 @@ nsresult HTMLTextAreaElement::SetValueFromSetRangeText(
                                    ValueSetterOption::SetValueChanged});
 }
 
-void HTMLTextAreaElement::SetDirectionFromValue(bool aNotify,
-                                                const nsAString* aKnownValue) {
-  nsAutoString value;
-  if (!aKnownValue) {
-    GetValue(value);
-    aKnownValue = &value;
-  }
-  SetDirectionalityFromValue(this, *aKnownValue, aNotify);
-}
-
 nsresult HTMLTextAreaElement::Reset() {
   nsAutoString resetVal;
   GetDefaultValue(resetVal, IgnoreErrors());
@@ -717,7 +700,10 @@ bool HTMLTextAreaElement::RestoreState(PresState* aState) {
   if (state.type() == PresContentData::TTextContentData) {
     ErrorResult rv;
     SetValue(state.get_TextContentData().value(), rv);
-    ENSURE_SUCCESS(rv, false);
+    if (NS_WARN_IF(rv.Failed())) {
+      rv.SuppressException();
+      return false;
+    }
     if (state.get_TextContentData().lastValueChangeWasInteractive()) {
       SetLastValueChangeWasInteractive(true);
     }
@@ -757,9 +743,7 @@ nsresult HTMLTextAreaElement::BindToTree(BindContext& aContext,
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Set direction based on value if dir=auto
-  if (HasDirAuto()) {
-    SetDirectionFromValue(false);
-  }
+  ResetDirFormAssociatedElement(this, false, HasDirAuto());
 
   // If there is a disabled fieldset in the parent chain, the element is now
   // barred from constraint validation and can't suffer from value missing.
@@ -808,44 +792,32 @@ void HTMLTextAreaElement::ContentInserted(nsIContent* aChild) {
   ContentChanged(aChild);
 }
 
-void HTMLTextAreaElement::ContentRemoved(nsIContent* aChild,
-                                         nsIContent* aPreviousSibling) {
-  ContentChanged(aChild);
+void HTMLTextAreaElement::ContentWillBeRemoved(
+    nsIContent* aChild, const BatchRemovalState* aState) {
+  if (mValueChanged || !mDoneAddingChildren || (aState && !aState->mIsFirst) ||
+      !nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
+    return;
+  }
+  if (mState->IsSelectionCached()) {
+    // Collapse the selection when removing nodes if necessary, see bug 1818686.
+    auto& props = mState->GetSelectionProperties();
+    props.CollapseToStart();
+  }
+  nsContentUtils::AddScriptRunner(
+      NewRunnableMethod("HTMLTextAreaElement::ResetIfUnchanged", this,
+                        &HTMLTextAreaElement::ResetIfUnchanged));
 }
 
 void HTMLTextAreaElement::ContentChanged(nsIContent* aContent) {
-  if (!mValueChanged && mDoneAddingChildren &&
-      nsContentUtils::IsInSameAnonymousTree(this, aContent)) {
-    if (mState->IsSelectionCached()) {
-      // In case the content is *replaced*, i.e. by calling
-      // `.textContent = "foo";`,
-      // firstly the old content is removed, then the new content is added.
-      // As per wpt, this must collapse the selection to 0.
-      // Removing and adding of an element is routed through here, but due to
-      // the script runner `Reset()` is only invoked after the append operation.
-      // Therefore, `Reset()` would adjust the Selection to the new value, not
-      // to 0.
-      // By forcing a selection update here, the selection is reset in order to
-      // comply with the wpt.
-      auto& props = mState->GetSelectionProperties();
-      nsAutoString resetVal;
-      GetDefaultValue(resetVal, IgnoreErrors());
-      props.SetMaxLength(resetVal.Length());
-      props.SetStart(props.GetStart());
-      props.SetEnd(props.GetEnd());
-    }
-    // We should wait all ranges finish handling the mutation before updating
-    // the anonymous subtree with a call of Reset.
-    nsContentUtils::AddScriptRunner(NS_NewRunnableFunction(
-        "ResetHTMLTextAreaElementIfValueHasNotChangedYet",
-        [self = RefPtr{this}]() {
-          // However, if somebody has already changed the value, we don't need
-          // to keep doing this.
-          if (!self->mValueChanged) {
-            self->Reset();
-          }
-        }));
+  if (mValueChanged || !mDoneAddingChildren ||
+      !nsContentUtils::IsInSameAnonymousTree(this, aContent)) {
+    return;
   }
+  // We should wait all ranges finish handling the mutation before updating
+  // the anonymous subtree with a call of Reset.
+  nsContentUtils::AddScriptRunner(
+      NewRunnableMethod("HTMLTextAreaElement::ResetIfUnchanged", this,
+                        &HTMLTextAreaElement::ResetIfUnchanged));
 }
 
 void HTMLTextAreaElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
@@ -884,6 +856,7 @@ void HTMLTextAreaElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     } else if (aName == nsGkAtoms::autocomplete) {
       // Clear the cached @autocomplete attribute state.
       mAutocompleteAttrState = nsContentUtils::eAutocompleteAttrState_Unknown;
+      mAutocompleteInfoState = nsContentUtils::eAutocompleteAttrState_Unknown;
     } else if (aName == nsGkAtoms::maxlength) {
       UpdateTooLongValidityState();
       UpdateValidityElementStates(aNotify);
@@ -897,7 +870,7 @@ void HTMLTextAreaElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
       UpdatePlaceholderShownState();
     } else if (aName == nsGkAtoms::dir && aValue &&
                aValue->Equals(nsGkAtoms::_auto, eIgnoreCase)) {
-      SetDirectionFromValue(aNotify);
+      ResetDirFormAssociatedElement(this, aNotify, true);
     }
   }
 
@@ -1122,9 +1095,7 @@ void HTMLTextAreaElement::OnValueChanged(ValueChangeKind aKind,
   UpdateTooShortValidityState();
   UpdateValueMissingValidityState();
 
-  if (HasDirAuto()) {
-    SetDirectionFromValue(true, aKnownNewValue);
-  }
+  ResetDirFormAssociatedElement(this, true, HasDirAuto(), aKnownNewValue);
 
   if (validBefore != IsValid()) {
     UpdateValidityElementStates(true);
@@ -1160,11 +1131,18 @@ JSObject* HTMLTextAreaElement::WrapNode(JSContext* aCx,
   return HTMLTextAreaElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-void HTMLTextAreaElement::GetAutocomplete(DOMString& aValue) {
+void HTMLTextAreaElement::GetAutocomplete(nsAString& aValue) {
+  aValue.Truncate();
   const nsAttrValue* attributeVal = GetParsedAttr(nsGkAtoms::autocomplete);
 
   mAutocompleteAttrState = nsContentUtils::SerializeAutocompleteAttribute(
       attributeVal, aValue, mAutocompleteAttrState);
+}
+
+void HTMLTextAreaElement::GetAutocompleteInfo(AutocompleteInfo& aInfo) {
+  const nsAttrValue* attributeVal = GetParsedAttr(nsGkAtoms::autocomplete);
+  mAutocompleteInfoState = nsContentUtils::SerializeAutocompleteAttribute(
+      attributeVal, aInfo, mAutocompleteInfoState, true);
 }
 
 }  // namespace mozilla::dom

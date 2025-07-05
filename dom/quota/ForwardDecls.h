@@ -10,6 +10,9 @@
 #include <cstdint>
 #include <functional>
 
+#include "nsStringFwd.h"
+#include "nsTArrayForwardDeclare.h"
+#include "mozilla/dom/quota/CommonMetadataArrayFwd.h"
 #include "mozilla/dom/quota/Config.h"
 
 enum class nsresult : uint32_t;
@@ -17,6 +20,13 @@ template <class T>
 class RefPtr;
 
 namespace mozilla {
+
+using CStringArray = nsTArray<nsCString>;
+
+template <class T>
+class Maybe;
+
+using MaybeCStringArray = Maybe<CStringArray>;
 
 #ifdef QM_ERROR_STACKS_ENABLED
 class QMResult;
@@ -35,15 +45,33 @@ class MozPromise;
 
 using BoolPromise = MozPromise<bool, nsresult, false>;
 using Int64Promise = MozPromise<int64_t, nsresult, false>;
+using UInt64Promise = MozPromise<uint64_t, nsresult, false>;
+using CStringArrayPromise = MozPromise<CStringArray, nsresult, true>;
+
+using MaybeCStringArrayPromise = MozPromise<MaybeCStringArray, nsresult, true>;
+
+using ExclusiveBoolPromise = MozPromise<bool, nsresult, true>;
 
 namespace ipc {
 
 class BoolResponse;
+class UInt64Response;
+class CStringArrayResponse;
 enum class ResponseRejectReason;
 
 using BoolResponsePromise =
     MozPromise<BoolResponse, ResponseRejectReason, true>;
+using UInt64ResponsePromise =
+    MozPromise<UInt64Response, ResponseRejectReason, true>;
+using CStringArrayResponsePromise =
+    MozPromise<CStringArrayResponse, ResponseRejectReason, true>;
+
+using NSResultResolver = std::function<void(const nsresult&)>;
+
 using BoolResponseResolver = std::function<void(const BoolResponse&)>;
+using UInt64ResponseResolver = std::function<void(const UInt64Response&)>;
+using CStringArrayResponseResolver =
+    std::function<void(const CStringArrayResponse&)>;
 
 }  // namespace ipc
 
@@ -56,6 +84,34 @@ using ClientDirectoryLockPromise =
     MozPromise<RefPtr<ClientDirectoryLock>, nsresult, true>;
 using UniversalDirectoryLockPromise =
     MozPromise<RefPtr<UniversalDirectoryLock>, nsresult, true>;
+
+struct OriginMetadata;
+struct PrincipalMetadata;
+using OriginMetadataArray = nsTArray<OriginMetadata>;
+using PrincipalMetadataArray = nsTArray<PrincipalMetadata>;
+using MaybePrincipalMetadataArray = Maybe<PrincipalMetadataArray>;
+class UsageInfo;
+
+using OriginMetadataArrayPromise =
+    MozPromise<OriginMetadataArray, nsresult, true>;
+using OriginUsageMetadataArrayPromise =
+    MozPromise<OriginUsageMetadataArray, nsresult, true>;
+using MaybePrincipalMetadataArrayPromise =
+    MozPromise<MaybePrincipalMetadataArray, nsresult, true>;
+using UsageInfoPromise = MozPromise<UsageInfo, nsresult, false>;
+
+class OriginUsageMetadataArrayResponse;
+class UsageInfoResponse;
+
+using OriginUsageMetadataArrayResponsePromise =
+    MozPromise<OriginUsageMetadataArrayResponse,
+               mozilla::ipc::ResponseRejectReason, true>;
+using UsageInfoResponsePromise =
+    MozPromise<UsageInfoResponse, mozilla::ipc::ResponseRejectReason, true>;
+
+using OriginUsageMetadataArrayResponseResolver =
+    std::function<void(OriginUsageMetadataArrayResponse&&)>;
+using UsageInfoResponseResolver = std::function<void(const UsageInfoResponse&)>;
 
 }  // namespace dom::quota
 

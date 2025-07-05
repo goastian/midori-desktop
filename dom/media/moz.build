@@ -139,7 +139,6 @@ EXPORTS += [
     "AudioSegment.h",
     "AudioStream.h",
     "BackgroundVideoDecodingPermissionObserver.h",
-    "Benchmark.h",
     "BitReader.h",
     "BitWriter.h",
     "BufferMediaResource.h",
@@ -263,7 +262,6 @@ UNIFIED_SOURCES += [
     "AudioTrackList.cpp",
     "BackgroundVideoDecodingPermissionObserver.cpp",
     "BaseMediaResource.cpp",
-    "Benchmark.cpp",
     "BitReader.cpp",
     "BitWriter.cpp",
     "CallbackThreadRegistry.cpp",
@@ -297,6 +295,7 @@ UNIFIED_SOURCES += [
     "MediaPlaybackDelayPolicy.cpp",
     "MediaRecorder.cpp",
     "MediaResource.cpp",
+    "MediaResult.cpp",
     "MediaShutdownManager.cpp",
     "MediaStreamError.cpp",
     "MediaStreamTrack.cpp",
@@ -371,8 +370,8 @@ LOCAL_INCLUDES += [
 if CONFIG["MOZ_WEBRTC"]:
     LOCAL_INCLUDES += [
         "/dom/media/webrtc/common",
+        "/third_party/abseil-cpp",
         "/third_party/libwebrtc",
-        "/third_party/libwebrtc/third_party/abseil-cpp",
     ]
 
 DEFINES["MOZILLA_INTERNAL_API"] = True
@@ -401,7 +400,12 @@ if CONFIG["ENABLE_TESTS"]:
         "test/rdd_process_xpcom",
     ]
 
+if CONFIG["MOZ_SYSTEM_AV1"]:
+    CXXFLAGS += CONFIG["MOZ_SYSTEM_LIBAOM_CFLAGS"]
+
 include("/ipc/chromium/chromium-config.mozbuild")
+
+LOCAL_INCLUDES += CONFIG["SKIA_INCLUDES"]
 
 # Suppress some GCC warnings being treated as errors:
 #  - about attributes on forward declarations for types that are already
@@ -414,3 +418,5 @@ if CONFIG["CC_TYPE"] in ("clang", "gcc"):
 CXXFLAGS += ["-Werror=switch"]
 
 FINAL_LIBRARY = "xul"
+
+SPHINX_TREES["/media"] = "docs"

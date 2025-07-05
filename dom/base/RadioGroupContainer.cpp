@@ -65,7 +65,7 @@ void RadioGroupContainer::Traverse(RadioGroupContainer* tmp,
 
 size_t RadioGroupContainer::SizeOfIncludingThis(
     MallocSizeOf aMallocSizeOf) const {
-  return mRadioGroups.SizeOfIncludingThis(aMallocSizeOf);
+  return aMallocSizeOf(this) + mRadioGroups.SizeOfExcludingThis(aMallocSizeOf);
 }
 
 nsresult RadioGroupContainer::WalkRadioGroup(const nsAString& aName,
@@ -79,6 +79,16 @@ nsresult RadioGroupContainer::WalkRadioGroup(const nsAString& aName,
   }
 
   return NS_OK;
+}
+
+void RadioGroupContainer::WalkRadioGroup(const nsAString& aName,
+                                         const VisitCallback& aCallback) {
+  nsRadioGroupStruct* radioGroup = GetOrCreateRadioGroup(aName);
+  for (HTMLInputElement* button : radioGroup->mRadioButtons.AsList()) {
+    if (!aCallback(button)) {
+      return;
+    }
+  }
 }
 
 void RadioGroupContainer::SetCurrentRadioButton(const nsAString& aName,

@@ -16,7 +16,6 @@
 #include "nsIURL.h"
 
 #include "nsWhitespaceTokenizer.h"
-#include "nsAlgorithm.h"
 #include "nsContentUtils.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsScriptSecurityManager.h"
@@ -33,7 +32,7 @@
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StorageAccess.h"
 #include "mozilla/StyleSheet.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/DomSecurityMetrics.h"
 #include "nsIWebProgressListener.h"
 
 static mozilla::LazyLogModule gReferrerInfoLog("ReferrerInfo");
@@ -182,28 +181,28 @@ ReferrerPolicy ReferrerInfo::ReferrerPolicyFromHeaderString(
 
 /* static */
 uint32_t ReferrerInfo::GetUserReferrerSendingPolicy() {
-  return clamped<uint32_t>(
+  return std::clamp<uint32_t>(
       StaticPrefs::network_http_sendRefererHeader_DoNotUseDirectly(),
       MIN_REFERRER_SENDING_POLICY, MAX_REFERRER_SENDING_POLICY);
 }
 
 /* static */
 uint32_t ReferrerInfo::GetUserXOriginSendingPolicy() {
-  return clamped<uint32_t>(
+  return std::clamp<uint32_t>(
       StaticPrefs::network_http_referer_XOriginPolicy_DoNotUseDirectly(),
       MIN_CROSS_ORIGIN_SENDING_POLICY, MAX_CROSS_ORIGIN_SENDING_POLICY);
 }
 
 /* static */
 uint32_t ReferrerInfo::GetUserTrimmingPolicy() {
-  return clamped<uint32_t>(
+  return std::clamp<uint32_t>(
       StaticPrefs::network_http_referer_trimmingPolicy_DoNotUseDirectly(),
       MIN_TRIMMING_POLICY, MAX_TRIMMING_POLICY);
 }
 
 /* static */
 uint32_t ReferrerInfo::GetUserXOriginTrimmingPolicy() {
-  return clamped<uint32_t>(
+  return std::clamp<uint32_t>(
       StaticPrefs::
           network_http_referer_XOriginTrimmingPolicy_DoNotUseDirectly(),
       MIN_TRIMMING_POLICY, MAX_TRIMMING_POLICY);
@@ -860,7 +859,8 @@ void ReferrerInfo::LogMessageToConsole(
   }
 
   rv = nsContentUtils::ReportToConsoleByWindowID(
-      localizedMsg, nsIScriptError::infoFlag, "Security"_ns, windowID, uri);
+      localizedMsg, nsIScriptError::infoFlag, "Security"_ns, windowID,
+      SourceLocation(std::move(uri)));
   Unused << NS_WARN_IF(NS_FAILED(rv));
 }
 
@@ -948,8 +948,10 @@ ReferrerInfo::ReferrerInfo()
       mInitialized(false),
       mOverridePolicyByDefault(false) {}
 
-ReferrerInfo::ReferrerInfo(const Document& aDoc) : ReferrerInfo() {
+ReferrerInfo::ReferrerInfo(const Document& aDoc, const bool aSendReferrer)
+    : ReferrerInfo() {
   InitWithDocument(&aDoc);
+  mSendReferrer = aSendReferrer;
 }
 
 ReferrerInfo::ReferrerInfo(const Element& aElement) : ReferrerInfo() {
@@ -996,13 +998,6 @@ already_AddRefed<ReferrerInfo> ReferrerInfo::CloneWithNewPolicy(
   RefPtr<ReferrerInfo> copy(new ReferrerInfo(*this));
   copy->mPolicy = aPolicy;
   copy->mOriginalPolicy = aPolicy;
-  return copy.forget();
-}
-
-already_AddRefed<ReferrerInfo> ReferrerInfo::CloneWithNewSendReferrer(
-    bool aSendReferrer) const {
-  RefPtr<ReferrerInfo> copy(new ReferrerInfo(*this));
-  copy->mSendReferrer = aSendReferrer;
   return copy.forget();
 }
 
@@ -1309,6 +1304,18 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
   // referrer.
   mComputedReferrer.emplace(""_ns);
 
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
+  nsCOMPtr<nsIPrincipal> triggeringPrincipal = loadInfo->TriggeringPrincipal();
+
+  // Special treatment for resources injected by add-ons.
+  if (triggeringPrincipal &&
+      StaticPrefs::privacy_antitracking_isolateContentScriptResources() &&
+      triggeringPrincipal->GetIsAddonOrExpandedAddonPrincipal()) {
+    mPolicy = ReferrerPolicy::No_referrer;
+    mOverridePolicyByDefault = true;
+    return NS_OK;
+  }
+
   if (!mSendReferrer || !mOriginalReferrer ||
       mPolicy == ReferrerPolicy::No_referrer) {
     return NS_OK;
@@ -1316,9 +1323,8 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
 
   if (mPolicy == ReferrerPolicy::_empty ||
       ShouldIgnoreLessRestrictedPolicies(aChannel, mOriginalPolicy)) {
-    nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
     OriginAttributes attrs = loadInfo->GetOriginAttributes();
-    bool isPrivate = attrs.mPrivateBrowsingId > 0;
+    bool isPrivate = attrs.IsPrivateBrowsing();
 
     nsCOMPtr<nsIURI> uri;
     rv = aChannel->GetURI(getter_AddRefs(uri));
@@ -1700,8 +1706,8 @@ void ReferrerInfo::RecordTelemetry(nsIHttpChannel* aChannel) {
                 1
           : 0;
 
-  Telemetry::Accumulate(Telemetry::REFERRER_POLICY_COUNT,
-                        static_cast<uint32_t>(mPolicy) + telemetryOffset);
+  glean::security::referrer_policy_count.AccumulateSingleSample(
+      static_cast<uint32_t>(mPolicy) + telemetryOffset);
 }
 
 }  // namespace mozilla::dom

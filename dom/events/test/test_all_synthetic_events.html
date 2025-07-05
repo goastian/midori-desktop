@@ -221,10 +221,6 @@ const kEventConstructors = {
   MouseScrollEvent:                          { create: null
                                                // Cannot create untrusted event from JS
                                              },
-  MozApplicationEvent:                       { create (aName, aProps) {
-                                                         return new MozApplicationEvent(aName, aProps);
-                                                       },
-                                             },
   MozClirModeEvent:                          { create (aName, aProps) {
                                                          return new MozClirModeEvent(aName, aProps);
                                                        },
@@ -484,7 +480,6 @@ function test() {
 SimpleTest.waitForExplicitFinish();
 SpecialPowers.pushPrefEnv(
   {"set": [["dom.w3c_touch_events.legacy_apis.enabled", true],
-           ["layout.css.content-visibility.enabled", true],
            ["dom.events.textevent.enabled", true]]},
   function() {
     test();

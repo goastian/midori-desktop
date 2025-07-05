@@ -7,14 +7,22 @@
 #ifndef mozilla_EncoderConfig_h_
 #define mozilla_EncoderConfig_h_
 
-#include "mozilla/dom/ImageBitmapBinding.h"
 #include "H264.h"
+#include "MediaResult.h"
+#include "mozilla/Result.h"
+#include "mozilla/Variant.h"
+#include "mozilla/dom/ImageBitmapBinding.h"
 
 namespace mozilla {
+
+namespace layers {
+class Image;
+}  // namespace layers
 
 enum class CodecType {
   _BeginVideo_,
   H264,
+  H265,
   VP8,
   VP9,
   AV1,
@@ -114,19 +122,80 @@ struct VP9Specific : public VP8Specific {
 // instance are to be ignored, and are set at their default value.
 class EncoderConfig final {
  public:
-  using PixelFormat = dom::ImageBitmapFormat;
   using CodecSpecific =
       Variant<H264Specific, OpusSpecific, VP8Specific, VP9Specific>;
+
+  struct VideoColorSpace {
+    Maybe<gfx::ColorRange> mRange;
+    Maybe<gfx::YUVColorSpace> mMatrix;
+    Maybe<gfx::ColorSpace2> mPrimaries;
+    Maybe<gfx::TransferFunction> mTransferFunction;
+
+    VideoColorSpace() = default;
+    VideoColorSpace(const gfx::ColorRange& aColorRange,
+                    const gfx::YUVColorSpace& aMatrix,
+                    const gfx::ColorSpace2& aPrimaries,
+                    const gfx::TransferFunction& aTransferFunction)
+        : mRange(Some(aColorRange)),
+          mMatrix(Some(aMatrix)),
+          mPrimaries(Some(aPrimaries)),
+          mTransferFunction(Some(aTransferFunction)) {}
+
+    bool operator==(const VideoColorSpace& aOther) const {
+      return mRange == aOther.mRange && mMatrix == aOther.mMatrix &&
+             mPrimaries == aOther.mPrimaries &&
+             mTransferFunction == aOther.mTransferFunction;
+    }
+    bool operator!=(const VideoColorSpace& aOther) const {
+      return !(*this == aOther);
+    }
+    nsCString ToString() const;
+  };
+
+  struct SampleFormat {
+    dom::ImageBitmapFormat mPixelFormat;
+    VideoColorSpace mColorSpace;
+
+    SampleFormat(const dom::ImageBitmapFormat& aPixelFormat,
+                 const VideoColorSpace& aColorSpace)
+        : mPixelFormat(aPixelFormat), mColorSpace(aColorSpace) {}
+    explicit SampleFormat(const dom::ImageBitmapFormat& aPixelFormat)
+        : mPixelFormat(aPixelFormat) {}
+    SampleFormat() = default;
+
+    bool operator==(const SampleFormat& aOther) const {
+      return mPixelFormat == aOther.mPixelFormat &&
+             mColorSpace == aOther.mColorSpace;
+    }
+    bool operator!=(const SampleFormat& aOther) const {
+      return !(*this == aOther);
+    }
+
+    nsCString ToString() const;
+
+    bool IsRGB32() const {
+      return mPixelFormat == dom::ImageBitmapFormat::BGRA32 ||
+             mPixelFormat == dom::ImageBitmapFormat::RGBA32;
+    }
+    bool IsYUV() const {
+      return mPixelFormat == dom::ImageBitmapFormat::YUV444P ||
+             mPixelFormat == dom::ImageBitmapFormat::YUV422P ||
+             mPixelFormat == dom::ImageBitmapFormat::YUV420P ||
+             mPixelFormat == dom::ImageBitmapFormat::YUV420SP_NV12 ||
+             mPixelFormat == dom::ImageBitmapFormat::YUV420SP_NV21;
+    }
+
+    static Result<SampleFormat, MediaResult> FromImage(layers::Image* aImage);
+  };
 
   EncoderConfig(const EncoderConfig& aConfig) = default;
 
   // This constructor is used for video encoders
   EncoderConfig(const CodecType aCodecType, gfx::IntSize aSize,
-                const Usage aUsage, const PixelFormat aPixelFormat,
-                const PixelFormat aSourcePixelFormat, const uint8_t aFramerate,
-                const size_t aKeyframeInterval, const uint32_t aBitrate,
-                const uint32_t aMinBitrate, const uint32_t aMaxBitrate,
-                const BitrateMode aBitrateMode,
+                const Usage aUsage, const SampleFormat& aFormat,
+                const uint32_t aFramerate, const size_t aKeyframeInterval,
+                const uint32_t aBitrate, const uint32_t aMinBitrate,
+                const uint32_t aMaxBitrate, const BitrateMode aBitrateMode,
                 const HardwarePreference aHardwarePreference,
                 const ScalabilityMode aScalabilityMode,
                 const Maybe<CodecSpecific>& aCodecSpecific)
@@ -138,8 +207,7 @@ class EncoderConfig final {
         mMaxBitrate(aMaxBitrate),
         mUsage(aUsage),
         mHardwarePreference(aHardwarePreference),
-        mPixelFormat(aPixelFormat),
-        mSourcePixelFormat(aSourcePixelFormat),
+        mFormat(aFormat),
         mScalabilityMode(aScalabilityMode),
         mFramerate(aFramerate),
         mKeyframeInterval(aKeyframeInterval),
@@ -181,10 +249,9 @@ class EncoderConfig final {
   Usage mUsage{};
   // Video-only
   HardwarePreference mHardwarePreference{};
-  PixelFormat mPixelFormat{};
-  PixelFormat mSourcePixelFormat{};
+  SampleFormat mFormat{};
   ScalabilityMode mScalabilityMode{};
-  uint8_t mFramerate{};
+  uint32_t mFramerate{};
   size_t mKeyframeInterval{};
   // Audio-only
   uint32_t mNumberOfChannels{};

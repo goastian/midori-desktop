@@ -1,5 +1,5 @@
 import { assert, unreachable } from '../../../../../common/util/util.js';
-import { kTextureFormatInfo, EncodableTextureFormat } from '../../../../format_info.js';
+import { EncodableTextureFormat } from '../../../../format_info.js';
 import { virtualMipSize } from '../../../../util/texture/base.js';
 import {
   kTexelRepresentationInfo,
@@ -16,7 +16,6 @@ export const checkContentsBySampling: CheckContents = (
   state,
   subresourceRange
 ) => {
-  assert(params.format in kTextureFormatInfo);
   const format = params.format as EncodableTextureFormat;
   const rep = kTexelRepresentationInfo[format];
 
@@ -96,7 +95,7 @@ export const checkContentsBySampling: CheckContents = (
     });
 
     for (const layer of layers) {
-      const ubo = t.device.createBuffer({
+      const ubo = t.createBufferTracked({
         mappedAtCreation: true,
         size: 8,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -106,11 +105,10 @@ export const checkContentsBySampling: CheckContents = (
 
       const byteLength =
         width * height * depth * ReadbackTypedArray.BYTES_PER_ELEMENT * rep.componentOrder.length;
-      const resultBuffer = t.device.createBuffer({
+      const resultBuffer = t.createBufferTracked({
         size: byteLength,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
       });
-      t.trackForCleanup(resultBuffer);
 
       const viewDescriptor: GPUTextureViewDescriptor = {
         ...(!t.isCompatibility && {
@@ -140,7 +138,7 @@ export const checkContentsBySampling: CheckContents = (
         ],
       });
 
-      const commandEncoder = t.device.createCommandEncoder();
+      const commandEncoder = t.device.createCommandEncoder({ label: 'checkContentsBySampling' });
       const pass = commandEncoder.beginComputePass();
       pass.setPipeline(computePipeline);
       pass.setBindGroup(0, bindGroup);

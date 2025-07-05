@@ -28,6 +28,7 @@
 #include "jsep/JsepSession.h"
 #include "jsep/JsepSessionImpl.h"
 #include "sdp/SdpMediaSection.h"
+#include "DefaultCodecPreferences.h"
 
 #include "mozilla/ErrorResult.h"
 #include "jsapi/PacketDumper.h"
@@ -142,7 +143,7 @@ class PCUuidGenerator : public mozilla::JsepUuidGenerator {
 // elapsed time is recorded in seconds.
 struct PeerConnectionAutoTimer {
   PeerConnectionAutoTimer()
-      : mRefCnt(0), mStart(TimeStamp::Now()), mUsedAV(false){};
+      : mRefCnt(0), mStart(TimeStamp::Now()), mUsedAV(false) {};
   void RegisterConnection();
   void UnregisterConnection(bool aContainedAV);
   bool IsStopped();
@@ -195,6 +196,11 @@ class PeerConnectionImpl final
   static already_AddRefed<PeerConnectionImpl> Constructor(
       const mozilla::dom::GlobalObject& aGlobal);
 
+  static DefaultCodecPreferences GetDefaultCodecPreferences(
+      const OverrideRtxPreference aOverrideRtxPreference =
+          OverrideRtxPreference::NoOverride) {
+    return DefaultCodecPreferences(aOverrideRtxPreference);
+  }
   // DataConnection observers
   void NotifyDataChannel(already_AddRefed<mozilla::DataChannel> aChannel)
       // PeerConnectionImpl only inherits from mozilla::DataChannelConnection
@@ -346,6 +352,8 @@ class PeerConnectionImpl final
            PrincipalPrivacy::Private;
   }
 
+  bool DuplicateFingerprintQuirk() { return mDuplicateFingerprintQuirk; }
+
   NS_IMETHODIMP GetFingerprint(char** fingerprint);
   void GetFingerprint(nsAString& fingerprint) {
     char* tmp;
@@ -413,6 +421,8 @@ class PeerConnectionImpl final
   void RestartIceNoRenegotiationNeeded();
 
   void RecordEndOfCallTelemetry();
+
+  void RecordSignalingTelemetry() const;
 
   nsresult MaybeInitializeDataChannel();
 
@@ -532,11 +542,6 @@ class PeerConnectionImpl final
     return mTimestampMaker;
   }
 
-  // Utility function, given a string pref and an URI, returns whether or not
-  // the URI occurs in the pref. Wildcards are supported (e.g. *.example.com)
-  // and multiple hostnames can be present, separated by commas.
-  static bool HostnameInPref(const char* aPrefList, const nsCString& aHostName);
-
   void StampTimecard(const char* aEvent);
 
   bool RelayOnly() const {
@@ -578,7 +583,7 @@ class PeerConnectionImpl final
 
   static void GetDefaultVideoCodecs(
       std::vector<UniquePtr<JsepCodecDescription>>& aSupportedCodecs,
-      bool aUseRtx);
+      const OverrideRtxPreference aOverrideRtxPreference);
 
   static void GetDefaultAudioCodecs(
       std::vector<UniquePtr<JsepCodecDescription>>& aSupportedCodecs);
@@ -868,6 +873,8 @@ class PeerConnectionImpl final
 
   // See Bug 1642419, this can be removed when all sites are working with RTX.
   bool mRtxIsAllowed = true;
+
+  bool mDuplicateFingerprintQuirk = false;
 
   nsTArray<RefPtr<Operation>> mOperations;
   bool mChainingOperation = false;

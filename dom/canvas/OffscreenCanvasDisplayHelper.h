@@ -11,6 +11,7 @@
 #include "GLContextTypes.h"
 #include "mozilla/dom/CanvasRenderingContextHelper.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Mutex.h"
@@ -30,7 +31,6 @@ struct OffscreenCanvasDisplayData final {
   bool mIsOpaque = true;
   bool mIsAlphaPremult = true;
   mozilla::gl::OriginPos mOriginPos = gl::OriginPos::TopLeft;
-  Maybe<layers::RemoteTextureOwnerId> mOwnerId;
 };
 
 class OffscreenCanvasDisplayHelper final {
@@ -46,12 +46,12 @@ class OffscreenCanvasDisplayHelper final {
 
   void UpdateContext(OffscreenCanvas* aOffscreenCanvas,
                      RefPtr<ThreadSafeWorkerRef>&& aWorkerRef,
-                     CanvasContextType aType, const Maybe<int32_t>& aChildId);
+                     CanvasContextType aType,
+                     const Maybe<mozilla::ipc::ActorId>& aChildId);
 
   void FlushForDisplay();
 
   bool CommitFrameToCompositor(nsICanvasRenderingContextInternal* aContext,
-                               layers::TextureType aTextureType,
                                const Maybe<OffscreenCanvasDisplayData>& aData);
 
   void DestroyCanvas();
@@ -85,7 +85,7 @@ class OffscreenCanvasDisplayHelper final {
   OffscreenCanvasDisplayData mData MOZ_GUARDED_BY(mMutex);
   CanvasContextType mType MOZ_GUARDED_BY(mMutex) = CanvasContextType::NoContext;
   Maybe<uint32_t> mContextManagerId MOZ_GUARDED_BY(mMutex);
-  Maybe<int32_t> mContextChildId MOZ_GUARDED_BY(mMutex);
+  Maybe<mozilla::ipc::ActorId> mContextChildId MOZ_GUARDED_BY(mMutex);
   const mozilla::layers::ImageContainer::ProducerID mImageProducerID;
   mozilla::layers::ImageContainer::FrameID mLastFrameID MOZ_GUARDED_BY(mMutex) =
       0;

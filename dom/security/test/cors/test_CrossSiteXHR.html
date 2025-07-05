@@ -31,9 +31,6 @@ function initTest() {
       // Bug 1617611: Fix all the tests broken by "cookies SameSite=lax by default"
       ["network.cookie.sameSite.laxByDefault", false],
       ["network.cors_preflight.authorization_covered_by_wildcard", false],
-      // Disable CHIPS for now because it breaks this test. We will fix this
-      // issue in Bug 1873982
-      ["network.cookie.CHIPS.enabled", false],
 	  ]
   }, initTestCallback);
 }
@@ -48,6 +45,59 @@ function initTestCallback() {
   gen.next()
 }
 
+async function clearCORSPreflightCacheTest() {
+  // need to be on the parent process to access cors-preflight-cache service to:
+  // send the CORS preflight cache length to the content process (before clearing)
+  // clear the CORS preflight cache
+  // and send the cache length again (after clearing)
+  let script = SpecialPowers.loadChromeScript(function() {
+    addMessageListener("start", function(principal) {
+      try {
+        let preflightCache = Cc["@mozilla.org/network/cors-preflight-cache;1"]
+                                .getService(Ci.nsICORSPreflightCache);
+        let entries = preflightCache.getEntries(principal);
+        sendAsyncMessage("before", entries.length);
+
+        for (let entry of entries) {
+          preflightCache.clearEntry(entry);
+        }
+
+        let afterEntries = preflightCache.getEntries(principal);
+        sendAsyncMessage("after", afterEntries.length);
+      } catch (e) {
+        console.error("Failed to get or clear the CORS preflight cache", e);
+        sendAsyncMessage("before", -1);
+        sendAsyncMessage("after", -1);
+      }
+    });
+  });
+
+  // document.location.origin varies depending on --enable-xorigin-tests:
+  // .com or .org
+  // we pass the "opposite" url to the parent process (as principal)
+  let url = (document.location.origin == "https://example.org") ?
+      "https://example.com" : "https://example.org";
+  let oa = SpecialPowers.wrap(document).nodePrincipal.originAttributes;
+  let principal = SpecialPowers.Services.scriptSecurityManager
+      .createContentPrincipal(SpecialPowers.Services.io.newURI(url), oa);
+  script.sendAsyncMessage("start", principal);
+
+  // on the content process:
+  // assert on the expected CORS preflight cache sizes, before and after
+  await script.promiseOneMessage("before").then(val => {
+    // This check depends on the number of preflight cache items created
+    // by other tests in this file.
+    // For our purposes here, it is important only that the value is valid and
+    // indicating existing entries in the CORS preflight cache (positive values)
+    ok(val > 0, "CORS preflight cache size before clearing as expected");
+  });
+  await script.promiseOneMessage("after").then(val => {
+    is(val, 0, "CORS preflight cache empty after clearing");
+  });
+
+  SimpleTest.finish();
+}
+
 // eslint-disable-next-line complexity
 function* runTest() {
   var loader = document.getElementById('loader');
@@ -56,11 +106,14 @@ function* runTest() {
 
   // Test preflight-less requests
   basePath = "/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?"
-  baseURL = "http://mochi.test:8888" + basePath;
+  base = self.location.origin;
+  baseHost = self.location.host;
+  baseURL = base + basePath;
 
   // Test preflighted requests
-  loader.src = "http://example.org/tests/dom/security/test/cors/file_CrossSiteXHR_inner.html";
-  origin = "http://example.org";
+  origin = (base == "https://example.com") ? "https://example.org" : "https://example.com";
+  originHost = (baseHost == "example.com") ? "example.org" : "example.com";
+  loader.src = origin + "/tests/dom/security/test/cors/file_CrossSiteXHR_inner.html";
   yield undefined;
 
   tests =     [// Plain request
@@ -630,7 +683,7 @@ function* runTest() {
                },
                { pass: 0,
                  method: "GET",
-                 origin: "http://invalid",
+                 origin: "https://invalid",
                  responseHeaders: { "x-my-header": "x header" },
                  exposeHeaders: "x-my-header",
                  expectedResponseHeaders: [],
@@ -866,7 +919,7 @@ function* runTest() {
            },
            { pass: 1,
              method: "GET",
-             setCookie: "a=1",
+             setCookie: "a=1; Partitioned; Secure; SameSite=None",
              withCred: 1,
              allowCred: 1,
            },
@@ -890,7 +943,7 @@ function* runTest() {
            },
            { pass: 1,
              method: "GET",
-             setCookie: "a=2",
+             setCookie: "a=2; Partitioned; Secure; SameSite=None",
              withCred: 0,
              allowCred: 1,
            },
@@ -902,7 +955,7 @@ function* runTest() {
            },
            { pass: 1,
              method: "GET",
-             setCookie: "a=2",
+             setCookie: "a=2; Partitioned; Secure; SameSite=None",
              withCred: 1,
              allowCred: 1,
            },
@@ -975,176 +1028,173 @@ function* runTest() {
   }
 
   // Make sure to clear cookies to avoid affecting other tests
-  document.cookie = "a=; path=/; expires=Thu, 01-Jan-1970 00:00:01 GMT"
+  document.cookie = "a=; partitioned; secure; samesite=none; path=/; expires=Thu, 01-Jan-1970 00:00:01 GMT"
   is(document.cookie, "", "No cookies should be left over");
 
+  var otherURL = "https://example.net";
 
   // Test redirects
-  is(loader.src, "http://example.org/tests/dom/security/test/cors/file_CrossSiteXHR_inner.html");
-  is(origin, "http://example.org");
-
   tests = [{ pass: 1,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server:  otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 1,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server:  otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                       allowOrigin: "*"
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server:  otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                     },
                     ],
            },
            { pass: 1,
              method: "GET",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                     },
-                    { server: "http://example.com",
+                    { server:  otherURL,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: origin
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: origin
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: origin
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: "*"
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: "*"
                     },
                     ],
            },
            { pass: 1,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: "*"
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: "*"
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: "*"
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: origin
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: "x"
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: origin
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: "*"
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin
                     },
                     ],
            },
            { pass: 0,
              method: "GET",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin
                     },
-                    { server: "http://test2.example.org:8000",
+                    { server: "https://test3." + originHost + ":443",
                       allowOrigin: origin
                     },
-                    { server: "http://sub2.xn--lt-uia.example.org",
+                    { server: "https://sub2.test2." + originHost,
                       allowOrigin: "*"
                     },
-                    { server: "http://sub1.test1.example.org",
-                    },
+                    { server: "https://sub1.test1." + originHost },
                     ],
            },
            { pass: 1,
              method: "POST",
              body: "hi there",
              headers: { "Content-Type": "text/plain" },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                     },
                     ],
@@ -1155,9 +1205,9 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
@@ -1169,13 +1219,13 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
@@ -1187,13 +1237,13 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: "*",
                       allowHeaders: "my-header",
                     },
@@ -1205,31 +1255,13 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
-                    { server: "http://example.com",
-                      allowOrigin: origin,
-                      allowHeaders: "my-header",
-                    },
-                    ],
-           },
-           { pass: 0,
-             method: "POST",
-             body: "hi there",
-             headers: { "Content-Type": "text/plain",
-                        "my-header": "myValue",
-                      },
-             hops: [{ server: "http://example.org",
-                    },
-                    { server: "http://example.com",
-                      allowOrigin: origin,
-                      allowHeaders: "my-header",
-                    },
-                    { server: "http://example.org",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
@@ -1241,9 +1273,27 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
+                      allowOrigin: origin,
+                      allowHeaders: "my-header",
+                    },
+                    { server: origin,
+                      allowOrigin: origin,
+                      allowHeaders: "my-header",
+                    },
+                    ],
+           },
+           { pass: 0,
+             method: "POST",
+             body: "hi there",
+             headers: { "Content-Type": "text/plain",
+                        "my-header": "myValue",
+                      },
+             hops: [{ server: origin,
+                    },
+                    { server: otherURL,
                       allowOrigin: origin,
                       noAllowPreflight: 1,
                     },
@@ -1251,9 +1301,9 @@ function* runTest() {
            },
            { pass: 1,
              method: "DELETE",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
@@ -1261,13 +1311,13 @@ function* runTest() {
            },
            { pass: 0,
              method: "DELETE",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
@@ -1275,13 +1325,13 @@ function* runTest() {
            },
            { pass: 1,
              method: "DELETE",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: "*",
                       allowMethods: "DELETE",
                     },
@@ -1289,27 +1339,13 @@ function* runTest() {
            },
            { pass: 1,
              method: "DELETE",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
-                    { server: "http://example.com",
-                      allowOrigin: origin,
-                      allowMethods: "DELETE",
-                    },
-                    ],
-           },
-           { pass: 0,
-             method: "DELETE",
-             hops: [{ server: "http://example.org",
-                    },
-                    { server: "http://example.com",
-                      allowOrigin: origin,
-                      allowMethods: "DELETE",
-                    },
-                    { server: "http://example.org",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                     },
@@ -1317,9 +1353,23 @@ function* runTest() {
            },
            { pass: 0,
              method: "DELETE",
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
+                      allowOrigin: origin,
+                      allowMethods: "DELETE",
+                    },
+                    { server: origin,
+                      allowOrigin: origin,
+                      allowMethods: "DELETE",
+                    },
+                    ],
+           },
+           { pass: 0,
+             method: "DELETE",
+             hops: [{ server: origin,
+                    },
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowMethods: "DELETE",
                       noAllowPreflight: 1,
@@ -1332,20 +1382,20 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin,
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin,
                     },
                     ],
            },
            { pass: 0,
              method: "DELETE",
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin,
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin,
                     },
                     ],
@@ -1356,9 +1406,9 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                     },
-                    { server: "http://sub1.test1.example.org",
+                    { server: "https://sub1.test1." + originHost,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
@@ -1368,9 +1418,9 @@ function* runTest() {
              method: "POST",
              body: "hi there",
              headers: { "Content-Type": "text/plain" },
-             hops: [{ server: "http://example.org",
+             hops: [{ server: origin,
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                     },
                     ],
@@ -1381,11 +1431,11 @@ function* runTest() {
              headers: { "Content-Type": "text/plain",
                         "my-header": "myValue",
                       },
-             hops: [{ server: "http://example.com",
+             hops: [{ server: otherURL,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
-                    { server: "http://example.org",
+                    { server: origin,
                       allowOrigin: origin,
                       allowHeaders: "my-header",
                     },
@@ -1398,12 +1448,12 @@ function* runTest() {
              pass: 1,
              method: "GET",
              hops: [{ server: origin,
-                      setCookie: escape("a=1"),
+                      setCookie: escape("a=1; Partitioned; Secure; SameSite=None"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowCred: 1,
-                      setCookie: escape("a=2"),
+                      setCookie: escape("a=2; Partitioned; Secure; SameSite=None"),
                     },
                     ],
              withCred: 1,
@@ -1416,7 +1466,7 @@ function* runTest() {
                     { server: origin,
                       cookie: escape("a=1"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       noCookie: 1,
                     },
@@ -1431,7 +1481,7 @@ function* runTest() {
                     { server: origin,
                       cookie: escape("a=1"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       allowCred: 1,
                       cookie: escape("a=2"),
@@ -1448,7 +1498,7 @@ function* runTest() {
                     { server: origin,
                       cookie: escape("a=1"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: origin,
                       cookie: escape("a=2"),
                     },
@@ -1463,7 +1513,7 @@ function* runTest() {
                     { server: origin,
                       cookie: escape("a=1"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: '*',
                       noCookie: 1,
                     },
@@ -1478,7 +1528,7 @@ function* runTest() {
                     { server: origin,
                       cookie: escape("a=1"),
                     },
-                    { server: "http://example.com",
+                    { server: otherURL,
                       allowOrigin: '*',
                       allowCred: 1,
                       cookie: escape("a=2"),
@@ -1540,10 +1590,10 @@ function* runTest() {
     }
   }
 
-
   SpecialPowers.clearUserPref("network.cookie.sameSite.laxByDefault");
   SpecialPowers.clearUserPref("browser.contentblocking.category");
-  SimpleTest.finish();
+
+  clearCORSPreflightCacheTest();
 }
 
 </script>

@@ -11,6 +11,7 @@
 #include "nsRefreshDriver.h"
 #include "nsCSSProps.h"
 #include "mozilla/dom/AnimationEffect.h"
+#include "nsGlobalWindowInner.h"
 
 using namespace mozilla;
 
@@ -99,35 +100,36 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(AnimationEventDispatcher)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 void AnimationEventDispatcher::Disconnect() {
-  if (mIsObserving) {
-    MOZ_ASSERT(mPresContext && mPresContext->RefreshDriver(),
-               "The pres context and the refresh driver should be still "
-               "alive if we haven't disassociated from the refresh driver");
-    mPresContext->RefreshDriver()->CancelPendingAnimationEvents(this);
-    mIsObserving = false;
-  }
+  ClearEventQueue();
   mPresContext = nullptr;
 }
 
 void AnimationEventDispatcher::QueueEvent(AnimationEventInfo&& aEvent) {
+  const bool wasEmpty = mPendingEvents.IsEmpty();
   mPendingEvents.AppendElement(std::move(aEvent));
-  mIsSorted = false;
-  ScheduleDispatch();
+  mIsSorted = !wasEmpty;
+  if (wasEmpty) {
+    ScheduleDispatch();
+  }
 }
 
 void AnimationEventDispatcher::QueueEvents(
     nsTArray<AnimationEventInfo>&& aEvents) {
+  if (aEvents.IsEmpty()) {
+    return;
+  }
+  const bool wasEmpty = mPendingEvents.IsEmpty();
   mPendingEvents.AppendElements(std::move(aEvents));
   mIsSorted = false;
-  ScheduleDispatch();
+  if (wasEmpty) {
+    ScheduleDispatch();
+  }
 }
 
 void AnimationEventDispatcher::ScheduleDispatch() {
   MOZ_ASSERT(mPresContext, "The pres context should be valid");
-  if (!mIsObserving) {
-    mPresContext->RefreshDriver()->ScheduleAnimationEventDispatch(this);
-    mIsObserving = true;
-  }
+  mPresContext->RefreshDriver()->ScheduleRenderingPhase(
+      RenderingPhase::UpdateAnimationsAndSendEvents);
 }
 
 void AnimationEventInfo::MaybeAddMarker() const {
@@ -185,8 +187,8 @@ void AnimationEventInfo::MaybeAddMarker() const {
         DOM,
         MarkerOptions(
             MarkerTiming::Interval(startTime, mScheduledEventTimeStamp),
-            mAnimation->GetOwner()
-                ? MarkerInnerWindowId(mAnimation->GetOwner()->WindowID())
+            mAnimation->GetOwnerWindow()
+                ? MarkerInnerWindowId(mAnimation->GetOwnerWindow()->WindowID())
                 : MarkerInnerWindowId::NoId()),
         CSSAnimationMarker, name, NS_ConvertUTF16toUTF8(target), properties,
         oncompositor);
@@ -226,8 +228,8 @@ void AnimationEventInfo::MaybeAddMarker() const {
               mScheduledEventTimeStamp -
                   TimeDuration::FromSeconds(data.mElapsedTime),
               mScheduledEventTimeStamp),
-          mAnimation->GetOwner()
-              ? MarkerInnerWindowId(mAnimation->GetOwner()->WindowID())
+          mAnimation->GetOwnerWindow()
+              ? MarkerInnerWindowId(mAnimation->GetOwnerWindow()->WindowID())
               : MarkerInnerWindowId::NoId()),
       CSSTransitionMarker, NS_ConvertUTF16toUTF8(target), property,
       onCompositor, message == eTransitionCancel);

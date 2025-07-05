@@ -1,5 +1,7 @@
 {
-  "target_dir": "third_party/libwebrtc",
+  "build_root_dir": "third_party",
+  "target_dir": "libwebrtc",
+  "moz_build_flag": "build_mozilla_webrtc",
   "gn_target": "//:webrtc",
   "gn_sandbox_variables": {
     "COMPILE_FLAGS": {
@@ -13,6 +15,23 @@
       "third_party/libwebrtc/modules/desktop_capture/desktop_capture_gn",
       "third_party/libwebrtc/modules/portal/portal_gn",
       "third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn"
+    ],
+    "INCLUDE_SYSTEM_GBM_HANDLING": [
+      "third_party/libwebrtc/modules/desktop_capture/desktop_capture_gn",
+      "third_party/libwebrtc/modules/portal/portal_gn"
+    ],
+    "INCLUDE_SYSTEM_LIBDRM_HANDLING": [
+      "third_party/libwebrtc/modules/desktop_capture/desktop_capture_gn",
+      "third_party/libwebrtc/modules/portal/portal_gn"
+    ],
+    "INCLUDE_SYSTEM_PIPEWIRE_HANDLING": [
+      "third_party/libwebrtc/modules/desktop_capture/desktop_capture_gn",
+      "third_party/libwebrtc/modules/portal/portal_gn",
+      "third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn"
+    ],
+    "INCLUDE_SYSTEM_DAV1D_HANDLING": [
+      "third_party/libwebrtc/modules/video_coding/codecs/av1/dav1d_decoder_gn",
+      "third_party/libwebrtc/modules/video_coding/codecs/av1/libaom_av1_encoder_gn"
     ],
     "INCLUDE_SYSTEM_LIBVPX_HANDLING": [
       "third_party/libwebrtc/modules/video_coding/webrtc_libvpx_interface_gn",

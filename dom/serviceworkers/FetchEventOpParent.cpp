@@ -17,6 +17,7 @@
 #include "mozilla/dom/InternalResponse.h"
 #include "mozilla/dom/RemoteWorkerControllerParent.h"
 #include "mozilla/dom/RemoteWorkerParent.h"
+#include "mozilla/dom/RemoteWorkerServiceParent.h"
 #include "mozilla/ipc/BackgroundParent.h"
 
 namespace mozilla {
@@ -51,11 +52,8 @@ mozilla::ipc::IPCResult FetchEventOpParent::RecvPreloadResponse(
         aPending.mPreloadResponse = Some(std::move(aResponse));
       },
       [&aResponse](Started& aStarted) {
-        auto backgroundParent = WrapNotNull(
-            WrapNotNull(aStarted.mFetchEventOpProxyParent->Manager())
-                ->Manager());
         Unused << aStarted.mFetchEventOpProxyParent->SendPreloadResponse(
-            ToParentToChild(aResponse, backgroundParent));
+            ToParentToChild(aResponse));
       },
       [](const Finished&) {});
 

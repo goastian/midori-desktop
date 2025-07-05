@@ -44,20 +44,6 @@ ERROR_HELP=""
 # * o pipefail: All stages of all pipes should succeed.
 set -eEuo pipefail
 
-# set CLONE_PROTOCOL="https", ignored if the repo already exists.
-CLONE_PROTOCOL="https"
-
-# don't prompt for clone protocol if repo already exists
-if [ ! -d $MOZ_LIBWEBRTC_SRC ]; then
-  echo "Clone moz-libwebrtc git repo with http or ssh?"
-  select yn in "https" "ssh"; do
-    case $yn in
-      https ) echo "Clone w/ https"; CLONE_PROTOCOL="https"; break;;
-      ssh ) echo "Clone w/ ssh"; CLONE_PROTOCOL="ssh"; break;;
-    esac
-  done
-fi
-
 # wipe resume_state for new run
 rm -f $STATE_DIR/resume_state
 
@@ -76,7 +62,6 @@ fi
 # fetch the github repro
 ./mach python $SCRIPT_DIR/fetch_github_repo.py \
     --repo-path $MOZ_LIBWEBRTC_SRC \
-    --clone-protocol $CLONE_PROTOCOL \
     --state-path $STATE_DIR
 
 CURRENT_DIR=`pwd`
@@ -110,7 +95,7 @@ ERROR_HELP=""
 # find the last upstream commit used by the previous update, so we don't
 # accidentally grab release branch commits that were added after we started
 # the previous update.
-LAST_UPSTREAM_COMMIT_SHA=`tail -1 $CURRENT_DIR/third_party/libwebrtc/README.moz-ff-commit`
+LAST_UPSTREAM_COMMIT_SHA=`tail -1 $CURRENT_DIR/third_party/libwebrtc/README.mozilla.last-vendor`
 echo "previous update's last commit: $LAST_UPSTREAM_COMMIT_SHA"
 
 # create a new branch at the common commit and checkout the new branch

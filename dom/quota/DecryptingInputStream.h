@@ -65,7 +65,7 @@ class DecryptingInputStreamBase : public nsIInputStream,
             size_t aBlockSize);
 
   // Convenience routine to determine how many bytes of plain data
-  // we currently have in our buffer.
+  // we currently have in our plain buffer.
   size_t PlainLength() const;
 
   size_t EncryptedBufferLength() const;
@@ -78,19 +78,17 @@ class DecryptingInputStreamBase : public nsIInputStream,
   LazyInitializedOnce<const NotNull<nsIIPCSerializableInputStream*>>
       mBaseIPCSerializableInputStream;
 
-  // Number of bytes of plain data in mBuffer.
+  // Number of bytes of plain data in mPlainBuffer.
   size_t mPlainBytes = 0;
 
-  // Next byte of mBuffer to return in ReadSegments().
+  // Next byte of mPlainBuffer to return in ReadSegments().
   size_t mNextByte = 0;
 
   LazyInitializedOnceNotNull<const size_t> mBlockSize;
-
-  size_t mLastBlockLength = 0;
 };
 
 // Wraps another nsIInputStream which contains data written using
-// EncryptingInputStream with a compatible CipherStategy and key. See the
+// EncryptingOutputStream with a compatible CipherStategy and key. See the
 // remarks on EncryptingOutputStream.
 template <typename CipherStrategy>
 class DecryptingInputStream final : public DecryptingInputStreamBase {
@@ -104,6 +102,8 @@ class DecryptingInputStream final : public DecryptingInputStreamBase {
 
   // For deserialization only.
   explicit DecryptingInputStream();
+
+  nsresult BaseStreamStatus();
 
   NS_IMETHOD Close() override;
   NS_IMETHOD Available(uint64_t* _retval) override;
@@ -125,26 +125,33 @@ class DecryptingInputStream final : public DecryptingInputStreamBase {
  private:
   ~DecryptingInputStream();
 
-  // Parse the next chunk of data.  This may populate mBuffer and set
-  // mBufferFillSize.  This should not be called when mBuffer already
-  // contains data.
-  nsresult ParseNextChunk(uint32_t* aBytesReadOut);
+  // Parse the next chunk of data.  This populates mPlainBuffer (until the
+  // stream position is at EOF).
+  nsresult ParseNextChunk(bool aCheckAvailableBytes, uint32_t* aBytesReadOut);
 
   // Convenience routine to Read() from the base stream until we get
   // the given number of bytes or reach EOF.
   //
-  // aBuf           - The buffer to write the bytes into.
-  // aCount         - Max number of bytes to read. If the stream closes
-  //                  fewer bytes my be read.
-  // aMinValidCount - A minimum expected number of bytes.  If we find
-  //                  fewer than this many bytes, then return
-  //                  NS_ERROR_CORRUPTED_CONTENT.  If nothing was read due
-  //                  due to EOF (aBytesReadOut == 0), then NS_OK is returned.
-  // aBytesReadOut  - An out parameter indicating how many bytes were read.
+  // aBuf                   - The buffer to write the bytes into.
+  // aCount                 - Max number of bytes to read. If the stream closes
+  //                          fewer bytes my be read.
+  // aMinValidCount         - A minimum expected number of bytes.  If we find
+  //                          fewer than this many bytes, then return
+  //                          NS_ERROR_CORRUPTED_CONTENT.  If nothing was read
+  //                          due due to EOF (aBytesReadOut == 0), then NS_OK is
+  //                          returned.
+  // aCheckAvailableBytes   - boolean flag controlling whether ReadAll should
+  //                          check available bytes before calling underlying
+  //                          Read method.
+  // aBytesReadOut          - An out parameter indicating how many bytes were
+  // 			      read.
   nsresult ReadAll(char* aBuf, uint32_t aCount, uint32_t aMinValidCount,
-                   uint32_t* aBytesReadOut);
+                   bool aCheckAvailableBytes, uint32_t* aBytesReadOut);
 
   bool EnsureBuffers();
+
+  // This method may change the current position in the stream.
+  nsresult EnsureDecryptedStreamSize();
 
   CipherStrategy mCipherStrategy;
   LazyInitializedOnce<const typename CipherStrategy::KeyType> mKey;
@@ -157,6 +164,8 @@ class DecryptingInputStream final : public DecryptingInputStreamBase {
 
   // Buffer storing the resulting plain data.
   nsTArray<uint8_t> mPlainBuffer;
+
+  LazyInitializedOnce<const int64_t> mDecryptedStreamSize;
 };
 
 }  // namespace mozilla::dom::quota

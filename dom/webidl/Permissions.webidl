@@ -14,7 +14,9 @@ enum PermissionName {
   "persistent-storage",
   "midi",
   "storage-access", // Defined in https://privacycg.github.io/storage-access/#permissions-integration
-  "screen-wake-lock" // Defined in https://w3c.github.io/screen-wake-lock/
+  "screen-wake-lock", // Defined in https://w3c.github.io/screen-wake-lock/
+  "camera",    // Defined in https://www.w3.org/TR/mediacapture-streams/#permissions-integration
+  "microphone" // Defined in https://www.w3.org/TR/mediacapture-streams/#permissions-integration
 };
 
 [GenerateInit]
@@ -31,7 +33,7 @@ dictionary MidiPermissionDescriptor : PermissionDescriptor {
 // We don't implement `PushPermissionDescriptor` because we use a background
 // message quota instead of `userVisibleOnly`.
 
-[Exposed=Window]
+[Exposed=(Window,Worker)]
 interface Permissions {
   [NewObject]
   Promise<PermissionStatus> query(object permission);

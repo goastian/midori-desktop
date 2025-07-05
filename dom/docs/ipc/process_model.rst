@@ -63,7 +63,6 @@ Diagram
                     <TR><TD BORDER="1">Data Decoder (RDD) Process</TD></TR>
                     <TR><TD BORDER="1">Network (Socket) Process</TD></TR>
                     <TR><TD BORDER="1">Utility Process</TD></TR>
-                    <TR><TD BORDER="1">Remote Sandbox Broker Process</TD></TR>
                     <TR><TD BORDER="1">Fork Server</TD></TR>
                 </TABLE>
             >
@@ -181,6 +180,18 @@ Shared Web Content
 
 The shared web content process is used to host content which is not isolated into one of the other web content process types. This includes almost all web content with Fission disabled, and web content which cannot be attributed to a specific origin with Fission enabled, such as user-initiated ``data:`` URI loads.
 
+
+Inference Content
+"""""""""""""""""
+
+:remoteType: ``inference``
+:default count: 1 (``dom.ipc.processCount.inference``)
+
+The inference content process is used to isolate inference runtimes, currently ONNX runtime and Bergamot. This process hosts chrome workers that are running WASM runtimes along with some Javascript to perform inference tasks like translation or image-to-text.
+
+The models can allocate large amounts of memory, which can cause the process to be killed by the OS in memory-constrained environments like Android. This separation ensures other important processes like content processes are not killed.
+
+
 Isolated Web Content
 """"""""""""""""""""
 
@@ -279,24 +290,13 @@ Network (Socket) Process
 
 The socket process is used to separate certain networking operations from the parent process, allowing them to be performed more directly in a partially sandboxed process. The eventual goal is to move all TCP/UDP network operations into this dedicated process, and is being tracked in `Bug 1322426 <https://bugzilla.mozilla.org/show_bug.cgi?id=1322426>`_.
 
-.. _remote-sandbox-process:
-
-Remote Sandbox Broker Process
------------------------------
-
-:platform: Windows on ARM only
-:primary protocol: `PRemoteSandboxBroker <https://searchfox.org/mozilla-central/source/security/sandbox/win/src/remotesandboxbroker/PRemoteSandboxBroker.ipdl>`_
-:sandboxed?: no
-
-In order to run sandboxed x86 plugin processes from Windows-on-ARM, the remote sandbox broker process is launched in x86-mode, and used to launch sandboxed x86 subprocesses. This avoids issues with the sandboxing layer, which unfortunately assumes that pointer width matches between the sandboxer and sandboxing process. To avoid this, the remote sandbox broker is used as an x86 sandboxing process which wraps these plugins.
-
 .. _fork-server:
 
 Fork Server
 -----------
 
 :platform: Linux only
-:pref: ``dom.ipc.forkserver.enable`` (disabled by default)
+:pref: ``dom.ipc.forkserver.enable`` (enabled by default in Nightly)
 :primary protocol: *none*
 :sandboxed?: no (processes forked by the fork server are sandboxed)
 
@@ -320,7 +320,7 @@ IPDLUnitTest
 
 :primary protocol: varies
 
-This test-only process type is intended for use when writing IPDL unit tests. However, it is currently broken, due to these tests having never been run in CI. The type may be removed or re-used when these unit tests are fixed.
+This test-only process type is intended for use when writing IPDL unit tests. However, it is currently broken, due to these tests having never been run in CI. The type may be removed or reused when these unit tests are fixed.
 
 .. _utility-process:
 

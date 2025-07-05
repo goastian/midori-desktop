@@ -83,7 +83,13 @@ class AttrArray {
   // Returns the attribute info at a given position, *not* out-of-bounds safe
   BorrowedAttrInfo AttrInfoAt(uint32_t aPos) const;
 
-  // Returns attribute name at given position or null if aPos is out-of-bounds
+  // If aPos is in bounds, set aResult to the attribute at the given position
+  // without AddRefing it and return true. Otherwise, return false.
+  [[nodiscard]] bool GetSafeAttrNameAt(uint32_t aPos,
+                                       const nsAttrName** aResult) const;
+
+  // If aPos is in bounds, return the attribute at the given position.
+  // Otherwise, crash.
   const nsAttrName* GetSafeAttrNameAt(uint32_t aPos) const;
 
   const nsAttrName* GetExistingAttrNameFromQName(const nsAString& aName) const;
@@ -98,7 +104,7 @@ class AttrArray {
   // called when a mapped attribute is changed (regardless of connectedness).
   bool MarkAsPendingPresAttributeEvaluation() {
     // It'd be great to be able to assert that mImpl is non-null or we're the
-    // <body> element.
+    // <body> or <svg> elements.
     if (MOZ_UNLIKELY(!mImpl) && !GrowBy(1)) {
       return false;
     }
@@ -183,6 +189,8 @@ class AttrArray {
 
   bool GrowBy(uint32_t aGrowSize);
   bool GrowTo(uint32_t aCapacity);
+
+  void Clear() { mImpl = nullptr; }
 
  private:
   // Tries to create an attribute, growing the buffer if needed, with the given

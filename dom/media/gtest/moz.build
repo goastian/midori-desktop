@@ -15,8 +15,8 @@ LOCAL_INCLUDES += [
     "/dom/media/systemservices",
     "/dom/media/webrtc",
     "/dom/media/webrtc/common",
+    "/third_party/abseil-cpp",
     "/third_party/libwebrtc",
-    "/third_party/libwebrtc/third_party/abseil-cpp",
 ]
 
 UNIFIED_SOURCES += [
@@ -36,23 +36,21 @@ UNIFIED_SOURCES += [
     "TestAudioSinkWrapper.cpp",
     "TestAudioTrackEncoder.cpp",
     "TestAudioTrackGraph.cpp",
-    "TestBenchmarkStorage.cpp",
     "TestBitWriter.cpp",
     "TestBlankVideoDataCreator.cpp",
     "TestBufferReader.cpp",
     "TestCubebInputStream.cpp",
     "TestDataMutex.cpp",
-    "TestDecoderBenchmark.cpp",
     "TestDeviceInputTrack.cpp",
     "TestDriftCompensation.cpp",
     "TestGMPUtils.cpp",
     "TestGroupId.cpp",
+    "TestImageConversion.cpp",
     "TestIntervalSet.cpp",
-    "TestKeyValueStorage.cpp",
     "TestMediaCodecsSupport.cpp",
-    "TestMediaDataDecoder.cpp",
     "TestMediaDataEncoder.cpp",
     "TestMediaEventSource.cpp",
+    "TestMediaFormatReader.cpp",
     "TestMediaInfo.cpp",
     "TestMediaMIMETypes.cpp",
     "TestMediaQueue.cpp",
@@ -63,10 +61,11 @@ UNIFIED_SOURCES += [
     "TestMuxer.cpp",
     "TestOggWriter.cpp",
     "TestOpusParser.cpp",
-    "TestPacer.cpp",
     "TestRust.cpp",
     "TestTimeUnit.cpp",
+    "TestVideoFrameContainer.cpp",
     "TestVideoSegment.cpp",
+    "TestVideoSink.cpp",
     "TestVideoTrackEncoder.cpp",
     "TestVideoUtils.cpp",
     "TestVPXDecoding.cpp",
@@ -91,6 +90,7 @@ if CONFIG["OS_TARGET"] != "Android":
 if CONFIG["MOZ_WEBRTC"] and CONFIG["OS_TARGET"] != "Android":
     UNIFIED_SOURCES += [
         "TestAudioDeviceEnumerator.cpp",
+        "TestPacer.cpp",
         "TestVideoFrameConverter.cpp",
     ]
 

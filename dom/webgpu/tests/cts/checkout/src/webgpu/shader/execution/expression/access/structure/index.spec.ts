@@ -3,13 +3,13 @@ Execution Tests for structure member accessing expressions
 `;
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest, GPUTest } from '../../../../../gpu_test.js';
 import { ScalarKind, Type, Value, u32 } from '../../../../../util/conversion.js';
 import { align } from '../../../../../util/math.js';
 import { toComparator } from '../../expectation.js';
 import { InputSource, structLayout, structStride } from '../../expression.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 const kMemberTypes = [
   ['bool'],
@@ -30,12 +30,17 @@ async function run(
   input: Value[] | ArrayBufferLike | null,
   inputSource: InputSource
 ) {
-  const outputBufferSize = structStride(
-    expected.map(v => v.type),
-    'storage_rw'
+  const kMinStorageBufferSize = 4;
+
+  const outputBufferSize = Math.max(
+    kMinStorageBufferSize,
+    structStride(
+      expected.map(v => v.type),
+      'storage_rw'
+    )
   );
 
-  const outputBuffer = t.device.createBuffer({
+  const outputBuffer = t.createBufferTracked({
     size: outputBufferSize,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
   });
@@ -51,7 +56,10 @@ async function run(
     let inputData: Uint8Array;
     if (input instanceof Array) {
       const inputTypes = input.map(v => v.type);
-      const inputBufferSize = structStride(inputTypes, inputSource);
+      const inputBufferSize = Math.max(
+        kMinStorageBufferSize,
+        structStride(inputTypes, inputSource)
+      );
       inputData = new Uint8Array(inputBufferSize);
       structLayout(inputTypes, inputSource, m => {
         input[m.index].copyTo(inputData, m.offset);
@@ -132,12 +140,10 @@ g.test('buffer')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected = values[t.params.member_index];
 
@@ -174,7 +180,6 @@ g.test('buffer_align')
       .beginSubcases()
       .combine('member_index', [0, 1, 2] as const)
       .combine('alignments', [
-        [1, 1, 1],
         [4, 4, 4],
         [4, 8, 16],
         [8, 4, 16],
@@ -279,12 +284,10 @@ g.test('buffer_pointer')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected = values[t.params.member_index];
 
@@ -321,12 +324,10 @@ g.test('let')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const memberType = Type[t.params.member_types[t.params.member_index]];
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected =
@@ -367,12 +368,10 @@ g.test('param')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const memberType = Type[t.params.member_types[t.params.member_index]];
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected =
@@ -416,12 +415,10 @@ g.test('const')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const memberType = Type[t.params.member_types[t.params.member_index]];
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected =
@@ -463,12 +460,10 @@ g.test('const_nested')
       .beginSubcases()
       .expand('member_index', t => t.member_types.map((_, i) => i))
   )
-  .beforeAllSubcases(t => {
-    if (t.params.member_types.includes('f16')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(async t => {
+    if (t.params.member_types.includes('f16')) {
+      t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+    }
     const memberType = Type[t.params.member_types[t.params.member_index]];
     const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
     const expected =

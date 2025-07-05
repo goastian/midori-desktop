@@ -6,7 +6,7 @@ import { ShaderValidationTest } from '../shader_validation_test.js';
 
 export const g = makeTestGroup(ShaderValidationTest);
 
-const kSpecDiagnosticRules = ['derivative_uniformity'];
+const kSpecDiagnosticRules = ['derivative_uniformity', 'subgroup_uniformity'];
 const kSpecDiagnosticSeverities = ['off', 'info', 'warning', 'error'];
 const kDiagnosticTypes = ['attribute', 'directive'];
 
@@ -124,9 +124,14 @@ g.test('warning_unknown_rule')
 g.test('valid_locations')
   .specURL('https://gpuweb.github.io/gpuweb/wgsl/#diagnostics')
   .desc(`Tests valid locations`)
-  .params(u => u.combine('type', kDiagnosticTypes).combine('location', keysOf(kValidLocations)))
+  .params(u =>
+    u
+      .combine('type', kDiagnosticTypes)
+      .combine('location', keysOf(kValidLocations))
+      .combine('rule', kSpecDiagnosticRules)
+  )
   .fn(t => {
-    const diag = generateDiagnostic(t.params.type, 'info', 'derivative_uniformity');
+    const diag = generateDiagnostic(t.params.type, 'info', t.params.rule);
     const code = kValidLocations[t.params.location](diag);
     let res = true;
     if (t.params.type === 'directive') {
@@ -143,9 +148,14 @@ g.test('valid_locations')
 g.test('invalid_locations')
   .specURL('https://gpuweb.github.io/gpuweb/wgsl/#diagnostics')
   .desc(`Tests invalid locations`)
-  .params(u => u.combine('type', kDiagnosticTypes).combine('location', keysOf(kInvalidLocations)))
+  .params(u =>
+    u
+      .combine('type', kDiagnosticTypes)
+      .combine('location', keysOf(kInvalidLocations))
+      .combine('rule', kSpecDiagnosticRules)
+  )
   .fn(t => {
-    const diag = generateDiagnostic(t.params.type, 'info', 'derivative_uniformity');
+    const diag = generateDiagnostic(t.params.type, 'info', t.params.rule);
     t.expectCompileResult(true, kInvalidLocations[t.params.location](''));
     t.expectCompileResult(false, kInvalidLocations[t.params.location](diag));
   });
@@ -161,12 +171,14 @@ g.test('conflicting_directive')
     t.expectCompileResult(t.params.s1 === t.params.s2, code);
   });
 
-g.test('conflicting_attribute_same_location')
+g.test('duplicate_attribute_same_location')
   .specURL('https://gpuweb.github.io/gpuweb/wgsl/#diagnostics')
-  .desc(`Tests conflicts between attributes`)
+  .desc(`Tests duplicate diagnostics at the same location must be on different rules`)
   .params(u =>
     u
       .combine('loc', keysOf(kValidLocations))
+      .combine('same_rule', [true, false] as const)
+      .beginSubcases()
       .combine('s1', kSpecDiagnosticSeverities)
       .combine('s2', kSpecDiagnosticSeverities)
       .filter(u => {
@@ -174,11 +186,12 @@ g.test('conflicting_attribute_same_location')
       })
   )
   .fn(t => {
-    const d1 = generateDiagnostic('attribute', t.params.s1, 'derivative_uniformity');
-    const d2 = generateDiagnostic('attribute', t.params.s2, 'derivative_uniformity');
-    const diag = d1 + ' ' + d2;
-    const code = `${kValidLocations[t.params.loc](diag)}`;
-    t.expectCompileResult(t.params.s1 === t.params.s2, code);
+    const rule1 = 'derivative_uniformity';
+    const rule2 = 'another_diagnostic_rule';
+    const d1 = generateDiagnostic('attribute', t.params.s1, rule1);
+    const d2 = generateDiagnostic('attribute', t.params.s2, t.params.same_rule ? rule1 : rule2);
+    const code = `${kValidLocations[t.params.loc](`${d1} ${d2}`)}`;
+    t.expectCompileResult(!t.params.same_rule, code);
   });
 
 g.test('conflicting_attribute_different_location')
@@ -206,11 +219,6 @@ g.test('after_other_directives')
   .params(u =>
     u.combine('directive', ['enable f16', 'requires readonly_and_readwrite_storage_textures'])
   )
-  .beforeAllSubcases(t => {
-    if (t.params.directive.startsWith('enable')) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     if (t.params.directive.startsWith('requires')) {
       t.skipIfLanguageFeatureNotSupported('readonly_and_readwrite_storage_textures');

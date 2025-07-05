@@ -25,6 +25,7 @@
 // libwebrtc includes
 #include "api/audio/audio_frame.h"
 #include "api/call/transport.h"
+#include "api/media_stream_interface.h"
 #include "api/rtp_headers.h"
 #include "api/rtp_parameters.h"
 #include "api/transport/rtp/rtp_source.h"
@@ -79,19 +80,14 @@ class VideoRenderer {
 
   /**
    * Callback Function reporting decoded frame for processing.
-   * @param buffer: reference to decoded video frame
-   * @param buffer_size: size of the decoded frame
-   * @param time_stamp: Decoder timestamp, typically 90KHz as per RTP
-   * @render_time: Wall-clock time at the decoder for synchronization
-   *                purposes in milliseconds
+   * @param video_frame: reference to decoded video frame
    * NOTE: If decoded video frame is passed through buffer , it is the
    * responsibility of the concrete implementations of this class to own copy
    * of the frame if needed for time longer than scope of this callback.
    * Such implementations should be quick in processing the frames and return
    * immediately.
    */
-  virtual void RenderVideoFrame(const webrtc::VideoFrameBuffer& buffer,
-                                uint32_t time_stamp, int64_t render_time) = 0;
+  virtual void RenderVideoFrame(const webrtc::VideoFrame& video_frame) = 0;
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(VideoRenderer)
 };
@@ -368,15 +364,7 @@ class VideoSessionConduit : public MediaSessionConduit {
       RefPtr<mozilla::VideoRenderer> aRenderer) = 0;
   virtual void DetachRenderer() = 0;
 
-  /**
-   * Function to deliver a capture video frame for encoding and transport.
-   * If the frame's timestamp is 0, it will be automatcally generated.
-   *
-   * NOTE: ConfigureSendMediaCodec() must be called before this function can
-   *       be invoked. This ensures the inserted video-frames can be
-   *       transmitted by the conduit.
-   */
-  virtual MediaConduitErrorCode SendVideoFrame(webrtc::VideoFrame aFrame) = 0;
+  virtual void SetTrackSource(webrtc::VideoTrackSourceInterface* aSource) = 0;
 
   /**
    * These methods allow unit tests to double-check that the
@@ -390,6 +378,8 @@ class VideoSessionConduit : public MediaSessionConduit {
 
   bool UsingFEC() const { return mUsingFEC; }
 
+  virtual bool LockScaling() const = 0;
+
   virtual Maybe<webrtc::VideoReceiveStreamInterface::Stats> GetReceiverStats()
       const = 0;
   virtual Maybe<webrtc::VideoSendStream::Stats> GetSenderStats() const = 0;
@@ -401,11 +391,7 @@ class VideoSessionConduit : public MediaSessionConduit {
 
   virtual Maybe<Ssrc> GetAssociatedLocalRtxSSRC(Ssrc aSsrc) const = 0;
 
-  struct Resolution {
-    size_t width;
-    size_t height;
-  };
-  virtual Maybe<Resolution> GetLastResolution() const = 0;
+  virtual Maybe<gfx::IntSize> GetLastResolution() const = 0;
 
   virtual void RequestKeyFrame(FrameTransformerProxy* aProxy) = 0;
   virtual void GenerateKeyFrame(const Maybe<std::string>& aRid,

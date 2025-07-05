@@ -72,6 +72,7 @@ function PeerConnectionTest(options) {
   options.is_remote = "is_remote" in options ? options.is_remote : true;
 
   options.h264 = "h264" in options ? options.h264 : false;
+  options.av1 = "av1" in options ? options.av1 : false;
   options.bundle = "bundle" in options ? options.bundle : true;
   options.rtcpmux = "rtcpmux" in options ? options.rtcpmux : true;
   options.opus = "opus" in options ? options.opus : true;
@@ -514,6 +515,11 @@ PeerConnectionTest.prototype.updateChainSteps = function () {
   if (this.testOptions.h264) {
     this.chain.insertAfterEach("PC_LOCAL_CREATE_OFFER", [
       PC_LOCAL_REMOVE_ALL_BUT_H264_FROM_OFFER,
+    ]);
+  }
+  if (this.testOptions.av1) {
+    this.chain.insertAfterEach("PC_LOCAL_CREATE_OFFER", [
+      PC_LOCAL_REMOVE_ALL_BUT_AV1_FROM_OFFER,
     ]);
   }
   if (!this.testOptions.bundle) {
@@ -1605,6 +1611,7 @@ PeerConnectionWrapper.prototype = {
     var resolveEndOfTrickle;
     this.endOfTrickleIce = new Promise(r => (resolveEndOfTrickle = r));
     this.holdIceCandidates = new Promise(r => (this.releaseIceCandidates = r));
+    this._new_local_ice_candidates = [];
 
     this._pc.onicecandidate = anEvent => {
       if (!anEvent.candidate) {
@@ -1636,6 +1643,7 @@ PeerConnectionWrapper.prototype = {
         "SDP MLine Index needs to exist"
       );
       this._local_ice_candidates.push(anEvent.candidate);
+      this._new_local_ice_candidates.push(anEvent.candidate);
       candidateHandler(this.label, anEvent.candidate);
     };
   },
@@ -1759,6 +1767,7 @@ PeerConnectionWrapper.prototype = {
     ).then(_ => info("Element " + element.id + " has enough data."));
 
     const startTime = element.currentTime;
+    // eslint-disable-next-line promise/valid-params
     const timeProgressed = timeout(
       listenUntil(element, "timeupdate", _ => element.currentTime > startTime),
       60000,
@@ -2260,11 +2269,11 @@ PeerConnectionWrapper.prototype = {
       if (testOptions.rtcpmux) {
         is(numIceConnections, 1, "stats reports exactly 1 ICE connection");
       } else {
-        is(
-          numIceConnections,
-          2,
-          "stats report exactly 2 ICE connections for media and RTCP"
+        ok(
+          numIceConnections >= 1,
+          `stats ICE connections should be at least 1`
         );
+        ok(numIceConnections <= 2, `stats ICE connections should be at most 2`);
       }
     } else {
       var numAudioTransceivers = this._pc
@@ -2284,9 +2293,6 @@ PeerConnectionWrapper.prototype = {
         }).length;
 
       var numExpectedTransports = numAudioTransceivers + numVideoTransceivers;
-      if (!testOptions.rtcpmux) {
-        numExpectedTransports *= 2;
-      }
 
       if (this.dataChannels.length) {
         ++numExpectedTransports;
@@ -2295,11 +2301,25 @@ PeerConnectionWrapper.prototype = {
       info(
         "expected audio + video + data transports: " + numExpectedTransports
       );
-      is(
-        numIceConnections,
-        numExpectedTransports,
-        "stats ICE connections matches expected A/V transports"
-      );
+      if (!testOptions.rtcpmux) {
+        // Without rtcp mux, the expected number of transports doubles, but
+        // there's no good way to check whether the rtcp transports are ready,
+        // since there's no way to expose the state of those extra transports.
+        ok(
+          numIceConnections >= numExpectedTransports,
+          `stats ICE connections should be at least ${numExpectedTransports}`
+        );
+        ok(
+          numIceConnections <= numExpectedTransports * 2,
+          `stats ICE connections should be at most ${numExpectedTransports * 2}`
+        );
+      } else {
+        is(
+          numIceConnections,
+          numExpectedTransports,
+          "stats ICE connections matches expected A/V transports"
+        );
+      }
     }
   },
 

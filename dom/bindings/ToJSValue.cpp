@@ -20,20 +20,7 @@ bool ToJSValue(JSContext* aCx, const nsAString& aArgument,
                JS::MutableHandle<JS::Value> aValue) {
   // Make sure we're called in a compartment
   MOZ_ASSERT(JS::CurrentGlobalOrNull(aCx));
-
-  // XXXkhuey I'd love to use xpc::NonVoidStringToJsval here, but it requires
-  // a non-const nsAString for silly reasons.
-  mozilla::StringBuffer* sharedBuffer;
-  if (!XPCStringConvert::ReadableToJSVal(aCx, aArgument, &sharedBuffer,
-                                         aValue)) {
-    return false;
-  }
-
-  if (sharedBuffer) {
-    NS_ADDREF(sharedBuffer);
-  }
-
-  return true;
+  return xpc::NonVoidStringToJsval(aCx, aArgument, aValue);
 }
 
 bool ToJSValue(JSContext* aCx, const nsACString& aArgument,

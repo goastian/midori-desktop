@@ -6,12 +6,15 @@
 
 #include "GMPVideoEncoder.h"
 
+#include "AnnexB.h"
+#include "ErrorList.h"
 #include "H264.h"
 #include "GMPLog.h"
 #include "GMPUtils.h"
 #include "GMPService.h"
 #include "GMPVideoHost.h"
 #include "ImageContainer.h"
+#include "ImageConversion.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "nsServiceManagerUtils.h"
 #include "prsystem.h"
@@ -24,7 +27,9 @@ static GMPVideoCodecMode ToGMPVideoCodecMode(Usage aUsage) {
       return kGMPRealtimeVideo;
     case Usage::Record:
     default:
-      return kGMPNonRealtimeVideo;
+      // ParamValidationExt in OpenH264 rejects all other codec modes besides
+      // realtime and screensharing.
+      return kGMPScreensharing;
   }
 }
 
@@ -44,41 +49,42 @@ static GMPProfile ToGMPProfile(H264_PROFILE aProfile) {
 
 static GMPLevel ToGMPLevel(H264_LEVEL aLevel) {
   switch (aLevel) {
-    case H264_LEVEL_1:
+    case H264_LEVEL::H264_LEVEL_1:
       return kGMPH264Level1_0;
-    case H264_LEVEL_1_1:
+    case H264_LEVEL::H264_LEVEL_1_1:
       // H264_LEVEL_1_b has the same value as H264_LEVEL_1_1, while
       // kGMPH264Level1_B and kGMPH264Level1_1 differ. Since we can't tell the
       // difference, we just ignore the 1_b case.
       return kGMPH264Level1_1;
-    case H264_LEVEL_1_2:
+    case H264_LEVEL::H264_LEVEL_1_2:
       return kGMPH264Level1_2;
-    case H264_LEVEL_1_3:
+    case H264_LEVEL::H264_LEVEL_1_3:
       return kGMPH264Level1_3;
-    case H264_LEVEL_2:
+    case H264_LEVEL::H264_LEVEL_2:
       return kGMPH264Level2_0;
-    case H264_LEVEL_2_1:
+    case H264_LEVEL::H264_LEVEL_2_1:
       return kGMPH264Level2_1;
-    case H264_LEVEL_2_2:
+    case H264_LEVEL::H264_LEVEL_2_2:
       return kGMPH264Level2_2;
-    case H264_LEVEL_3:
+    case H264_LEVEL::H264_LEVEL_3:
       return kGMPH264Level3_0;
-    case H264_LEVEL_3_1:
+    case H264_LEVEL::H264_LEVEL_3_1:
       return kGMPH264Level3_1;
-    case H264_LEVEL_3_2:
+    case H264_LEVEL::H264_LEVEL_3_2:
       return kGMPH264Level3_2;
-    case H264_LEVEL_4:
+    case H264_LEVEL::H264_LEVEL_4:
       return kGMPH264Level4_0;
-    case H264_LEVEL_4_1:
+    case H264_LEVEL::H264_LEVEL_4_1:
       return kGMPH264Level4_1;
-    case H264_LEVEL_4_2:
+    case H264_LEVEL::H264_LEVEL_4_2:
       return kGMPH264Level4_2;
-    case H264_LEVEL_5:
+    case H264_LEVEL::H264_LEVEL_5:
       return kGMPH264Level5_0;
-    case H264_LEVEL_5_1:
+    case H264_LEVEL::H264_LEVEL_5_1:
       return kGMPH264Level5_1;
-    case H264_LEVEL_5_2:
+    case H264_LEVEL::H264_LEVEL_5_2:
       return kGMPH264Level5_2;
+    // 6.0 and above isn't supported.
     default:
       return kGMPH264LevelUnknown;
   }
@@ -126,18 +132,47 @@ void GMPVideoEncoder::InitComplete(GMPVideoEncoderProxy* aGMP,
 
   GMPVideoCodec codec{};
 
-  codec.mGMPApiVersion = kGMPVersion35;
+  codec.mGMPApiVersion = kGMPVersion36;
   codec.mCodecType = kGMPVideoCodecH264;
   codec.mMode = ToGMPVideoCodecMode(mConfig.mUsage);
   codec.mWidth = mConfig.mSize.width;
   codec.mHeight = mConfig.mSize.height;
-  codec.mStartBitrate = mConfig.mBitrate / 1000;
+
+  // A bitrate need to be set here, attempt to make an educated guess if none is
+  // provided.
+  if (mConfig.mBitrate) {
+    codec.mStartBitrate = mConfig.mBitrate / 1000;
+  } else {
+    int32_t longDimension = std::max(mConfig.mSize.width, mConfig.mSize.height);
+    if (longDimension < 720) {
+      codec.mStartBitrate = 2000;
+    } else if (longDimension < 1080) {
+      codec.mStartBitrate = 4000;
+    } else {
+      codec.mStartBitrate = 8000;
+    }
+  }
+
   codec.mMinBitrate = mConfig.mMinBitrate / 1000;
   codec.mMaxBitrate = mConfig.mMaxBitrate ? mConfig.mMaxBitrate / 1000
                                           : codec.mStartBitrate * 2;
   codec.mMaxFramerate = mConfig.mFramerate;
   codec.mUseThreadedEncode = StaticPrefs::media_gmp_encoder_multithreaded();
   codec.mLogLevel = GetGMPLibraryLogLevel();
+
+  switch (mConfig.mScalabilityMode) {
+    case ScalabilityMode::L1T2:
+      codec.mTemporalLayerNum = 2;
+      break;
+    case ScalabilityMode::L1T3:
+      codec.mTemporalLayerNum = 3;
+      break;
+    default:
+      MOZ_FALLTHROUGH_ASSERT("Unhandled scalability mode!");
+    case ScalabilityMode::None:
+      codec.mTemporalLayerNum = 1;
+      break;
+  }
 
   if (mConfig.mCodecSpecific) {
     const H264Specific& specific = mConfig.mCodecSpecific->as<H264Specific>();
@@ -179,25 +214,24 @@ RefPtr<MediaDataEncoder::EncodePromise> GMPVideoEncoder::Encode(
                                           __func__);
   }
 
-  const VideoData* sample(aSample->As<const VideoData>());
-  const layers::PlanarYCbCrImage* image = sample->mImage->AsPlanarYCbCrImage();
-  const layers::PlanarYCbCrData* yuv = image->GetData();
-  const gfx::IntSize ySize = yuv->YDataSize();
-  const gfx::IntSize cbCrSize = yuv->CbCrDataSize();
-  const int32_t yStride = yuv->mYStride;
-  const int32_t cbCrStride = yuv->mCbCrStride;
-
-  CheckedInt32 yBufSize = CheckedInt32(yStride) * ySize.height;
-  MOZ_RELEASE_ASSERT(yBufSize.isValid());
-
-  CheckedInt32 cbCrBufSize = CheckedInt32(cbCrStride) * cbCrSize.height;
-  MOZ_RELEASE_ASSERT(cbCrBufSize.isValid());
-
   GMPUniquePtr<GMPVideoi420Frame> frame(static_cast<GMPVideoi420Frame*>(ftmp));
-  err = frame->CreateFrame(yBufSize.value(), yuv->mYChannel,
-                           cbCrBufSize.value(), yuv->mCbChannel,
-                           cbCrBufSize.value(), yuv->mCrChannel, ySize.width,
-                           ySize.height, yStride, cbCrStride, cbCrStride);
+  const VideoData* sample(aSample->As<const VideoData>());
+  const uint64_t timestamp = sample->mTime.ToMicroseconds();
+
+  const gfx::IntSize ySize = mConfig.mSize;
+  const gfx::IntSize cbCrSize =
+      gfx::ChromaSize(ySize, gfx::ChromaSubsampling::HALF_WIDTH_AND_HEIGHT);
+  const int32_t yStride = ySize.width;
+  const int32_t cbCrStride = cbCrSize.width;
+
+  GMP_LOG_DEBUG(
+      "[%p] GMPVideoEncoder::Encode -- request encode of frame @ %" PRIu64
+      " y %dx%d stride=%d cbCr %dx%d stride=%d",
+      this, timestamp, ySize.width, ySize.height, yStride, cbCrSize.width,
+      cbCrSize.height, cbCrStride);
+
+  err = frame->CreateEmptyFrame(ySize.width, ySize.height, yStride, cbCrStride,
+                                cbCrStride);
   if (NS_WARN_IF(err != GMPNoErr)) {
     GMP_LOG_ERROR(
         "[%p] GMPVideoEncoder::Encode -- failed to allocate frame data", this);
@@ -205,7 +239,19 @@ RefPtr<MediaDataEncoder::EncodePromise> GMPVideoEncoder::Encode(
                                           __func__);
   }
 
-  uint64_t timestamp = sample->mTime.ToMicroseconds();
+  uint8_t* yDest = frame->Buffer(GMPPlaneType::kGMPYPlane);
+  uint8_t* uDest = frame->Buffer(GMPPlaneType::kGMPUPlane);
+  uint8_t* vDest = frame->Buffer(GMPPlaneType::kGMPVPlane);
+
+  nsresult rv = ConvertToI420(sample->mImage, yDest, yStride, uDest, cbCrStride,
+                              vDest, cbCrStride, ySize);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    GMP_LOG_ERROR("[%p] GMPVideoEncoder::Encode -- failed to convert to I420",
+                  this);
+    return EncodePromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                                          __func__);
+  }
+
   frame->SetTimestamp(timestamp);
 
   AutoTArray<GMPVideoFrameType, 1> frameType;
@@ -219,12 +265,6 @@ RefPtr<MediaDataEncoder::EncodePromise> GMPVideoEncoder::Encode(
     return EncodePromise::CreateAndReject(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                                           __func__);
   }
-
-  GMP_LOG_DEBUG(
-      "[%p] GMPVideoEncoder::Encode -- request encode of frame @ %" PRIu64
-      " y %dx%d stride=%u cbCr %dx%d stride=%u",
-      this, timestamp, ySize.width, ySize.height, yStride, cbCrSize.width,
-      cbCrSize.height, cbCrStride);
 
   RefPtr<EncodePromise::Private> promise = new EncodePromise::Private(__func__);
   mPendingEncodes.InsertOrUpdate(timestamp, promise);
@@ -339,8 +379,44 @@ void GMPVideoEncoder::Encoded(GMPVideoEncodedFrame* aEncodedFrame,
       media::TimeUnit::FromMicroseconds(static_cast<int64_t>(timestamp));
   output->mKeyframe = aEncodedFrame->FrameType() == kGMPKeyFrame;
 
-  GMP_LOG_DEBUG("[%p] GMPVideoEncoder::Encoded -- %sframe @ timestamp %" PRIu64,
-                this, output->mKeyframe ? "key" : "", timestamp);
+  int32_t maybeTemporalLayerId = aEncodedFrame->GetTemporalLayerId();
+  auto temporalLayerId = CheckedUint8(maybeTemporalLayerId);
+  if (temporalLayerId.isValid()) {
+    output->mTemporalLayerId = Some(temporalLayerId.value());
+  }
+
+  GMP_LOG_DEBUG("[%p] GMPVideoEncoder::Encoded -- %sframe @ timestamp %" PRIu64
+                ", temporal layer %d",
+                this, output->mKeyframe ? "key" : "", timestamp,
+                maybeTemporalLayerId);
+
+  if (mConfig.mCodecSpecific) {
+    const H264Specific& specific = mConfig.mCodecSpecific->as<H264Specific>();
+    if (specific.mFormat == H264BitStreamFormat::AVC) {
+      const uint8_t kExtraData[] = {
+          1 /* version */,
+          static_cast<uint8_t>(specific.mProfile),
+          0 /* profile compat (0) */,
+          static_cast<uint8_t>(specific.mLevel),
+          0xfc | 3 /* nal size - 1 */,
+          0xe0 /* num SPS (0) */,
+          0 /* num PPS (0) */
+      };
+
+      auto extraData = MakeRefPtr<MediaByteBuffer>();
+      extraData->AppendElements(kExtraData, std::size(kExtraData));
+
+      if (NS_WARN_IF(!AnnexB::ConvertSampleToAVCC(output, extraData))) {
+        GMP_LOG_ERROR(
+            "[%p] GMPVideoEncoder::Encoded -- failed to convert to AVCC", this);
+        promise->Reject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+        Teardown(
+            MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR, "Convert AVCC failed"_ns),
+            __func__);
+        return;
+      }
+    }
+  }
 
   EncodedData encodedDataSet(1);
   encodedDataSet.AppendElement(std::move(output));

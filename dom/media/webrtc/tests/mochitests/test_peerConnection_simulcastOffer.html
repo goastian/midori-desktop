@@ -17,13 +17,42 @@
     visible: true
   });
 
-  runNetworkTest(async () => {
-    await pushPrefs(
-        // 180Kbps was determined empirically, set well-higher than
-        // the 80Kbps+overhead needed for the two simulcast streams.
-        // 100Kbps was apparently too low.
-        ['media.peerconnection.video.min_bitrate_estimate', 180*1000]);
+  const isAndroid = navigator.userAgent.includes("Android");
+  async function doTest(codec) {
+    const recvCodecs = RTCRtpReceiver.getCapabilities("video")?.codecs;
+    isnot(recvCodecs, null, "Expected recv capabilities");
+    isnot(recvCodecs.length, 0, "Expected some recv codecs");
+    if (!recvCodecs || !recvCodecs.length) {
+      return;
+    }
 
+    const filteredRecvCodecs = recvCodecs.filter(recvCodec => {
+      if (recvCodec.mimeType != codec.mimeType) {
+        return false;
+      }
+      if (codec.sdpFmtpLineRegex && !recvCodec.sdpFmtpLine.match(codec.sdpFmtpLineRegex)) {
+        return false;
+      }
+      return true;
+    });
+    is(
+      filteredRecvCodecs.length,
+      1,
+      `Should match a single recv codec\nOriginal recv codecs:\n${JSON.stringify(
+        recvCodecs,
+        null,
+        2
+      )}\nFiltered recv codecs:\n${JSON.stringify(
+        filteredRecvCodecs,
+        null,
+        2
+      )}\nRequired codec: ${JSON.stringify(codec)}`
+    );
+    if (!filteredRecvCodecs.length) {
+      return;
+
+    }
+    const [recvCodec] = filteredRecvCodecs;
 
     const offerer = new RTCPeerConnection();
     const answerer = new RTCPeerConnection();
@@ -38,7 +67,18 @@
     };
 
     // One send transceiver, that will be used to send both simulcast streams
-    const emitter = new VideoFrameEmitter();
+    const emitter = new VideoFrameEmitter(
+      CaptureStreamTestHelper2D.prototype.green,
+      CaptureStreamTestHelper2D.prototype.red, 64, 64,
+      {
+        // With H264 on desktop we use fakeopenh264 whose encoder passes along
+        // some metadata to be interpreted by its decoder. It encodes the
+        // average color of all pixels and decodes a frame at the correct
+        // resolution filled with that color. Thus, for H264, fill the entire
+        // frame with the given color.
+        fillEntireFrame: !isAndroid && codec.mimeType.match(/H264/i)
+      }
+    );
     const videoStream = emitter.stream();
     const sendEncodings = [
             { rid: '0', maxBitrate: 40000 },
@@ -57,11 +97,16 @@
     await answerer.setRemoteDescription({type: 'offer', sdp: mungedOffer});
     await offerer.setLocalDescription(offer);
 
-    const rids = answerer.getTransceivers().map(t => t.mid);
+    const recvTransceivers = answerer.getTransceivers();
+    const rids = recvTransceivers.map(t => t.mid);
     is(rids.length, 2, 'Should have 2 mids in offer');
     ok(rids[0] != '', 'First mid should be non-empty');
     ok(rids[1] != '', 'Second mid should be non-empty');
     info(`rids: ${JSON.stringify(rids)}`);
+
+    for (const transceiver of recvTransceivers) {
+      transceiver.setCodecPreferences([recvCodec]);
+    }
 
     const answer = await answerer.createAnswer();
 
@@ -77,19 +122,21 @@
     const statsReady =
       Promise.all([waitForSyncedRtcp(offerer), waitForSyncedRtcp(answerer)]);
 
-    const helper = new VideoStreamHelper();
-    info('Waiting for first video element to start playing');
-    await helper.checkVideoPlaying(videoElems[0]);
-    info('Waiting for second video element to start playing');
-    await helper.checkVideoPlaying(videoElems[1]);
+    if (!codec.mimeType.includes("H264") || !isAndroid) {
+      const helper = new VideoStreamHelper();
+      info('Waiting for first video element to start playing');
+      await helper.checkVideoPlaying(videoElems[0]);
+      info('Waiting for second video element to start playing');
+      await helper.checkVideoPlaying(videoElems[1]);
+    }
 
-    is(videoElems[0].videoWidth, 50,
+    is(videoElems[0].videoWidth, 64,
        "sink is same width as source, modulo our cropping algorithm");
-    is(videoElems[0].videoHeight, 50,
+    is(videoElems[0].videoHeight, 64,
        "sink is same height as source, modulo our cropping algorithm");
-    is(videoElems[1].videoWidth, 25,
+    is(videoElems[1].videoWidth, 32,
        "sink is 1/2 width of source, modulo our cropping algorithm");
-    is(videoElems[1].videoHeight, 25,
+    is(videoElems[1].videoHeight, 32,
        "sink is 1/2 height of source, modulo our cropping algorithm");
 
     await statsReady;
@@ -102,6 +149,49 @@
     videoStream.getVideoTracks()[0].stop();
     offerer.close();
     answerer.close();
+  }
+
+  runNetworkTest(async () => {
+    await pushPrefs(
+        // 180Kbps was determined empirically, set well-higher than
+        // the 80Kbps+overhead needed for the two simulcast streams.
+        // 100Kbps was apparently too low.
+        ['media.peerconnection.video.min_bitrate_estimate', 180*1000],
+        ["media.webrtc.simulcast.vp9.enabled", true],
+        ["media.webrtc.simulcast.av1.enabled", true],
+        ["media.webrtc.codec.video.av1.enabled", true],
+        ["media.navigator.video.disable_h264_baseline", false],
+      );
+
+    if (isAndroid) {
+      await pushPrefs(
+          // [TODO] re-enable HW decoder after bug 1526207 is fixed.
+          ["media.navigator.mediadatadecoder_vpx_enabled", false],
+          ["media.webrtc.hw.h264.enabled", false],
+        );
+    }
+
+    const codecs = [
+      {mimeType: "video/VP8"},
+      {mimeType: "video/VP9"},
+      {mimeType: "video/AV1"},
+      {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42e01f.*packetization-mode=1/},
+      {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42001f.*packetization-mode=1/},
+    ];
+
+    if (!isAndroid) {
+      // Android uses only MediaDataEncoder for H264, and it does not support
+      // packetization-mode=0.
+      codecs.push(
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42e01f.*asymmetry-allowed=1$/},
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42001f.*asymmetry-allowed=1$/},
+      );
+    }
+
+    for (const codec of codecs) {
+      info(`Testing codec ${codec.mimeType}`)
+      await doTest(codec);
+    }
   });
 </script>
 </pre>

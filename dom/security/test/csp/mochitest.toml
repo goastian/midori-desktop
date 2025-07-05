@@ -435,7 +435,9 @@ skip-if = [
 
 ["test_csp_error_messages.html"]
 support-files = ["file_csp_error_messages.html"]
-
+skip-if = [
+  "os == 'android' && android_version == '24' && processor == 'x86_64' && debug", # Bug 1915293
+]
 ["test_csp_frame_ancestors_about_blank.html"]
 support-files = [
   "file_csp_frame_ancestors_about_blank.html",
@@ -658,6 +660,12 @@ skip-if = [
 ]
 
 ["test_report_uri_missing_in_report_only_header.html"]
+
+["test_reporting_api_disabled.html"]
+skip-if = [
+  "http3",
+  "http2",
+]
 
 ["test_sandbox.html"]
 skip-if = ["true"] # Bug 1657934

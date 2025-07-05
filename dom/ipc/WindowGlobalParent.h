@@ -318,27 +318,37 @@ class WindowGlobalParent final : public WindowContext,
 
   mozilla::ipc::IPCResult RecvReloadWithHttpsOnlyException();
 
-  mozilla::ipc::IPCResult RecvDiscoverIdentityCredentialFromExternalSource(
-      const IdentityCredentialRequestOptions& aOptions,
-      const DiscoverIdentityCredentialFromExternalSourceResolver& aResolver);
-
-  mozilla::ipc::IPCResult RecvCollectIdentityCredentialFromCredentialStore(
-      const IdentityCredentialRequestOptions& aOptions,
-      const CollectIdentityCredentialFromCredentialStoreResolver& aResolver);
+  mozilla::ipc::IPCResult RecvGetIdentityCredential(
+      IdentityCredentialRequestOptions&& aOptions,
+      const CredentialMediationRequirement& aMediationRequirement,
+      bool aHasUserActivation, const GetIdentityCredentialResolver& aResolver);
   mozilla::ipc::IPCResult RecvStoreIdentityCredential(
       const IPCIdentityCredential& aCredential,
       const StoreIdentityCredentialResolver& aResolver);
+  mozilla::ipc::IPCResult RecvDisconnectIdentityCredential(
+      const IdentityCredentialDisconnectOptions& aOptions,
+      const DisconnectIdentityCredentialResolver& aResolver);
+  mozilla::ipc::IPCResult RecvSetLoginStatus(
+      LoginStatus aStatus, const SetLoginStatusResolver& aResolver);
+
+  mozilla::ipc::IPCResult RecvPreventSilentAccess(
+      const PreventSilentAccessResolver& aResolver);
 
   mozilla::ipc::IPCResult RecvGetStorageAccessPermission(
+      bool aIncludeIdentityCredential,
       GetStorageAccessPermissionResolver&& aResolve);
 
   mozilla::ipc::IPCResult RecvSetCookies(
       const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
-      nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies);
+      nsIURI* aHost, bool aFromHttp, bool aIsThirdParty,
+      const nsTArray<CookieStruct>& aCookies);
 
   mozilla::ipc::IPCResult RecvOnInitialStorageAccess();
 
   mozilla::ipc::IPCResult RecvRecordUserActivationForBTP();
+
+  already_AddRefed<dom::PWebAuthnTransactionParent>
+  AllocPWebAuthnTransactionParent();
 
  private:
   WindowGlobalParent(CanonicalBrowsingContext* aBrowsingContext,

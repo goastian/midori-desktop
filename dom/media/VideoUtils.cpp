@@ -7,16 +7,14 @@
 #include <stdint.h>
 
 #include "CubebUtils.h"
+#include "H264.h"
 #include "ImageContainer.h"
 #include "MediaContainerType.h"
 #include "MediaResource.h"
-#include "PDMFactory.h"
 #include "TimeUnits.h"
 #include "mozilla/Base64.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/SchedulerGroup.h"
-#include "mozilla/ScopeExit.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_media.h"
@@ -276,7 +274,13 @@ already_AddRefed<SharedThreadPool> GetMediaThreadPool(MediaThreadType aType) {
       SharedThreadPool::Get(nsDependentCString(name), threads);
 
   // Ensure a larger stack for platform decoder threads
-  if (aType == MediaThreadType::PLATFORM_DECODER) {
+  bool needsLargerStacks = aType == MediaThreadType::PLATFORM_DECODER;
+// On Windows, platform encoder threads require larger stacks as well for
+// libaom.
+#ifdef XP_WIN
+  needsLargerStacks |= aType == MediaThreadType::PLATFORM_ENCODER;
+#endif
+  if (needsLargerStacks) {
     const uint32_t minStackSize = 512 * 1024;
     uint32_t stackSize;
     MOZ_ALWAYS_SUCCEEDS(pool->GetThreadStackSize(&stackSize));
@@ -447,7 +451,8 @@ bool ExtractVPXCodecDetails(const nsAString& aCodec, uint8_t& aProfile,
 }
 
 bool ExtractH264CodecDetails(const nsAString& aCodec, uint8_t& aProfile,
-                             uint8_t& aConstraint, uint8_t& aLevel) {
+                             uint8_t& aConstraint, H264_LEVEL& aLevel,
+                             H264CodecStringStrictness aStrictness) {
   // H.264 codecs parameters have a type defined as avcN.PPCCLL, where
   // N = avc type. avc3 is avcc with SPS & PPS implicit (within stream)
   // PP = profile_idc, CC = constraint_set flags, LL = level_idc.
@@ -476,13 +481,30 @@ bool ExtractH264CodecDetails(const nsAString& aCodec, uint8_t& aProfile,
   aConstraint = Substring(aCodec, 7, 2).ToInteger(&rv, 16);
   NS_ENSURE_SUCCESS(rv, false);
 
-  aLevel = Substring(aCodec, 9, 2).ToInteger(&rv, 16);
+  uint8_t level = Substring(aCodec, 9, 2).ToInteger(&rv, 16);
   NS_ENSURE_SUCCESS(rv, false);
 
-  if (aLevel == 9) {
-    aLevel = H264_LEVEL_1_b;
-  } else if (aLevel <= 5) {
-    aLevel *= 10;
+  if (level == 9) {
+    level = static_cast<uint8_t>(H264_LEVEL::H264_LEVEL_1_b);
+  } else if (level <= 5) {
+    level *= 10;
+  }
+
+  if (aStrictness == H264CodecStringStrictness::Lenient) {
+    aLevel = static_cast<H264_LEVEL>(level);
+    return true;
+  }
+
+  // Check if valid level value
+  aLevel = static_cast<H264_LEVEL>(level);
+  if (aLevel < H264_LEVEL::H264_LEVEL_1 ||
+      aLevel > H264_LEVEL::H264_LEVEL_6_2) {
+    return false;
+  }
+  if ((level % 10) > 2) {
+    if (level != 13) {
+      return false;
+    }
   }
 
   return true;
@@ -1083,8 +1105,9 @@ static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
 bool IsH264CodecString(const nsAString& aCodec) {
   uint8_t profile = 0;
   uint8_t constraint = 0;
-  uint8_t level = 0;
-  return ExtractH264CodecDetails(aCodec, profile, constraint, level);
+  H264_LEVEL level;
+  return ExtractH264CodecDetails(aCodec, profile, constraint, level,
+                                 H264CodecStringStrictness::Lenient);
 }
 
 bool IsH265CodecString(const nsAString& aCodec) {
@@ -1212,13 +1235,12 @@ bool OnCellularConnection() {
     case nsINetworkLinkService::LINK_TYPE_ETHERNET:
     case nsINetworkLinkService::LINK_TYPE_USB:
     case nsINetworkLinkService::LINK_TYPE_WIFI:
+    default:
       return false;
     case nsINetworkLinkService::LINK_TYPE_WIMAX:
     case nsINetworkLinkService::LINK_TYPE_MOBILE:
       return true;
   }
-
-  return false;
 }
 
 bool IsWaveMimetype(const nsACString& aMimeType) {

@@ -20,6 +20,18 @@ FFmpegAudioEncoder<LIBAV_VER>::FFmpegAudioEncoder(
     const RefPtr<TaskQueue>& aTaskQueue, const EncoderConfig& aConfig)
     : FFmpegDataEncoder(aLib, aCodecID, aTaskQueue, aConfig) {}
 
+RefPtr<MediaDataEncoder::InitPromise> FFmpegAudioEncoder<LIBAV_VER>::Init() {
+  FFMPEGA_LOG("Init");
+  return InvokeAsync(mTaskQueue, __func__, [self = RefPtr(this)]() {
+    MediaResult r = self->InitEncoder();
+    if (NS_FAILED(r.Code())) {
+      FFMPEGV_LOG("%s", r.Description().get());
+      return InitPromise::CreateAndReject(r, __func__);
+    }
+    return InitPromise::CreateAndResolve(true, __func__);
+  });
+}
+
 nsCString FFmpegAudioEncoder<LIBAV_VER>::GetDescriptionName() const {
 #ifdef USING_MOZFFVPX
   return "ffvpx audio encoder"_ns;
@@ -39,17 +51,25 @@ void FFmpegAudioEncoder<LIBAV_VER>::ResamplerDestroy::operator()(
   speex_resampler_destroy(aResampler);
 }
 
-nsresult FFmpegAudioEncoder<LIBAV_VER>::InitSpecific() {
+MediaResult FFmpegAudioEncoder<LIBAV_VER>::InitEncoder() {
   MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
 
-  FFMPEG_LOG("FFmpegAudioEncoder::InitInternal");
+  ForceEnablingFFmpegDebugLogs();
+
+  FFMPEG_LOG("FFmpegAudioEncoder::InitEncoder");
 
   // Initialize the common members of the encoder instance
-  AVCodec* codec = FFmpegDataEncoder<LIBAV_VER>::InitCommon();
-  if (!codec) {
-    FFMPEG_LOG("FFmpegDataEncoder::InitCommon failed");
-    return NS_ERROR_DOM_MEDIA_NOT_SUPPORTED_ERR;
+  auto r = AllocateCodecContext(mLib, mCodecID);
+  if (r.isErr()) {
+    return r.unwrapErr();
   }
+  mCodecContext = r.unwrap();
+  const AVCodec* codec = mCodecContext->codec;
+  mCodecName = codec->name;
+
+#if LIBAVCODEC_VERSION_MAJOR >= 60
+  mCodecContext->flags |= AV_CODEC_FLAG_FRAME_DURATION;
+#endif
 
   // Find a compatible input rate for the codec, update the encoder config, and
   // note the rate at which this instance was configured.
@@ -138,35 +158,40 @@ nsresult FFmpegAudioEncoder<LIBAV_VER>::InitSpecific() {
           AssertedCast<float>(specific.mFrameDuration) / 1000.f;
       if (mLib->av_opt_set_double(mCodecContext->priv_data, "frame_duration",
                                   frameDurationMs, 0)) {
-        FFMPEG_LOG("Error setting the frame duration on Opus encoder");
-        return NS_ERROR_FAILURE;
+        return MediaResult(
+            NS_ERROR_FAILURE,
+            "Error setting the frame duration on Opus encoder"_ns);
       }
       FFMPEG_LOG("Opus frame duration set to %0.2f", frameDurationMs);
       if (specific.mPacketLossPerc) {
         if (mLib->av_opt_set_int(
                 mCodecContext->priv_data, "packet_loss",
                 AssertedCast<int64_t>(specific.mPacketLossPerc), 0)) {
-          FFMPEG_LOG("Error setting the packet loss percentage to %" PRIu64
-                     " on Opus encoder",
-                     specific.mPacketLossPerc);
-          return NS_ERROR_FAILURE;
+          return MediaResult(
+              NS_ERROR_FAILURE,
+              RESULT_DETAIL(
+                  "Error setting the packet loss percentage to %" PRIu64
+                  " on Opus encoder",
+                  specific.mPacketLossPerc));
         }
         FFMPEG_LOGV("Packet loss set to %d%% in Opus encoder",
                     AssertedCast<int>(specific.mPacketLossPerc));
       }
       if (specific.mUseInBandFEC) {
         if (mLib->av_opt_set(mCodecContext->priv_data, "fec", "on", 0)) {
-          FFMPEG_LOG("Error %s FEC on Opus encoder",
-                     specific.mUseInBandFEC ? "enabling" : "disabling");
-          return NS_ERROR_FAILURE;
+          return MediaResult(
+              NS_ERROR_FAILURE,
+              RESULT_DETAIL("Error %s FEC on Opus encoder",
+                            specific.mUseInBandFEC ? "enabling" : "disabling"));
         }
         FFMPEG_LOGV("In-band FEC enabled for Opus encoder.");
       }
       if (specific.mUseDTX) {
         if (mLib->av_opt_set(mCodecContext->priv_data, "dtx", "on", 0)) {
-          FFMPEG_LOG("Error %s DTX on Opus encoder",
-                     specific.mUseDTX ? "enabling" : "disabling");
-          return NS_ERROR_FAILURE;
+          return MediaResult(
+              NS_ERROR_FAILURE,
+              RESULT_DETAIL("Error %s DTX on Opus encoder",
+                            specific.mUseDTX ? "enabling" : "disabling"));
         }
         // DTX packets are a TOC byte, and possibly one byte of length, packets
         // 3 bytes and larger are to be returned.
@@ -180,11 +205,28 @@ nsresult FFmpegAudioEncoder<LIBAV_VER>::InitSpecific() {
   mCodecContext->time_base =
       AVRational{.num = 1, .den = mCodecContext->sample_rate};
 
-  MediaResult rv = FinishInitCommon(codec);
-  if (NS_FAILED(rv)) {
-    FFMPEG_LOG("FFmpeg encode initialization failure.");
-    return rv.Code();
+#if LIBAVCODEC_VERSION_MAJOR >= 60
+  mCodecContext->flags |= AV_CODEC_FLAG_FRAME_DURATION;
+#endif
+
+  SetContextBitrate();
+
+  AVDictionary* options = nullptr;
+  if (int ret = OpenCodecContext(mCodecContext->codec, &options); ret < 0) {
+    return MediaResult(
+        NS_ERROR_DOM_MEDIA_FATAL_ERR,
+        RESULT_DETAIL("failed to open %s avcodec: %s", mCodecName.get(),
+                      MakeErrorString(mLib, ret).get()));
   }
+  mLib->av_dict_free(&options);
+
+  FFMPEGA_LOG(
+      "%s has been initialized with sample-format: %d, bitrate: %" PRIi64
+      ", sample-rate: %d, channels: %d, time_base: %d/%d",
+      mCodecName.get(), static_cast<int>(mCodecContext->sample_fmt),
+      static_cast<int64_t>(mCodecContext->bit_rate), mCodecContext->sample_rate,
+      mConfig.mNumberOfChannels, mCodecContext->time_base.num,
+      mCodecContext->time_base.den);
 
   return NS_OK;
 }
@@ -192,13 +234,16 @@ nsresult FFmpegAudioEncoder<LIBAV_VER>::InitSpecific() {
 // avcodec_send_frame and avcodec_receive_packet were introduced in version 58.
 #if LIBAVCODEC_VERSION_MAJOR >= 58
 
-Result<MediaDataEncoder::EncodedData, nsresult>
+Result<MediaDataEncoder::EncodedData, MediaResult>
 FFmpegAudioEncoder<LIBAV_VER>::EncodeOnePacket(Span<float> aSamples,
                                                media::TimeUnit aPts) {
+  MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
+  MOZ_ASSERT(aSamples.Length() % mConfig.mNumberOfChannels == 0);
+
   // Allocate AVFrame.
   if (!PrepareFrame()) {
-    FFMPEG_LOG("failed to allocate frame");
-    return Err(NS_ERROR_OUT_OF_MEMORY);
+    return Err(
+        MediaResult(NS_ERROR_OUT_OF_MEMORY, "failed to allocate frame"_ns));
   }
 
   uint32_t frameCount = aSamples.Length() / mConfig.mNumberOfChannels;
@@ -213,9 +258,9 @@ FFmpegAudioEncoder<LIBAV_VER>::EncodeOnePacket(Span<float> aSamples,
   int rv = mLib->av_channel_layout_copy(&mFrame->ch_layout,
                                         &mCodecContext->ch_layout);
   if (rv < 0) {
-    FFMPEG_LOG("channel layout copy error: %s",
-               MakeErrorString(mLib, rv).get());
-    return Err(NS_ERROR_DOM_MEDIA_FATAL_ERR);
+    return Err(MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                           RESULT_DETAIL("channel layout copy error: %s",
+                                         MakeErrorString(mLib, rv).get())));
   }
 #  endif
 
@@ -234,21 +279,19 @@ FFmpegAudioEncoder<LIBAV_VER>::EncodeOnePacket(Span<float> aSamples,
   mFrame->duration = frameCount;
 #  else
   mFrame->pkt_duration = frameCount;
-  // Save duration in the time_base unit.
-  mDurationMap.Insert(mFrame->pts, mFrame->pkt_duration);
 #  endif
 
   if (int ret = mLib->av_frame_get_buffer(mFrame, 16); ret < 0) {
-    FFMPEG_LOG("failed to allocate frame data: %s",
-               MakeErrorString(mLib, ret).get());
-    return Err(NS_ERROR_OUT_OF_MEMORY);
+    return Err(MediaResult(NS_ERROR_OUT_OF_MEMORY,
+                           RESULT_DETAIL("failed to allocate frame data: %s",
+                                         MakeErrorString(mLib, ret).get())));
   }
 
   // Make sure AVFrame is writable.
   if (int ret = mLib->av_frame_make_writable(mFrame); ret < 0) {
-    FFMPEG_LOG("failed to make frame writable: %s",
-               MakeErrorString(mLib, ret).get());
-    return Err(NS_ERROR_DOM_MEDIA_FATAL_ERR);
+    return Err(MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                           RESULT_DETAIL("failed to make frame writable: %s",
+                                         MakeErrorString(mLib, ret).get())));
   }
 
   // The input is always in f32 interleaved for now
@@ -267,7 +310,7 @@ FFmpegAudioEncoder<LIBAV_VER>::EncodeOnePacket(Span<float> aSamples,
   return FFmpegDataEncoder<LIBAV_VER>::EncodeWithModernAPIs();
 }
 
-Result<MediaDataEncoder::EncodedData, nsresult> FFmpegAudioEncoder<
+Result<MediaDataEncoder::EncodedData, MediaResult> FFmpegAudioEncoder<
     LIBAV_VER>::EncodeInputWithModernAPIs(RefPtr<const MediaData> aSample) {
   MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
   MOZ_ASSERT(mCodecContext);
@@ -282,11 +325,10 @@ Result<MediaDataEncoder::EncodedData, nsresult> FFmpegAudioEncoder<
       (mResampler &&
        sample->mRate != AssertedCast<uint32_t>(mInputSampleRate)) ||
       sample->mChannels != mConfig.mNumberOfChannels) {
-    FFMPEG_LOG(
-        "Rate or sample-rate at the inputof the encoder different from what "
-        "has been configured initially, erroring out");
-    return Result<MediaDataEncoder::EncodedData, nsresult>(
-        NS_ERROR_DOM_ENCODING_NOT_SUPPORTED_ERR);
+    return Err(MediaResult(NS_ERROR_DOM_ENCODING_NOT_SUPPORTED_ERR,
+                           "Rate or sample-rate at the input of the encoder "
+                           "different from what has been configured "
+                           "initially"_ns));
   }
 
   // ffmpeg expects exactly sized input audio packets most of the time.
@@ -348,11 +390,13 @@ Result<MediaDataEncoder::EncodedData, nsresult> FFmpegAudioEncoder<
     }
     pts += media::TimeUnit(mPacketizer->PacketSize(), mConfig.mSampleRate);
   }
-  return Result<MediaDataEncoder::EncodedData, nsresult>(std::move(output));
+  return std::move(output);
 }
 
-Result<MediaDataEncoder::EncodedData, nsresult>
+Result<MediaDataEncoder::EncodedData, MediaResult>
 FFmpegAudioEncoder<LIBAV_VER>::DrainWithModernAPIs() {
+  MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
+
   // If there's no packetizer, or it's empty, we can proceed immediately.
   if (!mPacketizer || mPacketizer->FramesAvailable() == 0) {
     return FFmpegDataEncoder<LIBAV_VER>::DrainWithModernAPIs();
@@ -381,12 +425,12 @@ FFmpegAudioEncoder<LIBAV_VER>::DrainWithModernAPIs() {
   } else {
     return drainResult;
   }
-  return Result<MediaDataEncoder::EncodedData, nsresult>(std::move(output));
+  return std::move(output);
 }
 #endif  // if LIBAVCODEC_VERSION_MAJOR >= 58
 
-RefPtr<MediaRawData> FFmpegAudioEncoder<LIBAV_VER>::ToMediaRawData(
-    AVPacket* aPacket) {
+Result<RefPtr<MediaRawData>, MediaResult>
+FFmpegAudioEncoder<LIBAV_VER>::ToMediaRawData(AVPacket* aPacket) {
   MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
   MOZ_ASSERT(aPacket);
 
@@ -394,10 +438,21 @@ RefPtr<MediaRawData> FFmpegAudioEncoder<LIBAV_VER>::ToMediaRawData(
     FFMPEG_LOG(
         "DTX enabled and packet is %d bytes (threshold %d), not returning.",
         aPacket->size, mDtxThreshold);
-    return nullptr;
+    return RefPtr<MediaRawData>(nullptr);
   }
 
-  RefPtr<MediaRawData> data = ToMediaRawDataCommon(aPacket);
+  auto creationResult = CreateMediaRawData(aPacket);
+  if (creationResult.isErr()) {
+    return Err(creationResult.unwrapErr());
+  }
+
+  RefPtr<MediaRawData> data = creationResult.unwrap();
+
+  data->mKeyframe = (aPacket->flags & AV_PKT_FLAG_KEY) != 0;
+
+  if (auto extradataResult = GetExtraData(aPacket); extradataResult.isOk()) {
+    data->mExtraData = extradataResult.unwrap();
+  }
 
   data->mTime = media::TimeUnit(aPacket->pts, mConfig.mSampleRate);
   data->mTimecode = data->mTime;
@@ -420,32 +475,31 @@ RefPtr<MediaRawData> FFmpegAudioEncoder<LIBAV_VER>::ToMediaRawData(
   }
 
   if (mPacketsDelivered++ == 0) {
-    // Attach extradata, and the config (including any channel / samplerate
-    // modification to fit the encoder requirements), if needed.
-    if (auto r = GetExtraData(aPacket); r.isOk()) {
-      data->mExtraData = r.unwrap();
-    }
+    // Attach the config (including any channel / samplerate modification to fit
+    // the encoder requirements), if needed.
     data->mConfig = MakeUnique<EncoderConfig>(mConfig);
   }
 
   if (data->mExtraData) {
-    FFMPEG_LOG(
+    FFMPEGA_LOG(
         "FFmpegAudioEncoder out: [%s,%s] (%zu bytes, extradata %zu bytes)",
         data->mTime.ToString().get(), data->mDuration.ToString().get(),
         data->Size(), data->mExtraData->Length());
   } else {
-    FFMPEG_LOG("FFmpegAudioEncoder out: [%s,%s] (%zu bytes)",
-               data->mTime.ToString().get(), data->mDuration.ToString().get(),
-               data->Size());
+    FFMPEGA_LOG("FFmpegAudioEncoder out: [%s,%s] (%zu bytes)",
+                data->mTime.ToString().get(), data->mDuration.ToString().get(),
+                data->Size());
   }
 
   return data;
 }
 
-Result<already_AddRefed<MediaByteBuffer>, nsresult>
+Result<already_AddRefed<MediaByteBuffer>, MediaResult>
 FFmpegAudioEncoder<LIBAV_VER>::GetExtraData(AVPacket* /* aPacket */) {
+  MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
+
   if (!mCodecContext->extradata_size) {
-    return Err(NS_ERROR_NOT_AVAILABLE);
+    return Err(MediaResult(NS_ERROR_NOT_AVAILABLE, "no extradata"_ns));
   }
   // Create extra data -- they are on the context.
   auto extraData = MakeRefPtr<MediaByteBuffer>();

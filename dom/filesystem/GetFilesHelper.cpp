@@ -19,14 +19,12 @@
 
 namespace mozilla::dom {
 
-namespace {
-
 // This class is used in the DTOR of GetFilesHelper to release resources in the
 // correct thread.
-class ReleaseRunnable final : public Runnable {
+class GetFilesHelper::ReleaseRunnable final : public Runnable {
  public:
   static void MaybeReleaseOnMainThread(
-      nsTArray<RefPtr<Promise>>&& aPromises,
+      nsTArray<PromiseAdapter>&& aPromises,
       nsTArray<RefPtr<GetFilesCallback>>&& aCallbacks) {
     if (NS_IsMainThread()) {
       return;
@@ -40,25 +38,69 @@ class ReleaseRunnable final : public Runnable {
   NS_IMETHOD
   Run() override {
     MOZ_ASSERT(NS_IsMainThread());
-
     mPromises.Clear();
     mCallbacks.Clear();
-
     return NS_OK;
   }
 
  private:
-  ReleaseRunnable(nsTArray<RefPtr<Promise>>&& aPromises,
+  ReleaseRunnable(nsTArray<PromiseAdapter>&& aPromises,
                   nsTArray<RefPtr<GetFilesCallback>>&& aCallbacks)
       : Runnable("dom::ReleaseRunnable"),
         mPromises(std::move(aPromises)),
         mCallbacks(std::move(aCallbacks)) {}
 
-  nsTArray<RefPtr<Promise>> mPromises;
+  nsTArray<PromiseAdapter> mPromises;
   nsTArray<RefPtr<GetFilesCallback>> mCallbacks;
 };
 
-}  // namespace
+///////////////////////////////////////////////////////////////////////////////
+// PromiseAdapter
+
+GetFilesHelper::PromiseAdapter::PromiseAdapter(
+    MozPromiseAndGlobal&& aMozPromise)
+    : mPromise(std::move(aMozPromise)) {}
+GetFilesHelper::PromiseAdapter::PromiseAdapter(Promise* aDomPromise)
+    : mPromise(RefPtr{aDomPromise}) {}
+GetFilesHelper::PromiseAdapter::~PromiseAdapter() { Clear(); }
+
+void GetFilesHelper::PromiseAdapter::Clear() {
+  mPromise = AsVariant(RefPtr<Promise>(nullptr));
+}
+
+nsIGlobalObject* GetFilesHelper::PromiseAdapter::GetGlobalObject() {
+  return mPromise.match(
+      [](RefPtr<Promise>& aDomPromise) {
+        return aDomPromise ? aDomPromise->GetGlobalObject() : nullptr;
+      },
+      [](MozPromiseAndGlobal& aMozPromiseAndGlobal) {
+        return aMozPromiseAndGlobal.mGlobal.get();
+      });
+}
+
+void GetFilesHelper::PromiseAdapter::Resolve(nsTArray<RefPtr<File>>&& aFiles) {
+  mPromise.match(
+      [&aFiles](RefPtr<Promise>& aDomPromise) {
+        if (aDomPromise) {
+          aDomPromise->MaybeResolve(Sequence(std::move(aFiles)));
+        }
+      },
+      [&aFiles](MozPromiseAndGlobal& aMozPromiseAndGlobal) {
+        aMozPromiseAndGlobal.mMozPromise->Resolve(std::move(aFiles), __func__);
+      });
+}
+
+void GetFilesHelper::PromiseAdapter::Reject(nsresult aError) {
+  mPromise.match(
+      [&aError](RefPtr<Promise>& aDomPromise) {
+        if (aDomPromise) {
+          aDomPromise->MaybeReject(aError);
+        }
+      },
+      [&aError](MozPromiseAndGlobal& aMozPromiseAndGlobal) {
+        aMozPromiseAndGlobal.mMozPromise->Reject(aError, __func__);
+      });
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // GetFilesHelper Base class
@@ -74,7 +116,8 @@ already_AddRefed<GetFilesHelper> GetFilesHelper::Create(
     helper = new GetFilesHelperChild(aRecursiveFlag);
   }
 
-  nsAutoString directoryPath;
+  // Most callers will have at most one directory
+  AutoTArray<nsString, 1> directoryPaths;
 
   for (uint32_t i = 0; i < aFilesOrDirectory.Length(); ++i) {
     const OwningFileOrDirectory& data = aFilesOrDirectory[i];
@@ -87,15 +130,12 @@ already_AddRefed<GetFilesHelper> GetFilesHelper::Create(
     } else {
       MOZ_ASSERT(data.IsDirectory());
 
-      // We support the upload of only 1 top-level directory from our
-      // directory picker. This means that we cannot have more than 1
-      // Directory object in aFilesOrDirectory array.
-      MOZ_ASSERT(directoryPath.IsEmpty());
-
       RefPtr<Directory> directory = data.GetAsDirectory();
       MOZ_ASSERT(directory);
 
+      nsString directoryPath;
       aRv = directory->GetFullRealPath(directoryPath);
+      directoryPaths.AppendElement(std::move(directoryPath));
       if (NS_WARN_IF(aRv.Failed())) {
         return nullptr;
       }
@@ -103,13 +143,13 @@ already_AddRefed<GetFilesHelper> GetFilesHelper::Create(
   }
 
   // No directories to explore.
-  if (directoryPath.IsEmpty()) {
+  if (directoryPaths.IsEmpty()) {
     helper->mListingCompleted = true;
     return helper.forget();
   }
 
   MOZ_ASSERT(helper->mTargetBlobImplArray.IsEmpty());
-  helper->SetDirectoryPath(directoryPath);
+  helper->SetDirectoryPaths(std::move(directoryPaths));
 
   helper->Work(aRv);
   if (NS_WARN_IF(aRv.Failed())) {
@@ -132,17 +172,27 @@ GetFilesHelper::~GetFilesHelper() {
                                             std::move(mCallbacks));
 }
 
-void GetFilesHelper::AddPromise(Promise* aPromise) {
-  MOZ_ASSERT(aPromise);
-
+void GetFilesHelper::AddPromiseInternal(PromiseAdapter&& aPromise) {
   // Still working.
   if (!mListingCompleted) {
-    mPromises.AppendElement(aPromise);
+    mPromises.AppendElement(std::move(aPromise));
     return;
   }
 
   MOZ_ASSERT(mPromises.IsEmpty());
-  ResolveOrRejectPromise(aPromise);
+  ResolveOrRejectPromise(std::move(aPromise));
+}
+
+void GetFilesHelper::AddPromise(Promise* aPromise) {
+  MOZ_ASSERT(aPromise);
+  AddPromiseInternal(PromiseAdapter(aPromise));
+}
+
+void GetFilesHelper::AddMozPromise(MozPromiseType* aPromise,
+                                   nsIGlobalObject* aGlobal) {
+  MOZ_ASSERT(aPromise);
+  MOZ_ASSERT(aGlobal);
+  AddPromiseInternal(PromiseAdapter(MozPromiseAndGlobal{aPromise, aGlobal}));
 }
 
 void GetFilesHelper::AddCallback(GetFilesCallback* aCallback) {
@@ -170,9 +220,26 @@ void GetFilesHelper::Unlink() {
   Cancel();
 }
 
-void GetFilesHelper::Traverse(nsCycleCollectionTraversalCallback& cb) {
-  GetFilesHelper* tmp = this;
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPromises);
+void GetFilesHelper::Traverse(nsCycleCollectionTraversalCallback& aCb) {
+  for (auto&& promiseAdapter : mPromises) {
+    promiseAdapter.Traverse(aCb);
+  }
+}
+
+void GetFilesHelper::PromiseAdapter::Traverse(
+    nsCycleCollectionTraversalCallback& aCb) {
+  mPromise.match(
+      [&aCb](RefPtr<Promise>& aDomPromise) {
+        if (aDomPromise) {
+          NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mDomPromise");
+          aCb.NoteNativeChild(aDomPromise,
+                              NS_CYCLE_COLLECTION_PARTICIPANT(Promise));
+        }
+      },
+      [&aCb](MozPromiseAndGlobal& aMozPromiseAndGlobal) {
+        NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(aCb, "mGlobal");
+        aCb.NoteXPCOMChild(aMozPromiseAndGlobal.mGlobal);
+      });
 }
 
 void GetFilesHelper::Work(ErrorResult& aRv) {
@@ -185,7 +252,7 @@ void GetFilesHelper::Work(ErrorResult& aRv) {
 
 NS_IMETHODIMP
 GetFilesHelper::Run() {
-  MOZ_ASSERT(!mDirectoryPath.IsEmpty());
+  MOZ_ASSERT(!mDirectoryPaths.IsEmpty());
   MOZ_ASSERT(!mListingCompleted);
 
   // First step is to retrieve the list of file paths.
@@ -218,10 +285,9 @@ void GetFilesHelper::OperationCompleted() {
   mListingCompleted = true;
 
   // Let's process the pending promises.
-  nsTArray<RefPtr<Promise>> promises = std::move(mPromises);
-
+  auto promises = std::move(mPromises);
   for (uint32_t i = 0; i < promises.Length(); ++i) {
-    ResolveOrRejectPromise(promises[i]);
+    ResolveOrRejectPromise(std::move(promises[i]));
   }
 
   // Let's process the pending callbacks.
@@ -234,26 +300,31 @@ void GetFilesHelper::OperationCompleted() {
 
 void GetFilesHelper::RunIO() {
   MOZ_ASSERT(!NS_IsMainThread());
-  MOZ_ASSERT(!mDirectoryPath.IsEmpty());
+  MOZ_ASSERT(!mDirectoryPaths.IsEmpty());
   MOZ_ASSERT(!mListingCompleted);
 
-  nsCOMPtr<nsIFile> file;
-  mErrorResult = NS_NewLocalFile(mDirectoryPath, true, getter_AddRefs(file));
-  if (NS_WARN_IF(NS_FAILED(mErrorResult))) {
-    return;
+  for (const auto& directoryPath : mDirectoryPaths) {
+    nsCOMPtr<nsIFile> file;
+    mErrorResult = NS_NewLocalFile(directoryPath, getter_AddRefs(file));
+    if (NS_WARN_IF(NS_FAILED(mErrorResult))) {
+      return;
+    }
+
+    nsAutoString leafName;
+    mErrorResult = file->GetLeafName(leafName);
+    if (NS_WARN_IF(NS_FAILED(mErrorResult))) {
+      return;
+    }
+
+    nsAutoString domPath;
+    domPath.AssignLiteral(FILESYSTEM_DOM_PATH_SEPARATOR_LITERAL);
+    domPath.Append(leafName);
+
+    mErrorResult = ExploreDirectory(domPath, file);
+    if (NS_FAILED(mErrorResult)) {
+      break;
+    }
   }
-
-  nsAutoString leafName;
-  mErrorResult = file->GetLeafName(leafName);
-  if (NS_WARN_IF(NS_FAILED(mErrorResult))) {
-    return;
-  }
-
-  nsAutoString domPath;
-  domPath.AssignLiteral(FILESYSTEM_DOM_PATH_SEPARATOR_LITERAL);
-  domPath.Append(leafName);
-
-  mErrorResult = ExploreDirectory(domPath, file);
 }
 
 nsresult GetFilesHelperBase::ExploreDirectory(const nsAString& aDOMPath,
@@ -335,17 +406,16 @@ nsresult GetFilesHelperBase::ExploreDirectory(const nsAString& aDOMPath,
   return NS_OK;
 }
 
-void GetFilesHelper::ResolveOrRejectPromise(Promise* aPromise) {
+void GetFilesHelper::ResolveOrRejectPromise(PromiseAdapter&& aPromise) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mListingCompleted);
-  MOZ_ASSERT(aPromise);
 
-  Sequence<RefPtr<File>> files;
+  nsTArray<RefPtr<File>> files;
 
   if (NS_SUCCEEDED(mErrorResult)) {
     for (uint32_t i = 0; i < mTargetBlobImplArray.Length(); ++i) {
       RefPtr<File> domFile =
-          File::Create(aPromise->GetParentObject(), mTargetBlobImplArray[i]);
+          File::Create(aPromise.GetGlobalObject(), mTargetBlobImplArray[i]);
       if (NS_WARN_IF(!domFile)) {
         mErrorResult = NS_ERROR_FAILURE;
         files.Clear();
@@ -362,11 +432,11 @@ void GetFilesHelper::ResolveOrRejectPromise(Promise* aPromise) {
 
   // Error propagation.
   if (NS_FAILED(mErrorResult)) {
-    aPromise->MaybeReject(mErrorResult);
+    aPromise.Reject(mErrorResult);
     return;
   }
 
-  aPromise->MaybeResolve(files);
+  aPromise.Resolve(std::move(files));
 }
 
 void GetFilesHelper::RunCallback(GetFilesCallback* aCallback) {
@@ -393,7 +463,8 @@ void GetFilesHelperChild::Work(ErrorResult& aRv) {
   }
 
   mPendingOperation = true;
-  cc->CreateGetFilesRequest(mDirectoryPath, mRecursiveFlag, mUUID, this);
+  cc->CreateGetFilesRequest(std::move(mDirectoryPaths), mRecursiveFlag, mUUID,
+                            this);
 }
 
 void GetFilesHelperChild::Cancel() {
@@ -483,13 +554,13 @@ GetFilesHelperParent::~GetFilesHelperParent() {
 
 /* static */
 already_AddRefed<GetFilesHelperParent> GetFilesHelperParent::Create(
-    const nsID& aUUID, const nsAString& aDirectoryPath, bool aRecursiveFlag,
-    ContentParent* aContentParent, ErrorResult& aRv) {
+    const nsID& aUUID, nsTArray<nsString>&& aDirectoryPaths,
+    bool aRecursiveFlag, ContentParent* aContentParent, ErrorResult& aRv) {
   MOZ_ASSERT(aContentParent);
 
   RefPtr<GetFilesHelperParent> helper =
       new GetFilesHelperParent(aUUID, aContentParent, aRecursiveFlag);
-  helper->SetDirectoryPath(aDirectoryPath);
+  helper->SetDirectoryPaths(std::move(aDirectoryPaths));
 
   helper->Work(aRv);
   if (NS_WARN_IF(aRv.Failed())) {

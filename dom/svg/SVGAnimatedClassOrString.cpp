@@ -8,10 +8,13 @@
 
 #include "DOMSVGAnimatedString.h"
 #include "SVGAttrTearoffTable.h"
+#include "mozilla/dom/TrustedScriptURL.h"
+#include "mozilla/dom/UnionTypes.h"
 
 namespace mozilla {
 
-static SVGAttrTearoffTable<SVGAnimatedClassOrString, dom::DOMSVGAnimatedString>
+MOZ_CONSTINIT static SVGAttrTearoffTable<SVGAnimatedClassOrString,
+                                         dom::DOMSVGAnimatedString>
     sSVGAnimatedClassOrStringTearoffTable;
 
 already_AddRefed<dom::DOMSVGAnimatedString>
@@ -28,6 +31,24 @@ SVGAnimatedClassOrString::ToDOMAnimatedString(SVGElement* aSVGElement) {
 
 void SVGAnimatedClassOrString::RemoveTearoff() {
   sSVGAnimatedClassOrStringTearoffTable.RemoveTearoff(this);
+}
+
+void SVGAnimatedClassOrString::SetBaseValue(
+    const TrustedScriptURLOrString& aValue, SVGElement* aSVGElement,
+    bool aDoSetAttr, nsIPrincipal*, ErrorResult&) {
+  // The spec is not super explicit, but it makes sense to default to the
+  // associated data value for TrustedScriptURL values.
+  // https://github.com/w3c/svgwg/issues/961
+  const nsAString& stringValue = aValue.IsString()
+                                     ? aValue.GetAsString()
+                                     : aValue.GetAsTrustedScriptURL().mData;
+  SetBaseValue(stringValue, aSVGElement, aDoSetAttr);
+}
+
+void SVGAnimatedClassOrString::GetBaseValue(
+    OwningTrustedScriptURLOrString& aValue,
+    const SVGElement* aSVGElement) const {
+  GetBaseValue(aValue.SetAsString(), aSVGElement);
 }
 
 }  // namespace mozilla

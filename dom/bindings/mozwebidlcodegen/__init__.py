@@ -7,7 +7,6 @@
 
 import errno
 import hashlib
-import io
 import json
 import logging
 import os
@@ -15,17 +14,18 @@ import sys
 from multiprocessing import Pool
 
 import mozpack.path as mozpath
+from Codegen import CGThing
 from mach.mixin.logging import LoggingMixin
 from mozbuild.makeutil import Makefile
 from mozbuild.pythonutil import iter_modules_in_path
-from mozbuild.util import FileAvoidWrite
+from mozbuild.util import FileAvoidWrite, cpu_count
 
 # There are various imports in this file in functions to avoid adding
 # dependencies to config.status. See bug 949875.
 
 # Limit the count on Windows, because of bug 1889842 and also the
 # inefficiency of fork on Windows.
-DEFAULT_PROCESS_COUNT = 4 if sys.platform == "win32" else os.cpu_count()
+DEFAULT_PROCESS_COUNT = 4 if sys.platform == "win32" else cpu_count()
 
 
 class WebIDLPool:
@@ -68,7 +68,7 @@ class WebIDLPool:
         return WebIDLPool.GeneratorState._generate_build_files_for_webidl(filename)
 
 
-class BuildResult(object):
+class BuildResult:
     """Represents the result of processing WebIDL files.
 
     This holds a summary of output file generation during code generation.
@@ -284,7 +284,7 @@ class WebIDLCodegenManager(LoggingMixin):
         self._state = WebIDLCodegenManagerState()
 
         if os.path.exists(state_path):
-            with io.open(state_path, "r") as fh:
+            with open(state_path) as fh:
                 try:
                     self._state = WebIDLCodegenManagerState(fh=fh)
                 except Exception as e:
@@ -443,7 +443,7 @@ class WebIDLCodegenManager(LoggingMixin):
         parser = WebIDL.Parser(self._cache_dir, lexer=None)
 
         for path in sorted(self._input_paths):
-            with io.open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 data = fh.read()
                 hashes[path] = hashlib.sha1(data.encode()).hexdigest()
                 parser.parse(data, path)
@@ -591,6 +591,7 @@ class WebIDLCodegenManager(LoggingMixin):
         files = (
             mozpath.join(header_dir, "%s.h" % binding_stem),
             mozpath.join(self._codegen_dir, "%s.cpp" % binding_stem),
+            mozpath.join(header_dir, "%sFwd.h" % binding_stem),
             mozpath.join(header_dir, "%s.h" % stem) if is_event else None,
             mozpath.join(self._codegen_dir, "%s.cpp" % stem) if is_event else None,
         )
@@ -638,12 +639,12 @@ class WebIDLCodegenManager(LoggingMixin):
         stem, binding_stem, is_event, header_dir, files = self._binding_info(filename)
         root = CGBindingRoot(self._config, binding_stem, filename)
 
-        result = self._maybe_write_codegen(root, files[0], files[1])
+        result = self._maybe_write_codegen(root, files[0], files[1], files[2])
 
         if is_event:
             generated_event = CGEventRoot(self._config, stem)
             result = self._maybe_write_codegen(
-                generated_event, files[2], files[3], result
+                generated_event, files[3], files[4], result=result
             )
 
         return result, root.deps()
@@ -662,7 +663,7 @@ class WebIDLCodegenManager(LoggingMixin):
         for f in current_files:
             # This will fail if the file doesn't exist. If a current global
             # dependency doesn't exist, something else is wrong.
-            with io.open(f, "rb") as fh:
+            with open(f, "rb") as fh:
                 current_hashes[f] = hashlib.sha1(fh.read()).hexdigest()
 
         # The set of files has changed.
@@ -677,16 +678,25 @@ class WebIDLCodegenManager(LoggingMixin):
         return False, current_hashes
 
     def _save_state(self):
-        with io.open(self._state_path, "w", newline="\n") as fh:
+        with open(self._state_path, "w", newline="\n") as fh:
             self._state.dump(fh)
 
-    def _maybe_write_codegen(self, obj, declare_path, define_path, result=None):
+    def _maybe_write_codegen(
+        self,
+        obj: CGThing,
+        declare_path,
+        define_path,
+        forward_declare_path=None,
+        result=None,
+    ):
         assert declare_path and define_path
         if not result:
             result = (set(), set(), set())
 
         self._maybe_write_file(declare_path, obj.declare(), result)
         self._maybe_write_file(define_path, obj.define(), result)
+        if forward_declare_path is not None:
+            self._maybe_write_file(forward_declare_path, obj.forward_declare(), result)
 
         return result
 
@@ -717,7 +727,7 @@ def create_build_system_manager(topsrcdir=None, topobjdir=None, dist_dir=None):
     obj_dir = os.path.join(topobjdir, "dom", "bindings")
     webidl_root = os.path.join(topsrcdir, "dom", "webidl")
 
-    with io.open(os.path.join(obj_dir, "file-lists.json"), "r") as fh:
+    with open(os.path.join(obj_dir, "file-lists.json")) as fh:
         files = json.load(fh)
 
     inputs = (

@@ -5,10 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "AudioParam.h"
-#include "mozilla/dom/AudioParamBinding.h"
+
+#include "AudioContext.h"
 #include "AudioNodeEngine.h"
 #include "AudioNodeTrack.h"
-#include "AudioContext.h"
+#include "mozilla/dom/AudioParamBinding.h"
 
 namespace mozilla::dom {
 
@@ -97,45 +98,25 @@ mozilla::MediaTrack* AudioParam::Track() {
   return mTrack;
 }
 
-static const char* ToString(AudioTimelineEvent::Type aType) {
-  switch (aType) {
-    case AudioTimelineEvent::SetValue:
-      return "SetValue";
-    case AudioTimelineEvent::SetValueAtTime:
-      return "SetValueAtTime";
-    case AudioTimelineEvent::LinearRamp:
-      return "LinearRamp";
-    case AudioTimelineEvent::ExponentialRamp:
-      return "ExponentialRamp";
-    case AudioTimelineEvent::SetTarget:
-      return "SetTarget";
-    case AudioTimelineEvent::SetValueCurve:
-      return "SetValueCurve";
-    case AudioTimelineEvent::Track:
-      return "Track";
-    case AudioTimelineEvent::Cancel:
-      return "Cancel";
-    default:
-      return "unknown AudioTimelineEvent";
-  }
-}
-
 void AudioParam::SendEventToEngine(const AudioParamEvent& aEvent) {
-  WEB_AUDIO_API_LOG(
-      "%f: %s for %u %s %s=%g time=%f %s=%g", GetParentObject()->CurrentTime(),
-      NS_ConvertUTF16toUTF8(mName).get(), ParentNodeId(),
-      ToString(aEvent.mType),
-      aEvent.mType == AudioTimelineEvent::SetValueCurve ? "length" : "value",
-      aEvent.mType == AudioTimelineEvent::SetValueCurve
-          ? static_cast<double>(aEvent.CurveLength())
-          : static_cast<double>(aEvent.NominalValue()),
-      aEvent.Time<double>(),
-      aEvent.mType == AudioTimelineEvent::SetValueCurve ? "duration"
-                                                        : "constant",
-      aEvent.mType == AudioTimelineEvent::SetValueCurve
-          ? aEvent.Duration()
-          : aEvent.TimeConstant());
-
+  if (WEB_AUDIO_API_LOG_TEST()) {
+    nsAutoCString params;
+    if (aEvent.mType == AudioTimelineEvent::SetValueCurve) {
+      params.AppendFmt("length={} time={:f} duration={:f}",
+                       aEvent.CurveLength(), aEvent.Time<double>(),
+                       aEvent.Duration());
+    } else {
+      params.AppendFmt("value={} time={:f}", aEvent.NominalValue(),
+                       aEvent.Time<double>());
+      if (aEvent.mType == AudioTimelineEvent::SetTarget) {
+        params.AppendFmt(" constant={}", aEvent.TimeConstant());
+      }
+    }
+    WEB_AUDIO_API_LOG("%f: %s for %u %s %s", GetParentObject()->CurrentTime(),
+                      NS_ConvertUTF16toUTF8(mName).get(), ParentNodeId(),
+                      AudioTimelineEvent::EnumValueToString(aEvent.mType),
+                      params.get());
+  }
   AudioNodeTrack* track = mNode->GetTrack();
   if (track) {
     track->SendTimelineEvent(mIndex, aEvent);

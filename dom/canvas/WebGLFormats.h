@@ -7,9 +7,9 @@
 #define WEBGL_FORMATS_H_
 
 #include <map>
+#include <memory>
 #include <set>
 
-#include "mozilla/UniquePtr.h"
 #include "WebGLTypes.h"
 
 namespace mozilla::webgl {
@@ -351,6 +351,9 @@ struct FormatUsageInfo {
   std::map<PackingInfo, DriverUnpackInfo> validUnpacks;
   const DriverUnpackInfo* idealUnpack = nullptr;
 
+  // LOCAL_GL_IMPLEMENTATION_COLOR_READ_FORMAT/_TYPE:
+  mutable std::optional<PackingInfo> implReadPiCache;
+
   const GLint* textureSwizzleRGBA = nullptr;
 
  private:
@@ -404,8 +407,10 @@ class FormatUsageAuthority {
   std::set<GLenum> mValidTexUnpackTypes;
 
  public:
-  static UniquePtr<FormatUsageAuthority> CreateForWebGL1(gl::GLContext* gl);
-  static UniquePtr<FormatUsageAuthority> CreateForWebGL2(gl::GLContext* gl);
+  static std::unique_ptr<FormatUsageAuthority> CreateForWebGL1(
+      gl::GLContext* gl);
+  static std::unique_ptr<FormatUsageAuthority> CreateForWebGL2(
+      gl::GLContext* gl);
 
  private:
   FormatUsageAuthority() = default;

@@ -7,10 +7,11 @@
 #ifndef mozilla_dom_ElementInlines_h
 #define mozilla_dom_ElementInlines_h
 
-#include "mozilla/dom/Element.h"
 #include "mozilla/ServoBindingTypes.h"
-#include "nsIContentInlines.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/Element.h"
+#include "nsGenericHTMLElement.h"
+#include "nsIContentInlines.h"
 
 namespace mozilla::dom {
 
@@ -20,6 +21,13 @@ inline void Element::RegisterActivityObserver() {
 
 inline void Element::UnregisterActivityObserver() {
   OwnerDoc()->UnregisterActivityObserver(this);
+}
+
+inline bool Element::IsContentEditablePlainTextOnly() const {
+  const auto* const htmlElement = nsGenericHTMLElement::FromNode(this);
+  return htmlElement && !htmlElement->IsInDesignMode() &&
+         htmlElement->GetContentEditableState() ==
+             nsGenericHTMLElement::ContentEditableState::PlainTextOnly;
 }
 
 }  // namespace mozilla::dom
@@ -40,6 +48,15 @@ inline mozilla::dom::Element* nsINode::GetFlattenedTreeParentElementForStyle()
     return parentNode->AsElement();
   }
   return nullptr;
+}
+
+inline mozilla::dom::Element*
+nsINode::GetInclusiveFlattenedTreeAncestorElement() const {
+  nsIContent* content = const_cast<nsIContent*>(nsIContent::FromNode(this));
+  while (content && !content->IsElement()) {
+    content = content->GetFlattenedTreeParent();
+  }
+  return mozilla::dom::Element::FromNodeOrNull(content);
 }
 
 #endif  // mozilla_dom_ElementInlines_h

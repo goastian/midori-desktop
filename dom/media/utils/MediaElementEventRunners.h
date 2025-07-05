@@ -67,30 +67,36 @@ class HTMLMediaElement;
 // receive events. If we neglect to remove the self-reference then the element
 // just lives longer than it needs to.
 
+// Runnable for media element tasks.
+// These tasks have special behavior if the load algorithm is triggered before
+// the task is popped from the task queue, which is usually to skip running
+// the task.  See nsResolveOrRejectPendingPlayPromisesRunner for the exception.
 class nsMediaEventRunner : public nsIRunnable, public nsINamed {
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsMediaEventRunner, nsIRunnable)
 
-  explicit nsMediaEventRunner(const nsAString& aName,
-                              HTMLMediaElement* aElement,
+  explicit nsMediaEventRunner(const char* aName, HTMLMediaElement* aElement,
                               const nsAString& aEventName = u"unknown"_ns);
 
   void Cancel() { mElement = nullptr; }
   NS_IMETHODIMP GetName(nsACString& aName) override {
-    aName = NS_ConvertUTF16toUTF8(mName).get();
+    aName.AssignASCII(mName);
     return NS_OK;
   }
-  nsString Name() const { return mName; }
+  const char* Name() const { return mName; }
   nsString EventName() const { return mEventName; }
 
  protected:
   virtual ~nsMediaEventRunner() = default;
-  bool IsCancelled();
-  nsresult DispatchEvent(const nsAString& aName);
+  bool IsCancelled() const;
+  MOZ_CAN_RUN_SCRIPT nsresult FireEvent(const nsAString& aName);
+
+  virtual void ReportProfilerMarker();
+  uint64_t GetElementDurationMs() const;
 
   RefPtr<HTMLMediaElement> mElement;
-  nsString mName;
+  const char* mName;
   nsString mEventName;
   uint32_t mLoadID;
 };
@@ -101,8 +107,8 @@ class nsMediaEventRunner : public nsIRunnable, public nsINamed {
 class nsAsyncEventRunner : public nsMediaEventRunner {
  public:
   nsAsyncEventRunner(const nsAString& aEventName, HTMLMediaElement* aElement)
-      : nsMediaEventRunner(u"nsAsyncEventRunner"_ns, aElement, aEventName) {}
-  NS_IMETHOD Run() override;
+      : nsMediaEventRunner("nsAsyncEventRunner", aElement, aEventName) {}
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHOD Run() override;
 };
 
 /**
@@ -116,6 +122,9 @@ class nsAsyncEventRunner : public nsMediaEventRunner {
  * element's mPendingPlayPromisesRunners member and once the the runner is run
  * (whether fulfilled or canceled), it removes itself from
  * mPendingPlayPromisesRunners.
+ *
+ * If the load algorithm is triggered before the task is run then the pending
+ * play promises passed will be settled at commencement of the load algorithm.
  */
 class nsResolveOrRejectPendingPlayPromisesRunner : public nsMediaEventRunner {
  public:
@@ -145,7 +154,7 @@ class nsNotifyAboutPlayingRunner
       nsTArray<RefPtr<PlayPromise>>&& aPendingPlayPromises)
       : nsResolveOrRejectPendingPlayPromisesRunner(
             aElement, std::move(aPendingPlayPromises)) {}
-  NS_IMETHOD Run() override;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHOD Run() override;
 };
 
 /**
@@ -157,14 +166,17 @@ class nsSourceErrorEventRunner : public nsMediaEventRunner {
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsSourceErrorEventRunner,
                                            nsMediaEventRunner)
-  nsSourceErrorEventRunner(HTMLMediaElement* aElement, nsIContent* aSource)
-      : nsMediaEventRunner(u"nsSourceErrorEventRunner"_ns, aElement),
-        mSource(aSource) {}
+  nsSourceErrorEventRunner(HTMLMediaElement* aElement, nsIContent* aSource,
+                           const nsACString& aErrorDetails)
+      : nsMediaEventRunner("nsSourceErrorEventRunner", aElement),
+        mSource(aSource),
+        mErrorDetails(NS_ConvertUTF8toUTF16(aErrorDetails)) {}
   NS_IMETHOD Run() override;
 
  private:
   virtual ~nsSourceErrorEventRunner() = default;
   nsCOMPtr<nsIContent> mSource;
+  const nsString mErrorDetails;
 };
 
 /**
@@ -175,12 +187,12 @@ class nsSourceErrorEventRunner : public nsMediaEventRunner {
 class nsTimeupdateRunner : public nsMediaEventRunner {
  public:
   nsTimeupdateRunner(HTMLMediaElement* aElement, bool aIsMandatory)
-      : nsMediaEventRunner(u"nsTimeupdateRunner"_ns, aElement,
-                           u"timeupdate"_ns),
+      : nsMediaEventRunner("nsTimeupdateRunner", aElement, u"timeupdate"_ns),
         mIsMandatory(aIsMandatory) {}
-  NS_IMETHOD Run() override;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHOD Run() override;
 
  private:
+  void ReportProfilerMarker() override;
   bool ShouldDispatchTimeupdate() const;
   bool mIsMandatory;
 };

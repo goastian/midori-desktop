@@ -14,8 +14,7 @@
 
 interface nsIScreen;
 
-[Exposed=Window,
- InstrumentedProps=(computedStyleMap,onmousewheel,scrollIntoViewIfNeeded)]
+[Exposed=Window]
 interface Element : Node {
   [Constant]
   readonly attribute DOMString? namespaceURI;
@@ -50,9 +49,9 @@ interface Element : Node {
   [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   boolean toggleAttribute(DOMString name, optional boolean force);
   [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
-  undefined setAttribute(DOMString name, DOMString value);
+  undefined setAttribute(DOMString name, (TrustedType or DOMString) value);
   [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
-  undefined setAttributeNS(DOMString? namespace, DOMString name, DOMString value);
+  undefined setAttributeNS(DOMString? namespace, DOMString name, (TrustedType or DOMString) value);
   [CEReactions, Throws]
   undefined removeAttribute(DOMString name);
   [CEReactions, Throws]
@@ -152,12 +151,12 @@ interface Element : Node {
 
   // Obsolete methods.
   Attr? getAttributeNode(DOMString name);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   Attr? setAttributeNode(Attr newAttr);
   [CEReactions, Throws]
   Attr? removeAttributeNode(Attr oldAttr);
   Attr? getAttributeNodeNS(DOMString? namespaceURI, DOMString localName);
-  [CEReactions, Throws]
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
   Attr? setAttributeNodeNS(Attr newAttr);
 
   [Func="nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled"]
@@ -259,14 +258,14 @@ partial interface Element {
   [Pref="layout.css.zoom.enabled"] readonly attribute double currentCSSZoom;
 };
 
-// http://domparsing.spec.whatwg.org/#extensions-to-the-element-interface
+// https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-parsing-and-serialization
 partial interface Element {
   [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows, GetterCanOOM]
-  attribute [LegacyNullToEmptyString] DOMString innerHTML;
-  [CEReactions, Pure, SetterThrows]
-  attribute [LegacyNullToEmptyString] DOMString outerHTML;
-  [CEReactions, Throws]
-  undefined insertAdjacentHTML(DOMString position, DOMString text);
+  attribute (TrustedHTML or [LegacyNullToEmptyString] DOMString) innerHTML;
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Pure, SetterThrows]
+  attribute (TrustedHTML or [LegacyNullToEmptyString] DOMString) outerHTML;
+  [CEReactions, NeedsSubjectPrincipal=NonSystem, Throws]
+  undefined insertAdjacentHTML(DOMString position, (TrustedHTML or DOMString) text);
 };
 
 // https://dom.spec.whatwg.org/#dictdef-shadowrootinit
@@ -274,9 +273,7 @@ dictionary ShadowRootInit {
   required ShadowRootMode mode;
   boolean delegatesFocus = false;
   SlotAssignmentMode slotAssignment = "named";
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
   boolean clonable = false;
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
   boolean serializable = false;
 };
 
@@ -396,12 +393,8 @@ partial interface Element {
 
 
 // Sanitizer API, https://wicg.github.io/sanitizer-api/
-dictionary SetHTMLOptions {
-  SanitizerConfig sanitizer;
-};
-
 partial interface Element {
-  [SecureContext, UseCounter, Throws, Pref="dom.security.setHTML.enabled"]
+  [CEReactions, UseCounter, Throws, Pref="dom.security.sanitizer.enabled"]
   undefined setHTML(DOMString aInnerHTML, optional SetHTMLOptions options = {});
 };
 
@@ -412,8 +405,10 @@ dictionary GetHTMLOptions {
 
 partial interface Element {
   // https://html.spec.whatwg.org/#dom-element-sethtmlunsafe
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
-  undefined setHTMLUnsafe(DOMString html);
-  [Pref="dom.webcomponents.shadowdom.declarative.enabled"]
+  [NeedsSubjectPrincipal=NonSystem, Throws]
+  undefined setHTMLUnsafe((TrustedHTML or DOMString) html, optional SetHTMLUnsafeOptions options = {});
   DOMString getHTML(optional GetHTMLOptions options = {});
 };
+
+// https://w3c.github.io/trusted-types/dist/spec/#integrations
+typedef (TrustedHTML or TrustedScript or TrustedScriptURL) TrustedType;

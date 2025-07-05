@@ -1,5 +1,4 @@
-import { assert } from '../../../../../common/util/util.js';
-import { kTextureFormatInfo, EncodableTextureFormat } from '../../../../format_info.js';
+import { EncodableTextureFormat } from '../../../../format_info.js';
 import { virtualMipSize } from '../../../../util/texture/base.js';
 
 import { CheckContents } from './texture_zero_init_test.js';
@@ -12,7 +11,6 @@ export const checkContentsByBufferCopy: CheckContents = (
   subresourceRange
 ) => {
   for (const { level: mipLevel, layer } of subresourceRange.each()) {
-    assert(params.format in kTextureFormatInfo);
     const format = params.format as EncodableTextureFormat;
 
     t.expectSingleColor(texture, format, {
@@ -33,7 +31,6 @@ export const checkContentsByTextureCopy: CheckContents = (
   subresourceRange
 ) => {
   for (const { level, layer } of subresourceRange.each()) {
-    assert(params.format in kTextureFormatInfo);
     const format = params.format as EncodableTextureFormat;
 
     const [width, height, depth] = virtualMipSize(
@@ -42,15 +39,14 @@ export const checkContentsByTextureCopy: CheckContents = (
       level
     );
 
-    const dst = t.device.createTexture({
+    const dst = t.createTextureTracked({
       dimension: params.dimension,
       size: [width, height, depth],
       format: params.format,
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
     });
-    t.trackForCleanup(dst);
 
-    const commandEncoder = t.device.createCommandEncoder();
+    const commandEncoder = t.device.createCommandEncoder({ label: 'checkContentsByTextureCopy' });
     commandEncoder.copyTextureToTexture(
       { texture, mipLevel: level, origin: { x: 0, y: 0, z: layer } },
       { texture: dst, mipLevel: 0 },

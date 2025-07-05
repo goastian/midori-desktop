@@ -4,20 +4,34 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  * The origin of this IDL file is
- * http://www.whatwg.org/specs/web-apps/current-work/#the-video-element
+ * https://html.spec.whatwg.org/multipage/media.html#the-video-element
+ * https://wicg.github.io/video-rvfc/
  *
  * © Copyright 2004-2011 Apple Computer, Inc., Mozilla Foundation, and
  * Opera Software ASA. You are granted a license to use, reproduce
  * and create derivative works of this document.
  */
 
-[Exposed=Window,
- InstrumentedProps=(cancelVideoFrameCallback,
-                    onenterpictureinpicture,
-                    onleavepictureinpicture,
-                    playsInline,
-                    requestPictureInPicture,
-                    requestVideoFrameCallback)]
+dictionary VideoFrameCallbackMetadata {
+  required DOMHighResTimeStamp presentationTime;
+  required DOMHighResTimeStamp expectedDisplayTime;
+
+  required unsigned long width;
+  required unsigned long height;
+  required double mediaTime;
+
+  required unsigned long presentedFrames;
+
+  double processingDuration;
+  DOMHighResTimeStamp captureTime;
+  DOMHighResTimeStamp receiveTime;
+  unsigned long rtpTimestamp;
+};
+
+callback VideoFrameRequestCallback =
+    undefined(DOMHighResTimeStamp now, VideoFrameCallbackMetadata metadata);
+
+[Exposed=Window]
 interface HTMLVideoElement : HTMLMediaElement {
   [HTMLConstructor] constructor();
 
@@ -84,4 +98,13 @@ partial interface HTMLVideoElement {
 // https://w3c.github.io/picture-in-picture/#htmlvideoelement-extensions
 partial interface HTMLVideoElement {
   [CEReactions, SetterThrows] attribute boolean disablePictureInPicture;
+};
+
+// https://wicg.github.io/video-rvfc
+partial interface HTMLVideoElement {
+  [Pref="media.rvfc.enabled", Throws]
+  unsigned long requestVideoFrameCallback(VideoFrameRequestCallback callback);
+
+  [Pref="media.rvfc.enabled"]
+  undefined cancelVideoFrameCallback(unsigned long handle);
 };

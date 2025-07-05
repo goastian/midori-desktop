@@ -11,15 +11,49 @@
 #include "mozilla/RangeBoundary.h"
 #include "nsIContent.h"
 #include "nsINode.h"
+#include "nsContentUtils.h"
 
 namespace mozilla {
 
 namespace dom {
 class AbstractRange;
+
+/**
+ * ShadowDOMSelectionHelpers contains the static methods to help extra values
+ * based on whether or not the iterator allows to iterate nodes cross the shadow
+ * boundary.
+ */
+struct ShadowDOMSelectionHelpers {
+  ShadowDOMSelectionHelpers() = delete;
+
+  static nsINode* GetStartContainer(
+      const AbstractRange* aRange,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  static uint32_t StartOffset(
+      const AbstractRange* aRange,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  static nsINode* GetEndContainer(
+      const AbstractRange* aRange,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  static uint32_t EndOffset(
+      const AbstractRange* aRange,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  static nsINode* GetParentNodeInSameSelection(
+      const nsINode& aNode,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+
+  static ShadowRoot* GetShadowRoot(
+      const nsINode* aNode,
+      AllowRangeCrossShadowBoundary aAllowCrossShadowBoundary);
+};
 }  // namespace dom
 
 class RangeUtils final {
-  typedef dom::AbstractRange AbstractRange;
+  using AbstractRange = dom::AbstractRange;
 
  public:
   /**
@@ -102,6 +136,9 @@ class RangeUtils final {
   /**
    * The caller needs to ensure aNode is in the same doc like aAbstractRange.
    */
+  template <TreeKind aKind = TreeKind::ShadowIncludingDOM,
+            typename = std::enable_if_t<aKind == TreeKind::ShadowIncludingDOM ||
+                                        aKind == TreeKind::Flat>>
   static Maybe<bool> IsNodeContainedInRange(nsINode& aNode,
                                             AbstractRange* aAbstractRange);
 
@@ -110,12 +147,18 @@ class RangeUtils final {
    * ends after a range.  If neither it is contained inside the range.
    * Note that callers responsibility to ensure node in same doc as range.
    */
+  template <TreeKind aKind = TreeKind::ShadowIncludingDOM,
+            typename = std::enable_if_t<aKind == TreeKind::ShadowIncludingDOM ||
+                                        aKind == TreeKind::Flat>>
   static nsresult CompareNodeToRange(nsINode* aNode,
                                      AbstractRange* aAbstractRange,
                                      bool* aNodeIsBeforeRange,
                                      bool* aNodeIsAfterRange);
 
-  template <typename SPT, typename SRT, typename EPT, typename ERT>
+  template <TreeKind aKind, typename SPT, typename SRT, typename EPT,
+            typename ERT,
+            typename = std::enable_if_t<aKind == TreeKind::ShadowIncludingDOM ||
+                                        aKind == TreeKind::Flat>>
   static nsresult CompareNodeToRangeBoundaries(
       nsINode* aNode, const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
       const RangeBoundaryBase<EPT, ERT>& aEndBoundary, bool* aNodeIsBeforeRange,

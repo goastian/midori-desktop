@@ -14,13 +14,15 @@ interface PointerEvent : MouseEvent
 
   readonly attribute long pointerId;
 
-  readonly attribute long width;
-  readonly attribute long height;
+  readonly attribute double width;
+  readonly attribute double height;
   readonly attribute float pressure;
   readonly attribute float tangentialPressure;
   readonly attribute long tiltX;
   readonly attribute long tiltY;
   readonly attribute long twist;
+  readonly attribute double altitudeAngle;
+  readonly attribute double azimuthAngle;
 
   readonly attribute DOMString pointerType;
   readonly attribute boolean isPrimary;
@@ -33,13 +35,15 @@ interface PointerEvent : MouseEvent
 dictionary PointerEventInit : MouseEventInit
 {
   long pointerId = 0;
-  long width = 1;
-  long height = 1;
+  double width = 1.0;
+  double height = 1.0;
   float pressure = 0;
   float tangentialPressure = 0;
-  long tiltX = 0;
-  long tiltY = 0;
+  long tiltX;
+  long tiltY;
   long twist = 0;
+  double altitudeAngle;
+  double azimuthAngle;
   DOMString pointerType = "";
   boolean isPrimary = false;
   sequence<PointerEvent> coalescedEvents = [];

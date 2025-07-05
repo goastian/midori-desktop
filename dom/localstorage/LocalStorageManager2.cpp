@@ -25,7 +25,8 @@
 #include "mozilla/dom/PBackgroundLSSharedTypes.h"
 #include "mozilla/dom/PBackgroundLSSimpleRequest.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/dom/quota/QuotaManager.h"
+#include "mozilla/dom/quota/PrincipalUtils.h"
+#include "mozilla/dom/quota/PromiseUtils.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundChild.h"
@@ -130,7 +131,7 @@ class AsyncRequestHelper final : public Runnable,
   NS_DECL_NSIRUNNABLE
 
   // LSRequestChildCallback
-  void OnResponse(const LSRequestResponse& aResponse) override;
+  void OnResponse(LSRequestResponse&& aResponse) override;
 };
 
 class SimpleRequestResolver final : public LSSimpleRequestChildCallback {
@@ -154,26 +155,6 @@ class SimpleRequestResolver final : public LSSimpleRequestChildCallback {
   void OnResponse(const LSSimpleRequestResponse& aResponse) override;
 };
 
-nsresult CreatePromise(JSContext* aContext, Promise** aPromise) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aContext);
-
-  nsIGlobalObject* global =
-      xpc::NativeGlobal(JS::CurrentGlobalOrNull(aContext));
-  if (NS_WARN_IF(!global)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  ErrorResult result;
-  RefPtr<Promise> promise = Promise::Create(global, result);
-  if (result.Failed()) {
-    return result.StealNSResult();
-  }
-
-  promise.forget(aPromise);
-  return NS_OK;
-}
-
 nsresult CheckedPrincipalToPrincipalInfo(
     nsIPrincipal* aPrincipal, mozilla::ipc::PrincipalInfo& aPrincipalInfo) {
   MOZ_ASSERT(NS_IsMainThread());
@@ -184,7 +165,7 @@ nsresult CheckedPrincipalToPrincipalInfo(
     return rv;
   }
 
-  if (NS_WARN_IF(!quota::QuotaManager::IsPrincipalInfoValid(aPrincipalInfo))) {
+  if (NS_WARN_IF(!quota::IsPrincipalInfoValid(aPrincipalInfo))) {
     return NS_ERROR_FAILURE;
   }
 
@@ -320,7 +301,7 @@ LocalStorageManager2::Preload(nsIPrincipal* aPrincipal, JSContext* aContext,
   RefPtr<Promise> promise;
 
   if (aContext) {
-    rv = CreatePromise(aContext, getter_AddRefs(promise));
+    rv = quota::CreatePromise(aContext, getter_AddRefs(promise));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -364,7 +345,7 @@ LocalStorageManager2::IsPreloaded(nsIPrincipal* aPrincipal, JSContext* aContext,
   MOZ_ASSERT(_retval);
 
   RefPtr<Promise> promise;
-  nsresult rv = CreatePromise(aContext, getter_AddRefs(promise));
+  nsresult rv = quota::CreatePromise(aContext, getter_AddRefs(promise));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -395,7 +376,7 @@ LocalStorageManager2::GetState(nsIPrincipal* aPrincipal, JSContext* aContext,
   MOZ_ASSERT(_retval);
 
   RefPtr<Promise> promise;
-  nsresult rv = CreatePromise(aContext, getter_AddRefs(promise));
+  nsresult rv = quota::CreatePromise(aContext, getter_AddRefs(promise));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -521,7 +502,16 @@ void AsyncRequestHelper::Finish() {
 
       case LSRequestResponse::TLSRequestPreloadDatastoreResponse:
         if (mPromise) {
-          mPromise->MaybeResolveWithUndefined();
+          const LSRequestPreloadDatastoreResponse& preloadDatastoreResponse =
+              mResponse.get_LSRequestPreloadDatastoreResponse();
+
+          const bool invalidated = preloadDatastoreResponse.invalidated();
+
+          if (invalidated) {
+            mPromise->MaybeReject(NS_ERROR_ABORT);
+          } else {
+            mPromise->MaybeResolveWithUndefined();
+          }
         }
         break;
       default:
@@ -530,6 +520,7 @@ void AsyncRequestHelper::Finish() {
   }
 
   mManager = nullptr;
+  mPromise = nullptr;
 
   mState = State::Complete;
 }
@@ -571,13 +562,13 @@ AsyncRequestHelper::Run() {
   return NS_OK;
 }
 
-void AsyncRequestHelper::OnResponse(const LSRequestResponse& aResponse) {
+void AsyncRequestHelper::OnResponse(LSRequestResponse&& aResponse) {
   AssertIsOnDOMFileThread();
   MOZ_ASSERT(mState == State::ResponsePending);
 
   mActor = nullptr;
 
-  mResponse = aResponse;
+  mResponse = std::move(aResponse);
 
   mState = State::Finishing;
 

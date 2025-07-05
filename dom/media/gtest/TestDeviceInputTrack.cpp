@@ -101,7 +101,7 @@ TEST_F(TestDeviceInputTrack, DeviceInputConsumerTrack) {
     }
 
     void ProcessInput(GraphTime aFrom, GraphTime aTo,
-                      uint32_t aFlags) override{/* Ignored */};
+                      uint32_t aFlags) override { /* Ignored */ };
 
     uint32_t NumberOfChannels() const override {
       if (mInputs.IsEmpty()) {
@@ -134,11 +134,15 @@ TEST_F(TestDeviceInputTrack, DeviceInputConsumerTrack) {
     bool IsVoiceInput(MediaTrackGraph* aGraph) const override {
       return mIsVoice;
     };
-    void DeviceChanged(MediaTrackGraph* aGraph) override { /* Ignored */
+    void DeviceChanged(MediaTrackGraph* aGraph) override { /* Ignored */ }
+    void Disconnect(MediaTrackGraph* aGraph) override { /* Ignored */ };
+    void NotifySetRequestedInputProcessingParams(
+        MediaTrackGraph* aGraph, int aGeneration,
+        cubeb_input_processing_params aRequestedParams) override {
+      /* Ignored */
     }
-    void Disconnect(MediaTrackGraph* aGraph) override{/* Ignored */};
     void NotifySetRequestedInputProcessingParamsResult(
-        MediaTrackGraph* aGraph, cubeb_input_processing_params aRequestedParams,
+        MediaTrackGraph* aGraph, int aGeneration,
         const Result<cubeb_input_processing_params, int>& aResult) override {
       /* Ignored */
     }

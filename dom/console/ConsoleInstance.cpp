@@ -46,15 +46,13 @@ ConsoleUtils::Level WebIDLevelToConsoleUtilsLevel(ConsoleLevel aLevel) {
 ConsoleInstance::ConsoleInstance(JSContext* aCx,
                                  const ConsoleInstanceOptions& aOptions)
     : mMaxLogLevel(ConsoleLogLevel::All),
-      mConsole(new Console(aCx, nullptr, 0, 0)) {
+      mConsole(new Console(aCx, nullptr, 0, 0, aOptions.mPrefix)) {
   mConsole->mConsoleID = aOptions.mConsoleID;
   mConsole->mPassedInnerID = aOptions.mInnerID;
 
   if (aOptions.mDump.WasPassed()) {
     mConsole->mDumpFunction = &aOptions.mDump.Value();
   }
-
-  mConsole->mPrefix = aOptions.mPrefix;
 
   // Let's inform that this is a custom instance.
   mConsole->mChromeInstance = true;
@@ -162,6 +160,9 @@ JSObject* ConsoleInstance::WrapObject(JSContext* aCx,
   void ConsoleInstance::name(JSContext* aCx,                     \
                              const Sequence<JS::Value>& aData) { \
     RefPtr<Console> console(mConsole);                           \
+    if (MOZ_UNLIKELY(!console)) {                                \
+      return;                                                    \
+    }                                                            \
     console->MethodInternal(aCx, Console::Method##name,          \
                             nsLiteralString(string), aData);     \
   }
@@ -268,7 +269,7 @@ bool ConsoleInstance::ShouldLog(ConsoleLogLevel aLevel) {
 
 void ConsoleInstance::ReportForServiceWorkerScope(const nsAString& aScope,
                                                   const nsAString& aMessage,
-                                                  const nsAString& aFilename,
+                                                  const nsACString& aFilename,
                                                   uint32_t aLineNumber,
                                                   uint32_t aColumnNumber,
                                                   ConsoleLevel aLevel) {

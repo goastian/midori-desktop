@@ -363,7 +363,7 @@ function createMediaElementForTrack(track, idPrefix) {
  * to use fake devices or not is now determined in pref further below instead.
  *
  * @param {Dictionary} constraints
- *        The constraints for this mozGetUserMedia callback
+ *        The constraints for this getUserMedia callback
  */
 function getUserMedia(constraints) {
   if (!constraints.fake && constraints.audio) {
@@ -458,15 +458,35 @@ function setupEnvironment() {
 
 // [TODO] remove after bug 1509012 is fixed.
 async function matchPlatformH264CodecPrefs() {
-  const hasHW264Enc =
+  // Has hardware H.264 encoder support
+  const hardware =
     SpecialPowers.getIntPref("media.webrtc.encoder_creation_strategy") == 1 &&
     (navigator.userAgent.includes("Android") ||
       navigator.userAgent.includes("Mac OS X"));
 
   await pushPrefs(
-    ["media.webrtc.encoder_creation_strategy", hasHW264Enc ? 1 : 0],
-    ["media.navigator.mediadatadecoder_h264_enabled", hasHW264Enc]
+    ["media.webrtc.encoder_creation_strategy", hardware ? 1 : 0],
+    ["media.navigator.mediadatadecoder_h264_enabled", hardware]
   );
+
+  const software = !navigator.userAgent.includes("Android");
+  return {
+    hardware,
+    software,
+    any: hardware || software,
+  };
+}
+
+async function matchPlatformAV1CodecPrefs() {
+  // Has hardware AV1 encoder support
+  const hardware = false;
+  const software = !navigator.userAgent.includes("Android");
+  await pushPrefs(["media.webrtc.codec.video.av1.enabled", software]);
+  return {
+    hardware,
+    software,
+    any: hardware || software,
+  };
 }
 
 async function runTestWhenReady(testFunc) {
@@ -1256,24 +1276,31 @@ AudioStreamFlowingHelper.prototype = {
 };
 
 class VideoFrameEmitter {
-  constructor(color1, color2, width, height) {
+  constructor(color1, color2, width, height, { fillEntireFrame = false } = {}) {
     if (!width) {
-      width = 50;
+      width = 64;
     }
     if (!height) {
       height = width;
     }
     this._helper = new CaptureStreamTestHelper2D(width, height);
+    this._fillEntireFrame = fillEntireFrame;
     this._canvas = this._helper.createAndAppendElement(
       "canvas",
       "source_canvas"
     );
     this._canvas.width = width;
     this._canvas.height = height;
+    this._drawColorOptions = {
+      offsetX: 0,
+      offsetY: 0,
+      width: fillEntireFrame ? width : width / 2,
+      height: fillEntireFrame ? height : height / 2,
+    };
     this._color1 = color1 ? color1 : this._helper.green;
     this._color2 = color2 ? color2 : this._helper.red;
     // Make sure this is initted
-    this._helper.drawColor(this._canvas, this._color1);
+    this._helper.drawColor(this._canvas, this._color1, this._drawColorOptions);
     this._stream = this._canvas.captureStream();
     this._started = false;
   }
@@ -1290,7 +1317,11 @@ class VideoFrameEmitter {
     this._color1 = color1 ? color1 : this._helper.green;
     this._color2 = color2 ? color2 : this._helper.red;
     try {
-      this._helper.drawColor(this._canvas, this._color1);
+      this._helper.drawColor(
+        this._canvas,
+        this._color1,
+        this._drawColorOptions
+      );
     } catch (e) {
       // ignore; stream might have shut down
     }
@@ -1299,6 +1330,8 @@ class VideoFrameEmitter {
   size(width, height) {
     this._canvas.width = width;
     this._canvas.height = height;
+    this._drawColorOptions.width = this._fillEntireFrame ? width : width / 2;
+    this._drawColorOptions.height = this._fillEntireFrame ? height : height / 2;
   }
 
   start() {
@@ -1311,7 +1344,11 @@ class VideoFrameEmitter {
     this._started = true;
     this._intervalId = setInterval(() => {
       try {
-        this._helper.drawColor(this._canvas, i ? this._color1 : this._color2);
+        this._helper.drawColor(
+          this._canvas,
+          i ? this._color1 : this._color2,
+          this._drawColorOptions
+        );
         i = 1 - i;
       } catch (e) {
         // ignore; stream might have shut down, and we don't bother clearing

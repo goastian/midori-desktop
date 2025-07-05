@@ -14,7 +14,6 @@
  * - VIDEO_HDR_PLAY_TIME_MS
  * - VIDEO_HIDDEN_PLAY_TIME_MS
  * - VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE
- * - VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE
  * - VIDEO_VISIBLE_PLAY_TIME_MS
  * - MEDIA_PLAY_TIME_MS
  * - MUTED_PLAY_TIME_PERCENT
@@ -29,7 +28,6 @@ const videoHDRHistNames = [
 ];
 const videoKeyedHistNames = [
   "VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE",
-  "VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE",
   "VIDEO_VISIBLE_PLAY_TIME_MS"
 ];
 const audioKeyedHistNames = [
@@ -66,7 +64,6 @@ add_task(async function testTotalPlayTime() {
   ]);
   await assertValueConstantlyIncreases(videoChrome, "totalVideoPlayTime");
   assertValueKeptUnchanged(videoChrome, "invisiblePlayTime");
-  assertValueKeptUnchanged(videoChrome, "videoDecodeSuspendedTime");
 
   info(`should not accumulate time for paused video`);
   video.pause();
@@ -90,7 +87,8 @@ add_task(async function testTotalPlayTime() {
 const {AppConstants} = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
-const reportsColorDepthFromVideoData = (AppConstants.platform == "macosx");
+const reportsColorDepthFromVideoData =
+    (AppConstants.platform == "macosx" || AppConstants.platform == "win");
 if (reportsColorDepthFromVideoData) {
   add_task(async function testHDRPlayTime() {
     // This task is different from the others because the HTMLMediaElement does
@@ -100,7 +98,11 @@ if (reportsColorDepthFromVideoData) {
     // doesn't actually check the properties of the video player, other than to
     // confirm that video has played for at least some time.
     const video = document.createElement('video');
-    video.src = "TestPatternHDR.mp4"; // This is an HDR video with no audio.
+    if (AppConstants.platform == "macosx") {
+      video.src = "TestPatternHDR.mp4"; // This is an HDR video with no audio.
+    } else if (AppConstants.platform == "win") {
+      video.src = "gizmo_av1_10bit_420.webm";
+    }
     document.body.appendChild(video);
 
     info(`load the HDR video`);
@@ -415,24 +417,17 @@ add_task(async function testDecodeSuspendedTime() {
   ok(returnTrueWhenAllValuesAreTrue(rv), "video started playing");
   await assertValueConstantlyIncreases(videoChrome, "totalVideoPlayTime");
   assertValueKeptUnchanged(videoChrome, "invisiblePlayTime");
-  assertValueKeptUnchanged(videoChrome, "videoDecodeSuspendedTime");
 
   info(`make it invisible and force to suspend decoding`);
   video.setVisible(false);
-  await once(video, "mozvideodecodesuspendedstarted");
   await assertValueConstantlyIncreases(videoChrome, "totalVideoPlayTime");
   await assertValueConstantlyIncreases(videoChrome, "invisiblePlayTime");
-  await assertValueConstantlyIncreases(videoChrome, "videoDecodeSuspendedTime");
 
   info(`make it visible and resume decoding`);
   video.setVisible(true);
-  await Promise.all([
-    once(video, "mozinvisibleplaytimepaused"),
-    once(video, "mozvideodecodesuspendedpaused"),
-  ]);
+  await once(video, "mozinvisibleplaytimepaused");
   await assertValueConstantlyIncreases(videoChrome, "totalVideoPlayTime");
   assertValueKeptUnchanged(videoChrome, "invisiblePlayTime");
-  assertValueKeptUnchanged(videoChrome, "videoDecodeSuspendedTime");
   await cleanUpMediaAndCheckTelemetry(video);
 });
 
@@ -684,7 +679,6 @@ function assertAllProbeRelatedAttributesKeptUnchanged(video) {
   const videoChrome = SpecialPowers.wrap(video);
   assertValueKeptUnchanged(videoChrome, "totalVideoPlayTime");
   assertValueKeptUnchanged(videoChrome, "invisiblePlayTime");
-  assertValueKeptUnchanged(videoChrome, "videoDecodeSuspendedTime");
 }
 
 </script>

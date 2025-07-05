@@ -28,7 +28,6 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPrefs_webgl.h"
-#include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsTArray.h"
@@ -104,6 +103,7 @@ class Texture;
 namespace layers {
 class CompositableHost;
 class RemoteTextureOwnerClient;
+class SharedSurfacesHolder;
 class SurfaceDescriptor;
 }  // namespace layers
 
@@ -207,11 +207,14 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   friend class WebGLExtensionCompressedTextureRGTC;
   friend class WebGLExtensionCompressedTextureS3TC;
   friend class WebGLExtensionCompressedTextureS3TC_SRGB;
+  friend class WebGLExtensionDepthClamp;
   friend class WebGLExtensionDepthTexture;
   friend class WebGLExtensionDisjointTimerQuery;
   friend class WebGLExtensionDrawBuffers;
+  friend class WebGLExtensionFragDepth;
   friend class WebGLExtensionLoseContext;
   friend class WebGLExtensionMOZDebug;
+  friend class WebGLExtensionShaderTextureLod;
   friend class WebGLExtensionVertexArray;
   friend class WebGLMemoryTracker;
   friend class webgl::AvailabilityRunnable;
@@ -301,6 +304,12 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   const uint32_t mMaxAcceptableFBStatusInvals =
       StaticPrefs::webgl_perf_max_acceptable_fb_status_invals();
   bool mWarnOnce_DepthTexCompareFilterable = true;
+
+  mutable std::optional<bool> mIsSupportedCache_DrawBuffers;
+  mutable std::optional<bool> mIsSupportedCache_FragDepth;
+  mutable std::optional<bool> mIsSupportedCache_ShaderTextureLod;
+
+  // -
 
   uint64_t mNextFenceId = 1;
   uint64_t mCompletedFenceId = 0;
@@ -477,6 +486,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
 
   void DummyReadFramebufferOperation();
 
+  layers::SharedSurfacesHolder* GetSharedSurfacesHolder() const;
+
   dom::ContentParentId GetContentId() const;
 
   WebGLTexture* GetActiveTex(const GLenum texTarget) const;
@@ -534,14 +545,22 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   Maybe<uvec2> SnapshotInto(GLuint srcFb, const gfx::IntSize& size,
                             const Range<uint8_t>& dest,
                             const Maybe<size_t> destStride = Nothing());
+  already_AddRefed<gfx::SourceSurface> GetBackBufferSnapshot(
+      const bool requireAlphaPremult);
   gl::SwapChain* GetSwapChain(WebGLFramebuffer*, const bool webvr);
   Maybe<layers::SurfaceDescriptor> GetFrontBuffer(WebGLFramebuffer*,
                                                   const bool webvr);
 
+  std::optional<dom::PredefinedColorSpace> mDrawingBufferColorSpace;
+  std::optional<dom::PredefinedColorSpace> mUnpackColorSpace;
   std::optional<color::ColorProfileDesc> mDisplayProfile;
 
   void SetDrawingBufferColorSpace(const dom::PredefinedColorSpace val) {
-    mOptions.colorSpace = val;
+    mDrawingBufferColorSpace = val;
+  }
+
+  void SetUnpackColorSpace(const dom::PredefinedColorSpace val) {
+    mUnpackColorSpace = val;
   }
 
   void ClearVRSwapChain();
@@ -637,9 +656,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   Maybe<double> GetRenderbufferParameter(const WebGLRenderbuffer&,
                                          GLenum pname) const;
   webgl::LinkResult GetLinkResult(const WebGLProgram&) const;
-
-  Maybe<webgl::ShaderPrecisionFormat> GetShaderPrecisionFormat(
-      GLenum shadertype, GLenum precisiontype) const;
 
   webgl::GetUniformData GetUniform(const WebGLProgram&, uint32_t loc) const;
 
@@ -842,10 +858,11 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   void TexStorage(GLenum texTarget, uint32_t levels, GLenum sizedFormat,
                   uvec3 size) const;
 
-  UniquePtr<webgl::TexUnpackBlob> ToTexUnpackBytes(
+  std::unique_ptr<webgl::TexUnpackBlob> ToTexUnpackBytes(
       const WebGLTexImageData& imageData);
 
-  UniquePtr<webgl::TexUnpackBytes> ToTexUnpackBytes(WebGLTexPboOffset& aPbo);
+  std::unique_ptr<webgl::TexUnpackBytes> ToTexUnpackBytes(
+      WebGLTexPboOffset& aPbo);
 
   ////////////////////////////////////
   // WebGLTextureUpload.cpp
@@ -914,7 +931,6 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   WebGLVertexAttrib0Status WhatDoesVertexAttrib0Need() const;
   bool DoFakeVertexAttrib0(uint64_t fakeVertexCount,
                            WebGLVertexAttrib0Status whatDoesAttrib0Need);
-  void UndoFakeVertexAttrib0();
 
   bool mResetLayer = true;
   bool mOptionsFrozen = false;
@@ -1205,8 +1221,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   CacheInvalidator mGenericVertexAttribTypeInvalidator;
 
   GLuint mFakeVertexAttrib0BufferObject = 0;
-  intptr_t mFakeVertexAttrib0BufferObjectSize = 0;
-  bool mFakeVertexAttrib0DataDefined = false;
+  intptr_t mFakeVertexAttrib0BufferAllocSize = 0;
+  intptr_t mFakeVertexAttrib0BufferInitializedSize = 0;
   alignas(alignof(float)) uint8_t
       mGenericVertexAttrib0Data[sizeof(float) * 4] = {};
   alignas(alignof(float)) uint8_t
@@ -1227,6 +1243,8 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
 
   std::bitset<webgl::kMaxDrawBuffers> mColorWriteMaskNonzero = -1;
   std::bitset<webgl::kMaxDrawBuffers> mBlendEnabled = 0;
+
+  std::unordered_set<GLenum> mIsEnabledMapKeys;
 
   GLint mViewportX = 0;
   GLint mViewportY = 0;
@@ -1345,9 +1363,9 @@ class WebGLContext : public VRefCounted, public SupportsWeakPtr {
   }
 
  public:
-  UniquePtr<webgl::FormatUsageAuthority> mFormatUsage;
+  std::unique_ptr<webgl::FormatUsageAuthority> mFormatUsage;
 
-  virtual UniquePtr<webgl::FormatUsageAuthority> CreateFormatUsage(
+  virtual std::unique_ptr<webgl::FormatUsageAuthority> CreateFormatUsage(
       gl::GLContext* gl) const;
 
   const decltype(mBound2DTextures)* TexListForElemType(GLenum elemType) const;

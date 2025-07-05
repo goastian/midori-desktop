@@ -12,19 +12,15 @@ import {
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
 import { raceWithRejectOnTimeout, unreachable, assert } from '../../../../../common/util/util.js';
 import { kTextureUsages } from '../../../../capability_info.js';
-import {
-  kTextureFormatInfo,
-  kAllTextureFormats,
-  kValidTextureFormatsForCopyE2T,
-} from '../../../../format_info.js';
-import { kResourceStates } from '../../../../gpu_test.js';
+import { kAllTextureFormats, kValidTextureFormatsForCopyE2T } from '../../../../format_info.js';
+import { kResourceStates, AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
 import {
   CanvasType,
   createCanvas,
   createOnscreenCanvas,
   createOffscreenCanvas,
 } from '../../../../util/create_elements.js';
-import { ValidationTest } from '../../validation_test.js';
+import * as vtu from '../../validation_test_utils.js';
 
 const kDefaultBytesPerPixel = 4; // using 'bgra8unorm' or 'rgba8unorm'
 const kDefaultWidth = 32;
@@ -136,7 +132,7 @@ function generateCopySizeForDstOOB({ mipLevel, dstOrigin }: WithDstOriginMipLeve
   ];
 }
 
-class CopyExternalImageToTextureTest extends ValidationTest {
+class CopyExternalImageToTextureTest extends AllFeaturesMaxLimitsGPUTest {
   onlineCrossOriginUrl = 'https://raw.githubusercontent.com/gpuweb/gpuweb/main/logo/webgpu.png';
 
   getImageData(width: number, height: number): ImageData {
@@ -178,8 +174,8 @@ class CopyExternalImageToTextureTest extends ValidationTest {
   }
 
   runTest(
-    imageBitmapCopyView: GPUImageCopyExternalImage,
-    textureCopyView: GPUImageCopyTextureTagged,
+    imageBitmapCopyView: GPUCopyExternalImageSourceInfo,
+    textureCopyView: GPUCopyExternalImageDestInfo,
     copySize: GPUExtent3D,
     validationScopeSuccess: boolean,
     exceptionName?: string
@@ -296,7 +292,7 @@ g.test('source_image,crossOrigin')
         unreachable();
     }
 
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format: 'bgra8unorm',
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -335,7 +331,7 @@ g.test('source_imageBitmap,state')
   .fn(async t => {
     const { closed, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format: 'bgra8unorm',
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -390,7 +386,7 @@ g.test('source_canvas,state')
       return;
     }
 
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format: 'bgra8unorm',
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -460,7 +456,7 @@ g.test('source_offscreenCanvas,state')
   .fn(async t => {
     const { state, copySize } = t.params;
     const offscreenCanvas = createOffscreenCanvas(t, 1, 1);
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format: 'bgra8unorm',
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -531,7 +527,7 @@ g.test('destination_texture,state')
   .fn(async t => {
     const { state, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
-    const dstTexture = t.createTextureWithState(state);
+    const dstTexture = vtu.createTextureWithState(t, state);
 
     t.runTest({ source: imageBitmap }, { texture: dstTexture }, copySize, state === 'valid');
   });
@@ -541,19 +537,19 @@ g.test('destination_texture,device_mismatch')
     'Tests copyExternalImageToTexture cannot be called with a destination texture created from another device'
   )
   .paramsSubcasesOnly(u => u.combine('mismatched', [true, false]))
-  .beforeAllSubcases(t => {
-    t.selectMismatchedDeviceOrSkipTestCase(undefined);
-  })
+  .beforeAllSubcases(t => t.usesMismatchedDevice())
   .fn(async t => {
     const { mismatched } = t.params;
     const sourceDevice = mismatched ? t.mismatchedDevice : t.device;
     const copySize = { width: 1, height: 1, depthOrArrayLayers: 1 };
 
-    const texture = sourceDevice.createTexture({
-      size: copySize,
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-    });
+    const texture = t.trackForCleanup(
+      sourceDevice.createTexture({
+        size: copySize,
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      })
+    );
 
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
 
@@ -580,7 +576,7 @@ g.test('destination_texture,usage')
   .fn(async t => {
     const { usage, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format: 'rgba8unorm',
       usage,
@@ -614,7 +610,7 @@ g.test('destination_texture,sample_count')
   .fn(async t => {
     const { sampleCount, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       sampleCount,
       format: 'bgra8unorm',
@@ -644,7 +640,7 @@ g.test('destination_texture,mipLevel')
   .fn(async t => {
     const { mipLevel, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: kDefaultWidth, height: kDefaultHeight, depthOrArrayLayers: kDefaultDepth },
       mipLevelCount: kDefaultMipLevelCount,
       format: 'bgra8unorm',
@@ -676,20 +672,16 @@ g.test('destination_texture,format')
         { width: 1, height: 1, depthOrArrayLayers: 1 },
       ])
   )
-  .beforeAllSubcases(t => {
-    const { format } = t.params;
-    t.skipIfTextureFormatNotSupported(format);
-    t.selectDeviceOrSkipTestCase(kTextureFormatInfo[format].feature);
-  })
   .fn(async t => {
     const { format, copySize } = t.params;
+    t.skipIfTextureFormatNotSupported(format);
 
     const imageBitmap = await t.createImageBitmap(t.getImageData(1, 1));
 
     // createTexture with all possible texture format may have validation error when using
     // compressed texture format.
     t.device.pushErrorScope('validation');
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: { width: 1, height: 1, depthOrArrayLayers: 1 },
       format,
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -724,7 +716,7 @@ g.test('OOB,source')
   .fn(async t => {
     const { srcOrigin, copySize } = t.params;
     const imageBitmap = await t.createImageBitmap(t.getImageData(kDefaultWidth, kDefaultHeight));
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: {
         width: kDefaultWidth + 1,
         height: kDefaultHeight + 1,
@@ -775,7 +767,7 @@ g.test('OOB,destination')
     const imageBitmap = await t.createImageBitmap(
       t.getImageData(kDefaultWidth + 1, kDefaultHeight + 1)
     );
-    const dstTexture = t.device.createTexture({
+    const dstTexture = t.createTextureTracked({
       size: {
         width: kDefaultWidth,
         height: kDefaultHeight,

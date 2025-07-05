@@ -5,13 +5,14 @@
 #ifndef DOM_MEDIA_MEDIACONTROL_MEDIAPLAYBACKSTATUS_H_
 #define DOM_MEDIA_MEDIACONTROL_MEDIAPLAYBACKSTATUS_H_
 
+#include "mozilla/DefineEnum.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/dom/MediaSession.h"
+#include "nsID.h"
 #include "nsISupportsImpl.h"
 #include "nsTArray.h"
 #include "nsTHashMap.h"
-#include "nsID.h"
 
 namespace mozilla::dom {
 
@@ -25,21 +26,16 @@ namespace mozilla::dom {
  * `eStopped`: media has unregistered from the content media controller, we can
  *             not control it anymore
  */
-enum class MediaPlaybackState : uint32_t {
-  eStarted,
-  ePlayed,
-  ePaused,
-  eStopped,
-};
+MOZ_DEFINE_ENUM_CLASS_WITH_BASE_AND_TOSTRING(MediaPlaybackState, uint32_t,
+                                             (eStarted, ePlayed, ePaused,
+                                              eStopped));
 
 /**
  * This enum is used to update controlled media audible audible state to the
  * media controller in the chrome process.
  */
-enum class MediaAudibleState : bool {
-  eInaudible = false,
-  eAudible = true,
-};
+MOZ_DEFINE_ENUM_CLASS_WITH_BASE_AND_TOSTRING(MediaAudibleState, bool,
+                                             (eInaudible, eAudible));
 
 /**
  * MediaPlaybackStatus is an internal module for the media controller, it

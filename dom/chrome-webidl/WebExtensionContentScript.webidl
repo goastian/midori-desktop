@@ -86,6 +86,14 @@ interface MozDocumentMatcher {
   readonly attribute MatchPatternSet? excludeMatches;
 
   /**
+   * Whether the matcher is used by the MV3 userScripts API.
+   * If true, URLs are matched when they match "matches" OR "includeGlobs",
+   * instead of the usual AND.
+   */
+  [Constant]
+  readonly attribute boolean isUserScript;
+
+  /**
    * The originAttributesPattern for which this script should be enabled for.
    */
   [Constant, Throws]
@@ -118,6 +126,8 @@ dictionary MozDocumentMatcherInit {
   sequence<MatchGlobOrString>? includeGlobs = null;
 
   sequence<MatchGlobOrString>? excludeGlobs = null;
+
+  boolean isUserScript = false;
 
   boolean hasActiveTabPermission = false;
 };
@@ -155,12 +165,21 @@ enum ContentScriptExecutionWorld {
    * The name refers to "isolated world", which is a concept from Chromium and
    * WebKit, used to enforce isolation of the JavaScript execution environments
    * of content scripts and web pages.
+   *
+   * Not supported when isUserScript=true.
    */
   "ISOLATED",
   /**
    * The execution environment of the web page.
    */
   "MAIN",
+  /**
+   * The execution environment of a sandbox running scripts registered through
+   * the MV3 userScripts API.
+   *
+   * Only supported when isUserScript=true.
+   */
+  "USER_SCRIPT",
 };
 
 [ChromeOnly, Exposed=Window]
@@ -187,6 +206,13 @@ interface WebExtensionContentScript : MozDocumentMatcher {
   readonly attribute ContentScriptExecutionWorld world;
 
   /**
+   * When world is "USER_SCRIPT", worldId can be used to specify a specific
+   * extension-specific sandbox to execute in, instead of the default one.
+   */
+  [Constant]
+  readonly attribute DOMString? worldId;
+
+  /**
    * A set of paths, relative to the extension root, of CSS sheets to inject
    * into matching pages.
    */
@@ -205,6 +231,8 @@ dictionary WebExtensionContentScriptInit : MozDocumentMatcherInit {
   ContentScriptRunAt runAt = "document_idle";
 
   ContentScriptExecutionWorld world = "ISOLATED";
+
+  DOMString? worldId = null;
 
   sequence<DOMString> cssPaths = [];
 

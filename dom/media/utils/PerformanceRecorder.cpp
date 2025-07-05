@@ -13,45 +13,6 @@
 
 namespace mozilla {
 
-static const char* SourceToStr(TrackingId::Source aSource) {
-  switch (aSource) {
-    case TrackingId::Source::Unimplemented:
-      MOZ_ASSERT_UNREACHABLE("Unimplemented TrackingId Source");
-      return "Unimplemented";
-    case TrackingId::Source::AudioDestinationNode:
-      return "AudioDestinationNode";
-    case TrackingId::Source::Camera:
-      return "CameraCapture";
-    case TrackingId::Source::Canvas:
-      return "CanvasCapture";
-    case TrackingId::Source::ChannelDecoder:
-      return "ChannelDecoder";
-    case TrackingId::Source::HLSDecoder:
-      return "HLSDecoder";
-    case TrackingId::Source::MediaCapabilities:
-      return "MediaCapabilities";
-    case TrackingId::Source::MediaElementDecoder:
-      return "MediaElementDecoderCapture";
-    case TrackingId::Source::MediaElementStream:
-      return "MediaElementStreamCapture";
-    case TrackingId::Source::MSEDecoder:
-      return "MSEDecoder";
-    case TrackingId::Source::RTCRtpReceiver:
-      return "RTCRtpReceiver";
-    case TrackingId::Source::Screen:
-      return "ScreenCapture";
-    case TrackingId::Source::Tab:
-      return "TabCapture";
-    case TrackingId::Source::Window:
-      return "WindowCapture";
-    case TrackingId::Source::LAST:
-      MOZ_ASSERT_UNREACHABLE("Invalid TrackingId Source");
-      return "Invalid";
-  }
-  MOZ_ASSERT_UNREACHABLE("Unexpected TrackingId Source");
-  return "Unexpected";
-}
-
 TrackingId::TrackingId() : mSource(Source::Unimplemented), mUniqueInProcId(0) {}
 
 TrackingId::TrackingId(
@@ -65,27 +26,10 @@ TrackingId::TrackingId(
 
 nsCString TrackingId::ToString() const {
   if (mProcId) {
-    return nsPrintfCString("%s-%u-%u", SourceToStr(mSource), *mProcId,
+    return nsPrintfCString("%s-%u-%u", EnumValueToString(mSource), *mProcId,
                            mUniqueInProcId);
   }
-  return nsPrintfCString("%s-%u", SourceToStr(mSource), mUniqueInProcId);
-}
-
-static const char* StageToStr(MediaStage aStage) {
-  switch (aStage) {
-    case MediaStage::RequestData:
-      return "RequestData";
-    case MediaStage::RequestDemux:
-      return "RequestDemux";
-    case MediaStage::CopyDemuxedData:
-      return "CopyDemuxedData";
-    case MediaStage::RequestDecode:
-      return "RequestDecode";
-    case MediaStage::CopyDecodedVideo:
-      return "CopyDecodedVideo";
-    default:
-      return "InvalidStage";
-  }
+  return nsPrintfCString("%s-%u", EnumValueToString(mSource), mUniqueInProcId);
 }
 
 static void AppendMediaInfoFlagToName(nsCString& aName, MediaInfoFlag aFlag) {
@@ -107,45 +51,14 @@ static void AppendMediaInfoFlagToName(nsCString& aName, MediaInfoFlag aFlag) {
     aName.Append("vp8,");
   } else if (aFlag & MediaInfoFlag::VIDEO_VP9) {
     aName.Append("vp9,");
-  } else if (aFlag & MediaInfoFlag::VIDEO_THEORA) {
-    aName.Append("theora,");
+  } else if (aFlag & MediaInfoFlag::VIDEO_HEVC) {
+    aName.Append("hevc,");
   }
 }
 
 static void AppendImageFormatToName(nsCString& aName,
                                     DecodeStage::ImageFormat aFormat) {
-  aName.Append([&] {
-    switch (aFormat) {
-      case DecodeStage::YUV420P:
-        return "yuv420p,";
-      case DecodeStage::YUV422P:
-        return "yuv422p,";
-      case DecodeStage::YUV444P:
-        return "yuv444p,";
-      case DecodeStage::NV12:
-        return "nv12,";
-      case DecodeStage::YV12:
-        return "yv12,";
-      case DecodeStage::NV21:
-        return "nv21,";
-      case DecodeStage::P010:
-        return "p010,";
-      case DecodeStage::P016:
-        return "p016,";
-      case DecodeStage::RGBA32:
-        return "rgba32,";
-      case DecodeStage::RGB24:
-        return "rgb24,";
-      case DecodeStage::GBRP:
-        return "gbrp,";
-      case DecodeStage::ANDROID_SURFACE:
-        return "android.Surface,";
-      case DecodeStage::VAAPI_SURFACE:
-        return "VAAPI.Surface,";
-    }
-    MOZ_ASSERT_UNREACHABLE("Unhandled DecodeStage::ImageFormat");
-    return "";
-  }());
+  aName.AppendPrintf("%s,", DecodeStage::EnumValueToString(aFormat));
 }
 
 static void AppendYUVColorSpaceToName(nsCString& aName,
@@ -236,7 +149,7 @@ TimeStamp PerformanceRecorderBase::GetCurrentTimeForMeasurement() {
 
 ProfilerString8View PlaybackStage::Name() const {
   if (!mName) {
-    mName.emplace(StageToStr(mStage));
+    mName.emplace(EnumValueToString(mStage));
     mName->Append(":");
     mName->Append(FindMediaResolution(mHeight));
     mName->Append(":");
@@ -258,33 +171,13 @@ void PlaybackStage::AddMarker(MarkerOptions&& aOption) {
   }
 }
 
+void PlaybackStage::AddFlag(MediaInfoFlag aFlag) { mFlag |= aFlag; }
+
 ProfilerString8View CaptureStage::Name() const {
   if (!mName) {
-    auto imageTypeToStr = [](ImageType aType) -> const char* {
-      switch (aType) {
-        case ImageType::I420:
-          return "I420";
-        case ImageType::YUY2:
-          return "YUY2";
-        case ImageType::YV12:
-          return "YV12";
-        case ImageType::UYVY:
-          return "UYVY";
-        case ImageType::NV12:
-          return "NV12";
-        case ImageType::NV21:
-          return "NV21";
-        case ImageType::MJPEG:
-          return "MJPEG";
-        case ImageType::Unknown:
-          return "(unknown image type)";
-        default:
-          return "(unimplemented image type)";
-      };
-    };
     mName = Some(nsPrintfCString(
         "CaptureVideoFrame %s %dx%d %s %s", mSource.Data(), mWidth, mHeight,
-        imageTypeToStr(mImageType), mTrackingId.ToString().get()));
+        EnumValueToString(mImageType), mTrackingId.ToString().get()));
   }
   return *mName;
 }

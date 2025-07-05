@@ -56,15 +56,33 @@ MediaDecoderStateMachineBase* MediaSourceDecoder::CreateStateMachine(
   init.mTrackingId.emplace(TrackingId::Source::MSEDecoder, sTrackingIdCounter++,
                            TrackingId::TrackAcrossProcesses::Yes);
   mReader = new MediaFormatReader(init, mDemuxer);
-#ifdef MOZ_WMF_MEDIA_ENGINE
-  // Our main purpose is to only using this state machine for encrypted playback
-  // (unless explicitly set the pref to allow non-encrypted playback), but we
-  // can't determine if playback is encrypted or not at the moment. Therefore,
-  // we will handle that in ExternalEngineStateMachine, and report special
-  // errors, such as NS_ERROR_DOM_MEDIA_EXTERNAL_ENGINE_NOT_SUPPORTED_ERR or
-  // NS_ERROR_DOM_MEDIA_CDM_PROXY_NOT_SUPPORTED_ERR, to switch the state
-  // machine if necessary.
-  if (StaticPrefs::media_wmf_media_engine_enabled() &&
+#ifdef MOZ_WMF_CDM
+  // ExternalEngineStateMachine is primarily used for encrypted playback when
+  // the key system is supported via the WMF-based CDM. However, we cannot
+  // currently determine the purpose of the playback, so we will always start
+  // with ExternalEngineStateMachine. If this is not the case, we will switch
+  // back to MediaDecoderStateMachine. The following outlines different
+  // scenarios:
+  // 1) Playback is non-encrypted or media format is not supported
+  //    An internal error NS_ERROR_DOM_MEDIA_EXTERNAL_ENGINE_NOT_SUPPORTED_ERR
+  //    will be received, resulting in a switch to another state machine.
+  // 2) Playback is encrypted but the media key is not yet set
+  //   2-1) If the CDMProxy is not WMF-based CDM when setting the media key,
+  //        An internal error NS_ERROR_DOM_MEDIA_CDM_PROXY_NOT_SUPPORTED_ERR
+  //        will be received, causing a switch to another state machine.
+  //   2-2) If the CDMProxy is WMF-based CDM when setting the media key,
+  //        There will be no error, and ExternalEngineStateMachine will operate.
+  // 3) Playback is encrypted and the media key is already set
+  //   3-1) If the CDMProxy is not WMF-based CDM,
+  //        An internal error NS_ERROR_DOM_MEDIA_CDM_PROXY_NOT_SUPPORTED_ERR
+  //        will be received, resulting in a switch to another state machine.
+  //   3-2) If the CDMProxy is WMF-based CDM,
+  //        There will be no error, and ExternalEngineStateMachine will operate.
+  // Additionally, for testing purposes, non-encrypted playback can be performed
+  // via ExternalEngineStateMachine as well by modifying the preference value.
+  bool isCDMNotSupported =
+      !!mOwner->GetCDMProxy() && !mOwner->GetCDMProxy()->AsWMFCDMProxy();
+  if (StaticPrefs::media_wmf_media_engine_enabled() && !isCDMNotSupported &&
       !aDisableExternalEngine) {
     return new ExternalEngineStateMachine(this, mReader);
   }
@@ -243,7 +261,9 @@ void MediaSourceDecoder::SetMediaSourceDuration(const TimeUnit& aDuration) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!IsShutdown());
   if (aDuration.IsPositiveOrZero()) {
-    SetExplicitDuration(ToMicrosecondResolution(aDuration.ToSeconds()));
+    // Truncate to microsecond resolution for consistency with the
+    // SourceBuffer.buffered getter.
+    SetExplicitDuration(aDuration.ToBase(USECS_PER_S).ToSeconds());
   } else {
     SetExplicitDuration(PositiveInfinity<double>());
   }
@@ -371,6 +391,23 @@ bool MediaSourceDecoder::HadCrossOriginRedirects() {
   MOZ_ASSERT(NS_IsMainThread());
   return false;
 }
+
+#ifdef MOZ_WMF_MEDIA_ENGINE
+void MediaSourceDecoder::MetadataLoaded(
+    UniquePtr<MediaInfo> aInfo, UniquePtr<MetadataTags> aTags,
+    MediaDecoderEventVisibility aEventVisibility) {
+  // If the metadata has been loaded before, we don't want to notify throughout
+  // that again when switching from media engine playback to normal playback.
+  if (mPendingStatusUpdateForNewlyCreatedStateMachine && mFiredMetadataLoaded) {
+    MSE_DEBUG(
+        "Metadata already loaded and being informed by previous state machine");
+    SetStatusUpdateForNewlyCreatedStateMachineIfNeeded();
+    return;
+  }
+  MediaDecoder::MetadataLoaded(std::move(aInfo), std::move(aTags),
+                               aEventVisibility);
+}
+#endif
 
 #undef MSE_DEBUG
 #undef MSE_DEBUGV

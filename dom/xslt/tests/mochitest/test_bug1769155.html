@@ -6,6 +6,10 @@
   <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" href="/tests/SimpleTest/test.css"/>
   <script>
+    SpecialPowers.pushPrefEnv({
+        set: [["network.xhr.block_sync_system_requests", false]]
+    });
+
     SimpleTest.waitForExplicitFinish();
 
     async function runTest() {
@@ -32,7 +36,10 @@
       let redirected = new Promise((resolve) => {
         addEventListener("message", resolve, { once: true });
       });
-      win.location = URL.createObjectURL(new Blob([ xml ], { type: "application/xml" }));
+
+      SpecialPowers.spawn(win, [xml], value => {
+        content.location = URL.createObjectURL(new Blob([ value ], { type: "application/xml" }));
+      });
       await redirected;
 
       // At this point the setting of window.location should have redirected us to

@@ -9,11 +9,11 @@
 
 #include "mozilla/UniquePtr.h"
 #include "mozilla/PseudoStyleType.h"
+#include "nsTHashMap.h"
 
 class nsCycleCollectionTraversalCallback;
 
 namespace mozilla {
-enum class PseudoStyleType : uint8_t;
 class EffectSet;
 template <typename Animation>
 class AnimationCollection;
@@ -77,181 +77,207 @@ class ElementAnimationData {
 
     EffectSet& DoEnsureEffectSet();
     CSSTransitionCollection& DoEnsureTransitions(dom::Element&,
-                                                 PseudoStyleType);
-    CSSAnimationCollection& DoEnsureAnimations(dom::Element&, PseudoStyleType);
-    ScrollTimelineCollection& DoEnsureScrollTimelines(dom::Element&,
-                                                      PseudoStyleType);
+                                                 const PseudoStyleRequest&);
+    CSSAnimationCollection& DoEnsureAnimations(dom::Element&,
+                                               const PseudoStyleRequest&);
+    ScrollTimelineCollection& DoEnsureScrollTimelines(
+        dom::Element&, const PseudoStyleRequest&);
     ViewTimelineCollection& DoEnsureViewTimelines(dom::Element&,
-                                                  PseudoStyleType);
-    dom::ProgressTimelineScheduler& DoEnsureProgressTimelineScheduler(
-        dom::Element&, PseudoStyleType);
+                                                  const PseudoStyleRequest&);
+    dom::ProgressTimelineScheduler& DoEnsureProgressTimelineScheduler();
 
-    void DoClearEffectSet();
-    void DoClearTransitions();
-    void DoClearAnimations();
-    void DoClearScrollTimelines();
-    void DoClearViewTimelines();
-    void DoClearProgressTimelineScheduler();
+    bool IsEmpty() const {
+      return !mEffectSet && !mAnimations && !mTransitions &&
+             !mScrollTimelines && !mViewTimelines &&
+             !mProgressTimelineScheduler;
+    }
 
     void Traverse(nsCycleCollectionTraversalCallback&);
   };
 
   PerElementOrPseudoData mElementData;
 
-  // TODO(emilio): Maybe this should be a hash map eventually, once we allow
-  // animating all pseudo-elements.
-  PerElementOrPseudoData mBeforeData;
-  PerElementOrPseudoData mAfterData;
-  PerElementOrPseudoData mMarkerData;
+  using PseudoData =
+      nsTHashMap<PseudoStyleRequestHashKey, UniquePtr<PerElementOrPseudoData>>;
+  PseudoData mPseudoData;
+  // Avoid remove hash entry while other people are still using it.
+  bool mIsClearingPseudoData = false;
 
-  const PerElementOrPseudoData& DataFor(PseudoStyleType aType) const {
-    switch (aType) {
+  const PerElementOrPseudoData* GetData(
+      const PseudoStyleRequest& aRequest) const {
+    switch (aRequest.mType) {
       case PseudoStyleType::NotPseudo:
-        break;
+        return &mElementData;
       case PseudoStyleType::before:
-        return mBeforeData;
       case PseudoStyleType::after:
-        return mAfterData;
       case PseudoStyleType::marker:
-        return mMarkerData;
+      case PseudoStyleType::viewTransition:
+      case PseudoStyleType::viewTransitionGroup:
+      case PseudoStyleType::viewTransitionImagePair:
+      case PseudoStyleType::viewTransitionOld:
+      case PseudoStyleType::viewTransitionNew:
+        return GetPseudoData(aRequest);
       default:
         MOZ_ASSERT_UNREACHABLE(
             "Should not try to get animation effects for "
-            "a pseudo other that :before, :after or ::marker");
+            "a pseudo other that :before, :after, ::marker, or view transition "
+            "pseudo-elements");
+        break;
+    }
+    return nullptr;
+  }
+
+  PerElementOrPseudoData& GetOrCreateData(const PseudoStyleRequest& aRequest) {
+    switch (aRequest.mType) {
+      case PseudoStyleType::NotPseudo:
+        break;
+      case PseudoStyleType::before:
+      case PseudoStyleType::after:
+      case PseudoStyleType::marker:
+      case PseudoStyleType::viewTransition:
+      case PseudoStyleType::viewTransitionGroup:
+      case PseudoStyleType::viewTransitionImagePair:
+      case PseudoStyleType::viewTransitionOld:
+      case PseudoStyleType::viewTransitionNew:
+        return GetOrCreatePseudoData(aRequest);
+      default:
+        MOZ_ASSERT_UNREACHABLE(
+            "Should not try to get animation effects for "
+            "a pseudo other that :before, :after, ::marker, or view transition "
+            "pseudo-elements");
         break;
     }
     return mElementData;
   }
 
-  PerElementOrPseudoData& DataFor(PseudoStyleType aType) {
-    const auto& data =
-        const_cast<const ElementAnimationData*>(this)->DataFor(aType);
-    return const_cast<PerElementOrPseudoData&>(data);
-  }
+  const PerElementOrPseudoData* GetPseudoData(
+      const PseudoStyleRequest& aRequest) const;
+  PerElementOrPseudoData& GetOrCreatePseudoData(
+      const PseudoStyleRequest& aRequest);
+  void MaybeClearEntry(PseudoData::LookupResult<PseudoData&>&& aEntry);
+
+  // |aFn| is the removal function which accepts only |PerElementOrPseudoData&|
+  // as the parameter.
+  template <typename Fn>
+  void WithDataForRemoval(const PseudoStyleRequest& aRequest, Fn&& aFn);
 
  public:
   void Traverse(nsCycleCollectionTraversalCallback&);
 
   void ClearAllAnimationCollections();
+  void ClearAllPseudos(bool aOnlyViewTransitions);
+  void ClearViewTransitionPseudos() { ClearAllPseudos(true); }
 
-  EffectSet* GetEffectSetFor(PseudoStyleType aType) const {
-    return DataFor(aType).mEffectSet.get();
-  }
-
-  void ClearEffectSetFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mEffectSet) {
-      data.DoClearEffectSet();
+  EffectSet* GetEffectSetFor(const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mEffectSet.get();
     }
+    return nullptr;
   }
 
-  EffectSet& EnsureEffectSetFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+  void ClearEffectSetFor(const PseudoStyleRequest& aRequest);
+
+  EffectSet& EnsureEffectSetFor(const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* set = data.mEffectSet.get()) {
       return *set;
     }
     return data.DoEnsureEffectSet();
   }
 
-  CSSTransitionCollection* GetTransitionCollection(PseudoStyleType aType) {
-    return DataFor(aType).mTransitions.get();
-  }
-
-  void ClearTransitionCollectionFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mTransitions) {
-      data.DoClearTransitions();
+  CSSTransitionCollection* GetTransitionCollection(
+      const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mTransitions.get();
     }
+    return nullptr;
   }
 
-  CSSTransitionCollection& EnsureTransitionCollection(dom::Element& aOwner,
-                                                      PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+  void ClearTransitionCollectionFor(const PseudoStyleRequest& aRequest);
+
+  CSSTransitionCollection& EnsureTransitionCollection(
+      dom::Element& aOwner, const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* collection = data.mTransitions.get()) {
       return *collection;
     }
-    return data.DoEnsureTransitions(aOwner, aType);
+    return data.DoEnsureTransitions(aOwner, aRequest);
   }
 
-  CSSAnimationCollection* GetAnimationCollection(PseudoStyleType aType) {
-    return DataFor(aType).mAnimations.get();
-  }
-
-  void ClearAnimationCollectionFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mAnimations) {
-      data.DoClearAnimations();
+  CSSAnimationCollection* GetAnimationCollection(
+      const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mAnimations.get();
     }
+    return nullptr;
   }
 
-  CSSAnimationCollection& EnsureAnimationCollection(dom::Element& aOwner,
-                                                    PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+  void ClearAnimationCollectionFor(const PseudoStyleRequest& aRequest);
+
+  CSSAnimationCollection& EnsureAnimationCollection(
+      dom::Element& aOwner, const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* collection = data.mAnimations.get()) {
       return *collection;
     }
-    return data.DoEnsureAnimations(aOwner, aType);
+    return data.DoEnsureAnimations(aOwner, aRequest);
   }
 
-  ScrollTimelineCollection* GetScrollTimelineCollection(PseudoStyleType aType) {
-    return DataFor(aType).mScrollTimelines.get();
-  }
-
-  void ClearScrollTimelineCollectionFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mScrollTimelines) {
-      data.DoClearScrollTimelines();
+  ScrollTimelineCollection* GetScrollTimelineCollection(
+      const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mScrollTimelines.get();
     }
+    return nullptr;
   }
+
+  void ClearScrollTimelineCollectionFor(const PseudoStyleRequest& aRequest);
 
   ScrollTimelineCollection& EnsureScrollTimelineCollection(
-      dom::Element& aOwner, PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+      dom::Element& aOwner, const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* collection = data.mScrollTimelines.get()) {
       return *collection;
     }
-    return data.DoEnsureScrollTimelines(aOwner, aType);
+    return data.DoEnsureScrollTimelines(aOwner, aRequest);
   }
 
-  ViewTimelineCollection* GetViewTimelineCollection(PseudoStyleType aType) {
-    return DataFor(aType).mViewTimelines.get();
-  }
-
-  void ClearViewTimelineCollectionFor(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mViewTimelines) {
-      data.DoClearViewTimelines();
+  ViewTimelineCollection* GetViewTimelineCollection(
+      const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mViewTimelines.get();
     }
+    return nullptr;
   }
 
-  ViewTimelineCollection& EnsureViewTimelineCollection(dom::Element& aOwner,
-                                                       PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+  void ClearViewTimelineCollectionFor(const PseudoStyleRequest& aRequest);
+
+  ViewTimelineCollection& EnsureViewTimelineCollection(
+      dom::Element& aOwner, const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* collection = data.mViewTimelines.get()) {
       return *collection;
     }
-    return data.DoEnsureViewTimelines(aOwner, aType);
+    return data.DoEnsureViewTimelines(aOwner, aRequest);
   }
 
   dom::ProgressTimelineScheduler* GetProgressTimelineScheduler(
-      PseudoStyleType aType) {
-    return DataFor(aType).mProgressTimelineScheduler.get();
+      const PseudoStyleRequest& aRequest) const {
+    if (auto* data = GetData(aRequest)) {
+      return data->mProgressTimelineScheduler.get();
+    }
+    return nullptr;
   }
 
-  void ClearProgressTimelineScheduler(PseudoStyleType aType) {
-    auto& data = DataFor(aType);
-    if (data.mProgressTimelineScheduler) {
-      data.DoClearProgressTimelineScheduler();
-    }
-  }
+  void ClearProgressTimelineScheduler(const PseudoStyleRequest& aRequest);
 
   dom::ProgressTimelineScheduler& EnsureProgressTimelineScheduler(
-      dom::Element& aOwner, PseudoStyleType aType) {
-    auto& data = DataFor(aType);
+      const PseudoStyleRequest& aRequest) {
+    auto& data = GetOrCreateData(aRequest);
     if (auto* collection = data.mProgressTimelineScheduler.get()) {
       return *collection;
     }
-    return data.DoEnsureProgressTimelineScheduler(aOwner, aType);
+    return data.DoEnsureProgressTimelineScheduler();
   }
 
   ElementAnimationData() = default;

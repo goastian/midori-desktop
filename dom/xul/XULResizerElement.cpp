@@ -72,8 +72,7 @@ XULResizerElement::Direction XULResizerElement::GetDirection() {
      {-1, -1}, {0, -1}, {1, -1},
      {-1,  0},          {1,  0},
      {-1,  1}, {0,  1}, {1,  1},
-     {-1,  1},          {1,  1}
-      // clang-format on
+     {-1,  1},          {1,  1}  // clang-format on
   };
 
   const auto* frame = GetPrimaryFrame();
@@ -236,7 +235,7 @@ void XULResizerElement::PostHandleEventInternal(
       }
     } break;
 
-    case eMouseClick: {
+    case ePointerClick: {
       auto* mouseEvent = event.AsMouseEvent();
       if (mouseEvent->IsLeftClickEvent()) {
         // Execute the oncommand event handler.

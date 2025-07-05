@@ -13,10 +13,11 @@ use authenticator::{
     ctap2::attestation::{AAGuid, AttestationObject, AttestationStatement},
     ctap2::commands::{get_info::AuthenticatorVersion, PinUvAuthResult},
     ctap2::server::{
-        AuthenticationExtensionsClientInputs, AuthenticatorAttachment,
-        PublicKeyCredentialDescriptor, PublicKeyCredentialParameters,
-        PublicKeyCredentialUserEntity, RelyingParty, ResidentKeyRequirement,
-        UserVerificationRequirement,
+        AuthenticationExtensionsClientInputs, AuthenticationExtensionsPRFInputs,
+        AuthenticationExtensionsPRFOutputs, AuthenticationExtensionsPRFValues,
+        AuthenticatorAttachment, CredentialProtectionPolicy, PublicKeyCredentialDescriptor,
+        PublicKeyCredentialParameters, PublicKeyCredentialUserEntity, RelyingParty,
+        ResidentKeyRequirement, UserVerificationRequirement,
     },
     errors::AuthenticatorError,
     statecallback::StateCallback,
@@ -35,6 +36,7 @@ use nsstring::{nsACString, nsAString, nsCString, nsString};
 use serde::Serialize;
 use serde_json::json;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -214,6 +216,48 @@ impl WebAuthnRegisterResult {
         Ok(hmac_create_secret)
     }
 
+    xpcom_method!(get_large_blob_supported => GetLargeBlobSupported() -> bool);
+    fn get_large_blob_supported(&self) -> Result<bool, nsresult> {
+        Err(NS_ERROR_NOT_AVAILABLE)
+    }
+
+    xpcom_method!(get_prf_enabled => GetPrfEnabled() -> bool);
+    fn get_prf_enabled(&self) -> Result<bool, nsresult> {
+        match self.result.borrow().extensions.prf {
+            Some(AuthenticationExtensionsPRFOutputs {
+                enabled: Some(prf_enabled),
+                ..
+            }) => Ok(prf_enabled),
+            _ => Err(NS_ERROR_NOT_AVAILABLE),
+        }
+    }
+
+    xpcom_method!(get_prf_results_first => GetPrfResultsFirst() -> ThinVec<u8>);
+    fn get_prf_results_first(&self) -> Result<ThinVec<u8>, nsresult> {
+        match &self.result.borrow().extensions.prf {
+            Some(AuthenticationExtensionsPRFOutputs {
+                results: Some(AuthenticationExtensionsPRFValues { first, .. }),
+                ..
+            }) => Ok(first.as_slice().into()),
+            _ => Err(NS_ERROR_NOT_AVAILABLE),
+        }
+    }
+
+    xpcom_method!(get_prf_results_second => GetPrfResultsSecond() -> ThinVec<u8>);
+    fn get_prf_results_second(&self) -> Result<ThinVec<u8>, nsresult> {
+        match &self.result.borrow().extensions.prf {
+            Some(AuthenticationExtensionsPRFOutputs {
+                results:
+                    Some(AuthenticationExtensionsPRFValues {
+                        second: Some(second),
+                        ..
+                    }),
+                ..
+            }) => Ok(second.as_slice().into()),
+            _ => Err(NS_ERROR_NOT_AVAILABLE),
+        }
+    }
+
     xpcom_method!(get_cred_props_rk => GetCredPropsRk() -> bool);
     fn get_cred_props_rk(&self) -> Result<bool, nsresult> {
         let Some(cred_props) = &self.result.borrow().extensions.cred_props else {
@@ -371,6 +415,48 @@ impl WebAuthnSignResult {
     xpcom_method!(set_used_app_id => SetUsedAppId(aUsedAppId: bool));
     fn set_used_app_id(&self, _used_app_id: bool) -> Result<(), nsresult> {
         Err(NS_ERROR_NOT_IMPLEMENTED)
+    }
+
+    xpcom_method!(get_large_blob_value => GetLargeBlobValue() -> ThinVec<u8>);
+    fn get_large_blob_value(&self) -> Result<ThinVec<u8>, nsresult> {
+        Err(NS_ERROR_NOT_AVAILABLE)
+    }
+
+    xpcom_method!(get_large_blob_written => GetLargeBlobWritten() -> bool);
+    fn get_large_blob_written(&self) -> Result<bool, nsresult> {
+        Err(NS_ERROR_NOT_AVAILABLE)
+    }
+
+    xpcom_method!(get_prf_maybe => GetPrfMaybe() -> bool);
+    /// Return true if a PRF output is present, even if all attributes are absent.
+    fn get_prf_maybe(&self) -> Result<bool, nsresult> {
+        Ok(self.result.extensions.prf.is_some())
+    }
+
+    xpcom_method!(get_prf_results_first => GetPrfResultsFirst() -> ThinVec<u8>);
+    fn get_prf_results_first(&self) -> Result<ThinVec<u8>, nsresult> {
+        match &self.result.extensions.prf {
+            Some(AuthenticationExtensionsPRFOutputs {
+                results: Some(AuthenticationExtensionsPRFValues { first, .. }),
+                ..
+            }) => Ok(first.as_slice().into()),
+            _ => Err(NS_ERROR_NOT_AVAILABLE),
+        }
+    }
+
+    xpcom_method!(get_prf_results_second => GetPrfResultsSecond() -> ThinVec<u8>);
+    fn get_prf_results_second(&self) -> Result<ThinVec<u8>, nsresult> {
+        match &self.result.extensions.prf {
+            Some(AuthenticationExtensionsPRFOutputs {
+                results:
+                    Some(AuthenticationExtensionsPRFValues {
+                        second: Some(second),
+                        ..
+                    }),
+                ..
+            }) => Ok(second.as_slice().into()),
+            _ => Err(NS_ERROR_NOT_AVAILABLE),
+        }
     }
 }
 
@@ -742,19 +828,72 @@ impl AuthrsService {
             }
         }
 
+        let mut credential_protection_policy = None;
+        let mut enforce_credential_protection_policy = None;
+        let mut cred_protect_policy_value = nsCString::new();
+        let mut enforce_cred_protect_value = false;
+        if unsafe { args.GetCredentialProtectionPolicy(&mut *cred_protect_policy_value) }
+            .to_result()
+            .is_ok()
+        {
+            unsafe { args.GetEnforceCredentialProtectionPolicy(&mut enforce_cred_protect_value) }
+                .to_result()?;
+            credential_protection_policy = if cred_protect_policy_value
+                .eq("userVerificationOptional")
+            {
+                Some(CredentialProtectionPolicy::UserVerificationOptional)
+            } else if cred_protect_policy_value.eq("userVerificationOptionalWithCredentialIDList") {
+                Some(CredentialProtectionPolicy::UserVerificationOptionalWithCredentialIDList)
+            } else if cred_protect_policy_value.eq("userVerificationRequired") {
+                Some(CredentialProtectionPolicy::UserVerificationRequired)
+            } else {
+                return Err(NS_ERROR_FAILURE);
+            };
+            enforce_credential_protection_policy = Some(enforce_cred_protect_value);
+        }
+
         let mut cred_props = false;
         unsafe { args.GetCredProps(&mut cred_props) }.to_result()?;
 
         let mut min_pin_length = false;
         unsafe { args.GetMinPinLength(&mut min_pin_length) }.to_result()?;
 
-        // TODO(Bug 1593571) - Add this to the extensions
-        // let mut hmac_create_secret = None;
-        // let mut maybe_hmac_create_secret = false;
-        // match unsafe { args.GetHmacCreateSecret(&mut maybe_hmac_create_secret) }.to_result() {
-        //     Ok(_) => hmac_create_secret = Some(maybe_hmac_create_secret),
-        //     _ => (),
-        // }
+        let prf_input = (|| -> Option<AuthenticationExtensionsPRFInputs> {
+            let mut prf: bool = false;
+            unsafe { args.GetPrf(&mut prf) }.to_result().ok()?;
+            if !prf {
+                return None;
+            }
+
+            let eval = || -> Option<AuthenticationExtensionsPRFValues> {
+                let mut prf_eval_first: ThinVec<u8> = ThinVec::new();
+                let mut prf_eval_second: ThinVec<u8> = ThinVec::new();
+                unsafe { args.GetPrfEvalFirst(&mut prf_eval_first) }
+                    .to_result()
+                    .ok()?;
+                let has_second = unsafe { args.GetPrfEvalSecond(&mut prf_eval_second) }
+                    .to_result()
+                    .is_ok();
+                Some(AuthenticationExtensionsPRFValues {
+                    first: prf_eval_first.to_vec(),
+                    second: has_second.then(|| prf_eval_second.to_vec()),
+                })
+            }();
+
+            Some(AuthenticationExtensionsPRFInputs {
+                eval,
+                eval_by_credential: None,
+            })
+        })();
+
+        let mut hmac_create_secret = None;
+        let mut maybe_hmac_create_secret = false;
+        if unsafe { args.GetHmacCreateSecret(&mut maybe_hmac_create_secret) }
+            .to_result()
+            .is_ok()
+        {
+            hmac_create_secret = Some(maybe_hmac_create_secret);
+        }
 
         let origin = origin.to_string();
         let info = RegisterArgs {
@@ -774,8 +913,12 @@ impl AuthrsService {
             user_verification_req,
             resident_key_req,
             extensions: AuthenticationExtensionsClientInputs {
+                credential_protection_policy,
+                enforce_credential_protection_policy,
                 cred_props: cred_props.then_some(true),
+                hmac_create_secret,
                 min_pin_length: min_pin_length.then_some(true),
+                prf: prf_input,
                 ..Default::default()
             },
             pin: None,
@@ -915,7 +1058,7 @@ impl AuthrsService {
 
         let mut user_verification = nsString::new();
         unsafe { args.GetUserVerification(&mut *user_verification) }.to_result()?;
-        let user_verification_req = if user_verification.eq("required") {
+        let mut user_verification_req = if user_verification.eq("required") {
             UserVerificationRequirement::Required
         } else if user_verification.eq("discouraged") {
             UserVerificationRequirement::Discouraged
@@ -930,6 +1073,85 @@ impl AuthrsService {
             _ => (),
         }
 
+        let prf_input = || -> Option<AuthenticationExtensionsPRFInputs> {
+            let mut prf: bool = false;
+            unsafe { args.GetPrf(&mut prf) }.to_result().ok()?;
+            if !prf {
+                return None;
+            }
+
+            let eval = || -> Option<AuthenticationExtensionsPRFValues> {
+                let mut prf_eval_first: ThinVec<u8> = ThinVec::new();
+                let mut prf_eval_second: ThinVec<u8> = ThinVec::new();
+                unsafe { args.GetPrfEvalFirst(&mut prf_eval_first) }
+                    .to_result()
+                    .ok()?;
+                let has_second = unsafe { args.GetPrfEvalSecond(&mut prf_eval_second) }
+                    .to_result()
+                    .is_ok();
+                Some(AuthenticationExtensionsPRFValues {
+                    first: prf_eval_first.to_vec(),
+                    second: has_second.then(|| prf_eval_second.to_vec()),
+                })
+            }();
+
+            let eval_by_credential =
+                || -> Option<HashMap<Vec<u8>, AuthenticationExtensionsPRFValues>> {
+                    let mut credential_ids: ThinVec<ThinVec<u8>> = ThinVec::new();
+                    let mut eval_by_cred_firsts: ThinVec<ThinVec<u8>> = ThinVec::new();
+                    let mut eval_by_cred_second_maybes: ThinVec<bool> = ThinVec::new();
+                    let mut eval_by_cred_seconds: ThinVec<ThinVec<u8>> = ThinVec::new();
+                    unsafe { args.GetPrfEvalByCredentialCredentialId(&mut credential_ids) }
+                        .to_result()
+                        .ok()?;
+                    unsafe { args.GetPrfEvalByCredentialEvalFirst(&mut eval_by_cred_firsts) }
+                        .to_result()
+                        .ok()?;
+                    unsafe {
+                        args.GetPrfEvalByCredentialEvalSecondMaybe(&mut eval_by_cred_second_maybes)
+                    }
+                    .to_result()
+                    .ok()?;
+                    unsafe { args.GetPrfEvalByCredentialEvalSecond(&mut eval_by_cred_seconds) }
+                        .to_result()
+                        .ok()?;
+                    if credential_ids.len() != eval_by_cred_firsts.len()
+                        || credential_ids.len() != eval_by_cred_second_maybes.len()
+                        || credential_ids.len() != eval_by_cred_seconds.len()
+                    {
+                        return None;
+                    }
+                    let mut result = HashMap::new();
+                    for i in 0..credential_ids.len() {
+                        result.insert(
+                            credential_ids[i].to_vec(),
+                            AuthenticationExtensionsPRFValues {
+                                first: eval_by_cred_firsts[i].to_vec(),
+                                second: eval_by_cred_second_maybes[i]
+                                    .then(|| eval_by_cred_seconds[i].to_vec()),
+                            },
+                        );
+                    }
+                    Some(result)
+                }();
+
+            Some(AuthenticationExtensionsPRFInputs {
+                eval,
+                eval_by_credential,
+            })
+        }();
+
+        // https://w3c.github.io/webauthn/#prf-extension
+        // "The hmac-secret extension provides two PRFs per credential: one which is used for
+        // requests where user verification is performed and another for all other requests.
+        // This extension [PRF] only exposes a single PRF per credential and, when implementing
+        // on top of hmac-secret, that PRF MUST be the one used for when user verification is
+        // performed. This overrides the UserVerificationRequirement if neccessary."
+        if prf_input.is_some() && user_verification_req == UserVerificationRequirement::Discouraged
+        {
+            user_verification_req = UserVerificationRequirement::Preferred;
+        }
+
         let mut conditionally_mediated = false;
         unsafe { args.GetConditionallyMediated(&mut conditionally_mediated) }.to_result()?;
 
@@ -942,6 +1164,7 @@ impl AuthrsService {
             user_presence_req: true,
             extensions: AuthenticationExtensionsClientInputs {
                 app_id,
+                prf: prf_input,
                 ..Default::default()
             },
             pin: None,
@@ -1198,7 +1421,7 @@ impl AuthrsService {
             hasResidentKey: bool,
             hasUserVerification: bool,
             isUserConsenting: bool,
-            isUserVerified: bool) -> u64
+            isUserVerified: bool) -> nsACString
     );
     fn add_virtual_authenticator(
         &self,
@@ -1208,7 +1431,7 @@ impl AuthrsService {
         has_user_verification: bool,
         is_user_consenting: bool,
         is_user_verified: bool,
-    ) -> Result<u64, nsresult> {
+    ) -> Result<nsCString, nsresult> {
         let protocol = match protocol.to_string().as_str() {
             "ctap1/u2f" => AuthenticatorVersion::U2F_V2,
             "ctap2" => AuthenticatorVersion::FIDO_2_0,
@@ -1220,25 +1443,27 @@ impl AuthrsService {
             "usb" | "nfc" | "ble" | "smart-card" | "hybrid" | "internal" => (),
             _ => return Err(NS_ERROR_INVALID_ARG),
         };
-        self.test_token_manager.add_virtual_authenticator(
-            protocol,
-            transport,
-            has_resident_key,
-            has_user_verification,
-            is_user_consenting,
-            is_user_verified,
-        )
+        self.test_token_manager
+            .add_virtual_authenticator(
+                protocol,
+                transport,
+                has_resident_key,
+                has_user_verification,
+                is_user_consenting,
+                is_user_verified,
+            )
+            .map(nsCString::from)
     }
 
-    xpcom_method!(remove_virtual_authenticator => RemoveVirtualAuthenticator(authenticatorId: u64));
-    fn remove_virtual_authenticator(&self, authenticator_id: u64) -> Result<(), nsresult> {
+    xpcom_method!(remove_virtual_authenticator => RemoveVirtualAuthenticator(authenticatorId: *const nsACString));
+    fn remove_virtual_authenticator(&self, authenticator_id: &nsACString) -> Result<(), nsresult> {
         self.test_token_manager
-            .remove_virtual_authenticator(authenticator_id)
+            .remove_virtual_authenticator(&authenticator_id.to_utf8())
     }
 
     xpcom_method!(
         add_credential => AddCredential(
-            authenticatorId: u64,
+            authenticatorId: *const nsACString,
             credentialId: *const nsACString,
             isResidentCredential: bool,
             rpId: *const nsACString,
@@ -1248,7 +1473,7 @@ impl AuthrsService {
     );
     fn add_credential(
         &self,
-        authenticator_id: u64,
+        authenticator_id: &nsACString,
         credential_id: &nsACString,
         is_resident_credential: bool,
         rp_id: &nsACString,
@@ -1266,7 +1491,7 @@ impl AuthrsService {
             .decode(user_handle)
             .or(Err(NS_ERROR_INVALID_ARG))?;
         self.test_token_manager.add_credential(
-            authenticator_id,
+            &authenticator_id.to_utf8(),
             &credential_id,
             &private_key,
             &user_handle,
@@ -1276,41 +1501,42 @@ impl AuthrsService {
         )
     }
 
-    xpcom_method!(get_credentials => GetCredentials(authenticatorId: u64) -> ThinVec<Option<RefPtr<nsICredentialParameters>>>);
+    xpcom_method!(get_credentials => GetCredentials(authenticatorId: *const nsACString) -> ThinVec<Option<RefPtr<nsICredentialParameters>>>);
     fn get_credentials(
         &self,
-        authenticator_id: u64,
+        authenticator_id: &nsACString,
     ) -> Result<ThinVec<Option<RefPtr<nsICredentialParameters>>>, nsresult> {
-        self.test_token_manager.get_credentials(authenticator_id)
+        self.test_token_manager
+            .get_credentials(&authenticator_id.to_utf8())
     }
 
-    xpcom_method!(remove_credential => RemoveCredential(authenticatorId: u64, credentialId: *const nsACString));
+    xpcom_method!(remove_credential => RemoveCredential(authenticatorId: *const nsACString, credentialId: *const nsACString));
     fn remove_credential(
         &self,
-        authenticator_id: u64,
+        authenticator_id: &nsACString,
         credential_id: &nsACString,
     ) -> Result<(), nsresult> {
         let credential_id = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(credential_id)
             .or(Err(NS_ERROR_INVALID_ARG))?;
         self.test_token_manager
-            .remove_credential(authenticator_id, credential_id.as_ref())
+            .remove_credential(&authenticator_id.to_utf8(), credential_id.as_ref())
     }
 
-    xpcom_method!(remove_all_credentials => RemoveAllCredentials(authenticatorId: u64));
-    fn remove_all_credentials(&self, authenticator_id: u64) -> Result<(), nsresult> {
+    xpcom_method!(remove_all_credentials => RemoveAllCredentials(authenticatorId: *const nsACString));
+    fn remove_all_credentials(&self, authenticator_id: &nsACString) -> Result<(), nsresult> {
         self.test_token_manager
-            .remove_all_credentials(authenticator_id)
+            .remove_all_credentials(&authenticator_id.to_utf8())
     }
 
-    xpcom_method!(set_user_verified => SetUserVerified(authenticatorId: u64, isUserVerified: bool));
+    xpcom_method!(set_user_verified => SetUserVerified(authenticatorId: *const nsACString, isUserVerified: bool));
     fn set_user_verified(
         &self,
-        authenticator_id: u64,
+        authenticator_id: &nsACString,
         is_user_verified: bool,
     ) -> Result<(), nsresult> {
         self.test_token_manager
-            .set_user_verified(authenticator_id, is_user_verified)
+            .set_user_verified(&authenticator_id.to_utf8(), is_user_verified)
     }
 
     xpcom_method!(listen => Listen());

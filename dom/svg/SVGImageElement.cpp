@@ -13,6 +13,7 @@
 #include "nsNetUtil.h"
 #include "imgINotificationObserver.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/SVGImageElementBinding.h"
 #include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/dom/UserActivation.h"
@@ -86,6 +87,15 @@ nsCSSPropertyID SVGImageElement::GetCSSPropertyIdForAttrEnum(
 
 NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGImageElement)
 
+void SVGImageElement::NodeInfoChanged(Document* aOldDoc) {
+  SVGImageElementBase::NodeInfoChanged(aOldDoc);
+
+  // Reparse the URI if needed. Note that we can't check whether we already have
+  // a parsed URI, because it might be null even if we have a valid href
+  // attribute, if we tried to parse with a different base.
+  UpdateSrcURI();
+}
+
 //----------------------------------------------------------------------
 
 already_AddRefed<DOMSVGAnimatedLength> SVGImageElement::X() {
@@ -125,10 +135,7 @@ already_AddRefed<Promise> SVGImageElement::Decode(ErrorResult& aRv) {
 
 //----------------------------------------------------------------------
 
-nsresult SVGImageElement::LoadSVGImage(bool aForce, bool aNotify) {
-  // resolve href attribute
-  nsIURI* baseURI = GetBaseURI();
-
+void SVGImageElement::UpdateSrcURI() {
   nsAutoString href;
   if (mStringAttributes[HREF].IsExplicitlySet()) {
     mStringAttributes[HREF].GetAnimValue(href, this);
@@ -137,13 +144,19 @@ nsresult SVGImageElement::LoadSVGImage(bool aForce, bool aNotify) {
   }
   href.Trim(" \t\n\r");
 
-  if (baseURI && !href.IsEmpty()) NS_MakeAbsoluteURI(href, href, baseURI);
+  mSrcURI = nullptr;
+  if (!href.IsEmpty()) {
+    StringToURI(href, OwnerDoc(), getter_AddRefs(mSrcURI));
+  }
+}
 
+nsresult SVGImageElement::LoadSVGImage(bool aForce, bool aNotify) {
   // Mark channel as urgent-start before load image if the image load is
-  // initaiated by a user interaction.
+  // initiated by a user interaction.
   mUseUrgentStartForChannel = UserActivation::IsHandlingUserInput();
 
-  return LoadImage(href, aForce, aNotify, eImageLoadType_Normal);
+  return LoadImage(mSrcURI, aForce, aNotify, eImageLoadType_Normal, LoadFlags(),
+                   OwnerDoc());
 }
 
 bool SVGImageElement::ShouldLoadImage() const {
@@ -181,6 +194,11 @@ CORSMode SVGImageElement::GetCORSMode() {
   return AttrValueToCORSMode(GetParsedAttr(nsGkAtoms::crossorigin));
 }
 
+void SVGImageElement::GetFetchPriority(nsAString& aFetchPriority) const {
+  GetEnumAttr(nsGkAtoms::fetchpriority, kFetchPriorityAttributeValueAuto,
+              aFetchPriority);
+}
+
 //----------------------------------------------------------------------
 // nsIContent methods:
 
@@ -197,6 +215,10 @@ bool SVGImageElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
       return aResult.ParseEnumValue(aValue, kDecodingTable, false,
                                     kDecodingTableDefault);
     }
+    if (aAttribute == nsGkAtoms::fetchpriority) {
+      ParseFetchPriority(aValue, aResult);
+      return true;
+    }
   }
 
   return SVGImageElementBase::ParseAttribute(aNamespaceID, aAttribute, aValue,
@@ -210,7 +232,14 @@ void SVGImageElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                    bool aNotify) {
   if (aName == nsGkAtoms::href && (aNamespaceID == kNameSpaceID_None ||
                                    aNamespaceID == kNameSpaceID_XLink)) {
-    if (aValue) {
+    if (aNamespaceID == kNameSpaceID_XLink &&
+        mStringAttributes[HREF].IsExplicitlySet()) {
+      // href overrides xlink:href
+      return;
+    }
+    UpdateSrcURI();
+    if (aValue || (aNamespaceID == kNameSpaceID_None &&
+                   mStringAttributes[XLINK_HREF].IsExplicitlySet())) {
       if (ShouldLoadImage()) {
         LoadSVGImage(true, aNotify);
       }
@@ -297,7 +326,7 @@ bool SVGImageElement::HasValidDimensions() const {
 
 SVGElement::LengthAttributesInfo SVGImageElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              ArrayLength(sLengthInfo));
+                              std::size(sLengthInfo));
 }
 
 SVGAnimatedPreserveAspectRatio*
@@ -307,7 +336,7 @@ SVGImageElement::GetAnimatedPreserveAspectRatio() {
 
 SVGElement::StringAttributesInfo SVGImageElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              ArrayLength(sStringInfo));
+                              std::size(sStringInfo));
 }
 
 void SVGImageElement::DidAnimateAttribute(int32_t aNameSpaceID,
@@ -315,9 +344,9 @@ void SVGImageElement::DidAnimateAttribute(int32_t aNameSpaceID,
   if ((aNameSpaceID == kNameSpaceID_None ||
        aNameSpaceID == kNameSpaceID_XLink) &&
       aAttribute == nsGkAtoms::href) {
-    bool hrefIsSet =
-        mStringAttributes[SVGImageElement::HREF].IsExplicitlySet() ||
-        mStringAttributes[SVGImageElement::XLINK_HREF].IsExplicitlySet();
+    UpdateSrcURI();
+    bool hrefIsSet = mStringAttributes[HREF].IsExplicitlySet() ||
+                     mStringAttributes[XLINK_HREF].IsExplicitlySet();
     if (hrefIsSet) {
       LoadSVGImage(true, true);
     } else {

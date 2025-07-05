@@ -19,7 +19,6 @@
 #include "MP4Decoder.h"
 #include "MediaChangeMonitor.h"
 #include "MediaInfo.h"
-#include "TheoraDecoder.h"
 #include "VPXDecoder.h"
 #include "VideoUtils.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -76,6 +75,9 @@ namespace mozilla {
 
 extern already_AddRefed<PlatformDecoderModule> CreateNullDecoderModule();
 
+MOZ_RUNINIT static StaticDataMutex<StaticRefPtr<PlatformDecoderModule>>
+    sForcedPDM("Forced PDM");
+
 class PDMInitializer final {
  public:
   // This function should only be executed ONCE per process.
@@ -88,6 +90,9 @@ class PDMInitializer final {
   static void InitGpuPDMs() {
 #ifdef XP_WIN
     WMFDecoderModule::Init();
+    if (StaticPrefs::media_ffvpx_hw_enabled()) {
+      FFVPXRuntimeLinker::Init();
+    }
 #endif
   }
 
@@ -256,11 +261,11 @@ class SupportChecker {
       RefPtr<MediaByteBuffer> extraData =
           aTrackConfig.GetAsVideoInfo()->mExtraData;
       AddToCheckList([mimeType, extraData]() {
+#if defined(XP_WIN) || defined(XP_DARWIN)
         if (MP4Decoder::IsH264(mimeType)) {
           SPSData spsdata;
           // WMF H.264 Video Decoder and Apple ATDecoder
           // do not support YUV444 format.
-          // For consistency, all decoders should be checked.
           if (H264::DecodeSPSFromExtraData(extraData, spsdata) &&
               (spsdata.profile_idc == 244 /* Hi444PP */ ||
                spsdata.chroma_format_idc == PDMFactory::kYUV444)) {
@@ -273,6 +278,7 @@ class SupportChecker {
                                   "with YUV444 chroma subsampling.")));
           }
         }
+#endif
         return CheckResult(SupportChecker::Reason::kSupported);
       });
     }
@@ -335,7 +341,10 @@ RefPtr<PlatformDecoderModule::CreateDecoderPromise> PDMFactory::CreateDecoder(
     MOZ_ASSERT(mNullPDM);
     return CreateDecoderWithPDM(mNullPDM, aParams);
   }
-  bool isEncrypted = mEMEPDM && aParams.mConfig.mCrypto.IsEncrypted();
+  bool isEncrypted =
+      mEMEPDM && (aParams.mConfig.mCrypto.IsEncrypted() ||
+                  aParams.mEncryptedCustomIdent ==
+                      CreateDecoderParams::EncryptedCustomIdent::True);
 
   if (isEncrypted) {
     return CreateDecoderWithPDM(mEMEPDM, aParams);
@@ -406,15 +415,19 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
   }
 
   if (config.IsAudio()) {
+    if (MP4Decoder::IsAAC(config.mMimeType) && !aParams.mUseNullDecoder.mUse &&
+        aParams.mWrappers.contains(media::Wrapper::MediaChangeMonitor)) {
+      // If AudioTrimmer is needed, MediaChangeMonitor will request it.
+      return MediaChangeMonitor::Create(this, aParams);
+    }
     RefPtr<PlatformDecoderModule::CreateDecoderPromise> p;
     p = aPDM->AsyncCreateDecoder(aParams)->Then(
         GetCurrentSerialEventTarget(), __func__,
         [params = CreateDecoderParamsForAsync(aParams)](
             RefPtr<MediaDataDecoder>&& aDecoder) {
           RefPtr<MediaDataDecoder> decoder = std::move(aDecoder);
-          if (!params.mNoWrapper.mDontUseWrapper) {
-            decoder =
-                new AudioTrimmer(decoder.forget(), CreateDecoderParams(params));
+          if (params.mWrappers.contains(media::Wrapper::AudioTrimmer)) {
+            decoder = new AudioTrimmer(decoder.forget());
           }
           return PlatformDecoderModule::CreateDecoderPromise::CreateAndResolve(
               decoder, __func__);
@@ -441,7 +454,8 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
 #endif
        VPXDecoder::IsVPX(config.mMimeType) ||
        MP4Decoder::IsHEVC(config.mMimeType)) &&
-      !aParams.mUseNullDecoder.mUse && !aParams.mNoWrapper.mDontUseWrapper) {
+      !aParams.mUseNullDecoder.mUse &&
+      aParams.mWrappers.contains(media::Wrapper::MediaChangeMonitor)) {
     return MediaChangeMonitor::Create(this, aParams);
   }
   return aPDM->AsyncCreateDecoder(aParams);
@@ -474,7 +488,20 @@ DecodeSupportSet PDMFactory::Supports(
   return current->Supports(aParams, aDiagnostics);
 }
 
+/* static */
+void PDMFactory::ForcePDM(PlatformDecoderModule* aPDM) {
+  auto forced = sForcedPDM.Lock();
+  *forced = aPDM;
+}
+
 void PDMFactory::CreatePDMs() {
+  {
+    auto forced = sForcedPDM.Lock();
+    if (*forced) {
+      StartupPDM(do_AddRef(*forced));
+      return;
+    }
+  }
   if (StaticPrefs::media_use_blank_decoder()) {
     StartupPDM(BlankDecoderModule::Create());
     // The Blank PDM SupportsMimeType reports true for all codecs; the creation
@@ -501,6 +528,9 @@ void PDMFactory::CreatePDMs() {
 
 void PDMFactory::CreateGpuPDMs() {
 #ifdef XP_WIN
+  if (StaticPrefs::media_ffvpx_hw_enabled()) {
+    StartupPDM(FFVPXRuntimeLinker::CreateDecoder());
+  }
   if (StaticPrefs::media_wmf_enabled()) {
     StartupPDM(WMFDecoderModule::Create());
   }
@@ -845,9 +875,6 @@ DecodeSupportSet PDMFactory::SupportsMimeType(
       return MCSInfo::GetDecodeSupportSet(MediaCodec::AV1, aSupported);
     }
 #endif
-    if (TheoraDecoder::IsTheora(aMimeType)) {
-      return MCSInfo::GetDecodeSupportSet(MediaCodec::Theora, aSupported);
-    }
     if (MP4Decoder::IsHEVC(aMimeType)) {
       return MCSInfo::GetDecodeSupportSet(MediaCodec::HEVC, aSupported);
     }
@@ -880,7 +907,6 @@ DecodeSupportSet PDMFactory::SupportsMimeType(
 bool PDMFactory::AllDecodersAreRemote() {
   return StaticPrefs::media_rdd_process_enabled() &&
          StaticPrefs::media_rdd_opus_enabled() &&
-         StaticPrefs::media_rdd_theora_enabled() &&
          StaticPrefs::media_rdd_vorbis_enabled() &&
          StaticPrefs::media_rdd_vpx_enabled() &&
 #if defined(MOZ_WMF)

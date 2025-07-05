@@ -1031,9 +1031,9 @@ CompareNetwork::OnStreamComplete(nsIStreamLoader* aLoader,
 
     // Make non-release and debug builds to crash if this happens and fail
     // explicitly on release builds.
-    MOZ_DIAGNOSTIC_ASSERT(false,
-                          "ServiceWorker imported script redirected to an url "
-                          "with an unexpected scheme");
+    MOZ_DIAGNOSTIC_CRASH(
+        "ServiceWorker imported script redirected to an url "
+        "with an unexpected scheme");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -1388,7 +1388,7 @@ void CompareManager::ResolvedCallback(JSContext* aCx,
       }
       return;
     default:
-      MOZ_DIAGNOSTIC_ASSERT(false);
+      MOZ_DIAGNOSTIC_CRASH("Missing case in CompareManager::ResolvedCallback");
   }
 }
 
@@ -1412,7 +1412,7 @@ void CompareManager::RejectedCallback(JSContext* aCx,
       NS_WARNING("Could not write to cache.");
       break;
     default:
-      MOZ_DIAGNOSTIC_ASSERT(false);
+      MOZ_DIAGNOSTIC_CRASH("Missing case in CompareManager::RejectedCallback");
   }
 
   Fail(NS_ERROR_FAILURE);

@@ -139,11 +139,22 @@ interface TestFunctions {
   undefined testAllowShared([AllowShared] ArrayBufferView buffer);
   undefined testAllowShared([AllowShared] ArrayBuffer buffer);
   undefined testDictWithAllowShared(optional DictWithAllowSharedBufferSource buffer = {});
-  undefined testUnionOfBuffferSource((ArrayBuffer or ArrayBufferView or DOMString) foo);
-  undefined testUnionOfAllowSharedBuffferSource(([AllowShared] ArrayBuffer or [AllowShared] ArrayBufferView) foo);
+  undefined testUnionOfBufferSource((ArrayBuffer or ArrayBufferView or DOMString) foo);
+  undefined testUnionOfAllowSharedBufferSource(AllowSharedBufferSource foo);
+  undefined testUnionWithAllowShared([AllowShared] (Int8Array or Int16Array) foo);
 
   boolean staticAndNonStaticOverload();
   static boolean staticAndNonStaticOverload(optional unsigned long foo);
+};
+
+[Pref="dom.expose_test_interfaces",
+ Exposed=Window]
+interface TestReflectedHTMLAttribute {
+  constructor();
+
+  [Frozen, ReflectedHTMLAttributeReturningFrozenArray]
+  attribute sequence<Element>? reflectedHTMLAttribute;
+  undefined setReflectedHTMLAttributeValue(sequence<Element> seq);
 };
 
 dictionary DictWithAllowSharedBufferSource {

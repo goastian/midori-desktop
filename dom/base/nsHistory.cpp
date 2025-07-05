@@ -72,7 +72,8 @@ uint32_t nsHistory::GetLength(ErrorResult& aRv) const {
   return len >= 0 ? len : 0;
 }
 
-ScrollRestoration nsHistory::GetScrollRestoration(mozilla::dom::CallerType aCallerType, mozilla::ErrorResult& aRv) {
+ScrollRestoration nsHistory::GetScrollRestoration(
+    mozilla::dom::CallerType aCallerType, mozilla::ErrorResult& aRv) {
   nsCOMPtr<nsPIDOMWindowInner> win(do_QueryReferent(mInnerWindow));
   if (!win || !win->HasActiveDocument() || !win->GetDocShell()) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);

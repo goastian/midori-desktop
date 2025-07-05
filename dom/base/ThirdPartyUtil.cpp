@@ -16,6 +16,7 @@
 #include "mozilla/ContentBlockingNotifier.h"
 #include "mozilla/Logging.h"
 #include "mozilla/MacroForEach.h"
+#include "mozilla/NullPrincipal.h"
 #include "mozilla/Components.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/StorageAccess.h"
@@ -29,7 +30,6 @@
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "nsCOMPtr.h"
 #include "nsDebug.h"
-#include "nsEffectiveTLDService.h"
 #include "nsError.h"
 #include "nsGlobalWindowOuter.h"
 #include "nsIChannel.h"
@@ -45,6 +45,7 @@
 #include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIDOMWindowInlines.h"
+#include "nsSandboxFlags.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTLiteralString.h"
 
@@ -77,7 +78,7 @@ nsresult ThirdPartyUtil::Init() {
   gService = this;
   mozilla::ClearOnShutdown(&gService);
 
-  mTLDService = nsEffectiveTLDService::GetInstance();
+  mTLDService = mozilla::components::EffectiveTLD::Service();
   return mTLDService ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -126,16 +127,6 @@ nsresult ThirdPartyUtil::IsThirdPartyInternal(const nsCString& aFirstDomain,
 
   *aResult = IsThirdPartyInternal(aFirstDomain, secondDomain);
   return NS_OK;
-}
-
-nsCString ThirdPartyUtil::GetBaseDomainFromWindow(nsPIDOMWindowOuter* aWindow) {
-  mozilla::dom::Document* doc = aWindow ? aWindow->GetExtantDoc() : nullptr;
-
-  if (!doc) {
-    return ""_ns;
-  }
-
-  return doc->GetBaseDomain();
 }
 
 NS_IMETHODIMP
@@ -223,6 +214,18 @@ ThirdPartyUtil::IsThirdPartyWindow(mozIDOMWindowProxy* aWindow, nsIURI* aURI,
   auto* const browsingContext = current->GetBrowsingContext();
   MOZ_ASSERT(browsingContext);
 
+  if (browsingContext->IsTopContent()) {
+    *aResult = false;
+    return NS_OK;
+  }
+
+  // If the document is sandboxed, it's always third party.
+  RefPtr<Document> doc = current->GetExtantDoc();
+  if (doc && (doc->GetSandboxFlags() & SANDBOXED_ORIGIN)) {
+    *aResult = true;
+    return NS_OK;
+  }
+
   WindowContext* wc = browsingContext->GetCurrentWindowContext();
   if (NS_WARN_IF(!wc)) {
     *aResult = true;
@@ -245,6 +248,13 @@ nsresult ThirdPartyUtil::IsThirdPartyGlobal(
       *aResult = false;
       return NS_OK;
     }
+
+    // If the window global is sandboxed, it's always third party.
+    if (currentWGP->SandboxFlags() & SANDBOXED_ORIGIN) {
+      *aResult = true;
+      return NS_OK;
+    }
+
     nsCOMPtr<nsIPrincipal> currentPrincipal = currentWGP->DocumentPrincipal();
     RefPtr<WindowGlobalParent> parent =
         currentWGP->BrowsingContext()->GetEmbedderWindowGlobal();
@@ -429,6 +439,12 @@ ThirdPartyUtil::GetBaseDomain(nsIURI* aHostURI, nsACString& aBaseDomain) {
     rv = mTLDService->GetBaseDomain(aHostURI, 0, aBaseDomain);
   }
 
+  // If the URI is a null principal, we get the UUID portion instead of the base
+  // domain because a null principal uri doesn't have a base domain.
+  if (aHostURI->SchemeIs(NS_NULLPRINCIPAL_SCHEME)) {
+    rv = aHostURI->GetFilePath(aBaseDomain);
+  }
+
   // Get the base domain. this will fail if the host contains a leading dot,
   // more than one trailing dot, or is otherwise malformed.
   if (rv == NS_ERROR_HOST_IS_IP_ADDRESS ||
@@ -436,7 +452,14 @@ ThirdPartyUtil::GetBaseDomain(nsIURI* aHostURI, nsACString& aBaseDomain) {
     // aHostURI is either an IP address, an alias such as 'localhost', an eTLD
     // such as 'co.uk', or the empty string. Uses the normalized host in such
     // cases.
-    rv = aHostURI->GetAsciiHost(aBaseDomain);
+
+    // The aHostURI can be a view-source URI, in which case we need to get the
+    // base domain from the inner most URI.
+    if (aHostURI->SchemeIs("view-source")) {
+      rv = NS_GetInnermostURIHost(aHostURI, aBaseDomain);
+    } else {
+      rv = aHostURI->GetAsciiHost(aBaseDomain);
+    }
   }
 
   if (NS_FAILED(rv)) {
@@ -444,48 +467,15 @@ ThirdPartyUtil::GetBaseDomain(nsIURI* aHostURI, nsACString& aBaseDomain) {
   }
 
   // aHostURI (and thus aBaseDomain) may be the string '.'. If so, fail.
-  if (aBaseDomain.Length() == 1 && aBaseDomain.Last() == '.')
+  if (aBaseDomain.Length() == 1 && aBaseDomain.Last() == '.') {
     return NS_ERROR_INVALID_ARG;
+  }
 
   // Reject any URIs without a host that aren't file:// URIs. This makes it the
   // only way we can get a base domain consisting of the empty string, which
   // means we can safely perform foreign tests on such URIs where "not foreign"
   // means "the involved URIs are all file://".
   if (aBaseDomain.IsEmpty() && !aHostURI->SchemeIs("file")) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-ThirdPartyUtil::GetBaseDomainFromSchemeHost(const nsACString& aScheme,
-                                            const nsACString& aAsciiHost,
-                                            nsACString& aBaseDomain) {
-  MOZ_DIAGNOSTIC_ASSERT(IsAscii(aAsciiHost));
-
-  // Get the base domain. this will fail if the host contains a leading dot,
-  // more than one trailing dot, or is otherwise malformed.
-  nsresult rv = mTLDService->GetBaseDomainFromHost(aAsciiHost, 0, aBaseDomain);
-  if (rv == NS_ERROR_HOST_IS_IP_ADDRESS ||
-      rv == NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
-    // aMozURL is either an IP address, an alias such as 'localhost', an eTLD
-    // such as 'co.uk', or the empty string. Uses the normalized host in such
-    // cases.
-    aBaseDomain = aAsciiHost;
-    rv = NS_OK;
-  }
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // aMozURL (and thus aBaseDomain) may be the string '.'. If so, fail.
-  if (aBaseDomain.Length() == 1 && aBaseDomain.Last() == '.')
-    return NS_ERROR_INVALID_ARG;
-
-  // Reject any URLs without a host that aren't file:// URLs. This makes it the
-  // only way we can get a base domain consisting of the empty string, which
-  // means we can safely perform foreign tests on such URLs where "not foreign"
-  // means "the involved URLs are all file://".
-  if (aBaseDomain.IsEmpty() && !aScheme.EqualsLiteral("file")) {
     return NS_ERROR_INVALID_ARG;
   }
 

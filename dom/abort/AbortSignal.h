@@ -25,19 +25,18 @@ namespace mozilla::dom {
 // it appears only to be used internally in the Fetch API.  It might be a good
 // idea to split AbortSignal into an implementation that can follow, and an
 // implementation that can't, to provide this complexity only when it's needed.
-class AbortSignal : public DOMEventTargetHelper,
-                    public AbortSignalImpl,
-                    public AbortFollower {
+class AbortSignal : public DOMEventTargetHelper, public AbortSignalImpl {
  public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(AbortSignal,
                                                          DOMEventTargetHelper)
 
-  AbortSignal(nsIGlobalObject* aGlobalObject, bool aAborted,
-              JS::Handle<JS::Value> aReason);
+  static already_AddRefed<AbortSignal> Create(nsIGlobalObject* aGlobalObject,
+                                              SignalAborted aAborted,
+                                              JS::Handle<JS::Value> aReason);
 
-  JSObject* WrapObject(JSContext* aCx,
-                       JS::Handle<JSObject*> aGivenProto) override;
+  virtual JSObject* WrapObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aGivenProto) override;
 
   IMPL_EVENT_HANDLER(abort);
 
@@ -51,23 +50,31 @@ class AbortSignal : public DOMEventTargetHelper,
   static already_AddRefed<AbortSignal> Any(
       GlobalObject& aGlobal,
       const Sequence<OwningNonNull<AbortSignal>>& aSignals);
+  static already_AddRefed<AbortSignal> Any(
+      nsIGlobalObject* aGlobal,
+      const Span<const OwningNonNull<AbortSignal>>& aSignals,
+      FunctionRef<already_AddRefed<AbortSignal>(nsIGlobalObject* aGlobal)>
+          aCreateResultSignal);
 
   void ThrowIfAborted(JSContext* aCx, ErrorResult& aRv);
-
-  // AbortSignalImpl
-  void SignalAbort(JS::Handle<JS::Value> aReason) override;
-
-  // AbortFollower
-  void RunAbortAlgorithm() override;
 
   virtual bool IsTaskSignal() const { return false; }
 
   bool Dependent() const;
 
  protected:
-  ~AbortSignal();
+  AbortSignal(nsIGlobalObject* aGlobalObject, SignalAborted aAborted,
+              JS::Handle<JS::Value> aReason);
+
+  void Init();
+
+  virtual ~AbortSignal();
 
   void MakeDependentOn(AbortSignal* aSignal);
+
+  void SignalAbortWithDependents() override;
+
+  void RunAbortSteps() override;
 
   nsTArray<WeakPtr<AbortSignal>> mSourceSignals;
   nsTArray<RefPtr<AbortSignal>> mDependentSignals;

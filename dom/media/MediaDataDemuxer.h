@@ -100,9 +100,9 @@ class MediaTrackDemuxer : public DecoderDoctorLifeLogger<MediaTrackDemuxer> {
    public:
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(SamplesHolder)
 
-    void AppendSample(RefPtr<MediaRawData>& aSample) {
+    void AppendSample(RefPtr<MediaRawData> aSample) {
       MOZ_DIAGNOSTIC_ASSERT(aSample->HasValidTime());
-      mSamples.AppendElement(aSample);
+      mSamples.AppendElement(std::move(aSample));
     }
 
     const nsTArray<RefPtr<MediaRawData>>& GetSamples() const {
@@ -112,7 +112,9 @@ class MediaTrackDemuxer : public DecoderDoctorLifeLogger<MediaTrackDemuxer> {
     // This method is only used to do the move semantic for mSamples, do not
     // append any element to the samples we returns. We should always append new
     // sample to mSamples via `AppendSample()`.
-    nsTArray<RefPtr<MediaRawData>>& GetMovableSamples() { return mSamples; }
+    nsTArray<RefPtr<MediaRawData>>&& GetMovableSamples() {
+      return std::move(mSamples);
+    }
 
    private:
     ~SamplesHolder() = default;

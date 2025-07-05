@@ -23,6 +23,9 @@ interface Notification : EventTarget {
   [NewObject, Func="mozilla::dom::Notification::RequestPermissionEnabledForScope"]
   static Promise<NotificationPermission> requestPermission(optional NotificationPermissionCallback permissionCallback);
 
+  [Pref="dom.webnotifications.actions.enabled"]
+  static readonly attribute unsigned long maxActions;
+
   attribute EventHandler onclick;
 
   attribute EventHandler onshow;
@@ -61,6 +64,11 @@ interface Notification : EventTarget {
   [Constant]
   readonly attribute any data;
 
+  // Bug 1236777: FrozenArray is not supported
+  // [SameObject] readonly attribute FrozenArray<NotificationAction> actions;
+  [Frozen, Cached, Pure, Pref="dom.webnotifications.actions.enabled"]
+  readonly attribute sequence<NotificationAction> actions;
+
   undefined close();
 };
 
@@ -76,26 +84,23 @@ dictionary NotificationOptions {
   boolean silent = false;
   VibratePattern vibrate;
   any data = null;
-  NotificationBehavior mozbehavior = {};
+  [Pref="dom.webnotifications.actions.enabled"]
+  sequence<NotificationAction> actions = [];
 };
 
 dictionary GetNotificationOptions {
   DOMString tag = "";
 };
 
-[GenerateToJSON]
-dictionary NotificationBehavior {
-  boolean noscreen = false;
-  boolean noclear = false;
-  boolean showOnlyOnce = false;
-  DOMString soundFile = "";
-  sequence<unsigned long> vibrationPattern;
-};
-
 enum NotificationPermission {
   "default",
   "denied",
   "granted"
+};
+
+dictionary NotificationAction {
+  required DOMString action;
+  required DOMString title;
 };
 
 callback NotificationPermissionCallback = undefined (NotificationPermission permission);

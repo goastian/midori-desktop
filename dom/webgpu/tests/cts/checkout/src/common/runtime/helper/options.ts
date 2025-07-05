@@ -53,16 +53,20 @@ export interface CTSOptions {
   debug: boolean;
   compatibility: boolean;
   forceFallbackAdapter: boolean;
+  enforceDefaultLimits: boolean;
+  blockAllFeatures: boolean;
   unrollConstEvalLoops: boolean;
   powerPreference: GPUPowerPreference | null;
   logToWebSocket: boolean;
 }
 
-export const kDefaultCTSOptions: CTSOptions = {
+export const kDefaultCTSOptions: Readonly<CTSOptions> = {
   worker: null,
-  debug: true,
+  debug: false,
   compatibility: false,
   forceFallbackAdapter: false,
+  enforceDefaultLimits: false,
+  blockAllFeatures: false,
   unrollConstEvalLoops: false,
   powerPreference: null,
   logToWebSocket: false,
@@ -98,8 +102,17 @@ export const kCTSOptionsInfo: OptionsInfos<CTSOptions> = {
     ],
   },
   debug: { description: 'show more info' },
-  compatibility: { description: 'run in compatibility mode' },
+  compatibility: { description: 'request adapters with featureLevel: "compatibility"' },
   forceFallbackAdapter: { description: 'pass forceFallbackAdapter: true to requestAdapter' },
+  enforceDefaultLimits: {
+    description: `force the adapter limits to the default limits.
+Note: May fail on tests for low-power/high-performance`,
+  },
+  blockAllFeatures: {
+    description: `block all features on adapter - except 'core-features-and-limits'.
+Note: The spec requires bc or etc2+astc which means tests checking that one or other must exist will fail.
+`,
+  },
   unrollConstEvalLoops: { description: 'unroll const eval loops in WGSL' },
   powerPreference: {
     description: 'set default powerPreference for some tests',

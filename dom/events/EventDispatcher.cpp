@@ -27,6 +27,7 @@
 #include "KeyboardEvent.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ContentEvents.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/CloseEvent.h"
 #include "mozilla/dom/CustomEvent.h"
 #include "mozilla/dom/DeviceOrientationEvent.h"
@@ -63,7 +64,6 @@
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
 #include "mozilla/Unused.h"
@@ -754,16 +754,15 @@ EventTargetChainItem* EventTargetChainItemForChromeTarget(
 }
 
 static bool ShouldClearTargets(WidgetEvent* aEvent) {
-  if (nsIContent* finalTarget =
-          nsIContent::FromEventTargetOrNull(aEvent->mTarget)) {
-    if (finalTarget->SubtreeRoot()->IsShadowRoot()) {
+  if (auto* finalTarget = nsIContent::FromEventTargetOrNull(aEvent->mTarget)) {
+    if (finalTarget->IsInShadowTree()) {
       return true;
     }
   }
 
-  if (nsIContent* finalRelatedTarget =
+  if (auto* finalRelatedTarget =
           nsIContent::FromEventTargetOrNull(aEvent->mRelatedTarget)) {
-    if (finalRelatedTarget->SubtreeRoot()->IsShadowRoot()) {
+    if (finalRelatedTarget->IsInShadowTree()) {
       return true;
     }
   }
@@ -794,6 +793,34 @@ static void DescribeEventTargetForProfilerMarker(const EventTarget* aTarget,
   } else {
     // Probably something that inherits from DOMEventTargetHelper.
   }
+}
+
+/**
+ * https://w3c.github.io/touch-events/#cancelability
+ * https://w3c.github.io/uievents/#cancelability-of-wheel-events
+ */
+static bool IsUncancelableIfOnlyPassiveListeners(const WidgetEvent* aEvent) {
+  if (!aEvent->IsTrusted() || !aEvent->mFlags.mCancelable) {
+    return false;
+  }
+
+  switch (aEvent->mMessage) {
+    case eTouchStart:
+    case eTouchEnd:
+    case eTouchMove:
+    case eWheel:
+    case eLegacyMouseLineOrPageScroll:
+    case eLegacyMousePixelScroll:
+      break;
+    default:
+      return false;
+  }
+
+  // There might be non-passive listeners in the remote document
+  // So return false if we are in the parent process with remote target
+  nsCOMPtr<nsIContent> target =
+      nsIContent::FromEventTargetOrNull(aEvent->mOriginalTarget);
+  return !(XRE_IsParentProcess() && BrowserParent::GetFrom(target));
 }
 
 /* static */
@@ -975,11 +1002,14 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
 
   nsCOMPtr<nsIContent> content =
       nsIContent::FromEventTargetOrNull(aEvent->mOriginalTarget);
-  bool isInAnon = content && content->IsInNativeAnonymousSubtree();
 
+  const bool isInAnon = content && content->ChromeOnlyAccessForEvents();
   aEvent->mFlags.mIsBeingDispatched = true;
 
   Maybe<uint32_t> activationTargetItemIndex;
+
+  // https://w3c.github.io/touch-events/#cancelability
+  bool maybeUncancelable = IsUncancelableIfOnlyPassiveListeners(aEvent);
 
   // Create visitor object and start event dispatching.
   // GetEventTargetParent for the original target.
@@ -1010,6 +1040,13 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
 
     clearTargets = ShouldClearTargets(aEvent);
   } else {
+    if (maybeUncancelable && preVisitor.mMayHaveListenerManager) {
+      if (EventListenerManager* const manager =
+              targetEtci->CurrentTarget()->GetExistingListenerManager()) {
+        maybeUncancelable = !manager->HasNonPassiveListenersFor(aEvent);
+      }
+    }
+
     // At least the original target can handle the event.
     // Setting the retarget to the |target| simplifies retargeting code.
     nsCOMPtr<EventTarget> t = aEvent->mTarget;
@@ -1066,18 +1103,13 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
         activationTargetItemIndex.emplace(chain.Length() - 1);
       }
 
-      if (preVisitor.mCanHandle) {
-        preVisitor.mTargetInKnownToBeHandledScope = preVisitor.mEvent->mTarget;
-        topEtci = parentEtci;
-      } else {
+      if (!preVisitor.mCanHandle) {
         bool ignoreBecauseOfShadowDOM = preVisitor.mIgnoreBecauseOfShadowDOM;
         nsCOMPtr<nsINode> disabledTarget =
             nsINode::FromEventTargetOrNull(parentTarget);
         parentEtci = MayRetargetToChromeIfCanNotHandleEvent(
             chain, preVisitor, parentEtci, topEtci, disabledTarget);
         if (parentEtci && preVisitor.mCanHandle) {
-          preVisitor.mTargetInKnownToBeHandledScope =
-              preVisitor.mEvent->mTarget;
           EventTargetChainItem* item =
               EventTargetChainItem::GetFirstCanHandleEventTarget(chain);
           if (!ignoreBecauseOfShadowDOM) {
@@ -1085,10 +1117,21 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
             // shouldn't treat the target to be in the event path at all.
             item->SetNewTarget(parentTarget);
           }
-          topEtci = parentEtci;
-          continue;
         }
+      }
+
+      if (parentEtci && preVisitor.mCanHandle) {
+        preVisitor.mTargetInKnownToBeHandledScope = preVisitor.mEvent->mTarget;
+        topEtci = parentEtci;
+      } else {
         break;
+      }
+
+      if (maybeUncancelable && preVisitor.mMayHaveListenerManager) {
+        if (EventListenerManager* const manager =
+                parentEtci->CurrentTarget()->GetExistingListenerManager()) {
+          maybeUncancelable = !manager->HasNonPassiveListenersFor(aEvent);
+        }
       }
     }
 
@@ -1098,6 +1141,10 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
     }
 
     if (NS_SUCCEEDED(rv)) {
+      if (maybeUncancelable) {
+        aEvent->mFlags.mCancelable = false;
+      }
+
       if (aTargets) {
         aTargets->Clear();
         uint32_t numTargets = chain.Length();
@@ -1114,7 +1161,7 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
         RefPtr<nsRefreshDriver> refreshDriver;
         if (aEvent->IsTrusted() &&
             (aEvent->mMessage == eKeyPress ||
-             aEvent->mMessage == eMouseClick) &&
+             aEvent->mMessage == ePointerClick) &&
             aPresContext && aPresContext->GetRootPresContext()) {
           refreshDriver = aPresContext->GetRootPresContext()->RefreshDriver();
           if (refreshDriver) {
@@ -1225,7 +1272,7 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
 
         if (aEvent->IsTrusted() &&
             (aEvent->mMessage == eKeyPress ||
-             aEvent->mMessage == eMouseClick) &&
+             aEvent->mMessage == ePointerClick) &&
             aPresContext && aPresContext->GetRootPresContext()) {
           nsRefreshDriver* driver =
               aPresContext->GetRootPresContext()->RefreshDriver();
@@ -1236,7 +1283,7 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
                     {layers::CompositionPayloadType::eKeyPress,
                      aEvent->mTimeStamp});
                 break;
-              case eMouseClick: {
+              case ePointerClick: {
                 if (aEvent->AsMouseEvent()->mInputSource ==
                         MouseEvent_Binding::MOZ_SOURCE_MOUSE ||
                     aEvent->AsMouseEvent()->mInputSource ==
@@ -1269,7 +1316,7 @@ nsresult EventDispatcher::Dispatch(EventTarget* aTarget,
   aEvent->mFlags.mDispatchedAtLeastOnce = true;
 
   if (eventTimingEntry) {
-    eventTimingEntry->FinalizeEventTiming(aEvent->mTarget);
+    eventTimingEntry->FinalizeEventTiming(aEvent);
   }
   // https://dom.spec.whatwg.org/#concept-event-dispatch
   // step 10. If clearTargets, then:

@@ -22,7 +22,7 @@
 
 namespace mozilla::dom {
 
-static SVGAttrTearoffTable<SVGAnimatedLength, DOMSVGLength>
+MOZ_CONSTINIT static SVGAttrTearoffTable<SVGAnimatedLength, DOMSVGLength>
     sBaseSVGLengthTearOffTable, sAnimSVGLengthTearOffTable;
 
 // We could use NS_IMPL_CYCLE_COLLECTION(, except that in Unlink() we need to
@@ -51,6 +51,7 @@ DOMSVGLength::DOMSVGLength(DOMSVGLengthList* aList, uint8_t aAttrEnum,
       mListIndex(aListIndex),
       mAttrEnum(aAttrEnum),
       mIsAnimValItem(aIsAnimValItem),
+      mIsInTearoffTable(false),
       mUnit(SVGLength_Binding::SVG_LENGTHTYPE_NUMBER) {
   MOZ_ASSERT(aList, "bad arg");
   MOZ_ASSERT(mAttrEnum == aAttrEnum, "bitfield too small");
@@ -63,6 +64,7 @@ DOMSVGLength::DOMSVGLength()
       mListIndex(0),
       mAttrEnum(0),
       mIsAnimValItem(false),
+      mIsInTearoffTable(false),
       mUnit(SVGLength_Binding::SVG_LENGTHTYPE_NUMBER) {}
 
 DOMSVGLength::DOMSVGLength(SVGAnimatedLength* aVal, SVGElement* aSVGElement,
@@ -71,6 +73,7 @@ DOMSVGLength::DOMSVGLength(SVGAnimatedLength* aVal, SVGElement* aSVGElement,
       mListIndex(0),
       mAttrEnum(aVal->mAttrEnum),
       mIsAnimValItem(aAnimVal),
+      mIsInTearoffTable(false),
       mUnit(SVGLength_Binding::SVG_LENGTHTYPE_NUMBER) {
   MOZ_ASSERT(aVal, "bad arg");
   MOZ_ASSERT(mAttrEnum == aVal->mAttrEnum, "bitfield too small");
@@ -88,22 +91,33 @@ void DOMSVGLength::CleanupWeakRefs() {
 
   // Similarly, we must update the tearoff table to remove its (non-owning)
   // pointer to mVal.
-  if (nsCOMPtr<SVGElement> svg = do_QueryInterface(mOwner)) {
-    auto& table = mIsAnimValItem ? sAnimSVGLengthTearOffTable
-                                 : sBaseSVGLengthTearOffTable;
-    table.RemoveTearoff(svg->GetAnimatedLength(mAttrEnum));
+  if (mIsInTearoffTable) {
+    nsCOMPtr<SVGElement> svg = do_QueryInterface(mOwner);
+    MOZ_ASSERT(svg,
+               "We need our svgElement reference in order to remove "
+               "ourselves from tearoff table...");
+    if (MOZ_LIKELY(svg)) {
+      auto& table = mIsAnimValItem ? sAnimSVGLengthTearOffTable
+                                   : sBaseSVGLengthTearOffTable;
+      table.RemoveTearoff(svg->GetAnimatedLength(mAttrEnum));
+      mIsInTearoffTable = false;
+    }
   }
 }
 
 already_AddRefed<DOMSVGLength> DOMSVGLength::GetTearOff(SVGAnimatedLength* aVal,
                                                         SVGElement* aSVGElement,
                                                         bool aAnimVal) {
+  MOZ_ASSERT(aVal && aSVGElement, "Expecting non-null aVal and aSVGElement");
+  MOZ_ASSERT(aVal == aSVGElement->GetAnimatedLength(aVal->mAttrEnum),
+             "Mismatched aVal/SVGElement?");
   auto& table =
       aAnimVal ? sAnimSVGLengthTearOffTable : sBaseSVGLengthTearOffTable;
   RefPtr<DOMSVGLength> domLength = table.GetTearoff(aVal);
   if (!domLength) {
     domLength = new DOMSVGLength(aVal, aSVGElement, aAnimVal);
     table.AddTearoff(aVal, domLength);
+    domLength->mIsInTearoffTable = true;
   }
 
   return domLength.forget();
@@ -169,7 +183,8 @@ float DOMSVGLength::GetValue(ErrorResult& aRv) {
     float value = InternalItem().GetValueInPixels(lengthList->Element(),
                                                   lengthList->Axis());
     if (!std::isfinite(value)) {
-      aRv.Throw(NS_ERROR_FAILURE);
+      aRv.ThrowTypeError<MSG_NOT_FINITE>("value");
+      return 0.0f;
     }
     return value;
   }
@@ -186,7 +201,7 @@ float DOMSVGLength::GetValue(ErrorResult& aRv) {
 
 void DOMSVGLength::SetValue(float aUserUnitValue, ErrorResult& aRv) {
   if (mIsAnimValItem) {
-    aRv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
 
@@ -215,11 +230,13 @@ void DOMSVGLength::SetValue(float aUserUnitValue, ErrorResult& aRv) {
         SVGElementMetrics(lengthList->Element()), lengthList->Axis());
     if (uuPerUnit > 0) {
       float newValue = aUserUnitValue / uuPerUnit;
-      if (std::isfinite(newValue)) {
-        AutoChangeLengthListNotifier notifier(this);
-        internalItem.SetValueAndUnit(newValue, internalItem.GetUnit());
+      if (!std::isfinite(newValue)) {
+        aRv.ThrowTypeError<MSG_NOT_FINITE>("value");
         return;
       }
+      AutoChangeLengthListNotifier notifier(this);
+      internalItem.SetValueAndUnit(newValue, internalItem.GetUnit());
+      return;
     }
   } else if (SVGLength::IsAbsoluteUnit(mUnit)) {
     mValue = aUserUnitValue * SVGLength::GetAbsUnitsPerAbsUnit(
@@ -246,7 +263,7 @@ float DOMSVGLength::ValueInSpecifiedUnits() {
 
 void DOMSVGLength::SetValueInSpecifiedUnits(float aValue, ErrorResult& aRv) {
   if (mIsAnimValItem) {
-    aRv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
 
@@ -270,7 +287,7 @@ void DOMSVGLength::SetValueInSpecifiedUnits(float aValue, ErrorResult& aRv) {
 
 void DOMSVGLength::SetValueAsString(const nsAString& aValue, ErrorResult& aRv) {
   if (mIsAnimValItem) {
-    aRv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
 
@@ -282,7 +299,8 @@ void DOMSVGLength::SetValueAsString(const nsAString& aValue, ErrorResult& aRv) {
 
   SVGLength value;
   if (!value.SetValueFromString(aValue)) {
-    aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
+    NS_ConvertUTF16toUTF8 value(aValue);
+    aRv.ThrowSyntaxError("Cannot parse "_ns + value);
     return;
   }
   if (HasOwner()) {
@@ -322,7 +340,12 @@ void DOMSVGLength::GetValueAsString(nsAString& aValue) {
 void DOMSVGLength::NewValueSpecifiedUnits(uint16_t aUnit, float aValue,
                                           ErrorResult& aRv) {
   if (mIsAnimValItem) {
-    aRv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
+    return;
+  }
+
+  if (!SVGLength::IsValidUnitType(aUnit)) {
+    aRv.ThrowNotSupportedError("Unknown unit type");
     return;
   }
 
@@ -332,10 +355,6 @@ void DOMSVGLength::NewValueSpecifiedUnits(uint16_t aUnit, float aValue,
     return;
   }
 
-  if (!SVGLength::IsValidUnitType(aUnit)) {
-    aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return;
-  }
   if (HasOwner()) {
     SVGLength& internalItem = InternalItem();
     if (internalItem == SVGLength(aValue, aUnit)) {
@@ -351,17 +370,17 @@ void DOMSVGLength::NewValueSpecifiedUnits(uint16_t aUnit, float aValue,
 
 void DOMSVGLength::ConvertToSpecifiedUnits(uint16_t aUnit, ErrorResult& aRv) {
   if (mIsAnimValItem) {
-    aRv.Throw(NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR);
-    return;
-  }
-
-  if (nsCOMPtr<SVGElement> svg = do_QueryInterface(mOwner)) {
-    svg->GetAnimatedLength(mAttrEnum)->ConvertToSpecifiedUnits(aUnit, svg);
+    aRv.ThrowNoModificationAllowedError("Animated values cannot be set");
     return;
   }
 
   if (!SVGLength::IsValidUnitType(aUnit)) {
-    aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    aRv.ThrowNotSupportedError("Unknown unit type");
+    return;
+  }
+
+  if (nsCOMPtr<SVGElement> svg = do_QueryInterface(mOwner)) {
+    svg->GetAnimatedLength(mAttrEnum)->ConvertToSpecifiedUnits(aUnit, svg, aRv);
     return;
   }
 
@@ -379,19 +398,17 @@ void DOMSVGLength::ConvertToSpecifiedUnits(uint16_t aUnit, ErrorResult& aRv) {
     }
     val = SVGLength(mValue, mUnit).GetValueInSpecifiedUnit(aUnit, nullptr, 0);
   }
-  if (std::isfinite(val)) {
-    if (HasOwner()) {
-      AutoChangeLengthListNotifier notifier(this);
-      InternalItem().SetValueAndUnit(val, aUnit);
-    } else {
-      mValue = val;
-      mUnit = aUnit;
-    }
+  if (!std::isfinite(val)) {
+    aRv.ThrowTypeError<MSG_NOT_FINITE>("value");
     return;
   }
-  // else [SVGWG issue] Can't convert unit
-  // ReportToConsole
-  aRv.Throw(NS_ERROR_FAILURE);
+  if (HasOwner()) {
+    AutoChangeLengthListNotifier notifier(this);
+    InternalItem().SetValueAndUnit(val, aUnit);
+  } else {
+    mValue = val;
+    mUnit = aUnit;
+  }
 }
 
 JSObject* DOMSVGLength::WrapObject(JSContext* aCx,

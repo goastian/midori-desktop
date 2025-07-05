@@ -8,6 +8,7 @@
  */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { ChromePushSubscription } from "./ChromePushSubscription.sys.mjs";
 
 var isParent =
   Services.appinfo.processType === Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
@@ -90,7 +91,7 @@ PushServiceBase.prototype = {
       request.onPushSubscription(Cr.NS_OK, null);
       return;
     }
-    request.onPushSubscription(Cr.NS_OK, new PushSubscription(props));
+    request.onPushSubscription(Cr.NS_OK, new ChromePushSubscription(props));
   },
 
   _deliverSubscriptionError(request, error) {
@@ -130,8 +131,6 @@ Object.assign(PushServiceParent.prototype, {
     "Push:Registration",
     "Push:Unregister",
     "Push:Clear",
-    "Push:NotificationForOriginShown",
-    "Push:NotificationForOriginClosed",
     "Push:ReportError",
   ],
 
@@ -187,9 +186,25 @@ Object.assign(PushServiceParent.prototype, {
       .catch(console.error);
   },
 
-  clearForDomain(domain, callback) {
+  clearForDomain(domain, originAttributesPattern, callback) {
     return this._handleRequest("Push:Clear", null, {
       domain,
+      originAttributesPattern,
+    })
+      .then(
+        () => {
+          callback.onClear(Cr.NS_OK);
+        },
+        () => {
+          callback.onClear(Cr.NS_ERROR_FAILURE);
+        }
+      )
+      .catch(console.error);
+  },
+
+  clearForPrincipal(principal, callback) {
+    return this._handleRequest("Push:Clear", null, {
+      principal,
     })
       .then(
         () => {
@@ -223,14 +238,6 @@ Object.assign(PushServiceParent.prototype, {
       return;
     }
     let { name, target, data } = message;
-    if (name === "Push:NotificationForOriginShown") {
-      this.notificationForOriginShown(data);
-      return;
-    }
-    if (name === "Push:NotificationForOriginClosed") {
-      this.notificationForOriginClosed(data);
-      return;
-    }
     if (name === "Push:ReportError") {
       this.reportDeliveryError(data.messageId, data.reason);
       return;
@@ -413,16 +420,6 @@ Object.assign(PushServiceContent.prototype, {
     });
   },
 
-  // nsIPushQuotaManager methods
-
-  notificationForOriginShown(origin) {
-    this._mm.sendAsyncMessage("Push:NotificationForOriginShown", origin);
-  },
-
-  notificationForOriginClosed(origin) {
-    this._mm.sendAsyncMessage("Push:NotificationForOriginClosed", origin);
-  },
-
   // nsIPushErrorReporter methods
 
   reportDeliveryError(messageId, reason) {
@@ -491,94 +488,6 @@ Object.assign(PushServiceContent.prototype, {
     }
   },
 });
-
-/** `PushSubscription` instances are passed to all subscription callbacks. */
-function PushSubscription(props) {
-  this._props = props;
-}
-
-PushSubscription.prototype = {
-  QueryInterface: ChromeUtils.generateQI(["nsIPushSubscription"]),
-
-  /** The URL for sending messages to this subscription. */
-  get endpoint() {
-    return this._props.endpoint;
-  },
-
-  /** The last time a message was sent to this subscription. */
-  get lastPush() {
-    return this._props.lastPush;
-  },
-
-  /** The total number of messages sent to this subscription. */
-  get pushCount() {
-    return this._props.pushCount;
-  },
-
-  /** The number of remaining background messages that can be sent to this
-   * subscription, or -1 of the subscription is exempt from the quota.
-   */
-  get quota() {
-    return this._props.quota;
-  },
-
-  /**
-   * Indicates whether this subscription was created with the system principal.
-   * System subscriptions are exempt from the background message quota and
-   * permission checks.
-   */
-  get isSystemSubscription() {
-    return !!this._props.systemRecord;
-  },
-
-  /** The private key used to decrypt incoming push messages, in JWK format */
-  get p256dhPrivateKey() {
-    return this._props.p256dhPrivateKey;
-  },
-
-  /**
-   * Indicates whether this subscription is subject to the background message
-   * quota.
-   */
-  quotaApplies() {
-    return this.quota >= 0;
-  },
-
-  /**
-   * Indicates whether this subscription exceeded the background message quota,
-   * or the user revoked the notification permission. The caller must request a
-   * new subscription to continue receiving push messages.
-   */
-  isExpired() {
-    return this.quota === 0;
-  },
-
-  /**
-   * Returns a key for encrypting messages sent to this subscription. JS
-   * callers receive the key buffer as a return value, while C++ callers
-   * receive the key size and buffer as out parameters.
-   */
-  getKey(name) {
-    switch (name) {
-      case "p256dh":
-        return this._getRawKey(this._props.p256dhKey);
-
-      case "auth":
-        return this._getRawKey(this._props.authenticationSecret);
-
-      case "appServer":
-        return this._getRawKey(this._props.appServerKey);
-    }
-    return [];
-  },
-
-  _getRawKey(key) {
-    if (!key) {
-      return [];
-    }
-    return new Uint8Array(key);
-  },
-};
 
 // Export the correct implementation depending on whether we're running in
 // the parent or content process.

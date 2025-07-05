@@ -10,7 +10,6 @@
 #include "FileUtilsImpl.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/ResultExtensions.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/cache/DBSchema.h"
 #include "mozilla/dom/cache/Manager.h"
@@ -325,12 +324,12 @@ Result<UsageInfo, nsresult> CacheQuotaClient::GetUsageForOrigin(
                                          aOriginMetadata, Client::DOMCACHE);
 }
 
-void CacheQuotaClient::OnOriginClearCompleted(PersistenceType aPersistenceType,
-                                              const nsACString& aOrigin) {
+void CacheQuotaClient::OnOriginClearCompleted(
+    const OriginMetadata& aOriginMetadata) {
   AssertIsOnIOThread();
 
-  if (aPersistenceType == quota::PERSISTENCE_TYPE_PRIVATE) {
-    if (auto entry = mCipherKeyManagers.Lookup(aOrigin)) {
+  if (aOriginMetadata.mPersistenceType == quota::PERSISTENCE_TYPE_PRIVATE) {
+    if (auto entry = mCipherKeyManagers.Lookup(aOriginMetadata.mOrigin)) {
       entry.Data()->Invalidate();
       entry.Remove();
     }

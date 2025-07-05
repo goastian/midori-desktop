@@ -9,17 +9,91 @@
 
 #include "FFmpegAudioDecoder.h"
 #include "FFmpegLibWrapper.h"
+#include "FFmpegUtils.h"
 #include "FFmpegVideoDecoder.h"
+#include "MP4Decoder.h"
 #include "PlatformDecoderModule.h"
 #include "VideoUtils.h"
 #include "VPXDecoder.h"
 #include "mozilla/StaticPrefs_media.h"
+#include "mozilla/gfx/gfxVars.h"
 
 namespace mozilla {
 
 template <int V>
 class FFmpegDecoderModule : public PlatformDecoderModule {
  public:
+  static void Init(FFmpegLibWrapper* aLib) {
+#if defined(MOZ_USE_HWDECODE)
+#  if defined(XP_WIN) && !defined(MOZ_FFVPX_AUDIOONLY)
+    if (!XRE_IsGPUProcess()) {
+      return;
+    }
+    static nsTArray<AVCodecID> kCodecIDs({
+        AV_CODEC_ID_AV1,
+        AV_CODEC_ID_VP9,
+    });
+    for (const auto& codecId : kCodecIDs) {
+      const auto* codec =
+          FFmpegDataDecoder<V>::FindHardwareAVCodec(aLib, codecId);
+      if (!codec) {
+        MOZ_LOG(sPDMLog, LogLevel::Debug,
+                ("No codec or decoder for %s on d3d11va",
+                 AVCodecToString(codecId)));
+        continue;
+      }
+      for (int i = 0; const AVCodecHWConfig* config =
+                          aLib->avcodec_get_hw_config(codec, i);
+           ++i) {
+        if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
+          sSupportedHWCodecs.AppendElement(codecId);
+          MOZ_LOG(sPDMLog, LogLevel::Debug,
+                  ("Support %s on d3d11va", AVCodecToString(codecId)));
+          break;
+        }
+      }
+    }
+#  elif MOZ_WIDGET_GTK
+    // Hardware decoding on Linux should only happen on the RDD process for now.
+    if (!XRE_IsRDDProcess()) {
+      return;
+    }
+
+// UseXXXHWDecode are already set in gfxPlatform at the startup.
+#    define ADD_HW_CODEC(codec)                                \
+      if (gfx::gfxVars::Use##codec##HwDecode()) {              \
+        sSupportedHWCodecs.AppendElement(AV_CODEC_ID_##codec); \
+      }
+
+// These proprietary video codecs can only be decoded via hardware by using the
+// system ffmpeg, not supported by ffvpx.
+#    ifndef FFVPX_VERSION
+    ADD_HW_CODEC(H264);
+#      if LIBAVCODEC_VERSION_MAJOR >= 55
+    ADD_HW_CODEC(HEVC);
+#      endif
+#    endif  // !FFVPX_VERSION
+
+// The following open video codecs can be decoded via hardware using ffvpx.
+#    if LIBAVCODEC_VERSION_MAJOR >= 54
+    ADD_HW_CODEC(VP8);
+#    endif
+#    if LIBAVCODEC_VERSION_MAJOR >= 55
+    ADD_HW_CODEC(VP9);
+#    endif
+#    if LIBAVCODEC_VERSION_MAJOR >= 59
+    ADD_HW_CODEC(AV1);
+#    endif
+
+    for (const auto& codec : sSupportedHWCodecs) {
+      MOZ_LOG(sPDMLog, LogLevel::Debug,
+              ("Support %s for hw decoding", AVCodecToString(codec)));
+    }
+#    undef ADD_HW_CODEC
+#  endif  // XP_WIN, MOZ_WIDGET_GTK
+#endif    // MOZ_USE_HWDECODE
+  }
+
   static already_AddRefed<PlatformDecoderModule> Create(
       FFmpegLibWrapper* aLib) {
     RefPtr<PlatformDecoderModule> pdm = new FFmpegDecoderModule(aLib);
@@ -35,13 +109,27 @@ class FFmpegDecoderModule : public PlatformDecoderModule {
     if (Supports(SupportDecoderParams(aParams), nullptr).isEmpty()) {
       return nullptr;
     }
-    RefPtr<MediaDataDecoder> decoder = new FFmpegVideoDecoder<V>(
+    auto decoder = MakeRefPtr<FFmpegVideoDecoder<V>>(
         mLib, aParams.VideoConfig(), aParams.mKnowsCompositor,
         aParams.mImageContainer,
         aParams.mOptions.contains(CreateDecoderParams::Option::LowLatency),
         aParams.mOptions.contains(
             CreateDecoderParams::Option::HardwareDecoderNotAllowed),
         aParams.mTrackingId);
+
+    // Ensure that decoding is exclusively performed using HW decoding in
+    // the GPU process. If FFmpeg does not support HW decoding, reset the
+    // decoder to allow PDMFactory to select an alternative HW-capable decoder
+    // module if available. In contrast, in the RDD process, it is acceptable
+    // to fallback to SW decoding when HW decoding is not available.
+    if (XRE_IsGPUProcess() &&
+        IsHWDecodingSupported(aParams.mConfig.mMimeType) &&
+        !decoder->IsHardwareAccelerated()) {
+      MOZ_LOG(sPDMLog, LogLevel::Debug,
+              ("FFmpeg video decoder can't perform hw decoding, abort!"));
+      Unused << decoder->Shutdown();
+      decoder = nullptr;
+    }
     return decoder.forget();
   }
 
@@ -74,6 +162,13 @@ class FFmpegDecoderModule : public PlatformDecoderModule {
 
     const auto& trackInfo = aParams.mConfig;
     const nsACString& mimeType = trackInfo.mMimeType;
+    if (XRE_IsGPUProcess() && !IsHWDecodingSupported(mimeType)) {
+      MOZ_LOG(
+          sPDMLog, LogLevel::Debug,
+          ("FFmpeg decoder rejects requested type '%s' for hardware decoding",
+           mimeType.BeginReading()));
+      return media::DecodeSupportSet{};
+    }
 
     // Temporary - forces use of VPXDecoder when alpha is present.
     // Bug 1263836 will handle alpha scenario once implemented. It will shift
@@ -90,6 +185,15 @@ class FFmpegDecoderModule : public PlatformDecoderModule {
         aParams.mOptions.contains(CreateDecoderParams::Option::LowLatency)) {
       // SVC layers are unsupported, and may be used in low latency use cases
       // (WebRTC).
+      return media::DecodeSupportSet{};
+    }
+
+    if (MP4Decoder::IsHEVC(mimeType) && !StaticPrefs::media_hevc_enabled()) {
+      MOZ_LOG(
+          sPDMLog, LogLevel::Debug,
+          ("FFmpeg decoder rejects requested type '%s' due to being disabled "
+           "by the pref",
+           mimeType.BeginReading()));
       return media::DecodeSupportSet{};
     }
 
@@ -122,9 +226,11 @@ class FFmpegDecoderModule : public PlatformDecoderModule {
               ("FFmpeg decoder rejects as openh264 disabled by pref"));
       return media::DecodeSupportSet{};
     }
-    // TODO: Note that we do not yet distinguish between SW/HW decode support.
-    //       Will be done in bug 1754239.
-    return media::DecodeSupport::SoftwareDecode;
+    media::DecodeSupportSet support = media::DecodeSupport::SoftwareDecode;
+    if (IsHWDecodingSupported(mimeType)) {
+      support += media::DecodeSupport::HardwareDecode;
+    }
+    return support;
   }
 
  protected:
@@ -137,8 +243,23 @@ class FFmpegDecoderModule : public PlatformDecoderModule {
     return true;
   }
 
+  bool IsHWDecodingSupported(const nsACString& aMimeType) const {
+    if (!gfx::gfxVars::IsInitialized() ||
+        !gfx::gfxVars::CanUseHardwareVideoDecoding()) {
+      return false;
+    }
+#ifdef FFVPX_VERSION
+    if (!StaticPrefs::media_ffvpx_hw_enabled()) {
+      return false;
+    }
+#endif
+    AVCodecID videoCodec = FFmpegVideoDecoder<V>::GetCodecId(aMimeType);
+    return sSupportedHWCodecs.Contains(videoCodec);
+  }
+
  private:
   FFmpegLibWrapper* mLib;
+  MOZ_RUNINIT static inline nsTArray<AVCodecID> sSupportedHWCodecs;
 };
 
 }  // namespace mozilla

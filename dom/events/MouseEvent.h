@@ -28,6 +28,8 @@ class MouseEvent : public UIEvent {
 
   virtual MouseEvent* AsMouseEvent() override { return this; }
 
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void DuplicatePrivateData() override;
+
   // Web IDL binding methods
   virtual uint32_t Which(CallerType aCallerType) override {
     return Button() + 1;
@@ -35,42 +37,86 @@ class MouseEvent : public UIEvent {
 
   already_AddRefed<nsIScreen> GetScreen();
 
-  // In CSS coords.
-  CSSIntPoint ScreenPoint(CallerType) const;
-  int32_t ScreenX(CallerType aCallerType) const {
+  /**
+   * Return screenX and screenY values for this event in CSS pixels.
+   * If current setting allows to expose fractional coordinates for the event,
+   * this returns the fractional values as-is.  Otherwise, this returns
+   * integer values with rounding the computed values.  Note that if this
+   * event is untrusted one and should not expose fractional values, the
+   * initialized values are floored before computing the values as defined by
+   * Pointer Events spec.
+   */
+  CSSDoublePoint ScreenPoint(CallerType) const;
+  double ScreenX(CallerType aCallerType) const {
     return ScreenPoint(aCallerType).x;
   }
-  int32_t ScreenY(CallerType aCallerType) const {
+  double ScreenY(CallerType aCallerType) const {
     return ScreenPoint(aCallerType).y;
   }
   LayoutDeviceIntPoint ScreenPointLayoutDevicePix() const;
   DesktopIntPoint ScreenPointDesktopPix() const;
 
-  CSSIntPoint PagePoint() const;
-  int32_t PageX() const { return PagePoint().x; }
-  int32_t PageY() const { return PagePoint().y; }
+  /**
+   * Return pageX and pageY values for this event in CSS pixels which are
+   * client point + scroll position of the root scrollable frame.
+   * If current setting allows to expose fractional coordinates for the event,
+   * this returns the fractional values as-is.  Otherwise, this returns
+   * integer values with rounding the computed values.  Note that if this
+   * event is untrusted one and should not expose fractional values, the
+   * initialized values are floored before computing the values as defined by
+   * Pointer Events spec.
+   */
+  CSSDoublePoint PagePoint() const;
+  double PageX() const { return PagePoint().x; }
+  double PageY() const { return PagePoint().y; }
 
-  CSSIntPoint ClientPoint() const;
-  int32_t ClientX() const { return ClientPoint().x; }
-  int32_t ClientY() const { return ClientPoint().y; }
+  /**
+   * Return clientX and clientY values for this event in CSS pixels.
+   * If current setting allows to expose fractional coordinates for the event,
+   * this returns the fractional values as-is.  Otherwise, this returns
+   * integer values with rounding the computed values.  Note that if this
+   * event is untrusted one and should not expose fractional values, the
+   * initialized values are floored before computing the values as defined by
+   * Pointer Events spec.
+   */
+  CSSDoublePoint ClientPoint() const;
+  double ClientX() const { return ClientPoint().x; }
+  double ClientY() const { return ClientPoint().y; }
 
-  CSSIntPoint OffsetPoint() const;
-  int32_t OffsetX() const { return OffsetPoint().x; }
-  int32_t OffsetY() const { return OffsetPoint().y; }
+  /**
+   * Return offsetX and offsetY values for this event in CSS pixels which are
+   * offset in the target element.
+   * If current setting allows to expose fractional coordinates for the event,
+   * this returns the fractional values as-is.  Otherwise, this returns
+   * integer values with rounding the computed values.  Note that if this
+   * event is untrusted one and should not expose fractional values, the
+   * initialized values are floored before computing the values as defined by
+   * Pointer Events spec.
+   *
+   * Note that this may flush the pending layout.
+   */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY CSSDoublePoint OffsetPoint() const;
+  double OffsetX() const { return OffsetPoint().x; }
+  double OffsetY() const { return OffsetPoint().y; }
 
   bool CtrlKey();
   bool ShiftKey();
   bool AltKey();
   bool MetaKey();
   int16_t Button();
-  uint16_t Buttons();
+  uint16_t Buttons() const;
   already_AddRefed<EventTarget> GetRelatedTarget();
   void InitMouseEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
                       nsGlobalWindowInner* aView, int32_t aDetail,
                       int32_t aScreenX, int32_t aScreenY, int32_t aClientX,
                       int32_t aClientY, bool aCtrlKey, bool aAltKey,
                       bool aShiftKey, bool aMetaKey, uint16_t aButton,
-                      EventTarget* aRelatedTarget);
+                      EventTarget* aRelatedTarget) {
+    InitMouseEventInternal(aType, aCanBubble, aCancelable, aView, aDetail,
+                           aScreenX, aScreenY, aClientX, aClientY, aCtrlKey,
+                           aAltKey, aShiftKey, aMetaKey, aButton,
+                           aRelatedTarget);
+  }
 
   void InitializeExtraMouseEventDictionaryMembers(const MouseEventInit& aParam);
 
@@ -97,12 +143,54 @@ class MouseEvent : public UIEvent {
  protected:
   ~MouseEvent() = default;
 
-  void InitMouseEvent(const nsAString& aType, bool aCanBubble, bool aCancelable,
-                      nsGlobalWindowInner* aView, int32_t aDetail,
-                      int32_t aScreenX, int32_t aScreenY, int32_t aClientX,
-                      int32_t aClientY, int16_t aButton,
-                      EventTarget* aRelatedTarget,
-                      const nsAString& aModifiersList);
+  nsIntPoint GetMovementPoint() const;
+
+  void InitMouseEventInternal(const nsAString& aType, bool aCanBubble,
+                              bool aCancelable, nsGlobalWindowInner* aView,
+                              int32_t aDetail, double aScreenX, double aScreenY,
+                              double aClientX, double aClientY, bool aCtrlKey,
+                              bool aAltKey, bool aShiftKey, bool aMetaKey,
+                              uint16_t aButton, EventTarget* aRelatedTarget);
+
+  void InitMouseEventInternal(const nsAString& aType, bool aCanBubble,
+                              bool aCancelable, nsGlobalWindowInner* aView,
+                              int32_t aDetail, double aScreenX, double aScreenY,
+                              double aClientX, double aClientY, int16_t aButton,
+                              EventTarget* aRelatedTarget,
+                              const nsAString& aModifiersList);
+
+  // mWidgetOrScreenRelativePoint stores the reference point of the event within
+  // the double coordinates until ending of the propagation.  If this is a
+  // trusted event, the values are copied from mEvent->mRefPoint whose type is
+  // LayoutDeviceIntPoint which should be the relative point in the widget.
+  // Therefore, the values are always integer.  However, once the propagation
+  // ends, this starts storing the screen point because mEvent->mWidget is
+  // cleared by Event::DuplicatePrivateData() and we won't be able to compute
+  // screen point from its relative point without the widget.
+  // On the other hand, if this is an untrusted event, this stores a screen
+  // point since there is no widget.  And the values may be fractional values if
+  // and only if the event should expose fractional coordinates.  Otherwise,
+  // this is floored values for the backward compatibility.
+  LayoutDeviceDoublePoint mWidgetOrScreenRelativePoint;
+
+  // If this is a trusted event and after dispatching this, mDefaultClientPoint
+  // stores the clientX and clientY values at duplicating the data.
+  // If this is an untrusted event, mDefaultClientPoint stores the clientX and
+  // clientY inputs.  If this event should expose fractional coordinates, the
+  // values are set as-is.  Otherwise, this stores floored input values for
+  // the backward compatibility.
+  CSSDoublePoint mDefaultClientPoint;
+
+  // If this is a trusted event and after dispatching this, mPagePoint stores
+  // the pageX and pageY values at duplicating the data.
+  // If this is an untrusted event, mPagePoint stores the pageX and pageY
+  // inputs. If this event should expose fractional coordinates, the values are
+  // set as-is.  Otherwise, this stores floored input values for the backward
+  // compatibility.
+  CSSDoublePoint mPagePoint;
+
+  nsIntPoint mMovementPoint;
+  bool mUseFractionalCoords = false;
 };
 
 }  // namespace mozilla::dom

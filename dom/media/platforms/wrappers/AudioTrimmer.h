@@ -18,8 +18,7 @@ class AudioTrimmer final : public MediaDataDecoder {
  public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AudioTrimmer, final);
 
-  AudioTrimmer(already_AddRefed<MediaDataDecoder> aDecoder,
-               const CreateDecoderParams& aParams)
+  explicit AudioTrimmer(already_AddRefed<MediaDataDecoder> aDecoder)
       : mDecoder(aDecoder) {}
 
   RefPtr<InitPromise> Init() override;
@@ -36,6 +35,7 @@ class AudioTrimmer final : public MediaDataDecoder {
   bool IsHardwareAccelerated(nsACString& aFailureReason) const override;
   void SetSeekThreshold(const media::TimeUnit& aTime) override;
   bool SupportDecoderRecycling() const override;
+  bool ShouldDecoderAlwaysBeRecycled() const override;
   ConversionRequired NeedsConversion() const override;
 
  private:

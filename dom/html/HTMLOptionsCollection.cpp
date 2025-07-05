@@ -88,7 +88,9 @@ void HTMLOptionsCollection::IndexedSetter(uint32_t aIndex,
     // Fill our array with blank options up to (but not including, since we're
     // about to change it) aIndex, for compat with other browsers.
     SetLength(aIndex, aError);
-    ENSURE_SUCCESS_VOID(aError);
+    if (NS_WARN_IF(aError.Failed())) {
+      return;
+    }
   }
 
   NS_ASSERTION(aIndex <= mElements.Length(), "SetLength lied");
@@ -128,6 +130,10 @@ Element* HTMLOptionsCollection::GetElementAt(uint32_t aIndex) {
 
 HTMLOptionElement* HTMLOptionsCollection::NamedGetter(const nsAString& aName,
                                                       bool& aFound) {
+  if (aName.IsEmpty()) {
+    aFound = false;
+    return nullptr;
+  }
   uint32_t count = mElements.Length();
   for (uint32_t i = 0; i < count; i++) {
     HTMLOptionElement* content = mElements.ElementAt(i);

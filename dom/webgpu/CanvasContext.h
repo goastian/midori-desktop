@@ -59,11 +59,11 @@ class CanvasContext final : public nsICanvasRenderingContextInternal,
   NS_IMETHOD GetInputStream(const char* aMimeType,
                             const nsAString& aEncoderOptions,
                             nsIInputStream** aStream) override;
-  already_AddRefed<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(
+  already_AddRefed<gfx::SourceSurface> GetSurfaceSnapshot(
       gfxAlphaType* aOutAlphaType) override;
 
   void SetOpaqueValueFromOpaqueAttr(bool aOpaqueAttrValue) override {}
-  bool GetIsOpaque() override { return true; }
+  bool GetIsOpaque() override;
 
   void ResetBitmap() override { Unconfigure(); }
 
@@ -89,9 +89,10 @@ class CanvasContext final : public nsICanvasRenderingContextInternal,
  public:
   void GetCanvas(dom::OwningHTMLCanvasElementOrOffscreenCanvas&) const;
 
-  void Configure(const dom::GPUCanvasConfiguration& aConfig);
+  void Configure(const dom::GPUCanvasConfiguration& aConfig, ErrorResult& aRv);
   void Unconfigure();
 
+  void GetConfiguration(dom::Nullable<dom::GPUCanvasConfiguration>& aRv);
   RefPtr<Texture> GetCurrentTexture(ErrorResult& aRv);
   void MaybeQueueSwapChainPresent();
   Maybe<layers::SurfaceDescriptor> SwapChainPresent();
@@ -100,12 +101,12 @@ class CanvasContext final : public nsICanvasRenderingContextInternal,
 
  private:
   gfx::IntSize mCanvasSize;
-  std::unique_ptr<dom::GPUCanvasConfiguration> mConfig;
+  std::unique_ptr<dom::GPUCanvasConfiguration> mConfiguration;
   bool mPendingSwapChainPresent = false;
   bool mWaitingCanvasRendererInitialized = false;
 
   RefPtr<WebGPUChild> mBridge;
-  RefPtr<Texture> mTexture;
+  RefPtr<Texture> mCurrentTexture;
   gfx::SurfaceFormat mGfxFormat = gfx::SurfaceFormat::R8G8B8A8;
 
   Maybe<layers::RemoteTextureId> mLastRemoteTextureId;

@@ -8,6 +8,7 @@
 
 #include "nsWrapperCache.h"
 #include "ObjectModel.h"
+#include "mozilla/dom/BufferSourceBindingFwd.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/webgpu/WebGPUTypes.h"
 
@@ -15,13 +16,14 @@ namespace mozilla {
 class ErrorResult;
 namespace dom {
 class RangeEnforcedUnsignedLongSequenceOrGPUExtent3DDict;
-class ArrayBufferViewOrArrayBuffer;
 template <typename T>
 class Optional;
 template <typename T>
 class Sequence;
-struct GPUImageCopyTexture;
-struct GPUImageDataLayout;
+struct GPUCopyExternalImageDestInfo;
+struct GPUCopyExternalImageSourceInfo;
+struct GPUTexelCopyTextureInfo;
+struct GPUTexelCopyBufferLayout;
 struct TextureCopyView;
 struct TextureDataLayout;
 using GPUExtent3D = RangeEnforcedUnsignedLongSequenceOrGPUExtent3DDict;
@@ -46,18 +48,18 @@ class Queue final : public ObjectBase, public ChildOf<Device> {
   already_AddRefed<dom::Promise> OnSubmittedWorkDone(ErrorResult& aRv);
 
   void WriteBuffer(const Buffer& aBuffer, uint64_t aBufferOffset,
-                   const dom::ArrayBufferViewOrArrayBuffer& aData,
+                   const dom::AllowSharedBufferSource& data,
                    uint64_t aDataOffset, const dom::Optional<uint64_t>& aSize,
                    ErrorResult& aRv);
 
-  void WriteTexture(const dom::GPUImageCopyTexture& aDestination,
-                    const dom::ArrayBufferViewOrArrayBuffer& aData,
-                    const dom::GPUImageDataLayout& aDataLayout,
+  void WriteTexture(const dom::GPUTexelCopyTextureInfo& aDestination,
+                    const dom::AllowSharedBufferSource& data,
+                    const dom::GPUTexelCopyBufferLayout& aDataLayout,
                     const dom::GPUExtent3D& aSize, ErrorResult& aRv);
 
   void CopyExternalImageToTexture(
-      const dom::GPUImageCopyExternalImage& aSource,
-      const dom::GPUImageCopyTextureTagged& aDestination,
+      const dom::GPUCopyExternalImageSourceInfo& aSource,
+      const dom::GPUCopyExternalImageDestInfo& aDestination,
       const dom::GPUExtent3D& aCopySize, ErrorResult& aRv);
 
  private:

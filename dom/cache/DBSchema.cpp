@@ -14,7 +14,6 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/StaticPrefs_extensions.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/dom/HeadersBinding.h"
 #include "mozilla/dom/InternalHeaders.h"
 #include "mozilla/dom/InternalResponse.h"
@@ -345,7 +344,6 @@ static_assert(
         nsIContentPolicy::TYPE_SUBDOCUMENT == 7 &&
         nsIContentPolicy::TYPE_PING == 10 &&
         nsIContentPolicy::TYPE_XMLHTTPREQUEST == 11 &&
-        nsIContentPolicy::TYPE_OBJECT_SUBREQUEST == 12 &&
         nsIContentPolicy::TYPE_DTD == 13 && nsIContentPolicy::TYPE_FONT == 14 &&
         nsIContentPolicy::TYPE_MEDIA == 15 &&
         nsIContentPolicy::TYPE_WEBSOCKET == 16 &&
@@ -392,7 +390,10 @@ static_assert(
         nsIContentPolicy::TYPE_INTERNAL_WORKER_STATIC_MODULE == 58 &&
         nsIContentPolicy::TYPE_WEB_TRANSPORT == 59 &&
         nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST_SYNC == 60 &&
-        nsIContentPolicy::TYPE_END == 61,
+        nsIContentPolicy::TYPE_INTERNAL_EXTERNAL_RESOURCE == 61 &&
+        nsIContentPolicy::TYPE_JSON == 62 &&
+        nsIContentPolicy::TYPE_INTERNAL_JSON_PRELOAD == 63 &&
+        nsIContentPolicy::TYPE_END == 64,
     "nsContentPolicyType values are as expected");
 
 namespace {
@@ -498,33 +499,6 @@ class MOZ_RAII AutoDisableForeignKeyChecking {
   bool mForeignKeyCheckingDisabled;
 };
 
-nsresult IntegrityCheck(mozIStorageConnection& aConn) {
-  // CACHE_INTEGRITY_CHECK_COUNT is designed to report at most once.
-  static bool reported = false;
-  if (reported) {
-    return NS_OK;
-  }
-
-  QM_TRY_INSPECT(const auto& stmt,
-                 quota::CreateAndExecuteSingleStepStatement(
-                     aConn,
-                     "SELECT COUNT(*) FROM pragma_integrity_check() "
-                     "WHERE integrity_check != 'ok';"_ns));
-
-  QM_TRY_INSPECT(const auto& result, MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
-                                         nsString, *stmt, GetString, 0));
-
-  nsresult rv;
-  const uint32_t count = result.ToInteger(&rv);
-  QM_TRY(OkIf(NS_SUCCEEDED(rv)), rv);
-
-  Telemetry::ScalarSet(Telemetry::ScalarID::CACHE_INTEGRITY_CHECK_COUNT, count);
-
-  reported = true;
-
-  return NS_OK;
-}
-
 nsresult CreateOrMigrateSchema(nsIFile& aDBDir, mozIStorageConnection& aConn) {
   MOZ_ASSERT(!NS_IsMainThread());
 
@@ -597,12 +571,7 @@ nsresult CreateOrMigrateSchema(nsIFile& aDBDir, mozIStorageConnection& aConn) {
     // if a new migration is incorrect by fast failing on the corruption.
     // Unfortunately, this must be performed outside of the transaction.
 
-    QM_TRY(MOZ_TO_RESULT(aConn.ExecuteSimpleSQL("VACUUM"_ns)), QM_PROPAGATE,
-           ([&aConn](const nsresult rv) {
-             if (rv == NS_ERROR_STORAGE_CONSTRAINT) {
-               QM_WARNONLY_TRY(QM_TO_RESULT(IntegrityCheck(aConn)));
-             }
-           }));
+    QM_TRY(MOZ_TO_RESULT(aConn.ExecuteSimpleSQL("VACUUM"_ns)));
   }
 
   return NS_OK;
@@ -757,8 +726,27 @@ Result<int64_t, nsresult> GetTotalDiskUsage(mozIStorageConnection& aConn) {
   QM_TRY_RETURN(MOZ_TO_RESULT_INVOKE_MEMBER(*state, GetInt64, 0));
 }
 
-Result<nsTArray<nsID>, nsresult> GetKnownBodyIds(mozIStorageConnection& aConn) {
+Result<nsTHashSet<nsID>, nsresult> GetKnownBodyIds(
+    mozIStorageConnection& aConn) {
   MOZ_ASSERT(!NS_IsMainThread());
+
+  int32_t numEntries = 0;
+  {
+    QM_TRY_INSPECT(const auto& cnt,
+                   MOZ_TO_RESULT_INVOKE_MEMBER_TYPED(
+                       nsCOMPtr<mozIStorageStatement>, aConn, CreateStatement,
+                       "SELECT COUNT(*) FROM entries;"_ns));
+
+    QM_TRY(quota::CollectWhileHasResult(
+        *cnt, [&numEntries](auto& stmt) -> Result<Ok, nsresult> {
+          QM_TRY(MOZ_TO_RESULT(stmt.GetInt32(0, &numEntries)));
+
+          return Ok{};
+        }));
+  }
+
+  // Each row can have 0 to 2 nsID values, prepare for the maximum.
+  nsTHashSet<nsID> idSet(numEntries * 2);
 
   QM_TRY_INSPECT(
       const auto& state,
@@ -766,10 +754,8 @@ Result<nsTArray<nsID>, nsresult> GetKnownBodyIds(mozIStorageConnection& aConn) {
           nsCOMPtr<mozIStorageStatement>, aConn, CreateStatement,
           "SELECT request_body_id, response_body_id FROM entries;"_ns));
 
-  AutoTArray<nsID, 64> idList;
-
   QM_TRY(quota::CollectWhileHasResult(
-      *state, [&idList](auto& stmt) -> Result<Ok, nsresult> {
+      *state, [&idSet](auto& stmt) -> Result<Ok, nsresult> {
         // extract 0 to 2 nsID structs per row
         for (uint32_t i = 0; i < 2; ++i) {
           QM_TRY_INSPECT(const bool& isNull,
@@ -778,14 +764,14 @@ Result<nsTArray<nsID>, nsresult> GetKnownBodyIds(mozIStorageConnection& aConn) {
           if (!isNull) {
             QM_TRY_INSPECT(const auto& id, ExtractId(stmt, i));
 
-            idList.AppendElement(id);
+            idSet.Insert(id);
           }
         }
 
         return Ok{};
       }));
 
-  return std::move(idList);
+  return std::move(idSet);
 }
 
 Result<Maybe<SavedResponse>, nsresult> CacheMatch(

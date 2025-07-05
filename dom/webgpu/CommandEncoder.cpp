@@ -23,8 +23,8 @@ GPU_IMPL_CYCLE_COLLECTION(CommandEncoder, mParent, mBridge)
 GPU_IMPL_JS_WRAP(CommandEncoder)
 
 void CommandEncoder::ConvertTextureDataLayoutToFFI(
-    const dom::GPUImageDataLayout& aLayout,
-    ffi::WGPUImageDataLayout* aLayoutFFI) {
+    const dom::GPUTexelCopyBufferLayout& aLayout,
+    ffi::WGPUTexelCopyBufferLayout* aLayoutFFI) {
   *aLayoutFFI = {};
   aLayoutFFI->offset = aLayout.mOffset;
 
@@ -42,32 +42,31 @@ void CommandEncoder::ConvertTextureDataLayoutToFFI(
 }
 
 void CommandEncoder::ConvertTextureCopyViewToFFI(
-    const dom::GPUImageCopyTexture& aCopy,
-    ffi::WGPUImageCopyTexture* aViewFFI) {
+    const dom::GPUTexelCopyTextureInfo& aCopy,
+    ffi::WGPUTexelCopyTextureInfo* aViewFFI) {
   *aViewFFI = {};
   aViewFFI->texture = aCopy.mTexture->mId;
   aViewFFI->mip_level = aCopy.mMipLevel;
-  if (aCopy.mOrigin.WasPassed()) {
-    const auto& origin = aCopy.mOrigin.Value();
-    if (origin.IsRangeEnforcedUnsignedLongSequence()) {
-      const auto& seq = origin.GetAsRangeEnforcedUnsignedLongSequence();
-      aViewFFI->origin.x = seq.Length() > 0 ? seq[0] : 0;
-      aViewFFI->origin.y = seq.Length() > 1 ? seq[1] : 0;
-      aViewFFI->origin.z = seq.Length() > 2 ? seq[2] : 0;
-    } else if (origin.IsGPUOrigin3DDict()) {
-      const auto& dict = origin.GetAsGPUOrigin3DDict();
-      aViewFFI->origin.x = dict.mX;
-      aViewFFI->origin.y = dict.mY;
-      aViewFFI->origin.z = dict.mZ;
-    } else {
-      MOZ_CRASH("Unexpected origin type");
-    }
+  const auto& origin = aCopy.mOrigin;
+  if (origin.IsRangeEnforcedUnsignedLongSequence()) {
+    const auto& seq = origin.GetAsRangeEnforcedUnsignedLongSequence();
+    aViewFFI->origin.x = seq.Length() > 0 ? seq[0] : 0;
+    aViewFFI->origin.y = seq.Length() > 1 ? seq[1] : 0;
+    aViewFFI->origin.z = seq.Length() > 2 ? seq[2] : 0;
+  } else if (origin.IsGPUOrigin3DDict()) {
+    const auto& dict = origin.GetAsGPUOrigin3DDict();
+    aViewFFI->origin.x = dict.mX;
+    aViewFFI->origin.y = dict.mY;
+    aViewFFI->origin.z = dict.mZ;
+  } else {
+    MOZ_CRASH("Unexpected origin type");
   }
+  aViewFFI->aspect = ConvertTextureAspect(aCopy.mAspect);
 }
 
-static ffi::WGPUImageCopyTexture ConvertTextureCopyView(
-    const dom::GPUImageCopyTexture& aCopy) {
-  ffi::WGPUImageCopyTexture view = {};
+static ffi::WGPUTexelCopyTextureInfo ConvertTextureCopyView(
+    const dom::GPUTexelCopyTextureInfo& aCopy) {
+  ffi::WGPUTexelCopyTextureInfo view = {};
   CommandEncoder::ConvertTextureCopyViewToFFI(aCopy, &view);
   return view;
 }
@@ -99,9 +98,7 @@ void CommandEncoder::Cleanup() {
 
 void CommandEncoder::TrackPresentationContext(CanvasContext* aTargetContext) {
   if (aTargetContext) {
-    if (!aTargetContext->IsOffscreenCanvas()) {
-      mPresentationContexts.AppendElement(aTargetContext);
-    }
+    mPresentationContexts.AppendElement(aTargetContext);
   }
 }
 
@@ -122,15 +119,15 @@ void CommandEncoder::CopyBufferToBuffer(const Buffer& aSource,
 }
 
 void CommandEncoder::CopyBufferToTexture(
-    const dom::GPUImageCopyBuffer& aSource,
-    const dom::GPUImageCopyTexture& aDestination,
+    const dom::GPUTexelCopyBufferInfo& aSource,
+    const dom::GPUTexelCopyTextureInfo& aDestination,
     const dom::GPUExtent3D& aCopySize) {
   if (!mBridge->CanSend()) {
     return;
   }
 
   ipc::ByteBuf bb;
-  ffi::WGPUImageDataLayout src_layout = {};
+  ffi::WGPUTexelCopyBufferLayout src_layout = {};
   CommandEncoder::ConvertTextureDataLayoutToFFI(aSource, &src_layout);
   ffi::wgpu_command_encoder_copy_buffer_to_texture(
       aSource.mBuffer->mId, &src_layout, ConvertTextureCopyView(aDestination),
@@ -140,15 +137,15 @@ void CommandEncoder::CopyBufferToTexture(
   TrackPresentationContext(aDestination.mTexture->mTargetContext);
 }
 void CommandEncoder::CopyTextureToBuffer(
-    const dom::GPUImageCopyTexture& aSource,
-    const dom::GPUImageCopyBuffer& aDestination,
+    const dom::GPUTexelCopyTextureInfo& aSource,
+    const dom::GPUTexelCopyBufferInfo& aDestination,
     const dom::GPUExtent3D& aCopySize) {
   if (!mBridge->CanSend()) {
     return;
   }
 
   ipc::ByteBuf bb;
-  ffi::WGPUImageDataLayout dstLayout = {};
+  ffi::WGPUTexelCopyBufferLayout dstLayout = {};
   CommandEncoder::ConvertTextureDataLayoutToFFI(aDestination, &dstLayout);
   ffi::wgpu_command_encoder_copy_texture_to_buffer(
       ConvertTextureCopyView(aSource), aDestination.mBuffer->mId, &dstLayout,
@@ -156,8 +153,8 @@ void CommandEncoder::CopyTextureToBuffer(
   mBridge->SendCommandEncoderAction(mId, mParent->mId, std::move(bb));
 }
 void CommandEncoder::CopyTextureToTexture(
-    const dom::GPUImageCopyTexture& aSource,
-    const dom::GPUImageCopyTexture& aDestination,
+    const dom::GPUTexelCopyTextureInfo& aSource,
+    const dom::GPUTexelCopyTextureInfo& aDestination,
     const dom::GPUExtent3D& aCopySize) {
   if (!mBridge->CanSend()) {
     return;
@@ -220,6 +217,7 @@ void CommandEncoder::InsertDebugMarker(const nsAString& aString) {
 already_AddRefed<ComputePassEncoder> CommandEncoder::BeginComputePass(
     const dom::GPUComputePassDescriptor& aDesc) {
   RefPtr<ComputePassEncoder> pass = new ComputePassEncoder(this, aDesc);
+  pass->SetLabel(aDesc.mLabel);
   return pass.forget();
 }
 
@@ -233,7 +231,23 @@ already_AddRefed<RenderPassEncoder> CommandEncoder::BeginRenderPass(
   }
 
   RefPtr<RenderPassEncoder> pass = new RenderPassEncoder(this, aDesc);
+  pass->SetLabel(aDesc.mLabel);
   return pass.forget();
+}
+
+void CommandEncoder::ResolveQuerySet(QuerySet& aQuerySet, uint32_t aFirstQuery,
+                                     uint32_t aQueryCount,
+                                     webgpu::Buffer& aDestination,
+                                     uint64_t aDestinationOffset) {
+  if (!mBridge->CanSend()) {
+    return;
+  }
+
+  ipc::ByteBuf bb;
+  ffi::wgpu_command_encoder_resolve_query_set(aQuerySet.mId, aFirstQuery,
+                                              aQueryCount, aDestination.mId,
+                                              aDestinationOffset, ToFFI(&bb));
+  mBridge->SendCommandEncoderAction(mId, mParent->mId, std::move(bb));
 }
 
 void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass) {
@@ -274,6 +288,7 @@ already_AddRefed<CommandBuffer> CommandEncoder::Finish(
   RefPtr<CommandEncoder> me(this);
   RefPtr<CommandBuffer> comb = new CommandBuffer(
       mParent, mId, std::move(mPresentationContexts), std::move(me));
+  comb->SetLabel(aDesc.mLabel);
   return comb.forget();
 }
 

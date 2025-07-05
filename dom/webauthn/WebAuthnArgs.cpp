@@ -15,7 +15,7 @@ NS_IMPL_ISUPPORTS(WebAuthnRegisterArgs, nsIWebAuthnRegisterArgs)
 
 NS_IMETHODIMP
 WebAuthnRegisterArgs::GetOrigin(nsAString& aOrigin) {
-  aOrigin = mInfo.Origin();
+  aOrigin = NS_ConvertUTF8toUTF16(mOrigin);
   return NS_OK;
 }
 
@@ -27,13 +27,13 @@ WebAuthnRegisterArgs::GetChallenge(nsTArray<uint8_t>& aChallenge) {
 
 NS_IMETHODIMP
 WebAuthnRegisterArgs::GetClientDataJSON(nsACString& aClientDataJSON) {
-  aClientDataJSON = mInfo.ClientDataJSON();
+  aClientDataJSON = mClientDataJSON;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 WebAuthnRegisterArgs::GetClientDataHash(nsTArray<uint8_t>& aClientDataHash) {
-  nsresult rv = HashCString(mInfo.ClientDataJSON(), aClientDataHash);
+  nsresult rv = HashCString(mClientDataJSON, aClientDataHash);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return NS_ERROR_FAILURE;
   }
@@ -43,7 +43,7 @@ WebAuthnRegisterArgs::GetClientDataHash(nsTArray<uint8_t>& aClientDataHash) {
 
 NS_IMETHODIMP
 WebAuthnRegisterArgs::GetRpId(nsAString& aRpId) {
-  aRpId = mInfo.RpId();
+  aRpId = NS_ConvertUTF8toUTF16(mInfo.RpId());
   return NS_OK;
 }
 
@@ -82,7 +82,7 @@ WebAuthnRegisterArgs::GetCoseAlgs(nsTArray<int32_t>& aCoseAlgs) {
 
 NS_IMETHODIMP
 WebAuthnRegisterArgs::GetExcludeList(
-    nsTArray<nsTArray<uint8_t> >& aExcludeList) {
+    nsTArray<nsTArray<uint8_t>>& aExcludeList) {
   aExcludeList.Clear();
   for (const WebAuthnScopedCredential& cred : mInfo.ExcludeList()) {
     aExcludeList.AppendElement(cred.id().Clone());
@@ -101,6 +101,25 @@ WebAuthnRegisterArgs::GetExcludeListTransports(
 }
 
 NS_IMETHODIMP
+WebAuthnRegisterArgs::GetCredentialProtectionPolicy(
+    nsACString& aCredentialProtectionPolicy) {
+  if (mCredentialProtectionPolicy.isSome()) {
+    aCredentialProtectionPolicy =
+        GetEnumString(mCredentialProtectionPolicy.ref());
+    return NS_OK;
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetEnforceCredentialProtectionPolicy(
+    bool* aEnforceCredentialProtectionPolicy) {
+  *aEnforceCredentialProtectionPolicy = mEnforceCredentialProtectionPolicy;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 WebAuthnRegisterArgs::GetCredProps(bool* aCredProps) {
   *aCredProps = mCredProps;
 
@@ -112,6 +131,46 @@ WebAuthnRegisterArgs::GetHmacCreateSecret(bool* aHmacCreateSecret) {
   *aHmacCreateSecret = mHmacCreateSecret;
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetPrf(bool* aPrf) {
+  *aPrf = mPrf;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetPrfEvalFirst(nsTArray<uint8_t>& aEvalFirst) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      Maybe<WebAuthnExtensionPrfValues> eval =
+          ext.get_WebAuthnExtensionPrf().eval();
+      if (eval.isSome()) {
+        aEvalFirst.Assign(eval->first());
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetPrfEvalSecond(nsTArray<uint8_t>& aEvalSecond) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      Maybe<WebAuthnExtensionPrfValues> eval =
+          ext.get_WebAuthnExtensionPrf().eval();
+      if (eval.isSome() && eval->secondMaybe()) {
+        aEvalSecond.Assign(eval->second());
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
@@ -170,17 +229,33 @@ WebAuthnRegisterArgs::GetAttestationConveyancePreference(
   return NS_OK;
 }
 
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetPrivateBrowsing(bool* aPrivateBrowsing) {
+  *aPrivateBrowsing = mPrivateBrowsing;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnRegisterArgs::GetLargeBlobSupportRequired(
+    bool* aLargeBlobSupportRequired) {
+  if (mLargeBlobSupportRequired.isSome()) {
+    *aLargeBlobSupportRequired = mLargeBlobSupportRequired.ref();
+    return NS_OK;
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
 NS_IMPL_ISUPPORTS(WebAuthnSignArgs, nsIWebAuthnSignArgs)
 
 NS_IMETHODIMP
 WebAuthnSignArgs::GetOrigin(nsAString& aOrigin) {
-  aOrigin = mInfo.Origin();
+  aOrigin = NS_ConvertUTF8toUTF16(mOrigin);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 WebAuthnSignArgs::GetRpId(nsAString& aRpId) {
-  aRpId = mInfo.RpId();
+  aRpId = NS_ConvertUTF8toUTF16(mInfo.RpId());
   return NS_OK;
 }
 
@@ -192,13 +267,13 @@ WebAuthnSignArgs::GetChallenge(nsTArray<uint8_t>& aChallenge) {
 
 NS_IMETHODIMP
 WebAuthnSignArgs::GetClientDataJSON(nsACString& aClientDataJSON) {
-  aClientDataJSON = mInfo.ClientDataJSON();
+  aClientDataJSON = mClientDataJSON;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 WebAuthnSignArgs::GetClientDataHash(nsTArray<uint8_t>& aClientDataHash) {
-  nsresult rv = HashCString(mInfo.ClientDataJSON(), aClientDataHash);
+  nsresult rv = HashCString(mClientDataJSON, aClientDataHash);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return NS_ERROR_FAILURE;
   }
@@ -207,7 +282,7 @@ WebAuthnSignArgs::GetClientDataHash(nsTArray<uint8_t>& aClientDataHash) {
 }
 
 NS_IMETHODIMP
-WebAuthnSignArgs::GetAllowList(nsTArray<nsTArray<uint8_t> >& aAllowList) {
+WebAuthnSignArgs::GetAllowList(nsTArray<nsTArray<uint8_t>>& aAllowList) {
   aAllowList.Clear();
   for (const WebAuthnScopedCredential& cred : mInfo.AllowList()) {
     aAllowList.AppendElement(cred.id().Clone());
@@ -240,11 +315,131 @@ WebAuthnSignArgs::GetHmacCreateSecret(bool* aHmacCreateSecret) {
 
 NS_IMETHODIMP
 WebAuthnSignArgs::GetAppId(nsAString& aAppId) {
-  if (mAppId.isNothing()) {
+  if (mInfo.AppId().isNothing()) {
     return NS_ERROR_NOT_AVAILABLE;
   }
-  aAppId = mAppId.ref();
+  aAppId = NS_ConvertUTF8toUTF16(mInfo.AppId().ref());
   return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrf(bool* aPrf) {
+  *aPrf = mPrf;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalFirst(nsTArray<uint8_t>& aEvalFirst) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      Maybe<WebAuthnExtensionPrfValues> eval =
+          ext.get_WebAuthnExtensionPrf().eval();
+      if (eval.isSome()) {
+        aEvalFirst.Assign(eval->first());
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalSecond(nsTArray<uint8_t>& aEvalSecond) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      Maybe<WebAuthnExtensionPrfValues> eval =
+          ext.get_WebAuthnExtensionPrf().eval();
+      if (eval.isSome() && eval->secondMaybe()) {
+        aEvalSecond.Assign(eval->second());
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalByCredentialCredentialId(
+    nsTArray<nsTArray<uint8_t>>& aCredentialIds) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      if (ext.get_WebAuthnExtensionPrf().evalByCredentialMaybe()) {
+        for (const WebAuthnExtensionPrfEvalByCredentialEntry& entry :
+             ext.get_WebAuthnExtensionPrf().evalByCredential()) {
+          aCredentialIds.AppendElement(entry.credentialId().Clone());
+        }
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalByCredentialEvalFirst(
+    nsTArray<nsTArray<uint8_t>>& aEvalFirsts) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      if (ext.get_WebAuthnExtensionPrf().evalByCredentialMaybe()) {
+        for (const WebAuthnExtensionPrfEvalByCredentialEntry& entry :
+             ext.get_WebAuthnExtensionPrf().evalByCredential()) {
+          aEvalFirsts.AppendElement(entry.eval().first().Clone());
+        }
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalByCredentialEvalSecondMaybe(
+    nsTArray<bool>& aEvalSecondMaybes) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      if (ext.get_WebAuthnExtensionPrf().evalByCredentialMaybe()) {
+        for (const WebAuthnExtensionPrfEvalByCredentialEntry& entry :
+             ext.get_WebAuthnExtensionPrf().evalByCredential()) {
+          aEvalSecondMaybes.AppendElement(entry.eval().secondMaybe());
+        }
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrfEvalByCredentialEvalSecond(
+    nsTArray<nsTArray<uint8_t>>& aEvalSeconds) {
+  for (const WebAuthnExtension& ext : mInfo.Extensions()) {
+    if (ext.type() == WebAuthnExtension::TWebAuthnExtensionPrf) {
+      if (ext.get_WebAuthnExtensionPrf().evalByCredentialMaybe()) {
+        for (const WebAuthnExtensionPrfEvalByCredentialEntry& entry :
+             ext.get_WebAuthnExtensionPrf().evalByCredential()) {
+          if (entry.eval().secondMaybe()) {
+            aEvalSeconds.AppendElement(entry.eval().second().Clone());
+          } else {
+            aEvalSeconds.AppendElement(nsTArray<uint8_t>());
+          }
+        }
+        return NS_OK;
+      }
+      break;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
@@ -263,6 +458,30 @@ NS_IMETHODIMP
 WebAuthnSignArgs::GetConditionallyMediated(bool* aConditionallyMediated) {
   *aConditionallyMediated = mInfo.ConditionallyMediated();
   return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetPrivateBrowsing(bool* aPrivateBrowsing) {
+  *aPrivateBrowsing = mPrivateBrowsing;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetLargeBlobRead(bool* aLargeBlobRead) {
+  if (mLargeBlobRead.isSome()) {
+    *aLargeBlobRead = mLargeBlobRead.ref();
+    return NS_OK;
+  }
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+WebAuthnSignArgs::GetLargeBlobWrite(nsTArray<uint8_t>& aLargeBlobWrite) {
+  if (mLargeBlobRead.isSome() && mLargeBlobRead.ref() == false) {
+    aLargeBlobWrite.Assign(mLargeBlobWrite);
+    return NS_OK;
+  }
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 }  // namespace mozilla::dom

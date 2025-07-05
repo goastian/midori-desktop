@@ -40,7 +40,7 @@ class FFmpegDataEncoder<LIBAV_VER> : public MediaDataEncoder {
 
   /* MediaDataEncoder Methods */
   // All methods run on the task queue, except for GetDescriptionName.
-  RefPtr<InitPromise> Init() override;
+  RefPtr<InitPromise> Init() override = 0;  // Implemented in the sub-classes.
   RefPtr<EncodePromise> Encode(const MediaData* aSample) override;
   RefPtr<ReconfigurationPromise> Reconfigure(
       const RefPtr<const EncoderConfigurationChangeList>& aConfigurationChanges)
@@ -50,8 +50,15 @@ class FFmpegDataEncoder<LIBAV_VER> : public MediaDataEncoder {
   RefPtr<GenericPromise> SetBitrate(uint32_t aBitRate) override;
 
  protected:
+  static Result<AVCodecContext*, MediaResult> AllocateCodecContext(
+      const FFmpegLibWrapper* aLib, AVCodecID aCodecId);
+
+  // This method copies data from an AVPacket into a newly created MediaRawData.
+  // It should serve as the initial step in implementing ToMediaRawData.
+  static Result<RefPtr<MediaRawData>, MediaResult> CreateMediaRawData(
+      AVPacket* aPacket);
+
   // Methods only called on mTaskQueue.
-  RefPtr<InitPromise> ProcessInit();
   RefPtr<EncodePromise> ProcessEncode(RefPtr<const MediaData> aSample);
   RefPtr<ReconfigurationPromise> ProcessReconfigure(
       const RefPtr<const EncoderConfigurationChangeList>&
@@ -59,12 +66,10 @@ class FFmpegDataEncoder<LIBAV_VER> : public MediaDataEncoder {
   RefPtr<EncodePromise> ProcessDrain();
   RefPtr<ShutdownPromise> ProcessShutdown();
   // Initialize the audio or video-specific members of an encoder instance.
-  virtual nsresult InitSpecific() = 0;
-  // nullptr in case of failure. This is to be called by the
-  // audio/video-specific InitInternal methods in the sub-class, and initializes
-  // the common members.
-  AVCodec* InitCommon();
-  MediaResult FinishInitCommon(AVCodec* aCodec);
+  virtual MediaResult InitEncoder() = 0;
+
+  void SetContextBitrate();
+
   void ShutdownInternal();
   int OpenCodecContext(const AVCodec* aCodec, AVDictionary** aOptions)
       MOZ_EXCLUDES(sMutex);
@@ -72,17 +77,17 @@ class FFmpegDataEncoder<LIBAV_VER> : public MediaDataEncoder {
   bool PrepareFrame();
   void DestroyFrame();
 #if LIBAVCODEC_VERSION_MAJOR >= 58
-  virtual Result<EncodedData, nsresult> EncodeInputWithModernAPIs(
+  virtual Result<EncodedData, MediaResult> EncodeInputWithModernAPIs(
       RefPtr<const MediaData> aSample) = 0;
-  Result<EncodedData, nsresult> EncodeWithModernAPIs();
-  virtual Result<EncodedData, nsresult> DrainWithModernAPIs();
+  Result<EncodedData, MediaResult> EncodeWithModernAPIs();
+  virtual Result<EncodedData, MediaResult> DrainWithModernAPIs();
 #endif
   // Convert an AVPacket to a MediaRawData. This can return nullptr if a packet
   // has been processed by the encoder, but is not to be returned to the caller,
   // because DTX is enabled.
-  virtual RefPtr<MediaRawData> ToMediaRawData(AVPacket* aPacket) = 0;
-  RefPtr<MediaRawData> ToMediaRawDataCommon(AVPacket* aPacket);
-  virtual Result<already_AddRefed<MediaByteBuffer>, nsresult> GetExtraData(
+  virtual Result<RefPtr<MediaRawData>, MediaResult> ToMediaRawData(
+      AVPacket* aPacket) = 0;
+  virtual Result<already_AddRefed<MediaByteBuffer>, MediaResult> GetExtraData(
       AVPacket* aPacket) = 0;
   void ForceEnablingFFmpegDebugLogs();
 

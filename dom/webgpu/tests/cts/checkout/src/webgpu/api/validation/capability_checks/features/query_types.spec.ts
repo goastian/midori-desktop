@@ -3,9 +3,9 @@ Tests for capability checking for features enabling optional query types.
 `;
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { ValidationTest } from '../../validation_test.js';
+import { UniqueFeaturesOrLimitsGPUTest } from '../../../../gpu_test.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(UniqueFeaturesOrLimitsGPUTest);
 
 g.test('createQuerySet')
   .desc(
@@ -39,7 +39,7 @@ g.test('createQuerySet')
     const shouldException = type === 'timestamp' && !featureContainsTimestampQuery;
 
     t.shouldThrow(shouldException ? 'TypeError' : false, () => {
-      t.device.createQuerySet({ type, count });
+      t.createQuerySetTracked({ type, count });
     });
   });
 
@@ -66,7 +66,7 @@ g.test('timestamp')
   .fn(t => {
     const { featureContainsTimestampQuery } = t.params;
 
-    const querySet = t.device.createQuerySet({
+    const querySet = t.createQuerySetTracked({
       type: featureContainsTimestampQuery ? 'timestamp' : 'occlusion',
       count: 2,
     });
@@ -77,10 +77,14 @@ g.test('timestamp')
       expected = 'TypeError';
 
       const encoder = t.createEncoder('non-pass');
-      t.shouldThrow(expected, () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (encoder.encoder as any).writeTimestamp(querySet, 0);
-      });
+      t.shouldThrow(
+        expected,
+        () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (encoder.encoder as any).writeTimestamp(querySet, 0);
+        },
+        { message: 'writeTimestamp should throw' }
+      );
       encoder.finish();
     }
 
@@ -99,13 +103,11 @@ g.test('timestamp')
     {
       const encoder = t.createEncoder('non-pass');
       const view = t
-        .trackForCleanup(
-          t.device.createTexture({
-            size: [16, 16, 1],
-            format: 'rgba8unorm',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT,
-          })
-        )
+        .createTextureTracked({
+          size: [16, 16, 1],
+          format: 'rgba8unorm',
+          usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        })
         .createView();
       encoder.encoder
         .beginRenderPass({

@@ -10,6 +10,7 @@
 #include "CacheCipherKeyManager.h"
 #include "mozilla/dom/SafeRefPtr.h"
 #include "mozilla/dom/cache/Types.h"
+#include "mozilla/dom/quota/ClientDirectoryLockHandle.h"
 #include "mozilla/dom/quota/StringifyUtils.h"
 #include "nsCOMPtr.h"
 #include "nsISupportsImpl.h"
@@ -25,7 +26,7 @@ namespace mozilla::dom {
 
 namespace quota {
 
-class DirectoryLock;
+class ClientDirectoryLock;
 
 }  // namespace quota
 
@@ -65,7 +66,9 @@ class Manager;
 // the "profile-before-change" shutdown event to complete.  This is ensured
 // via the code in ShutdownObserver.cpp.
 class Context final : public SafeRefCounted<Context>, public Stringifyable {
-  using DirectoryLock = mozilla::dom::quota::DirectoryLock;
+  using ClientDirectoryLock = mozilla::dom::quota::ClientDirectoryLock;
+  using ClientDirectoryLockHandle =
+      mozilla::dom::quota::ClientDirectoryLockHandle;
 
  public:
   // Define a class allowing other threads to hold the Context alive.  This also
@@ -125,7 +128,7 @@ class Context final : public SafeRefCounted<Context>, public Stringifyable {
   // Only callable from the thread that created the Context.
   void Dispatch(SafeRefPtr<Action> aAction);
 
-  Maybe<DirectoryLock&> MaybeDirectoryLockRef() const;
+  Maybe<ClientDirectoryLock&> MaybeDirectoryLockRef() const;
 
   CipherKeyManager& MutableCipherKeyManagerRef();
 
@@ -184,7 +187,7 @@ class Context final : public SafeRefCounted<Context>, public Stringifyable {
   void DispatchAction(SafeRefPtr<Action> aAction, bool aDoomData = false);
   void OnQuotaInit(nsresult aRv,
                    const Maybe<CacheDirectoryMetadata>& aDirectoryMetadata,
-                   RefPtr<DirectoryLock> aDirectoryLock,
+                   ClientDirectoryLockHandle aDirectoryLockHandle,
                    RefPtr<CipherKeyManager> aCipherKeyManager);
 
   SafeRefPtr<ThreadsafeHandle> CreateThreadsafeHandle();
@@ -214,7 +217,7 @@ class Context final : public SafeRefCounted<Context>, public Stringifyable {
   // when ThreadsafeHandle::AllowToClose() is called.
   SafeRefPtr<ThreadsafeHandle> mThreadsafeHandle;
 
-  RefPtr<DirectoryLock> mDirectoryLock;
+  ClientDirectoryLockHandle mDirectoryLockHandle;
   RefPtr<CipherKeyManager> mCipherKeyManager;
   SafeRefPtr<Context> mNextContext;
 

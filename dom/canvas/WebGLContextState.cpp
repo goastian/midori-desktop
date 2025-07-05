@@ -13,6 +13,7 @@
 #include "nsString.h"
 #include "WebGLBuffer.h"
 #include "WebGLContextUtils.h"
+#include "WebGLFormats.h"
 #include "WebGLFramebuffer.h"
 #include "WebGLProgram.h"
 #include "WebGLRenderbuffer.h"
@@ -27,13 +28,7 @@ void WebGLContext::SetEnabled(const GLenum cap, const Maybe<GLuint> i,
   const FuncScope funcScope(*this, "enable(i)/disable(i)");
   if (IsContextLost()) return;
 
-  static const auto webgl1Map = webgl::MakeIsEnabledMap(false);
-  static const auto webgl2Map = webgl::MakeIsEnabledMap(true);
-  const auto* map = &webgl2Map;
-  if (!IsWebGL2()) {
-    map = &webgl1Map;
-  }
-  if (!MaybeFind(*map, cap)) {
+  if (!mIsEnabledMapKeys.count(cap)) {
     MOZ_ASSERT(false, "Bad cap.");
     return;
   }

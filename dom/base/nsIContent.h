@@ -40,16 +40,13 @@ struct Focusable {
   //         > 0 can be tabbed to in the order specified by this value
   int32_t mTabIndex = -1;
   explicit operator bool() const { return mFocusable; }
+  [[nodiscard]] bool IsTabbable() const { return mFocusable && mTabIndex >= 0; }
 };
 
 // IID for the nsIContent interface
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
-#define NS_ICONTENT_IID                              \
-  {                                                  \
-    0x8e1bab9d, 0x8815, 0x4d2c, {                    \
-      0xa2, 0x4d, 0x7a, 0xba, 0x52, 0x39, 0xdc, 0x22 \
-    }                                                \
-  }
+#define NS_ICONTENT_IID \
+  {0x8e1bab9d, 0x8815, 0x4d2c, {0xa2, 0x4d, 0x7a, 0xba, 0x52, 0x39, 0xdc, 0x22}}
 
 /**
  * A node of content in a document's content model. This interface
@@ -76,7 +73,7 @@ class nsIContent : public nsINode {
   }
 #endif  // MOZILLA_INTERNAL_API
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICONTENT_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_ICONTENT_IID)
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_IMETHOD_(void) DeleteCycleCollectable(void) final;
@@ -360,6 +357,22 @@ class nsIContent : public nsINode {
    */
   inline nsIContent* GetFlattenedTreeParent() const;
 
+  // This method is used to provide a similar CanStartSelection behaviour in
+  // Chromium, see the link for exact Chromium's behaviour.
+  // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/dom/node.cc;l=1909;drc=58fb75d86a0ad2642beec2d6c16b1e6c008e33cd;bpv=1;bpt=1
+  //
+  // Basically, Chromium has this method to decide if the selection should be
+  // changed or remain at the current element when an element is focused. This
+  // creates a webcompat issue for when window.getSelection().toString()
+  // is called, web authors expect Firefox to serialize the old content, but
+  // Firefox decides to serialize a different content.
+  //
+  // This method, along with PresShell::mLastSelectionForToString is used to
+  // address this webcompat issue.
+  //
+  // THIS METHOD SHOULD BE USED WITH EXTRA CAUTIOUS.
+  bool CanStartSelectionAsWebCompatHack() const;
+
  protected:
   // Handles getting inserted or removed directly under a <slot> element.
   // This is meant to only be called from the two functions below.
@@ -511,7 +524,7 @@ class nsIContent : public nsINode {
    * frame is the out of flow frame, not the placeholder.
    */
   nsIFrame* GetPrimaryFrame() const {
-    return (IsInUncomposedDoc() || IsInShadowTree()) ? mPrimaryFrame : nullptr;
+    return IsInComposedDoc() ? mPrimaryFrame : nullptr;
   }
 
   /**
@@ -758,7 +771,5 @@ class nsIContent : public nsINode {
 };
 
 NON_VIRTUAL_ADDREF_RELEASE(nsIContent)
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsIContent, NS_ICONTENT_IID)
 
 #endif /* nsIContent_h___ */

@@ -90,6 +90,8 @@ class nsObjectLoadingContent : public nsIStreamListener,
 
   bool IsRewrittenYoutubeEmbed() const { return mRewrittenYoutubeEmbed; }
 
+  bool IsSyntheticImageDocument() const;
+
   const mozilla::Maybe<mozilla::IntrinsicSize>& GetSubdocumentIntrinsicSize()
       const {
     return mSubdocumentIntrinsicSize;
@@ -469,8 +471,6 @@ class nsObjectLoadingContent : public nsIStreamListener,
   // comments for details), we change these to try to load HTML5 versions of
   // videos.
   bool mRewrittenYoutubeEmbed : 1;
-
-  bool mLoadingSyntheticDocument : 1;
 
   // The intrinsic size and aspect ratio from a child SVG document that
   // we should use.  These are only set when we are an <object> or <embed>

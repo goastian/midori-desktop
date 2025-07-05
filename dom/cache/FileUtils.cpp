@@ -57,9 +57,9 @@ constexpr uint32_t kEncryptedStreamBlockSize = 4096;
 
 enum BodyFileType { BODY_FILE_FINAL, BODY_FILE_TMP };
 
-Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyIdToFile(nsIFile& aBaseDir,
-                                                          const nsID& aId,
-                                                          BodyFileType aType);
+Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyIdToFile(
+    nsIFile& aBaseDir, const nsID& aId, BodyFileType aType,
+    bool aCreateDirIfNotExists = false);
 
 int64_t RoundUp(int64_t aX, int64_t aY);
 
@@ -81,8 +81,8 @@ bool IsFileNotFoundError(const nsresult aRv) {
   return aRv == NS_ERROR_FILE_NOT_FOUND;
 }
 
-Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyGetCacheDir(nsIFile& aBaseDir,
-                                                             const nsID& aId) {
+Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyGetCacheDir(
+    nsIFile& aBaseDir, const nsID& aId, bool aCreateDirIfNotExists = true) {
   QM_TRY_UNWRAP(auto cacheDir, CloneFileAndAppend(aBaseDir, kMorgueDirectory));
 
   // Some file systems have poor performance when there are too many files
@@ -91,17 +91,19 @@ Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyGetCacheDir(nsIFile& aBaseDir,
   // the name of the sub-directory.
   QM_TRY(MOZ_TO_RESULT(cacheDir->Append(IntToString(aId.m3[7]))));
 
-  // Callers call this function without checking if the directory already
-  // exists (idempotent usage). QM_OR_ELSE_WARN_IF is not used here since we
-  // just want to log NS_ERROR_FILE_ALREADY_EXISTS result and not spam the
-  // reports.
-  QM_TRY(QM_OR_ELSE_LOG_VERBOSE_IF(
-      // Expression.
-      MOZ_TO_RESULT(cacheDir->Create(nsIFile::DIRECTORY_TYPE, 0755)),
-      // Predicate.
-      IsSpecificError<NS_ERROR_FILE_ALREADY_EXISTS>,
-      // Fallback.
-      ErrToDefaultOk<>));
+  if (aCreateDirIfNotExists) {
+    bool exists;
+    QM_TRY(MOZ_TO_RESULT(cacheDir->Exists(&exists)));
+    if (!exists) {
+      QM_TRY(QM_OR_ELSE_LOG_VERBOSE_IF(
+          // Expression.
+          MOZ_TO_RESULT(cacheDir->Create(nsIFile::DIRECTORY_TYPE, 0755)),
+          // Predicate.
+          IsSpecificError<NS_ERROR_FILE_ALREADY_EXISTS>,
+          // Fallback.
+          ErrToDefaultOk<>));
+    }
+  }
 
   return WrapNotNullUnchecked(std::move(cacheDir));
 }
@@ -144,10 +146,14 @@ Result<nsCOMPtr<nsISupports>, nsresult> BodyStartWriteStream(
   MOZ_DIAGNOSTIC_ASSERT(aClosure);
   MOZ_DIAGNOSTIC_ASSERT(aCallback);
 
-  QM_TRY_INSPECT(const auto& finalFile,
-                 BodyIdToFile(aBaseDir, aBodyId, BODY_FILE_FINAL));
-
+  // Check if the final file already exists, in which case we error out.
   {
+    QM_TRY_INSPECT(const auto& finalFile,
+                   // There's no need to create the cache directory in this
+                   // case since we're just checking.
+                   BodyIdToFile(aBaseDir, aBodyId, BODY_FILE_FINAL,
+                                /* aCreateDirIfNotExists */ false));
+
     QM_TRY_INSPECT(const bool& exists,
                    MOZ_TO_RESULT_INVOKE_MEMBER(*finalFile, Exists));
 
@@ -155,7 +161,10 @@ Result<nsCOMPtr<nsISupports>, nsresult> BodyStartWriteStream(
   }
 
   QM_TRY_INSPECT(const auto& tmpFile,
-                 BodyIdToFile(aBaseDir, aBodyId, BODY_FILE_TMP));
+                 // We do want to create and write to the file here, so we do
+                 // need to ensure the directory exists.
+                 BodyIdToFile(aBaseDir, aBodyId, BODY_FILE_TMP,
+                              /* aCreateDirIfNotExists */ true));
 
   QM_TRY_UNWRAP(nsCOMPtr<nsIOutputStream> fileStream,
                 CreateFileOutputStream(aDirectoryMetadata.mPersistenceType,
@@ -285,33 +294,23 @@ nsresult BodyMaybeUpdatePaddingSize(
 nsresult BodyDeleteFiles(const CacheDirectoryMetadata& aDirectoryMetadata,
                          nsIFile& aBaseDir, const nsTArray<nsID>& aIdList) {
   for (const auto id : aIdList) {
-    QM_TRY_INSPECT(const auto& bodyDir, BodyGetCacheDir(aBaseDir, id));
+    bool exists;
 
-    const auto removeFileForId =
-        [&aDirectoryMetadata, &id](
-            nsIFile& bodyFile,
-            const nsACString& leafName) -> Result<bool, nsresult> {
-      nsID fileId{};
-      QM_TRY(OkIf(fileId.Parse(leafName.BeginReading())), true,
-             ([&aDirectoryMetadata, &bodyFile](const auto) {
-               DebugOnly<nsresult> result = RemoveNsIFile(
-                   aDirectoryMetadata, bodyFile, /* aTrackQuota */ false);
-               MOZ_ASSERT(NS_SUCCEEDED(result));
-             }));
+    QM_TRY_INSPECT(const auto& finalFile,
+                   BodyIdToFile(aBaseDir, id, BODY_FILE_FINAL));
+    QM_TRY(MOZ_TO_RESULT(finalFile->Exists(&exists)));
+    if (exists) {
+      QM_TRY(MOZ_TO_RESULT(RemoveNsIFile(aDirectoryMetadata, *finalFile,
+                                         /* aTrackQuota */ true)));
+    }
 
-      if (id.Equals(fileId)) {
-        DebugOnly<nsresult> result =
-            RemoveNsIFile(aDirectoryMetadata, bodyFile);
-        MOZ_ASSERT(NS_SUCCEEDED(result));
-        return true;
-      }
-
-      return false;
-    };
-    QM_TRY(MOZ_TO_RESULT(BodyTraverseFiles(aDirectoryMetadata, *bodyDir,
-                                           removeFileForId,
-                                           /* aCanRemoveFiles */ false,
-                                           /* aTrackQuota */ true)));
+    QM_TRY_INSPECT(const auto& tempFile,
+                   BodyIdToFile(aBaseDir, id, BODY_FILE_TMP));
+    QM_TRY(MOZ_TO_RESULT(tempFile->Exists(&exists)));
+    if (exists) {
+      QM_TRY(MOZ_TO_RESULT(RemoveNsIFile(aDirectoryMetadata, *tempFile,
+                                         /* aTrackQuota */ true)));
+    }
   }
 
   return NS_OK;
@@ -320,8 +319,10 @@ nsresult BodyDeleteFiles(const CacheDirectoryMetadata& aDirectoryMetadata,
 namespace {
 
 Result<NotNull<nsCOMPtr<nsIFile>>, nsresult> BodyIdToFile(
-    nsIFile& aBaseDir, const nsID& aId, const BodyFileType aType) {
-  QM_TRY_UNWRAP(auto bodyFile, BodyGetCacheDir(aBaseDir, aId));
+    nsIFile& aBaseDir, const nsID& aId, const BodyFileType aType,
+    bool aCreateDirIfNotExists) {
+  QM_TRY_UNWRAP(auto bodyFile,
+                BodyGetCacheDir(aBaseDir, aId, aCreateDirIfNotExists));
 
   char idString[NSID_LENGTH];
   aId.ToProvidedString(idString);
@@ -382,11 +383,13 @@ nsresult DirectoryPaddingWrite(nsIFile& aBaseDir,
 
 nsresult BodyDeleteOrphanedFiles(
     const CacheDirectoryMetadata& aDirectoryMetadata, nsIFile& aBaseDir,
-    const nsTArray<nsID>& aKnownBodyIdList) {
+    nsTHashSet<nsID>& aKnownBodyIds) {
   // body files are stored in a directory structure like:
   //
   //  /morgue/01/{01fdddb2-884d-4c3d-95ba-0c8062f6c325}.final
   //  /morgue/02/{02fdddb2-884d-4c3d-95ba-0c8062f6c325}.tmp
+
+  Maybe<CacheDirectoryMetadata> dirMetaData = Some(aDirectoryMetadata);
 
   QM_TRY_INSPECT(const auto& dir,
                  CloneFileAndAppend(aBaseDir, kMorgueDirectory));
@@ -394,28 +397,28 @@ nsresult BodyDeleteOrphanedFiles(
   // Iterate over all the intermediate morgue subdirs
   QM_TRY(quota::CollectEachFile(
       *dir,
-      [&aDirectoryMetadata, &aKnownBodyIdList](
+      [&dirMetaData, &aKnownBodyIds](
           const nsCOMPtr<nsIFile>& subdir) -> Result<Ok, nsresult> {
         QM_TRY_INSPECT(const auto& dirEntryKind, GetDirEntryKind(*subdir));
 
         switch (dirEntryKind) {
           case nsIFileKind::ExistsAsDirectory: {
             const auto removeOrphanedFiles =
-                [&aDirectoryMetadata, &aKnownBodyIdList](
+                [&dirMetaData, &aKnownBodyIds](
                     nsIFile& bodyFile,
                     const nsACString& leafName) -> Result<bool, nsresult> {
               // Finally, parse the uuid out of the name.  If it fails to parse,
               // then ignore the file.
-              auto cleanup = MakeScopeExit([&aDirectoryMetadata, &bodyFile] {
+              auto cleanup = MakeScopeExit([&dirMetaData, &bodyFile] {
                 DebugOnly<nsresult> result =
-                    RemoveNsIFile(aDirectoryMetadata, bodyFile);
+                    RemoveNsIFile(dirMetaData, bodyFile);
                 MOZ_ASSERT(NS_SUCCEEDED(result));
               });
 
               nsID id;
               QM_TRY(OkIf(id.Parse(leafName.BeginReading())), true);
 
-              if (!aKnownBodyIdList.Contains(id)) {
+              if (!aKnownBodyIds.Contains(id)) {
                 return true;
               }
 
@@ -429,10 +432,8 @@ nsresult BodyDeleteOrphanedFiles(
             // a warning in the reports is not desired).
             QM_TRY(QM_OR_ELSE_LOG_VERBOSE_IF(
                 // Expression.
-                MOZ_TO_RESULT(BodyTraverseFiles(aDirectoryMetadata, *subdir,
-                                                removeOrphanedFiles,
-                                                /* aCanRemoveFiles */ true,
-                                                /* aTrackQuota */ true)),
+                MOZ_TO_RESULT(BodyTraverseFilesForCleanup(dirMetaData, *subdir,
+                                                          removeOrphanedFiles)),
                 // Predicate.
                 IsSpecificError<NS_ERROR_FILE_FS_CORRUPTED>,
                 // Fallback. We treat NS_ERROR_FILE_FS_CORRUPTED as if the
@@ -443,9 +444,8 @@ nsresult BodyDeleteOrphanedFiles(
 
           case nsIFileKind::ExistsAsFile: {
             // If a file got in here somehow, try to remove it and move on
-            DebugOnly<nsresult> result =
-                RemoveNsIFile(aDirectoryMetadata, *subdir,
-                              /* aTrackQuota */ false);
+            DebugOnly<nsresult> result = RemoveNsIFile(dirMetaData, *subdir,
+                                                       /* aTrackQuota */ false);
             MOZ_ASSERT(NS_SUCCEEDED(result));
             break;
           }

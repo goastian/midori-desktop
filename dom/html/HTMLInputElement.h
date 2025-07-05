@@ -206,6 +206,8 @@ class HTMLInputElement final : public TextControlElement,
   void FinishRangeThumbDrag(WidgetGUIEvent* aEvent = nullptr);
   MOZ_CAN_RUN_SCRIPT
   void CancelRangeThumbDrag(bool aIsForUserEvent = true);
+  MOZ_CAN_RUN_SCRIPT
+  void MaybeDispatchWillBlur(EventChainVisitor&);
 
   enum class SnapToTickMarks : bool { No, Yes };
   MOZ_CAN_RUN_SCRIPT
@@ -237,9 +239,9 @@ class HTMLInputElement final : public TextControlElement,
   bool ValueChanged() const override;
   void GetTextEditorValue(nsAString& aValue) const override;
   MOZ_CAN_RUN_SCRIPT TextEditor* GetTextEditor() override;
-  TextEditor* GetTextEditorWithoutCreation() const override;
+  TextEditor* GetExtantTextEditor() const override;
   nsISelectionController* GetSelectionController() override;
-  nsFrameSelection* GetConstFrameSelection() override;
+  nsFrameSelection* GetIndependentFrameSelection() const override;
   TextControlState* GetTextControlState() const override {
     return GetEditorState();
   }
@@ -480,6 +482,8 @@ class HTMLInputElement final : public TextControlElement,
            mType == FormControlType::InputRadio;
   }
 
+  bool IsInputColor() const { return mType == FormControlType::InputColor; }
+
   bool Disabled() const { return GetBoolAttr(nsGkAtoms::disabled); }
 
   void SetDisabled(bool aValue, ErrorResult& aRv) {
@@ -650,6 +654,10 @@ class HTMLInputElement final : public TextControlElement,
                 ErrorResult& aRv);
   void GetValue(nsAString& aValue, CallerType aCallerType);
 
+  // Generic getter for the value that doesn't do experimental control type
+  // sanitization.
+  void GetValueInternal(nsAString& aValue, CallerType aCallerType) const;
+
   void GetValueAsDate(JSContext* aCx, JS::MutableHandle<JSObject*> aObj,
                       ErrorResult& aRv);
 
@@ -744,6 +752,7 @@ class HTMLInputElement final : public TextControlElement,
   }
 
   nsIControllers* GetControllers(ErrorResult& aRv);
+  nsIControllers* GetExtantControllers() const { return mControllers; }
   // XPCOM adapter function widely used throughout code, leaving it as is.
   nsresult GetControllers(nsIControllers** aResult);
 
@@ -775,6 +784,7 @@ class HTMLInputElement final : public TextControlElement,
   void OpenDateTimePicker(const DateTimeValue& aInitialValue);
   void UpdateDateTimePicker(const DateTimeValue& aValue);
   void CloseDateTimePicker();
+  void SetDateTimePickerState(bool aIsOpen);
 
   /*
    * Called from datetime input box binding when inner text fields are focused
@@ -872,6 +882,13 @@ class HTMLInputElement final : public TextControlElement,
   // Parse a simple (hex) color.
   static mozilla::Maybe<nscolor> ParseSimpleColor(const nsAString& aColor);
 
+  /**
+   * https://html.spec.whatwg.org/#auto-directionality-form-associated-elements
+   */
+  bool IsAutoDirectionalityAssociated() const {
+    return IsAutoDirectionalityAssociated(mType);
+  }
+
  protected:
   MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual ~HTMLInputElement();
 
@@ -940,10 +957,6 @@ class HTMLInputElement final : public TextControlElement,
     return SetValueInternal(aValue, nullptr, aOptions);
   }
 
-  // Generic getter for the value that doesn't do experimental control type
-  // sanitization.
-  void GetValueInternal(nsAString& aValue, CallerType aCallerType) const;
-
   // A getter for callers that know we're not dealing with a file input, so they
   // don't have to think about the caller type.
   void GetNonFileValueInternal(nsAString& aValue) const;
@@ -971,7 +984,7 @@ class HTMLInputElement final : public TextControlElement,
 
   void ResultForDialogSubmit(nsAString& aResult) override;
 
-  void SelectAll(nsPresContext* aPresContext);
+  MOZ_CAN_RUN_SCRIPT void SelectAll();
   bool IsImage() const {
     return AttrValueIs(kNameSpaceID_None, nsGkAtoms::type, nsGkAtoms::image,
                        eIgnoreCase);
@@ -984,10 +997,17 @@ class HTMLInputElement final : public TextControlElement,
   nsresult VisitGroup(nsIRadioVisitor* aVisitor);
 
   /**
+   * Visit the group of radio buttons this radio belongs to
+   * @param aCallback the callback function to visit the node
+   */
+  void VisitGroup(const RadioGroupContainer::VisitCallback& aCallback);
+
+  /**
    * Do all the work that |SetChecked| does (radio button handling, etc.), but
    * take an |aNotify| parameter.
    */
-  void DoSetChecked(bool aValue, bool aNotify, bool aSetValueChanged);
+  void DoSetChecked(bool aValue, bool aNotify, bool aSetValueChanged,
+                    bool aUpdateOtherElement = true);
 
   /**
    * Do all the work that |SetCheckedChanged| does (radio button handling,
@@ -1002,7 +1022,7 @@ class HTMLInputElement final : public TextControlElement,
    */
   void SetCheckedInternal(bool aValue, bool aNotify);
 
-  void RadioSetChecked(bool aNotify);
+  void RadioSetChecked(bool aNotify, bool aUpdateOtherElement);
   void SetCheckedChanged(bool aCheckedChanged);
 
   /**
@@ -1107,13 +1127,6 @@ class HTMLInputElement final : public TextControlElement,
    */
   MOZ_CAN_RUN_SCRIPT
   nsresult SetDefaultValueAsValue();
-
-  /**
-   * Sets the direction from the input value. if aKnownValue is provided, it
-   * saves a GetValue call.
-   */
-  void SetAutoDirectionality(bool aNotify,
-                             const nsAString* aKnownValue = nullptr);
 
   /**
    * Returns the radio group container within the DOM tree that the element
@@ -1520,7 +1533,6 @@ class HTMLInputElement final : public TextControlElement,
   bool mLastValueChangeWasInteractive : 1;
   bool mCheckedChanged : 1;
   bool mChecked : 1;
-  bool mHandlingSelectEvent : 1;
   bool mShouldInitChecked : 1;
   bool mDoneCreating : 1;
   bool mInInternalActivate : 1;
@@ -1581,10 +1593,6 @@ class HTMLInputElement final : public TextControlElement,
       default:
         return false;
     }
-  }
-
-  bool IsAutoDirectionalityAssociated() const {
-    return IsAutoDirectionalityAssociated(mType);
   }
 
   static bool CreatesDateTimeWidget(FormControlType aType) {

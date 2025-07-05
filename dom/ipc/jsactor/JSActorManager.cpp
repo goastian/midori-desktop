@@ -10,6 +10,8 @@
 #include "mozilla/dom/JSActorService.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/PWindowGlobal.h"
+#include "mozilla/dom/JSProcessActorProtocol.h"
+#include "mozilla/dom/JSWindowActorProtocol.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/AppShutdown.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
@@ -73,21 +75,11 @@ already_AddRefed<JSActor> JSActorManager::GetActor(JSContext* aCx,
 
   // If a module URI was provided, use it to construct an instance of the actor.
   JS::Rooted<JSObject*> actorObj(aCx);
-  if (side.mModuleURI || side.mESModuleURI) {
+  if (side.mESModuleURI) {
     JS::Rooted<JSObject*> exports(aCx);
-    if (side.mModuleURI) {
-      // TODO: Remove this once m-c, c-c, and out-of-tree code migrations finish
-      //       (bug 1866732).
-      JS::Rooted<JSObject*> global(aCx);
-      aRv = loader->Import(aCx, side.mModuleURI.ref(), &global, &exports);
-      if (aRv.Failed()) {
-        return nullptr;
-      }
-    } else {
-      aRv = loader->ImportESModule(aCx, side.mESModuleURI.ref(), &exports);
-      if (aRv.Failed()) {
-        return nullptr;
-      }
+    aRv = loader->ImportESModule(aCx, side.mESModuleURI.ref(), &exports);
+    if (aRv.Failed()) {
+      return nullptr;
     }
     MOZ_ASSERT(exports, "null exports!");
 
@@ -191,6 +183,18 @@ void JSActorManager::ReceiveRawMessage(
   if (error.Failed()) {
     return;
   }
+
+#ifdef DEBUG
+  {
+    RefPtr<JSActorService> actorSvc = JSActorService::GetSingleton();
+    RefPtr windowProtocol(
+        actorSvc->GetJSWindowActorProtocol(aMetadata.actorName()));
+    RefPtr processProtocol(
+        actorSvc->GetJSProcessActorProtocol(aMetadata.actorName()));
+    MOZ_ASSERT(windowProtocol || processProtocol,
+               "The protocol of this actor should exist");
+  }
+#endif  // DEBUG
 
   JS::Rooted<JS::Value> data(cx);
   if (aData) {

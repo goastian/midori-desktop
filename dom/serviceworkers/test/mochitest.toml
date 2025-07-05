@@ -7,12 +7,21 @@
 prefs = ["network.cookie.cookieBehavior=0"]
 dupe-manifest = true
 tags = "condprof"
+# GeckoView overwrites cookieBehavior 0 preferences in ContentBlocking.java.
+# Therefore we need to skip these tests on android.
+skip-if = ["os == 'android'"]
+
+["include:mochitest-common.toml"]
+
+# This test can't work in PBM because of SpecialPowers.createChromeCache not
+# supporting PBM we don't need to validate this in PBM.  So this test is not in
+# mochitest-common.toml.
+
+["test_bad_script_cache.html"]
 
 # Following tests are not working currently when dFPI is enabled. So, we put
 # these tests here instead of mochitest-common.toml so that these tests won't run
 # when dFPI is enabled.
-
-["include:mochitest-common.toml"]
 
 ["test_cookie_fetch.html"]
 
@@ -38,16 +47,6 @@ skip-if = ["condprof"]  #: timed out
 
 ["test_importscript_mixedcontent.html"]
 tags = "mcb"
-
-["test_openWindow.html"]
-skip-if = [
-  "os == 'android'", # Bug 1620052
-  "xorigin", # Bug 1792790
-  "condprof",  #: timed out
-  "http3",
-  "http2",
-]
-tags = "openwindow"
 
 ["test_sanitize_domain.html"]
 skip-if = [

@@ -5,6 +5,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 
 # This script extracts commits that touch third party webrtc code so they can
 # be imported into Git. It filters out commits that are not part of upstream
@@ -25,7 +26,12 @@ def build_commit_list(revset, env):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
+    # return empty list instead of a list with one empty element if no
+    # libwebrtc changing commits are found in the given range
+    if len(res.stdout) == 0:
+        return []
     return [line.strip() for line in res.stdout.strip().split("\n")]
 
 
@@ -35,6 +41,7 @@ def extract_author_date(sha1, env):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     return res.stdout.split("|")
 
@@ -45,6 +52,7 @@ def extract_description(sha1, env):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     return res.stdout
 
@@ -55,6 +63,7 @@ def extract_commit(sha1, env):
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     return res.stdout
 
@@ -68,7 +77,6 @@ def filter_nonwebrtc(commit):
         # moz.build files which are code generated.
         if (
             line.startswith("diff --git a/" + LIBWEBRTC_DIR)
-            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/build/")
             and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/third_party/")
             and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/README.moz")
             and not line.startswith(
@@ -85,26 +93,24 @@ def filter_nonwebrtc(commit):
     return "\n".join(filtered)
 
 
-def fixup_paths(commit):
+def fixup_paths(commit, search_path):
     # make sure we only rewrite paths in the diff-related or rename lines
     commit = re.sub(
-        f"^rename (from|to) {LIBWEBRTC_DIR}/", "rename \\1 ", commit, flags=re.MULTILINE
+        f"^rename (from|to) {search_path}/", "rename \\1 ", commit, flags=re.MULTILINE
     )
-    return re.sub(f"( [ab])/{LIBWEBRTC_DIR}/", "\\1/", commit)
+    return re.sub(f"( [ab])/{search_path}/", "\\1/", commit)
 
 
 def write_as_mbox(sha1, author, date, description, commit, ofile):
     # Use same magic date as git format-patch
-    ofile.write("From {} Mon Sep 17 00:00:00 2001\n".format(sha1))
-    ofile.write("From: {}\n".format(author))
-    ofile.write("Date: {}\n".format(date))
+    ofile.write(f"From {sha1} Mon Sep 17 00:00:00 2001\n")
+    ofile.write(f"From: {author}\n")
+    ofile.write(f"Date: {date}\n")
     description = description.split("\n")
-    ofile.write("Subject: {}\n".format(description[0]))
+    ofile.write(f"Subject: {description[0]}\n")
     ofile.write("\n".join(description[1:]))
     ofile.write(
-        "\nMercurial Revision: https://hg.mozilla.org/mozilla-central/rev/{}\n".format(
-            sha1
-        )
+        f"\nMercurial Revision: https://hg.mozilla.org/mozilla-central/rev/{sha1}\n"
     )
     ofile.write(commit)
     ofile.write("\n")
@@ -120,11 +126,17 @@ if __name__ == "__main__":
         "revsets", metavar="revset", type=str, nargs="+", help="A revset to process"
     )
     parser.add_argument(
-        "--target", choices=("libwebrtc", "build", "third_party"), default="libwebrtc"
+        "--target",
+        choices=("libwebrtc", "build", "third_party", "abseil-cpp"),
+        default="libwebrtc",
     )
     args = parser.parse_args()
 
-    if args.target != "libwebrtc":
+    if args.target == "build":
+        LIBWEBRTC_DIR = "third_party/chromium/build"
+    elif args.target == "abseil-cpp":
+        LIBWEBRTC_DIR = "third_party/abseil-cpp"
+    elif args.target == "third_party":
         LIBWEBRTC_DIR = os.path.join(LIBWEBRTC_DIR, args.target)
 
     # must run 'hg' with HGPLAIN=1 to ensure aliases don't interfere with
@@ -135,6 +147,10 @@ if __name__ == "__main__":
     for revset in args.revsets:
         commits.extend(build_commit_list(revset, env))
 
+    if len(commits) == 0:
+        print(f"No commits modifying {LIBWEBRTC_DIR} found in provided revsets")
+        sys.exit(1)
+
     with open("mailbox.patch", "w") as ofile:
         for sha1 in commits:
             author, date = extract_author_date(sha1, env)
@@ -142,5 +158,8 @@ if __name__ == "__main__":
             filtered_commit = filter_nonwebrtc(extract_commit(sha1, env))
             if len(filtered_commit) == 0:
                 continue
-            fixedup_commit = fixup_paths(filtered_commit)
+            if args.target == "abseil-cpp":
+                fixedup_commit = fixup_paths(filtered_commit, "third_party")
+            else:
+                fixedup_commit = fixup_paths(filtered_commit, LIBWEBRTC_DIR)
             write_as_mbox(sha1, author, date, description, fixedup_commit, ofile)

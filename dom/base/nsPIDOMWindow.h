@@ -21,11 +21,6 @@
 #include "nsILoadInfo.h"
 #include "mozilla/MozPromise.h"
 
-// Only fired for inner windows.
-#define DOM_WINDOW_DESTROYED_TOPIC "dom-window-destroyed"
-#define DOM_WINDOW_FROZEN_TOPIC "dom-window-frozen"
-#define DOM_WINDOW_THAWED_TOPIC "dom-window-thawed"
-
 class nsGlobalWindowInner;
 class nsGlobalWindowOuter;
 class nsIArray;
@@ -56,12 +51,14 @@ class BrowsingContextGroup;
 class ClientInfo;
 class ClientState;
 class ContentFrameMessageManager;
+class CloseWatcherManager;
 class DocGroup;
 class Document;
 class Element;
 class Location;
 class MediaDevices;
 class MediaKeys;
+class Navigation;
 class Navigator;
 class Performance;
 class Selection;
@@ -87,20 +84,12 @@ enum class FullscreenReason {
 };
 
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
-#define NS_PIDOMWINDOWINNER_IID                      \
-  {                                                  \
-    0x775dabc9, 0x8f43, 0x4277, {                    \
-      0x9a, 0xdb, 0xf1, 0x99, 0x0d, 0x77, 0xcf, 0xfb \
-    }                                                \
-  }
+#define NS_PIDOMWINDOWINNER_IID \
+  {0x775dabc9, 0x8f43, 0x4277, {0x9a, 0xdb, 0xf1, 0x99, 0x0d, 0x77, 0xcf, 0xfb}}
 
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
-#define NS_PIDOMWINDOWOUTER_IID                      \
-  {                                                  \
-    0x769693d4, 0xb009, 0x4fe2, {                    \
-      0xaf, 0x18, 0x7d, 0xc8, 0xdf, 0x74, 0x96, 0xdf \
-    }                                                \
-  }
+#define NS_PIDOMWINDOWOUTER_IID \
+  {0x769693d4, 0xb009, 0x4fe2, {0xaf, 0x18, 0x7d, 0xc8, 0xdf, 0x74, 0x96, 0xdf}}
 
 class nsPIDOMWindowInner : public mozIDOMWindow {
  protected:
@@ -114,7 +103,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   ~nsPIDOMWindowInner();
 
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_PIDOMWINDOWINNER_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_PIDOMWINDOWINNER_IID)
 
   nsIGlobalObject* AsGlobal();
   const nsIGlobalObject* AsGlobal() const;
@@ -237,6 +226,29 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   /**
    * Call this to check whether some node (this window, its document,
+   * or content in that document) has a pointerrawupdate event listener.
+   */
+  bool HasPointerRawUpdateEventListeners() const {
+    return mMayHavePointerRawUpdateEventListener;
+  }
+
+  /**
+   * Call this to indicate that some node (this window, its document,
+   * or content in that document) has a pointerrawupdate event listener.
+   * This may not accept that if the event is not available in this window.
+   */
+  void MaybeSetHasPointerRawUpdateEventListeners();
+
+ protected:
+  /**
+   * Call this to clear whether some nodes has a pointerrawupdate event
+   * listener.
+   */
+  void ClearHasPointerRawUpdateEventListeners();
+
+ public:
+  /**
+   * Call this to check whether some node (this window, its document,
    * or content in that document) has a transition* event listeners.
    */
   bool HasTransitionEventListeners() { return mMayHaveTransitionEventListener; }
@@ -345,37 +357,11 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
    */
   void RemovePeerConnection();
 
-  /**
-   * Check whether the active peer connection count is non-zero.
-   */
-  bool HasActivePeerConnections();
-
-  bool IsPlayingAudio();
-
   bool IsDocumentLoaded() const;
-
-  mozilla::dom::TimeoutManager& TimeoutManager();
-
-  bool IsRunningTimeout();
 
   // To cache top inner-window if available after constructed for tab-wised
   // indexedDB counters.
   void TryToCacheTopInnerWindow();
-
-  // Increase/Decrease the number of active IndexedDB databases for the
-  // decision making of timeout-throttling.
-  void UpdateActiveIndexedDBDatabaseCount(int32_t aDelta);
-
-  // Return true if there is any active IndexedDB databases which could block
-  // timeout-throttling.
-  bool HasActiveIndexedDBDatabases();
-
-  // Increase/Decrease the number of open WebSockets.
-  void UpdateWebSocketCount(int32_t aDelta);
-
-  // Return true if there are any open WebSockets that could block
-  // timeout-throttling.
-  bool HasOpenWebSockets() const;
 
   mozilla::Maybe<mozilla::dom::ClientInfo> GetClientInfo() const;
   mozilla::Maybe<mozilla::dom::ClientState> GetClientState() const;
@@ -429,13 +415,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // true if it was.
   bool RemoveFromBFCacheSync();
 
-  // Determine if the window is suspended or frozen.  Outer windows
-  // will forward this call to the inner window for convenience.  If
-  // there is no inner window then the outer window is considered
-  // suspended and frozen by default.
-  virtual bool IsSuspended() const = 0;
-  virtual bool IsFrozen() const = 0;
-
   // Fire any DOM notification events related to things that happened while
   // the window was frozen.
   virtual nsresult FireDelayedDOMEvents(bool aIncludeSubWindows) = 0;
@@ -470,18 +449,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   bool HasDOMActivateEventListeners() const {
     return mMayHaveDOMActivateEventListeners;
   }
-
-  /**
-   * Call this to indicate that some node (this window, its document,
-   * or content in that document) has a paint event listener.
-   */
-  void SetHasPaintEventListeners() { mMayHavePaintEventListener = true; }
-
-  /**
-   * Call this to check whether some node (this window, its document,
-   * or content in that document) has a paint event listener.
-   */
-  bool HasPaintEventListeners() { return mMayHavePaintEventListener; }
 
   /**
    * Call this to indicate that some node (this window, its document,
@@ -628,6 +595,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   uint32_t GetMarkedCCGeneration() { return mMarkedCCGeneration; }
 
+  mozilla::dom::Navigation* Navigation();
   mozilla::dom::Navigator* Navigator();
   mozilla::dom::MediaDevices* GetExtantMediaDevices() const;
   virtual mozilla::dom::Location* Location() = 0;
@@ -667,6 +635,8 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   };
   bool HasActiveWebTransports() { return mWebTransportCount > 0; }
 
+  mozilla::dom::CloseWatcherManager* EnsureCloseWatcherManager();
+
  protected:
   void CreatePerformanceObjectIfNeeded();
 
@@ -697,28 +667,30 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   RefPtr<mozilla::dom::Performance> mPerformance;
   mozilla::UniquePtr<mozilla::dom::TimeoutManager> mTimeoutManager;
 
+  RefPtr<mozilla::dom::Navigation> mNavigation;
+
   RefPtr<mozilla::dom::Navigator> mNavigator;
 
   // These variables are only used on inner windows.
-  uint32_t mMutationBits;
+  uint32_t mMutationBits = 0;
 
   uint32_t mActivePeerConnections = 0;
 
-  bool mIsDocumentLoaded;
-  bool mIsHandlingResizeEvent;
-  bool mMayHaveDOMActivateEventListeners;
-  bool mMayHavePaintEventListener;
-  bool mMayHaveTouchEventListener;
-  bool mMayHaveSelectionChangeEventListener;
-  bool mMayHaveFormSelectEventListener;
-  bool mMayHaveMouseEnterLeaveEventListener;
-  bool mMayHavePointerEnterLeaveEventListener;
-  bool mMayHaveTransitionEventListener;
-  bool mMayHaveSMILTimeEventListener;
+  bool mIsDocumentLoaded = false;
+  bool mIsHandlingResizeEvent = false;
+  bool mMayHaveDOMActivateEventListeners = false;
+  bool mMayHaveTouchEventListener = false;
+  bool mMayHaveSelectionChangeEventListener = false;
+  bool mMayHaveFormSelectEventListener = false;
+  bool mMayHaveMouseEnterLeaveEventListener = false;
+  bool mMayHavePointerEnterLeaveEventListener = false;
+  bool mMayHavePointerRawUpdateEventListener = false;
+  bool mMayHaveTransitionEventListener = false;
+  bool mMayHaveSMILTimeEventListener = false;
   // Only used for telemetry probes.  This may be wrong if some nodes have
   // come from another document with `Document.adoptNode`.
-  bool mMayHaveBeforeInputEventListenerForTelemetry;
-  bool mMutationObserverHasObservedNodeForTelemetry;
+  bool mMayHaveBeforeInputEventListenerForTelemetry = false;
+  bool mMutationObserverHasObservedNodeForTelemetry = false;
 
   // Our inner window's outer window.
   nsCOMPtr<nsPIDOMWindowOuter> mOuterWindow;
@@ -739,11 +711,11 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   // A unique (as long as our 64-bit counter doesn't roll over) id for
   // this window.
-  uint64_t mWindowID;
+  uint64_t mWindowID = 0;
 
   // Set to true once we've sent the (chrome|content)-document-global-created
   // notification.
-  bool mHasNotifiedGlobalCreated;
+  bool mHasNotifiedGlobalCreated = false;
 
   // Whether when focused via an "unknown" focus method, we should show outlines
   // by default or not. The initial value of this is true (so as to show
@@ -751,7 +723,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // without any other user interaction).
   bool mUnknownFocusMethodShouldShowOutline = true;
 
-  uint32_t mMarkedCCGeneration;
+  uint32_t mMarkedCCGeneration = 0;
 
   // mTopInnerWindow is used for tab-wise check by timeout throttling. It could
   // be null.
@@ -760,17 +732,17 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // The evidence that we have tried to cache mTopInnerWindow only once from
   // SetNewDocument(). Note: We need this extra flag because mTopInnerWindow
   // could be null and we don't want it to be set multiple times.
-  bool mHasTriedToCacheTopInnerWindow;
+  bool mHasTriedToCacheTopInnerWindow = false;
 
   // The number of active IndexedDB databases.
-  uint32_t mNumOfIndexedDBDatabases;
+  uint32_t mNumOfIndexedDBDatabases = 0;
 
   // The number of open WebSockets.
-  uint32_t mNumOfOpenWebSockets;
+  uint32_t mNumOfOpenWebSockets = 0;
 
   // The event dispatch code sets and unsets this while keeping
   // the event object alive.
-  mozilla::dom::Event* mEvent;
+  mozilla::dom::Event* mEvent = nullptr;
 
   // The WindowGlobalChild actor for this window.
   //
@@ -778,7 +750,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // during SetNewDocument, and cleared during FreeInnerObjects.
   RefPtr<mozilla::dom::WindowGlobalChild> mWindowGlobalChild;
 
-  bool mWasSuspendedByGroup;
+  bool mWasSuspendedByGroup = false;
 
   /**
    * Count of the number of active LockRequest objects, including ones from
@@ -790,9 +762,10 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
    * workers.
    */
   uint32_t mWebTransportCount = 0;
-};
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowInner, NS_PIDOMWINDOWINNER_IID)
+  // The CloseWatcherManager for this window.
+  RefPtr<mozilla::dom::CloseWatcherManager> mCloseWatcherManager;
+};
 
 class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
  protected:
@@ -805,7 +778,7 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   void NotifyResumingDelayedMedia();
 
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_PIDOMWINDOWOUTER_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_PIDOMWINDOWOUTER_IID)
 
   NS_IMPL_FROMEVENTTARGET_HELPER_WITH_GETTER(nsPIDOMWindowOuter,
                                              GetAsOuterWindow())
@@ -923,13 +896,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   // Restore the window state from aState.
   virtual nsresult RestoreWindowState(nsISupports* aState) = 0;
-
-  // Determine if the window is suspended or frozen.  Outer windows
-  // will forward this call to the inner window for convenience.  If
-  // there is no inner window then the outer window is considered
-  // suspended and frozen by default.
-  virtual bool IsSuspended() const = 0;
-  virtual bool IsFrozen() const = 0;
 
   // Fire any DOM notification events related to things that happened while
   // the window was frozen.
@@ -1089,7 +1055,8 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    *
    * Outer windows only.
    */
-  virtual nsresult OpenNoNavigate(const nsAString& aUrl, const nsAString& aName,
+  virtual nsresult OpenNoNavigate(const nsACString& aUrl,
+                                  const nsAString& aName,
                                   const nsAString& aOptions,
                                   mozilla::dom::BrowsingContext** _retval) = 0;
 
@@ -1121,13 +1088,12 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   // aLoadState will be passed on through to the windowwatcher.
   // aForceNoOpener will act just like a "noopener" feature in aOptions except
   //                will not affect any other window features.
-  virtual nsresult Open(const nsAString& aUrl, const nsAString& aName,
+  virtual nsresult Open(const nsACString& aUrl, const nsAString& aName,
                         const nsAString& aOptions,
                         nsDocShellLoadState* aLoadState, bool aForceNoOpener,
                         mozilla::dom::BrowsingContext** _retval) = 0;
-  virtual nsresult OpenDialog(const nsAString& aUrl, const nsAString& aName,
-                              const nsAString& aOptions,
-                              nsISupports* aExtraArgument,
+  virtual nsresult OpenDialog(const nsACString& aUrl, const nsAString& aName,
+                              const nsAString& aOptions, nsIArray* aArguments,
                               mozilla::dom::BrowsingContext** _retval) = 0;
 
   virtual nsresult GetInnerWidth(double* aWidth) = 0;
@@ -1199,8 +1165,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   uint32_t mMarkedCCGeneration;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowOuter, NS_PIDOMWINDOWOUTER_IID)
 
 #include "nsPIDOMWindowInlines.h"
 

@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "NSSErrorsService.h"
+#include "mozilla/glean/DomSecurityMetrics.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/WindowGlobalParent.h"
@@ -84,8 +85,7 @@ nsHTTPSOnlyStreamListener::OnStopRequest(nsIRequest* request,
 void nsHTTPSOnlyStreamListener::RecordUpgradeTelemetry(nsIRequest* request,
                                                        nsresult aStatus) {
   // 1. Get time between now and when the initial upgrade request started
-  int64_t duration =
-      (mozilla::TimeStamp::Now() - mCreationStart).ToMilliseconds();
+  mozilla::TimeDuration duration = mozilla::TimeStamp::Now() - mCreationStart;
 
   // 2. Assemble the category string
   // [!] All strings have to be present in Histograms.json
@@ -138,8 +138,8 @@ void nsHTTPSOnlyStreamListener::RecordUpgradeTelemetry(nsIRequest* request,
       category.AppendLiteral("f_other");
     }
   }
-  mozilla::Telemetry::Accumulate(
-      mozilla::Telemetry::HTTPS_ONLY_MODE_UPGRADE_TIME_MS, category, duration);
+  mozilla::glean::security::https_only_mode_upgrade_time.Get(category)
+      .AccumulateRawDuration(duration);
 
   bool success = NS_SUCCEEDED(aStatus);
   ExtContentPolicyType externalType = loadInfo->GetExternalContentPolicyType();
@@ -167,7 +167,6 @@ void nsHTTPSOnlyStreamListener::RecordUpgradeTelemetry(nsIRequest* request,
         break;
 
       case ExtContentPolicy::TYPE_OBJECT:
-      case ExtContentPolicy::TYPE_OBJECT_SUBREQUEST:
         typeKey = "object"_ns;
         break;
 
@@ -237,11 +236,14 @@ void nsHTTPSOnlyStreamListener::RecordUpgradeTelemetry(nsIRequest* request,
       case ExtContentPolicy::TYPE_SPECULATIVE:
       case ExtContentPolicy::TYPE_WEB_TRANSPORT:
       case ExtContentPolicy::TYPE_WEB_IDENTITY:
+      case ExtContentPolicy::TYPE_JSON:
         break;
         // Do not add default: so that compilers can catch the missing case.
     }
   }
 
+  // Needs bug 1657470 (New Metric Type: "Keyed Categorical") before
+  // this can be migrated to Glean.
   mozilla::Telemetry::Accumulate(
       mozilla::Telemetry::HTTPS_ONLY_MODE_UPGRADE_TYPE, typeKey, success);
 }

@@ -77,9 +77,14 @@ class SVGLength {
    * If it's not possible to convert this length's value to pixels, then
    * this method will return numeric_limits<float>::quiet_NaN().
    */
-
   float GetValueInPixels(const dom::SVGElement* aElement, uint8_t aAxis) const {
     return mValue * GetPixelsPerUnit(dom::SVGElementMetrics(aElement), aAxis);
+  }
+
+  float GetValueInPixelsWithZoom(const dom::SVGElement* aElement,
+                                 uint8_t aAxis) const {
+    return mValue *
+           GetPixelsPerUnitWithZoom(dom::SVGElementMetrics(aElement), aAxis);
   }
 
   /**
@@ -130,6 +135,10 @@ class SVGLength {
   static float GetPixelsPerUnit(const dom::UserSpaceMetrics& aMetrics,
                                 uint8_t aUnitType, uint8_t aAxis,
                                 bool aApplyZoom);
+
+  static float GetPixelsPerCSSUnit(const dom::UserSpaceMetrics& aMetrics,
+                                   nsCSSUnit aCSSUnit, uint8_t aAxis,
+                                   bool aApplyZoom);
 
  private:
   float mValue;

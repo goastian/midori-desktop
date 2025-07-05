@@ -18,10 +18,65 @@
 
 namespace mozilla::webgpu {
 
-bool AdapterInfo::WrapObject(JSContext* const cx,
-                             JS::Handle<JSObject*> givenProto,
-                             JS::MutableHandle<JSObject*> reflector) {
-  return dom::GPUAdapterInfo_Binding::Wrap(cx, this, givenProto, reflector);
+GPU_IMPL_CYCLE_COLLECTION(AdapterInfo, mParent)
+GPU_IMPL_JS_WRAP(AdapterInfo)
+
+uint32_t AdapterInfo::SubgroupMinSize() const {
+  // From the spec. at
+  // <https://www.w3.org/TR/2025/CRD-webgpu-20250319/#dom-gpuadapterinfo-subgroupminsize>:
+  //
+  // > If `["subgroups"](https://www.w3.org/TR/webgpu/#subgroups)` is supported,
+  // > set `subgroupMinSize` to the smallest supported subgroup size. Otherwise,
+  // > set this value to 4.
+  // >
+  // > Note: To preserve privacy, the user agent may choose to not support some
+  // > features or provide values for the property which do not distinguish
+  // > different devices, but are still usable (e.g. use the default value of
+  // > 4 for all devices).
+
+  if (GetParentObject()->ShouldResistFingerprinting(
+          RFPTarget::WebGPUSubgroupSizes)) {
+    return 4;
+  }
+
+  // TODO: When we support `subgroups`, use the supported amount instead:
+  // <https://bugzilla.mozilla.org/show_bug.cgi?id=1955417>
+  return 4;
+}
+
+uint32_t AdapterInfo::SubgroupMaxSize() const {
+  // From the spec. at
+  // <https://www.w3.org/TR/2025/CRD-webgpu-20250319/#dom-gpuadapterinfo-subgroupmaxsize>:
+  //
+  // > If `["subgroups"](https://www.w3.org/TR/webgpu/#subgroups)` is supported,
+  // > set `subgroupMaxSize` to the largest supported subgroup size. Otherwise,
+  // > set this value to 128.
+  // >
+  // > Note: To preserve privacy, the user agent may choose to not support some
+  // > features or provide values for the property which do not distinguish
+  // > different devices, but are still usable (e.g. use the default value of
+  // > 128 for all devices).
+
+  if (GetParentObject()->ShouldResistFingerprinting(
+          RFPTarget::WebGPUSubgroupSizes)) {
+    return 128;
+  }
+
+  // TODO: When we support `subgroups`, use the supported amount instead:
+  // <https://bugzilla.mozilla.org/show_bug.cgi?id=1955417>
+  return 128;
+}
+
+bool AdapterInfo::IsFallbackAdapter() const {
+  if (GetParentObject()->ShouldResistFingerprinting(
+          RFPTarget::WebGPUIsFallbackAdapter)) {
+    // Always report hardware support for WebGPU.
+    // This behaviour matches with media capabilities API.
+    return false;
+  }
+
+  return mAboutSupportInfo->device_type ==
+         ffi::WGPUDeviceType::WGPUDeviceType_Cpu;
 }
 
 void AdapterInfo::GetWgpuName(nsString& s) const {
@@ -65,8 +120,8 @@ void AdapterInfo::GetWgpuDriverInfo(nsString& s) const {
 
 void AdapterInfo::GetWgpuBackend(nsString& s) const {
   switch (mAboutSupportInfo->backend) {
-    case ffi::WGPUBackend_Empty:
-      s.AssignLiteral("Empty");
+    case ffi::WGPUBackend_Noop:
+      s.AssignLiteral("No-op");
       return;
     case ffi::WGPUBackend_Vulkan:
       s.AssignLiteral("Vulkan");
@@ -90,65 +145,151 @@ void AdapterInfo::GetWgpuBackend(nsString& s) const {
 
 // -
 
-GPU_IMPL_CYCLE_COLLECTION(Adapter, mParent, mBridge, mFeatures, mLimits)
+GPU_IMPL_CYCLE_COLLECTION(Adapter, mParent, mBridge, mFeatures, mLimits, mInfo)
 GPU_IMPL_JS_WRAP(Adapter)
 
-static Maybe<ffi::WGPUFeatures> ToWGPUFeatures(
-    const dom::GPUFeatureName aFeature) {
-  switch (aFeature) {
-    case dom::GPUFeatureName::Depth_clip_control:
-      return Some(WGPUFeatures_DEPTH_CLIP_CONTROL);
+enum class FeatureImplementationStatusTag {
+  Implemented,
+  NotImplemented,
+};
 
-    case dom::GPUFeatureName::Depth32float_stencil8:
-      return Some(WGPUFeatures_DEPTH32FLOAT_STENCIL8);
+struct FeatureImplementationStatus {
+  FeatureImplementationStatusTag tag =
+      FeatureImplementationStatusTag::NotImplemented;
+  union {
+    struct {
+      ffi::WGPUFeaturesWebGPU wgpuBit;
+    } implemented;
+    struct {
+      const char* bugzillaUrlAscii;
+    } unimplemented;
+  } value = {
+      .unimplemented = {
+          .bugzillaUrlAscii =
+              "https://bugzilla.mozilla.org/"
+              "enter_bug.cgi?product=Core&component=Graphics%3A+WebGPU"}};
 
-    case dom::GPUFeatureName::Texture_compression_bc:
-      return Some(WGPUFeatures_TEXTURE_COMPRESSION_BC);
+  static FeatureImplementationStatus fromDomFeature(
+      const dom::GPUFeatureName aFeature) {
+    auto implemented = [](const ffi::WGPUFeaturesWebGPU aBit) {
+      FeatureImplementationStatus feat;
+      feat.tag = FeatureImplementationStatusTag::Implemented;
+      feat.value.implemented.wgpuBit = aBit;
+      return feat;
+    };
+    auto unimplemented = [](const char* aBugzillaUrl) {
+      FeatureImplementationStatus feat;
+      feat.tag = FeatureImplementationStatusTag::NotImplemented;
+      feat.value.unimplemented.bugzillaUrlAscii = aBugzillaUrl;
+      return feat;
+    };
+    switch (aFeature) {
+      case dom::GPUFeatureName::Depth_clip_control:
+        return implemented(WGPUWEBGPU_FEATURE_DEPTH_CLIP_CONTROL);
 
-    case dom::GPUFeatureName::Texture_compression_etc2:
-      return Some(WGPUFeatures_TEXTURE_COMPRESSION_ETC2);
+      case dom::GPUFeatureName::Depth32float_stencil8:
+        return implemented(WGPUWEBGPU_FEATURE_DEPTH32FLOAT_STENCIL8);
 
-    case dom::GPUFeatureName::Texture_compression_astc:
-      return Some(WGPUFeatures_TEXTURE_COMPRESSION_ASTC);
+      case dom::GPUFeatureName::Texture_compression_bc:
+        return implemented(WGPUWEBGPU_FEATURE_TEXTURE_COMPRESSION_BC);
 
-    case dom::GPUFeatureName::Timestamp_query:
-      return Some(WGPUFeatures_TIMESTAMP_QUERY);
+      case dom::GPUFeatureName::Texture_compression_bc_sliced_3d:
+        return implemented(WGPUWEBGPU_FEATURE_TEXTURE_COMPRESSION_BC_SLICED_3D);
 
-    case dom::GPUFeatureName::Indirect_first_instance:
-      return Some(WGPUFeatures_INDIRECT_FIRST_INSTANCE);
+      case dom::GPUFeatureName::Texture_compression_etc2:
+        return implemented(WGPUWEBGPU_FEATURE_TEXTURE_COMPRESSION_ETC2);
 
-    case dom::GPUFeatureName::Shader_f16:
-      return Some(WGPUFeatures_SHADER_F16);
+      case dom::GPUFeatureName::Texture_compression_astc:
+        return implemented(WGPUWEBGPU_FEATURE_TEXTURE_COMPRESSION_ASTC);
 
-    case dom::GPUFeatureName::Rg11b10ufloat_renderable:
-      return Some(WGPUFeatures_RG11B10UFLOAT_RENDERABLE);
+      case dom::GPUFeatureName::Texture_compression_astc_sliced_3d:
+        return implemented(
+            WGPUWEBGPU_FEATURE_TEXTURE_COMPRESSION_ASTC_SLICED_3D);
 
-    case dom::GPUFeatureName::Bgra8unorm_storage:
-      return Some(WGPUFeatures_BGRA8UNORM_STORAGE);
+      case dom::GPUFeatureName::Timestamp_query:
+        return implemented(WGPUWEBGPU_FEATURE_TIMESTAMP_QUERY);
 
-    case dom::GPUFeatureName::Float32_filterable:
-      return Some(WGPUFeatures_FLOAT32_FILTERABLE);
-  }
-  MOZ_CRASH("Bad GPUFeatureName.");
-}
+      case dom::GPUFeatureName::Indirect_first_instance:
+        return implemented(WGPUWEBGPU_FEATURE_INDIRECT_FIRST_INSTANCE);
 
-static Maybe<ffi::WGPUFeatures> MakeFeatureBits(
-    const dom::Sequence<dom::GPUFeatureName>& aFeatures) {
-  ffi::WGPUFeatures bits = 0;
-  for (const auto& feature : aFeatures) {
-    const auto bit = ToWGPUFeatures(feature);
-    if (!bit) {
-      const auto featureStr = dom::GetEnumString(feature);
-      (void)featureStr;
-      NS_WARNING(
-          nsPrintfCString("Requested feature bit for '%s' is not implemented.",
-                          featureStr.get())
-              .get());
-      return Nothing();
+      case dom::GPUFeatureName::Shader_f16:
+        return implemented(WGPUWEBGPU_FEATURE_SHADER_F16);
+
+      case dom::GPUFeatureName::Rg11b10ufloat_renderable:
+        return implemented(WGPUWEBGPU_FEATURE_RG11B10UFLOAT_RENDERABLE);
+
+      case dom::GPUFeatureName::Bgra8unorm_storage:
+        return implemented(WGPUWEBGPU_FEATURE_BGRA8UNORM_STORAGE);
+
+      case dom::GPUFeatureName::Float32_filterable:
+        return implemented(WGPUWEBGPU_FEATURE_FLOAT32_FILTERABLE);
+
+      case dom::GPUFeatureName::Float32_blendable:
+        return unimplemented(
+            "https://bugzilla.mozilla.org/show_bug.cgi?id=1931630");
+
+      case dom::GPUFeatureName::Clip_distances:
+        return unimplemented(
+            "https://bugzilla.mozilla.org/show_bug.cgi?id=1931629");
+
+      case dom::GPUFeatureName::Dual_source_blending:
+        // return implemented(WGPUWEBGPU_FEATURE_DUAL_SOURCE_BLENDING);
+        return unimplemented(
+            "https://bugzilla.mozilla.org/show_bug.cgi?id=1924328");
+
+      case dom::GPUFeatureName::Subgroups:
+        // return implemented(WGPUWEBGPU_FEATURE_SUBGROUPS);
+        return unimplemented(
+            "https://bugzilla.mozilla.org/show_bug.cgi?id=1955417");
+
+      case dom::GPUFeatureName::Core_features_and_limits:
+        // NOTE: `0` means that no bits are set in calling code, but this is on
+        // purpose. We currently _always_ return this feature elsewhere. If this
+        // actually corresponds to a value in the future, remove the
+        // unconditional setting of this feature!
+        return implemented(0);
     }
-    bits |= *bit;
+    MOZ_CRASH("Bad GPUFeatureName.");
   }
-  return Some(bits);
+};
+
+double GetLimitDefault(Limit aLimit) {
+  switch (aLimit) {
+      // clang-format off
+      case Limit::MaxTextureDimension1D: return 8192;
+      case Limit::MaxTextureDimension2D: return 8192;
+      case Limit::MaxTextureDimension3D: return 2048;
+      case Limit::MaxTextureArrayLayers: return 256;
+      case Limit::MaxBindGroups: return 4;
+      case Limit::MaxBindGroupsPlusVertexBuffers: return 24;
+      case Limit::MaxBindingsPerBindGroup: return 1000;
+      case Limit::MaxDynamicUniformBuffersPerPipelineLayout: return 8;
+      case Limit::MaxDynamicStorageBuffersPerPipelineLayout: return 4;
+      case Limit::MaxSampledTexturesPerShaderStage: return 16;
+      case Limit::MaxSamplersPerShaderStage: return 16;
+      case Limit::MaxStorageBuffersPerShaderStage: return 8;
+      case Limit::MaxStorageTexturesPerShaderStage: return 4;
+      case Limit::MaxUniformBuffersPerShaderStage: return 12;
+      case Limit::MaxUniformBufferBindingSize: return 65536;
+      case Limit::MaxStorageBufferBindingSize: return 134217728;
+      case Limit::MinUniformBufferOffsetAlignment: return 256;
+      case Limit::MinStorageBufferOffsetAlignment: return 256;
+      case Limit::MaxVertexBuffers: return 8;
+      case Limit::MaxBufferSize: return 268435456;
+      case Limit::MaxVertexAttributes: return 16;
+      case Limit::MaxVertexBufferArrayStride: return 2048;
+      case Limit::MaxInterStageShaderVariables: return 16;
+      case Limit::MaxColorAttachments: return 8;
+      case Limit::MaxColorAttachmentBytesPerSample: return 32;
+      case Limit::MaxComputeWorkgroupStorageSize: return 16384;
+      case Limit::MaxComputeInvocationsPerWorkgroup: return 256;
+      case Limit::MaxComputeWorkgroupSizeX: return 256;
+      case Limit::MaxComputeWorkgroupSizeY: return 256;
+      case Limit::MaxComputeWorkgroupSizeZ: return 64;
+      case Limit::MaxComputeWorkgroupsPerDimension: return 65535;
+      // clang-format on
+  }
+  MOZ_CRASH("Bad Limit");
 }
 
 Adapter::Adapter(Instance* const aParent, WebGPUChild* const aBridge,
@@ -158,21 +299,25 @@ Adapter::Adapter(Instance* const aParent, WebGPUChild* const aBridge,
       mId(aInfo->id),
       mFeatures(new SupportedFeatures(this)),
       mLimits(new SupportedLimits(this, aInfo->limits)),
-      mInfo(aInfo) {
+      mInfo(new AdapterInfo(this, aInfo)),
+      mInfoInner(aInfo) {
   ErrorResult ignoredRv;  // It's onerous to plumb this in from outside in this
                           // case, and we don't really need to.
 
   static const auto FEATURE_BY_BIT = []() {
-    auto ret = std::unordered_map<ffi::WGPUFeatures, dom::GPUFeatureName>{};
+    auto ret =
+        std::unordered_map<ffi::WGPUFeaturesWebGPU, dom::GPUFeatureName>{};
 
     for (const auto feature :
          dom::MakeWebIDLEnumeratedRange<dom::GPUFeatureName>()) {
-      const auto bitForFeature = ToWGPUFeatures(feature);
-      if (!bitForFeature) {
-        // There are some features that don't have bits.
-        continue;
+      const auto status = FeatureImplementationStatus::fromDomFeature(feature);
+      switch (status.tag) {
+        case FeatureImplementationStatusTag::Implemented:
+          ret[status.value.implemented.wgpuBit] = feature;
+          break;
+        case FeatureImplementationStatusTag::NotImplemented:
+          break;
       }
-      ret[*bitForFeature] = feature;
     }
 
     return ret;
@@ -196,7 +341,33 @@ Adapter::Adapter(Instance* const aParent, WebGPUChild* const aBridge,
     if (featureForBit != FEATURE_BY_BIT.end()) {
       mFeatures->Add(featureForBit->second, ignoredRv);
     } else {
-      // We don't recognize that bit, but maybe it's a wpgu-native-only feature.
+      // One of two cases:
+      //
+      // 1. WGPU claims to implement this, but we've explicitly marked this as
+      // not implemented.
+      // 2. We don't recognize that bit, but maybe it's a wpgu-native-only
+      // feature.
+    }
+  }
+  // TODO: Once we implement compat mode (see
+  // <https://bugzilla.mozilla.org/show_bug.cgi?id=1905951>), do not report this
+  // unconditionally.
+  //
+  // Meanwhile, the current spec. proposal's `Initialization` section (see
+  // <https://github.com/gpuweb/gpuweb/blob/main/proposals/compatibility-mode.md#initialization>)
+  // says:
+  //
+  // > Core-defaulting adapters *always* support the
+  // > `"core-features-and-limits"` feature. It is *automatically enabled* on
+  // > devices created from such adapters.
+  mFeatures->Add(dom::GPUFeatureName::Core_features_and_limits, ignoredRv);
+
+  // We clamp limits to defaults when requestDevice is called, but
+  // we return the actual limits when only requestAdapter is called.
+  // So, we should clamp the limits here too if we should RFP.
+  if (GetParentObject()->ShouldResistFingerprinting(RFPTarget::WebGPULimits)) {
+    for (const auto limit : MakeInclusiveEnumeratedRange(Limit::_LAST)) {
+      SetLimit(mLimits->mFfi.get(), limit, GetLimitDefault(limit));
     }
   }
 }
@@ -212,8 +383,21 @@ void Adapter::Cleanup() {
 
 const RefPtr<SupportedFeatures>& Adapter::Features() const { return mFeatures; }
 const RefPtr<SupportedLimits>& Adapter::Limits() const { return mLimits; }
+const RefPtr<AdapterInfo>& Adapter::Info() const { return mInfo; }
+
 bool Adapter::IsFallbackAdapter() const {
-  return mInfo->device_type == ffi::WGPUDeviceType::WGPUDeviceType_Cpu;
+  if (GetParentObject()->ShouldResistFingerprinting(
+          RFPTarget::WebGPUIsFallbackAdapter)) {
+    // Always report hardware support for WebGPU.
+    // This behaviour matches with media capabilities API.
+    return false;
+  }
+
+  return mInfoInner->device_type == ffi::WGPUDeviceType::WGPUDeviceType_Cpu;
+}
+
+bool Adapter::SupportExternalTextureInSwapChain() const {
+  return mInfoInner->support_use_external_texture_in_swap_chain;
 }
 
 static std::string_view ToJsKey(const Limit limit) {
@@ -262,8 +446,6 @@ static std::string_view ToJsKey(const Limit limit) {
       return "maxVertexAttributes";
     case Limit::MaxVertexBufferArrayStride:
       return "maxVertexBufferArrayStride";
-    case Limit::MaxInterStageShaderComponents:
-      return "maxInterStageShaderComponents";
     case Limit::MaxInterStageShaderVariables:
       return "maxInterStageShaderVariables";
     case Limit::MaxColorAttachments:
@@ -286,6 +468,37 @@ static std::string_view ToJsKey(const Limit limit) {
   MOZ_CRASH("Bad Limit");
 }
 
+uint64_t Adapter::MissingFeatures() const {
+  uint64_t missingFeatures = 0;
+
+  // Turn on all implemented features.
+  for (const auto feature :
+       dom::MakeWebIDLEnumeratedRange<dom::GPUFeatureName>()) {
+    const auto status = FeatureImplementationStatus::fromDomFeature(feature);
+    switch (status.tag) {
+      case FeatureImplementationStatusTag::Implemented:
+        missingFeatures |= status.value.implemented.wgpuBit;
+        break;
+      case FeatureImplementationStatusTag::NotImplemented:
+        break;
+    }
+  }
+
+  // Turn off features that are supported by the adapter.
+  for (auto feature : mFeatures->Features()) {
+    const auto status = FeatureImplementationStatus::fromDomFeature(feature);
+    switch (status.tag) {
+      case FeatureImplementationStatusTag::Implemented:
+        missingFeatures &= ~status.value.implemented.wgpuBit;
+        break;
+      case FeatureImplementationStatusTag::NotImplemented:
+        break;
+    }
+  }
+
+  return missingFeatures;
+}
+
 // -
 // String helpers
 
@@ -303,46 +516,7 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
 
   ffi::WGPULimits deviceLimits = *mLimits->mFfi;
   for (const auto limit : MakeInclusiveEnumeratedRange(Limit::_LAST)) {
-    const auto defaultValue = [&]() -> double {
-      switch (limit) {
-          // clang-format off
-      case Limit::MaxTextureDimension1D: return 8192;
-      case Limit::MaxTextureDimension2D: return 8192;
-      case Limit::MaxTextureDimension3D: return 2048;
-      case Limit::MaxTextureArrayLayers: return 256;
-      case Limit::MaxBindGroups: return 4;
-      case Limit::MaxBindGroupsPlusVertexBuffers: return 24;
-      case Limit::MaxBindingsPerBindGroup: return 1000;
-      case Limit::MaxDynamicUniformBuffersPerPipelineLayout: return 8;
-      case Limit::MaxDynamicStorageBuffersPerPipelineLayout: return 4;
-      case Limit::MaxSampledTexturesPerShaderStage: return 16;
-      case Limit::MaxSamplersPerShaderStage: return 16;
-      case Limit::MaxStorageBuffersPerShaderStage: return 8;
-      case Limit::MaxStorageTexturesPerShaderStage: return 4;
-      case Limit::MaxUniformBuffersPerShaderStage: return 12;
-      case Limit::MaxUniformBufferBindingSize: return 65536;
-      case Limit::MaxStorageBufferBindingSize: return 134217728;
-      case Limit::MinUniformBufferOffsetAlignment: return 256;
-      case Limit::MinStorageBufferOffsetAlignment: return 256;
-      case Limit::MaxVertexBuffers: return 8;
-      case Limit::MaxBufferSize: return 268435456;
-      case Limit::MaxVertexAttributes: return 16;
-      case Limit::MaxVertexBufferArrayStride: return 2048;
-      case Limit::MaxInterStageShaderComponents: return 60;
-      case Limit::MaxInterStageShaderVariables: return 16;
-      case Limit::MaxColorAttachments: return 8;
-      case Limit::MaxColorAttachmentBytesPerSample: return 32;
-      case Limit::MaxComputeWorkgroupStorageSize: return 16384;
-      case Limit::MaxComputeInvocationsPerWorkgroup: return 256;
-      case Limit::MaxComputeWorkgroupSizeX: return 256;
-      case Limit::MaxComputeWorkgroupSizeY: return 256;
-      case Limit::MaxComputeWorkgroupSizeZ: return 64;
-      case Limit::MaxComputeWorkgroupsPerDimension: return 65535;
-          // clang-format on
-      }
-      MOZ_CRASH("Bad Limit");
-    }();
-    SetLimit(&deviceLimits, limit, defaultValue);
+    SetLimit(&deviceLimits, limit, GetLimitDefault(limit));
   }
 
   // -
@@ -357,14 +531,33 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
     // -
     // Validate Features
 
+    ffi::WGPUFeaturesWebGPU featureBits = 0;
     for (const auto requested : aDesc.mRequiredFeatures) {
-      const bool supported = mFeatures->Features().count(requested);
-      if (!supported) {
+      auto status = FeatureImplementationStatus::fromDomFeature(requested);
+      switch (status.tag) {
+        case FeatureImplementationStatusTag::Implemented:
+          featureBits |= status.value.implemented.wgpuBit;
+          break;
+        case FeatureImplementationStatusTag::NotImplemented: {
+          const auto featureStr = dom::GetEnumString(requested);
+          (void)featureStr;
+          nsPrintfCString msg(
+              "`GPUAdapter.requestDevice`: '%s' was requested in "
+              "`requiredFeatures`, but it is not supported by Firefox."
+              "Follow <%s> for updates.",
+              featureStr.get(), status.value.unimplemented.bugzillaUrlAscii);
+          promise->MaybeRejectWithTypeError(msg);
+          return;
+        }
+      }
+
+      const bool supportedByAdapter = mFeatures->Features().count(requested);
+      if (!supportedByAdapter) {
         const auto fstr = dom::GetEnumString(requested);
         const auto astr = this->LabelOrId();
         nsPrintfCString msg(
-            "requestDevice: Feature '%s' requested must be supported by "
-            "adapter %s",
+            "`GPUAdapter.requestDevice`: '%s' was requested in "
+            "`requiredFeatures`, but it is not supported by adapter %s.",
             fstr.get(), astr.get());
         promise->MaybeRejectWithTypeError(msg);
         return;
@@ -434,6 +627,9 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
             }
           }
           /// Clamp to default if higher than default
+          /// Changing implementation in a way that increases fingerprinting
+          /// surface? Please create a bug in [Core::Privacy: Anti
+          /// Tracking](https://bugzilla.mozilla.org/enter_bug.cgi?product=Core&component=Privacy%3A%20Anti-Tracking)
           requestedValue =
               std::min(requestedValue, GetLimit(deviceLimits, limit));
         }
@@ -444,8 +640,8 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
 
     // -
 
-    ffi::WGPUDeviceDescriptor ffiDesc = {};
-    ffiDesc.required_features = *MakeFeatureBits(aDesc.mRequiredFeatures);
+    ffi::WGPUFfiDeviceDescriptor ffiDesc = {};
+    ffiDesc.required_features = featureBits;
     ffiDesc.required_limits = deviceLimits;
     auto request = mBridge->AdapterRequestDevice(mId, ffiDesc);
     if (!request) {
@@ -453,11 +649,25 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
           "Unable to instantiate a Device");
       return;
     }
-    RefPtr<Device> device =
-        new Device(this, request->mId, ffiDesc.required_limits);
+    RefPtr<Device> device = new Device(
+        this, request->mDeviceId, request->mQueueId, ffiDesc.required_limits);
+    device->SetLabel(aDesc.mLabel);
+
     for (const auto& feature : aDesc.mRequiredFeatures) {
       device->mFeatures->Add(feature, aRv);
     }
+    // TODO: Once we implement compat mode (see
+    // <https://bugzilla.mozilla.org/show_bug.cgi?id=1905951>), do not report
+    // this unconditionally.
+    //
+    // Meanwhile, the current spec. proposal's `Initialization` section (see
+    // <https://github.com/gpuweb/gpuweb/blob/main/proposals/compatibility-mode.md#initialization>)
+    // says:
+    //
+    // > Core-defaulting adapters *always* support the
+    // > `"core-features-and-limits"` feature. It is *automatically enabled* on
+    // > devices created from such adapters.
+    device->mFeatures->Add(dom::GPUFeatureName::Core_features_and_limits, aRv);
 
     request->mPromise->Then(
         GetCurrentSerialEventTarget(), __func__,
@@ -465,9 +675,7 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
           if (aSuccess) {
             promise->MaybeResolve(device);
           } else {
-            // In this path, request->mId has an error entry in the wgpu
-            // registry, so let Device::~Device clean things up on both the
-            // child and parent side.
+            device->CleanupUnregisteredInParent();
             promise->MaybeRejectWithInvalidStateError(
                 "Unable to fulfill requested features and limits");
           }
@@ -482,18 +690,6 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
         });
   }();
 
-  return promise.forget();
-}
-
-// -
-
-already_AddRefed<dom::Promise> Adapter::RequestAdapterInfo(
-    const dom::Sequence<nsString>& /*aUnmaskHints*/, ErrorResult& aRv) const {
-  RefPtr<dom::Promise> promise = dom::Promise::Create(GetParentObject(), aRv);
-  if (!promise) return nullptr;
-
-  auto rai = UniquePtr<AdapterInfo>{new AdapterInfo(mInfo)};
-  promise->MaybeResolve(std::move(rai));
   return promise.forget();
 }
 

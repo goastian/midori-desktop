@@ -55,7 +55,7 @@ class nsNodeSupportsWeakRefTearoff final : public nsISupportsWeakReference {
   explicit nsNodeSupportsWeakRefTearoff(nsINode* aNode) : mNode(aNode) {}
 
   // nsISupports
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
 
   // nsISupportsWeakReference
   NS_DECL_NSISUPPORTSWEAKREFERENCE
@@ -74,6 +74,7 @@ class nsNodeSupportsWeakRefTearoff final : public nsISupportsWeakReference {
  */
 namespace mozilla::dom {
 
+class DOMIntersectionObserver;
 class ShadowRoot;
 
 class FragmentOrElement : public nsIContent {
@@ -258,10 +259,30 @@ class FragmentOrElement : public nsIContent {
     bool mTemporarilyVisibleForScrolledIntoViewDescendant = false;
 
     /**
-     * Explicitly set attr-elements, see
-     * https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#explicitly-set-attr-element
+     * The .dataset attribute.
+     * @see nsGenericHTMLElement::GetDataset
      */
-    nsTHashMap<RefPtr<nsAtom>, nsWeakPtr> mExplicitlySetAttrElements;
+    nsDOMStringMap* MOZ_UNSAFE_REF("ClearDataSet clears it") mDataset = nullptr;
+
+    /** An object implementing the .part property for this element. */
+    RefPtr<nsDOMTokenList> mPart;
+
+    /**
+     * Explicitly set attr-element, see
+     * https://html.spec.whatwg.org/#explicitly-set-attr-element
+     */
+    nsTHashMap<RefPtr<nsAtom>, nsWeakPtr> mExplicitlySetAttrElementMap;
+    /**
+     * Explicitly set attr-elements, see
+     * https://html.spec.whatwg.org/#explicitly-set-attr-elements
+     *
+     * The first member of the pair are the explicitly set attr-elements. The
+     * second member is the cached attr-associated elements.
+     */
+
+    nsTHashMap<RefPtr<nsAtom>, std::pair<Maybe<nsTArray<nsWeakPtr>>,
+                                         Maybe<nsTArray<RefPtr<Element>>>>>
+        mAttrElementsMap;
   };
 
   class nsDOMSlots : public nsIContent::nsContentSlots {
@@ -282,12 +303,6 @@ class FragmentOrElement : public nsIContent {
     nsCOMPtr<nsICSSDeclaration> mStyle;
 
     /**
-     * The .dataset attribute.
-     * @see nsGenericHTMLElement::GetDataset
-     */
-    nsDOMStringMap* mDataset;  // [Weak]
-
-    /**
      * @see Element::Attributes
      */
     RefPtr<nsDOMAttributeMap> mAttributeMap;
@@ -301,11 +316,6 @@ class FragmentOrElement : public nsIContent {
      * An object implementing the .classList property for this element.
      */
     RefPtr<nsDOMTokenList> mClassList;
-
-    /**
-     * An object implementing the .part property for this element.
-     */
-    RefPtr<nsDOMTokenList> mPart;
   };
 
   /**

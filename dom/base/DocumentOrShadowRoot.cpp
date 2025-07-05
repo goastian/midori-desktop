@@ -116,15 +116,20 @@ void DocumentOrShadowRoot::OnSetAdoptedStyleSheets(StyleSheet& aSheet,
   // 1. If value’s constructed flag is not set, or its constructor document is
   // not equal to this DocumentOrShadowRoot's node document, throw a
   // "NotAllowedError" DOMException.
-  if (!aSheet.IsConstructed()) {
-    return aRv.ThrowNotAllowedError(
-        "Adopted style sheet must be created through the Constructable "
-        "StyleSheets API");
-  }
-  if (!aSheet.ConstructorDocumentMatches(doc)) {
-    return aRv.ThrowNotAllowedError(
-        "Adopted style sheet's constructor document must match the "
-        "document or shadow root's node document");
+
+  if (!StaticPrefs::
+          dom_webcomponents_lift_adoptedstylesheets_restriction_enabled()) {
+    if (!aSheet.IsConstructed()) {
+      return aRv.ThrowNotAllowedError(
+          "Adopted style sheet must be created through the Constructable "
+          "StyleSheets API");
+    }
+
+    if (!aSheet.ConstructorDocumentMatches(doc)) {
+      return aRv.ThrowNotAllowedError(
+          "Adopted style sheet's constructor document must match the "
+          "document or shadow root's node document");
+    }
   }
 
   auto* shadow = ShadowRoot::FromNode(AsNode());
@@ -496,17 +501,19 @@ nsINode* DocumentOrShadowRoot::NodeFromPoint(float aX, float aY) {
 
 Element* DocumentOrShadowRoot::ElementFromPointHelper(
     float aX, float aY, bool aIgnoreRootScrollFrame, bool aFlushLayout,
-    ViewportType aViewportType) {
+    ViewportType aViewportType, bool aPerformRetargeting) {
   EnumSet<FrameForPointOption> options;
   if (aIgnoreRootScrollFrame) {
     options += FrameForPointOption::IgnoreRootScrollFrame;
   }
 
   auto flush = aFlushLayout ? FlushLayout::Yes : FlushLayout::No;
+  auto performRetargeting =
+      aPerformRetargeting ? PerformRetargeting::Yes : PerformRetargeting::No;
 
   AutoTArray<RefPtr<Element>, 1> elements;
   QueryNodesFromPoint(*this, aX, aY, options, flush, Multiple::No,
-                      aViewportType, PerformRetargeting::Yes, elements);
+                      aViewportType, performRetargeting, elements);
   return elements.SafeElementAt(0);
 }
 
@@ -578,8 +585,8 @@ void DocumentOrShadowRoot::RemoveIDTargetObserver(nsAtom* aID,
   entry->RemoveContentChangeCallback(aObserver, aData, aForImage);
 }
 
-Element* DocumentOrShadowRoot::LookupImageElement(const nsAString& aId) {
-  if (aId.IsEmpty()) {
+Element* DocumentOrShadowRoot::LookupImageElement(nsAtom* aId) {
+  if (aId->IsEmpty()) {
     return nullptr;
   }
 
@@ -598,7 +605,8 @@ void DocumentOrShadowRoot::GetAnimations(
   // structure while iterating over the children below.
   if (Document* doc = AsNode().GetComposedDoc()) {
     doc->FlushPendingNotifications(
-        ChangesToFlush(FlushType::Style, false /* flush animations */));
+        ChangesToFlush(FlushType::Style, /* aFlushAnimations = */ false,
+                       /* aUpdateRelevancy = */ false));
   }
 
   GetAnimationsOptions options;
@@ -616,15 +624,65 @@ void DocumentOrShadowRoot::GetAnimations(
   aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
 }
 
-int32_t DocumentOrShadowRoot::StyleOrderIndexOfSheet(
+struct SheetTreeOrderComparator {
+  nsINode* mNode = nullptr;
+  mutable nsContentUtils::NodeIndexCache mCache;
+
+  int operator()(StyleSheet* aSheet) const {
+    auto* sheetNode = aSheet->GetOwnerNode();
+    MOZ_ASSERT(sheetNode != mNode, "Sheet already in the list?");
+    if (!sheetNode) {
+      // We go after all the link headers.
+      return 1;
+    }
+    return nsContentUtils::CompareTreePosition<TreeKind::DOM>(mNode, sheetNode,
+                                                              nullptr, &mCache);
+  }
+};
+
+size_t DocumentOrShadowRoot::FindSheetInsertionPointInTree(
+    const StyleSheet& aSheet) const {
+  MOZ_ASSERT(!aSheet.IsConstructed());
+  nsINode* owningNode = aSheet.GetOwnerNode();
+  // We should always have an owning node unless Link: headers are at play.
+  MOZ_ASSERT_IF(!owningNode, AsNode().IsDocument());
+  MOZ_ASSERT_IF(owningNode, owningNode->SubtreeRoot() == &AsNode());
+  if (mStyleSheets.IsEmpty()) {
+    return 0;
+  }
+
+  if (!owningNode) {
+    // We come from a link header, our position is after all the other link
+    // headers, but before any link-owned node.
+    size_t i = 0;
+    for (const auto& sheet : mStyleSheets) {
+      if (sheet->GetOwnerNode()) {
+        break;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  SheetTreeOrderComparator cmp{owningNode};
+  if (cmp(mStyleSheets.LastElement()) > 0) {
+    // Optimize for append.
+    return mStyleSheets.Length();
+  }
+  size_t idx;
+  BinarySearchIf(mStyleSheets, 0, mStyleSheets.Length(), cmp, &idx);
+  return idx;
+}
+
+size_t DocumentOrShadowRoot::StyleOrderIndexOfSheet(
     const StyleSheet& aSheet) const {
   if (aSheet.IsConstructed()) {
     // NOTE: constructable sheets can have duplicates, so we need to start
     // looking from behind.
-    int32_t index = mAdoptedStyleSheets.LastIndexOf(&aSheet);
-    return (index < 0) ? index : index + SheetCount();
+    size_t index = mAdoptedStyleSheets.LastIndexOf(&aSheet);
+    return index == mAdoptedStyleSheets.NoIndex ? index : index + SheetCount();
   }
-  return mStyleSheets.IndexOf(&aSheet);
+  return mStyleSheets.LastIndexOf(&aSheet);
 }
 
 void DocumentOrShadowRoot::TraverseSheetRefInStylesIfApplicable(

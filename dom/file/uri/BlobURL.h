@@ -12,29 +12,19 @@
 #include "nsSimpleURI.h"
 #include "prtime.h"
 
-#define NS_HOSTOBJECTURI_CID                         \
-  {                                                  \
-    0xf5475c51, 0x59a7, 0x4757, {                    \
-      0xb3, 0xd9, 0xe2, 0x11, 0xa9, 0x41, 0x08, 0x72 \
-    }                                                \
-  }
+#define NS_HOSTOBJECTURI_CID \
+  {0xf5475c51, 0x59a7, 0x4757, {0xb3, 0xd9, 0xe2, 0x11, 0xa9, 0x41, 0x08, 0x72}}
 
-#define NS_IBLOBURLMUTATOR_IID                       \
-  {                                                  \
-    0xf91e646d, 0xe87b, 0x485e, {                    \
-      0xbb, 0xc8, 0x0e, 0x8a, 0x2e, 0xe9, 0x87, 0xa9 \
-    }                                                \
-  }
+#define NS_IBLOBURLMUTATOR_IID \
+  {0xf91e646d, 0xe87b, 0x485e, {0xbb, 0xc8, 0x0e, 0x8a, 0x2e, 0xe9, 0x87, 0xa9}}
 
 class NS_NO_VTABLE nsIBlobURLMutator : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_IBLOBURLMUTATOR_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_IBLOBURLMUTATOR_IID)
   NS_IMETHOD SetRevoked(bool aRevoked) = 0;
 };
 
 inline NS_DEFINE_CID(kHOSTOBJECTURICID, NS_HOSTOBJECTURI_CID);
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsIBlobURLMutator, NS_IBLOBURLMUTATOR_IID)
 
 namespace mozilla::dom {
 
@@ -49,19 +39,16 @@ class BlobURL final : public mozilla::net::nsSimpleURI {
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSISERIALIZABLE
 
-  // Override CloneInternal() and EqualsInternal()
-  nsresult CloneInternal(RefHandlingEnum aRefHandlingMode,
-                         const nsACString& newRef, nsIURI** aClone) override;
+  // Override EqualsInternal()
   nsresult EqualsInternal(nsIURI* aOther, RefHandlingEnum aRefHandlingMode,
                           bool* aResult) override;
   NS_IMETHOD_(void) Serialize(mozilla::ipc::URIParams& aParams) override;
 
-  // Override StartClone to hand back a BlobURL
-  mozilla::net::nsSimpleURI* StartClone(RefHandlingEnum refHandlingMode,
-                                        const nsACString& newRef) override {
-    BlobURL* url = new BlobURL();
-    SetRefOnClone(url, refHandlingMode, newRef);
-    return url;
+  // Override StartClone to hand back a BlobURL with mRevoked set.
+  already_AddRefed<mozilla::net::nsSimpleURI> StartClone() override {
+    RefPtr<BlobURL> url = new BlobURL();
+    url->mRevoked = mRevoked;
+    return url.forget();
   }
 
   bool Revoked() const { return mRevoked; }
@@ -111,12 +98,8 @@ class BlobURL final : public mozilla::net::nsSimpleURI {
   friend BaseURIMutator<BlobURL>;
 };
 
-#define NS_HOSTOBJECTURIMUTATOR_CID                  \
-  {                                                  \
-    0xbbe50ef2, 0x80eb, 0x469d, {                    \
-      0xb7, 0x0d, 0x02, 0x85, 0x82, 0x75, 0x38, 0x9f \
-    }                                                \
-  }
+#define NS_HOSTOBJECTURIMUTATOR_CID \
+  {0xbbe50ef2, 0x80eb, 0x469d, {0xb7, 0x0d, 0x02, 0x85, 0x82, 0x75, 0x38, 0x9f}}
 
 }  // namespace mozilla::dom
 

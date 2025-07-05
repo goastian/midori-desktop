@@ -18,7 +18,7 @@ namespace mozilla {
 using InternalResults = SdpParser::InternalResults;
 
 /* static */
-const std::string SipccSdpAttributeList::kEmptyString = "";
+MOZ_RUNINIT const std::string SipccSdpAttributeList::kEmptyString = "";
 
 SipccSdpAttributeList::SipccSdpAttributeList(
     const SipccSdpAttributeList* sessionLevel)
@@ -142,7 +142,12 @@ void SipccSdpAttributeList::LoadSimpleNumbers(sdp_t* sdp, uint16_t level,
 }
 
 void SipccSdpAttributeList::LoadFlags(sdp_t* sdp, uint16_t level) {
-  if (AtSessionLevel()) {
+  // any-level
+  if (sdp_attr_valid(sdp, SDP_ATTR_EXTMAP_ALLOW_MIXED, level, 0, 1)) {
+    SetAttribute(
+        new SdpFlagAttribute(SdpAttribute::kExtmapAllowMixedAttribute));
+  }
+  if (AtSessionLevel()) {  // session-level only
     if (sdp_attr_valid(sdp, SDP_ATTR_ICE_LITE, level, 0, 1)) {
       SetAttribute(new SdpFlagAttribute(SdpAttribute::kIceLiteAttribute));
     }
@@ -157,8 +162,9 @@ void SipccSdpAttributeList::LoadFlags(sdp_t* sdp, uint16_t level) {
     if (sdp_attr_valid(sdp, SDP_ATTR_BUNDLE_ONLY, level, 0, 1)) {
       SetAttribute(new SdpFlagAttribute(SdpAttribute::kBundleOnlyAttribute));
     }
-    if (sdp_attr_valid(sdp, SDP_ATTR_RTCP_RSIZE, level, 0, 1))
+    if (sdp_attr_valid(sdp, SDP_ATTR_RTCP_RSIZE, level, 0, 1)) {
       SetAttribute(new SdpFlagAttribute(SdpAttribute::kRtcpRsizeAttribute));
+    }
   }
 }
 
@@ -180,7 +186,8 @@ static void ConvertDirection(sdp_direction_e sipcc_direction,
     case SDP_MAX_QOS_DIRECTIONS:
       // Nothing actually sets this value.
       // Fall through to MOZ_CRASH below.
-      {}
+      {
+      }
   }
 
   MOZ_CRASH("Invalid direction from sipcc; this is probably corruption");
@@ -345,6 +352,8 @@ SdpRtpmapAttributeList::CodecType SipccSdpAttributeList::GetCodecType(
     case RTP_H264_P0:
     case RTP_H264_P1:
       return SdpRtpmapAttributeList::kH264;
+    case RTP_AV1:
+      return SdpRtpmapAttributeList::kAV1;
     case RTP_OPUS:
       return SdpRtpmapAttributeList::kOpus;
     case RTP_VP8:
@@ -457,7 +466,8 @@ void SipccSdpAttributeList::LoadSetup(sdp_t* sdp, uint16_t level) {
     case SDP_MAX_SETUP:
       // There is no code that will set these.
       // Fall through to MOZ_CRASH() below.
-      {}
+      {
+      }
   }
 
   MOZ_CRASH("Invalid setup type from sipcc. This is probably corruption.");
@@ -732,6 +742,20 @@ void SipccSdpAttributeList::LoadFmtp(sdp_t* sdp, uint16_t level) {
         h264Parameters->max_br = fmtp->max_br;
 
         parameters.reset(h264Parameters);
+      } break;
+      case RTP_AV1: {
+        SdpFmtpAttributeList::Av1Parameters* av1Parameters(
+            new SdpFmtpAttributeList::Av1Parameters());
+        if (fmtp->profile > 0 && fmtp->profile <= UINT8_MAX) {
+          av1Parameters->profile = Some(static_cast<uint8_t>(fmtp->profile));
+        }
+        if (fmtp->av1_has_level_idx) {
+          av1Parameters->profile = Some(fmtp->av1_level_idx);
+        }
+        if (fmtp->av1_has_tier) {
+          av1Parameters->tier = Some(fmtp->av1_tier);
+        }
+        parameters.reset(av1Parameters);
       } break;
       case RTP_VP9: {
         SdpFmtpAttributeList::VP8Parameters* vp9Parameters(

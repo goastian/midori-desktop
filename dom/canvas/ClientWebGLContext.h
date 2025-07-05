@@ -18,7 +18,6 @@
 #include "mozilla/dom/WebGL2RenderingContextBinding.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/StaticPrefs_webgl.h"
-#include "WebGLFormats.h"
 #include "WebGLStrongTypes.h"
 #include "WebGLTypes.h"
 
@@ -177,7 +176,7 @@ class ContextGenerationInfo final {
 
   webgl::ProvokingVertex mProvokingVertex = webgl::ProvokingVertex::LastVertex;
 
-  mutable Maybe<std::unordered_map<GLenum, bool>> mIsEnabledMap;
+  mutable std::unordered_map<GLenum, bool> mIsEnabledMap;
 };
 
 // -
@@ -195,7 +194,7 @@ struct NotLostData final {
   webgl::InitContextResult info;
 
   RefPtr<mozilla::dom::WebGLChild> outOfProcess;
-  UniquePtr<HostWebGLContext> inProcess;
+  std::unique_ptr<HostWebGLContext> inProcess;
 
   webgl::ContextGenerationInfo state;
   std::array<RefPtr<ClientWebGLExtensionBase>,
@@ -220,7 +219,7 @@ class ObjectJS {
  protected:
   bool mDeleteRequested = false;
 
-  explicit ObjectJS(const ClientWebGLContext&);
+  explicit ObjectJS(const ClientWebGLContext*);
   virtual ~ObjectJS() = default;
 
  public:
@@ -274,7 +273,7 @@ class WebGLBufferJS final : public nsWrapperCache, public webgl::ObjectJS {
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLBufferJS)
 
   explicit WebGLBufferJS(const ClientWebGLContext& webgl)
-      : webgl::ObjectJS(webgl) {}
+      : webgl::ObjectJS(&webgl) {}
 
  private:
   ~WebGLBufferJS();
@@ -396,7 +395,7 @@ class WebGLQueryJS final : public nsWrapperCache,
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLQueryJS)
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLQueryJS)
 
-  explicit WebGLQueryJS(const ClientWebGLContext& webgl)
+  explicit WebGLQueryJS(const ClientWebGLContext* const webgl)
       : webgl::ObjectJS(webgl) {}
 
  private:
@@ -420,7 +419,7 @@ class WebGLRenderbufferJS final : public nsWrapperCache,
   bool mHasBeenBound = false;  // !IsRenderbuffer until Bind
 
   explicit WebGLRenderbufferJS(const ClientWebGLContext& webgl)
-      : webgl::ObjectJS(webgl) {}
+      : webgl::ObjectJS(&webgl) {}
   ~WebGLRenderbufferJS();
 
  public:
@@ -436,7 +435,7 @@ class WebGLSamplerJS final : public nsWrapperCache, public webgl::ObjectJS {
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLSamplerJS)
 
   explicit WebGLSamplerJS(const ClientWebGLContext& webgl)
-      : webgl::ObjectJS(webgl) {}
+      : webgl::ObjectJS(&webgl) {}
 
  private:
   ~WebGLSamplerJS();
@@ -497,7 +496,7 @@ class WebGLSyncJS final : public nsWrapperCache,
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLSyncJS)
 
   explicit WebGLSyncJS(const ClientWebGLContext& webgl)
-      : webgl::ObjectJS(webgl) {}
+      : webgl::ObjectJS(&webgl) {}
 
  private:
   ~WebGLSyncJS();
@@ -518,7 +517,7 @@ class WebGLTextureJS final : public nsWrapperCache, public webgl::ObjectJS {
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLTextureJS)
 
   explicit WebGLTextureJS(const ClientWebGLContext& webgl)
-      : webgl::ObjectJS(webgl) {}
+      : webgl::ObjectJS(&webgl) {}
 
  private:
   ~WebGLTextureJS();
@@ -571,7 +570,7 @@ class WebGLUniformLocationJS final : public nsWrapperCache,
   WebGLUniformLocationJS(const ClientWebGLContext& webgl,
                          std::weak_ptr<webgl::LinkResult> parent, uint32_t loc,
                          GLenum elemType)
-      : webgl::ObjectJS(webgl),
+      : webgl::ObjectJS(&webgl),
         mParent(parent),
         mLocation(loc),
         mValidUploadElemTypes(ValidUploadElemTypes(elemType)) {}
@@ -596,7 +595,7 @@ class WebGLVertexArrayJS final : public nsWrapperCache, public webgl::ObjectJS {
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLVertexArrayJS)
   NS_DECL_CYCLE_COLLECTION_NATIVE_WRAPPERCACHE_CLASS(WebGLVertexArrayJS)
 
-  explicit WebGLVertexArrayJS(const ClientWebGLContext&);
+  explicit WebGLVertexArrayJS(const ClientWebGLContext*);
 
  private:
   ~WebGLVertexArrayJS();
@@ -1013,7 +1012,9 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   already_AddRefed<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(
       gfxAlphaType* out_alphaType) override;
 
-  void SetOpaqueValueFromOpaqueAttr(bool) override{};
+  mozilla::ipc::IProtocol* SupportsSnapshotExternalCanvas() const override;
+
+  void SetOpaqueValueFromOpaqueAttr(bool) override {};
   bool GetIsOpaque() override { return !mInitialOptions->alpha; }
 
   /**
@@ -1056,13 +1057,21 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   // -
 
  private:
-  dom::PredefinedColorSpace mDrawingBufferColorSpace =
-      dom::PredefinedColorSpace::Srgb;
+  std::optional<dom::PredefinedColorSpace> mDrawingBufferColorSpace;
+  std::optional<dom::PredefinedColorSpace> mUnpackColorSpace;
 
  public:
-  auto DrawingBufferColorSpace() const { return mDrawingBufferColorSpace; }
-
+  auto DrawingBufferColorSpace() const {
+    return mDrawingBufferColorSpace ? *mDrawingBufferColorSpace
+                                    : dom::PredefinedColorSpace::Srgb;
+  }
   void SetDrawingBufferColorSpace(dom::PredefinedColorSpace);
+
+  auto UnpackColorSpace() const {
+    return mUnpackColorSpace ? *mUnpackColorSpace
+                             : dom::PredefinedColorSpace::Srgb;
+  }
+  void SetUnpackColorSpace(dom::PredefinedColorSpace);
 
   // -
 
@@ -1088,8 +1097,7 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   Maybe<layers::SurfaceDescriptor> GetFrontBuffer(
       WebGLFramebufferJS*, const bool webvr = false) override;
   Maybe<layers::SurfaceDescriptor> PresentFrontBuffer(
-      WebGLFramebufferJS*, layers::TextureType,
-      const bool webvr = false) override;
+      WebGLFramebufferJS*, const bool webvr = false) override;
   RefPtr<gfx::SourceSurface> GetFrontBufferSnapshot(
       bool requireAlphaPremult = true) override;
   already_AddRefed<layers::FwdTransactionTracker> UseCompositableForwarder(
@@ -1413,6 +1421,8 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
   void DepthRange(GLclampf zNear, GLclampf zFar);
 
   void Flush(bool flushGl = true) const;
+
+  void SyncSnapshot() override { Flush(); }
 
   void Finish();
 
@@ -2218,7 +2228,8 @@ class ClientWebGLContext final : public nsICanvasRenderingContextInternal,
                   dom::CallerType aCallerType, ErrorResult& out_error) const;
 
  protected:
-  bool ReadPixels_SharedPrecheck(dom::CallerType aCallerType,
+  bool ReadPixels_SharedPrecheck(GLenum* inout_readType,
+                                 dom::CallerType aCallerType,
                                  ErrorResult& out_error) const;
 
   // ------------------------------ Vertex Array ------------------------------

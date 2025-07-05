@@ -7,12 +7,12 @@
 #ifndef DOM_MEDIA_MEDIACONTROL_MEDIACONTROLUTILS_H_
 #define DOM_MEDIA_MEDIACONTROL_MEDIACONTROLUTILS_H_
 
+#include "MediaController.h"
 #include "imgIEncoder.h"
 #include "imgITools.h"
-#include "MediaController.h"
+#include "mozilla/Logging.h"
 #include "mozilla/dom/ChromeUtilsBinding.h"
 #include "mozilla/dom/MediaControllerBinding.h"
-#include "mozilla/Logging.h"
 #include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
 
@@ -50,22 +50,6 @@ inline MediaControlKey ConvertMediaSessionActionToControlKey(
     default:
       MOZ_ASSERT(aAction == MediaSessionAction::Stop);
       return MediaControlKey::Stop;
-  }
-}
-
-inline const char* ToMediaPlaybackStateStr(MediaPlaybackState aState) {
-  switch (aState) {
-    case MediaPlaybackState::eStarted:
-      return "started";
-    case MediaPlaybackState::ePlayed:
-      return "played";
-    case MediaPlaybackState::ePaused:
-      return "paused";
-    case MediaPlaybackState::eStopped:
-      return "stopped";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid media state.");
-      return "Unknown";
   }
 }
 

@@ -8,9 +8,8 @@
 
 #include "GeckoProfiler.h"
 #include "mozilla/ProfilerMarkers.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomMetrics.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/ipc/IPDLParamTraits.h"
 #include "mozilla/ipc/URIUtils.h"
@@ -142,19 +141,6 @@ void nsDOMNavigationTiming::NotifyLoadEventStart() {
 
     glean::performance_time::load_event_start.AccumulateRawDuration(
         now - mNavigationStart);
-
-    if (mDocShellHasBeenActiveSinceNavigationStart) {
-      if (net::nsHttp::IsBeforeLastActiveTabLoadOptimization(
-              mNavigationStart)) {
-        Telemetry::AccumulateTimeDelta(
-            Telemetry::TIME_TO_LOAD_EVENT_START_ACTIVE_NETOPT_MS,
-            mNavigationStart, now);
-      } else {
-        Telemetry::AccumulateTimeDelta(
-            Telemetry::TIME_TO_LOAD_EVENT_START_ACTIVE_MS, mNavigationStart,
-            now);
-      }
-    }
   }
 }
 
@@ -250,19 +236,6 @@ void nsDOMNavigationTiming::NotifyDOMContentLoadedStart(nsIURI* aURI) {
 
     glean::performance_time::dom_content_loaded_start.AccumulateRawDuration(
         now - mNavigationStart);
-
-    if (mDocShellHasBeenActiveSinceNavigationStart) {
-      if (net::nsHttp::IsBeforeLastActiveTabLoadOptimization(
-              mNavigationStart)) {
-        Telemetry::AccumulateTimeDelta(
-            Telemetry::TIME_TO_DOM_CONTENT_LOADED_START_ACTIVE_NETOPT_MS,
-            mNavigationStart, now);
-      } else {
-        Telemetry::AccumulateTimeDelta(
-            Telemetry::TIME_TO_DOM_CONTENT_LOADED_START_ACTIVE_MS,
-            mNavigationStart, now);
-      }
-    }
   }
 }
 
@@ -415,16 +388,6 @@ void nsDOMNavigationTiming::NotifyNonBlankPaintForRootContentDocument() {
   }
 
   if (mDocShellHasBeenActiveSinceNavigationStart) {
-    if (net::nsHttp::IsBeforeLastActiveTabLoadOptimization(mNavigationStart)) {
-      Telemetry::AccumulateTimeDelta(
-          Telemetry::TIME_TO_NON_BLANK_PAINT_NETOPT_MS, mNavigationStart,
-          mNonBlankPaint);
-    } else {
-      Telemetry::AccumulateTimeDelta(
-          Telemetry::TIME_TO_NON_BLANK_PAINT_NO_NETOPT_MS, mNavigationStart,
-          mNonBlankPaint);
-    }
-
     glean::performance_page::non_blank_paint.AccumulateRawDuration(
         mNonBlankPaint - mNavigationStart);
   }
@@ -473,8 +436,8 @@ void nsDOMNavigationTiming::NotifyContentfulCompositeForRootContentDocument(
                                        "nsDOMNavigationTiming::TTITimeout");
 
   if (mDocShellHasBeenActiveSinceNavigationStart) {
-    Telemetry::AccumulateTimeDelta(Telemetry::TIME_TO_FIRST_CONTENTFUL_PAINT_MS,
-                                   mNavigationStart, mContentfulComposite);
+    glean::performance_time::to_first_contentful_paint.AccumulateRawDuration(
+        mContentfulComposite - mNavigationStart);
   }
 }
 
@@ -486,37 +449,6 @@ void nsDOMNavigationTiming::NotifyLargestContentfulRenderForRootContentDocument(
   // This can get called multiple times and updates over time.
   mLargestContentfulRender =
       mNavigationStart + TimeDuration::FromMilliseconds(aRenderTime);
-}
-
-void nsDOMNavigationTiming::NotifyDOMContentFlushedForRootContentDocument() {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(!mNavigationStart.IsNull());
-
-  if (!mDOMContentFlushed.IsNull()) {
-    return;
-  }
-
-  mDOMContentFlushed = TimeStamp::Now();
-
-  if (profiler_thread_is_being_profiled_for_markers() ||
-      PAGELOAD_LOG_ENABLED()) {
-    TimeDuration elapsed = mDOMContentFlushed - mNavigationStart;
-    nsPrintfCString marker(
-        "DOMContentFlushed after %dms for URL %s, %s",
-        int(elapsed.ToMilliseconds()),
-        nsContentUtils::TruncatedURLForDisplay(mLoadedURI).get(),
-        mDocShellHasBeenActiveSinceNavigationStart
-            ? "foreground tab"
-            : "this tab was inactive some of the time between navigation start "
-              "and DOMContentFlushed");
-    PAGELOAD_LOG(("%s", marker.get()));
-    PROFILER_MARKER_TEXT(
-        "DOMContentFlushed", DOM,
-        MarkerOptions(
-            MarkerTiming::Interval(mNavigationStart, mDOMContentFlushed),
-            MarkerInnerWindowIdFromDocShell(mDocShell)),
-        marker);
-  }
 }
 
 void nsDOMNavigationTiming::NotifyDocShellStateChanged(
@@ -595,7 +527,6 @@ nsDOMNavigationTiming::nsDOMNavigationTiming(nsDocShell* aDocShell,
       mNavigationStart(aOther->mNavigationStart),
       mNonBlankPaint(aOther->mNonBlankPaint),
       mContentfulComposite(aOther->mContentfulComposite),
-      mDOMContentFlushed(aOther->mDOMContentFlushed),
       mBeforeUnloadStart(aOther->mBeforeUnloadStart),
       mUnloadStart(aOther->mUnloadStart),
       mUnloadEnd(aOther->mUnloadEnd),
@@ -629,7 +560,6 @@ void mozilla::ipc::IPDLParamTraits<nsDOMNavigationTiming*>::Write(
   WriteIPDLParam(aWriter, aActor, aParam->mNavigationStart);
   WriteIPDLParam(aWriter, aActor, aParam->mNonBlankPaint);
   WriteIPDLParam(aWriter, aActor, aParam->mContentfulComposite);
-  WriteIPDLParam(aWriter, aActor, aParam->mDOMContentFlushed);
   WriteIPDLParam(aWriter, aActor, aParam->mBeforeUnloadStart);
   WriteIPDLParam(aWriter, aActor, aParam->mUnloadStart);
   WriteIPDLParam(aWriter, aActor, aParam->mUnloadEnd);
@@ -669,7 +599,6 @@ bool mozilla::ipc::IPDLParamTraits<nsDOMNavigationTiming*>::Read(
       !ReadIPDLParam(aReader, aActor, &timing->mNavigationStart) ||
       !ReadIPDLParam(aReader, aActor, &timing->mNonBlankPaint) ||
       !ReadIPDLParam(aReader, aActor, &timing->mContentfulComposite) ||
-      !ReadIPDLParam(aReader, aActor, &timing->mDOMContentFlushed) ||
       !ReadIPDLParam(aReader, aActor, &timing->mBeforeUnloadStart) ||
       !ReadIPDLParam(aReader, aActor, &timing->mUnloadStart) ||
       !ReadIPDLParam(aReader, aActor, &timing->mUnloadEnd) ||

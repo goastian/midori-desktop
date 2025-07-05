@@ -25,7 +25,6 @@
 #include "PipelineLayout.h"
 #include "Sampler.h"
 #include "CompilationInfo.h"
-#include "mozilla/ipc/RawShmem.h"
 #include "Utility.h"
 
 #include <utility>
@@ -59,17 +58,9 @@ WebGPUChild::~WebGPUChild() = default;
 
 RefPtr<AdapterPromise> WebGPUChild::InstanceRequestAdapter(
     const dom::GPURequestAdapterOptions& aOptions) {
-  const int max_ids = 10;
-  RawId ids[max_ids] = {0};
-  unsigned long count =
-      ffi::wgpu_client_make_adapter_ids(mClient.get(), ids, max_ids);
+  RawId id = ffi::wgpu_client_make_adapter_id(mClient.get());
 
-  nsTArray<RawId> sharedIds(count);
-  for (unsigned long i = 0; i != count; ++i) {
-    sharedIds.AppendElement(ids[i]);
-  }
-
-  return SendInstanceRequestAdapter(aOptions, sharedIds)
+  return SendInstanceRequestAdapter(aOptions, id)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
           [](ipc::ByteBuf&& aInfoBuf) {
@@ -88,15 +79,18 @@ RefPtr<AdapterPromise> WebGPUChild::InstanceRequestAdapter(
 }
 
 Maybe<DeviceRequest> WebGPUChild::AdapterRequestDevice(
-    RawId aSelfId, const ffi::WGPUDeviceDescriptor& aDesc) {
-  RawId id = ffi::wgpu_client_make_device_id(mClient.get(), aSelfId);
+    RawId aSelfId, const ffi::WGPUFfiDeviceDescriptor& aDesc) {
+  ffi::WGPUDeviceQueueId ids =
+      ffi::wgpu_client_make_device_queue_id(mClient.get());
 
   ByteBuf bb;
   ffi::wgpu_client_serialize_device_descriptor(&aDesc, ToFFI(&bb));
 
   DeviceRequest request;
-  request.mId = id;
-  request.mPromise = SendAdapterRequestDevice(aSelfId, std::move(bb), id);
+  request.mDeviceId = ids.device;
+  request.mQueueId = ids.queue;
+  request.mPromise =
+      SendAdapterRequestDevice(aSelfId, std::move(bb), ids.device, ids.queue);
 
   return Some(std::move(request));
 }
@@ -110,8 +104,8 @@ RawId WebGPUChild::RenderBundleEncoderFinish(
   desc.label = label.Get();
 
   ipc::ByteBuf bb;
-  RawId id = ffi::wgpu_client_create_render_bundle(
-      mClient.get(), &aEncoder, aDeviceId, &desc, ToFFI(&bb));
+  RawId id = ffi::wgpu_client_create_render_bundle(mClient.get(), &aEncoder,
+                                                   &desc, ToFFI(&bb));
 
   SendDeviceAction(aDeviceId, std::move(bb));
 
@@ -124,7 +118,7 @@ RawId WebGPUChild::RenderBundleEncoderFinishError(RawId aDeviceId,
 
   ipc::ByteBuf bb;
   RawId id = ffi::wgpu_client_create_render_bundle_error(
-      mClient.get(), aDeviceId, label.Get(), ToFFI(&bb));
+      mClient.get(), label.Get(), ToFFI(&bb));
 
   SendDeviceAction(aDeviceId, std::move(bb));
 
@@ -165,26 +159,38 @@ ipc::IPCResult WebGPUChild::RecvDropAction(const ipc::ByteBuf& aByteBuf) {
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUChild::RecvDeviceLost(RawId aDeviceId,
-                                           Maybe<uint8_t> aReason,
-                                           const nsACString& aMessage) {
+bool WebGPUChild::ResolveLostForDeviceId(RawId aDeviceId,
+                                         Maybe<uint8_t> aReason,
+                                         const nsAString& aMessage) {
   RefPtr<Device> device;
   const auto itr = mDeviceMap.find(aDeviceId);
   if (itr != mDeviceMap.end()) {
     device = itr->second.get();
     MOZ_ASSERT(device);
   }
-
-  if (device) {
-    auto message = NS_ConvertUTF8toUTF16(aMessage);
-    if (aReason.isSome()) {
-      dom::GPUDeviceLostReason reason =
-          static_cast<dom::GPUDeviceLostReason>(*aReason);
-      device->ResolveLost(Some(reason), message);
-    } else {
-      device->ResolveLost(Nothing(), message);
-    }
+  if (!device) {
+    // We must have unregistered the device already.
+    return false;
   }
+
+  if (aReason.isSome()) {
+    dom::GPUDeviceLostReason reason =
+        static_cast<dom::GPUDeviceLostReason>(*aReason);
+    MOZ_ASSERT(reason == dom::GPUDeviceLostReason::Destroyed,
+               "There is only one valid GPUDeviceLostReason value.");
+    device->ResolveLost(Some(reason), aMessage);
+  } else {
+    device->ResolveLost(Nothing(), aMessage);
+  }
+
+  return true;
+}
+
+ipc::IPCResult WebGPUChild::RecvDeviceLost(RawId aDeviceId,
+                                           Maybe<uint8_t> aReason,
+                                           const nsACString& aMessage) {
+  auto message = NS_ConvertUTF8toUTF16(aMessage);
+  ResolveLostForDeviceId(aDeviceId, aReason, message);
   return IPC_OK();
 }
 
@@ -195,8 +201,7 @@ void WebGPUChild::DeviceCreateSwapChain(
   RawId queueId = aSelfId;  // TODO: multiple queues
   nsTArray<RawId> bufferIds(maxBufferCount);
   for (size_t i = 0; i < maxBufferCount; ++i) {
-    bufferIds.AppendElement(
-        ffi::wgpu_client_make_buffer_id(mClient.get(), aSelfId));
+    bufferIds.AppendElement(ffi::wgpu_client_make_buffer_id(mClient.get()));
   }
   SendDeviceCreateSwapChain(aSelfId, queueId, aRgbDesc, bufferIds, aOwnerId,
                             aUseExternalTextureInSwapChain);
@@ -217,8 +222,11 @@ void WebGPUChild::SwapChainPresent(RawId aTextureId,
                                    const RemoteTextureOwnerId& aOwnerId) {
   // Hack: the function expects `DeviceId`, but it only uses it for `backend()`
   // selection.
-  RawId encoderId = ffi::wgpu_client_make_encoder_id(mClient.get(), aTextureId);
+  // The parent side needs to create a command encoder which will be submitted
+  // and dropped right away so we create and release an encoder ID here.
+  RawId encoderId = ffi::wgpu_client_make_encoder_id(mClient.get());
   SendSwapChainPresent(aTextureId, encoderId, aRemoteTextureId, aOwnerId);
+  ffi::wgpu_client_free_command_encoder_id(mClient.get(), encoderId);
 }
 
 void WebGPUChild::RegisterDevice(Device* const aDevice) {
@@ -246,12 +254,10 @@ void WebGPUChild::ActorDestroy(ActorDestroyReason) {
 
   for (const auto& targetIter : deviceMap) {
     RefPtr<Device> device = targetIter.second.get();
-    if (!device) {
-      // The Device may have gotten freed when we resolved the Promise for
-      // another Device in the map.
-      continue;
-    }
-
+    MOZ_ASSERT(device);
+    // It would be cleaner to call ResolveLostForDeviceId, but we
+    // just cleared the device map, so we have to invoke ResolveLost
+    // directly on the device.
     device->ResolveLost(Nothing(), u"WebGPUChild destroyed"_ns);
   }
 }

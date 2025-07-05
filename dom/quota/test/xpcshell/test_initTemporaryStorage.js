@@ -14,6 +14,10 @@ async function testSteps() {
   const originDirPath = "storage/default/https+++foo.example.com";
   const metadataFileName = ".metadata-v2";
 
+  info("Setting prefs");
+
+  Services.prefs.setBoolPref("dom.quotaManager.loadQuotaFromCache", false);
+
   info("Initializing");
 
   let request = init();
@@ -21,7 +25,7 @@ async function testSteps() {
 
   info("Verifying initialization status");
 
-  await verifyInitializationStatus(true, false);
+  await verifyInitializationStatus(true, false, false);
 
   info("Creating an empty directory");
 
@@ -45,5 +49,5 @@ async function testSteps() {
 
   info("Verifying initialization status");
 
-  await verifyInitializationStatus(true, true);
+  await verifyInitializationStatus(true, false, true);
 }

@@ -9,6 +9,8 @@
 #include "js/TypeDecls.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/BufferSourceBindingFwd.h"
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/CompressionStreamBinding.h"
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/WritableStream.h"
@@ -17,12 +19,13 @@
 #include "mozilla/dom/TransformerCallbackHelpers.h"
 #include "mozilla/dom/UnionTypes.h"
 
-#include "ZLibHelper.h"
+#include "CompressionStreamHelper.h"
 
 // See the zlib manual in https://www.zlib.net/manual.html or in
 // https://searchfox.org/mozilla-central/source/modules/zlib/src/zlib.h
 
 namespace mozilla::dom {
+using namespace compression;
 
 class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
  public:
@@ -58,7 +61,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
     // https://wicg.github.io/compression/#compress-and-enqueue-a-chunk
 
     // Step 1: If chunk is not a BufferSource type, then throw a TypeError.
-    RootedUnion<OwningArrayBufferViewOrArrayBuffer> bufferSource(cx);
+    RootedUnion<OwningBufferSource> bufferSource(cx);
     if (!bufferSource.Init(cx, aChunk)) {
       aRv.MightThrowJSException();
       aRv.StealExceptionFromJSContext(cx);
@@ -71,7 +74,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
     ProcessTypedArraysFixed(
         bufferSource,
         [&](const Span<uint8_t>& aData) MOZ_CAN_RUN_SCRIPT_BOUNDARY {
-          CompressAndEnqueue(cx, aData, ZLibFlush::No, aController, aRv);
+          CompressAndEnqueue(cx, aData, Flush::No, aController, aRv);
         });
   }
 
@@ -94,8 +97,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
     // Step 1: Let buffer be the result of compressing an empty input with cs's
     // format and context, with the finish flag.
     // Step 2 - 4: (Done in CompressAndEnqueue)
-    CompressAndEnqueue(cx, Span<const uint8_t>(), ZLibFlush::Yes, aController,
-                       aRv);
+    CompressAndEnqueue(cx, Span<const uint8_t>(), Flush::Yes, aController, aRv);
   }
 
  private:
@@ -103,9 +105,9 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
   // https://wicg.github.io/compression/#compress-and-enqueue-a-chunk
   // https://wicg.github.io/compression/#compress-flush-and-enqueue
   MOZ_CAN_RUN_SCRIPT void CompressAndEnqueue(
-      JSContext* aCx, Span<const uint8_t> aInput, ZLibFlush aFlush,
+      JSContext* aCx, Span<const uint8_t> aInput, Flush aFlush,
       TransformStreamDefaultController& aController, ErrorResult& aRv) {
-    MOZ_ASSERT_IF(aFlush == ZLibFlush::Yes, !aInput.Length());
+    MOZ_ASSERT_IF(aFlush == Flush::Yes, !aInput.Length());
 
     mZStream.avail_in = aInput.Length();
     mZStream.next_in = const_cast<uint8_t*>(aInput.Elements());
@@ -124,7 +126,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
       mZStream.avail_out = kBufferSize;
       mZStream.next_out = buffer.get();
 
-      int8_t err = deflate(&mZStream, aFlush);
+      int8_t err = deflate(&mZStream, intoZLibFlush(aFlush));
 
       // From the manual: deflate() returns ...
       switch (err) {
@@ -153,7 +155,7 @@ class CompressionStreamAlgorithms : public TransformerAlgorithmsWrapper {
       // Stream should end only when flushed, see above
       // The reverse is not true as zlib may have big data to be flushed that is
       // larger than the buffer size
-      MOZ_ASSERT_IF(err == Z_STREAM_END, aFlush == ZLibFlush::Yes);
+      MOZ_ASSERT_IF(err == Z_STREAM_END, aFlush == Flush::Yes);
 
       // At this point we either exhausted the input or the output buffer
       MOZ_ASSERT(!mZStream.avail_in || !mZStream.avail_out);
@@ -228,6 +230,13 @@ JSObject* CompressionStream::WrapObject(JSContext* aCx,
 // https://wicg.github.io/compression/#dom-compressionstream-compressionstream
 already_AddRefed<CompressionStream> CompressionStream::Constructor(
     const GlobalObject& aGlobal, CompressionFormat aFormat, ErrorResult& aRv) {
+  if (aFormat == CompressionFormat::Zstd) {
+    aRv.ThrowTypeError(
+        "'zstd' (value of argument 1) is not a valid value for enumeration "
+        "CompressionFormat.");
+    return nullptr;
+  }
+
   // Step 1: If format is unsupported in CompressionStream, then throw a
   // TypeError.
   // XXX: Skipped as we are using enum for this

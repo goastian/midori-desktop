@@ -726,12 +726,11 @@ bool txXSLTNumber::isAlphaNumeric(char16_t ch) {
         { 0xFF66, 0xFFBE },
         { 0xFFC2, 0xFFC7 },
         { 0xFFCA, 0xFFCF },
-        { 0xFFD2, 0xFFD7 }
-      // clang-format on
+        { 0xFFD2, 0xFFD7 }  // clang-format on
   };
 
   CharRange search = {ch, ch};
-  const CharRange* end = mozilla::ArrayEnd(alphanumericRanges);
+  const CharRange* end = std::end(alphanumericRanges);
   const CharRange* element =
       std::lower_bound(&alphanumericRanges[0], end, search);
   if (element == end) {

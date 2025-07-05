@@ -22,7 +22,7 @@ namespace mozilla::dom {
 
 /* static */
 bool HTMLFormControlsCollection::ShouldBeInElements(
-    nsIFormControl* aFormControl) {
+    const nsIFormControl* aFormControl) {
   // For backwards compatibility (with 4.x and IE) we must not add
   // <input type=image> elements to the list of form controls in a
   // form.
@@ -87,14 +87,14 @@ void HTMLFormControlsCollection::DropFormReference() {
 void HTMLFormControlsCollection::Clear() {
   // Null out childrens' pointer to me.  No refcounting here
   for (nsGenericHTMLFormElement* element : Reversed(mElements.AsList())) {
-    nsCOMPtr<nsIFormControl> formControl = do_QueryObject(element);
+    nsCOMPtr<nsIFormControl> formControl = nsIFormControl::FromNode(element);
     MOZ_ASSERT(formControl);
     formControl->ClearForm(false, false);
   }
   mElements.Clear();
 
   for (nsGenericHTMLFormElement* element : Reversed(mNotInElements.AsList())) {
-    nsCOMPtr<nsIFormControl> formControl = do_QueryObject(element);
+    nsCOMPtr<nsIFormControl> formControl = nsIFormControl::FromNode(element);
     MOZ_ASSERT(formControl);
     formControl->ClearForm(false, false);
   }
@@ -140,7 +140,7 @@ nsISupports* HTMLFormControlsCollection::NamedItemInternal(
 
 nsresult HTMLFormControlsCollection::AddElementToTable(
     nsGenericHTMLFormElement* aChild, const nsAString& aName) {
-  nsCOMPtr<nsIFormControl> formControl = do_QueryObject(aChild);
+  const auto* formControl = nsIFormControl::FromNode(aChild);
   MOZ_ASSERT(formControl);
   if (!ShouldBeInElements(formControl)) {
     return NS_OK;
@@ -160,7 +160,7 @@ nsresult HTMLFormControlsCollection::IndexOfContent(nsIContent* aContent,
 
 nsresult HTMLFormControlsCollection::RemoveElementFromTable(
     nsGenericHTMLFormElement* aChild, const nsAString& aName) {
-  nsCOMPtr<nsIFormControl> formControl = do_QueryObject(aChild);
+  const auto* formControl = nsIFormControl::FromNode(aChild);
   MOZ_ASSERT(formControl);
   if (!ShouldBeInElements(formControl)) {
     return NS_OK;
@@ -187,6 +187,7 @@ nsresult HTMLFormControlsCollection::GetSortedControls(
   uint32_t elementsIdx = 0;
   uint32_t notInElementsIdx = 0;
 
+  nsContentUtils::NodeIndexCache indexCache;
   while (elementsIdx < elementsLen || notInElementsIdx < notInElementsLen) {
     // Check whether we're done with mElements
     if (elementsIdx == elementsLen) {
@@ -219,7 +220,8 @@ nsresult HTMLFormControlsCollection::GetSortedControls(
     nsGenericHTMLFormElement* elementToAdd;
     if (nsContentUtils::CompareTreePosition<TreeKind::DOM>(
             mElements->ElementAt(elementsIdx),
-            mNotInElements->ElementAt(notInElementsIdx), mForm) < 0) {
+            mNotInElements->ElementAt(notInElementsIdx), mForm,
+            &indexCache) < 0) {
       elementToAdd = mElements->ElementAt(elementsIdx);
       ++elementsIdx;
     } else {

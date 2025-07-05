@@ -6,14 +6,16 @@
 #ifndef MediaDecoderOwner_h_
 #define MediaDecoderOwner_h_
 
-#include "mozilla/UniquePtr.h"
 #include "MediaInfo.h"
 #include "MediaSegment.h"
+#include "mozilla/AbstractThread.h"
+#include "mozilla/DefineEnum.h"
+#include "mozilla/UniquePtr.h"
 #include "nsSize.h"
 
 namespace mozilla {
 
-class AbstractThread;
+class CDMProxy;
 class GMPCrashHelper;
 class VideoFrameContainer;
 class MediaInfo;
@@ -30,8 +32,8 @@ class MediaDecoderOwner {
   // Called by the media decoder to indicate that the download is progressing.
   virtual void DownloadProgressed() = 0;
 
-  // Dispatch an asynchronous event to the decoder owner
-  virtual void DispatchAsyncEvent(const nsAString& aName) = 0;
+  // Queue a task to fire an event targeted at the decoder owner
+  virtual void QueueEvent(const nsAString& aName) = 0;
 
   // Triggers a recomputation of readyState.
   virtual void UpdateReadyState() = 0;
@@ -108,19 +110,10 @@ class MediaDecoderOwner {
   virtual void NotifyDecoderPrincipalChanged() = 0;
 
   // The status of the next frame which might be available from the decoder
-  enum NextFrameStatus {
-    // The next frame of audio/video is available
-    NEXT_FRAME_AVAILABLE,
-    // The next frame of audio/video is unavailable because the decoder
-    // is paused while it buffers up data
-    NEXT_FRAME_UNAVAILABLE_BUFFERING,
-    // The next frame of audio/video is unavailable for the decoder is seeking.
-    NEXT_FRAME_UNAVAILABLE_SEEKING,
-    // The next frame of audio/video is unavailable for some other reasons
-    NEXT_FRAME_UNAVAILABLE,
-    // Sentinel value
-    NEXT_FRAME_UNINITIALIZED
-  };
+  MOZ_DEFINE_ENUM_WITH_TOSTRING_AT_CLASS_SCOPE(
+      NextFrameStatus, (NEXT_FRAME_AVAILABLE, NEXT_FRAME_UNAVAILABLE_BUFFERING,
+                        NEXT_FRAME_UNAVAILABLE_SEEKING, NEXT_FRAME_UNAVAILABLE,
+                        NEXT_FRAME_UNINITIALIZED));
 
   // Called by media decoder when the audible state changed
   virtual void SetAudibleState(bool aAudible) = 0;
@@ -145,7 +138,9 @@ class MediaDecoderOwner {
    * implementations so they can compile in Servo without modification.
    */
   // Return an abstract thread on which to run main thread runnables.
-  virtual AbstractThread* AbstractMainThread() const { return nullptr; }
+  static AbstractThread* AbstractMainThread() {
+    return AbstractThread::MainThread();
+  }
 
   // Get the HTMLMediaElement object if the decoder is being used from an
   // HTML media element, and null otherwise.
@@ -188,6 +183,11 @@ class MediaDecoderOwner {
 
   // Returns true if the owner should resist fingerprinting.
   virtual bool ShouldResistFingerprinting(RFPTarget aTarget) const = 0;
+
+#ifdef MOZ_WMF_CDM
+  // Return CDMProxy if exists.
+  virtual CDMProxy* GetCDMProxy() const { return nullptr; }
+#endif
 
   /*
    * Servo only methods go here. Please provide default implementations so they

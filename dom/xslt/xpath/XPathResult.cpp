@@ -122,8 +122,8 @@ void XPathResult::ContentInserted(nsIContent* aChild) {
   Invalidate(aChild->GetParent());
 }
 
-void XPathResult::ContentRemoved(nsIContent* aChild,
-                                 nsIContent* aPreviousSibling) {
+void XPathResult::ContentWillBeRemoved(nsIContent* aChild,
+                                       const BatchRemovalState*) {
   Invalidate(aChild->GetParent());
 }
 
@@ -238,13 +238,13 @@ nsresult XPathResult::GetExprResult(txAExprResult** aExprResult) {
   RefPtr<txNodeSet> nodeSet = new txNodeSet(nullptr);
   uint32_t i, count = mResultNodes.Length();
   for (i = 0; i < count; ++i) {
-    UniquePtr<txXPathNode> node(
+    Maybe<txXPathNode> node(
         txXPathNativeNode::createXPathNode(mResultNodes[i]));
     if (!node) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    nodeSet->append(*node);
+    nodeSet->append(node.extract());
   }
 
   NS_ADDREF(*aExprResult = nodeSet);

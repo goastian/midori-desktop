@@ -44,14 +44,12 @@ function checkBlockOpenPopup(e) {
 }
 
 add_setup(async function() {
-  const DENY_ACTION = SpecialPowers.Ci.nsIPermissionManager.DENY_ACTION;
-  let xorigin = SimpleTest.getTestFileURL("").replace(location.hostname, 'mochi.xorigin-test');
-  await SpecialPowers.pushPermissions([
-    {'type': 'popup', 'allow': DENY_ACTION,
-     'context': document},
-    {'type': 'popup', 'allow': DENY_ACTION,
-     'context': xorigin}
-  ]);
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      // Enable the popup blocker
+      ["dom.disable_open_during_load", true],
+    ],
+  });
 
   await new Promise(resolve => SimpleTest.waitForFocus(resolve));
 });
@@ -61,30 +59,30 @@ const MIDDLE_BUTTON = 1;
 const RIGHT_BUTTON = 2;
 let target = document.getElementById("target");
 
-add_task(function testMouseDownUpMove() {
+async function testMouseDownUpMove() {
   // Left button
   sendMouseEvent(target, "mousedown", LEFT_BUTTON, "mousedown", checkAllowOpenPopup);
   sendMouseEvent(target, "mousemove", LEFT_BUTTON, "mousemove", checkBlockOpenPopup);
-  sendMouseEvent(target, "mouseup", LEFT_BUTTON, "mouseup", checkAllowOpenPopup);
+  sendMouseEvent(target, "mouseup", LEFT_BUTTON, "mouseup", checkBlockOpenPopup);
 
   // Middle button
   sendMouseEvent(target, "mousedown", MIDDLE_BUTTON, "mousedown", checkAllowOpenPopup);
   sendMouseEvent(target, "mousemove", MIDDLE_BUTTON, "mousemove", checkBlockOpenPopup);
-  sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "mouseup", checkAllowOpenPopup);
+  sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "mouseup", checkBlockOpenPopup);
 
   // Right button
-  sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "mousedown", checkBlockOpenPopup);
+  sendMouseEvent(target, "mousedown", RIGHT_BUTTON, "mousedown", checkAllowOpenPopup);
   sendMouseEvent(target, "mousemove", RIGHT_BUTTON, "mousemove", checkBlockOpenPopup);
   sendMouseEvent(target, "mouseup", RIGHT_BUTTON, "mouseup", checkBlockOpenPopup);
-});
+}
 
-add_task(function testMouseClick() {
+async function testMouseClick() {
   // Left button
   sendMouseEvent(target, "mousedown", LEFT_BUTTON);
   sendMouseEvent(target, "mouseup", LEFT_BUTTON, "click", checkAllowOpenPopup);
-});
+}
 
-add_task(function testMouseAuxclick() {
+async function testMouseAuxclick() {
   // Middle button
   sendMouseEvent(target, "mousedown", MIDDLE_BUTTON);
   sendMouseEvent(target, "mouseup", MIDDLE_BUTTON, "auxclick", checkAllowOpenPopup);
@@ -92,7 +90,12 @@ add_task(function testMouseAuxclick() {
   // Right button
   sendMouseEvent(target, "mousedown", RIGHT_BUTTON);
   sendMouseEvent(target, "mouseup", RIGHT_BUTTON, "auxclick", checkAllowOpenPopup);
-});
+}
+
+add_task(testMouseDownUpMove);
+add_task(testMouseClick);
+add_task(testMouseAuxclick);
+
 </script>
 </body>
 </html>

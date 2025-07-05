@@ -25,6 +25,8 @@ struct FetchOpArgs{
   bool hasCSPEventListener;
   uint64_t associatedBrowsingContextID;
   bool isThirdPartyContext;
+  bool isWorkerRequest;
+  bool isOn3PCBExceptionList;
 };
 
 protocol PFetch {
@@ -33,7 +35,7 @@ protocol PFetch {
   parent:
     async FetchOp(FetchOpArgs aArgs);
 
-    async AbortFetchOp();
+    async AbortFetchOp(bool aForceAbort);
 
   child:
     async OnResponseAvailableInternal(ParentToChildInternalResponse aResponse);

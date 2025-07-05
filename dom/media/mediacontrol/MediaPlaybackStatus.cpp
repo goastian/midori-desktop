@@ -16,7 +16,7 @@ namespace mozilla::dom {
 void MediaPlaybackStatus::UpdateMediaPlaybackState(uint64_t aContextId,
                                                    MediaPlaybackState aState) {
   LOG("Update playback state '%s' for context %" PRIu64,
-      ToMediaPlaybackStateStr(aState), aContextId);
+      EnumValueToString(aState), aContextId);
   MOZ_ASSERT(NS_IsMainThread());
 
   ContextMediaInfo& info = GetNotNullContextInfo(aContextId);
@@ -55,7 +55,7 @@ void MediaPlaybackStatus::DestroyContextInfo(uint64_t aContextId) {
 void MediaPlaybackStatus::UpdateMediaAudibleState(uint64_t aContextId,
                                                   MediaAudibleState aState) {
   LOG("Update audible state '%s' for context %" PRIu64,
-      ToMediaAudibleStateStr(aState), aContextId);
+      EnumValueToString(aState), aContextId);
   MOZ_ASSERT(NS_IsMainThread());
   ContextMediaInfo& info = GetNotNullContextInfo(aContextId);
   if (aState == MediaAudibleState::eAudible) {

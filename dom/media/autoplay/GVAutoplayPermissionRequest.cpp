@@ -4,9 +4,9 @@
 
 #include "GVAutoplayPermissionRequest.h"
 
-#include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/Logging.h"
 #include "mozilla/StaticPrefs_media.h"
+#include "mozilla/dom/HTMLMediaElement.h"
 #include "nsGlobalWindowInner.h"
 
 mozilla::LazyLogModule gGVAutoplayRequestLog("GVAutoplay");
@@ -16,41 +16,13 @@ namespace mozilla::dom {
 using RType = GVAutoplayRequestType;
 using RStatus = GVAutoplayRequestStatus;
 
-const char* ToGVRequestTypeStr(RType aType) {
-  switch (aType) {
-    case RType::eINAUDIBLE:
-      return "inaudible";
-    case RType::eAUDIBLE:
-      return "audible";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid request type.");
-      return "invalid";
-  }
-}
-
-const char* ToGVRequestStatusStr(RStatus aStatus) {
-  switch (aStatus) {
-    case RStatus::eUNKNOWN:
-      return "Unknown";
-    case RStatus::eALLOWED:
-      return "Allowed";
-    case RStatus::eDENIED:
-      return "Denied";
-    case RStatus::ePENDING:
-      return "Pending";
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid status.");
-      return "Invalid";
-  }
-}
-
 // avoid redefined macro in unified build
 #undef REQUEST_LOG
 #define REQUEST_LOG(msg, ...)                                          \
   if (MOZ_LOG_TEST(gGVAutoplayRequestLog, mozilla::LogLevel::Debug)) { \
     MOZ_LOG(gGVAutoplayRequestLog, LogLevel::Debug,                    \
             ("Request=%p, Type=%s, " msg, this,                        \
-             ToGVRequestTypeStr(this->mType), ##__VA_ARGS__));         \
+             EnumValueToString(this->mType), ##__VA_ARGS__));          \
   }
 
 #undef LOG
@@ -140,7 +112,7 @@ GVAutoplayPermissionRequest::~GVAutoplayPermissionRequest() {
 }
 
 void GVAutoplayPermissionRequest::SetRequestStatus(RStatus aStatus) {
-  REQUEST_LOG("SetRequestStatus, new status=%s", ToGVRequestStatusStr(aStatus));
+  REQUEST_LOG("SetRequestStatus, new status=%s", EnumValueToString(aStatus));
   MOZ_ASSERT(mContext);
   AssertIsOnMainThread();
   if (mType == RType::eAUDIBLE) {
@@ -160,7 +132,7 @@ GVAutoplayPermissionRequest::Cancel() {
   // Ex. if the page got closed or naviagated immediately after user replied to
   // the request. Therefore, the status should be either `pending` or `unknown`.
   const RStatus status = GetRequestStatus(mContext, mType);
-  REQUEST_LOG("Cancel, current status=%s", ToGVRequestStatusStr(status));
+  REQUEST_LOG("Cancel, current status=%s", EnumValueToString(status));
   MOZ_ASSERT(status == RStatus::ePENDING || status == RStatus::eUNKNOWN);
   if ((status == RStatus::ePENDING) && !mContext->IsDiscarded()) {
     SetRequestStatus(RStatus::eDENIED);
@@ -177,7 +149,7 @@ GVAutoplayPermissionRequest::Allow(JS::Handle<JS::Value> aChoices) {
   // Ex. if the page got closed or naviagated immediately after user replied to
   // the request. Therefore, the status should be either `pending` or `unknown`.
   const RStatus status = GetRequestStatus(mContext, mType);
-  REQUEST_LOG("Allow, current status=%s", ToGVRequestStatusStr(status));
+  REQUEST_LOG("Allow, current status=%s", EnumValueToString(status));
   MOZ_ASSERT(status == RStatus::ePENDING || status == RStatus::eUNKNOWN);
   if (status == RStatus::ePENDING) {
     SetRequestStatus(RStatus::eALLOWED);

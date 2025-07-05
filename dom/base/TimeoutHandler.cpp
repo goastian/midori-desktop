@@ -8,7 +8,6 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/HoldDropJSObjects.h"
-#include "nsJSUtils.h"
 
 namespace mozilla::dom {
 
@@ -16,22 +15,12 @@ namespace mozilla::dom {
 // TimeoutHandler
 //-----------------------------------------------------------------------------
 
-TimeoutHandler::TimeoutHandler(JSContext* aCx) : TimeoutHandler() {
-  nsJSUtils::GetCallingLocation(aCx, mFileName, &mLineNo, &mColumn);
-}
-
 bool TimeoutHandler::Call(const char* /* unused */) { return false; }
 
-void TimeoutHandler::GetLocation(const char** aFileName, uint32_t* aLineNo,
-                                 uint32_t* aColumn) {
-  *aFileName = mFileName.get();
-  *aLineNo = mLineNo;
-  *aColumn = mColumn;
-}
-
 void TimeoutHandler::GetDescription(nsACString& aOutString) {
-  aOutString.AppendPrintf("<generic handler> (%s:%d:%d)", mFileName.get(),
-                          mLineNo, mColumn);
+  aOutString.AppendPrintf("<generic handler> (%s:%d:%d)",
+                          mCaller.FileName().get(), mCaller.mLine,
+                          mCaller.mColumn);
 }
 
 //-----------------------------------------------------------------------------
@@ -53,11 +42,11 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(ScriptTimeoutHandler)
   if (MOZ_UNLIKELY(cb.WantDebugInfo())) {
     nsAutoCString name("ScriptTimeoutHandler");
     name.AppendLiteral(" [");
-    name.Append(tmp->mFileName);
+    name.Append(tmp->mCaller.FileName());
     name.Append(':');
-    name.AppendInt(tmp->mLineNo);
+    name.AppendInt(tmp->mCaller.mLine);
     name.Append(':');
-    name.AppendInt(tmp->mColumn);
+    name.AppendInt(tmp->mCaller.mColumn);
     name.Append(']');
     cb.DescribeRefCountedNode(tmp->mRefCnt.get(), name.get());
   } else {
@@ -82,12 +71,13 @@ void ScriptTimeoutHandler::GetDescription(nsACString& aOutString) {
   if (mExpr.Length() > 15) {
     aOutString.AppendPrintf(
         "<string handler (truncated): \"%s...\"> (%s:%d:%d)",
-        NS_ConvertUTF16toUTF8(Substring(mExpr, 0, 13)).get(), mFileName.get(),
-        mLineNo, mColumn);
+        NS_ConvertUTF16toUTF8(Substring(mExpr, 0, 13)).get(),
+        mCaller.FileName().get(), mCaller.mLine, mCaller.mColumn);
   } else {
     aOutString.AppendPrintf("<string handler: \"%s\"> (%s:%d:%d)",
-                            NS_ConvertUTF16toUTF8(mExpr).get(), mFileName.get(),
-                            mLineNo, mColumn);
+                            NS_ConvertUTF16toUTF8(mExpr).get(),
+                            mCaller.FileName().get(), mCaller.mLine,
+                            mCaller.mColumn);
   }
 }
 
@@ -99,7 +89,7 @@ CallbackTimeoutHandler::CallbackTimeoutHandler(
     JSContext* aCx, nsIGlobalObject* aGlobal, Function* aFunction,
     nsTArray<JS::Heap<JS::Value>>&& aArguments)
     : TimeoutHandler(aCx), mGlobal(aGlobal), mFunction(aFunction) {
-  mozilla::HoldJSObjects(this);
+  mozilla::HoldJSObjectsWithKey(this);
   mArgs = std::move(aArguments);
 }
 
@@ -159,7 +149,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(CallbackTimeoutHandler)
 
 void CallbackTimeoutHandler::ReleaseJSObjects() {
   mArgs.Clear();
-  mozilla::DropJSObjects(this);
+  mozilla::DropJSObjectsWithKey(this);
 }
 
 bool CallbackTimeoutHandler::Call(const char* aExecutionReason) {
@@ -175,5 +165,34 @@ void CallbackTimeoutHandler::MarkForCC() { mFunction->MarkForCC(); }
 void CallbackTimeoutHandler::GetDescription(nsACString& aOutString) {
   mFunction->GetDescription(aOutString);
 }
+
+//-----------------------------------------------------------------------------
+// DelayedJSDispatchableHandler
+//-----------------------------------------------------------------------------
+
+MOZ_CAN_RUN_SCRIPT bool DelayedJSDispatchableHandler::Call(
+    const char* /* unused */) {
+  MOZ_ASSERT(mDispatchable);
+
+  // We get the cx in whatever state, as if we have already shutdown
+  // then the notify task will already be cleared.
+  JSContext* cx = danger::GetJSContext();
+
+  JS::Dispatchable::Run(cx, std::move(mDispatchable),
+                        JS::Dispatchable::NotShuttingDown);
+  return true;
+}
+
+DelayedJSDispatchableHandler::~DelayedJSDispatchableHandler() {
+  if (mDispatchable) {
+    // If we shutdown with the DelayedJSDispatchableHandler still holding
+    // the reference to mDispatchable, release it to the engine for cleanup.
+    // In the case of WaitAsyncTimeoutTask, this will clear the task, and
+    // delete itself.
+    JS::Dispatchable::ReleaseFailedTask(std::move(mDispatchable));
+  }
+}
+
+NS_IMPL_ISUPPORTS(DelayedJSDispatchableHandler, nsISupports)
 
 }  // namespace mozilla::dom

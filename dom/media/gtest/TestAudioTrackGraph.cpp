@@ -158,8 +158,10 @@ class MockAudioDataListener : public AudioDataListener {
   MOCK_METHOD(bool, IsVoiceInput, (MediaTrackGraph*), (const));
   MOCK_METHOD(void, DeviceChanged, (MediaTrackGraph*));
   MOCK_METHOD(void, Disconnect, (MediaTrackGraph*));
+  MOCK_METHOD(void, NotifySetRequestedInputProcessingParams,
+              (MediaTrackGraph*, int, cubeb_input_processing_params));
   MOCK_METHOD(void, NotifySetRequestedInputProcessingParamsResult,
-              (MediaTrackGraph*, cubeb_input_processing_params,
+              (MediaTrackGraph*, int,
                (const Result<cubeb_input_processing_params, int>&)));
 };
 }  // namespace
@@ -2872,43 +2874,48 @@ TEST(TestAudioTrackGraph, PlatformProcessing)
     InSequence s;
     // On first driver start.
     EXPECT_CALL(*listener,
-                NotifySetRequestedInputProcessingParamsResult(
-                    graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION,
-                    Eq(std::ref(echoResult))))
+                NotifySetRequestedInputProcessingParams(
+                    graph, 1, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
+                               graph, 1, Eq(std::ref(echoResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
     // After requesting something else.
     EXPECT_CALL(*listener,
-                NotifySetRequestedInputProcessingParamsResult(
-                    graph, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION,
-                    Eq(std::ref(noiseResult))))
+                NotifySetRequestedInputProcessingParams(
+                    graph, 2, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
+                               graph, 2, Eq(std::ref(noiseResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
     // After error request.
     EXPECT_CALL(*listener,
-                NotifySetRequestedInputProcessingParamsResult(
-                    graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION,
-                    Eq(std::ref(errorResult))))
-        .WillOnce([&] { ++numProcessingParamsResults; });
-    // After requesting None.
+                NotifySetRequestedInputProcessingParams(
+                    graph, 3, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
     EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
-                               graph, CUBEB_INPUT_PROCESSING_PARAM_NONE,
-                               Eq(std::ref(noneResult))))
+                               graph, 3, Eq(std::ref(errorResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // After requesting None, because of the previous error.
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParams(
+                               graph, 4, CUBEB_INPUT_PROCESSING_PARAM_NONE));
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
+                               graph, 4, Eq(std::ref(noneResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
     // After driver switch.
     EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
-                               graph, CUBEB_INPUT_PROCESSING_PARAM_NONE,
-                               Eq(std::ref(noneResult))))
+                               graph, 4, Eq(std::ref(noneResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
     // After requesting something not supported.
     EXPECT_CALL(*listener,
-                NotifySetRequestedInputProcessingParamsResult(
-                    graph, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION,
-                    Eq(std::ref(noneResult))))
+                NotifySetRequestedInputProcessingParams(
+                    graph, 5, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
+                               graph, 5, Eq(std::ref(noneResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
     // After requesting something with backend not supporting processing params.
     EXPECT_CALL(*listener,
-                NotifySetRequestedInputProcessingParamsResult(
-                    graph, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION,
-                    Eq(std::ref(notSupportedResult))))
+                NotifySetRequestedInputProcessingParams(
+                    graph, 6, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+    EXPECT_CALL(*listener, NotifySetRequestedInputProcessingParamsResult(
+                               graph, 6, Eq(std::ref(notSupportedResult))))
         .WillOnce([&] { ++numProcessingParamsResults; });
   }
 
@@ -3039,6 +3046,270 @@ TEST(TestAudioTrackGraph, PlatformProcessing)
   RefPtr<SmartMockCubebStream> destroyedStream =
       WaitFor(cubeb->StreamDestroyEvent());
   EXPECT_EQ(destroyedStream.get(), stream.get());
+  {
+    NativeInputTrack* native = graph->GetNativeInputTrackMainThread();
+    ASSERT_TRUE(!native);
+  }
+}
+
+TEST(TestAudioTrackGraph, PlatformProcessingNonNativeToNativeSwitch)
+{
+  constexpr cubeb_input_processing_params allParams =
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION |
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION |
+      CUBEB_INPUT_PROCESSING_PARAM_AUTOMATIC_GAIN_CONTROL |
+      CUBEB_INPUT_PROCESSING_PARAM_VOICE_ISOLATION;
+  MockCubeb* cubeb = new MockCubeb(MockCubeb::RunningMode::Manual);
+  cubeb->SetSupportedInputProcessingParams(allParams, CUBEB_OK);
+  CubebUtils::ForceSetCubebContext(cubeb->AsCubebContext());
+
+  MediaTrackGraph* graph = MediaTrackGraphImpl::GetInstance(
+      MediaTrackGraph::SYSTEM_THREAD_DRIVER, /*Window ID*/ 1,
+      CubebUtils::PreferredSampleRate(/* aShouldResistFingerprinting */ false),
+      nullptr, GetMainThreadSerialEventTarget());
+
+  const CubebUtils::AudioDeviceID firstDevice = (CubebUtils::AudioDeviceID)1;
+  const CubebUtils::AudioDeviceID secondDevice = (CubebUtils::AudioDeviceID)2;
+
+  // Set up mock listeners.
+  RefPtr<MockAudioDataListener> firstListener =
+      MakeRefPtr<MockAudioDataListener>();
+  EXPECT_CALL(*firstListener, IsVoiceInput).WillRepeatedly(Return(true));
+  EXPECT_CALL(*firstListener, RequestedInputChannelCount)
+      .WillRepeatedly(Return(1));
+  EXPECT_CALL(*firstListener, RequestedInputProcessingParams)
+      .WillRepeatedly(Return(CUBEB_INPUT_PROCESSING_PARAM_NONE));
+
+  RefPtr<MockAudioDataListener> secondListener =
+      MakeRefPtr<MockAudioDataListener>();
+  EXPECT_CALL(*secondListener, IsVoiceInput).WillRepeatedly(Return(true));
+  EXPECT_CALL(*secondListener, RequestedInputChannelCount)
+      .WillRepeatedly(Return(1));
+  EXPECT_CALL(*secondListener, RequestedInputProcessingParams)
+      .WillRepeatedly(Return(CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
+
+  // Expectations.
+  const Result<cubeb_input_processing_params, int> noneResult(
+      CUBEB_INPUT_PROCESSING_PARAM_NONE);
+  const Result<cubeb_input_processing_params, int> echoResult(
+      CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION);
+  const Result<cubeb_input_processing_params, int> noiseResult(
+      CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION);
+  Atomic<int> numProcessingParamsResults(0);
+  {
+    InSequence s;
+    // On first driver start.
+    EXPECT_CALL(*firstListener, NotifySetRequestedInputProcessingParamsResult(
+                                    graph, 0, Eq(std::ref(noneResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // After param update.
+    EXPECT_CALL(*firstListener,
+                NotifySetRequestedInputProcessingParams(
+                    graph, 1, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+    EXPECT_CALL(*firstListener, NotifySetRequestedInputProcessingParamsResult(
+                                    graph, 1, Eq(std::ref(noiseResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // After second param update.
+    EXPECT_CALL(*firstListener,
+                NotifySetRequestedInputProcessingParams(
+                    graph, 2, CUBEB_INPUT_PROCESSING_PARAM_NONE));
+    EXPECT_CALL(*firstListener, NotifySetRequestedInputProcessingParamsResult(
+                                    graph, 2, Eq(std::ref(noneResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // On non-native device's start.
+    EXPECT_CALL(*secondListener,
+                NotifySetRequestedInputProcessingParams(
+                    graph, 1, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
+    EXPECT_CALL(*secondListener, NotifySetRequestedInputProcessingParamsResult(
+                                     graph, 1, Eq(std::ref(echoResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // After switch to native device for second device.
+    EXPECT_CALL(*firstListener, Disconnect);
+    EXPECT_CALL(*secondListener, Disconnect);
+    EXPECT_CALL(*secondListener,
+                NotifySetRequestedInputProcessingParams(
+                    graph, 1, CUBEB_INPUT_PROCESSING_PARAM_ECHO_CANCELLATION));
+    EXPECT_CALL(*secondListener, NotifySetRequestedInputProcessingParamsResult(
+                                     graph, 1, Eq(std::ref(echoResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    // After param update.
+    EXPECT_CALL(*secondListener,
+                NotifySetRequestedInputProcessingParams(
+                    graph, 2, CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+    EXPECT_CALL(*secondListener, NotifySetRequestedInputProcessingParamsResult(
+                                     graph, 2, Eq(std::ref(noiseResult))))
+        .WillOnce([&] { ++numProcessingParamsResults; });
+    EXPECT_CALL(*secondListener, Disconnect);
+  }
+
+  // Open the first input device. It will be the native device of the graph.
+  RefPtr<TestDeviceInputConsumerTrack> firstTrack;
+  RefPtr<OnFallbackListener> fallbackListener;
+  DispatchFunction([&] {
+    firstTrack = TestDeviceInputConsumerTrack::Create(graph);
+    firstTrack->ConnectDeviceInput(firstDevice, firstListener,
+                                   PRINCIPAL_HANDLE_NONE);
+    fallbackListener = new OnFallbackListener(firstTrack);
+    firstTrack->AddListener(fallbackListener);
+  });
+
+  RefPtr<SmartMockCubebStream> nativeStream = WaitFor(cubeb->StreamInitEvent());
+  RefPtr<SmartMockCubebStream> nonNativeStream;
+  EXPECT_TRUE(nativeStream->mHasInput);
+  EXPECT_TRUE(nativeStream->mHasOutput);
+  EXPECT_EQ(nativeStream->InputChannels(), 1U);
+  EXPECT_EQ(nativeStream->GetInputDeviceID(), firstDevice);
+
+  while (
+      nativeStream->State()
+          .map([](cubeb_state aState) { return aState != CUBEB_STATE_STARTED; })
+          .valueOr(true)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  // Wait for the AudioCallbackDriver to come into effect.
+  while (fallbackListener->OnFallback()) {
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::Yes);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  const auto waitForResult = [&](int aNumResult) {
+    while (numProcessingParamsResults < aNumResult) {
+      EXPECT_EQ(nativeStream->ManualDataCallback(0),
+                MockCubebStream::KeepProcessing::Yes);
+      if (nonNativeStream) {
+        EXPECT_EQ(nonNativeStream->ManualDataCallback(0),
+                  MockCubebStream::KeepProcessing::Yes);
+      }
+      NS_ProcessNextEvent();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
+
+  // Wait for the first result after driver creation.
+  waitForResult(1);
+
+  // Request new processing params.
+  EXPECT_CALL(*firstListener, RequestedInputProcessingParams)
+      .WillRepeatedly(Return(CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+  waitForResult(2);
+
+  // Again request new processing params, to move the processing params
+  // generation of the first device higher so as to avoid ambiguity with the
+  // processing params generation of the second device.
+  EXPECT_CALL(*firstListener, RequestedInputProcessingParams)
+      .WillRepeatedly(Return(CUBEB_INPUT_PROCESSING_PARAM_NONE));
+  waitForResult(3);
+
+  // Open the second input device. It will be a non-native device of the graph.
+  RefPtr<TestDeviceInputConsumerTrack> secondTrack;
+  DispatchFunction([&] {
+    secondTrack = TestDeviceInputConsumerTrack::Create(graph);
+    secondTrack->ConnectDeviceInput(secondDevice, secondListener,
+                                    PRINCIPAL_HANDLE_NONE);
+    secondTrack->AddListener(fallbackListener);
+  });
+
+  auto initPromise = TakeN(cubeb->StreamInitEvent(), 1);
+  DispatchFunction([&] {
+    // TakeN dispatches a task that runs SpinEventLoopUntil while blocking the
+    // caller. Make sure any event loop spinning that needs to be intertwined
+    // with driving the graph runs in a nested task, so as to not block the test
+    // flow. I.e. if the caller that gets blocked on the TakeN task is WaitFor
+    // below, we will deadlock, because the graph must be iterated to unblock
+    // the TakeN task.
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::Yes);
+    ProcessEventQueue();
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::Yes);
+  });
+
+  std::tie(nonNativeStream) = WaitFor(initPromise).unwrap()[0];
+  EXPECT_TRUE(nonNativeStream->mHasInput);
+  EXPECT_FALSE(nonNativeStream->mHasOutput);
+  EXPECT_EQ(nonNativeStream->InputChannels(), 1U);
+  EXPECT_EQ(nonNativeStream->GetInputDeviceID(), secondDevice);
+
+  while (
+      nonNativeStream->State()
+          .map([](cubeb_state aState) { return aState != CUBEB_STATE_STARTED; })
+          .valueOr(true)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  // Wait for the first result after non-native device input creation.
+  waitForResult(4);
+
+  // Disconnect native input. First non-native input should be promoted to
+  // native, and processing param generation should increase monotonically
+  // through the switch.
+  DispatchFunction([&] {
+    firstTrack->RemoveListener(fallbackListener);
+    secondTrack->AddListener(fallbackListener);
+    firstTrack->DisconnectDeviceInput();
+  });
+  ProcessEventQueue();
+  initPromise = TakeN(cubeb->StreamInitEvent(), 1);
+  // Process the disconnect message, and check that the second device is now
+  // used with the new graph driver.
+  EXPECT_EQ(nativeStream->ManualDataCallback(0),
+            MockCubebStream::KeepProcessing::Yes);
+  // Perform the switch.
+  EXPECT_EQ(nativeStream->ManualDataCallback(0),
+            MockCubebStream::KeepProcessing::No);
+  std::tie(nativeStream) = WaitFor(initPromise).unwrap()[0];
+  EXPECT_TRUE(nativeStream->mHasInput);
+  EXPECT_TRUE(nativeStream->mHasOutput);
+  EXPECT_EQ(nativeStream->InputChannels(), 1U);
+  EXPECT_EQ(nativeStream->GetInputDeviceID(), secondDevice);
+
+  while (
+      nativeStream->State()
+          .map([](cubeb_state aState) { return aState != CUBEB_STATE_STARTED; })
+          .valueOr(true)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  // Wait for the new AudioCallbackDriver to come into effect.
+  fallbackListener->Reset();
+  while (fallbackListener->OnFallback()) {
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::Yes);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  // So that waitForResult doesn't make callbacks to it anymore.
+  nonNativeStream = nullptr;
+
+  // Wait for the first result after driver creation.
+  waitForResult(5);
+
+  // Request new processing params.
+  EXPECT_CALL(*secondListener, RequestedInputProcessingParams)
+      .WillRepeatedly(Return(CUBEB_INPUT_PROCESSING_PARAM_NOISE_SUPPRESSION));
+  waitForResult(6);
+
+  // Clean up.
+  DispatchFunction([&] {
+    firstTrack->Destroy();
+    secondTrack->RemoveListener(fallbackListener);
+    secondTrack->Destroy();
+  });
+  auto destroyPromise = TakeN(cubeb->StreamDestroyEvent(), 1);
+  DispatchFunction([&] {
+    ProcessEventQueue();
+    // Process the destroy message.
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::Yes);
+    // Shut down native.
+    EXPECT_EQ(nativeStream->ManualDataCallback(0),
+              MockCubebStream::KeepProcessing::No);
+  });
+  RefPtr<SmartMockCubebStream> destroyedStream;
+  std::tie(destroyedStream) = WaitFor(destroyPromise).unwrap()[0];
+  EXPECT_EQ(destroyedStream, nativeStream);
   {
     NativeInputTrack* native = graph->GetNativeInputTrackMainThread();
     ASSERT_TRUE(!native);

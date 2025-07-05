@@ -19,7 +19,7 @@
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/ReadRequest.h"
 #include "mozilla/dom/ReadableStreamBYOBRequest.h"
-#include "mozilla/dom/ReadableStreamController.h"
+#include "mozilla/dom/ReadableStreamControllerBase.h"
 #include "mozilla/dom/TypedArray.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
@@ -38,12 +38,12 @@ struct PullIntoDescriptor;
 struct ReadableByteStreamQueueEntry;
 struct ReadIntoRequest;
 
-class ReadableByteStreamController final : public ReadableStreamController,
+class ReadableByteStreamController final : public ReadableStreamControllerBase,
                                            public nsWrapperCache {
  public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(
-      ReadableByteStreamController, ReadableStreamController)
+      ReadableByteStreamController, ReadableStreamControllerBase)
 
  public:
   explicit ReadableByteStreamController(nsIGlobalObject* aGlobal);
@@ -187,8 +187,8 @@ MOZ_CAN_RUN_SCRIPT void ReadableByteStreamControllerRespondWithNewView(
 
 MOZ_CAN_RUN_SCRIPT void ReadableByteStreamControllerPullInto(
     JSContext* aCx, ReadableByteStreamController* aController,
-    JS::Handle<JSObject*> aView, ReadIntoRequest* aReadIntoRequest,
-    ErrorResult& aRv);
+    JS::Handle<JSObject*> aView, uint64_t aMin,
+    ReadIntoRequest* aReadIntoRequest, ErrorResult& aRv);
 
 void ReadableByteStreamControllerError(
     ReadableByteStreamController* aController, JS::Handle<JS::Value> aValue,

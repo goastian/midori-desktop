@@ -33,6 +33,9 @@ JSObject* GetCurrentThreadWorkerDebuggerGlobal();
 
 void CancelWorkersForWindow(const nsPIDOMWindowInner& aWindow);
 
+void UpdateWorkersBackgroundState(const nsPIDOMWindowInner& aWindow,
+                                  bool aIsBackground);
+
 void FreezeWorkersForWindow(const nsPIDOMWindowInner& aWindow);
 
 void ThawWorkersForWindow(const nsPIDOMWindowInner& aWindow);
@@ -51,6 +54,9 @@ bool IsWorkerGlobal(JSObject* global);
 bool IsWorkerDebuggerGlobal(JSObject* global);
 
 bool IsWorkerDebuggerSandbox(JSObject* object);
+
+void UpdateWorkersPlaybackState(const nsPIDOMWindowInner& aWindow,
+                                bool aIsPlayingAudio);
 
 }  // namespace mozilla::dom
 

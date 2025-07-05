@@ -7,14 +7,15 @@ import {
   kDrawIndirectParametersSize,
   kDrawIndexedIndirectParametersSize,
 } from '../../../capability_info.js';
-import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as ttu from '../../../texture_test_utils.js';
 
 const filled = new Uint8Array([0, 255, 0, 255]);
 const notFilled = new Uint8Array([0, 0, 0, 0]);
 
 const kRenderTargetFormat = 'rgba8unorm';
 
-class F extends GPUTest {
+class F extends AllFeaturesMaxLimitsGPUTest {
   MakeIndexBuffer(): GPUBuffer {
     return this.makeBufferWithContents(
       /* prettier-ignore */ new Uint32Array([
@@ -124,7 +125,7 @@ class F extends GPUTest {
   }
 }
 
-export const g = makeTestGroup(TextureTestMixin(F));
+export const g = makeTestGroup(F);
 
 g.test('basics')
   .desc(
@@ -204,7 +205,7 @@ Params:
       },
     });
 
-    const renderTarget = t.device.createTexture({
+    const renderTarget = t.createTextureTracked({
       size: [4, 4],
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
       format: kRenderTargetFormat,
@@ -233,7 +234,7 @@ Params:
     renderPass.end();
     t.queue.submit([commandEncoder.finish()]);
 
-    t.expectSinglePixelComparisonsAreOkInTexture({ texture: renderTarget }, [
+    ttu.expectSinglePixelComparisonsAreOkInTexture(t, { texture: renderTarget }, [
       // The bottom left area is filled
       { coord: { x: 0, y: 1 }, exp: filled },
       // The top right area is not filled

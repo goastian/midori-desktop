@@ -70,6 +70,10 @@ class SVGScriptElement final : public SVGScriptElementBase,
   void GetCrossOrigin(nsAString& aCrossOrigin);
   void SetCrossOrigin(const nsAString& aCrossOrigin, ErrorResult& aError);
   already_AddRefed<DOMSVGAnimatedString> Href();
+  void GetFetchPriority(nsAString& aFetchPriority) const;
+  void SetFetchPriority(const nsAString& aFetchPriority) {
+    SetAttr(nsGkAtoms::fetchpriority, aFetchPriority, IgnoreErrors());
+  }
 
  protected:
   ~SVGScriptElement() = default;
@@ -83,7 +87,7 @@ class SVGScriptElement final : public SVGScriptElementBase,
   nsIContent* GetAsContent() override { return this; }
 
   enum { HREF, XLINK_HREF };
-  SVGAnimatedString mStringAttributes[2];
+  SVGAnimatedScriptHrefString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 };
 

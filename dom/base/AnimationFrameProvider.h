@@ -8,70 +8,36 @@
 #define mozilla_dom_AnimationFrameProvider_h
 
 #include "mozilla/dom/AnimationFrameProviderBinding.h"
-#include "mozilla/HashTable.h"
-#include "mozilla/RefPtr.h"
-#include "nsTArray.h"
+#include "mozilla/dom/RequestCallbackManager.h"
 
 namespace mozilla::dom {
 
-struct FrameRequest {
-  FrameRequest(FrameRequestCallback& aCallback, int32_t aHandle);
-  ~FrameRequest();
+class HTMLVideoElement;
 
-  // Comparator operators to allow RemoveElementSorted with an
-  // integer argument on arrays of FrameRequest
-  bool operator==(int32_t aHandle) const { return mHandle == aHandle; }
-  bool operator<(int32_t aHandle) const { return mHandle < aHandle; }
+using FrameRequest = RequestCallbackEntry<FrameRequestCallback>;
+using FrameRequestManagerBase = RequestCallbackManager<FrameRequestCallback>;
 
-  RefPtr<FrameRequestCallback> mCallback;
-  int32_t mHandle;
-};
-
-class FrameRequestManager {
+class FrameRequestManager final : public FrameRequestManagerBase {
  public:
-  FrameRequestManager() = default;
-  ~FrameRequestManager() = default;
+  FrameRequestManager();
+  ~FrameRequestManager();
 
-  nsresult Schedule(FrameRequestCallback& aCallback, int32_t* aHandle);
-  bool Cancel(int32_t aHandle);
+  using FrameRequestManagerBase::Cancel;
+  using FrameRequestManagerBase::Schedule;
+  using FrameRequestManagerBase::Take;
 
-  bool IsEmpty() const { return mCallbacks.IsEmpty(); }
-
-  bool IsCanceled(int32_t aHandle) const {
-    return !mCanceledCallbacks.empty() && mCanceledCallbacks.has(aHandle);
+  void Schedule(HTMLVideoElement*);
+  bool Cancel(HTMLVideoElement*);
+  bool IsEmpty() const {
+    return FrameRequestManagerBase::IsEmpty() && mVideoCallbacks.IsEmpty();
   }
-
-  void Take(nsTArray<FrameRequest>& aCallbacks) {
-    aCallbacks = std::move(mCallbacks);
-    mCanceledCallbacks.clear();
-  }
-
+  void Take(nsTArray<RefPtr<HTMLVideoElement>>&);
   void Unlink();
-
-  void Traverse(nsCycleCollectionTraversalCallback& aCB);
+  void Traverse(nsCycleCollectionTraversalCallback&);
 
  private:
-  nsTArray<FrameRequest> mCallbacks;
-
-  // The set of frame request callbacks that were canceled but which we failed
-  // to find in mFrameRequestCallbacks.
-  HashSet<int32_t> mCanceledCallbacks;
-
-  /**
-   * The current frame request callback handle
-   */
-  int32_t mCallbackCounter = 0;
+  nsTArray<RefPtr<HTMLVideoElement>> mVideoCallbacks;
 };
-
-inline void ImplCycleCollectionUnlink(FrameRequestManager& aField) {
-  aField.Unlink();
-}
-
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback, FrameRequestManager& aField,
-    const char* aName, uint32_t aFlags) {
-  aField.Traverse(aCallback);
-}
 
 }  // namespace mozilla::dom
 

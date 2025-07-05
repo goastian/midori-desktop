@@ -26,7 +26,7 @@
 #include "mozilla/dom/ReadableStream.h"
 #include "mozilla/dom/ReadableStreamBYOBReader.h"
 #include "mozilla/dom/ReadableStreamBYOBRequest.h"
-#include "mozilla/dom/ReadableStreamController.h"
+#include "mozilla/dom/ReadableStreamControllerBase.h"
 #include "mozilla/dom/ReadableStreamDefaultController.h"
 #include "mozilla/dom/ReadableStreamDefaultReader.h"
 #include "mozilla/dom/ReadableStreamGenericReader.h"
@@ -115,13 +115,15 @@ struct PullIntoDescriptor final
 
   PullIntoDescriptor(JS::Handle<JSObject*> aBuffer, uint64_t aBufferByteLength,
                      uint64_t aByteOffset, uint64_t aByteLength,
-                     uint64_t aBytesFilled, uint64_t aElementSize,
-                     Constructor aViewConstructor, ReaderType aReaderType)
+                     uint64_t aBytesFilled, uint64_t aMinimumFill,
+                     uint64_t aElementSize, Constructor aViewConstructor,
+                     ReaderType aReaderType)
       : mBuffer(aBuffer),
         mBufferByteLength(aBufferByteLength),
         mByteOffset(aByteOffset),
         mByteLength(aByteLength),
         mBytesFilled(aBytesFilled),
+        mMinimumFill(aMinimumFill),
         mElementSize(aElementSize),
         mViewConstructor(aViewConstructor),
         mReaderType(aReaderType) {
@@ -147,6 +149,8 @@ struct PullIntoDescriptor final
     mBytesFilled = aBytesFilled;
   }
 
+  uint64_t MinimumFill() const { return mMinimumFill; }
+
   uint64_t ElementSize() const { return mElementSize; }
   void SetElementSize(const uint64_t aElementSize) {
     mElementSize = aElementSize;
@@ -166,6 +170,7 @@ struct PullIntoDescriptor final
   uint64_t mByteOffset = 0;
   uint64_t mByteLength = 0;
   uint64_t mBytesFilled = 0;
+  uint64_t mMinimumFill = 0;
   uint64_t mElementSize = 0;
   Constructor mViewConstructor;
   ReaderType mReaderType;
@@ -177,31 +182,32 @@ NS_IMPL_CYCLE_COLLECTION_WITH_JS_MEMBERS(PullIntoDescriptor, (), (mBuffer));
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(ReadableByteStreamController)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ReadableByteStreamController,
-                                                ReadableStreamController)
+                                                ReadableStreamControllerBase)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mByobRequest, mQueue, mPendingPullIntos)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ReadableByteStreamController,
-                                                  ReadableStreamController)
+                                                  ReadableStreamControllerBase)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mByobRequest, mQueue, mPendingPullIntos)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(ReadableByteStreamController,
-                                               ReadableStreamController)
+                                               ReadableStreamControllerBase)
   NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
-NS_IMPL_ADDREF_INHERITED(ReadableByteStreamController, ReadableStreamController)
+NS_IMPL_ADDREF_INHERITED(ReadableByteStreamController,
+                         ReadableStreamControllerBase)
 NS_IMPL_RELEASE_INHERITED(ReadableByteStreamController,
-                          ReadableStreamController)
+                          ReadableStreamControllerBase)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ReadableByteStreamController)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-NS_INTERFACE_MAP_END_INHERITING(ReadableStreamController)
+NS_INTERFACE_MAP_END_INHERITING(ReadableStreamControllerBase)
 
 ReadableByteStreamController::ReadableByteStreamController(
     nsIGlobalObject* aGlobal)
-    : ReadableStreamController(aGlobal) {}
+    : ReadableStreamControllerBase(aGlobal) {}
 
 ReadableByteStreamController::~ReadableByteStreamController() = default;
 
@@ -394,11 +400,14 @@ void ReadableByteStreamControllerClose(
 
   // Step 4.
   if (!aController->PendingPullIntos().isEmpty()) {
-    // Step 4.1
+    // Step 4.1. Let firstPendingPullInto be controller.[[pendingPullIntos]][0].
     PullIntoDescriptor* firstPendingPullInto =
         aController->PendingPullIntos().getFirst();
-    // Step 4.2
-    if (firstPendingPullInto->BytesFilled() > 0) {
+
+    // Step 4.2. If the remainder after dividing firstPendingPullInto’s bytes
+    // filled by firstPendingPullInto’s element size is not 0,
+    if ((firstPendingPullInto->BytesFilled() %
+         firstPendingPullInto->ElementSize()) != 0) {
       // Step 4.2.1
       ErrorResult rv;
       rv.ThrowTypeError("Leftover Bytes");
@@ -616,7 +625,7 @@ void ReadableByteStreamControllerCallPullIfNeeded(
   aController->SetPulling(true);
 
   // Step 6.
-  RefPtr<ReadableStreamController> controller(aController);
+  RefPtr<ReadableStreamControllerBase> controller(aController);
   RefPtr<UnderlyingSourceAlgorithmsBase> algorithms =
       aController->GetAlgorithms();
   RefPtr<Promise> pullPromise = algorithms->PullCallback(aCx, *controller, aRv);
@@ -703,8 +712,10 @@ void ReadableByteStreamControllerCommitPullIntoDescriptor(
 
   // Step 4. If stream.[[state]] is "closed",
   if (aStream->State() == ReadableStream::ReaderState::Closed) {
-    // Step 4.1. Assert: pullIntoDescriptor’s bytes filled is 0.
-    MOZ_ASSERT(pullIntoDescriptor->BytesFilled() == 0);
+    // Step 4.1. Assert: the remainder after dividing pullIntoDescriptor’s bytes
+    // filled by pullIntoDescriptor’s element size is 0.
+    MOZ_ASSERT((pullIntoDescriptor->BytesFilled() %
+                pullIntoDescriptor->ElementSize()) == 0);
 
     // Step 4.2. Set done to true.
     done = true;
@@ -741,22 +752,25 @@ void ReadableByteStreamControllerCommitPullIntoDescriptor(
 MOZ_CAN_RUN_SCRIPT
 void ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
     JSContext* aCx, ReadableByteStreamController* aController,
-    ErrorResult& aRv) {
+    nsTArray<RefPtr<PullIntoDescriptor>>& aFilledPullIntos, ErrorResult& aRv) {
   // Step 1. Assert: controller.[[closeRequested]] is false.
   MOZ_ASSERT(!aController->CloseRequested());
 
-  // Step 2. While controller.[[pendingPullIntos]] is not empty,
+  // Step 2. Let filledPullIntos be a new empty list.
+  MOZ_ASSERT(aFilledPullIntos.IsEmpty());
+
+  // Step 3. While controller.[[pendingPullIntos]] is not empty,
   while (!aController->PendingPullIntos().isEmpty()) {
-    // Step 2.1 If controller.[[queueTotalSize]] is 0, return.
+    // Step 3.1. If controller.[[queueTotalSize]] is 0, then break.
     if (aController->QueueTotalSize() == 0) {
-      return;
+      break;
     }
 
-    // Step 2.2. Let pullIntoDescriptor be controller.[[pendingPullIntos]][0].
+    // Step 3.2. Let pullIntoDescriptor be controller.[[pendingPullIntos]][0].
     RefPtr<PullIntoDescriptor> pullIntoDescriptor =
         aController->PendingPullIntos().getFirst();
 
-    // Step 2.3. If
+    // Step 3.3. If
     // !ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller,
     // pullIntoDescriptor) is true,
     bool ready = ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(
@@ -766,22 +780,17 @@ void ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
     }
 
     if (ready) {
-      //  Step 2.3.1. Perform
+      //  Step 3.3.1. Perform
       //  !ReadableByteStreamControllerShiftPendingPullInto(controller).
       RefPtr<PullIntoDescriptor> discardedPullIntoDescriptor =
           ReadableByteStreamControllerShiftPendingPullInto(aController);
 
-      // Step 2.3.2. Perform
-      // !ReadableByteStreamControllerCommitPullIntoDescriptor(controller.[[stream]],
-      //         pullIntoDescriptor).
-      RefPtr<ReadableStream> stream(aController->Stream());
-      ReadableByteStreamControllerCommitPullIntoDescriptor(
-          aCx, stream, pullIntoDescriptor, aRv);
-      if (aRv.Failed()) {
-        return;
-      }
+      // Step 3.3.2. Append pullIntoDescriptor to filledPullIntos.
+      aFilledPullIntos.AppendElement(pullIntoDescriptor);
     }
   }
+
+  // Step 4: Return filledPullIntos. (Implicit)
 }
 
 MOZ_CAN_RUN_SCRIPT
@@ -1016,12 +1025,25 @@ void ReadableByteStreamControllerEnqueue(
     ReadableByteStreamControllerEnqueueChunkToQueue(
         aController, transferredBuffer, byteOffset, byteLength);
 
-    // Step 10.2 Perform !
+    // Step 10.2. Let filledPullIntos be the result of performing !
     // ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller).
+    nsTArray<RefPtr<PullIntoDescriptor>> filledPullIntos;
     ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
-        aCx, aController, aRv);
+        aCx, aController, filledPullIntos, aRv);
     if (aRv.Failed()) {
       return;
+    }
+
+    // Step 10.3. For each filledPullInto of filledPullIntos,
+    for (auto& filledPullInto : filledPullIntos) {
+      // Step 10.3.1. Perform !
+      // ReadableByteStreamControllerCommitPullIntoDescriptor(stream,
+      // filledPullInto).
+      ReadableByteStreamControllerCommitPullIntoDescriptor(
+          aCx, stream, MOZ_KnownLive(filledPullInto), aRv);
+      if (aRv.Failed()) {
+        return;
+      }
     }
 
     // Step 11. Otherwise,
@@ -1144,13 +1166,13 @@ void ReadableByteStreamControllerHandleQueueDrain(
 void ReadableByteStreamController::PullSteps(JSContext* aCx,
                                              ReadRequest* aReadRequest,
                                              ErrorResult& aRv) {
-  // Step 1.
+  // Step 1. Let stream be this.[[stream]].
   ReadableStream* stream = Stream();
 
-  // Step 2.
+  // Step 2. Assert: ! ReadableStreamHasDefaultReader(stream) is true.
   MOZ_ASSERT(ReadableStreamHasDefaultReader(stream));
 
-  // Step 3.
+  // Step 3. If this.[[queueTotalSize]] > 0,
   if (QueueTotalSize() > 0) {
     // Step 3.1. Assert: ! ReadableStreamGetNumReadRequests ( stream ) is 0.
     MOZ_ASSERT(ReadableStreamGetNumReadRequests(stream) == 0);
@@ -1164,18 +1186,20 @@ void ReadableByteStreamController::PullSteps(JSContext* aCx,
     return;
   }
 
-  // Step 4.
+  // Step 4. Let autoAllocateChunkSize be this.[[autoAllocateChunkSize]].
   Maybe<uint64_t> autoAllocateChunkSize = AutoAllocateChunkSize();
 
-  // Step 5.
+  // Step 5. If autoAllocateChunkSize is not undefined,
   if (autoAllocateChunkSize) {
-    // Step 5.1
+    // Step 5.1.  Let buffer be Construct(%ArrayBuffer%, « autoAllocateChunkSize
+    // »).
     aRv.MightThrowJSException();
     JS::Rooted<JSObject*> buffer(
         aCx, JS::NewArrayBuffer(aCx, *autoAllocateChunkSize));
-    // Step 5.2
+
+    // Step 5.2. If buffer is an abrupt completion,
     if (!buffer) {
-      // Step 5.2.1
+      // Step 5.2.1. Perform readRequest’s error steps, given buffer.[[Value]].
       JS::Rooted<JS::Value> bufferError(aCx);
       if (!JS_GetPendingException(aCx, &bufferError)) {
         // Uncatchable exception; we should mark aRv and return.
@@ -1183,29 +1207,40 @@ void ReadableByteStreamController::PullSteps(JSContext* aCx,
         return;
       }
 
-      // It's not expliclitly stated, but I assume the intention here is that
+      // It's not explicitly stated, but I assume the intention here is that
       // we perform a normal completion here.
       JS_ClearPendingException(aCx);
 
       aReadRequest->ErrorSteps(aCx, bufferError, aRv);
 
-      // Step 5.2.2.
+      // Step 5.2.2. Return.
       return;
     }
 
-    // Step 5.3
+    // Step 5.3 Let pullIntoDescriptor be a new pull-into descriptor with
+    //  buffer              buffer.[[Value]]
+    //  buffer byte length  autoAllocateChunkSize
+    //  byte offset         0
+    //  byte length         autoAllocateChunkSize
+    //  bytes filled        0
+    //  minimum fill        1
+    //  element size        1
+    //  view constructor    %Uint8Array%
+    //  reader type         "default"
     RefPtr<PullIntoDescriptor> pullIntoDescriptor = new PullIntoDescriptor(
-        buffer, *autoAllocateChunkSize, 0, *autoAllocateChunkSize, 0, 1,
+        buffer, /* aBufferByteLength */ *autoAllocateChunkSize,
+        /*aByteOffset */ 0, /* aByteLength */ *autoAllocateChunkSize,
+        /* aBytesFilled */ 0, /* aMinimumFill */ 1, /* aElementSize */ 1,
         PullIntoDescriptor::Constructor::Uint8, ReaderType::Default);
 
-    //  Step 5.4
+    //  Step 5.4. Append pullIntoDescriptor to this.[[pendingPullIntos]].
     PendingPullIntos().insertBack(pullIntoDescriptor);
   }
 
-  // Step 6.
+  // Step 6. Perform ! ReadableStreamAddReadRequest(stream, readRequest).
   ReadableStreamAddReadRequest(stream, aReadRequest);
 
-  // Step 7.
+  // Step 7. Perform ! ReadableByteStreamControllerCallPullIfNeeded(this).
   ReadableByteStreamControllerCallPullIfNeeded(aCx, this, aRv);
 }
 
@@ -1280,7 +1315,8 @@ JSObject* ReadableByteStreamControllerConvertPullIntoDescriptor(
   // Step 3. Assert: bytesFilled ≤ pullIntoDescriptor’s byte length.
   MOZ_ASSERT(bytesFilled <= pullIntoDescriptor->ByteLength());
 
-  // Step 4. Assert: bytesFilled mod elementSize is 0.
+  // Step 4. Assert: the remainder after dividing bytesFilled by elementSize is
+  // 0.
   MOZ_ASSERT(bytesFilled % elementSize == 0);
 
   // Step 5. Let buffer be ! TransferArrayBuffer(pullIntoDescriptor’s buffer).
@@ -1310,8 +1346,10 @@ MOZ_CAN_RUN_SCRIPT
 static void ReadableByteStreamControllerRespondInClosedState(
     JSContext* aCx, ReadableByteStreamController* aController,
     RefPtr<PullIntoDescriptor>& aFirstDescriptor, ErrorResult& aRv) {
-  // Step 1. Assert: firstDescriptor ’s bytes filled is 0.
-  MOZ_ASSERT(aFirstDescriptor->BytesFilled() == 0);
+  // Step 1. Assert: the remainder after dividing firstDescriptor’s bytes filled
+  // by firstDescriptor’s element size is 0.
+  MOZ_ASSERT(
+      (aFirstDescriptor->BytesFilled() % aFirstDescriptor->ElementSize()) == 0);
 
   // Step 2. If firstDescriptor’s reader type is "none",
   // perform ! ReadableByteStreamControllerShiftPendingPullInto(controller).
@@ -1326,18 +1364,32 @@ static void ReadableByteStreamControllerRespondInClosedState(
 
   // Step 4. If ! ReadableStreamHasBYOBReader(stream) is true,
   if (ReadableStreamHasBYOBReader(stream)) {
-    // Step 4.1. While ! ReadableStreamGetNumReadIntoRequests(stream) > 0,
-    while (ReadableStreamGetNumReadIntoRequests(stream) > 0) {
-      // Step 4.1.1. Let pullIntoDescriptor be !
+    // Step 4.1. Let filledPullIntos be a new empty list.
+    nsTArray<RefPtr<PullIntoDescriptor>> filledPullIntos;
+
+    // Step 4.2. While |filledPullInto|'s [=list/size=] < !
+    // ReadableStreamGetNumReadIntoRequests(stream),
+    while (filledPullIntos.Length() <
+           ReadableStreamGetNumReadIntoRequests(stream)) {
+      // Step 4.2.1. Let pullIntoDescriptor be !
       // ReadableByteStreamControllerShiftPendingPullInto(controller).
       RefPtr<PullIntoDescriptor> pullIntoDescriptor =
           ReadableByteStreamControllerShiftPendingPullInto(aController);
 
-      // Step 4.1.2. Perform !
+      // Step 4.2.2. Append pullIntoDescriptor to filledPullIntos.
+      filledPullIntos.AppendElement(pullIntoDescriptor);
+    }
+
+    // Step 4.3. For each filledPullInto of filledPullIntos,
+    for (auto& filledPullInto : filledPullIntos) {
+      // Step 4.3.1. Perform !
       // ReadableByteStreamControllerCommitPullIntoDescriptor(stream,
-      // pullIntoDescriptor).
+      // filledPullInto).
       ReadableByteStreamControllerCommitPullIntoDescriptor(
-          aCx, stream, pullIntoDescriptor, aRv);
+          aCx, stream, MOZ_KnownLive(filledPullInto), aRv);
+      if (aRv.Failed()) {
+        return;
+      }
     }
   }
 }
@@ -1387,18 +1439,35 @@ static void ReadableByteStreamControllerRespondInReadableState(
       return;
     }
 
-    // Step 3.2. Perform !
+    // Step 3.2. Let filledPullIntos be the result of performing !
     // ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller).
+    nsTArray<RefPtr<PullIntoDescriptor>> filledPullIntos;
     ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
-        aCx, aController, aRv);
+        aCx, aController, filledPullIntos, aRv);
+    if (aRv.Failed()) {
+      return;
+    }
 
-    // Step 3.3. Return.
+    // Step 3.3. For each filledPullInto of filledPullIntos,
+    for (auto& filledPullInto : filledPullIntos) {
+      // Step 3.3.1. Perform !
+      // ReadableByteStreamControllerCommitPullIntoDescriptor(controller.[[stream]],
+      // filledPullInto).
+      ReadableByteStreamControllerCommitPullIntoDescriptor(
+          aCx, MOZ_KnownLive(aController->Stream()),
+          MOZ_KnownLive(filledPullInto), aRv);
+      if (aRv.Failed()) {
+        return;
+      }
+    }
+
+    // Step 3.4. Return.
     return;
   }
 
-  // Step 4. If pullIntoDescriptor’s bytes filled < pullIntoDescriptor’s element
-  // size, return.
-  if (aPullIntoDescriptor->BytesFilled() < aPullIntoDescriptor->ElementSize()) {
+  // Step 4. If pullIntoDescriptor’s bytes filled < pullIntoDescriptor’s minimum
+  // fill, return.
+  if (aPullIntoDescriptor->BytesFilled() < aPullIntoDescriptor->MinimumFill()) {
     return;
   }
 
@@ -1408,8 +1477,8 @@ static void ReadableByteStreamControllerRespondInReadableState(
       ReadableByteStreamControllerShiftPendingPullInto(aController);
   (void)pullIntoDescriptor;
 
-  // Step 6. Let remainderSize be pullIntoDescriptor’s bytes filled mod
-  // pullIntoDescriptor’s element size.
+  // Step 6. Let remainderSize be the remainder after dividing
+  // pullIntoDescriptor’s bytes filled by pullIntoDescriptor’s element size.
   size_t remainderSize =
       aPullIntoDescriptor->BytesFilled() % aPullIntoDescriptor->ElementSize();
 
@@ -1437,7 +1506,16 @@ static void ReadableByteStreamControllerRespondInReadableState(
   aPullIntoDescriptor->SetBytesFilled(aPullIntoDescriptor->BytesFilled() -
                                       remainderSize);
 
-  // Step 9. Perform
+  // Step 9. Let filledPullIntos be the result of performing !
+  // ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller).
+  nsTArray<RefPtr<PullIntoDescriptor>> filledPullIntos;
+  ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
+      aCx, aController, filledPullIntos, aRv);
+  if (aRv.Failed()) {
+    return;
+  }
+
+  // Step 10. Perform
   // !ReadableByteStreamControllerCommitPullIntoDescriptor(controller.[[stream]],
   // pullIntoDescriptor).
   RefPtr<ReadableStream> stream(aController->Stream());
@@ -1447,10 +1525,17 @@ static void ReadableByteStreamControllerRespondInReadableState(
     return;
   }
 
-  // Step 10. Perform
-  // !ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(controller).
-  ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
-      aCx, aController, aRv);
+  // Step 11. For each filledPullInto of filledPullIntos,
+  for (auto& filledPullInto : filledPullIntos) {
+    // Step 11.1. Perform !
+    // ReadableByteStreamControllerCommitPullIntoDescriptor(controller.[[stream]],
+    // filledPullInto).
+    ReadableByteStreamControllerCommitPullIntoDescriptor(
+        aCx, stream, MOZ_KnownLive(filledPullInto), aRv);
+    if (aRv.Failed()) {
+      return;
+    }
+  }
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-respond-internal
@@ -1643,136 +1728,202 @@ void ReadableByteStreamControllerRespondWithNewView(
                                               aRv);
 }
 
+#ifdef DEBUG
+// https://streams.spec.whatwg.org/#abstract-opdef-cancopydatablockbytes
+bool CanCopyDataBlockBytes(JS::Handle<JSObject*> aToBuffer, size_t aToIndex,
+                           JS::Handle<JSObject*> aFromBuffer, size_t aFromIndex,
+                           size_t aCount) {
+  // Step 1. Assert: toBuffer is an Object.
+  // Step 2. Assert: toBuffer has an [[ArrayBufferData]] internal slot.
+  MOZ_ASSERT(JS::IsArrayBufferObject(aToBuffer));
+
+  // Step 3. Assert: fromBuffer is an Object.
+  // Step 4. Assert: fromBuffer has an [[ArrayBufferData]] internal slot.
+  MOZ_ASSERT(JS::IsArrayBufferObject(aFromBuffer));
+
+  // Step 5. If toBuffer is fromBuffer, return false.
+  // Note: JS API makes it safe to just compare the pointers.
+  if (aToBuffer == aFromBuffer) {
+    return false;
+  }
+
+  // Step 6. If ! IsDetachedBuffer(toBuffer) is true, return false.
+  if (JS::IsDetachedArrayBufferObject(aToBuffer)) {
+    return false;
+  }
+
+  // Step 7. If ! IsDetachedBuffer(fromBuffer) is true, return false.
+  if (JS::IsDetachedArrayBufferObject(aFromBuffer)) {
+    return false;
+  }
+
+  // Step 8. If toIndex + count > toBuffer.[[ArrayBufferByteLength]], return
+  // false.
+  if (aToIndex + aCount > JS::GetArrayBufferByteLength(aToBuffer)) {
+    return false;
+  }
+  // (Not in the spec) also check overflow.
+  if (aToIndex + aCount < aToIndex) {
+    return false;
+  }
+
+  // Step 9. If fromIndex + count > fromBuffer.[[ArrayBufferByteLength]], return
+  // false.
+  if (aFromIndex + aCount > JS::GetArrayBufferByteLength(aFromBuffer)) {
+    return false;
+  }
+  // (Not in the spec) also check overflow.
+  if (aFromIndex + aCount < aFromIndex) {
+    return false;
+  }
+
+  // Step 10. Return true.
+  return true;
+}
+#endif
+
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-fill-pull-into-descriptor-from-queue
 bool ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(
     JSContext* aCx, ReadableByteStreamController* aController,
     PullIntoDescriptor* aPullIntoDescriptor, ErrorResult& aRv) {
-  // Step 1. Let elementSize be pullIntoDescriptor.[[elementSize]].
-  size_t elementSize = aPullIntoDescriptor->ElementSize();
-
-  // Step 2. Let currentAlignedBytes be pullIntoDescriptor’s bytes filled −
-  // (pullIntoDescriptor’s bytes filled mod elementSize).
-  size_t currentAlignedBytes =
-      aPullIntoDescriptor->BytesFilled() -
-      (aPullIntoDescriptor->BytesFilled() % elementSize);
-
-  // Step 3. Let maxBytesToCopy be min(controller.[[queueTotalSize]],
+  // Step 1. Let maxBytesToCopy be min(controller.[[queueTotalSize]],
   // pullIntoDescriptor’s byte length − pullIntoDescriptor’s bytes filled).
   size_t maxBytesToCopy =
       std::min(static_cast<size_t>(aController->QueueTotalSize()),
                static_cast<size_t>((aPullIntoDescriptor->ByteLength() -
                                     aPullIntoDescriptor->BytesFilled())));
 
-  // Step 4. Let maxBytesFilled be pullIntoDescriptor’s bytes filled +
+  // Step 2. Let maxBytesFilled be pullIntoDescriptor’s bytes filled +
   // maxBytesToCopy.
   size_t maxBytesFilled = aPullIntoDescriptor->BytesFilled() + maxBytesToCopy;
 
-  // Step 5. Let maxAlignedBytes be maxBytesFilled − (maxBytesFilled mod
-  // elementSize).
-  size_t maxAlignedBytes = maxBytesFilled - (maxBytesFilled % elementSize);
-
-  // Step 6. Let totalBytesToCopyRemaining be maxBytesToCopy.
+  // Step 3. Let totalBytesToCopyRemaining be maxBytesToCopy.
   size_t totalBytesToCopyRemaining = maxBytesToCopy;
 
-  // Step 7. Let ready be false.
+  // Step 4. Let ready be false.
   bool ready = false;
 
-  // Step 8. If maxAlignedBytes > currentAlignedBytes,
-  if (maxAlignedBytes > currentAlignedBytes) {
-    // Step 8.1. Set totalBytesToCopyRemaining to maxAlignedBytes −
+  // Step 5. Assert: ! IsDetachedBuffer(pullIntoDescriptor ’s buffer) is false.
+  MOZ_ASSERT(!JS::IsDetachedArrayBufferObject(aPullIntoDescriptor->Buffer()));
+
+  // Step 6. Assert: pullIntoDescriptor’s bytes filled < pullIntoDescriptor’s
+  // minimum fill.
+  MOZ_ASSERT(aPullIntoDescriptor->BytesFilled() <
+             aPullIntoDescriptor->MinimumFill());
+
+  // Step 7. Let remainderBytes be the remainder after dividing maxBytesFilled
+  // by pullIntoDescriptor’s element size.
+  size_t remainderBytes = maxBytesFilled % aPullIntoDescriptor->ElementSize();
+
+  // Step 8. Let maxAlignedBytes be maxBytesFilled − remainderBytes.
+  size_t maxAlignedBytes = maxBytesFilled - remainderBytes;
+
+  // Step 9. If maxAlignedBytes ≥ pullIntoDescriptor’s minimum fill,
+  if (maxAlignedBytes >= aPullIntoDescriptor->MinimumFill()) {
+    // Step 9.1. Set totalBytesToCopyRemaining to maxAlignedBytes −
     // pullIntoDescriptor’s bytes filled.
     totalBytesToCopyRemaining =
         maxAlignedBytes - aPullIntoDescriptor->BytesFilled();
-    // Step 8.2. Set ready to true.
+    // Step 9.2. Set ready to true.
     ready = true;
   }
 
-  // Step 9. Let queue be controller.[[queue]].
+  // Step 10. Let queue be controller.[[queue]].
   LinkedList<RefPtr<ReadableByteStreamQueueEntry>>& queue =
       aController->Queue();
 
-  // Step 10. While totalBytesToCopyRemaining > 0,
+  // Step 11. While totalBytesToCopyRemaining > 0,
   while (totalBytesToCopyRemaining > 0) {
-    // Step 10.1  Let headOfQueue be queue[0].
+    // Step 11.1  Let headOfQueue be queue[0].
     ReadableByteStreamQueueEntry* headOfQueue = queue.getFirst();
 
-    // Step 10.2. Let bytesToCopy be min(totalBytesToCopyRemaining,
+    // Step 11.2. Let bytesToCopy be min(totalBytesToCopyRemaining,
     // headOfQueue’s byte length).
     size_t bytesToCopy =
         std::min(totalBytesToCopyRemaining, headOfQueue->ByteLength());
 
-    // Step 10.3. Let destStart be pullIntoDescriptor’s byte offset +
+    // Step 11.3. Let destStart be pullIntoDescriptor’s byte offset +
     // pullIntoDescriptor’s bytes filled.
     size_t destStart =
         aPullIntoDescriptor->ByteOffset() + aPullIntoDescriptor->BytesFilled();
 
-    // Step 10.4. Perform !CopyDataBlockBytes(pullIntoDescriptor’s
-    //            buffer.[[ArrayBufferData]], destStart, headOfQueue’s
-    //            buffer.[[ArrayBufferData]], headOfQueue’s byte offset,
-    //            bytesToCopy).
+    // Step 11.4. Let descriptorBuffer be pullIntoDescriptor’s buffer.
     JS::Rooted<JSObject*> descriptorBuffer(aCx, aPullIntoDescriptor->Buffer());
+
+    // Step 11.5. Let queueBuffer be headOfQueue’s buffer.
     JS::Rooted<JSObject*> queueBuffer(aCx, headOfQueue->Buffer());
+
+    // Step 11.6.  Let queueByteOffset be headOfQueue’s byte offset.
+    size_t queueByteOffset = headOfQueue->ByteOffset();
+
+    // Step 11.7. Assert: ! CanCopyDataBlockBytes(descriptorBuffer, destStart,
+    // queueBuffer, queueByteOffset, bytesToCopy) is true.
+    MOZ_ASSERT(CanCopyDataBlockBytes(descriptorBuffer, destStart, queueBuffer,
+                                     queueByteOffset, bytesToCopy));
+
+    // Step 11.8. Perform !
+    // CopyDataBlockBytes(descriptorBuffer.[[ArrayBufferData]], destStart,
+    // queueBuffer.[[ArrayBufferData]], queueByteOffset, bytesToCopy).
     if (!JS::ArrayBufferCopyData(aCx, descriptorBuffer, destStart, queueBuffer,
-                                 headOfQueue->ByteOffset(), bytesToCopy)) {
+                                 queueByteOffset, bytesToCopy)) {
       aRv.StealExceptionFromJSContext(aCx);
       return false;
     }
 
-    // Step 10.5. If headOfQueue’s byte length is bytesToCopy,
+    // Step 11.9. If headOfQueue’s byte length is bytesToCopy,
     if (headOfQueue->ByteLength() == bytesToCopy) {
-      // Step 10.5.1. Remove queue[0].
+      // Step 11.9.1. Remove queue[0].
       queue.popFirst();
     } else {
-      // Step 10.6.  Otherwise,
+      // Step 11.10.  Otherwise,
 
-      // Step 10.6.1 Set headOfQueue’s byte offset to
+      // Step 11.10.1 Set headOfQueue’s byte offset to
       // headOfQueue’s byte offset +  bytesToCopy.
       headOfQueue->SetByteOffset(headOfQueue->ByteOffset() + bytesToCopy);
-      // Step 10.6.2  Set headOfQueue’s byte length to
+      // Step 11.10.2  Set headOfQueue’s byte length to
       // headOfQueue’s byte length − bytesToCopy.
       headOfQueue->SetByteLength(headOfQueue->ByteLength() - bytesToCopy);
     }
 
-    // Step 10.7. Set controller.[[queueTotalSize]] to
+    // Step 11.11. Set controller.[[queueTotalSize]] to
     // controller.[[queueTotalSize]] −  bytesToCopy.
     aController->SetQueueTotalSize(aController->QueueTotalSize() -
                                    (double)bytesToCopy);
 
-    // Step 10.8, Perform
+    // Step 11.12, Perform
     // !ReadableByteStreamControllerFillHeadPullIntoDescriptor(controller,
     //     bytesToCopy, pullIntoDescriptor).
     ReadableByteStreamControllerFillHeadPullIntoDescriptor(
         aController, bytesToCopy, aPullIntoDescriptor);
 
-    // Step 10.9. Set totalBytesToCopyRemaining to totalBytesToCopyRemaining −
+    // Step 11.13. Set totalBytesToCopyRemaining to totalBytesToCopyRemaining −
     //     bytesToCopy.
     totalBytesToCopyRemaining = totalBytesToCopyRemaining - bytesToCopy;
   }
 
-  // Step 11. If ready is false,
+  // Step 12. If ready is false,
   if (!ready) {
-    // Step 11.1. Assert: controller.[[queueTotalSize]] is 0.
+    // Step 12.1. Assert: controller.[[queueTotalSize]] is 0.
     MOZ_ASSERT(aController->QueueTotalSize() == 0);
 
-    // Step 11.2. Assert: pullIntoDescriptor’s bytes filled > 0.
+    // Step 12.2. Assert: pullIntoDescriptor’s bytes filled > 0.
     MOZ_ASSERT(aPullIntoDescriptor->BytesFilled() > 0);
 
-    // Step 11.3. Assert: pullIntoDescriptor’s bytes filled <
-    // pullIntoDescriptor’s
-    //     element size.
+    // Step 12.3. Assert: pullIntoDescriptor’s bytes filled <
+    // pullIntoDescriptor’s minimum fill.
     MOZ_ASSERT(aPullIntoDescriptor->BytesFilled() <
-               aPullIntoDescriptor->ElementSize());
+               aPullIntoDescriptor->MinimumFill());
   }
 
-  // Step 12. Return ready.
+  // Step 13. Return ready.
   return ready;
 }
 
 // https://streams.spec.whatwg.org/#readable-byte-stream-controller-pull-into
 void ReadableByteStreamControllerPullInto(
     JSContext* aCx, ReadableByteStreamController* aController,
-    JS::Handle<JSObject*> aView, ReadIntoRequest* aReadIntoRequest,
-    ErrorResult& aRv) {
+    JS::Handle<JSObject*> aView, uint64_t aMin,
+    ReadIntoRequest* aReadIntoRequest, ErrorResult& aRv) {
   aRv.MightThrowJSException();
 
   // Step 1. Let stream be controller.[[stream]].
@@ -1798,13 +1949,23 @@ void ReadableByteStreamControllerPullInto(
     ctor = PullIntoDescriptor::constructorFromScalar(type);
   }
 
-  // Step 5. Let byteOffset be view.[[ByteOffset]].
+  // Step 5. Let minimumFill be min × elementSize.
+  uint64_t minimumFill = aMin * elementSize;
+
+  // Step 6. Assert: minimumFill ≥ 0 and minimumFill ≤ view.[[ByteLength]].
+  MOZ_ASSERT(minimumFill <= JS_GetArrayBufferViewByteLength(aView));
+
+  // Step 7. Assert: the remainder after dividing minimumFill by elementSize is
+  // 0.
+  MOZ_ASSERT((minimumFill % elementSize) == 0);
+
+  // Step 8. Let byteOffset be view.[[ByteOffset]].
   size_t byteOffset = JS_GetArrayBufferViewByteOffset(aView);
 
-  // Step 6. Let byteLength be view.[[ByteLength]].
+  // Step 9. Let byteLength be view.[[ByteLength]].
   size_t byteLength = JS_GetArrayBufferViewByteLength(aView);
 
-  // Step 7. Let bufferResult be
+  // Step 10. Let bufferResult be
   // TransferArrayBuffer(view.[[ViewedArrayBuffer]]).
   bool isShared;
   JS::Rooted<JSObject*> viewedArrayBuffer(
@@ -1816,7 +1977,7 @@ void ReadableByteStreamControllerPullInto(
   JS::Rooted<JSObject*> bufferResult(
       aCx, TransferArrayBuffer(aCx, viewedArrayBuffer));
 
-  // Step 8. If bufferResult is an abrupt completion,
+  // Step 11. If bufferResult is an abrupt completion,
   if (!bufferResult) {
     JS::Rooted<JS::Value> pendingException(aCx);
     if (!JS_GetPendingException(aCx, &pendingException)) {
@@ -1831,46 +1992,47 @@ void ReadableByteStreamControllerPullInto(
     // exception state anyhow to succesfully run ErrorSteps.
     JS_ClearPendingException(aCx);
 
-    //     Step 8.1. Perform readIntoRequest’s error steps, given
+    //     Step 11.1. Perform readIntoRequest’s error steps, given
     //     bufferResult.[[Value]].
     aReadIntoRequest->ErrorSteps(aCx, pendingException, aRv);
 
-    //     Step 8.2. Return.
+    //     Step 11.2. Return.
     return;
   }
 
-  // Step 9. Let buffer be bufferResult.[[Value]].
+  // Step 12. Let buffer be bufferResult.[[Value]].
   JS::Rooted<JSObject*> buffer(aCx, bufferResult);
 
-  // Step 10. Let pullIntoDescriptor be a new pull-into descriptor with
-  //  buffer: buffer,
-  //  buffer byte length:  buffer.[[ArrayBufferByteLength]],
-  //  byte offset: byteOffset,
-  //  byte length: byteLength,
-  //  bytes filled: 0,
-  //  element size: elementSize,
-  //  view constructor: ctor,
-  //  and reader type: "byob".
+  // Step 13. Let pullIntoDescriptor be a new pull-into descriptor with
+  //  buffer: buffer
+  //  buffer byte length: buffer.[[ArrayBufferByteLength]]
+  //  byte offset: byteOffset
+  //  byte length: byteLength
+  //  bytes filled: 0
+  //  minimum fill: minimumFill
+  //  element size: elementSize
+  //  view constructor: ctor
+  //  reader type: "byob"
   RefPtr<PullIntoDescriptor> pullIntoDescriptor = new PullIntoDescriptor(
       buffer, JS::GetArrayBufferByteLength(buffer), byteOffset, byteLength, 0,
-      elementSize, ctor, ReaderType::BYOB);
+      minimumFill, elementSize, ctor, ReaderType::BYOB);
 
-  // Step 11. If controller.[[pendingPullIntos]] is not empty,
+  // Step 14. If controller.[[pendingPullIntos]] is not empty,
   if (!aController->PendingPullIntos().isEmpty()) {
-    // Step 11.1. Append pullIntoDescriptor to controller.[[pendingPullIntos]].
+    // Step 14.1. Append pullIntoDescriptor to controller.[[pendingPullIntos]].
     aController->PendingPullIntos().insertBack(pullIntoDescriptor);
 
-    // Step 11.2. Perform !ReadableStreamAddReadIntoRequest(stream,
+    // Step 14.2. Perform !ReadableStreamAddReadIntoRequest(stream,
     // readIntoRequest).
     ReadableStreamAddReadIntoRequest(stream, aReadIntoRequest);
 
-    // Step 11.3. Return.
+    // Step 14.3. Return.
     return;
   }
 
-  // Step 12. If stream.[[state]] is "closed",
+  // Step 15. If stream.[[state]] is "closed",
   if (stream->State() == ReadableStream::ReaderState::Closed) {
-    // Step 12.1. Let emptyView be !Construct(ctor, « pullIntoDescriptor’s
+    // Step 15.1. Let emptyView be !Construct(ctor, « pullIntoDescriptor’s
     //            buffer, pullIntoDescriptor’s byte offset, 0 »).
     JS::Rooted<JSObject*> pullIntoBuffer(aCx, pullIntoDescriptor->Buffer());
     JS::Rooted<JSObject*> emptyView(
@@ -1882,17 +2044,17 @@ void ReadableByteStreamControllerPullInto(
       return;
     }
 
-    // Step 12.2. Perform readIntoRequest’s close steps, given emptyView.
+    // Step 15.2. Perform readIntoRequest’s close steps, given emptyView.
     JS::Rooted<JS::Value> emptyViewValue(aCx, JS::ObjectValue(*emptyView));
     aReadIntoRequest->CloseSteps(aCx, emptyViewValue, aRv);
 
-    // Step 12.3. Return.
+    // Step 15.3. Return.
     return;
   }
 
-  // Step 13,. If controller.[[queueTotalSize]] > 0,
+  // Step 16. If controller.[[queueTotalSize]] > 0,
   if (aController->QueueTotalSize() > 0) {
-    // Step 13.1 If
+    // Step 16.1 If
     // !ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(controller,
     //     pullIntoDescriptor) is true,
     bool ready = ReadableByteStreamControllerFillPullIntoDescriptorFromQueue(
@@ -1901,7 +2063,7 @@ void ReadableByteStreamControllerPullInto(
       return;
     }
     if (ready) {
-      // Step 13.1.1  Let filledView be
+      // Step 16.1.1  Let filledView be
       //         !ReadableByteStreamControllerConvertPullIntoDescriptor(pullIntoDescriptor).
       JS::Rooted<JSObject*> filledView(
           aCx, ReadableByteStreamControllerConvertPullIntoDescriptor(
@@ -1909,51 +2071,50 @@ void ReadableByteStreamControllerPullInto(
       if (aRv.Failed()) {
         return;
       }
-      //  Step 13.1.2. Perform
+      //  Step 16.1.2. Perform
       //         !ReadableByteStreamControllerHandleQueueDrain(controller).
       ReadableByteStreamControllerHandleQueueDrain(aCx, aController, aRv);
       if (aRv.Failed()) {
         return;
       }
-      // Step 13.1.3.  Perform readIntoRequest’s chunk steps, given filledView.
+      // Step 16.1.3.  Perform readIntoRequest’s chunk steps, given filledView.
       JS::Rooted<JS::Value> filledViewValue(aCx, JS::ObjectValue(*filledView));
       aReadIntoRequest->ChunkSteps(aCx, filledViewValue, aRv);
-      // Step 13.1.4.   Return.
+      // Step 16.1.4.   Return.
       return;
     }
 
-    // Step 13.2  If controller.[[closeRequested]] is true,
+    // Step 16.2  If controller.[[closeRequested]] is true,
     if (aController->CloseRequested()) {
-      // Step 13.2.1.   Let e be a TypeError exception.
+      // Step 16.2.1.   Let e be a TypeError exception.
       ErrorResult typeError;
       typeError.ThrowTypeError("Close Requested True during Pull Into");
 
       JS::Rooted<JS::Value> e(aCx);
       MOZ_RELEASE_ASSERT(ToJSValue(aCx, std::move(typeError), &e));
 
-      // Step 13.2.2. Perform !ReadableByteStreamControllerError(controller, e).
+      // Step 16.2.2. Perform !ReadableByteStreamControllerError(controller, e).
       ReadableByteStreamControllerError(aController, e, aRv);
       if (aRv.Failed()) {
         return;
       }
 
-      // Step 13.2.3. Perform readIntoRequest’s error steps, given e.
+      // Step 16.2.3. Perform readIntoRequest’s error steps, given e.
       aReadIntoRequest->ErrorSteps(aCx, e, aRv);
 
-      // Step 13.2.4.  Return.
+      // Step 16.2.4.  Return.
       return;
     }
   }
 
-  // Step 14. Append pullIntoDescriptor to controller.[[pendingPullIntos]].
+  // Step 17. Append pullIntoDescriptor to controller.[[pendingPullIntos]].
   aController->PendingPullIntos().insertBack(pullIntoDescriptor);
 
-  // Step 15. Perform !ReadableStreamAddReadIntoRequest(stream,
+  // Step 18. Perform !ReadableStreamAddReadIntoRequest(stream,
   // readIntoRequest).
   ReadableStreamAddReadIntoRequest(stream, aReadIntoRequest);
 
-  // Step 16, Perform
-  // !ReadableByteStreamControllerCallPullIfNeeded(controller).
+  // Step 19. Perform !ReadableByteStreamControllerCallPullIfNeeded(controller).
   ReadableByteStreamControllerCallPullIfNeeded(aCx, aController, aRv);
 }
 
@@ -2007,7 +2168,7 @@ void SetUpReadableByteStreamController(
 
   // Step 14. Let startResult be the result of performing startAlgorithm.
   JS::Rooted<JS::Value> startResult(aCx, JS::UndefinedValue());
-  RefPtr<ReadableStreamController> controller = aController;
+  RefPtr<ReadableStreamControllerBase> controller = aController;
   aAlgorithms->StartCallback(aCx, *controller, &startResult, aRv);
   if (aRv.Failed()) {
     return;
@@ -2079,7 +2240,6 @@ void SetUpReadableByteStreamControllerFromUnderlyingSource(
         return;
       }
     }
-
 
     autoAllocateChunkSize = mozilla::Some(value);
   }

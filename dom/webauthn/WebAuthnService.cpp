@@ -156,26 +156,31 @@ WebAuthnService::GetAssertion(uint64_t aTransactionId,
   nsresult rv;
 
 #if defined(XP_MACOSX)
-  // The macOS security key API doesn't handle the AppID extension. So we'll
-  // use authenticator-rs if it's likely that the request requires AppID. We
-  // consider it likely if 1) the AppID extension is present, 2) the allow list
-  // is non-empty, and 3) none of the allowed credentials use the
-  // "internal" or "hybrid" transport.
-  nsString appId;
-  rv = aArgs->GetAppId(appId);
-  if (rv == NS_OK) {  // AppID is set
-    uint8_t transportSet = 0;
-    nsTArray<uint8_t> allowListTransports;
-    Unused << aArgs->GetAllowListTransports(allowListTransports);
-    for (const uint8_t& transport : allowListTransports) {
-      transportSet |= transport;
-    }
-    uint8_t passkeyTransportMask =
-        MOZ_WEBAUTHN_AUTHENTICATOR_TRANSPORT_ID_INTERNAL |
-        MOZ_WEBAUTHN_AUTHENTICATOR_TRANSPORT_ID_HYBRID;
-    if (allowListTransports.Length() > 0 &&
-        (transportSet & passkeyTransportMask) == 0) {
-      guard->ref().service = AuthrsService();
+  if (__builtin_available(macos 14.5, *)) {
+    // This branch is intentionally empty; using `!__builtin_available(...)`
+    // results in a compiler warning.
+  } else {
+    // On macOS < 14.5 the security key API doesn't handle the AppID extension.
+    // So we'll use authenticator-rs if it's likely that the request requires
+    // AppID. We consider it likely if 1) the AppID extension is present, 2)
+    // the allow list is non-empty, and 3) none of the allowed credentials use
+    // the "internal" or "hybrid" transport.
+    nsString appId;
+    rv = aArgs->GetAppId(appId);
+    if (rv == NS_OK) {  // AppID is set
+      uint8_t transportSet = 0;
+      nsTArray<uint8_t> allowListTransports;
+      Unused << aArgs->GetAllowListTransports(allowListTransports);
+      for (const uint8_t& transport : allowListTransports) {
+        transportSet |= transport;
+      }
+      uint8_t passkeyTransportMask =
+          MOZ_WEBAUTHN_AUTHENTICATOR_TRANSPORT_ID_INTERNAL |
+          MOZ_WEBAUTHN_AUTHENTICATOR_TRANSPORT_ID_HYBRID;
+      if (allowListTransports.Length() > 0 &&
+          (transportSet & passkeyTransportMask) == 0) {
+        guard->ref().service = AuthrsService();
+      }
     }
   }
 #endif
@@ -294,62 +299,63 @@ WebAuthnService::SelectionCallback(uint64_t aTransactionId, uint64_t aIndex) {
 
 NS_IMETHODIMP
 WebAuthnService::AddVirtualAuthenticator(
-    const nsACString& protocol, const nsACString& transport,
-    bool hasResidentKey, bool hasUserVerification, bool isUserConsenting,
-    bool isUserVerified, uint64_t* retval) {
+    const nsACString& aProtocol, const nsACString& aTransport,
+    bool aHasResidentKey, bool aHasUserVerification, bool aIsUserConsenting,
+    bool aIsUserVerified, nsACString& aRetval) {
   return SelectedService()->AddVirtualAuthenticator(
-      protocol, transport, hasResidentKey, hasUserVerification,
-      isUserConsenting, isUserVerified, retval);
+      aProtocol, aTransport, aHasResidentKey, aHasUserVerification,
+      aIsUserConsenting, aIsUserVerified, aRetval);
 }
 
 NS_IMETHODIMP
-WebAuthnService::RemoveVirtualAuthenticator(uint64_t authenticatorId) {
-  return SelectedService()->RemoveVirtualAuthenticator(authenticatorId);
+WebAuthnService::RemoveVirtualAuthenticator(
+    const nsACString& aAuthenticatorId) {
+  return SelectedService()->RemoveVirtualAuthenticator(aAuthenticatorId);
 }
 
 NS_IMETHODIMP
-WebAuthnService::AddCredential(uint64_t authenticatorId,
-                               const nsACString& credentialId,
-                               bool isResidentCredential,
-                               const nsACString& rpId,
-                               const nsACString& privateKey,
-                               const nsACString& userHandle,
-                               uint32_t signCount) {
-  return SelectedService()->AddCredential(authenticatorId, credentialId,
-                                          isResidentCredential, rpId,
-                                          privateKey, userHandle, signCount);
+WebAuthnService::AddCredential(const nsACString& aAuthenticatorId,
+                               const nsACString& aCredentialId,
+                               bool aIsResidentCredential,
+                               const nsACString& aRpId,
+                               const nsACString& aPrivateKey,
+                               const nsACString& aUserHandle,
+                               uint32_t aSignCount) {
+  return SelectedService()->AddCredential(aAuthenticatorId, aCredentialId,
+                                          aIsResidentCredential, aRpId,
+                                          aPrivateKey, aUserHandle, aSignCount);
 }
 
 NS_IMETHODIMP
 WebAuthnService::GetCredentials(
-    uint64_t authenticatorId,
-    nsTArray<RefPtr<nsICredentialParameters>>& retval) {
-  return SelectedService()->GetCredentials(authenticatorId, retval);
+    const nsACString& aAuthenticatorId,
+    nsTArray<RefPtr<nsICredentialParameters>>& aRetval) {
+  return SelectedService()->GetCredentials(aAuthenticatorId, aRetval);
 }
 
 NS_IMETHODIMP
-WebAuthnService::RemoveCredential(uint64_t authenticatorId,
-                                  const nsACString& credentialId) {
-  return SelectedService()->RemoveCredential(authenticatorId, credentialId);
+WebAuthnService::RemoveCredential(const nsACString& aAuthenticatorId,
+                                  const nsACString& aCredentialId) {
+  return SelectedService()->RemoveCredential(aAuthenticatorId, aCredentialId);
 }
 
 NS_IMETHODIMP
-WebAuthnService::RemoveAllCredentials(uint64_t authenticatorId) {
-  return SelectedService()->RemoveAllCredentials(authenticatorId);
+WebAuthnService::RemoveAllCredentials(const nsACString& aAuthenticatorId) {
+  return SelectedService()->RemoveAllCredentials(aAuthenticatorId);
 }
 
 NS_IMETHODIMP
-WebAuthnService::SetUserVerified(uint64_t authenticatorId,
-                                 bool isUserVerified) {
-  return SelectedService()->SetUserVerified(authenticatorId, isUserVerified);
+WebAuthnService::SetUserVerified(const nsACString& aAuthenticatorId,
+                                 bool aIsUserVerified) {
+  return SelectedService()->SetUserVerified(aAuthenticatorId, aIsUserVerified);
 }
 
 NS_IMETHODIMP
 WebAuthnService::Listen() { return SelectedService()->Listen(); }
 
 NS_IMETHODIMP
-WebAuthnService::RunCommand(const nsACString& cmd) {
-  return SelectedService()->RunCommand(cmd);
+WebAuthnService::RunCommand(const nsACString& aCmd) {
+  return SelectedService()->RunCommand(aCmd);
 }
 
 }  // namespace mozilla::dom

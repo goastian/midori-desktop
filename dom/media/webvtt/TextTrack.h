@@ -7,12 +7,13 @@
 #ifndef mozilla_dom_TextTrack_h
 #define mozilla_dom_TextTrack_h
 
+#include "TimeUnits.h"
 #include "mozilla/DOMEventTargetHelper.h"
+#include "mozilla/DefineEnum.h"
 #include "mozilla/dom/TextTrackBinding.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsString.h"
-#include "TimeUnits.h"
 
 namespace mozilla::dom {
 
@@ -29,12 +30,9 @@ enum class TextTrackSource : uint8_t {
 };
 
 // Constants for numeric readyState property values.
-enum class TextTrackReadyState : uint8_t {
-  NotLoaded = 0U,
-  Loading = 1U,
-  Loaded = 2U,
-  FailedToLoad = 3U
-};
+MOZ_DEFINE_ENUM_CLASS_WITH_BASE_AND_TOSTRING(TextTrackReadyState, uint8_t,
+                                             (NotLoaded, Loading, Loaded,
+                                              FailedToLoad));
 
 class TextTrack final : public DOMEventTargetHelper {
  public:

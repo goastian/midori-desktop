@@ -1,6 +1,7 @@
 export const description = `Validation tests for entry point built-in variables`;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
+import { keysOf } from '../../../../common/util/data_tables.js';
 import { ShaderValidationTest } from '../shader_validation_test.js';
 
 import { generateShader } from './util.js';
@@ -9,7 +10,7 @@ export const g = makeTestGroup(ShaderValidationTest);
 
 // List of all built-in variables and their stage, in|out usage, and type.
 // Taken from table in Section 15:
-// https://www.w3.org/TR/2021/WD-WGSL-20211013/#builtin-variables
+// https://www.w3.org/TR/WGSL/#builtin-inputs-outputs
 export const kBuiltins = [
   { name: 'vertex_index', stage: 'vertex', io: 'in', type: 'u32' },
   { name: 'instance_index', stage: 'vertex', io: 'in', type: 'u32' },
@@ -25,6 +26,18 @@ export const kBuiltins = [
   { name: 'sample_index', stage: 'fragment', io: 'in', type: 'u32' },
   { name: 'sample_mask', stage: 'fragment', io: 'in', type: 'u32' },
   { name: 'sample_mask', stage: 'fragment', io: 'out', type: 'u32' },
+  { name: 'subgroup_invocation_id', stage: 'compute', io: 'in', type: 'u32' },
+  { name: 'subgroup_size', stage: 'compute', io: 'in', type: 'u32' },
+  { name: 'subgroup_invocation_id', stage: 'fragment', io: 'in', type: 'u32' },
+  { name: 'subgroup_size', stage: 'fragment', io: 'in', type: 'u32' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,1>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,2>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,3>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,4>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,5>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,6>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,7>' },
+  { name: 'clip_distances', stage: 'vertex', io: 'out', type: 'array<f32,8>' },
 ] as const;
 
 // List of types to test against.
@@ -59,7 +72,15 @@ const kTestTypes = [
   'array<bool,4>',
   'array<u32,4>',
   'array<i32,4>',
+  'array<f32,1>',
+  'array<f32,2>',
+  'array<f32,3>',
   'array<f32,4>',
+  'array<f32,5>',
+  'array<f32,6>',
+  'array<f32,7>',
+  'array<f32,8>',
+  'array<f32,9>',
   'MyStruct',
 ] as const;
 
@@ -75,6 +96,19 @@ g.test('stage_inout')
       .combine('target_io', ['in', 'out'] as const)
       .beginSubcases()
   )
+  .beforeAllSubcases(t => {
+    t.skipIf(
+      t.isCompatibility && ['sample_index', 'sample_mask'].includes(t.params.name),
+      'compatibility mode does not support sample_index or sample_mask'
+    );
+    t.skipIf(
+      t.params.name !== 'position' &&
+        t.params.target_stage === 'vertex' &&
+        t.params.target_io === 'out' &&
+        !t.params.use_struct,
+      'missing @builtin(position) in the vertex output when the vertex output is not a struct'
+    );
+  })
   .fn(t => {
     const code = generateShader({
       attribute: `@builtin(${t.params.name})`,
@@ -103,10 +137,23 @@ g.test('type')
   .params(u =>
     u
       .combineWithParams(kBuiltins)
+      .combine('use_struct', [true, false] as const)
       .beginSubcases()
       .combine('target_type', kTestTypes)
-      .combine('use_struct', [true, false] as const)
   )
+  .beforeAllSubcases(t => {
+    t.skipIf(
+      t.isCompatibility && ['sample_index', 'sample_mask'].includes(t.params.name),
+      'compatibility mode does not support sample_index or sample_mask'
+    );
+    t.skipIf(
+      t.params.name !== 'position' &&
+        t.params.stage === 'vertex' &&
+        t.params.io === 'out' &&
+        !t.params.use_struct,
+      'missing @builtin(position) in the vertex output'
+    );
+  })
   .fn(t => {
     let code = '';
 
@@ -145,10 +192,10 @@ g.test('nesting')
       .beginSubcases()
   )
   .fn(t => {
-    // Generate a struct that contains a sample_mask builtin, nested inside another struct.
+    // Generate a struct that contains a frag_depth builtin, nested inside another struct.
     let code = `
     struct Inner {
-      @builtin(sample_mask) value : u32
+      @builtin(frag_depth) value : f32
     };
     struct Outer {
       inner : Inner
@@ -181,23 +228,38 @@ g.test('duplicates')
       .combine('second', ['p2', 's1b', 's2b', 'rb'] as const)
       .beginSubcases()
   )
+  .beforeAllSubcases(t => {
+    t.skipIf(t.isCompatibility, 'compatibility mode does not support sample_mask');
+  })
   .fn(t => {
     const p1 =
-      t.params.first === 'p1' ? '@builtin(sample_mask)' : '@location(1) @interpolate(flat)';
+      t.params.first === 'p1' ? '@builtin(sample_mask)' : '@location(1) @interpolate(flat, either)';
     const p2 =
-      t.params.second === 'p2' ? '@builtin(sample_mask)' : '@location(2) @interpolate(flat)';
+      t.params.second === 'p2'
+        ? '@builtin(sample_mask)'
+        : '@location(2) @interpolate(flat, either)';
     const s1a =
-      t.params.first === 's1a' ? '@builtin(sample_mask)' : '@location(3) @interpolate(flat)';
+      t.params.first === 's1a'
+        ? '@builtin(sample_mask)'
+        : '@location(3) @interpolate(flat, either)';
     const s1b =
-      t.params.second === 's1b' ? '@builtin(sample_mask)' : '@location(4) @interpolate(flat)';
+      t.params.second === 's1b'
+        ? '@builtin(sample_mask)'
+        : '@location(4) @interpolate(flat, either)';
     const s2a =
-      t.params.first === 's2a' ? '@builtin(sample_mask)' : '@location(5) @interpolate(flat)';
+      t.params.first === 's2a'
+        ? '@builtin(sample_mask)'
+        : '@location(5) @interpolate(flat, either)';
     const s2b =
-      t.params.second === 's2b' ? '@builtin(sample_mask)' : '@location(6) @interpolate(flat)';
+      t.params.second === 's2b'
+        ? '@builtin(sample_mask)'
+        : '@location(6) @interpolate(flat, either)';
     const ra =
-      t.params.first === 'ra' ? '@builtin(sample_mask)' : '@location(1) @interpolate(flat)';
+      t.params.first === 'ra' ? '@builtin(sample_mask)' : '@location(1) @interpolate(flat, either)';
     const rb =
-      t.params.second === 'rb' ? '@builtin(sample_mask)' : '@location(2) @interpolate(flat)';
+      t.params.second === 'rb'
+        ? '@builtin(sample_mask)'
+        : '@location(2) @interpolate(flat, either)';
     const code = `
     struct S1 {
       ${s1a} a : u32,
@@ -259,9 +321,25 @@ g.test('reuse_builtin_name')
     u
       .combineWithParams(kBuiltins)
       .combine('use', ['alias', 'struct', 'function', 'module-var', 'function-var'])
+      .combine('enable_extension', [true, false])
+      .unless(
+        t => t.enable_extension && !(t.name.includes('subgroup') || t.name === 'clip_distances')
+      )
   )
+  .beforeAllSubcases(t => {
+    if (!t.params.enable_extension) {
+      return;
+    }
+  })
   .fn(t => {
     let code = '';
+    if (t.params.enable_extension) {
+      if (t.params.name.includes('subgroups')) {
+        code += 'enable subgroup;\n';
+      } else if (t.params.name === 'clip_distances') {
+        code += 'enable clip_distances;\n';
+      }
+    }
     if (t.params.use === 'alias') {
       code += `alias ${t.params.name} = i32;`;
     } else if (t.params.use === `struct`) {
@@ -274,4 +352,145 @@ g.test('reuse_builtin_name')
       code += `fn test() { let ${t.params.name} = 1; }`;
     }
     t.expectCompileResult(true, code);
+  });
+
+const kTests = {
+  pos: {
+    src: `@builtin(position)`,
+    pass: true,
+  },
+  trailing_comma: {
+    src: `@builtin(position,)`,
+    pass: true,
+  },
+  newline_in_attr: {
+    src: `@ \n builtin(position)`,
+    pass: true,
+  },
+  whitespace_in_attr: {
+    src: `@/* comment */builtin/* comment */\n\n(\t/*comment*/position/*comment*/)`,
+    pass: true,
+  },
+  invalid_name: {
+    src: `@abuiltin(position)`,
+    pass: false,
+  },
+  no_params: {
+    src: `@builtin`,
+    pass: false,
+  },
+  missing_param: {
+    src: `@builtin()`,
+    pass: false,
+  },
+  missing_parens: {
+    src: `@builtin position`,
+    pass: false,
+  },
+  missing_lparen: {
+    src: `@builtin position)`,
+    pass: false,
+  },
+  missing_rparen: {
+    src: `@builtin(position`,
+    pass: false,
+  },
+  multiple_params: {
+    src: `@builtin(position, frag_depth)`,
+    pass: false,
+  },
+  ident_param: {
+    src: `@builtin(identifier)`,
+    pass: false,
+  },
+  number_param: {
+    src: `@builtin(2)`,
+    pass: false,
+  },
+  duplicate: {
+    src: `@builtin(position) @builtin(position)`,
+    pass: false,
+  },
+};
+
+g.test('parse')
+  .desc(`Test that @builtin is parsed correctly.`)
+  .params(u => u.combine('builtin', keysOf(kTests)))
+  .fn(t => {
+    const src = kTests[t.params.builtin].src;
+    const code = `
+@vertex
+fn main() -> ${src} vec4<f32> {
+  return vec4<f32>(.4, .2, .3, .1);
+}`;
+    t.expectCompileResult(kTests[t.params.builtin].pass, code);
+  });
+
+g.test('placement')
+  .desc('Tests the locations @builtin is allowed to appear')
+  .params(u =>
+    u
+      .combine('scope', [
+        // The fn-param and fn-ret are part of the shader_io/builtins tests
+        'private-var',
+        'storage-var',
+        'struct-member',
+        'non-ep-param',
+        'non-ep-ret',
+        'fn-decl',
+        'fn-var',
+        'while-stmt',
+        undefined,
+      ] as const)
+      .combine('attribute', [
+        {
+          'private-var': false,
+          'storage-var': false,
+          'struct-member': true,
+          'non-ep-param': false,
+          'non-ep-ret': false,
+          'fn-decl': false,
+          'fn-var': false,
+          'fn-return': false,
+          'while-stmt': false,
+        },
+      ])
+      .beginSubcases()
+  )
+  .fn(t => {
+    const scope = t.params.scope;
+
+    const attr = '@builtin(vertex_index)';
+    const code = `
+      ${scope === 'private-var' ? attr : ''}
+      var<private> priv_var : u32;
+
+      ${scope === 'storage-var' ? attr : ''}
+      @group(0) @binding(0)
+      var<storage> stor_var : u32;
+
+      struct A {
+        ${scope === 'struct-member' ? attr : ''}
+        a : u32,
+      }
+
+      fn v(${scope === 'non-ep-param' ? attr : ''} i : u32) ->
+            ${scope === 'non-ep-ret' ? attr : ''} u32 { return 1; }
+
+      @vertex
+      ${scope === 'fn-decl' ? attr : ''}
+      fn f(
+        @location(0) b : u32,
+      ) -> @builtin(position) vec4f {
+        ${scope === 'fn-var' ? attr : ''}
+        var<function> func_v : u32;
+
+        ${scope === 'while-stmt' ? attr : ''}
+        while false {}
+
+        return vec4(1, 1, 1, 1);
+      }
+    `;
+
+    t.expectCompileResult(scope === undefined || t.params.attribute[scope], code);
   });

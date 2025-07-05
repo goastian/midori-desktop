@@ -11,6 +11,7 @@
 #include "js/loader/ModuleLoaderBase.h"
 #include "js/loader/ScriptLoadRequest.h"
 #include "ScriptLoader.h"
+#include "mozilla/dom/ScriptLoadRequestType.h"
 
 class nsIURI;
 
@@ -60,19 +61,21 @@ class ModuleLoader final : public JS::loader::ModuleLoaderBase {
       JS::MutableHandle<JSObject*> aModuleScript) override;
 
   // Create a top-level module load request.
-  static already_AddRefed<ModuleLoadRequest> CreateTopLevel(
-      nsIURI* aURI, ReferrerPolicy aReferrerPolicy,
+  already_AddRefed<ModuleLoadRequest> CreateTopLevel(
+      nsIURI* aURI, nsIScriptElement* aElement, ReferrerPolicy aReferrerPolicy,
       ScriptFetchOptions* aFetchOptions, const SRIMetadata& aIntegrity,
-      nsIURI* aReferrer, ScriptLoader* aLoader, ScriptLoadContext* aContext);
+      nsIURI* aReferrer, ScriptLoadContext* aContext,
+      ScriptLoadRequestType aRequestType);
 
   // Create a module load request for a static module import.
   already_AddRefed<ModuleLoadRequest> CreateStaticImport(
-      nsIURI* aURI, ModuleLoadRequest* aParent) override;
+      nsIURI* aURI, JS::ModuleType aModuleType, ModuleLoadRequest* aParent,
+      const mozilla::dom::SRIMetadata& aSriMetadata) override;
 
   // Create a module load request for a dynamic module import.
   already_AddRefed<ModuleLoadRequest> CreateDynamicImport(
-      JSContext* aCx, nsIURI* aURI, LoadedScript* aMaybeActiveScript,
-      JS::Handle<JSString*> aSpecifier,
+      JSContext* aCx, nsIURI* aURI, JS::ModuleType aModuleType,
+      LoadedScript* aMaybeActiveScript, JS::Handle<JSString*> aSpecifier,
       JS::Handle<JSObject*> aPromise) override;
 
   static ModuleLoader* From(ModuleLoaderBase* aLoader) {
@@ -81,6 +84,14 @@ class ModuleLoader final : public JS::loader::ModuleLoaderBase {
 
   void AsyncExecuteInlineModule(ModuleLoadRequest* aRequest);
   void ExecuteInlineModule(ModuleLoadRequest* aRequest);
+
+ private:
+  nsresult CompileJavaScriptModule(JSContext* aCx, JS::CompileOptions& aOptions,
+                                   ModuleLoadRequest* aRequest,
+                                   JS::MutableHandle<JSObject*> aModuleOut);
+  nsresult CompileJsonModule(JSContext* aCx, JS::CompileOptions& aOptions,
+                             ModuleLoadRequest* aRequest,
+                             JS::MutableHandle<JSObject*> aModuleOut);
 
  private:
   const Kind mKind;

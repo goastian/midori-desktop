@@ -55,7 +55,7 @@ SVGElement::EnumInfo SVGTextPathElement::sEnumInfo[4] = {
     // from SVGTextPathElement:
     {nsGkAtoms::method, sMethodMap, TEXTPATH_METHODTYPE_ALIGN},
     {nsGkAtoms::spacing, sSpacingMap, TEXTPATH_SPACINGTYPE_EXACT},
-    {nsGkAtoms::side_, sSideMap, TEXTPATH_SIDETYPE_LEFT}};
+    {nsGkAtoms::side, sSideMap, TEXTPATH_SIDETYPE_LEFT}};
 
 SVGElement::StringInfo SVGTextPathElement::sStringInfo[2] = {
     {nsGkAtoms::href, kNameSpaceID_None, true},
@@ -110,16 +110,16 @@ already_AddRefed<DOMSVGAnimatedEnumeration> SVGTextPathElement::Side() {
 
 SVGElement::LengthAttributesInfo SVGTextPathElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
-                              ArrayLength(sLengthInfo));
+                              std::size(sLengthInfo));
 }
 
 SVGElement::EnumAttributesInfo SVGTextPathElement::GetEnumInfo() {
-  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
+  return EnumAttributesInfo(mEnumAttributes, sEnumInfo, std::size(sEnumInfo));
 }
 
 SVGElement::StringAttributesInfo SVGTextPathElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
-                              ArrayLength(sStringInfo));
+                              std::size(sStringInfo));
 }
 
 }  // namespace mozilla::dom

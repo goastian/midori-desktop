@@ -74,20 +74,7 @@ function* testSteps() {
     }
   }
 
-  info("Verify IDBObjectStore.add() - object is too large");
-  testTooLargeError("add", { id: 1, data: chunks });
-
-  info(
-    "Verify IDBObjectStore.add() - object size is closed to the maximal size."
-  );
-  chunks.length = chunks.length - 1;
-  let request = objectStore.add({ id: 1, data: chunks });
-  request.onerror = errorHandler;
-  request.onsuccess = grabEventAndContinueHandler;
-  yield undefined;
-
   info("Verify IDBObjectStore.add() - object key is too large");
-  chunks.length = 10;
   testTooLargeError("add", { id: chunks });
 
   objectStore.createIndex("index name", "index");
@@ -97,7 +84,7 @@ function* testSteps() {
   testTooLargeError("add", { id: 2, index: chunks });
 
   info("Verify IDBObjectStore.add() - object key and index key are too large");
-  let indexChunks = chunks.splice(0, 5);
+  let indexChunks = chunks.splice(0, 10);
   testTooLargeError("add", { id: chunks, index: indexChunks });
 
   openRequest.onsuccess = continueToNextStep;

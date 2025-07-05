@@ -10,7 +10,7 @@
 #include "ErrorList.h"
 #include "mozilla/dom/FlippedOnce.h"
 #include "mozilla/dom/PFileSystemManagerParent.h"
-#include "mozilla/dom/quota/DebugOnlyMacro.h"
+#include "mozilla/dom/quota/ConditionalCompilation.h"
 #include "nsISupports.h"
 
 namespace mozilla::dom {
@@ -28,12 +28,12 @@ class FileSystemManagerParent : public PFileSystemManagerParent {
 
   void AssertIsOnIOTarget() const;
 
-#ifdef DEBUG
-  void SetRegistered(bool aRegistered) { mRegistered = aRegistered; }
-#endif
+  bool IsAlive() const;
 
   // Safe to call while the actor is live.
   const RefPtr<fs::data::FileSystemDataManager>& DataManagerStrongRef() const;
+
+  void SetRegistered(bool aRegistered) { mRegistered = aRegistered; }
 
   mozilla::ipc::IPCResult RecvGetRootHandle(GetRootHandleResolver&& aResolver);
 
@@ -83,7 +83,7 @@ class FileSystemManagerParent : public PFileSystemManagerParent {
 
   FlippedOnce<false> mRequestedAllowToClose;
 
-  DEBUGONLY(bool mRegistered = false);
+  bool mRegistered = false;
 
   DEBUGONLY(bool mActorDestroyed = false);
 };

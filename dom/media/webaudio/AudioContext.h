@@ -50,6 +50,7 @@ class AudioBufferSourceNode;
 class AudioDestinationNode;
 class AudioListener;
 class AudioNode;
+class AudioWorklet;
 class BiquadFilterNode;
 class BrowsingContext;
 class ChannelMergerNode;
@@ -72,7 +73,6 @@ class PannerNode;
 class ScriptProcessorNode;
 class StereoPannerNode;
 class WaveShaperNode;
-class Worklet;
 class PeriodicWave;
 struct PeriodicWaveConstraints;
 class Promise;
@@ -147,11 +147,11 @@ class AudioContext final : public DOMEventTargetHelper,
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(AudioContext, DOMEventTargetHelper)
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
 
-  nsPIDOMWindowInner* GetParentObject() const { return GetOwner(); }
+  nsIGlobalObject* GetParentObject() const { return GetOwnerGlobal(); }
 
   nsISerialEventTarget* GetMainThread() const;
 
-  virtual void DisconnectFromOwner() override;
+  void DisconnectFromOwner() override;
 
   void OnWindowDestroy();  // idempotent
 
@@ -202,7 +202,7 @@ class AudioContext final : public DOMEventTargetHelper,
 
   void GetOutputTimestamp(AudioTimestamp& aTimeStamp);
 
-  Worklet* GetAudioWorklet(ErrorResult& aRv);
+  AudioWorklet* GetAudioWorklet(ErrorResult& aRv);
 
   bool IsRunning() const;
 
@@ -373,17 +373,6 @@ class AudioContext final : public DOMEventTargetHelper,
 
   void ReportToConsole(uint32_t aErrorFlags, const char* aMsg) const;
 
-  // This function should be called everytime we decide whether allow to start
-  // audio context, it's used to update Telemetry related variables.
-  void UpdateAutoplayAssumptionStatus();
-
-  // These functions are used for updating Telemetry.
-  // - MaybeUpdateAutoplayTelemetry: update category 'AllowedAfterBlocked'
-  // - MaybeUpdateAutoplayTelemetryWhenShutdown: update category 'NeverBlocked'
-  //   and 'NeverAllowed', so we need to call it when shutdown AudioContext
-  void MaybeUpdateAutoplayTelemetry();
-  void MaybeUpdateAutoplayTelemetryWhenShutdown();
-
   // If the pref `dom.suspend_inactive.enabled` is enabled, the dom window will
   // be suspended when the window becomes inactive. In order to keep audio
   // context running still, we will ask pages to keep awake in that situation.
@@ -404,7 +393,7 @@ class AudioContext final : public DOMEventTargetHelper,
   AudioContextState mAudioContextState;
   RefPtr<AudioDestinationNode> mDestination;
   RefPtr<AudioListener> mListener;
-  RefPtr<Worklet> mWorklet;
+  RefPtr<AudioWorklet> mWorklet;
   nsTArray<UniquePtr<WebAudioDecodeJob>> mDecodeJobs;
   // This array is used to keep the suspend/close promises alive until
   // they are resolved, so we can safely pass them accross threads.
@@ -446,20 +435,6 @@ class AudioContext final : public DOMEventTargetHelper,
   // Whether this AudioContext is suspended because the Window is suspended.
   // Unused if offline.
   bool mSuspendedByChrome;
-
-  // These variables are used for telemetry, they're not reflect the actual
-  // status of AudioContext, they are based on the "assumption" of enabling
-  // blocking web audio. Because we want to record Telemetry no matter user
-  // enable blocking autoplay or not.
-  // - 'mWasEverAllowedToStart' would be true when AudioContext had ever been
-  //   allowed to start if we enable blocking web audio.
-  // - 'mWasEverBlockedToStart' would be true when AudioContext had ever been
-  //   blocked to start if we enable blocking web audio.
-  // - 'mWouldBeAllowedToStart' stores the value of previous status of
-  //   `allowed-to-start` if we enable blocking web audio.
-  bool mWasEverAllowedToStart;
-  bool mWasEverBlockedToStart;
-  bool mWouldBeAllowedToStart;
 
   // Whether we have set the page awake reqeust when non-offline audio context
   // is running. That will keep the audio context being able to continue running

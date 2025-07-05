@@ -16,7 +16,6 @@
 #include <utility>
 #include "mozilla/Assertions.h"
 #include "mozilla/dom/quota/PQuotaRequest.h"
-#include "mozilla/dom/quota/PQuotaUsageRequest.h"
 #include "nsError.h"
 #include "nsID.h"
 #include "nsIEventTarget.h"
@@ -75,22 +74,6 @@ void QuotaChild::ActorDestroy(ActorDestroyReason aWhy) {
   }
 }
 
-PQuotaUsageRequestChild* QuotaChild::AllocPQuotaUsageRequestChild(
-    const UsageRequestParams& aParams) {
-  AssertIsOnOwningThread();
-
-  MOZ_CRASH("PQuotaUsageRequestChild actors should be manually constructed!");
-}
-
-bool QuotaChild::DeallocPQuotaUsageRequestChild(
-    PQuotaUsageRequestChild* aActor) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aActor);
-
-  delete static_cast<QuotaUsageRequestChild*>(aActor);
-  return true;
-}
-
 PQuotaRequestChild* QuotaChild::AllocPQuotaRequestChild(
     const RequestParams& aParams) {
   AssertIsOnOwningThread();
@@ -104,116 +87,6 @@ bool QuotaChild::DeallocPQuotaRequestChild(PQuotaRequestChild* aActor) {
 
   delete static_cast<QuotaRequestChild*>(aActor);
   return true;
-}
-
-/*******************************************************************************
- * QuotaUsageRequestChild
- ******************************************************************************/
-
-QuotaUsageRequestChild::QuotaUsageRequestChild(UsageRequest* aRequest)
-    : mRequest(aRequest) {
-  AssertIsOnOwningThread();
-
-  MOZ_COUNT_CTOR(quota::QuotaUsageRequestChild);
-}
-
-QuotaUsageRequestChild::~QuotaUsageRequestChild() {
-  // Can't assert owning thread here because the request is cleared.
-
-  MOZ_COUNT_DTOR(quota::QuotaUsageRequestChild);
-}
-
-#ifdef DEBUG
-
-void QuotaUsageRequestChild::AssertIsOnOwningThread() const {
-  MOZ_ASSERT(mRequest);
-  mRequest->AssertIsOnOwningThread();
-}
-
-#endif  // DEBUG
-
-void QuotaUsageRequestChild::HandleResponse(nsresult aResponse) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(NS_FAILED(aResponse));
-  MOZ_ASSERT(mRequest);
-
-  mRequest->SetError(aResponse);
-}
-
-void QuotaUsageRequestChild::HandleResponse(
-    const nsTArray<OriginUsage>& aResponse) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mRequest);
-
-  RefPtr<nsVariant> variant = new nsVariant();
-
-  if (aResponse.IsEmpty()) {
-    variant->SetAsEmptyArray();
-  } else {
-    nsTArray<RefPtr<UsageResult>> usageResults(aResponse.Length());
-
-    for (const auto& originUsage : aResponse) {
-      usageResults.AppendElement(MakeRefPtr<UsageResult>(
-          originUsage.origin(), originUsage.persisted(), originUsage.usage(),
-          originUsage.lastAccessed()));
-    }
-
-    variant->SetAsArray(nsIDataType::VTYPE_INTERFACE_IS,
-                        &NS_GET_IID(nsIQuotaUsageResult), usageResults.Length(),
-                        static_cast<void*>(usageResults.Elements()));
-  }
-
-  mRequest->SetResult(variant);
-}
-
-void QuotaUsageRequestChild::HandleResponse(
-    const OriginUsageResponse& aResponse) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mRequest);
-
-  RefPtr<OriginUsageResult> result =
-      new OriginUsageResult(aResponse.usageInfo());
-
-  RefPtr<nsVariant> variant = new nsVariant();
-  variant->SetAsInterface(NS_GET_IID(nsIQuotaOriginUsageResult), result);
-
-  mRequest->SetResult(variant);
-}
-
-void QuotaUsageRequestChild::ActorDestroy(ActorDestroyReason aWhy) {
-  AssertIsOnOwningThread();
-
-  if (mRequest) {
-    mRequest->ClearBackgroundActor();
-#ifdef DEBUG
-    mRequest = nullptr;
-#endif
-  }
-}
-
-mozilla::ipc::IPCResult QuotaUsageRequestChild::Recv__delete__(
-    const UsageRequestResponse& aResponse) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mRequest);
-
-  switch (aResponse.type()) {
-    case UsageRequestResponse::Tnsresult:
-      HandleResponse(aResponse.get_nsresult());
-      break;
-
-    case UsageRequestResponse::TAllUsageResponse:
-      HandleResponse(aResponse.get_AllUsageResponse().originUsages());
-      break;
-
-    case UsageRequestResponse::TOriginUsageResponse:
-      HandleResponse(aResponse.get_OriginUsageResponse());
-      break;
-
-    default:
-      MOZ_CRASH("Unknown response type!");
-  }
-
-  return IPC_OK();
 }
 
 /*******************************************************************************
@@ -292,27 +165,6 @@ void QuotaRequestChild::HandleResponse(const EstimateResponse& aResponse) {
   mRequest->SetResult(variant);
 }
 
-void QuotaRequestChild::HandleResponse(const nsTArray<nsCString>& aResponse) {
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(mRequest);
-
-  RefPtr<nsVariant> variant = new nsVariant();
-
-  if (aResponse.IsEmpty()) {
-    variant->SetAsEmptyArray();
-  } else {
-    nsTArray<const char*> stringPointers(aResponse.Length());
-    std::transform(aResponse.cbegin(), aResponse.cend(),
-                   MakeBackInserter(stringPointers),
-                   std::mem_fn(&nsCString::get));
-
-    variant->SetAsArray(nsIDataType::VTYPE_CHAR_STR, nullptr,
-                        stringPointers.Length(), stringPointers.Elements());
-  }
-
-  mRequest->SetResult(variant);
-}
-
 void QuotaRequestChild::HandleResponse(
     const GetFullOriginMetadataResponse& aResponse) {
   AssertIsOnOwningThread();
@@ -352,19 +204,8 @@ mozilla::ipc::IPCResult QuotaRequestChild::Recv__delete__(
       HandleResponse(aResponse.get_StorageNameResponse().name());
       break;
 
-    case RequestResponse::TResetOriginResponse:
     case RequestResponse::TPersistResponse:
       HandleResponse();
-      break;
-
-    case RequestResponse::TInitializePersistentOriginResponse:
-      HandleResponse(
-          aResponse.get_InitializePersistentOriginResponse().created());
-      break;
-
-    case RequestResponse::TInitializeTemporaryOriginResponse:
-      HandleResponse(
-          aResponse.get_InitializeTemporaryOriginResponse().created());
       break;
 
     case RequestResponse::TGetFullOriginMetadataResponse:
@@ -377,10 +218,6 @@ mozilla::ipc::IPCResult QuotaRequestChild::Recv__delete__(
 
     case RequestResponse::TEstimateResponse:
       HandleResponse(aResponse.get_EstimateResponse());
-      break;
-
-    case RequestResponse::TListOriginsResponse:
-      HandleResponse(aResponse.get_ListOriginsResponse().origins());
       break;
 
     default:

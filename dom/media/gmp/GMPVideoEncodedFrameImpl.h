@@ -35,6 +35,7 @@
 #include "gmp-video-frame.h"
 #include "gmp-video-frame-encoded.h"
 #include "mozilla/ipc/Shmem.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 class CryptoSample;
@@ -50,16 +51,24 @@ class GMPVideoEncodedFrameImpl : public GMPVideoEncodedFrame {
  public:
   explicit GMPVideoEncodedFrameImpl(GMPVideoHostImpl* aHost);
   GMPVideoEncodedFrameImpl(const GMPVideoEncodedFrameData& aFrameData,
+                           ipc::Shmem&& aShmemBuffer, GMPVideoHostImpl* aHost);
+  GMPVideoEncodedFrameImpl(const GMPVideoEncodedFrameData& aFrameData,
+                           nsTArray<uint8_t>&& aArrayBuffer,
                            GMPVideoHostImpl* aHost);
   virtual ~GMPVideoEncodedFrameImpl();
 
   // This is called during a normal destroy sequence, which is
   // when a consumer is finished or during XPCOM shutdown.
   void DoneWithAPI();
-  // Does not attempt to release Shmem, as the Shmem has already been released.
-  void ActorDestroyed();
 
-  bool RelinquishFrameData(GMPVideoEncodedFrameData& aFrameData);
+  static bool CheckFrameData(const GMPVideoEncodedFrameData& aFrameData,
+                             size_t aBufferSize);
+
+  void RelinquishFrameData(GMPVideoEncodedFrameData& aFrameData);
+  bool RelinquishFrameData(GMPVideoEncodedFrameData& aFrameData,
+                           ipc::Shmem& aShmem);
+  bool RelinquishFrameData(GMPVideoEncodedFrameData& aFrameData,
+                           nsTArray<uint8_t>& aArrayBuffer);
 
   // GMPVideoFrame
   GMPVideoFrameFormat GetFrameFormat() override;
@@ -93,6 +102,8 @@ class GMPVideoEncodedFrameImpl : public GMPVideoEncodedFrame {
   uint8_t* Buffer() override;
   GMPBufferType BufferType() const override;
   void SetBufferType(GMPBufferType aBufferType) override;
+  void SetTemporalLayerId(int32_t aLayerId) override;
+  int32_t GetTemporalLayerId() override;
 
  private:
   void DestroyBuffer();
@@ -103,9 +114,11 @@ class GMPVideoEncodedFrameImpl : public GMPVideoEncodedFrame {
   uint64_t mDuration;
   GMPVideoFrameType mFrameType;
   uint32_t mSize;
+  int32_t mTemporalLayerId = -1;
   bool mCompleteFrame;
   GMPVideoHostImpl* mHost;
-  ipc::Shmem mBuffer;
+  nsTArray<uint8_t> mArrayBuffer;
+  ipc::Shmem mShmemBuffer;
   GMPBufferType mBufferType;
 };
 

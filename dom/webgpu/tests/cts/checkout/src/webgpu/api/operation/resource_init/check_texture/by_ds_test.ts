@@ -1,5 +1,5 @@
 import { assert } from '../../../../../common/util/util.js';
-import { kTextureFormatInfo } from '../../../../format_info.js';
+import { isDepthTextureFormat, isStencilTextureFormat } from '../../../../format_info.js';
 import { GPUTest } from '../../../../gpu_test.js';
 import { virtualMipSize } from '../../../../util/texture/base.js';
 
@@ -106,8 +106,6 @@ const checkContents: (type: 'depth' | 'stencil', ...args: Parameters<CheckConten
   state,
   subresourceRange
 ) => {
-  const formatInfo = kTextureFormatInfo[params.format];
-
   assert(params.dimension === '2d');
   for (const viewDescriptor of t.generateTextureViewDescriptorsForRendering(
     'all',
@@ -120,7 +118,7 @@ const checkContents: (type: 'depth' | 'stencil', ...args: Parameters<CheckConten
       viewDescriptor.baseMipLevel
     );
 
-    const renderTexture = t.device.createTexture({
+    const renderTexture = t.createTextureTracked({
       size: [width, height, 1],
       format: 'r8unorm',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
@@ -130,7 +128,7 @@ const checkContents: (type: 'depth' | 'stencil', ...args: Parameters<CheckConten
     let resolveTexture = undefined;
     let resolveTarget = undefined;
     if (params.sampleCount > 1) {
-      resolveTexture = t.device.createTexture({
+      resolveTexture = t.createTextureTracked({
         size: [width, height, 1],
         format: 'r8unorm',
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
@@ -138,7 +136,7 @@ const checkContents: (type: 'depth' | 'stencil', ...args: Parameters<CheckConten
       resolveTarget = resolveTexture.createView();
     }
 
-    const commandEncoder = t.device.createCommandEncoder();
+    const commandEncoder = t.device.createCommandEncoder({ label: 'checkContents' });
     commandEncoder.pushDebugGroup('checkContentsWithDepthStencil');
 
     const pass = commandEncoder.beginRenderPass({
@@ -153,10 +151,10 @@ const checkContents: (type: 'depth' | 'stencil', ...args: Parameters<CheckConten
       ],
       depthStencilAttachment: {
         view: texture.createView(viewDescriptor),
-        depthStoreOp: formatInfo.depth ? 'store' : undefined,
-        depthLoadOp: formatInfo.depth ? 'load' : undefined,
-        stencilStoreOp: formatInfo.stencil ? 'store' : undefined,
-        stencilLoadOp: formatInfo.stencil ? 'load' : undefined,
+        depthLoadOp: isDepthTextureFormat(params.format) ? 'load' : undefined,
+        depthStoreOp: isDepthTextureFormat(params.format) ? 'store' : undefined,
+        stencilLoadOp: isStencilTextureFormat(params.format) ? 'load' : undefined,
+        stencilStoreOp: isStencilTextureFormat(params.format) ? 'store' : undefined,
       },
     });
 

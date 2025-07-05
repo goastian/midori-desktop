@@ -19,7 +19,7 @@
 namespace mozilla {
 
 template <int V>
-class FFmpegAudioEncoder : public MediaDataEncoder {};
+class FFmpegAudioEncoder : public FFmpegDataEncoder<V> {};
 
 template <>
 class FFmpegAudioEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
@@ -30,22 +30,25 @@ class FFmpegAudioEncoder<LIBAV_VER> : public FFmpegDataEncoder<LIBAV_VER> {
                      const RefPtr<TaskQueue>& aTaskQueue,
                      const EncoderConfig& aConfig);
 
+  RefPtr<InitPromise> Init() override;
+
   nsCString GetDescriptionName() const override;
 
  protected:
   virtual ~FFmpegAudioEncoder() = default;
   // Methods only called on mTaskQueue.
-  virtual nsresult InitSpecific() override;
+  virtual MediaResult InitEncoder() override;
 #if LIBAVCODEC_VERSION_MAJOR >= 58
-  Result<EncodedData, nsresult> EncodeOnePacket(Span<float> aSamples,
-                                                media::TimeUnit aPts);
-  Result<EncodedData, nsresult> EncodeInputWithModernAPIs(
+  Result<EncodedData, MediaResult> EncodeOnePacket(Span<float> aSamples,
+                                                   media::TimeUnit aPts);
+  Result<EncodedData, MediaResult> EncodeInputWithModernAPIs(
       RefPtr<const MediaData> aSample) override;
-  Result<MediaDataEncoder::EncodedData, nsresult> DrainWithModernAPIs()
+  Result<MediaDataEncoder::EncodedData, MediaResult> DrainWithModernAPIs()
       override;
 #endif
-  virtual RefPtr<MediaRawData> ToMediaRawData(AVPacket* aPacket) override;
-  Result<already_AddRefed<MediaByteBuffer>, nsresult> GetExtraData(
+  virtual Result<RefPtr<MediaRawData>, MediaResult> ToMediaRawData(
+      AVPacket* aPacket) override;
+  Result<already_AddRefed<MediaByteBuffer>, MediaResult> GetExtraData(
       AVPacket* aPacket) override;
   // Most audio codecs (except PCM) require a very specific frame size.
   Maybe<TimedPacketizer<float, float>> mPacketizer;

@@ -4,22 +4,23 @@ Destroying a texture more than once is allowed.
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { kTextureAspects } from '../../../capability_info.js';
-import { kTextureFormatInfo } from '../../../format_info.js';
-import { ValidationTest } from '../validation_test.js';
+import { isDepthTextureFormat, isStencilTextureFormat } from '../../../format_info.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as vtu from '../validation_test_utils.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('base')
   .desc(`Test that it is valid to destroy a texture.`)
   .fn(t => {
-    const texture = t.getSampledTexture();
+    const texture = vtu.getSampledTexture(t);
     texture.destroy();
   });
 
 g.test('twice')
   .desc(`Test that it is valid to destroy a destroyed texture.`)
   .fn(t => {
-    const texture = t.getSampledTexture();
+    const texture = vtu.getSampledTexture(t);
     texture.destroy();
     texture.destroy();
   });
@@ -29,7 +30,7 @@ g.test('invalid_texture')
   .fn(async t => {
     t.device.pushErrorScope('validation');
 
-    const invalidTexture = t.device.createTexture({
+    const invalidTexture = t.createTextureTracked({
       size: [t.device.limits.maxTextureDimension2D + 1, 1, 1],
       format: 'rgba8unorm',
       usage: GPUTextureUsage.TEXTURE_BINDING,
@@ -42,6 +43,8 @@ g.test('invalid_texture')
     // This line should not generate an error
     invalidTexture.destroy();
   });
+
+const kColorTextureFormat: GPUTextureFormat = 'rgba8unorm';
 
 g.test('submit_a_destroyed_texture_as_attachment')
   .desc(
@@ -69,7 +72,6 @@ that was destroyed {before, after} encoding finishes.
 
     const isSubmitSuccess = colorTextureState === 'valid' && depthStencilTextureState === 'valid';
 
-    const colorTextureFormat: GPUTextureFormat = 'rgba32float';
     const depthStencilTextureFormat: GPUTextureFormat =
       depthStencilTextureAspect === 'all'
         ? 'depth24plus-stencil8'
@@ -79,7 +81,7 @@ that was destroyed {before, after} encoding finishes.
 
     const colorTextureDesc: GPUTextureDescriptor = {
       size: { width: 16, height: 16, depthOrArrayLayers: 1 },
-      format: colorTextureFormat,
+      format: kColorTextureFormat,
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     };
 
@@ -89,8 +91,8 @@ that was destroyed {before, after} encoding finishes.
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     };
 
-    const colorTexture = t.device.createTexture(colorTextureDesc);
-    const depthStencilTexture = t.device.createTexture(depthStencilTextureDesc);
+    const colorTexture = t.createTextureTracked(colorTextureDesc);
+    const depthStencilTexture = t.createTextureTracked(depthStencilTextureDesc);
 
     if (colorTextureState === 'destroyedBeforeEncode') {
       colorTexture.destroy();
@@ -103,12 +105,12 @@ that was destroyed {before, after} encoding finishes.
     const depthStencilAttachment: GPURenderPassDepthStencilAttachment = {
       view: depthStencilTexture.createView({ aspect: depthStencilTextureAspect }),
     };
-    if (kTextureFormatInfo[depthStencilTextureFormat].depth) {
+    if (isDepthTextureFormat(depthStencilTextureFormat)) {
       depthStencilAttachment.depthClearValue = 0;
       depthStencilAttachment.depthLoadOp = 'clear';
       depthStencilAttachment.depthStoreOp = 'discard';
     }
-    if (kTextureFormatInfo[depthStencilTextureFormat].stencil) {
+    if (isStencilTextureFormat(depthStencilTextureFormat)) {
       depthStencilAttachment.stencilClearValue = 0;
       depthStencilAttachment.stencilLoadOp = 'clear';
       depthStencilAttachment.stencilStoreOp = 'discard';

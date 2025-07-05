@@ -19,6 +19,12 @@ using mozilla::dom::quota::PersistenceType
 using mozilla::dom::quota::Client::Type
   from "mozilla/dom/quota/Client.h";
 
+[MoveOnly] using mozilla::dom::quota::OriginUsageMetadataArray
+  from "mozilla/dom/quota/CommonMetadataArray.h";
+
+using mozilla::dom::quota::UsageInfo
+  from "mozilla/dom/quota/UsageInfo.h";
+
 using mozilla::dom::ContentParentId
   from "mozilla/dom/ipc/IdType.h";
 
@@ -32,47 +38,43 @@ union BoolResponse
   bool;
 };
 
+union UInt64Response
+{
+  nsresult;
+  uint64_t;
+};
+
+union CStringArrayResponse
+{
+  nsresult;
+  nsCString[];
+};
+
 } // namespace ipc
 
 namespace dom {
 namespace quota {
 
+union OriginUsageMetadataArrayResponse
+{
+  nsresult;
+  OriginUsageMetadataArray;
+};
+
+union UsageInfoResponse
+{
+  nsresult;
+  UsageInfo;
+};
+
 struct StorageNameParams
 {
-};
-
-struct InitializePersistentOriginParams
-{
-  PrincipalInfo principalInfo;
-};
-
-struct InitializeTemporaryOriginParams
-{
-  PersistenceType persistenceType;
-  PrincipalInfo principalInfo;
 };
 
 struct GetFullOriginMetadataParams
 {
   PersistenceType persistenceType;
   PrincipalInfo principalInfo;
-};
-
-struct AllUsageParams
-{
-  bool getAll;
-};
-
-struct OriginUsageParams
-{
-  PrincipalInfo principalInfo;
-  bool fromMemory;
-};
-
-union UsageRequestParams
-{
-  AllUsageParams;
-  OriginUsageParams;
 };
 
 struct ClearResetOriginParams
@@ -82,11 +84,6 @@ struct ClearResetOriginParams
   bool persistenceTypeIsExplicit;
   Type clientType;
   bool clientTypeIsExplicit;
-};
-
-struct ResetOriginParams
-{
-  ClearResetOriginParams commonParams;
 };
 
 struct PersistedParams
@@ -104,21 +101,13 @@ struct EstimateParams
   PrincipalInfo principalInfo;
 };
 
-struct ListOriginsParams
-{
-};
-
 union RequestParams
 {
   StorageNameParams;
-  InitializePersistentOriginParams;
-  InitializeTemporaryOriginParams;
   GetFullOriginMetadataParams;
-  ResetOriginParams;
   PersistedParams;
   PersistParams;
   EstimateParams;
-  ListOriginsParams;
 };
 
 [ChildImpl=virtual, ParentImpl=virtual]
@@ -132,17 +121,45 @@ protocol PQuota
 parent:
   async __delete__();
 
-  async PQuotaUsageRequest(UsageRequestParams params);
-
   async PQuotaRequest(RequestParams params);
 
   async StorageInitialized()
       returns(BoolResponse response);
 
+  async PersistentStorageInitialized()
+      returns(BoolResponse response);
+
   async TemporaryStorageInitialized()
       returns(BoolResponse response);
 
+  async TemporaryGroupInitialized(PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async PersistentOriginInitialized(PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async TemporaryOriginInitialized(PersistenceType persistenceType,
+                                   PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
   async InitializeStorage()
+      returns(BoolResponse response);
+
+  async InitializePersistentStorage()
+      returns(BoolResponse response);
+
+  async InitializeAllTemporaryOrigins()
+      returns(BoolResponse response);
+
+  async InitializeTemporaryGroup(PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async InitializePersistentOrigin(PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async InitializeTemporaryOrigin(PersistenceType persistenceType,
+                                  PrincipalInfo principalInfo,
+                                  bool createIfNonExistent)
       returns(BoolResponse response);
 
   async InitializePersistentClient(PrincipalInfo principalInfo,
@@ -151,15 +168,37 @@ parent:
 
   async InitializeTemporaryClient(PersistenceType persistenceType,
                                   PrincipalInfo principalInfo,
-                                  Type clientType)
+                                  Type clientType,
+                                  bool createIfNonExistent)
       returns(BoolResponse response);
 
   async InitializeTemporaryStorage()
       returns(BoolResponse response);
 
+  async GetUsage(bool getAll,
+                 ManagedEndpoint<PQuotaUsageRequestParent> parentEndpoint)
+      returns(OriginUsageMetadataArrayResponse response);
+
+  async GetOriginUsage(PrincipalInfo principalInfo,
+                       ManagedEndpoint<PQuotaUsageRequestParent> parentEndpoint)
+      returns(UsageInfoResponse response);
+
+  async GetCachedOriginUsage(PrincipalInfo principalInfo)
+      returns(UInt64Response response);
+
+  async ListOrigins()
+      returns(CStringArrayResponse response);
+
+  async ListCachedOrigins()
+      returns(CStringArrayResponse response);
+
   async ClearStoragesForOrigin(PersistenceType? persistenceType,
+                               PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async ClearStoragesForClient(PersistenceType? persistenceType,
                                PrincipalInfo principalInfo,
-                               Type? clientType)
+                               Type clientType)
       returns(BoolResponse response);
 
   async ClearStoragesForOriginPrefix(PersistenceType? persistenceType,
@@ -176,6 +215,15 @@ parent:
   async ClearStorage()
       returns(BoolResponse response);
 
+  async ShutdownStoragesForOrigin(PersistenceType? persistenceType,
+                                  PrincipalInfo principalInfo)
+      returns(BoolResponse response);
+
+  async ShutdownStoragesForClient(PersistenceType? persistenceType,
+                                  PrincipalInfo principalInfo,
+                                  Type clientType)
+      returns(BoolResponse response);
+
   async ShutdownStorage()
       returns(BoolResponse response);
 
@@ -184,6 +232,8 @@ parent:
   async StopIdleMaintenance();
 
   async AbortOperationsForProcess(ContentParentId contentParentId);
+
+  async SetThumbnailPrivateIdentityId(uint32_t aThumbnailPrivateIdentityId);
 };
 
 } // namespace quota

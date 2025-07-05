@@ -8,17 +8,22 @@
 
 #include "mozilla/dom/WorkerCommon.h"
 #include "ServiceWorkerManager.h"
+#include "mozilla/ProfilerMarkers.h"
 
 namespace mozilla::dom {
 
 ServiceWorkerRegisterJob::ServiceWorkerRegisterJob(
     nsIPrincipal* aPrincipal, const nsACString& aScope,
-    const nsACString& aScriptSpec, ServiceWorkerUpdateViaCache aUpdateViaCache)
+    const nsACString& aScriptSpec, ServiceWorkerUpdateViaCache aUpdateViaCache,
+    const ServiceWorkerLifetimeExtension& aLifetimeExtension)
     : ServiceWorkerUpdateJob(Type::Register, aPrincipal, aScope,
-                             nsCString(aScriptSpec), aUpdateViaCache) {}
+                             nsCString(aScriptSpec), aUpdateViaCache,
+                             aLifetimeExtension) {}
 
 void ServiceWorkerRegisterJob::AsyncExecute() {
   MOZ_ASSERT(NS_IsMainThread());
+
+  AUTO_PROFILER_MARKER_UNTYPED("SWRJ AsyncExecute", DOM, {});
 
   RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
   if (Canceled() || !swm) {

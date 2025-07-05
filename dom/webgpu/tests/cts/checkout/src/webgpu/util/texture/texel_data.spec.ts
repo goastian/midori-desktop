@@ -4,20 +4,34 @@ import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { assert } from '../../../common/util/util.js';
 import {
   kEncodableTextureFormats,
-  kTextureFormatInfo,
   EncodableTextureFormat,
+  isColorTextureFormat,
+  canCopyToAllAspectsOfTextureFormat,
 } from '../../format_info.js';
-import { GPUTest } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest, GPUTest } from '../../gpu_test.js';
+import { gammaCompress, floatAsNormalizedIntegerUnquantized } from '../conversion.js';
 
 import {
   kTexelRepresentationInfo,
   getSingleDataType,
   getComponentReadbackTraits,
+  ComponentDataType,
 } from './texel_data.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
-function doTest(
+function isCopyDstColorTextureFormatOfType(
+  format: EncodableTextureFormat,
+  type: ComponentDataType
+) {
+  return (
+    isColorTextureFormat(format) &&
+    canCopyToAllAspectsOfTextureFormat(format) &&
+    getSingleDataType(format) === type
+  );
+}
+
+async function doTest(
   t: GPUTest & {
     params: {
       format: EncodableTextureFormat;
@@ -31,11 +45,13 @@ function doTest(
   }
 ) {
   const { format } = t.params;
+  t.skipIfTextureFormatNotSupported(format);
+
   const componentData = t.params.componentData;
 
   const rep = kTexelRepresentationInfo[format];
   const texelData = rep.pack(componentData);
-  const texture = t.device.createTexture({
+  const texture = t.createTextureTracked({
     format,
     size: [1, 1, 1],
     usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
@@ -77,7 +93,7 @@ function doTest(
     },
   });
 
-  const outputBuffer = t.device.createBuffer({
+  const outputBuffer = t.createBufferTracked({
     size: rep.componentOrder.length * 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
@@ -106,16 +122,65 @@ function doTest(
   pass.end();
   t.device.queue.submit([encoder.finish()]);
 
-  t.expectGPUBufferValuesEqual(
-    outputBuffer,
-    new ReadbackTypedArray(
-      rep.componentOrder.map(c => {
-        const value = rep.decode(componentData)[c];
-        assert(value !== undefined);
-        return value;
-      })
-    )
+  const idealReadbackData = new ReadbackTypedArray(
+    rep.componentOrder.map(c => {
+      const value = rep.decode(componentData)[c];
+      assert(value !== undefined);
+      return value;
+    })
   );
+
+  if (format === 'rgba8unorm-srgb' || format === 'bgra8unorm-srgb') {
+    // The SRGB -> float conversion is permitted a tolerance of 0.5f ULP on the SRGB side. The
+    // procedure for measuring this tolerance is to convert the result back into SRGB space
+    // using the ideal float -> SRGB conversion specified below but WITHOUT the rounding to integer,
+    // and taking the floating point difference versus the original SRGB value to yield the error.
+    // Exact conversion is required: 0.0f and 1.0f (the ends) must be exactly achievable.
+    const readBackValue = await t.readGPUBufferRangeTyped(outputBuffer, {
+      type: Float32Array,
+      typedLength: 4,
+    });
+    // Gamma correction shouldn't be applied to the alpha channel.
+    t.expect(idealReadbackData[3] === readBackValue.data[3]);
+
+    // Do the ideal float -> 8unorm-srgb conversion on the readback float value without the rounding
+    // to integer.
+    const readBackValueToSRGB = new Array(3);
+    for (let i = 0; i < 3; ++i) {
+      const gammaCompressed = gammaCompress(readBackValue.data[i]);
+      let outputIndex = i;
+      if (format === 'bgra8unorm-srgb' && (i === 0 || i === 2)) {
+        outputIndex = 2 - i;
+      }
+      readBackValueToSRGB[outputIndex] = floatAsNormalizedIntegerUnquantized(
+        gammaCompressed,
+        8,
+        false
+      );
+    }
+    readBackValue.cleanup();
+
+    // Take the floating point difference versus the original SRGB value to yield the error.
+    const check8UnormSRGB = (inputValue: number, idealValue: number) => {
+      const kToleranceULP = 0.5;
+      if (idealValue === 0 || idealValue === 255) {
+        t.expect(inputValue === idealValue);
+      } else {
+        t.expect(Math.abs(inputValue - idealValue) <= kToleranceULP);
+      }
+    };
+
+    assert(
+      componentData.R !== undefined &&
+        componentData.G !== undefined &&
+        componentData.B !== undefined
+    );
+    check8UnormSRGB(readBackValueToSRGB[0], componentData.R);
+    check8UnormSRGB(readBackValueToSRGB[1], componentData.G);
+    check8UnormSRGB(readBackValueToSRGB[2], componentData.B);
+  } else {
+    t.expectGPUBufferValuesEqual(outputBuffer, idealReadbackData);
+  }
 }
 
 // Make a test parameter by mapping a format and each component to a texel component
@@ -137,10 +202,7 @@ g.test('unorm_texel_data_in_shader')
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'unorm';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'unorm'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         const max = (bitLength: number) => Math.pow(2, bitLength) - 1;
@@ -160,19 +222,13 @@ g.test('unorm_texel_data_in_shader')
         ];
       })
   )
-  .beforeAllSubcases(t => {
-    t.skipIfTextureFormatNotSupported(t.params.format);
-  })
   .fn(doTest);
 
 g.test('snorm_texel_data_in_shader')
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'snorm';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'snorm'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         const max = (bitLength: number) => Math.pow(2, bitLength - 1) - 1;
@@ -201,10 +257,7 @@ g.test('uint_texel_data_in_shader')
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'uint';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'uint'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         const max = (bitLength: number) => Math.pow(2, bitLength) - 1;
@@ -230,10 +283,7 @@ g.test('sint_texel_data_in_shader')
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'sint';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'sint'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         const max = (bitLength: number) => Math.pow(2, bitLength - 1) - 1;
@@ -265,10 +315,7 @@ TODO: Test NaN, Infinity, -Infinity [1]`
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'float';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'float'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         return [
@@ -304,10 +351,7 @@ TODO: Test NaN, Infinity`
   .params(u =>
     u
       .combine('format', kEncodableTextureFormats)
-      .filter(({ format }) => {
-        const info = kTextureFormatInfo[format];
-        return !!info.color && info.color.copyDst && getSingleDataType(format) === 'ufloat';
-      })
+      .filter(({ format }) => isCopyDstColorTextureFormatOfType(format, 'ufloat'))
       .beginSubcases()
       .expand('componentData', ({ format }) => {
         return [

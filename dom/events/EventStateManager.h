@@ -496,7 +496,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    *
    * @param aPresShell              The PresShell for the ESM.  This lifetime
    *                                should be guaranteed by the caller.
-   * @param aMouseEvent             The eMouseClick event which caused the
+   * @param aMouseEvent             The ePointerClick event which caused the
    *                                paste.
    * @param aStatus                 The event status of aMouseEvent.
    * @param aEditorBase             EditorBase which may be pasted the
@@ -517,6 +517,24 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   // a notification to any child processes that are in the drag service that
   // tried to start a drag.
   void StopTrackingDragGesture(bool aClearInChildProcesses);
+
+  /**
+   * Return the last "mouseover" (or next "mouseout"), the last deepest
+   * "mouseenter" (or next deepest "mouseleave") targets.
+   */
+  const OverOutElementsWrapper* GetExtantMouseBoundaryEventTarget() const {
+    return mMouseEnterLeaveHelper;
+  }
+
+  nsIContent* GetTrackingDragGestureContent() const {
+    return mGestureDownContent;
+  }
+
+  // Update the tracked gesture content to the parent of its frame when it's
+  // removed, so that the gesture can be continued.
+  void NotifyContentWillBeRemovedForGesture(nsIContent& aContent);
+
+  bool IsTrackingDragGesture() const { return mGestureDownContent != nullptr; }
 
  protected:
   /*
@@ -610,8 +628,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    *                                If the status indicates consumed, the
    *                                value won't be overwritten with
    *                                nsEventStatus_eIgnore.
-   * @param aMessage                Should be eMouseClick, eMouseDoubleClick or
-   *                                eMouseAuxClick.
+   * @param aMessage                Should be ePointerClick, eMouseDoubleClick
+   *                                or ePointerAuxClick.
    * @param aPresShell              The PresShell.
    * @param aMouseUpContent         The event target of aMouseUpEvent.
    * @param aCurrentTarget          Current target of the caller.
@@ -629,13 +647,17 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
       AutoWeakFrame aCurrentTarget, bool aNoContentDispatch,
       nsIContent* aOverrideClickTarget);
 
-  nsresult SetClickCount(WidgetMouseEvent* aEvent, nsEventStatus* aStatus,
-                         nsIContent* aOverrideClickTarget = nullptr);
+  /**
+   * Prepare aEvent and corresponding LastMouseDownInfo for dispatching
+   * ePointerClick, ePointerAuxClick or eContextMenu later.
+   */
+  void PrepareForFollowingClickEvent(
+      WidgetMouseEvent& aEvent, nsIContent* aOverrideClickTarget = nullptr);
 
   /**
    * EventCausesClickEvents() returns true when aMouseEvent is an eMouseUp
-   * event and it should cause eMouseClick, eMouseDoubleClick and/or
-   * eMouseAuxClick events.  Note that this method assumes that
+   * event and it should cause ePointerClick, eMouseDoubleClick and/or
+   * ePointerAuxClick events.  Note that this method assumes that
    * aMouseEvent.mClickCount has already been initialized with SetClickCount().
    */
   static bool EventCausesClickEvents(const WidgetMouseEvent& aMouseEvent);
@@ -660,8 +682,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
                              nsIContent* aOverrideClickTarget);
 
   /**
-   * DispatchClickEvents() dispatches eMouseClick, eMouseDoubleClick and
-   * eMouseAuxClick events for aMouseUpEvent.  aMouseUpEvent should cause
+   * DispatchClickEvents() dispatches ePointerClick, eMouseDoubleClick and
+   * ePointerAuxClick events for aMouseUpEvent.  aMouseUpEvent should cause
    * click event.
    *
    * @param aPresShell              The PresShell.
@@ -979,6 +1001,11 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
         (PREFER_MOUSE_WHEEL_TRANSACTION |
          PREFER_ACTUAL_SCROLLABLE_TARGET_ALONG_X_AXIS |
          PREFER_ACTUAL_SCROLLABLE_TARGET_ALONG_Y_AXIS),
+    // Compute the default action target without considering the current wheel
+    // transaction.
+    COMPUTE_DEFAULT_ACTION_TARGET_WITHOUT_WHEEL_TRANSACTION =
+        (PREFER_ACTUAL_SCROLLABLE_TARGET_ALONG_X_AXIS |
+         PREFER_ACTUAL_SCROLLABLE_TARGET_ALONG_Y_AXIS),
     COMPUTE_DEFAULT_ACTION_TARGET_WITH_AUTO_DIR =
         (COMPUTE_DEFAULT_ACTION_TARGET | MAY_BE_ADJUSTED_BY_AUTO_DIR),
     // Look for the nearest scrollable ancestor which can be scrollable with
@@ -1048,6 +1075,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   void DoScrollText(ScrollContainerFrame* aScrollContainerFrame,
                     WidgetWheelEvent* aEvent);
 
+  MOZ_CAN_RUN_SCRIPT
   void DoScrollHistory(int32_t direction);
   void DoScrollZoom(nsIFrame* aTargetFrame, int32_t adjustment);
   void ChangeZoom(bool aIncrease);
@@ -1206,7 +1234,6 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
       dom::RemoteDragStartData* aDragStartData, nsIPrincipal* aPrincipal,
       nsIContentSecurityPolicy* aCsp, nsICookieJarSettings* aCookieJarSettings);
 
-  bool IsTrackingDragGesture() const { return mGestureDownContent != nullptr; }
   /**
    * Set the fields of aEvent to reflect the mouse position and modifier keys
    * that were set when the user first pressed the mouse button (stored by
@@ -1219,6 +1246,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   nsresult DoContentCommandEvent(WidgetContentCommandEvent* aEvent);
   MOZ_CAN_RUN_SCRIPT
   nsresult DoContentCommandInsertTextEvent(WidgetContentCommandEvent* aEvent);
+  MOZ_CAN_RUN_SCRIPT
+  nsresult DoContentCommandReplaceTextEvent(WidgetContentCommandEvent* aEvent);
   nsresult DoContentCommandScrollEvent(WidgetContentCommandEvent* aEvent);
 
   dom::BrowserParent* GetCrossProcessTarget();
@@ -1280,6 +1309,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   // Update the last known ref point to the current event's mRefPoint.
   static void UpdateLastPointerPosition(WidgetMouseEvent* aMouseEvent);
 
+  void UpdateGestureContent(nsIContent* aContent);
+
   /**
    * Notify target when user has been interaction with some speicific user
    * gestures which are eKeyUp, eMouseUp, eTouchEnd.
@@ -1292,6 +1323,12 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    */
   MOZ_CAN_RUN_SCRIPT void LightDismissOpenPopovers(WidgetEvent* aEvent,
                                                    nsIContent* aTargetContent);
+
+  /**
+   * https://html.spec.whatwg.org/multipage/interactive-elements.html#light-dismiss-open-dialogs
+   */
+  MOZ_CAN_RUN_SCRIPT void LightDismissOpenDialogs(WidgetEvent* aEvent,
+                                                  nsIContent* aTargetContent);
 
   already_AddRefed<EventStateManager> ESMFromContentOrThis(
       nsIContent* aContent);
@@ -1402,8 +1439,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
 // Click and double-click events need to be handled even for content that
 // has no frame. This is required for Web compatibility.
 #define NS_EVENT_NEEDS_FRAME(event)          \
-  ((event)->mMessage != eMouseClick &&       \
+  ((event)->mMessage != ePointerClick &&     \
    (event)->mMessage != eMouseDoubleClick && \
-   (event)->mMessage != eMouseAuxClick)
+   (event)->mMessage != ePointerAuxClick)
 
 #endif  // mozilla_EventStateManager_h_

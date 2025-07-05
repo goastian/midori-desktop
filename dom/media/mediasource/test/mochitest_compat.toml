@@ -1,7 +1,7 @@
 [DEFAULT]
 subsuite = "media"
 tags = "media-engine-compatible media-gpu"
-prefs = ["media.wmf.hevc.enabled=1"] # for test_MediaSource_hevc_mp4
+prefs = ["media.hevc.enabled=1"] # for test_MediaSource_hevc_mp4
 support-files = [
   "mediasource.js",
   "seek.webm",
@@ -229,9 +229,6 @@ support-files = [
 
 ["test_AudioChange_mp4_WebAudio.html"]
 
-["test_AutoRevocation.html"]
-tags = "firstpartyisolation"
-
 ["test_BufferedSeek.html"]
 
 ["test_BufferedSeek_mp4.html"]
@@ -287,6 +284,9 @@ skip-if = ["!mda_gpu"]
 ["test_OnEvents.html"]
 
 ["test_PlayEventsAutoPlaying.html"]
+skip-if = [
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov",
+]
 
 ["test_PlayEventsAutoPlaying2.html"]
 
@@ -298,6 +298,9 @@ skip-if = ["os == 'android' && verify"] # Crash
 ["test_SeekNoData_mp4.html"]
 
 ["test_SeekToEnd_mp4.html"]
+skip-if = [
+  "os == 'android' && android_version == '24' && processor == 'x86_64' && opt", # Bug 1781577
+]
 
 ["test_SeekTwice_mp4.html"]
 

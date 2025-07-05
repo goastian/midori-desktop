@@ -146,13 +146,13 @@ class WorkerDebugger::PostDebuggerMessageRunnable final : public Runnable {
 
 class WorkerDebugger::ReportDebuggerErrorRunnable final : public Runnable {
   WorkerDebugger* mDebugger;
-  nsString mFilename;
+  nsCString mFilename;
   uint32_t mLineno;
   nsString mMessage;
 
  public:
   ReportDebuggerErrorRunnable(WorkerDebugger* aDebugger,
-                              const nsAString& aFilename, uint32_t aLineno,
+                              const nsACString& aFilename, uint32_t aLineno,
                               const nsAString& aMessage)
       : Runnable("ReportDebuggerErrorRunnable"),
         mDebugger(aDebugger),
@@ -205,6 +205,14 @@ WorkerDebugger::GetIsChrome(bool* aResult) {
   }
 
   *aResult = mWorkerPrivate->IsChromeWorker();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WorkerDebugger::GetIsRemote(bool* aResult) {
+  AssertIsOnMainThread();
+
+  *aResult = false;
   return NS_OK;
 }
 
@@ -356,6 +364,18 @@ WorkerDebugger::GetId(nsAString& aResult) {
 }
 
 NS_IMETHODIMP
+WorkerDebugger::GetName(nsAString& aResult) {
+  AssertIsOnMainThread();
+
+  if (!mWorkerPrivate) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  aResult = mWorkerPrivate->WorkerName();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 WorkerDebugger::Initialize(const nsAString& aURL) {
   AssertIsOnMainThread();
 
@@ -461,7 +481,7 @@ void WorkerDebugger::PostMessageToDebuggerOnMainThread(
   }
 }
 
-void WorkerDebugger::ReportErrorToDebugger(const nsAString& aFilename,
+void WorkerDebugger::ReportErrorToDebugger(const nsACString& aFilename,
                                            uint32_t aLineno,
                                            const nsAString& aMessage) {
   mWorkerPrivate->AssertIsOnWorkerThread();
@@ -475,7 +495,7 @@ void WorkerDebugger::ReportErrorToDebugger(const nsAString& aFilename,
 }
 
 void WorkerDebugger::ReportErrorToDebuggerOnMainThread(
-    const nsAString& aFilename, uint32_t aLineno, const nsAString& aMessage) {
+    const nsACString& aFilename, uint32_t aLineno, const nsAString& aMessage) {
   AssertIsOnMainThread();
 
   for (const auto& listener : mListeners.Clone()) {

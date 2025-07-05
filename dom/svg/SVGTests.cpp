@@ -51,7 +51,7 @@ bool SVGTests::HasExtension(const nsAString& aExtension) const {
 
 bool SVGTests::IsConditionalProcessingAttribute(
     const nsAtom* aAttribute) const {
-  for (uint32_t i = 0; i < ArrayLength(sStringListNames); i++) {
+  for (uint32_t i = 0; i < std::size(sStringListNames); i++) {
     if (aAttribute == sStringListNames[i]) {
       return true;
     }
@@ -61,15 +61,19 @@ bool SVGTests::IsConditionalProcessingAttribute(
 
 // Find the best match from aAvailLangs for the users accept-languages,
 // returning the index in the aAvailLangs list, or -1 if no match.
-int32_t FindBestLanguage(const nsTArray<nsCString>& aAvailLangs) {
+static int32_t FindBestLanguage(const nsTArray<nsCString>& aAvailLangs,
+                                const Document* aDoc) {
   AutoTArray<nsCString, 16> reqLangs;
-  nsCString acceptLangs;
-  Preferences::GetLocalizedCString("intl.accept_languages", acceptLangs);
-  nsCCharSeparatedTokenizer languageTokenizer(acceptLangs, ',');
-  while (languageTokenizer.hasMoreTokens()) {
-    reqLangs.AppendElement(languageTokenizer.nextToken());
+  if (aDoc->ShouldResistFingerprinting(RFPTarget::JSLocale)) {
+    reqLangs.AppendElements(Span(std::array{"en-US", "en"}));
+  } else {
+    nsCString acceptLangs;
+    Preferences::GetLocalizedCString("intl.accept_languages", acceptLangs);
+    nsCCharSeparatedTokenizer languageTokenizer(acceptLangs, ',');
+    while (languageTokenizer.hasMoreTokens()) {
+      reqLangs.AppendElement(languageTokenizer.nextToken());
+    }
   }
-
   for (const auto& req : reqLangs) {
     for (const auto& avail : aAvailLangs) {
       if (avail.Length() > req.Length()) {
@@ -128,7 +132,7 @@ nsIContent* SVGTests::FindActiveSwitchChild(
     return defaultChild;
   }
 
-  int32_t index = FindBestLanguage(availLocales);
+  int32_t index = FindBestLanguage(availLocales, aSwitch->OwnerDoc());
   if (index >= 0) {
     return children[index];
   }
@@ -186,7 +190,7 @@ bool SVGTests::PassesConditionalProcessingTests() const {
     }
 
     mPassesConditionalProcessingTests =
-        Some(FindBestLanguage(availLocales) >= 0);
+        Some(FindBestLanguage(availLocales, AsSVGElement()->OwnerDoc()) >= 0);
     return mPassesConditionalProcessingTests.value();
   }
 
@@ -197,7 +201,7 @@ bool SVGTests::PassesConditionalProcessingTests() const {
 bool SVGTests::ParseConditionalProcessingAttribute(nsAtom* aAttribute,
                                                    const nsAString& aValue,
                                                    nsAttrValue& aResult) {
-  for (uint32_t i = 0; i < ArrayLength(sStringListNames); i++) {
+  for (uint32_t i = 0; i < std::size(sStringListNames); i++) {
     if (aAttribute == sStringListNames[i]) {
       nsresult rv = mStringListAttributes[i].SetValue(aValue);
       if (NS_FAILED(rv)) {
@@ -212,7 +216,7 @@ bool SVGTests::ParseConditionalProcessingAttribute(nsAtom* aAttribute,
 }
 
 void SVGTests::UnsetAttr(const nsAtom* aAttribute) {
-  for (uint32_t i = 0; i < ArrayLength(sStringListNames); i++) {
+  for (uint32_t i = 0; i < std::size(sStringListNames); i++) {
     if (aAttribute == sStringListNames[i]) {
       mStringListAttributes[i].Clear();
       mPassesConditionalProcessingTests = Nothing();
@@ -227,8 +231,7 @@ nsStaticAtom* SVGTests::GetAttrName(uint8_t aAttrEnum) const {
 }
 
 void SVGTests::GetAttrValue(uint8_t aAttrEnum, nsAttrValue& aValue) const {
-  MOZ_ASSERT(aAttrEnum < ArrayLength(sStringListNames),
-             "aAttrEnum out of range");
+  MOZ_ASSERT(aAttrEnum < std::size(sStringListNames), "aAttrEnum out of range");
   aValue.SetTo(mStringListAttributes[aAttrEnum], nullptr);
 }
 

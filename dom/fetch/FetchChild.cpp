@@ -5,6 +5,7 @@
 #include "FetchChild.h"
 #include "FetchLog.h"
 #include "FetchObserver.h"
+#include "FetchUtil.h"
 #include "InternalResponse.h"
 #include "Request.h"
 #include "Response.h"
@@ -38,8 +39,12 @@ mozilla::ipc::IPCResult FetchChild::Recv__delete__(const nsresult&& aResult) {
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
+  } else {
+    MOZ_ASSERT(mIsKeepAliveRequest);
+  }
 
   if (mPromise->State() == Promise::PromiseState::Pending) {
     if (NS_FAILED(aResult)) {
@@ -65,8 +70,11 @@ mozilla::ipc::IPCResult FetchChild::RecvOnResponseAvailableInternal(
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
+  }
+
   SafeRefPtr<InternalResponse> internalResponse =
       InternalResponse::FromIPC(aResponse);
   IgnoredErrorResult result;
@@ -81,8 +89,14 @@ mozilla::ipc::IPCResult FetchChild::RecvOnResponseAvailableInternal(
     if (mFetchObserver) {
       mFetchObserver->SetState(FetchState::Complete);
     }
+
+    // mFetchObserver->SetState runs JS and a blocking JS function can run
+    // queued runnables, including ActorDestroy that nullifies mPromise.
+    if (!mPromise) {
+      return IPC_OK();
+    }
     nsCOMPtr<nsIGlobalObject> global;
-    global = mWorkerRef->Private()->GlobalScope();
+    global = mPromise->GetGlobalObject();
     RefPtr<Response> response =
         new Response(global, internalResponse.clonePtr(), mSignalImpl);
     mPromise->MaybeResolve(response);
@@ -97,6 +111,12 @@ mozilla::ipc::IPCResult FetchChild::RecvOnResponseAvailableInternal(
   if (mFetchObserver) {
     mFetchObserver->SetState(FetchState::Errored);
   }
+
+  // mFetchObserver->SetState runs JS and a blocking JS function can run queued
+  // runnables, including ActorDestroy that nullifies mPromise.
+  if (!mPromise) {
+    return IPC_OK();
+  }
   mPromise->MaybeRejectWithTypeError<MSG_FETCH_FAILED>();
   return IPC_OK();
 }
@@ -108,14 +128,22 @@ mozilla::ipc::IPCResult FetchChild::RecvOnResponseEnd(ResponseEndArgs&& aArgs) {
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
+  }
 
   if (aArgs.endReason() == FetchDriverObserver::eAborted) {
     FETCH_LOG(
         ("FetchChild::RecvOnResponseEnd [%p] endReason is eAborted", this));
     if (mFetchObserver) {
       mFetchObserver->SetState(FetchState::Errored);
+    }
+
+    // mFetchObserver->SetState runs JS and a blocking JS function can run
+    // queued runnables, including ActorDestroy that nullifies mPromise.
+    if (!mPromise) {
+      return IPC_OK();
     }
     mPromise->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
   }
@@ -131,8 +159,10 @@ mozilla::ipc::IPCResult FetchChild::RecvOnDataAvailable() {
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
+  }
 
   if (mFetchObserver && mFetchObserver->State() == FetchState::Requesting) {
     mFetchObserver->SetState(FetchState::Responding);
@@ -146,11 +176,36 @@ mozilla::ipc::IPCResult FetchChild::RecvOnFlushConsoleReport(
   if (mIsShutdown) {
     return IPC_OK();
   }
+  MOZ_ASSERT(mReporter);
+
+  if (NS_IsMainThread()) {
+    MOZ_ASSERT(mIsKeepAliveRequest);
+    // extract doc object to flush the console report
+    for (const auto& report : aReports) {
+      mReporter->AddConsoleReport(
+          report.errorFlags(), report.category(),
+          static_cast<nsContentUtils::PropertiesFile>(report.propertiesFile()),
+          report.sourceFileURI(), report.lineNumber(), report.columnNumber(),
+          report.messageName(), report.stringParams());
+    }
+
+    MOZ_ASSERT(mPromise);
+    nsCOMPtr<nsPIDOMWindowInner> window =
+        do_QueryInterface(mPromise->GetGlobalObject());
+    if (window) {
+      Document* doc = window->GetExtantDoc();
+      mReporter->FlushConsoleReports(doc);
+    } else {
+      mReporter->FlushReportsToConsole(0);
+    }
+    return IPC_OK();
+  }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
-  MOZ_ASSERT(mReporter);
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
+  }
 
   RefPtr<ThreadSafeWorkerRef> workerRef = mWorkerRef;
   nsCOMPtr<nsIConsoleReportCollector> reporter = mReporter;
@@ -186,12 +241,12 @@ mozilla::ipc::IPCResult FetchChild::RecvOnFlushConsoleReport(
   return IPC_OK();
 }
 
-RefPtr<FetchChild> FetchChild::Create(WorkerPrivate* aWorkerPrivate,
-                                      RefPtr<Promise> aPromise,
-                                      RefPtr<AbortSignalImpl> aSignalImpl,
-                                      RefPtr<FetchObserver> aObserver) {
+RefPtr<FetchChild> FetchChild::CreateForWorker(
+    WorkerPrivate* aWorkerPrivate, RefPtr<Promise> aPromise,
+    RefPtr<AbortSignalImpl> aSignalImpl, RefPtr<FetchObserver> aObserver) {
   MOZ_DIAGNOSTIC_ASSERT(aWorkerPrivate);
   aWorkerPrivate->AssertIsOnWorkerThread();
+  FETCH_LOG(("FetchChild::CreateForWorker [%p]", aWorkerPrivate));
 
   RefPtr<FetchChild> actor = MakeRefPtr<FetchChild>(
       std::move(aPromise), std::move(aSignalImpl), std::move(aObserver));
@@ -209,6 +264,16 @@ RefPtr<FetchChild> FetchChild::Create(WorkerPrivate* aWorkerPrivate,
   if (NS_WARN_IF(!actor->mWorkerRef)) {
     return nullptr;
   }
+  return actor;
+}
+
+RefPtr<FetchChild> FetchChild::CreateForMainThread(
+    RefPtr<Promise> aPromise, RefPtr<AbortSignalImpl> aSignalImpl,
+    RefPtr<FetchObserver> aObserver) {
+  RefPtr<FetchChild> actor = MakeRefPtr<FetchChild>(
+      std::move(aPromise), std::move(aSignalImpl), std::move(aObserver));
+  FETCH_LOG(("FetchChild::CreateForMainThread actor[%p]", actor.get()));
+
   return actor;
 }
 
@@ -261,15 +326,28 @@ mozilla::ipc::IPCResult FetchChild::RecvOnReportPerformanceTiming(
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
 
-  RefPtr<PerformanceStorage> performanceStorage =
-      mWorkerRef->Private()->GetPerformanceStorage();
-  if (performanceStorage) {
-    performanceStorage->AddEntry(
-        aTiming.entryName(), aTiming.initiatorType(),
-        MakeUnique<PerformanceTimingData>(aTiming.timingData()));
+    RefPtr<PerformanceStorage> performanceStorage =
+        mWorkerRef->Private()->GetPerformanceStorage();
+    if (performanceStorage) {
+      performanceStorage->AddEntry(
+          aTiming.entryName(), aTiming.initiatorType(),
+          MakeUnique<PerformanceTimingData>(aTiming.timingData()));
+    }
+  } else if (mIsKeepAliveRequest) {
+    MOZ_ASSERT(mPromise->GetGlobalObject());
+    auto* innerWindow = mPromise->GetGlobalObject()->GetAsInnerWindow();
+    if (innerWindow) {
+      mozilla::dom::Performance* performance = innerWindow->GetPerformance();
+      if (performance) {
+        performance->AsPerformanceStorage()->AddEntry(
+            aTiming.entryName(), aTiming.initiatorType(),
+            MakeUnique<PerformanceTimingData>(aTiming.timingData()));
+      }
+    }
   }
   return IPC_OK();
 }
@@ -283,27 +361,32 @@ mozilla::ipc::IPCResult FetchChild::RecvOnNotifyNetworkMonitorAlternateStack(
   }
   // Shutdown has not been called, so mWorkerRef->Private() should be still
   // alive.
-  MOZ_ASSERT(mWorkerRef->Private());
-  mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (mWorkerRef) {
+    MOZ_ASSERT(mWorkerRef->Private());
+    mWorkerRef->Private()->AssertIsOnWorkerThread();
 
-  if (!mOriginStack) {
-    return IPC_OK();
+    if (!mOriginStack) {
+      return IPC_OK();
+    }
+
+    if (!mWorkerChannelInfo) {
+      mWorkerChannelInfo = MakeRefPtr<WorkerChannelInfo>(
+          aChannelID, mWorkerRef->Private()->AssociatedBrowsingContextID());
+    }
+
+    // Unfortunately, SerializedStackHolder can only be read on the main thread.
+    // However, it doesn't block the fetch execution.
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+        __func__, [channel = mWorkerChannelInfo,
+                   stack = std::move(mOriginStack)]() mutable {
+          NotifyNetworkMonitorAlternateStack(channel, std::move(stack));
+        });
+
+    MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
   }
-
-  if (!mWorkerChannelInfo) {
-    mWorkerChannelInfo = MakeRefPtr<WorkerChannelInfo>(
-        aChannelID, mWorkerRef->Private()->AssociatedBrowsingContextID());
-  }
-
-  // Unfortunately, SerializedStackHolder can only be read on the main thread.
-  // However, it doesn't block the fetch execution.
-  nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-      __func__, [channel = mWorkerChannelInfo,
-                 stack = std::move(mOriginStack)]() mutable {
-        NotifyNetworkMonitorAlternateStack(channel, std::move(stack));
-      });
-
-  MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
+  // Currently we only support sending notifications for worker-thread initiated
+  // Fetch requests. We need to extend this to main-thread fetch requests as
+  // well. See Bug 1897424.
 
   return IPC_OK();
 }
@@ -328,16 +411,23 @@ void FetchChild::RunAbortAlgorithm() {
   if (mIsShutdown) {
     return;
   }
-  if (mWorkerRef) {
-    Unused << SendAbortFetchOp();
+  if (mWorkerRef || mIsKeepAliveRequest) {
+    Unused << SendAbortFetchOp(true);
   }
 }
 
 void FetchChild::DoFetchOp(const FetchOpArgs& aArgs) {
   FETCH_LOG(("FetchChild::DoFetchOp [%p]", this));
+  // we need to store this for keepalive request
+  // as we need to update the load group during actor termination
+  mIsKeepAliveRequest = aArgs.request().keepalive();
+  if (mIsKeepAliveRequest) {
+    mKeepaliveRequestSize =
+        aArgs.request().bodySize() > 0 ? aArgs.request().bodySize() : 0;
+  }
   if (mSignalImpl) {
     if (mSignalImpl->Aborted()) {
-      Unused << SendAbortFetchOp();
+      Unused << SendAbortFetchOp(true);
       return;
     }
     Follow(mSignalImpl);
@@ -346,6 +436,10 @@ void FetchChild::DoFetchOp(const FetchOpArgs& aArgs) {
 }
 
 void FetchChild::Shutdown() {
+  // This is invoked for worker fetch requests only.
+  // We need to modify this to be invoked for main-thread fetch requests as
+  // well. Typically during global teardown. See Bug 1901082
+
   FETCH_LOG(("FetchChild::Shutdown [%p]", this));
   if (mIsShutdown) {
     return;
@@ -361,12 +455,27 @@ void FetchChild::Shutdown() {
   Unfollow();
   mSignalImpl = nullptr;
   mCSPEventListener = nullptr;
-  Unused << SendAbortFetchOp();
+  SendAbortFetchOp(false);
+
   mWorkerRef = nullptr;
 }
 
 void FetchChild::ActorDestroy(ActorDestroyReason aReason) {
   FETCH_LOG(("FetchChild::ActorDestroy [%p]", this));
+  // for keepalive request decrement the pending keepalive count
+  if (mIsKeepAliveRequest) {
+    // For workers we do not have limit per load group rather we have limit
+    // per request
+    if (NS_IsMainThread()) {
+      MOZ_ASSERT(mPromise->GetGlobalObject());
+      nsCOMPtr<nsILoadGroup> loadGroup =
+          FetchUtil::GetLoadGroupFromGlobal(mPromise->GetGlobalObject());
+      if (loadGroup) {
+        FetchUtil::DecrementPendingKeepaliveRequestSize(loadGroup,
+                                                        mKeepaliveRequestSize);
+      }
+    }
+  }
   mPromise = nullptr;
   mFetchObserver = nullptr;
   mSignalImpl = nullptr;

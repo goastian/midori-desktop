@@ -10,47 +10,40 @@
 #include "ErrorList.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/dom/quota/BackgroundThreadObject.h"
 #include "mozilla/dom/quota/Config.h"
 #include "mozilla/dom/quota/ForwardDecls.h"
-#include "mozilla/dom/quota/QuotaCommon.h"
+#include "mozilla/dom/quota/OriginOperationCallbacks.h"
+#include "mozilla/dom/quota/StringifyUtils.h"
 #include "nsISupportsImpl.h"
 
 namespace mozilla::dom::quota {
 
 class QuotaManager;
 
-class OriginOperationBase : public BackgroundThreadObject {
+class OriginOperationBase : public BackgroundThreadObject,
+                            public OriginOperationCallbackHolders,
+                            public Stringifyable {
  protected:
   const NotNull<RefPtr<QuotaManager>> mQuotaManager;
   nsresult mResultCode;
 
  private:
-  bool mActorDestroyed;
-
 #ifdef QM_COLLECTING_OPERATION_TELEMETRY
   const char* mName = nullptr;
 #endif
 
  public:
-  NS_INLINE_DECL_REFCOUNTING(OriginOperationBase)
-
-  void NoteActorDestroyed() {
-    AssertIsOnOwningThread();
-
-    mActorDestroyed = true;
-  }
-
-  bool IsActorDestroyed() const {
-    AssertIsOnOwningThread();
-
-    return mActorDestroyed;
-  }
+  NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 
 #ifdef QM_COLLECTING_OPERATION_TELEMETRY
   const char* Name() const { return mName; }
 #endif
 
   void RunImmediately();
+
+  OriginOperationCallbacks GetCallbacks(
+      const OriginOperationCallbackOptions& aCallbackOptions);
 
  protected:
   OriginOperationBase(MovingNotNull<RefPtr<QuotaManager>>&& aQuotaManager,
@@ -70,6 +63,9 @@ class OriginOperationBase : public BackgroundThreadObject {
   virtual nsresult DoDirectoryWork(QuotaManager& aQuotaManager) = 0;
 
   virtual void UnblockOpen() = 0;
+
+ private:
+  void DoStringify(nsACString& aData) override {}
 };
 
 }  // namespace mozilla::dom::quota

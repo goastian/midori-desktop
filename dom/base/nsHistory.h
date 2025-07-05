@@ -40,8 +40,7 @@ class nsHistory final : public nsISupports, public nsWrapperCache {
 
   uint32_t GetLength(mozilla::ErrorResult& aRv) const;
   mozilla::dom::ScrollRestoration GetScrollRestoration(
-      mozilla::dom::CallerType aCallerType,
-      mozilla::ErrorResult& aRv);
+      mozilla::dom::CallerType aCallerType, mozilla::ErrorResult& aRv);
   void SetScrollRestoration(mozilla::dom::ScrollRestoration aMode,
                             mozilla::dom::CallerType aCallerType,
                             mozilla::ErrorResult& aRv);
@@ -51,10 +50,14 @@ class nsHistory final : public nsISupports, public nsWrapperCache {
           mozilla::ErrorResult& aRv);
   void Back(mozilla::dom::CallerType aCallerType, mozilla::ErrorResult& aRv);
   void Forward(mozilla::dom::CallerType aCallerType, mozilla::ErrorResult& aRv);
+
+  MOZ_CAN_RUN_SCRIPT
   void PushState(JSContext* aCx, JS::Handle<JS::Value> aData,
                  const nsAString& aTitle, const nsAString& aUrl,
                  mozilla::dom::CallerType aCallerType,
                  mozilla::ErrorResult& aRv);
+
+  MOZ_CAN_RUN_SCRIPT
   void ReplaceState(JSContext* aCx, JS::Handle<JS::Value> aData,
                     const nsAString& aTitle, const nsAString& aUrl,
                     mozilla::dom::CallerType aCallerType,
@@ -63,6 +66,7 @@ class nsHistory final : public nsISupports, public nsWrapperCache {
  protected:
   virtual ~nsHistory();
 
+  MOZ_CAN_RUN_SCRIPT
   void PushOrReplaceState(JSContext* aCx, JS::Handle<JS::Value> aData,
                           const nsAString& aTitle, const nsAString& aUrl,
                           mozilla::dom::CallerType aCallerType,

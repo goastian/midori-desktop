@@ -298,17 +298,21 @@ void MediaPipeline::DetachTransport_s() {
   mReceiverRtcpSendEventListener.DisconnectIfExists();
 }
 
-void MediaPipeline::UpdateTransport_m(
-    const std::string& aTransportId, UniquePtr<MediaPipelineFilter>&& aFilter) {
+void MediaPipeline::UpdateTransport_m(const std::string& aTransportId,
+                                      UniquePtr<MediaPipelineFilter>&& aFilter,
+                                      bool aSignalingStable) {
   mStsThread->Dispatch(NS_NewRunnableFunction(
-      __func__, [aTransportId, filter = std::move(aFilter),
-                 self = RefPtr<MediaPipeline>(this)]() mutable {
-        self->UpdateTransport_s(aTransportId, std::move(filter));
+      __func__,
+      [aTransportId, filter = std::move(aFilter),
+       self = RefPtr<MediaPipeline>(this), aSignalingStable]() mutable {
+        self->UpdateTransport_s(aTransportId, std::move(filter),
+                                aSignalingStable);
       }));
 }
 
-void MediaPipeline::UpdateTransport_s(
-    const std::string& aTransportId, UniquePtr<MediaPipelineFilter>&& aFilter) {
+void MediaPipeline::UpdateTransport_s(const std::string& aTransportId,
+                                      UniquePtr<MediaPipelineFilter>&& aFilter,
+                                      bool aSignalingStable) {
   ASSERT_ON_THREAD(mStsThread);
   if (!mSignalsConnected) {
     mTransportHandler->SignalStateChange.connect(
@@ -339,7 +343,7 @@ void MediaPipeline::UpdateTransport_s(
   if (mFilter && aFilter) {
     // Use the new filter, but don't forget any remote SSRCs that we've learned
     // by receiving traffic.
-    mFilter->Update(*aFilter);
+    mFilter->Update(*aFilter, aSignalingStable);
   } else {
     mFilter = std::move(aFilter);
   }
@@ -660,12 +664,6 @@ class MediaPipelineTransmit::PipelineListener
     mConverter = std::move(aConverter);
   }
 
-  void OnVideoFrameConverted(webrtc::VideoFrame aVideoFrame) {
-    MOZ_RELEASE_ASSERT(mConduit->type() == MediaSessionConduit::VIDEO);
-    static_cast<VideoSessionConduit*>(mConduit.get())
-        ->SendVideoFrame(std::move(aVideoFrame));
-  }
-
   // Implement MediaTrackListener
   void NotifyQueuedChanges(MediaTrackGraph* aGraph, TrackTime aOffset,
                            const MediaSegment& aQueuedMedia) override;
@@ -725,12 +723,14 @@ void MediaPipelineTransmit::RegisterListener() {
   if (!IsVideo()) {
     return;
   }
-  mConverter = VideoFrameConverter::Create(GetTimestampMaker());
-  mFrameListener = mConverter->VideoFrameConvertedEvent().Connect(
-      mConverter->mTaskQueue,
-      [listener = mListener](webrtc::VideoFrame aFrame) {
-        listener->OnVideoFrameConverted(std::move(aFrame));
-      });
+  RefPtr videoConduit = *mConduit->AsVideoSessionConduit();
+  mConverter = VideoFrameConverter::Create(
+      TaskQueue::Create(GetMediaThreadPool(MediaThreadType::WEBRTC_WORKER),
+                        "VideoFrameConverter")
+          .forget(),
+      GetTimestampMaker(), videoConduit->LockScaling());
+  mConverter->SetIdleFrameDuplicationInterval(TimeDuration::FromSeconds(1));
+  videoConduit->SetTrackSource(mConverter);
   mListener->SetVideoFrameConverter(mConverter);
 }
 
@@ -1421,8 +1421,7 @@ class MediaPipelineReceiveVideo::PipelineListener
     mForceDropFrames = false;
   }
 
-  void RenderVideoFrame(const webrtc::VideoFrameBuffer& aBuffer,
-                        uint32_t aTimeStamp, int64_t aRenderTime) {
+  void RenderVideoFrame(const webrtc::VideoFrame& aVideoFrame) {
     PrincipalHandle principal;
     {
       MutexAutoLock lock(mMutex);
@@ -1432,16 +1431,16 @@ class MediaPipelineReceiveVideo::PipelineListener
       principal = mPrincipalHandle;
     }
     RefPtr<Image> image;
-    if (aBuffer.type() == webrtc::VideoFrameBuffer::Type::kNative) {
+    const webrtc::VideoFrameBuffer& buffer = *aVideoFrame.video_frame_buffer();
+    if (buffer.type() == webrtc::VideoFrameBuffer::Type::kNative) {
       // We assume that only native handles are used with the
       // WebrtcMediaDataCodec decoder.
-      const ImageBuffer* imageBuffer =
-          static_cast<const ImageBuffer*>(&aBuffer);
+      const ImageBuffer* imageBuffer = static_cast<const ImageBuffer*>(&buffer);
       image = imageBuffer->GetNativeImage();
     } else {
-      MOZ_ASSERT(aBuffer.type() == webrtc::VideoFrameBuffer::Type::kI420);
+      MOZ_ASSERT(buffer.type() == webrtc::VideoFrameBuffer::Type::kI420);
       rtc::scoped_refptr<const webrtc::I420BufferInterface> i420(
-          aBuffer.GetI420());
+          buffer.GetI420());
 
       MOZ_ASSERT(i420->DataY());
       // Create a video frame using |buffer|.
@@ -1475,9 +1474,25 @@ class MediaPipelineReceiveVideo::PipelineListener
       image = std::move(yuvImage);
     }
 
+    Maybe<webrtc::Timestamp> receiveTime;
+    for (const auto& packet : aVideoFrame.packet_infos()) {
+      if (!receiveTime || *receiveTime < packet.receive_time()) {
+        receiveTime = Some(packet.receive_time());
+      }
+    }
+
     VideoSegment segment;
     auto size = image->GetSize();
-    segment.AppendFrame(image.forget(), size, principal);
+    auto processingDuration =
+        aVideoFrame.processing_time()
+            ? media::TimeUnit::FromMicroseconds(
+                  aVideoFrame.processing_time()->Elapsed().us())
+            : media::TimeUnit::Invalid();
+    segment.AppendWebrtcRemoteFrame(
+        image.forget(), size, principal,
+        /* aForceBlack */ false, TimeStamp::Now(), processingDuration,
+        aVideoFrame.rtp_timestamp(), aVideoFrame.ntp_time_ms(),
+        receiveTime ? receiveTime->us() : 0);
     mSource->AppendData(&segment);
   }
 
@@ -1501,9 +1516,8 @@ class MediaPipelineReceiveVideo::PipelineRenderer
 
   // Implement VideoRenderer
   void FrameSizeChange(unsigned int aWidth, unsigned int aHeight) override {}
-  void RenderVideoFrame(const webrtc::VideoFrameBuffer& aBuffer,
-                        uint32_t aTimeStamp, int64_t aRenderTime) override {
-    mPipeline->mListener->RenderVideoFrame(aBuffer, aTimeStamp, aRenderTime);
+  void RenderVideoFrame(const webrtc::VideoFrame& aVideoFrame) override {
+    mPipeline->mListener->RenderVideoFrame(aVideoFrame);
   }
 
  private:

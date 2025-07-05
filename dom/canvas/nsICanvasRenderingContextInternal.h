@@ -24,12 +24,8 @@
 #include "mozilla/WeakPtr.h"
 #include "mozilla/layers/LayersSurfaces.h"
 
-#define NS_ICANVASRENDERINGCONTEXTINTERNAL_IID       \
-  {                                                  \
-    0xb84f2fed, 0x9d4b, 0x430b, {                    \
-      0xbd, 0xfb, 0x85, 0x57, 0x8a, 0xc2, 0xb4, 0x4b \
-    }                                                \
-  }
+#define NS_ICANVASRENDERINGCONTEXTINTERNAL_IID \
+  {0xb84f2fed, 0x9d4b, 0x430b, {0xbd, 0xfb, 0x85, 0x57, 0x8a, 0xc2, 0xb4, 0x4b}}
 
 class nsICookieJarSettings;
 class nsIDocShell;
@@ -41,6 +37,9 @@ class nsDisplayListBuilder;
 class ClientWebGLContext;
 class PresShell;
 class WebGLFramebufferJS;
+namespace ipc {
+class IProtocol;
+}  // namespace ipc
 namespace layers {
 class CanvasRenderer;
 class CompositableForwarder;
@@ -67,7 +66,7 @@ class nsICanvasRenderingContextInternal : public nsISupports,
   using CanvasRenderer = mozilla::layers::CanvasRenderer;
   using WebRenderCanvasData = mozilla::layers::WebRenderCanvasData;
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICANVASRENDERINGCONTEXTINTERNAL_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_ICANVASRENDERINGCONTEXTINTERNAL_IID)
 
   nsICanvasRenderingContextInternal();
 
@@ -138,10 +137,13 @@ class nsICanvasRenderingContextInternal : public nsISupports,
   // provided DrawTarget, which may be nullptr. By default, this will defer to
   // GetSurfaceSnapshot and ignore target-dependent optimization.
   virtual already_AddRefed<mozilla::gfx::SourceSurface> GetOptimizedSnapshot(
-      mozilla::gfx::DrawTarget* aTarget,
-      gfxAlphaType* out_alphaType = nullptr) {
-    return GetSurfaceSnapshot(out_alphaType);
+      mozilla::gfx::DrawTarget* aTarget, gfxAlphaType* out_alphaType = nullptr);
+
+  virtual mozilla::ipc::IProtocol* SupportsSnapshotExternalCanvas() const {
+    return nullptr;
   }
+
+  virtual void SyncSnapshot() {}
 
   virtual RefPtr<mozilla::gfx::SourceSurface> GetFrontBufferSnapshot(bool) {
     return GetSurfaceSnapshot();
@@ -210,8 +212,7 @@ class nsICanvasRenderingContextInternal : public nsISupports,
   }
 
   virtual mozilla::Maybe<mozilla::layers::SurfaceDescriptor> PresentFrontBuffer(
-      mozilla::WebGLFramebufferJS* fb, mozilla::layers::TextureType,
-      const bool webvr = false) {
+      mozilla::WebGLFramebufferJS* fb, const bool webvr = false) {
     return GetFrontBuffer(fb, webvr);
   }
 
@@ -234,8 +235,5 @@ class nsICanvasRenderingContextInternal : public nsISupports,
   RefPtr<mozilla::dom::OffscreenCanvas> mOffscreenCanvas;
   RefPtr<nsRefreshDriver> mRefreshDriver;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsICanvasRenderingContextInternal,
-                              NS_ICANVASRENDERINGCONTEXTINTERNAL_IID)
 
 #endif /* nsICanvasRenderingContextInternal_h___ */

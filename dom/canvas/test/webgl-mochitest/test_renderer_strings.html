@@ -59,6 +59,7 @@ async function testKnownCiStrings() {
       'Intel(R) HD Graphics 400', // Mac
       'Apple M1', // Mac
       'Apple M2', // Mac
+      'Apple M4', // Mac
       'ANGLE (NVIDIA, NVIDIA GeForce 8800 GTX Direct3D11 vs_5_0 ps_5_0)', // Windows
     ].map(x => x + ', or similar'),
     vendor: [
@@ -67,10 +68,13 @@ async function testKnownCiStrings() {
     unmasked_renderer: [
       'Adreno (TM) 540', // Android
       'Adreno (TM) 620', // Android pixel5
-      'llvmpipe (LLVM 10.0.0, 256 bits)', // Linux
+      'llvmpipe (LLVM 10.0.0, 256 bits)', // Linux (Ubuntu 18.04)
+      'llvmpipe (LLVM 17.0.6, 256 bits)', // Linux (Ubuntu 24.04)
+      'llvmpipe (LLVM 19.1.1, 256 bits)', // Linux (Ubuntu 24.04.2)
       'Intel(R) UHD Graphics 630', // Mac
       'Apple M1', // Mac
       'Apple M2', // Mac
+      'Apple M4', // Mac
       'ANGLE (NVIDIA, NVIDIA Tesla M60 Direct3D11 vs_5_0 ps_5_0, D3D11-23.21.13.9181)', // Windows
       'ANGLE (NVIDIA, NVIDIA Tesla M60 Direct3D11 vs_5_0 ps_5_0, D3D11-30.0.14.7239)', // Windows 11
       'ANGLE (NVIDIA, NVIDIA Tesla M60 Direct3D11 vs_5_0 ps_5_0, D3D11-31.0.15.3815)', //Windows 11
@@ -78,6 +82,7 @@ async function testKnownCiStrings() {
     unmasked_vendor: [
       'Qualcomm', // Android
       'VMware, Inc.', // Linux
+      'Mesa', // Linux
       'Intel Inc.', // Mac
       'Apple', // Mac
       'Google Inc. (NVIDIA)', // Windows
@@ -145,13 +150,13 @@ async function testPrefBehaviorForExampleRtx3070() {
   ]});
 
   ext = gl.getExtension('WEBGL_debug_renderer_info');
-  ok(!ext,
-     'With RFP: Should not have access to \'WEBGL_debug_renderer_info\'.');
 
   {
     const EXPECTED = {
       renderer: 'Mozilla',
       vendor: 'Mozilla',
+      unmasked_renderer: 'Mozilla',
+      unmasked_vendor: 'Mozilla',
     };
     const was = getStrings();
     expectJsonEqual(was, EXPECTED, 'RFP behavior');

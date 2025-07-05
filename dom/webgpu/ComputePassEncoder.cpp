@@ -4,10 +4,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/WebGPUBinding.h"
+#include "CommandEncoder.h"
 #include "ComputePassEncoder.h"
 #include "BindGroup.h"
 #include "ComputePipeline.h"
 #include "CommandEncoder.h"
+#include "Utility.h"
 
 #include "mozilla/webgpu/ffi/wgpu.h"
 
@@ -31,6 +33,13 @@ ffi::WGPURecordedComputePass* BeginComputePass(
   webgpu::StringHelper label(aDesc.mLabel);
   desc.label = label.Get();
 
+  ffi::WGPUPassTimestampWrites passTimestampWrites = {};
+  if (aDesc.mTimestampWrites.WasPassed()) {
+    AssignPassTimestampWrites(aDesc.mTimestampWrites.Value(),
+                              passTimestampWrites);
+    desc.timestamp_writes = &passTimestampWrites;
+  }
+
   return ffi::wgpu_command_encoder_begin_compute_pass(&desc);
 }
 
@@ -41,21 +50,52 @@ ComputePassEncoder::ComputePassEncoder(
 ComputePassEncoder::~ComputePassEncoder() { Cleanup(); }
 
 void ComputePassEncoder::Cleanup() {
-  if (mValid) {
-    End();
+  mValid = false;
+  mPass.release();
+  mUsedBindGroups.Clear();
+  mUsedPipelines.Clear();
+}
+
+void ComputePassEncoder::SetBindGroup(uint32_t aSlot,
+                                      BindGroup* const aBindGroup,
+                                      const uint32_t* aDynamicOffsets,
+                                      uint64_t aDynamicOffsetsLength) {
+  RawId bindGroup = 0;
+  if (aBindGroup) {
+    mUsedBindGroups.AppendElement(aBindGroup);
+    bindGroup = aBindGroup->mId;
   }
+  ffi::wgpu_recorded_compute_pass_set_bind_group(
+      mPass.get(), aSlot, bindGroup, aDynamicOffsets, aDynamicOffsetsLength);
 }
 
 void ComputePassEncoder::SetBindGroup(
-    uint32_t aSlot, const BindGroup& aBindGroup,
-    const dom::Sequence<uint32_t>& aDynamicOffsets) {
+    uint32_t aSlot, BindGroup* const aBindGroup,
+    const dom::Sequence<uint32_t>& aDynamicOffsets, ErrorResult& aRv) {
   if (!mValid) {
     return;
   }
-  mUsedBindGroups.AppendElement(&aBindGroup);
-  ffi::wgpu_recorded_compute_pass_set_bind_group(
-      mPass.get(), aSlot, aBindGroup.mId, aDynamicOffsets.Elements(),
-      aDynamicOffsets.Length());
+  this->SetBindGroup(aSlot, aBindGroup, aDynamicOffsets.Elements(),
+                     aDynamicOffsets.Length());
+}
+
+void ComputePassEncoder::SetBindGroup(
+    uint32_t aSlot, BindGroup* const aBindGroup,
+    const dom::Uint32Array& aDynamicOffsetsData,
+    uint64_t aDynamicOffsetsDataStart, uint64_t aDynamicOffsetsDataLength,
+    ErrorResult& aRv) {
+  if (!mValid) {
+    return;
+  }
+
+  auto dynamicOffsets =
+      GetDynamicOffsetsFromArray(aDynamicOffsetsData, aDynamicOffsetsDataStart,
+                                 aDynamicOffsetsDataLength, aRv);
+
+  if (dynamicOffsets.isSome()) {
+    this->SetBindGroup(aSlot, aBindGroup, dynamicOffsets->Elements(),
+                       dynamicOffsets->Length());
+  }
 }
 
 void ComputePassEncoder::SetPipeline(const ComputePipeline& aPipeline) {
@@ -108,12 +148,12 @@ void ComputePassEncoder::InsertDebugMarker(const nsAString& aString) {
 }
 
 void ComputePassEncoder::End() {
-  if (mValid) {
-    mValid = false;
-    auto* pass = mPass.release();
-    MOZ_ASSERT(pass);
-    mParent->EndComputePass(*pass);
+  if (!mValid) {
+    return;
   }
+  MOZ_ASSERT(!!mPass);
+  mParent->EndComputePass(*mPass);
+  Cleanup();
 }
 
 }  // namespace mozilla::webgpu

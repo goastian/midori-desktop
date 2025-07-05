@@ -15,6 +15,8 @@
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/video_encoder_software_fallback_wrapper.h"
 #include "media/engine/simulcast_encoder_adapter.h"
+#include "modules/video_coding/codecs/av1/libaom_av1_encoder.h"
+#include "modules/video_coding/codecs/av1/dav1d_decoder.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
 
@@ -51,7 +53,9 @@ std::unique_ptr<webrtc::VideoDecoder> WebrtcVideoDecoderFactory::Create(
     case webrtc::VideoCodecType::kVideoCodecVP9:
       decoder = webrtc::VP9Decoder::Create();
       break;
-
+    case webrtc::VideoCodecType::kVideoCodecAV1:
+      decoder = webrtc::CreateDav1dDecoder();
+      break;
     default:
       break;
   }
@@ -66,14 +70,32 @@ std::unique_ptr<webrtc::VideoEncoder> WebrtcVideoEncoderFactory::Create(
   }
   auto type = webrtc::PayloadStringToCodecType(aFormat.name);
   switch (type) {
+    case webrtc::VideoCodecType::kVideoCodecGeneric:
+    case webrtc::VideoCodecType::kVideoCodecH265:
+      MOZ_CRASH("Unimplemented codec");
+    case webrtc::VideoCodecType::kVideoCodecAV1:
+      if (StaticPrefs::media_webrtc_simulcast_av1_enabled()) {
+        return std::make_unique<webrtc::SimulcastEncoderAdapter>(
+            aEnv, mInternalFactory.get(), nullptr, aFormat);
+      }
+      break;
+    case webrtc::VideoCodecType::kVideoCodecH264:
+      if (StaticPrefs::media_webrtc_simulcast_h264_enabled()) {
+        return std::make_unique<webrtc::SimulcastEncoderAdapter>(
+            aEnv, mInternalFactory.get(), nullptr, aFormat);
+      }
+      break;
     case webrtc::VideoCodecType::kVideoCodecVP8:
-      // XXX We might be able to use the simulcast proxy for more codecs, but
-      // that requires testing.
       return std::make_unique<webrtc::SimulcastEncoderAdapter>(
           aEnv, mInternalFactory.get(), nullptr, aFormat);
-    default:
-      return mInternalFactory->Create(aEnv, aFormat);
+    case webrtc::VideoCodecType::kVideoCodecVP9:
+      if (StaticPrefs::media_webrtc_simulcast_vp9_enabled()) {
+        return std::make_unique<webrtc::SimulcastEncoderAdapter>(
+            aEnv, mInternalFactory.get(), nullptr, aFormat);
+      }
+      break;
   }
+  return mInternalFactory->Create(aEnv, aFormat);
 }
 
 bool WebrtcVideoEncoderFactory::InternalFactory::Supports(
@@ -82,6 +104,7 @@ bool WebrtcVideoEncoderFactory::InternalFactory::Supports(
     case webrtc::VideoCodecType::kVideoCodecVP8:
     case webrtc::VideoCodecType::kVideoCodecVP9:
     case webrtc::VideoCodecType::kVideoCodecH264:
+    case webrtc::VideoCodecType::kVideoCodecAV1:
       return true;
     default:
       return false;
@@ -121,7 +144,9 @@ WebrtcVideoEncoderFactory::InternalFactory::Create(
       case webrtc::VideoCodecType::kVideoCodecVP9:
         encoder = webrtc::CreateVp9Encoder(aEnv);
         break;
-
+      case webrtc::VideoCodecType::kVideoCodecAV1:
+        encoder = webrtc::CreateLibaomAv1Encoder(aEnv);
+        break;
       default:
         break;
     }
@@ -157,7 +182,7 @@ WebrtcVideoEncoderFactory::InternalFactory::Create(
       encoder = createWebRTCEncoder();
       if (encoder && platformEncoder) {
         return webrtc::CreateVideoEncoderSoftwareFallbackWrapper(
-            std::move(encoder), std::move(platformEncoder), false);
+            aEnv, std::move(encoder), std::move(platformEncoder), false);
       }
       if (platformEncoder) {
         NS_WARNING(nsPrintfCString("No WebRTC encoder to fall back to for "

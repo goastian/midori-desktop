@@ -7,22 +7,19 @@
 #include "AudioChannelService.h"
 
 #include "base/basictypes.h"
-
+#include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/Document.h"
-
+#include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
+#include "nsHashPropertyBag.h"
 #include "nsIObserverService.h"
 #include "nsISupportsPrimitives.h"
-#include "nsThreadUtils.h"
-#include "nsHashPropertyBag.h"
-#include "nsComponentManagerUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsServiceManagerUtils.h"
-
-#include "mozilla/Preferences.h"
+#include "nsThreadUtils.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -57,7 +54,8 @@ class AudioPlaybackRunnable final : public Runnable {
 
     MOZ_LOG(AudioChannelService::GetAudioChannelLog(), LogLevel::Debug,
             ("AudioPlaybackRunnable, active = %s, reason = %s\n",
-             mActive ? "true" : "false", AudibleChangedReasonToStr(mReason)));
+             mActive ? "true" : "false",
+             AudioChannelService::EnumValueToString(mReason)));
 
     return NS_OK;
   }
@@ -94,45 +92,6 @@ const char* SuspendTypeToStr(const nsSuspendedTypes& aSuspend) {
       return "none";
     case nsISuspendedTypes::SUSPENDED_BLOCK:
       return "block";
-    default:
-      return "unknown";
-  }
-}
-
-const char* AudibleStateToStr(
-    const AudioChannelService::AudibleState& aAudible) {
-  MOZ_ASSERT(aAudible == AudioChannelService::AudibleState::eNotAudible ||
-             aAudible == AudioChannelService::AudibleState::eMaybeAudible ||
-             aAudible == AudioChannelService::AudibleState::eAudible);
-
-  switch (aAudible) {
-    case AudioChannelService::AudibleState::eNotAudible:
-      return "not-audible";
-    case AudioChannelService::AudibleState::eMaybeAudible:
-      return "maybe-audible";
-    case AudioChannelService::AudibleState::eAudible:
-      return "audible";
-    default:
-      return "unknown";
-  }
-}
-
-const char* AudibleChangedReasonToStr(
-    const AudioChannelService::AudibleChangedReasons& aReason) {
-  MOZ_ASSERT(
-      aReason == AudioChannelService::AudibleChangedReasons::eVolumeChanged ||
-      aReason ==
-          AudioChannelService::AudibleChangedReasons::eDataAudibleChanged ||
-      aReason ==
-          AudioChannelService::AudibleChangedReasons::ePauseStateChanged);
-
-  switch (aReason) {
-    case AudioChannelService::AudibleChangedReasons::eVolumeChanged:
-      return "volume";
-    case AudioChannelService::AudibleChangedReasons::eDataAudibleChanged:
-      return "data-audible";
-    case AudioChannelService::AudibleChangedReasons::ePauseStateChanged:
-      return "pause-state";
     default:
       return "unknown";
   }

@@ -36,13 +36,8 @@ JSObject* HTMLLabelElement::WrapNode(JSContext* aCx,
 NS_IMPL_ELEMENT_CLONE(HTMLLabelElement)
 
 HTMLFormElement* HTMLLabelElement::GetForm() const {
-  nsGenericHTMLElement* control = GetControl();
-  if (!control) {
-    return nullptr;
-  }
-
   // Not all labeled things have a form association.  Stick to the ones that do.
-  nsCOMPtr<nsIFormControl> formControl = do_QueryObject(control);
+  const auto* formControl = nsIFormControl::FromNodeOrNull(GetControl());
   if (!formControl) {
     return nullptr;
   }
@@ -95,7 +90,7 @@ nsresult HTMLLabelElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
     case eMouseDown:
       if (mouseEvent->mButton == MouseButton::ePrimary) {
         // We reset the mouse-down point on every event because there is
-        // no guarantee we will reach the eMouseClick code below.
+        // no guarantee we will reach the ePointerClick code below.
         LayoutDeviceIntPoint* curPoint =
             new LayoutDeviceIntPoint(mouseEvent->mRefPoint);
         SetProperty(nsGkAtoms::labelMouseDownPtProperty,
@@ -104,7 +99,7 @@ nsresult HTMLLabelElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
       }
       break;
 
-    case eMouseClick:
+    case ePointerClick:
       if (mouseEvent->IsLeftClickEvent()) {
         LayoutDeviceIntPoint* mouseDownPoint =
             static_cast<LayoutDeviceIntPoint*>(

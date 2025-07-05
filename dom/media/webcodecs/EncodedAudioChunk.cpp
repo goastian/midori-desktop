@@ -14,6 +14,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/Logging.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/StructuredCloneHolder.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/dom/WebCodecsUtils.h"
@@ -109,6 +110,13 @@ already_AddRefed<MediaRawData> EncodedAudioChunkData::TakeData() {
   return sample.forget();
 }
 
+nsCString EncodedAudioChunkData::ToString() const {
+  return nsFmtCString(
+      FMT_STRING("EncodedAudioChunkData[bytes: {}, type: {}, ts: {}, dur: {}]"),
+      mBuffer ? mBuffer->Length() : 0, GetEnumString(mType).get(), mTimestamp,
+      mDuration ? std::to_string(*mDuration).c_str() : "none");
+}
+
 EncodedAudioChunk::EncodedAudioChunk(
     nsIGlobalObject* aParent, already_AddRefed<MediaAlignedByteBuffer> aBuffer,
     const EncodedAudioChunkType& aType, int64_t aTimestamp,
@@ -201,9 +209,8 @@ uint32_t EncodedAudioChunk::ByteLength() const {
 }
 
 // https://w3c.github.io/webcodecs/#dom-encodedaudiochunk-copyto
-void EncodedAudioChunk::CopyTo(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDestination,
-    ErrorResult& aRv) {
+void EncodedAudioChunk::CopyTo(const AllowSharedBufferSource& aDestination,
+                               ErrorResult& aRv) {
   AssertIsOnOwningThread();
 
   ProcessTypedArraysFixed(aDestination, [&](const Span<uint8_t>& aData) {

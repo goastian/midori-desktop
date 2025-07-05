@@ -425,22 +425,7 @@ add_task(async function testRequestMIDIAccess() {
     "Expected Glean event recorded."
   );
 
-  // Invoking getAMTelemetryEvents resets the mocked event array, and we want
-  // to test two different things here, so we cache it.
-  let events = AddonTestUtils.getAMTelemetryEvents();
-  Assert.deepEqual(
-    events.filter(evt => evt.method == "reportSuspiciousSite")[0],
-    {
-      method: "reportSuspiciousSite",
-      object: "suspiciousSite",
-      value: "example.com",
-      extra: undefined,
-    }
-  );
-  assertSitePermissionInstallTelemetryEvents(
-    ["site_warning", "cancelled"],
-    events
-  );
+  assertSitePermissionInstallTelemetryEvents(["site_warning", "cancelled"]);
 });
 
 add_task(async function testIframeRequestMIDIAccess() {
@@ -643,7 +628,7 @@ add_task(async function testRequestMIDIAccessLocalhost() {
     .click();
 
   info("Wait for the midi-sysex access request promise to resolve");
-  const accessGranted = await SpecialPowers.spawn(
+  let accessGranted = await SpecialPowers.spawn(
     gBrowser.selectedBrowser,
     [],
     async () => {
@@ -658,20 +643,29 @@ add_task(async function testRequestMIDIAccessLocalhost() {
   );
   ok(accessGranted, "requestMIDIAccess resolved");
 
-  info("Check that we prompt user again even if they accepted before");
-  popupShown = BrowserTestUtils.waitForEvent(
-    PopupNotifications.panel,
-    "popupshown"
+  // We're remembering permission grants temporarily on the tab since Bug 1754005.
+  info(
+    "Check that a new request is automatically granted because we granted before in the same tab."
   );
+
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async () => {
     content.navigator.requestMIDIAccess({ sysex: true });
   });
-  await popupShown;
-  is(
-    PopupNotifications.panel.querySelector("popupnotification").id,
-    "midi-notification",
-    "midi notification was displayed again"
+
+  accessGranted = await SpecialPowers.spawn(
+    gBrowser.selectedBrowser,
+    [],
+    async () => {
+      try {
+        await content.midiAccessRequestPromise;
+        return true;
+      } catch (e) {}
+
+      delete content.midiAccessRequestPromise;
+      return false;
+    }
   );
+  ok(accessGranted, "requestMIDIAccess resolved");
 
   assertSitePermissionInstallTelemetryEvents([]);
 });
@@ -711,11 +705,8 @@ add_task(function teardown_telemetry_events() {
  *
  * @param {Array<String>} expectedSteps: An array of the expected extra.step values recorded.
  */
-function assertSitePermissionInstallTelemetryEvents(
-  expectedSteps,
-  events = null
-) {
-  let amInstallEvents = (events ?? AddonTestUtils.getAMTelemetryEvents())
+function assertSitePermissionInstallTelemetryEvents(expectedSteps) {
+  let amInstallEvents = AddonTestUtils.getAMTelemetryEvents()
     .filter(evt => evt.method === "install" && evt.object === "sitepermission")
     .map(evt => evt.extra.step);
 

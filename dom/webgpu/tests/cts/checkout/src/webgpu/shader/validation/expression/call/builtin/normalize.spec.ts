@@ -12,7 +12,13 @@ import {
   scalarTypeOf,
   ScalarType,
 } from '../../../../../util/conversion.js';
-import { QuantizeFunc, quantizeToF16, quantizeToF32 } from '../../../../../util/math.js';
+import {
+  QuantizeFunc,
+  quantizeToF16,
+  quantizeToF32,
+  isSubnormalNumberF16,
+  isSubnormalNumberF32,
+} from '../../../../../util/math.js';
 import { ShaderValidationTest } from '../../../shader_validation_test.js';
 
 import {
@@ -37,6 +43,17 @@ function quantizeFunctionForScalarType(type: ScalarType): QuantizeFunc<number> {
   }
 }
 
+function isSubnormalFunctionForScalarType(type: ScalarType): (v: number) => boolean {
+  switch (type) {
+    case Type.f32:
+      return isSubnormalNumberF32;
+    case Type.f16:
+      return isSubnormalNumberF16;
+    default:
+      return (v: number) => false;
+  }
+}
+
 g.test('values')
   .desc(
     `
@@ -51,17 +68,11 @@ Validates that constant evaluation and override evaluation of ${builtin}() rejec
       .beginSubcases()
       .expand('value', u => fullRangeForType(kValidArgumentTypes[u.type]))
   )
-  .beforeAllSubcases(t => {
-    if (scalarTypeOf(kValidArgumentTypes[t.params.type]) === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     let expectedResult = true;
 
     const scalarType = scalarTypeOf(kValidArgumentTypes[t.params.type]);
     const quantizeFn = quantizeFunctionForScalarType(scalarType);
-
     // Should be invalid if the normalization calculations result in intermediate
     // values that exceed the maximum representable float value for the given type,
     // or if the length is smaller than the smallest representable float value.
@@ -72,6 +83,11 @@ Validates that constant evaluation and override evaluation of ${builtin}() rejec
     if (vv === Infinity || dp === Infinity || len === 0) {
       expectedResult = false;
     }
+
+    // We skip tests with values that would involve subnormal computations in
+    // order to avoid defining a specific behavior (flush to zero).
+    const isSubnormalFn = isSubnormalFunctionForScalarType(scalarType);
+    t.skipIf(isSubnormalFn(vv) || isSubnormalFn(dp) || isSubnormalFn(len));
 
     validateConstOrOverrideBuiltinEval(
       t,
@@ -100,11 +116,6 @@ Validates that all scalar arguments and vector integer or boolean arguments are 
 `
   )
   .params(u => u.combine('type', keysOf(kInvalidArgumentTypes)))
-  .beforeAllSubcases(t => {
-    if (kInvalidArgumentTypes[t.params.type] === Type.f16) {
-      t.selectDeviceOrSkipTestCase('shader-f16');
-    }
-  })
   .fn(t => {
     const expectedResult = false; // should always error with invalid argument types
     validateConstOrOverrideBuiltinEval(

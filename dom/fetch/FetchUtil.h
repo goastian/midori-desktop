@@ -24,8 +24,11 @@ class Document;
 class InternalRequest;
 class WorkerPrivate;
 
+#define FETCH_KEEPALIVE_MAX_SIZE 65536
+
 class FetchUtil final {
  private:
+  static nsCString WasmAltDataType;
   FetchUtil() = delete;
 
  public:
@@ -53,9 +56,12 @@ class FetchUtil final {
    * The WebAssembly alt data type includes build-id, cpu-id and other relevant
    * state that is necessary to ensure the validity of caching machine code and
    * metadata in alt data. InitWasmAltDataType() must be called during startup
-   * before the first fetch(), ensuring that !WasmAltDataType.IsEmpty().
+   * before the first fetch(), ensuring that GetWasmAltDataType() is valid.
    */
-  static const nsCString WasmAltDataType;
+  static inline const nsCString& GetWasmAltDataType() {
+    MOZ_ASSERT(!WasmAltDataType.IsEmpty());
+    return WasmAltDataType;
+  }
   static void InitWasmAltDataType();
 
   /**
@@ -76,6 +82,23 @@ class FetchUtil final {
    * untyped 'size_t' instead of Gecko 'nsresult'.
    */
   static void ReportJSStreamError(JSContext* aCx, size_t aErrorCode);
+
+  /**
+   * Implements fetch spec
+   * https://fetch.spec.whatwg.org/#http-network-or-cache-fetch for
+   * bounding the keepalive request size
+   */
+  static bool IncrementPendingKeepaliveRequestSize(nsILoadGroup* aLoadGroup,
+                                                   const uint64_t aBodyLength);
+
+  static void DecrementPendingKeepaliveRequestSize(nsILoadGroup* aLoadGroup,
+                                                   const uint64_t aBodyLength);
+
+  /**
+   * Wrapper to fetch loadgroup from the global object
+   */
+  static nsCOMPtr<nsILoadGroup> GetLoadGroupFromGlobal(
+      nsIGlobalObject* aGlobal);
 };
 
 }  // namespace mozilla::dom

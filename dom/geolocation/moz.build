@@ -38,7 +38,7 @@ UNIFIED_SOURCES += [
 # Permission UI so it uses the platform-agnostic version.
 if (
     CONFIG["OS_TARGET"] == "WINNT"
-    and CONFIG["CC_TYPE"] == "clang-cl"
+    and (CONFIG["CC_TYPE"] == "clang-cl" or CONFIG["MOZ_ARTIFACT_BUILDS"])
     and CONFIG["MOZ_BUILD_APP"] == "browser"
 ):
     UNIFIED_SOURCES += [
@@ -78,11 +78,11 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
         "/dom/system/windows/location",
     ]
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
-    if CONFIG["MOZ_GPSD"]:
-        LOCAL_INCLUDES += [
-            "/dom/system/linux",
-        ]
-        DEFINES["MOZ_GPSD"] = True
     if CONFIG["MOZ_ENABLE_DBUS"]:
         LOCAL_INCLUDES += ["/dom/system/linux"]
         CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
+
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.toml"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]

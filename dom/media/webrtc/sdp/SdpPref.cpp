@@ -10,37 +10,6 @@
 
 namespace mozilla {
 
-const std::string SdpPref::PRIMARY_PREF = "media.peerconnection.sdp.parser";
-const std::string SdpPref::ALTERNATE_PREF =
-    "media.peerconnection.sdp.alternate_parse_mode";
-const std::string SdpPref::STRICT_SUCCESS_PREF =
-    "media.peerconnection.sdp.strict_success";
-const std::string SdpPref::DEFAULT = "default";
-
-auto SdpPref::ToString(const Parsers& aParser) -> std::string {
-  switch (aParser) {
-    case Parsers::Sipcc:
-      return "sipcc";
-    case Parsers::WebRtcSdp:
-      return "webrtc-sdp";
-  };
-  MOZ_CRASH("ALL Parsers CASES ARE NOT COVERED");
-  return "";
-}
-
-auto SdpPref::ToString(const AlternateParseModes& aMode) -> std::string {
-  switch (aMode) {
-    case AlternateParseModes::Parallel:
-      return "parallel";
-    case AlternateParseModes::Failover:
-      return "failover";
-    case AlternateParseModes::Never:
-      return "never";
-  };
-  MOZ_CRASH("ALL AlternateParseModes CASES ARE NOT COVERED");
-  return "";
-}
-
 auto SdpPref::Parser() -> Parsers {
   static const auto values = std::unordered_map<std::string, Parsers>{
       {"sipcc", Parsers::Sipcc},
@@ -101,7 +70,7 @@ auto SdpPref::Failover() -> Maybe<UniquePtr<SdpParser>> {
 }
 
 auto SdpPref::StrictSuccess() -> bool {
-  return Preferences::GetBool(STRICT_SUCCESS_PREF.c_str(), false);
+  return Preferences::GetBool(STRICT_SUCCESS_PREF, false);
 }
 
 }  // namespace mozilla

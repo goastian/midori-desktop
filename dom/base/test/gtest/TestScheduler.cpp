@@ -11,11 +11,12 @@
 
 using namespace mozilla;
 
-static TimeDuration kOneSecond = TimeDuration::FromSeconds(1);
-static TimeDuration kTenthSecond = TimeDuration::FromSeconds(0.1);
-static TimeDuration kFrameDuration = TimeDuration::FromSeconds(1.0 / 60.0);
+MOZ_RUNINIT static TimeDuration kOneSecond = TimeDuration::FromSeconds(1);
+MOZ_RUNINIT static TimeDuration kTenthSecond = TimeDuration::FromSeconds(0.1);
+MOZ_RUNINIT static TimeDuration kFrameDuration =
+    TimeDuration::FromSeconds(1.0 / 60.0);
 
-static mozilla::TimeStamp sNow = TimeStamp::Now();
+MOZ_RUNINIT static mozilla::TimeStamp sNow = TimeStamp::Now();
 
 static mozilla::TimeStamp AdvanceTime(TimeDuration aDuration) {
   sNow += aDuration;
@@ -58,7 +59,7 @@ void TestGC::Run(int aNumSlices) {
   for (int slice = 0; slice < aNumSlices; slice++) {
     EXPECT_TRUE(mScheduler.InIncrementalGC());
     TimeStamp idleDeadline = Now() + kTenthSecond;
-    js::SliceBudget budget =
+    JS::SliceBudget budget =
         mScheduler.ComputeInterSliceGCBudget(idleDeadline, Now());
     TimeDuration budgetDuration =
         TimeDuration::FromMilliseconds(budget.timeBudget());
@@ -147,19 +148,17 @@ void TestCC::TimerFires(int aNumSlices) {
   step = mScheduler.AdvanceCCRunner(idleDeadline, Now(), SuspectedCCObjects());
   EXPECT_EQ(step.mAction, CCRunnerAction::CleanupDeferred);
 
-  mScheduler.NoteCCBegin(CCReason::API, Now(), 0, sSuspected, 0);
+  mScheduler.NoteCCBegin();
   RunSlices(aNumSlices);
 }
 
 void TestCC::ForgetSkippable() {
-  uint32_t suspectedBefore = sSuspected;
   // ...ForgetSkippable would happen here...
-  js::SliceBudget budget =
+  JS::SliceBudget budget =
       mScheduler.ComputeForgetSkippableBudget(Now(), Now() + kTenthSecond);
   EXPECT_NEAR(budget.timeBudget(), kTenthSecond.ToMilliseconds(), 1);
   AdvanceTime(kTenthSecond);
-  mScheduler.NoteForgetSkippableComplete(Now(), suspectedBefore,
-                                         SuspectedCCObjects());
+  mScheduler.NoteForgetSkippableComplete(Now(), SuspectedCCObjects());
 }
 
 void TestCC::RunSlices(int aNumSlices) {
@@ -178,7 +177,7 @@ void TestCC::EndCycleCollectionCallback() {
   CycleCollectorResults results;
   results.mFreedGCed = 10;
   results.mFreedJSZones = 2;
-  mScheduler.NoteCCEnd(results, Now(), TimeDuration());
+  mScheduler.NoteCCEnd(results, Now());
 
   // Because > 0 zones were freed.
   EXPECT_TRUE(mScheduler.NeedsGCAfterCC());
@@ -213,7 +212,7 @@ void TestIdleCC::RunSlice(TimeStamp aCCStartTime, TimeStamp aPrevSliceEnd,
 
   EXPECT_FALSE(mScheduler.InIncrementalGC());
   bool preferShorter;
-  js::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
+  JS::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
       idleDeadline, aCCStartTime, aPrevSliceEnd, Now(), &preferShorter);
   // The scheduler will set the budget to our deadline (0.1sec in the future).
   EXPECT_NEAR(budget.timeBudget(), kTenthSecond.ToMilliseconds(), 1);
@@ -252,7 +251,7 @@ void TestNonIdleCC::RunSlice(TimeStamp aCCStartTime, TimeStamp aPrevSliceEnd,
   EXPECT_FALSE(mScheduler.InIncrementalGC());
 
   bool preferShorter;
-  js::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
+  JS::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
       nullDeadline, aCCStartTime, aPrevSliceEnd, Now(), &preferShorter);
   if (aSliceNum == 0) {
     // First slice of the CC, so always use the baseBudget which is
@@ -330,10 +329,10 @@ static bool BasicScenario(CCGCScheduler& aScheduler, TestGC* aTestGC,
   return true;
 }
 
-static CCGCScheduler scheduler;
-static TestGC gc(scheduler);
-static TestIdleCC ccIdle(scheduler);
-static TestNonIdleCC ccNonIdle(scheduler);
+MOZ_RUNINIT static CCGCScheduler scheduler;
+MOZ_RUNINIT static TestGC gc(scheduler);
+MOZ_RUNINIT static TestIdleCC ccIdle(scheduler);
+MOZ_RUNINIT static TestNonIdleCC ccNonIdle(scheduler);
 
 TEST(TestScheduler, Idle)
 {
@@ -345,4 +344,6 @@ TEST(TestScheduler, Idle)
 }
 
 TEST(TestScheduler, NonIdle)
-{ EXPECT_TRUE(BasicScenario(scheduler, &gc, &ccNonIdle)); }
+{
+  EXPECT_TRUE(BasicScenario(scheduler, &gc, &ccNonIdle));
+}

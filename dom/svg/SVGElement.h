@@ -29,12 +29,8 @@
 #include "gfxMatrix.h"
 
 // {70db954d-e452-4be3-83aa-f54a51cf7890}
-#define MOZILLA_SVGELEMENT_IID                       \
-  {                                                  \
-    0x70db954d, 0xe452, 0x4be3, {                    \
-      0x82, 0xaa, 0xf5, 0x4a, 0x51, 0xcf, 0x78, 0x90 \
-    }                                                \
-  }
+#define MOZILLA_SVGELEMENT_IID \
+  {0x70db954d, 0xe452, 0x4be3, {0x82, 0xaa, 0xf5, 0x4a, 0x51, 0xcf, 0x78, 0x90}}
 
 nsresult NS_NewSVGElement(mozilla::dom::Element** aResult,
                           already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -89,7 +85,7 @@ class SVGElement : public SVGElementBase  // nsIContent
   // From Element
   nsresult CopyInnerTo(mozilla::dom::Element* aDest);
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(MOZILLA_SVGELEMENT_IID)
+  NS_INLINE_DECL_STATIC_IID(MOZILLA_SVGELEMENT_IID)
   // nsISupports
   NS_INLINE_DECL_REFCOUNTING_INHERITED(SVGElement, SVGElementBase)
 
@@ -135,38 +131,18 @@ class SVGElement : public SVGElementBase  // nsIContent
   mozilla::dom::SVGViewportElement* GetCtx() const;
 
   /**
-   * Returns aMatrix pre-multiplied by (explicit or implicit) transforms that
-   * are introduced by attributes on this element.
-   *
-   * If aWhich is eAllTransforms, then all the transforms from the coordinate
-   * space established by this element for its children to the coordinate
-   * space established by this element's parent element for this element, are
-   * included.
-   *
-   * If aWhich is eUserSpaceToParent, then only the transforms from this
-   * element's userspace to the coordinate space established by its parent is
-   * included. This includes any transforms introduced by the 'transform'
-   * attribute, transform animations and animateMotion, but not any offsets
-   * due to e.g. 'x'/'y' attributes, or any transform due to a 'viewBox'
-   * attribute. (SVG userspace is defined to be the coordinate space in which
-   * coordinates on an element apply.)
-   *
-   * If aWhich is eChildToUserSpace, then only the transforms from the
-   * coordinate space established by this element for its childre to this
-   * elements userspace are included. This includes any offsets due to e.g.
-   * 'x'/'y' attributes, and any transform due to a 'viewBox' attribute, but
-   * does not include any transforms due to the 'transform' attribute.
+   * Returns the transforms from the coordinate space established by this
+   * element for its children to this element's userspace. This includes any
+   * offsets due to e.g. 'x'/'y' attributes, and any transform due to a
+   * 'viewBox' attribute.
    */
-  virtual gfxMatrix PrependLocalTransformsTo(
-      const gfxMatrix& aMatrix,
-      SVGTransformTypes aWhich = eAllTransforms) const;
+  virtual gfxMatrix ChildToUserSpaceTransform() const;
 
   // Setter for to set the current <animateMotion> transformation
   // Only visible for SVGGraphicElement, so it's a no-op here, and that
   // subclass has the useful implementation.
   virtual void SetAnimateMotionTransform(
-      const mozilla::gfx::Matrix* aMatrix) { /*no-op*/
-  }
+      const mozilla::gfx::Matrix* aMatrix) { /*no-op*/ }
   virtual const mozilla::gfx::Matrix* GetAnimateMotionTransform() const {
     return nullptr;
   }
@@ -182,12 +158,16 @@ class SVGElement : public SVGElementBase  // nsIContent
   void SetLength(nsAtom* aName, const SVGAnimatedLength& aLength);
 
   enum class ValToUse { Base, Anim };
-  static bool UpdateDeclarationBlockFromLength(
-      StyleLockedDeclarationBlock& aBlock, nsCSSPropertyID aPropId,
-      const SVGAnimatedLength& aLength, ValToUse aValToUse);
-  static bool UpdateDeclarationBlockFromPath(
-      StyleLockedDeclarationBlock& aBlock, const SVGAnimatedPathSegList& aPath,
-      ValToUse aValToUse);
+  static bool UpdateDeclarationBlockFromLength(StyleLockedDeclarationBlock&,
+                                               nsCSSPropertyID,
+                                               const SVGAnimatedLength&,
+                                               ValToUse);
+  static bool UpdateDeclarationBlockFromPath(StyleLockedDeclarationBlock&,
+                                             const SVGAnimatedPathSegList&,
+                                             ValToUse);
+  static bool UpdateDeclarationBlockFromTransform(
+      StyleLockedDeclarationBlock&, const SVGAnimatedTransformList*,
+      const gfx::Matrix* aAnimateMotionTransform, ValToUse);
 
   nsAttrValue WillChangeLength(uint8_t aAttrEnum,
                                const mozAutoDocUpdate& aProofOfUpdate);
@@ -546,8 +526,6 @@ class SVGElement : public SVGElementBase  // nsIContent
   SVGAnimatedClass mClassAttribute;
   UniquePtr<nsAttrValue> mClassAnimAttr;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(SVGElement, MOZILLA_SVGELEMENT_IID)
 
 /**
  * A macro to implement the NS_NewSVGXXXElement() functions.

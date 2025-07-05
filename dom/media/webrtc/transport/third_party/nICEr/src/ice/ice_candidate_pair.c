@@ -106,7 +106,25 @@ int nr_ice_candidate_pair_create(nr_ice_peer_ctx *pctx, nr_ice_candidate *lcand,
     /* Make a bogus candidate to compute a theoretical peer reflexive
      * priority per S 7.1.1.1 */
     memcpy(&tmpcand, lcand, sizeof(tmpcand));
-    tmpcand.type = PEER_REFLEXIVE;
+    /* Non-standard behavior, but that's because the standard is wrong!  If
+     * this is a relay candidate, it is never appropriate to assign it the
+     * priority of a prflx. One could attempt to compensate for this on the
+     * other side by overriding prflx candidates (and their priority) when
+     * identical trickle candidates arrive, but it is prudent to avoid creating
+     * this situation in the first place.
+     * TODO: It may be appropriate to assign it a higher priority than _other_
+     * relay candidates. However, there are probably very few cases where it
+     * would matter.
+     * TODO: Note that we still have to contend with mismatched priorities for
+     * srflx here; if we have two srflx, and one of them is learned by the
+     * other side as a prflx, the other side is going to have a higher priority
+     * for that pair unless the priority is updated. For ICE-bis nomination,
+     * this won't matter a whole lot, but we do aggressive nomination, and
+     * there it is crucial. The controlled side has to pick the highest
+     * priority nominated pair, and all of them will get nominated. */
+    if (tmpcand.type != RELAYED) {
+      tmpcand.type = PEER_REFLEXIVE;
+    }
     if (r=nr_ice_candidate_compute_priority(&tmpcand))
       ABORT(r);
     t_priority = tmpcand.priority;
@@ -436,14 +454,11 @@ static int nr_ice_candidate_copy_for_triggered_check(nr_ice_cand_pair *pair)
     return(_status);
 }
 
-int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_pair *pair)
+int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_pair *pair, int force)
   {
     int r,_status;
 
-    if(pair->state==NR_ICE_PAIR_STATE_CANCELLED) {
-      r_log(LOG_ICE,LOG_DEBUG,"ICE-PEER(%s)/CAND_PAIR(%s): Ignoring matching but canceled pair",pctx->label,pair->codeword);
-      return(0);
-    } else if(pair->state==NR_ICE_PAIR_STATE_SUCCEEDED) {
+    if(pair->state==NR_ICE_PAIR_STATE_SUCCEEDED) {
       r_log(LOG_ICE,LOG_DEBUG,"ICE-PEER(%s)/CAND_PAIR(%s): No new trigger check for succeeded pair",pctx->label,pair->codeword);
       return(0);
     } else if (pair->local->stream->obsolete) {
@@ -454,8 +469,11 @@ int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_
       return (0);
     }
 
-    /* Do not run this logic more than once on a given pair */
-    if(!pair->triggered){
+    /* Do not run this logic more than once on a given pair (|force| is set
+     * when the check we received has USE-CANDIDATE for this pair for the first
+     * time, and this pair is a higher priority than anything that has been
+     * nominated so far) */
+    if(!pair->triggered || force){
       r_log(LOG_ICE,LOG_INFO,"ICE-PEER(%s)/CAND-PAIR(%s): triggered check on %s",pctx->label,pair->codeword,pair->as_string);
 
       pair->triggered=1;
@@ -474,6 +492,9 @@ int nr_ice_candidate_pair_do_triggered_check(nr_ice_peer_ctx *pctx, nr_ice_cand_
           r_log(LOG_ICE,LOG_INFO,"ICE-PEER(%s)/CAND-PAIR(%s): Inserting pair to trigger check queue: %s",pctx->label,pair->codeword,pair->as_string);
           nr_ice_candidate_pair_trigger_check_append(&pair->remote->stream->trigger_check_queue,pair);
           break;
+        case NR_ICE_PAIR_STATE_CANCELLED:
+          r_log(LOG_ICE,LOG_INFO,"ICE-PEER(%s)/CAND-PAIR(%s): received STUN check on cancelled pair, resurrecting: %s",pctx->label,pair->codeword,pair->as_string);
+          /* fall through */
         case NR_ICE_PAIR_STATE_IN_PROGRESS:
           /* Instead of trying to maintain two stun contexts on the same pair,
            * and handling heterogenous responses and error conditions, we instead

@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsAboutProtocolUtils.h"
 #include "nsAttrValue.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsContentUtils.h"
@@ -12,6 +13,7 @@
 #include "nsCSPParser.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIConsoleService.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsIChannel.h"
 #include "nsICryptoHash.h"
 #include "nsIScriptError.h"
@@ -28,6 +30,7 @@
 #include "mozilla/dom/CSPDictionariesBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/SRIMetadata.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
 #include "mozilla/StaticPrefs_security.h"
 
 using namespace mozilla;
@@ -111,20 +114,19 @@ bool CSP_ShouldResponseInheritCSP(nsIChannel* aChannel) {
   nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, false);
 
-  bool isAbout = uri->SchemeIs("about");
-  if (isAbout) {
-    nsAutoCString aboutSpec;
-    rv = uri->GetSpec(aboutSpec);
-    NS_ENSURE_SUCCESS(rv, false);
-    // also allow about:blank#foo
-    if (StringBeginsWith(aboutSpec, "about:blank"_ns) ||
-        StringBeginsWith(aboutSpec, "about:srcdoc"_ns)) {
-      return true;
-    }
-  }
+  return CSP_ShouldURIInheritCSP(uri);
+}
 
-  return uri->SchemeIs("blob") || uri->SchemeIs("data") ||
-         uri->SchemeIs("filesystem") || uri->SchemeIs("javascript");
+bool CSP_ShouldURIInheritCSP(nsIURI* aURI) {
+  if (!aURI) {
+    return false;
+  }
+  // about:blank and about:srcdoc
+  if ((aURI->SchemeIs("about")) && (NS_IsContentAccessibleAboutURI(aURI))) {
+    return true;
+  }
+  return aURI->SchemeIs("blob") || aURI->SchemeIs("data") ||
+         aURI->SchemeIs("filesystem") || aURI->SchemeIs("javascript");
 }
 
 void CSP_ApplyMetaCSPToDoc(mozilla::dom::Document& aDoc,
@@ -147,18 +149,41 @@ void CSP_ApplyMetaCSPToDoc(mozilla::dom::Document& aDoc,
     return;
   }
 
+  // CSPs delivered via a <meta> tag can not be report-only.
+  bool reportOnly = false;
+
+  if (nsIURI* uri = aDoc.GetDocumentURI(); CSP_IsBrowserXHTML(uri)) {
+    // Make the <meta> policy in browser.xhtml toggleable.
+    if (!StaticPrefs::security_browser_xhtml_csp_enabled()) {
+      return;
+    }
+
+    // Make the policy report-only to be able to collect telemetry.
+    if (StaticPrefs::security_browser_xhtml_csp_report_only()) {
+      reportOnly = true;
+    }
+  }
+
   // Multiple CSPs (delivered through either header of meta tag) need to
   // be joined together, see:
   // https://w3c.github.io/webappsec/specs/content-security-policy/#delivery-html-meta-element
-  nsresult rv =
-      csp->AppendPolicy(policyStr,
-                        false,  // csp via meta tag can not be report only
-                        true);  // delivered through the meta tag
+  nsresult rv = csp->AppendPolicy(policyStr, reportOnly,
+                                  true);  // delivered through the meta tag
   NS_ENSURE_SUCCESS_VOID(rv);
   if (nsPIDOMWindowInner* inner = aDoc.GetInnerWindow()) {
     inner->SetCsp(csp);
   }
   aDoc.ApplySettingsFromCSP(false);
+}
+
+bool CSP_IsBrowserXHTML(nsIURI* aURI) {
+  if (!aURI->SchemeIs("chrome")) {
+    return false;
+  }
+
+  nsAutoCString spec;
+  aURI->GetSpec(spec);
+  return spec.EqualsLiteral("chrome://browser/content/browser.xhtml");
 }
 
 void CSP_GetLocalizedStr(const char* aName, const nsTArray<nsString>& aParams,
@@ -177,7 +202,12 @@ void CSP_GetLocalizedStr(const char* aName, const nsTArray<nsString>& aParams,
   if (!keyStringBundle) {
     return;
   }
-  keyStringBundle->FormatStringFromName(aName, aParams, outResult);
+
+  if (aParams.IsEmpty()) {
+    keyStringBundle->GetStringFromName(aName, outResult);
+  } else {
+    keyStringBundle->FormatStringFromName(aName, aParams, outResult);
+  }
 }
 
 void CSP_LogStrMessage(const nsAString& aMsg) {
@@ -191,7 +221,7 @@ void CSP_LogStrMessage(const nsAString& aMsg) {
   console->LogStringMessage(msg.get());
 }
 
-void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
+void CSP_LogMessage(const nsAString& aMessage, const nsACString& aSourceName,
                     const nsAString& aSourceLine, uint32_t aLineNumber,
                     uint32_t aColumnNumber, uint32_t aFlags,
                     const nsACString& aCategory, uint64_t aInnerWindowID,
@@ -230,12 +260,12 @@ void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
 
   nsresult rv;
   if (aInnerWindowID > 0) {
-    rv = error->InitWithWindowID(cspMsg, aSourceName, aSourceLine, aLineNumber,
-                                 aColumnNumber, aFlags, category,
-                                 aInnerWindowID);
+    rv =
+        error->InitWithWindowID(cspMsg, aSourceName, aLineNumber, aColumnNumber,
+                                aFlags, category, aInnerWindowID);
   } else {
-    rv = error->Init(cspMsg, aSourceName, aSourceLine, aLineNumber,
-                     aColumnNumber, aFlags, category, aFromPrivateWindow,
+    rv = error->Init(cspMsg, aSourceName, aLineNumber, aColumnNumber, aFlags,
+                     category, aFromPrivateWindow,
                      true /* from chrome context */);
   }
   if (NS_FAILED(rv)) {
@@ -262,7 +292,7 @@ CSPDirective CSP_StringToCSPDirective(const nsAString& aDir) {
  * Combines CSP_LogMessage and CSP_GetLocalizedStr into one call.
  */
 void CSP_LogLocalizedStr(const char* aName, const nsTArray<nsString>& aParams,
-                         const nsAString& aSourceName,
+                         const nsACString& aSourceName,
                          const nsAString& aSourceLine, uint32_t aLineNumber,
                          uint32_t aColumnNumber, uint32_t aFlags,
                          const nsACString& aCategory, uint64_t aInnerWindowID,
@@ -285,6 +315,7 @@ CSPDirective CSP_ContentTypeToDirective(nsContentPolicyType aType) {
     case nsIContentPolicy::TYPE_INTERNAL_IMAGE:
     case nsIContentPolicy::TYPE_INTERNAL_IMAGE_PRELOAD:
     case nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON:
+    case nsIContentPolicy::TYPE_INTERNAL_EXTERNAL_RESOURCE:
       return nsIContentSecurityPolicy::IMG_SRC_DIRECTIVE;
 
     // BLock XSLT as script, see bug 910139
@@ -339,17 +370,17 @@ CSPDirective CSP_ContentTypeToDirective(nsContentPolicyType aType) {
     case nsIContentPolicy::TYPE_BEACON:
     case nsIContentPolicy::TYPE_PING:
     case nsIContentPolicy::TYPE_FETCH:
-
     case nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST_ASYNC:
     case nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST_SYNC:
     case nsIContentPolicy::TYPE_INTERNAL_EVENTSOURCE:
     case nsIContentPolicy::TYPE_INTERNAL_FETCH_PRELOAD:
     case nsIContentPolicy::TYPE_WEB_IDENTITY:
     case nsIContentPolicy::TYPE_WEB_TRANSPORT:
+    case nsIContentPolicy::TYPE_JSON:
+    case nsIContentPolicy::TYPE_INTERNAL_JSON_PRELOAD:
       return nsIContentSecurityPolicy::CONNECT_SRC_DIRECTIVE;
 
     case nsIContentPolicy::TYPE_OBJECT:
-    case nsIContentPolicy::TYPE_OBJECT_SUBREQUEST:
     case nsIContentPolicy::TYPE_INTERNAL_EMBED:
     case nsIContentPolicy::TYPE_INTERNAL_OBJECT:
       return nsIContentSecurityPolicy::OBJECT_SRC_DIRECTIVE;
@@ -381,6 +412,28 @@ CSPDirective CSP_ContentTypeToDirective(nsContentPolicyType aType) {
       // Do not add default: so that compilers can catch the missing case.
   }
   return nsIContentSecurityPolicy::DEFAULT_SRC_DIRECTIVE;
+}
+
+already_AddRefed<nsIContentSecurityPolicy> CSP_CreateFromHeader(
+    const nsAString& aHeaderValue, nsIURI* aSelfURI,
+    nsIPrincipal* aLoadingPrincipal, ErrorResult& aRv) {
+  RefPtr<nsCSPContext> csp = new nsCSPContext();
+  // Hard code some default values until we have a use case where we can provide
+  // something else.
+  // When inheriting from this CSP, these values will be overwritten anyway.
+  aRv = csp->SetRequestContextWithPrincipal(aLoadingPrincipal, aSelfURI,
+                                            /* aReferrer */ ""_ns,
+                                            /* aInnerWindowId */ 0);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  aRv = CSP_AppendCSPFromHeader(csp, aHeaderValue, /* aReportOnly */ false);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  return csp.forget();
 }
 
 nsCSPHostSrc* CSP_CreateHostSrcFromSelfURI(nsIURI* aSelfURI) {
@@ -1000,6 +1053,16 @@ void nsCSPReportURI::toString(nsAString& outStr) const {
   outStr.AppendASCII(spec.get());
 }
 
+/* ===== nsCSPReportGroup ===================== */
+
+nsCSPGroup::nsCSPGroup(const nsAString& aGroup) : mGroup(aGroup) {}
+
+nsCSPGroup::~nsCSPGroup() = default;
+
+bool nsCSPGroup::visit(nsCSPSrcVisitor* aVisitor) const { return false; }
+
+void nsCSPGroup::toString(nsAString& aOutStr) const { aOutStr.Append(mGroup); }
+
 /* ===== nsCSPSandboxFlags ===================== */
 
 nsCSPSandboxFlags::nsCSPSandboxFlags(const nsAString& aFlags) : mFlags(aFlags) {
@@ -1047,6 +1110,24 @@ bool nsCSPTrustedTypesDirectivePolicyName::visit(
 
 void nsCSPTrustedTypesDirectivePolicyName::toString(nsAString& aOutStr) const {
   aOutStr.Append(mName);
+}
+
+/* =============== nsCSPTrustedTypesDirectiveInvalidToken =============== */
+
+nsCSPTrustedTypesDirectiveInvalidToken::nsCSPTrustedTypesDirectiveInvalidToken(
+    const nsAString& aInvalidToken)
+    : mInvalidToken{aInvalidToken} {}
+
+bool nsCSPTrustedTypesDirectiveInvalidToken::visit(
+    nsCSPSrcVisitor* aVisitor) const {
+  MOZ_ASSERT_UNREACHABLE(
+      "Should only be called for other overloads of this method.");
+  return false;
+}
+
+void nsCSPTrustedTypesDirectiveInvalidToken::toString(
+    nsAString& aOutStr) const {
+  aOutStr.Append(mInvalidToken);
 }
 
 /* ===== nsCSPDirective ====================== */
@@ -1328,6 +1409,42 @@ bool nsCSPDirective::allowsAllInlineBehavior(CSPDirective aDir) const {
   return allowAll;
 }
 
+static constexpr auto kWildcard = u"*"_ns;
+
+bool nsCSPDirective::ShouldCreateViolationForNewTrustedTypesPolicy(
+    const nsAString& aPolicyName,
+    const nsTArray<nsString>& aCreatedPolicyNames) const {
+  MOZ_ASSERT(mDirective == nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE);
+
+  if (mDirective == nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE) {
+    if (allows(CSP_NONE, EmptyString())) {
+      // Step 2.4: if directive’s value only contains a tt-keyword which is a
+      // match for a value 'none', set createViolation to true.
+      // `nsCSPParser` ignores the 'none' keyword if other keywords or policy
+      // names are present. Hence no additional checks required here.
+      return true;
+    }
+
+    if (aCreatedPolicyNames.Contains(aPolicyName) &&
+        !allows(CSP_ALLOW_DUPLICATES, EmptyString())) {
+      // Step 2.5: if createdPolicyNames contains policyName and directive’s
+      // value does not contain a tt-keyword which is a match for a value
+      // 'allow-duplicates', set createViolation to true.
+      return true;
+    }
+
+    if (!ContainsTrustedTypesDirectivePolicyName(aPolicyName) &&
+        !ContainsTrustedTypesDirectivePolicyName(kWildcard)) {
+      // Step 2.6: if directive’s value does not contain a tt-policy-name, which
+      // value is policyName, and directive’s value does not contain a
+      // tt-wildcard, set createViolation to true.
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void nsCSPDirective::toString(nsAString& outStr) const {
   // Append directive name
   outStr.AppendASCII(CSP_CSPDirectiveToString(mDirective));
@@ -1484,9 +1601,18 @@ void nsCSPDirective::toDomCSPStruct(mozilla::dom::CSP& outCSP) const {
       outCSP.mTrusted_types.Value() = std::move(srcs);
       return;
 
+    case nsIContentSecurityPolicy::REPORT_TO_DIRECTIVE:
+      outCSP.mReport_to.Construct();
+      outCSP.mReport_to.Value() = std::move(srcs);
+      return;
+
     default:
       NS_ASSERTION(false, "cannot find directive to convert CSP to JSON");
   }
+}
+
+bool nsCSPDirective::isDefaultDirective() const {
+  return mDirective == nsIContentSecurityPolicy::DEFAULT_SRC_DIRECTIVE;
 }
 
 void nsCSPDirective::getReportURIs(nsTArray<nsString>& outReportURIs) const {
@@ -1500,6 +1626,14 @@ void nsCSPDirective::getReportURIs(nsTArray<nsString>& outReportURIs) const {
     mSrcs[i]->toString(tmpReportURI);
     outReportURIs.AppendElement(tmpReportURI);
   }
+}
+
+void nsCSPDirective::getReportGroup(nsAString& outReportGroup) const {
+  NS_ASSERTION((mDirective == nsIContentSecurityPolicy::REPORT_TO_DIRECTIVE),
+               "not a report-to directive");
+
+  MOZ_ASSERT(mSrcs.Length() <= 1);
+  mSrcs[0]->toString(outReportGroup);
 }
 
 bool nsCSPDirective::visitSrcs(nsCSPSrcVisitor* aVisitor) const {
@@ -1523,6 +1657,26 @@ bool nsCSPDirective::hasReportSampleKeyword() const {
   for (nsCSPBaseSrc* src : mSrcs) {
     if (src->isReportSample()) {
       return true;
+    }
+  }
+
+  return false;
+}
+
+bool nsCSPDirective::ContainsTrustedTypesDirectivePolicyName(
+    const nsAString& aPolicyName) const {
+  MOZ_ASSERT(mDirective == nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE);
+
+  if (mDirective == nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE) {
+    for (const auto* src : mSrcs) {
+      if (src->isTrustedTypesDirectivePolicyName()) {
+        const auto& name =
+            static_cast<const nsCSPTrustedTypesDirectivePolicyName*>(src)
+                ->GetName();
+        if (name.Equals(aPolicyName)) {
+          return true;
+        }
+      }
     }
   }
 
@@ -1760,11 +1914,31 @@ bool nsCSPPolicy::allowsAllInlineBehavior(CSPDirective aDir) const {
   return directive->allowsAllInlineBehavior(aDir);
 }
 
+bool nsCSPPolicy::ShouldCreateViolationForNewTrustedTypesPolicy(
+    const nsAString& aPolicyName,
+    const nsTArray<nsString>& aCreatedPolicyNames) const {
+  for (const auto* directive : mDirectives) {
+    if (directive->equals(nsIContentSecurityPolicy::TRUSTED_TYPES_DIRECTIVE)) {
+      return directive->ShouldCreateViolationForNewTrustedTypesPolicy(
+          aPolicyName, aCreatedPolicyNames);
+    }
+  }
+
+  return false;
+}
+
+bool nsCSPPolicy::AreTrustedTypesForSinkGroupRequired(
+    const nsAString& aSinkGroup) const {
+  MOZ_ASSERT(aSinkGroup == dom::kTrustedTypesOnlySinkGroup);
+  return mHasRequireTrustedTypesForDirective;
+}
+
 /*
- * Use this function only after ::allows() returned 'false'. Most and
- * foremost it's used to get the violated directive before sending reports.
- * The parameter aDirectiveName is the equivalent of 'outViolatedDirective'
- * for the ::permits() function family.
+ * Use this function only after ::allows() returned 'false' or if ensured by
+ * other means that the directive is violated. First and foremost it's used to
+ * get the violated directive before sending reports. The parameter
+ * aDirectiveName is the equivalent of 'outViolatedDirective' for the
+ * ::permits() function family.
  */
 void nsCSPPolicy::getViolatedDirectiveInformation(
     CSPDirective aDirective, nsAString& aDirectiveName,
@@ -1815,6 +1989,23 @@ void nsCSPPolicy::getReportURIs(nsTArray<nsString>& outReportURIs) const {
       mDirectives[i]->getReportURIs(outReportURIs);
       return;
     }
+  }
+}
+
+void nsCSPPolicy::getReportGroup(nsAString& outReportGroup) const {
+  for (uint32_t i = 0; i < mDirectives.Length(); i++) {
+    if (mDirectives[i]->equals(nsIContentSecurityPolicy::REPORT_TO_DIRECTIVE)) {
+      mDirectives[i]->getReportGroup(outReportGroup);
+      return;
+    }
+  }
+}
+
+void nsCSPPolicy::getDirectiveNames(nsTArray<nsString>& outDirectives) const {
+  for (uint32_t i = 0; i < mDirectives.Length(); i++) {
+    nsAutoString name;
+    mDirectives[i]->getDirName(name);
+    outDirectives.AppendElement(name);
   }
 }
 

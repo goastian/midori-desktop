@@ -7,7 +7,7 @@ import re
 
 def read_conf(conf_filename):
     # Can't read/write from a single StringIO, so make a new one for reading.
-    stream = open(conf_filename, "r")
+    stream = open(conf_filename)
 
     def parse_counters(stream):
         for line_num, full_line in enumerate(stream):
@@ -659,7 +659,7 @@ def metric_map(f, *inputs):
 #include "mozilla/dom/UseCounterMetrics.h"
 
 #include "mozilla/dom/WorkerPrivate.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/DomUseCounterMetrics.h"
 
 namespace mozilla::dom {
 
@@ -729,7 +729,7 @@ const char* IncrementUseCounter(UseCounter aUseCounter, bool aIsPage) {
     f.write("\n".join(static_asserts))
     f.write(
         """\
-  MOZ_ASSERT(size_t(aUseCounter) < ArrayLength(kEntries));
+  MOZ_ASSERT(size_t(aUseCounter) < std::size(kEntries));
   const auto& entry = kEntries[size_t(aUseCounter)];
   (aIsPage ? entry.page_metric : entry.doc_metric).Add();
   return entry.name;
@@ -771,7 +771,7 @@ const char* IncrementWorkerUseCounter(UseCounterWorker aUseCounter, WorkerKind a
     f.write("\n".join(static_asserts))
     f.write(
         """\
-  MOZ_ASSERT(size_t(aUseCounter) < ArrayLength(kEntries));
+  MOZ_ASSERT(size_t(aUseCounter) < std::size(kEntries));
   const auto& entry = kEntries[size_t(aUseCounter)];
   switch (aKind) {
     case WorkerKind::WorkerKindDedicated:

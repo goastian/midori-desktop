@@ -22,7 +22,6 @@
 #include "VPXDecoder.h"
 #include "mozilla/Span.h"
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/Telemetry.h"
 #include "nsPrintfCString.h"
 #include "SampleIterator.h"
 
@@ -415,10 +414,11 @@ already_AddRefed<MediaRawData> MP4TrackDemuxer::GetNextSample() {
     if (mType == kH264 && !sample->mCrypto.IsEncrypted()) {
       H264::FrameType type = H264::GetFrameType(sample);
       switch (type) {
-        case H264::FrameType::I_FRAME:
-          [[fallthrough]];
+        case H264::FrameType::I_FRAME_IDR:
+        case H264::FrameType::I_FRAME_OTHER:
         case H264::FrameType::OTHER: {
-          bool keyframe = type == H264::FrameType::I_FRAME;
+          bool keyframe = type == H264::FrameType::I_FRAME_OTHER ||
+                          type == H264::FrameType::I_FRAME_IDR;
           if (sample->mKeyframe != keyframe) {
             NS_WARNING(nsPrintfCString("Frame incorrectly marked as %skeyframe "
                                        "@ pts:%" PRId64 " dur:%" PRId64
@@ -530,8 +530,8 @@ RefPtr<MP4TrackDemuxer::SamplesPromise> MP4TrackDemuxer::GetSamples(
 
   if (mQueuedSample) {
     NS_ASSERTION(mQueuedSample->mKeyframe, "mQueuedSample must be a keyframe");
-    samples->AppendSample(mQueuedSample);
-    mQueuedSample = nullptr;
+    samples->AppendSample(std::move(mQueuedSample));
+    MOZ_ASSERT(!mQueuedSample);
     aNumSamples--;
   }
   RefPtr<MediaRawData> sample;
@@ -540,7 +540,7 @@ RefPtr<MP4TrackDemuxer::SamplesPromise> MP4TrackDemuxer::GetSamples(
       continue;
     }
     MOZ_DIAGNOSTIC_ASSERT(sample->HasValidTime());
-    samples->AppendSample(sample);
+    samples->AppendSample(std::move(sample));
     aNumSamples--;
   }
 

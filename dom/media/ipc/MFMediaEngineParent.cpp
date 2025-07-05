@@ -269,12 +269,24 @@ void MFMediaEngineParent::HandleMediaEngineEvent(
 
 void MFMediaEngineParent::NotifyError(MF_MEDIA_ENGINE_ERR aError,
                                       HRESULT aResult) {
-  // TODO : handle HRESULT 0x8004CD12, DRM_E_TEE_INVALID_HWDRM_STATE, which can
-  // happen during OS sleep/resume, or moving video to different graphics
-  // adapters.
   if (aError == MF_MEDIA_ENGINE_ERR_NOERROR) {
     return;
   }
+#ifdef MOZ_WMF_CDM
+  // A special error requires to reset the hareware context, not a real error.
+  if (aResult == DRM_E_TEE_INVALID_HWDRM_STATE) {
+    LOG("Notify error 'DRM_E_TEE_INVALID_HWDRM_STATE', hr=%lx", aResult);
+    ENGINE_MARKER(
+        "MFMediaEngineParent,Received 'DRM_E_TEE_INVALID_HWDRM_STATE'");
+    auto* proxy = mContentProtectionManager
+                      ? mContentProtectionManager->GetCDMProxy()
+                      : nullptr;
+    if (proxy) {
+      proxy->OnHardwareContextReset();
+    }
+    return;
+  }
+#endif
   LOG("Notify error '%s', hr=%lx", MFMediaEngineErrorToStr(aError), aResult);
   ENGINE_MARKER_TEXT(
       "MFMediaEngineParent::NotifyError",
@@ -285,18 +297,24 @@ void MFMediaEngineParent::NotifyError(MF_MEDIA_ENGINE_ERR aError,
       // We ignore these two because we fetch data by ourselves.
       return;
     case MF_MEDIA_ENGINE_ERR_DECODE: {
-      MediaResult error(NS_ERROR_DOM_MEDIA_DECODE_ERR, "Decoder error");
+      MediaResult error(NS_ERROR_DOM_MEDIA_DECODE_ERR,
+                        nsPrintfCString("Decoder error (hr=%lx)", aResult),
+                        Some(static_cast<int32_t>(aResult)));
       Unused << SendNotifyError(error);
       return;
     }
     case MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED: {
-      MediaResult error(NS_ERROR_DOM_MEDIA_NOT_SUPPORTED_ERR,
-                        "Source not supported");
+      MediaResult error(
+          NS_ERROR_DOM_MEDIA_NOT_SUPPORTED_ERR,
+          nsPrintfCString("Source not supported (hr=%lx)", aResult),
+          Some(static_cast<int32_t>(aResult)));
       Unused << SendNotifyError(error);
       return;
     }
     case MF_MEDIA_ENGINE_ERR_ENCRYPTED: {
-      MediaResult error(NS_ERROR_DOM_MEDIA_FATAL_ERR, "Encrypted error");
+      MediaResult error(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                        nsPrintfCString("Encrypted error (hr=%lx)", aResult),
+                        Some(static_cast<int32_t>(aResult)));
       Unused << SendNotifyError(error);
       return;
     }
@@ -338,12 +356,14 @@ mozilla::ipc::IPCResult MFMediaEngineParent::RecvInitMediaEngine(
     // TODO : really need this?
     Unused << mMediaEngine->SetPreload(MF_MEDIA_ENGINE_PRELOAD_AUTOMATIC);
   }
-  RETURN_PARAM_IF_FAILED(SetMediaInfo(aInfo.mediaInfo()), IPC_OK());
+  RETURN_PARAM_IF_FAILED(
+      SetMediaInfo(aInfo.mediaInfo(), aInfo.encryptedCustomIdent()), IPC_OK());
   aResolver(mMediaEngineId);
   return IPC_OK();
 }
 
-HRESULT MFMediaEngineParent::SetMediaInfo(const MediaInfoIPDL& aInfo) {
+HRESULT MFMediaEngineParent::SetMediaInfo(const MediaInfoIPDL& aInfo,
+                                          bool aIsEncrytpedCustomInit) {
   AssertOnManagerThread();
   MOZ_ASSERT(mIsCreatedMediaEngine, "Hasn't created media engine?");
   MOZ_ASSERT(!mMediaSource);
@@ -357,23 +377,23 @@ HRESULT MFMediaEngineParent::SetMediaInfo(const MediaInfoIPDL& aInfo) {
   });
 
   // Create media source and set it to the media engine.
-  NS_ENSURE_TRUE(
-      SUCCEEDED(MakeAndInitialize<MFMediaSource>(
-          &mMediaSource, aInfo.audioInfo(), aInfo.videoInfo(), mManagerThread)),
-      IPC_OK());
+  NS_ENSURE_TRUE(SUCCEEDED(MakeAndInitialize<MFMediaSource>(
+                     &mMediaSource, aInfo.audioInfo(), aInfo.videoInfo(),
+                     mManagerThread, aIsEncrytpedCustomInit)),
+                 IPC_OK());
 
   const bool isEncryted = mMediaSource->IsEncrypted();
   ENGINE_MARKER("MFMediaEngineParent,CreatedMediaSource");
   nsPrintfCString message(
       "Created the media source, audio=%s, video=%s, encrypted-audio=%s, "
-      "encrypted-video=%s, isEncrypted=%d",
+      "encrypted-video=%s, aIsEncrytpedCustomInit=%d, isEncrypted=%d",
       aInfo.audioInfo() ? aInfo.audioInfo()->mMimeType.BeginReading() : "none",
       aInfo.videoInfo() ? aInfo.videoInfo()->mMimeType.BeginReading() : "none",
       aInfo.audioInfo() && aInfo.audioInfo()->mCrypto.IsEncrypted() ? "yes"
                                                                     : "no",
       aInfo.videoInfo() && aInfo.videoInfo()->mCrypto.IsEncrypted() ? "yes"
                                                                     : "no",
-      isEncryted);
+      aIsEncrytpedCustomInit, isEncryted);
   LOG("%s", message.get());
 
   if (aInfo.videoInfo()) {
@@ -382,6 +402,11 @@ HRESULT MFMediaEngineParent::SetMediaInfo(const MediaInfoIPDL& aInfo) {
     RETURN_IF_FAILED(mediaEngineEx->EnableWindowlessSwapchainMode(true));
     LOG("Enabled dcomp swap chain mode");
     ENGINE_MARKER("MFMediaEngineParent,EnabledSwapChain");
+    if (isEncryted) {
+      // Microsoft recommends to disable low latency with DRM.
+      RETURN_IF_FAILED(mediaEngineEx->SetRealTimeMode(false));
+      LOG("Turned off the real time mode for encrypted playback");
+    }
   }
 
   mRequestSampleListener = mMediaSource->RequestSampleEvent().Connect(

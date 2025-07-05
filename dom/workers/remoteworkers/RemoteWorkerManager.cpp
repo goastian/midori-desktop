@@ -8,15 +8,22 @@
 
 #include <utility>
 
+#include "mozilla/AppShutdown.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/dom/ContentChild.h"  // ContentChild::GetSingleton
 #include "mozilla/dom/ProcessIsolation.h"
+#include "mozilla/dom/PRemoteWorkerNonLifeCycleOpControllerParent.h"
+#include "mozilla/dom/PRemoteWorkerNonLifeCycleOpControllerChild.h"
 #include "mozilla/dom/RemoteWorkerController.h"
+#include "mozilla/dom/RemoteWorkerNonLifeCycleOpControllerParent.h"
 #include "mozilla/dom/RemoteWorkerParent.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundParent.h"
+#include "mozilla/net/CookieServiceParent.h"
+#include "mozilla/net/NeckoParent.h"
+#include "mozilla/net/CookieServiceParent.h"
 #include "mozilla/StaticPrefs_extensions.h"
 #include "nsCOMPtr.h"
 #include "nsImportModule.h"
@@ -36,6 +43,7 @@ mozilla::LazyLogModule gRemoteWorkerManagerLog("RemoteWorkerManager");
 namespace mozilla {
 
 using namespace ipc;
+using namespace net;
 
 namespace dom {
 
@@ -50,7 +58,7 @@ bool IsServiceWorker(const RemoteWorkerData& aData) {
          OptionalServiceWorkerData::TServiceWorkerData;
 }
 
-void TransmitPermissionsAndBlobURLsForPrincipalInfo(
+void TransmitPermissionsAndCookiesAndBlobURLsForPrincipalInfo(
     ContentParent* aContentParent, const PrincipalInfo& aPrincipalInfo) {
   AssertIsOnMainThread();
   MOZ_ASSERT(aContentParent);
@@ -67,6 +75,25 @@ void TransmitPermissionsAndBlobURLsForPrincipalInfo(
 
   MOZ_ALWAYS_SUCCEEDS(
       aContentParent->TransmitPermissionsForPrincipal(principal));
+
+  CookieServiceParent* cs = nullptr;
+
+  PNeckoParent* neckoParent =
+      LoneManagedOrNullAsserts(aContentParent->ManagedPNeckoParent());
+  if (neckoParent) {
+    PCookieServiceParent* csParent =
+        LoneManagedOrNullAsserts(neckoParent->ManagedPCookieServiceParent());
+    if (csParent) {
+      cs = static_cast<CookieServiceParent*>(csParent);
+    }
+  }
+
+  if (cs) {
+    nsCOMPtr<nsIURI> uri = principal->GetURI();
+    cs->UpdateCookieInContentList(uri, principal->OriginAttributesRef());
+  } else {
+    aContentParent->AddPrincipalToCookieInProcessCache(principal);
+  }
 }
 
 }  // namespace
@@ -155,52 +182,6 @@ bool RemoteWorkerManager::HasExtensionPrincipal(const RemoteWorkerData& aData) {
                           "moz-extension://"_ns);
 }
 
-// static
-bool RemoteWorkerManager::IsRemoteTypeAllowed(const RemoteWorkerData& aData) {
-  AssertIsOnMainThread();
-
-  // If Gecko is running in single process mode, there is no child process
-  // to select and we have to just consider it valid (if it should haven't
-  // been launched it should have been already prevented before reaching
-  // a RemoteWorkerChild instance).
-  if (!BrowserTabsRemoteAutostart()) {
-    return true;
-  }
-
-  const auto& principalInfo = aData.principalInfo();
-
-  auto* contentChild = ContentChild::GetSingleton();
-  if (!contentChild) {
-    // If e10s isn't disabled, only workers related to the system principal
-    // should be allowed to run in the parent process, and extension principals
-    // if extensions.webextensions.remote is false.
-    return principalInfo.type() == PrincipalInfo::TSystemPrincipalInfo ||
-           (!StaticPrefs::extensions_webextensions_remote() &&
-            aData.remoteType().Equals(NOT_REMOTE_TYPE) &&
-            HasExtensionPrincipal(aData));
-  }
-
-  auto principalOrErr = PrincipalInfoToPrincipal(principalInfo);
-  if (NS_WARN_IF(principalOrErr.isErr())) {
-    return false;
-  }
-  nsCOMPtr<nsIPrincipal> principal = principalOrErr.unwrap();
-
-  // Recompute the remoteType based on the principal, to double-check that it
-  // has not been tempered to select a different child process than the one
-  // expected.
-  bool isServiceWorker = aData.serviceWorkerData().type() ==
-                         OptionalServiceWorkerData::TServiceWorkerData;
-  auto remoteType = GetRemoteType(
-      principal, isServiceWorker ? WorkerKindService : WorkerKindShared);
-  if (NS_WARN_IF(remoteType.isErr())) {
-    LOG(("IsRemoteTypeAllowed: Error to retrieve remote type"));
-    return false;
-  }
-
-  return MatchRemoteType(remoteType.unwrap(), contentChild->GetRemoteType());
-}
-
 /* static */
 already_AddRefed<RemoteWorkerManager> RemoteWorkerManager::GetOrCreate() {
   AssertIsInMainProcess();
@@ -232,50 +213,14 @@ void RemoteWorkerManager::RegisterActor(RemoteWorkerServiceParent* aActor) {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aActor);
 
-  if (!BackgroundParent::IsOtherProcessActor(aActor->Manager())) {
+  if (!aActor->IsOtherProcessActor()) {
     MOZ_ASSERT(!mParentActor);
     mParentActor = aActor;
-    MOZ_ASSERT(mPendings.IsEmpty());
     return;
   }
 
   MOZ_ASSERT(!mChildActors.Contains(aActor));
   mChildActors.AppendElement(aActor);
-
-  if (!mPendings.IsEmpty()) {
-    const auto& processRemoteType = aActor->GetRemoteType();
-    nsTArray<Pending> unlaunched;
-
-    // Flush pending launching.
-    for (Pending& p : mPendings) {
-      if (p.mController->IsTerminated()) {
-        continue;
-      }
-
-      const auto& workerRemoteType = p.mData.remoteType();
-
-      if (MatchRemoteType(processRemoteType, workerRemoteType)) {
-        LOG(("RegisterActor - Launch Pending, workerRemoteType=%s",
-             workerRemoteType.get()));
-        LaunchInternal(p.mController, aActor, p.mData);
-      } else {
-        unlaunched.AppendElement(std::move(p));
-        continue;
-      }
-    }
-
-    std::swap(mPendings, unlaunched);
-
-    // AddRef is called when the first Pending object is added to mPendings, so
-    // the balancing Release is called when the last Pending object is removed.
-    // RemoteWorkerServiceParents will hold strong references to
-    // RemoteWorkerManager.
-    if (mPendings.IsEmpty()) {
-      Release();
-    }
-
-    LOG(("RegisterActor - mPendings length: %zu", mPendings.Length()));
-  }
 }
 
 void RemoteWorkerManager::UnregisterActor(RemoteWorkerServiceParent* aActor) {
@@ -297,40 +242,37 @@ void RemoteWorkerManager::Launch(RemoteWorkerController* aController,
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
-  RemoteWorkerServiceParent* targetActor = SelectTargetActor(aData, aProcessId);
+  TargetActorAndKeepAlive target = SelectTargetActor(aData, aProcessId);
 
-  // If there is not an available actor, let's store the data, and let's spawn a
-  // new process.
-  if (!targetActor) {
-    // If this is the first time we have a pending launching, we must keep alive
-    // the manager.
-    if (mPendings.IsEmpty()) {
-      AddRef();
-    }
-
-    Pending* pending = mPendings.AppendElement();
-    pending->mController = aController;
-    pending->mData = aData;
-
+  // If there is no available actor, try to start a process, and connect to it.
+  if (!target.mActor) {
     // Launching is async, so we cannot check for failures right here.
-    LaunchNewContentProcess(aData);
+    LaunchNewContentProcess(aData)->Then(
+        GetCurrentSerialEventTarget(), __func__,
+        [self = RefPtr{this}, controller = RefPtr{aController},
+         data = aData](TargetActorAndKeepAlive&& aTarget) {
+          if (aTarget.mActor->CanSend()) {
+            self->LaunchInternal(controller, aTarget.mActor,
+                                 std::move(aTarget.mKeepAlive), data);
+          } else {
+            controller->CreationFailed();
+          }
+        },
+        [controller = RefPtr{aController}](nsresult) {
+          controller->CreationFailed();
+        });
     return;
   }
 
-  /**
-   * If a target actor for the remote worker has been selected, the actor has
-   * already been registered with the corresponding `ContentParent` and we
-   * should not increment the `mRemoteWorkerActorData`'s `mCount` again (see
-   * `SelectTargetActorForServiceWorker()` /
-   * `SelectTargetActorForSharedWorker()`).
-   */
-  LaunchInternal(aController, targetActor, aData, true);
+  LaunchInternal(aController, target.mActor, std::move(target.mKeepAlive),
+                 aData);
 }
 
 void RemoteWorkerManager::LaunchInternal(
     RemoteWorkerController* aController,
-    RemoteWorkerServiceParent* aTargetActor, const RemoteWorkerData& aData,
-    bool aRemoteWorkerAlreadyRegistered) {
+    RemoteWorkerServiceParent* aTargetActor,
+    UniqueThreadsafeContentParentKeepAlive aKeepAlive,
+    const RemoteWorkerData& aData) {
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(aController);
@@ -341,34 +283,44 @@ void RemoteWorkerManager::LaunchInternal(
   // We need to send permissions to content processes, but not if we're spawning
   // the worker here in the parent process.
   if (aTargetActor != mParentActor) {
-    RefPtr<ThreadsafeContentParentHandle> contentHandle =
-        BackgroundParent::GetContentParentHandle(aTargetActor->Manager());
+    MOZ_ASSERT(aKeepAlive);
 
     // This won't cause any race conditions because the content process
     // should wait for the permissions to be received before executing the
     // Service Worker.
     nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-        __func__, [contentHandle = std::move(contentHandle),
+        __func__, [contentHandle = RefPtr{aKeepAlive.get()},
                    principalInfo = aData.principalInfo()] {
           AssertIsOnMainThread();
           if (RefPtr<ContentParent> contentParent =
                   contentHandle->GetContentParent()) {
-            TransmitPermissionsAndBlobURLsForPrincipalInfo(contentParent,
-                                                           principalInfo);
+            TransmitPermissionsAndCookiesAndBlobURLsForPrincipalInfo(
+                contentParent, principalInfo);
           }
         });
 
     MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
   }
 
-  RefPtr<RemoteWorkerParent> workerActor = MakeAndAddRef<RemoteWorkerParent>();
-  if (!aTargetActor->Manager()->SendPRemoteWorkerConstructor(workerActor,
-                                                             aData)) {
+  RefPtr<RemoteWorkerParent> workerActor =
+      MakeAndAddRef<RemoteWorkerParent>(std::move(aKeepAlive));
+
+  mozilla::ipc::Endpoint<PRemoteWorkerNonLifeCycleOpControllerParent> parentEp;
+  mozilla::ipc::Endpoint<PRemoteWorkerNonLifeCycleOpControllerChild> childEp;
+  MOZ_ALWAYS_SUCCEEDS(PRemoteWorkerNonLifeCycleOpController::CreateEndpoints(
+      &parentEp, &childEp));
+
+  MOZ_ASSERT(!aController->mNonLifeCycleOpController);
+  aController->mNonLifeCycleOpController =
+      MakeAndAddRef<RemoteWorkerNonLifeCycleOpControllerParent>(aController);
+
+  parentEp.Bind(aController->mNonLifeCycleOpController);
+
+  if (!aTargetActor->SendPRemoteWorkerConstructor(workerActor, aData,
+                                                  std::move(childEp))) {
     AsyncCreationFailed(aController);
     return;
   }
-
-  workerActor->Initialize(aRemoteWorkerAlreadyRegistered);
 
   // This makes the link better the 2 actors.
   aController->SetWorkerActor(workerActor);
@@ -413,7 +365,7 @@ void RemoteWorkerManager::ForEachActor(
 
     if (MatchRemoteType(actor->GetRemoteType(), aRemoteType)) {
       ThreadsafeContentParentHandle* contentHandle =
-          BackgroundParent::GetContentParentHandle(actor->Manager());
+          actor->GetContentParentHandle();
 
       if (!aCallback(actor, contentHandle)) {
         break;
@@ -434,29 +386,23 @@ void RemoteWorkerManager::ForEachActor(
  *   search's starting position randomly.
  *
  * - When Fission is enabled, Shared Workers may have to be spawned into
- * different child process from the one where it has been registered from, and
- * that child process may be going to be marked as dead and shutdown.
+ *   different child process from the one where it has been registered from, and
+ *   that child process may be going to be marked as dead and shutdown.
  *
- * Spawning the workers in a random process makes the process selection criteria
- * a little tricky, as a candidate process may imminently shutdown due to a
- * remove worker actor unregistering
- * (see `ContentParent::UnregisterRemoveWorkerActor`).
- *
- * In `ContentParent::MaybeBeginShutdown` we only dispatch a runnable
- * to call `ContentParent::ShutDownProcess` if there are no registered remote
- * worker actors, and we ensure that the check for the number of registered
- * actors and the dispatching of the runnable are atomic. That happens on the
- * main thread, so here on the background thread,  while
- * `ContentParent::mRemoteWorkerActorData` is locked, if `mCount` > 0, we can
- * register a remote worker actor "early" and guarantee that the corresponding
- * content process will not shutdown.
+ * ContentParent provides a way to add a KeepAlive, which will prevent the
+ * process from being shut down, through a ThreadsafeContentParentHandle in an
+ * atomic way. This call will fail if the process is already being shut down.
+ * When selecting a content process on the PBackground thread, we'll acquire the
+ * KeepAlive in that way.
  */
-RemoteWorkerServiceParent* RemoteWorkerManager::SelectTargetActorInternal(
+RemoteWorkerManager::TargetActorAndKeepAlive
+RemoteWorkerManager::SelectTargetActorInternal(
     const RemoteWorkerData& aData, base::ProcessId aProcessId) const {
   AssertIsOnBackgroundThread();
   MOZ_ASSERT(!mChildActors.IsEmpty());
 
   RemoteWorkerServiceParent* actor = nullptr;
+  UniqueThreadsafeContentParentKeepAlive keepAlive;
 
   const auto& workerRemoteType = aData.remoteType();
 
@@ -471,11 +417,7 @@ RemoteWorkerServiceParent* RemoteWorkerManager::SelectTargetActorInternal(
         // process with a pid equal to aProcessId if any, otherwise it would
         // start from a random actor in the mChildActors array, this guarantees
         // that we will choose that actor if it does also match the remote type.
-        if (aContentHandle->MaybeRegisterRemoteWorkerActor(
-                [&](uint32_t count, bool shutdownStarted) -> bool {
-                  return (count || !shutdownStarted) &&
-                         (aActor->OtherPid() == aProcessId || !actor);
-                })) {
+        if ((keepAlive = aContentHandle->TryAddKeepAlive())) {
           actor = aActor;
           return false;
         }
@@ -484,18 +426,19 @@ RemoteWorkerServiceParent* RemoteWorkerManager::SelectTargetActorInternal(
       },
       workerRemoteType, IsServiceWorker(aData) ? Nothing() : Some(aProcessId));
 
-  return actor;
+  return {actor, std::move(keepAlive)};
 }
 
-RemoteWorkerServiceParent* RemoteWorkerManager::SelectTargetActor(
-    const RemoteWorkerData& aData, base::ProcessId aProcessId) {
+RemoteWorkerManager::TargetActorAndKeepAlive
+RemoteWorkerManager::SelectTargetActor(const RemoteWorkerData& aData,
+                                       base::ProcessId aProcessId) {
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
   // System principal workers should run on the parent process.
   if (aData.principalInfo().type() == PrincipalInfo::TSystemPrincipalInfo) {
     MOZ_ASSERT(mParentActor);
-    return mParentActor;
+    return {mParentActor, nullptr};
   }
 
   // Extension principal workers are allowed to run on the parent process
@@ -505,122 +448,71 @@ RemoteWorkerServiceParent* RemoteWorkerManager::SelectTargetActor(
       !StaticPrefs::extensions_webextensions_remote() &&
       HasExtensionPrincipal(aData)) {
     MOZ_ASSERT(mParentActor);
-    return mParentActor;
+    return {mParentActor, nullptr};
   }
 
   // If e10s is off, use the parent process.
   if (!BrowserTabsRemoteAutostart()) {
     MOZ_ASSERT(mParentActor);
-    return mParentActor;
+    return {mParentActor, nullptr};
   }
 
   // We shouldn't have to worry about content-principal parent-process workers.
   MOZ_ASSERT(aProcessId != base::GetCurrentProcId());
 
   if (mChildActors.IsEmpty()) {
-    return nullptr;
+    return {nullptr, nullptr};
   }
 
   return SelectTargetActorInternal(aData, aProcessId);
 }
 
-void RemoteWorkerManager::LaunchNewContentProcess(
-    const RemoteWorkerData& aData) {
+RefPtr<RemoteWorkerManager::LaunchProcessPromise>
+RemoteWorkerManager::LaunchNewContentProcess(const RemoteWorkerData& aData) {
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
-  nsCOMPtr<nsISerialEventTarget> bgEventTarget = GetCurrentSerialEventTarget();
+  // Request a process making sure to specify aPreferUsed=true.  For a given
+  // remoteType there's a pool size limit.  If we pass aPreferUsed here, then if
+  // there's any process in the pool already, we will use that.  If we pass
+  // false (which is the default if omitted), then this call will spawn a new
+  // process if the pool isn't at its limit yet.
+  //
+  // (Our intent is never to grow the pool size here.  Our logic gets here
+  // because our current logic on PBackground is only aware of
+  // RemoteWorkerServiceParent actors that have registered themselves, which is
+  // fundamentally unaware of processes that will match in the future when they
+  // register.  So we absolutely are fine with and want any existing processes.)
+  return InvokeAsync(GetMainThreadSerialEventTarget(), __func__,
+                     [remoteType = aData.remoteType()]() {
+                       if (AppShutdown::IsInOrBeyond(
+                               ShutdownPhase::AppShutdownConfirmed)) {
+                         return ContentParent::LaunchPromise::CreateAndReject(
+                             NS_ERROR_ILLEGAL_DURING_SHUTDOWN, __func__);
+                       }
 
-  using LaunchPromiseType = ContentParent::LaunchPromise;
-  using CallbackParamType = LaunchPromiseType::ResolveOrRejectValue;
-
-  // A new content process must be requested on the main thread. On success,
-  // the success callback will also run on the main thread. On failure, however,
-  // the failure callback must be run on the background thread - it uses
-  // RemoteWorkerManager, and RemoteWorkerManager isn't threadsafe, so the
-  // promise callback will just dispatch the "real" failure callback to the
-  // background thread.
-  auto processLaunchCallback = [principalInfo = aData.principalInfo(),
-                                bgEventTarget = std::move(bgEventTarget),
-                                self = RefPtr<RemoteWorkerManager>(this)](
-                                   const CallbackParamType& aValue,
-                                   const nsCString& remoteType) mutable {
-    if (aValue.IsResolve()) {
-      LOG(("LaunchNewContentProcess: successfully got child process"));
-
-      // The failure callback won't run, and we're on the main thread, so
-      // we need to properly release the thread-unsafe RemoteWorkerManager.
-      NS_ProxyRelease(__func__, bgEventTarget, self.forget());
-    } else {
-      // The "real" failure callback.
-      nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-          __func__, [self = std::move(self), remoteType] {
-            nsTArray<Pending> uncancelled;
-            auto pendings = std::move(self->mPendings);
-
-            for (const auto& pending : pendings) {
-              const auto& workerRemoteType = pending.mData.remoteType();
-              if (self->MatchRemoteType(remoteType, workerRemoteType)) {
-                LOG(
-                    ("LaunchNewContentProcess: Cancel pending with "
-                     "workerRemoteType=%s",
-                     workerRemoteType.get()));
-                pending.mController->CreationFailed();
-              } else {
-                uncancelled.AppendElement(pending);
-              }
-            }
-
-            std::swap(self->mPendings, uncancelled);
+                       return ContentParent::GetNewOrUsedBrowserProcessAsync(
+                           /* aRemoteType = */ remoteType,
+                           /* aGroup */ nullptr,
+                           hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
+                           /* aPreferUsed */ true);
+                     })
+      ->Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          [](UniqueContentParentKeepAlive&& aContentParent) {
+            RefPtr<RemoteWorkerServiceParent> actor =
+                aContentParent->GetRemoteWorkerServiceParent();
+            MOZ_ASSERT(actor, "RemoteWorkerServiceParent not initialized?");
+            return RemoteWorkerManager::LaunchProcessPromise::CreateAndResolve(
+                TargetActorAndKeepAlive{
+                    actor, UniqueContentParentKeepAliveToThreadsafe(
+                               std::move(aContentParent))},
+                __func__);
+          },
+          [](nsresult aError) {
+            return RemoteWorkerManager::LaunchProcessPromise::CreateAndReject(
+                aError, __func__);
           });
-
-      bgEventTarget->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
-    }
-  };
-
-  LOG(("LaunchNewContentProcess: remoteType=%s", aData.remoteType().get()));
-
-  nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-      __func__, [callback = std::move(processLaunchCallback),
-                 workerRemoteType = aData.remoteType()]() mutable {
-        auto remoteType =
-            workerRemoteType.IsEmpty() ? DEFAULT_REMOTE_TYPE : workerRemoteType;
-
-        RefPtr<LaunchPromiseType> onFinished;
-        if (!AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
-          // Request a process making sure to specify aPreferUsed=true.  For a
-          // given remoteType there's a pool size limit.  If we pass aPreferUsed
-          // here, then if there's any process in the pool already, we will use
-          // that.  If we pass false (which is the default if omitted), then
-          // this call will spawn a new process if the pool isn't at its limit
-          // yet.
-          //
-          // (Our intent is never to grow the pool size here.  Our logic gets
-          // here because our current logic on PBackground is only aware of
-          // RemoteWorkerServiceParent actors that have registered themselves,
-          // which is fundamentally unaware of processes that will match in the
-          // future when they register.  So we absolutely are fine with and want
-          // any existing processes.)
-          onFinished = ContentParent::GetNewOrUsedBrowserProcessAsync(
-              /* aRemoteType = */ remoteType,
-              /* aGroup */ nullptr,
-              hal::ProcessPriority::PROCESS_PRIORITY_FOREGROUND,
-              /* aPreferUsed */ true);
-        } else {
-          // We can find this event still in flight after having been asked to
-          // shutdown. Let's fake a failure to ensure our callback is called
-          // such that we clean up everything properly.
-          onFinished = LaunchPromiseType::CreateAndReject(
-              NS_ERROR_ILLEGAL_DURING_SHUTDOWN, __func__);
-        }
-        onFinished->Then(GetCurrentSerialEventTarget(), __func__,
-                         [callback = std::move(callback),
-                          remoteType](const CallbackParamType& aValue) mutable {
-                           callback(aValue, remoteType);
-                         });
-      });
-
-  SchedulerGroup::Dispatch(r.forget());
 }
 
 }  // namespace dom

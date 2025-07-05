@@ -15,10 +15,11 @@ TODO:
 `;
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 import { kDefaultVertexShaderCode, getShaderWithEntryPoint } from '../../../util/shader.js';
-import { ValidationTest } from '../validation_test.js';
+import * as vtu from '../validation_test_utils.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 const kEntryPointTestCases = [
   { shaderModuleEntryPoint: 'main', stageEntryPoint: 'main' },
@@ -89,7 +90,7 @@ and check that the APIs only accept matching entryPoint.
     if (shaderModuleEntryPoint !== stageEntryPoint && provideEntryPoint) {
       _success = false;
     }
-    t.doCreateComputePipelineTest(isAsync, _success, descriptor);
+    vtu.doCreateComputePipelineTest(t, isAsync, _success, descriptor);
   });
 
 g.test('vertex')
@@ -128,6 +129,7 @@ and check that the APIs only accept matching entryPoint.
         module: t.device.createShaderModule({ code }),
         entryPoint,
       },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'always' },
     };
     let _success = true;
     if (shaderModuleStage !== 'vertex') {
@@ -139,7 +141,7 @@ and check that the APIs only accept matching entryPoint.
     if (shaderModuleEntryPoint !== stageEntryPoint && provideEntryPoint) {
       _success = false;
     }
-    t.doCreateRenderPipelineTest(isAsync, _success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
   });
 
 g.test('fragment')
@@ -197,7 +199,7 @@ and check that the APIs only accept matching entryPoint.
     if (shaderModuleEntryPoint !== stageEntryPoint && provideEntryPoint) {
       _success = false;
     }
-    t.doCreateRenderPipelineTest(isAsync, _success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, _success, descriptor);
   });
 
 g.test('compute_undefined_entry_point_and_extra_stage')
@@ -229,7 +231,7 @@ an undefined entryPoint is valid if there's an extra shader stage.
     };
 
     const success = extraShaderModuleStage !== 'compute';
-    t.doCreateComputePipelineTest(isAsync, success, descriptor);
+    vtu.doCreateComputePipelineTest(t, isAsync, success, descriptor);
   });
 
 g.test('vertex_undefined_entry_point_and_extra_stage')
@@ -258,10 +260,11 @@ an undefined entryPoint is valid if there's an extra shader stage.
         }),
         entryPoint: undefined,
       },
+      depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'always' },
     };
 
     const success = extraShaderModuleStage !== 'vertex';
-    t.doCreateRenderPipelineTest(isAsync, success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, success, descriptor);
   });
 
 g.test('fragment_undefined_entry_point_and_extra_stage')
@@ -299,5 +302,5 @@ an undefined entryPoint is valid if there's an extra shader stage.
     };
 
     const success = extraShaderModuleStage !== 'fragment';
-    t.doCreateRenderPipelineTest(isAsync, success, descriptor);
+    vtu.doCreateRenderPipelineTest(t, isAsync, success, descriptor);
   });

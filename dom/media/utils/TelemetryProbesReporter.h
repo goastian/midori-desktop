@@ -5,12 +5,13 @@
 #ifndef DOM_TelemetryProbesReporter_H_
 #define DOM_TelemetryProbesReporter_H_
 
+#include "AudioChannelService.h"
 #include "MediaCodecsSupport.h"
 #include "MediaInfo.h"
-#include "mozilla/Maybe.h"
 #include "mozilla/AwakeTimeStamp.h"
+#include "mozilla/DefineEnum.h"
 #include "mozilla/EnumSet.h"
-#include "AudioChannelService.h"
+#include "mozilla/Maybe.h"
 #include "nsISupportsImpl.h"
 
 namespace mozilla {
@@ -47,11 +48,9 @@ class TelemetryProbesReporter final {
   explicit TelemetryProbesReporter(TelemetryProbesReporterOwner* aOwner);
   ~TelemetryProbesReporter() = default;
 
-  enum class Visibility {
-    eInitial,
-    eVisible,
-    eInvisible,
-  };
+  MOZ_DEFINE_ENUM_CLASS_WITH_TOSTRING_AT_CLASS_SCOPE(Visibility,
+                                                     (eInitial, eVisible,
+                                                      eInvisible));
 
   static MediaContent MediaInfoToMediaContent(const MediaInfo& aInfo);
 
@@ -69,8 +68,6 @@ class TelemetryProbesReporter final {
   void OnAudibleChanged(AudibleState aAudible);
   void OnMediaContentChanged(MediaContent aContent);
   void OnMutedChanged(bool aMuted);
-  void OnDecodeSuspended();
-  void OnDecodeResumed();
 
   enum class FirstFrameLoadedFlag {
     IsMSE,
@@ -79,18 +76,18 @@ class TelemetryProbesReporter final {
     IsHardwareDecoding,
   };
   using FirstFrameLoadedFlagSet = EnumSet<FirstFrameLoadedFlag, uint8_t>;
-  void OntFirstFrameLoaded(const double aLoadedFirstFrameTime,
-                           const double aLoadedMetadataTime,
-                           const double aTotalWaitingDataTime,
-                           const double aTotalBufferingTime,
-                           const FirstFrameLoadedFlagSet aFlags,
-                           const MediaInfo& aInfo);
+  void OnFirstFrameLoaded(const double aLoadedFirstFrameTime,
+                          const double aLoadedMetadataTime,
+                          const double aTotalWaitingDataTime,
+                          const double aTotalBufferingTime,
+                          const FirstFrameLoadedFlagSet aFlags,
+                          const MediaInfo& aInfo,
+                          const nsCString& aVideoDecoderName);
 
   double GetTotalVideoPlayTimeInSeconds() const;
   double GetTotalVideoHDRPlayTimeInSeconds() const;
   double GetVisibleVideoPlayTimeInSeconds() const;
   double GetInvisibleVideoPlayTimeInSeconds() const;
-  double GetVideoDecodeSuspendedTimeInSeconds() const;
 
   double GetTotalAudioPlayTimeInSeconds() const;
   double GetInaudiblePlayTimeInSeconds() const;
@@ -183,9 +180,6 @@ class TelemetryProbesReporter final {
 
   // Total time an element with an audio track has spent muted
   TimeDurationAccumulator mMutedAudioPlayTime;
-
-  // Total time a VIDEO has spent in video-decode-suspend mode.
-  TimeDurationAccumulator mVideoDecodeSuspendedTime;
 
   Visibility mMediaElementVisibility = Visibility::eInitial;
 

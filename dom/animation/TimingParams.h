@@ -31,10 +31,12 @@ class UnrestrictedDoubleOrKeyframeAnimationOptions;
 struct TimingParams {
   TimingParams() = default;
 
-  TimingParams(float aDuration, float aDelay, float aIterationCount,
+  TimingParams(Maybe<float> aDuration, float aDelay, float aIterationCount,
                dom::PlaybackDirection aDirection, dom::FillMode aFillMode)
       : mIterations(aIterationCount), mDirection(aDirection), mFill(aFillMode) {
-    mDuration.emplace(StickyTimeDuration::FromMilliseconds(aDuration));
+    if (aDuration) {
+      mDuration.emplace(StickyTimeDuration::FromMilliseconds(*aDuration));
+    }
     mDelay = TimeDuration::FromMilliseconds(aDelay);
     Update();
   }
@@ -161,8 +163,7 @@ struct TimingParams {
   StickyTimeDuration CalcBeforeActiveBoundary() const {
     static constexpr StickyTimeDuration zeroDuration;
     // https://drafts.csswg.org/web-animations-1/#before-active-boundary-time
-    return std::max(std::min(StickyTimeDuration(mDelay), mEndTime),
-                    zeroDuration);
+    return std::clamp(StickyTimeDuration(mDelay), zeroDuration, mEndTime);
   }
 
   StickyTimeDuration CalcActiveAfterBoundary() const {

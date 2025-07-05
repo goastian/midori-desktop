@@ -8,8 +8,8 @@
 #include "WindowsLocationProvider.h"
 #include "mozilla/dom/GeolocationPosition.h"
 #include "mozilla/dom/GeolocationPositionErrorBinding.h"
-#include "mozilla/Telemetry.h"
 #include "nsIGeolocationProvider.h"
+#include "prtime.h"
 
 #include <locationapi.h>
 

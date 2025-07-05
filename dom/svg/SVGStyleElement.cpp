@@ -51,7 +51,7 @@ SVGStyleElement::SVGStyleElement(
     : SVGStyleElementBase(std::move(aNodeInfo)) {
   AddMutationObserver(this);
   SetEnabledCallbacks(kCharacterDataChanged | kContentAppended |
-                      kContentInserted | kContentRemoved);
+                      kContentInserted | kContentWillBeRemoved);
 }
 
 //----------------------------------------------------------------------
@@ -122,9 +122,18 @@ void SVGStyleElement::ContentInserted(nsIContent* aChild) {
   ContentChanged(aChild);
 }
 
-void SVGStyleElement::ContentRemoved(nsIContent* aChild,
-                                     nsIContent* aPreviousSibling) {
-  ContentChanged(aChild);
+void SVGStyleElement::ContentWillBeRemoved(nsIContent* aChild,
+                                           const BatchRemovalState* aState) {
+  if (!nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
+    return;
+  }
+  if (aState && !aState->mIsFirst) {
+    return;
+  }
+  // Make sure to run this once the removal has taken place.
+  nsContentUtils::AddScriptRunner(NS_NewRunnableFunction(
+      "SVGStyleElement::ContentWillBeRemoved",
+      [self = RefPtr{this}] { self->UpdateStyleSheetInternal(); }));
 }
 
 void SVGStyleElement::ContentChanged(nsIContent* aContent) {

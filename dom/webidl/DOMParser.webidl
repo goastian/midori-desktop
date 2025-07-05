@@ -23,13 +23,14 @@ interface DOMParser {
   [Throws]
   constructor();
 
-  [NewObject, Throws, UseCounter]
-  Document parseFromString(DOMString str, SupportedType type);
-
-  [NewObject, ChromeOnly, Throws]
-  Document parseFromSafeString(DOMString str, SupportedType type);
+  // For UA Widgets use parseFromSafeString instead.
+  // This avoids Trusted Types in the web content unexpectedly breaking the widget.
+  [NewObject, NeedsSubjectPrincipal=NonSystem, Throws, UseCounter, Func="IsNotUAWidget"]
+  Document parseFromString((TrustedHTML or DOMString) str, SupportedType type);
 
   // Mozilla-specific stuff
+  [NewObject, Throws, Func="IsChromeOrUAWidget"]
+  Document parseFromSafeString(DOMString str, SupportedType type);
   [NewObject, Throws, ChromeOnly]
   Document parseFromBuffer(sequence<octet> buf, SupportedType type);
   [NewObject, Throws, ChromeOnly]

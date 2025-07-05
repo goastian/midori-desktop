@@ -16,6 +16,7 @@
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/ErrorResult.h"
+#include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Result.h"
 #include "mozilla/WeakPtr.h"
@@ -42,7 +43,7 @@ class PromiseInit;
 class PromiseNativeHandler;
 class PromiseDebugging;
 
-class Promise : public SupportsWeakPtr {
+class Promise : public SupportsWeakPtr, public JSHolderBase {
   friend class PromiseTask;
   friend class PromiseWorkerProxy;
   friend class PromiseWorkerProxyRunnable;
@@ -189,6 +190,12 @@ class Promise : public SupportsWeakPtr {
                                             // specializations in the .cpp for
                                             // the T values we support.
 
+  // If the JSContext has a pending exception then this will reject the promise
+  // with that exception and clear it from the JSContext.
+  void MaybeRejectWithExceptionFromContext(JSContext* aCx) {
+    HandleException(aCx);
+  }
+
   // Mark a settled promise as already handled so that rejections will not
   // be reported as unhandled.
   bool SetSettledPromiseIsHandled();
@@ -254,6 +261,15 @@ class Promise : public SupportsWeakPtr {
       ErrorResult& aRv,
       PropagateUserInteraction aPropagateUserInteraction =
           eDontPropagateUserInteraction);
+
+  using SuccessSteps =
+      const std::function<void(const Span<JS::Heap<JS::Value>>&)>&;
+  using FailureSteps = const std::function<void(JS::Handle<JS::Value>)>&;
+  MOZ_CAN_RUN_SCRIPT
+  static void WaitForAll(nsIGlobalObject* aGlobal,
+                         const Span<RefPtr<Promise>>& aPromises,
+                         SuccessSteps aSuccessSteps,
+                         FailureSteps aFailureSteps);
 
   template <typename Callback, typename... Args>
   using IsHandlerCallback =
@@ -403,6 +419,10 @@ class Promise : public SupportsWeakPtr {
   // Pass ePropagateUserInteraction for aPropagateUserInteraction if you want
   // the promise resolve handler to be called as if we were handling user
   // input events in case we are currently handling user input events.
+  // The error code can be:
+  // * NS_ERROR_UNEXPECTED when AutoJSAPI.Init fails
+  // * NS_ERROR_OUT_OF_MEMORY when NewPromiseObject throws OOM
+  // * NS_ERROR_NOT_INITIALIZED when NewPromiseObject fails without OOM
   void CreateWrapper(ErrorResult& aRv,
                      PropagateUserInteraction aPropagateUserInteraction =
                          eDontPropagateUserInteraction);
@@ -413,7 +433,9 @@ class Promise : public SupportsWeakPtr {
 
   template <typename T>
   void MaybeSomething(T&& aArgument, MaybeFunc aFunc) {
-    MOZ_ASSERT(PromiseObj());  // It was preserved!
+    if (NS_WARN_IF(!PromiseObj())) {
+      return;
+    }
 
     AutoAllowLegacyScriptExecution exemption;
     AutoEntryScript aes(mGlobal, "Promise resolution or rejection");

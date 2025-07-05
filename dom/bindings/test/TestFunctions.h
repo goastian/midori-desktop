@@ -9,6 +9,7 @@
 
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/BufferSourceBindingFwd.h"
 #include "mozilla/dom/NonRefcountedDOMObject.h"
 #include "mozilla/dom/TestFunctionsBinding.h"
 #include "nsString.h"
@@ -16,6 +17,7 @@
 namespace mozilla {
 namespace dom {
 
+class MaybeSharedInt8ArrayOrMaybeSharedInt16Array;
 class Promise;
 class PromiseReturner;
 class WrapperCachedNonISupportsTestInterface;
@@ -105,10 +107,12 @@ class TestFunctions : public NonRefcountedDOMObject {
   void TestAllowShared(const ArrayBufferView& aBuffer);
   void TestAllowShared(const ArrayBuffer& aBuffer);
   void TestDictWithAllowShared(const DictWithAllowSharedBufferSource& aDict);
-  void TestUnionOfBuffferSource(
+  void TestUnionOfBufferSource(
       const ArrayBufferOrArrayBufferViewOrString& aUnion);
-  void TestUnionOfAllowSharedBuffferSource(
-      const MaybeSharedArrayBufferOrMaybeSharedArrayBufferView& aUnion);
+  void TestUnionOfAllowSharedBufferSource(
+      const AllowSharedBufferSource& aUnion);
+  void TestUnionWithAllowShared(
+      const MaybeSharedInt8ArrayOrMaybeSharedInt16Array& aUnion);
 
   bool StaticAndNonStaticOverload() { return false; }
   static bool StaticAndNonStaticOverload(GlobalObject& aGlobal,

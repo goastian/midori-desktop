@@ -27,6 +27,10 @@ const kSizeTests = {
     src: `@size(z)`,
     pass: true,
   },
+  const_expr: {
+    src: `@size(z + 4)`,
+    pass: true,
+  },
   trailing_comma: {
     src: `@size(4,)`,
     pass: true,
@@ -92,7 +96,11 @@ const kSizeTests = {
     src: `@size(4f)`,
     pass: false,
   },
-  duplicate: {
+  duplicate1: {
+    src: `@size(4) @size(4)`,
+    pass: false,
+  },
+  duplicate2: {
     src: `@size(4) @size(8)`,
     pass: false,
   },
@@ -126,9 +134,6 @@ var<storage> a: S;
 g.test('size_fp16')
   .desc(`Test validation of size with fp16`)
   .params(u => u.combine('ext', ['', 'h']))
-  .beforeAllSubcases(t => {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  })
   .fn(t => {
     const code = `
 struct S {

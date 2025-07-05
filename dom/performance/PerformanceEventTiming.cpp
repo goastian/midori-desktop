@@ -6,11 +6,15 @@
 
 #include "PerformanceEventTiming.h"
 #include "PerformanceMainThread.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/PerformanceEventTimingBinding.h"
+#include "PerformanceInteractionMetrics.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/Event.h"
+#include "mozilla/MouseEvents.h"
+#include "mozilla/TextEvents.h"
 #include "nsContentUtils.h"
 #include "nsIDocShell.h"
 #include <algorithm>
@@ -53,6 +57,7 @@ PerformanceEventTiming::PerformanceEventTiming(
       mStartTime(aEventTimingEntry.mStartTime),
       mDuration(aEventTimingEntry.mDuration),
       mCancelable(aEventTimingEntry.mCancelable),
+      mInteractionId(aEventTimingEntry.mInteractionId),
       mMessage(aEventTimingEntry.mMessage) {}
 
 JSObject* PerformanceEventTiming::WrapObject(
@@ -74,8 +79,6 @@ PerformanceEventTiming::TryGenerateEventTiming(const EventTarget* aTarget,
   }
 
   switch (aEvent->mMessage) {
-    case eMouseAuxClick:
-    case eMouseClick:
     case eContextMenu:
     case eMouseDoubleClick:
     case eMouseDown:
@@ -84,6 +87,8 @@ PerformanceEventTiming::TryGenerateEventTiming(const EventTarget* aTarget,
     case eMouseOut:
     case eMouseOver:
     case eMouseUp:
+    case ePointerAuxClick:
+    case ePointerClick:
     case ePointerOver:
     case ePointerEnter:
     case ePointerDown:
@@ -125,12 +130,12 @@ PerformanceEventTiming::TryGenerateEventTiming(const EventTarget* aTarget,
     const char16_t* eventName = Event::GetEventName(aEvent->mMessage);
     MOZ_ASSERT(eventName,
                "User defined events shouldn't be considered as event timing");
-    return RefPtr<PerformanceEventTiming>(
-               new PerformanceEventTiming(
-                   performance, nsDependentString(eventName),
-                   aEvent->mTimeStamp, aEvent->mFlags.mCancelable,
-                   aEvent->mMessage))
-        .forget();
+    auto eventTiming =
+        RefPtr<PerformanceEventTiming>(new PerformanceEventTiming(
+            performance, nsDependentString(eventName), aEvent->mTimeStamp,
+            aEvent->mFlags.mCancelable, aEvent->mMessage));
+    performance->SetInteractionId(eventTiming, aEvent);
+    return eventTiming.forget();
   }
   return nullptr;
 }
@@ -183,19 +188,21 @@ nsINode* PerformanceEventTiming::GetTarget() const {
                                                mPerformance->GetParentObject());
 }
 
-void PerformanceEventTiming::FinalizeEventTiming(EventTarget* aTarget) {
-  if (!aTarget) {
+void PerformanceEventTiming::FinalizeEventTiming(const WidgetEvent* aEvent) {
+  MOZ_ASSERT(aEvent);
+  EventTarget* target = aEvent->mTarget;
+  if (!target) {
     return;
   }
   nsCOMPtr<nsPIDOMWindowInner> global =
-      do_QueryInterface(aTarget->GetOwnerGlobal());
+      do_QueryInterface(target->GetOwnerGlobal());
   if (!global) {
     return;
   }
 
   mProcessingEnd = mPerformance->NowUnclamped();
 
-  Element* element = Element::FromEventTarget(aTarget);
+  Element* element = Element::FromEventTarget(target);
   if (!element || element->ChromeOnlyAccess()) {
     return;
   }

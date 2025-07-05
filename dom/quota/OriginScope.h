@@ -12,6 +12,7 @@
 #include "mozilla/OriginAttributes.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Variant.h"
+#include "mozilla/dom/quota/CommonMetadata.h"
 #include "nsStringFlags.h"
 #include "nsStringFwd.h"
 
@@ -19,29 +20,30 @@ namespace mozilla::dom::quota {
 
 class OriginScope {
   class Origin {
-    nsCString mOrigin;
+    const PrincipalMetadata mPrincipalMetadata;
     nsCString mOriginNoSuffix;
     UniquePtr<OriginAttributes> mAttributes;
 
    public:
-    explicit Origin(const nsACString& aOrigin) : mOrigin(aOrigin) {
+    explicit Origin(const PrincipalMetadata& aPrincipalMetadata)
+        : mPrincipalMetadata(aPrincipalMetadata) {
       InitMembers();
     }
 
     Origin(const Origin& aOther)
-        : mOrigin(aOther.mOrigin),
+        : mPrincipalMetadata(aOther.mPrincipalMetadata),
           mOriginNoSuffix(aOther.mOriginNoSuffix),
           mAttributes(MakeUnique<OriginAttributes>(*aOther.mAttributes)) {}
 
     Origin(Origin&& aOther) = default;
 
-    const nsACString& GetOrigin() const { return mOrigin; }
-
-    void SetOrigin(const nsACString& aOrigin) {
-      mOrigin = aOrigin;
-
-      InitMembers();
+    const PrincipalMetadata& GetPrincipalMetadata() const {
+      return mPrincipalMetadata;
     }
+
+    const nsACString& GetGroup() const { return mPrincipalMetadata.mGroup; }
+
+    const nsACString& GetOrigin() const { return mPrincipalMetadata.mOrigin; }
 
     const nsACString& GetOriginNoSuffix() const { return mOriginNoSuffix; }
 
@@ -55,22 +57,56 @@ class OriginScope {
     void InitMembers() {
       mAttributes = MakeUnique<OriginAttributes>();
 
-      MOZ_ALWAYS_TRUE(
-          mAttributes->PopulateFromOrigin(mOrigin, mOriginNoSuffix));
+      MOZ_ALWAYS_TRUE(mAttributes->PopulateFromOrigin(
+          mPrincipalMetadata.mOrigin, mOriginNoSuffix));
     }
   };
 
   class Prefix {
+    const PrincipalMetadata mPrincipalMetadata;
+    nsCString mGroupNoSuffix;
     nsCString mOriginNoSuffix;
 
    public:
-    explicit Prefix(const nsACString& aOriginNoSuffix)
-        : mOriginNoSuffix(aOriginNoSuffix) {}
+    explicit Prefix(const PrincipalMetadata& aPrincipalMetadata)
+        : mGroupNoSuffix(aPrincipalMetadata.mGroup),
+          mOriginNoSuffix(aPrincipalMetadata.mOrigin) {}
+
+    const nsACString& GetGroupNoSuffix() const { return mGroupNoSuffix; }
 
     const nsCString& GetOriginNoSuffix() const { return mOriginNoSuffix; }
+  };
 
-    void SetOriginNoSuffix(const nsACString& aOriginNoSuffix) {
-      mOriginNoSuffix = aOriginNoSuffix;
+  class Group {
+    nsCString mGroup;
+    nsCString mGroupNoSuffix;
+    UniquePtr<OriginAttributes> mAttributes;
+
+   public:
+    explicit Group(const nsACString& aGroup) : mGroup(aGroup) { InitMembers(); }
+
+    Group(const Group& aOther)
+        : mGroup(aOther.mGroup),
+          mGroupNoSuffix(aOther.mGroupNoSuffix),
+          mAttributes(MakeUnique<OriginAttributes>(*aOther.mAttributes)) {}
+
+    Group(Group&& aOther) = default;
+
+    const nsACString& GetGroup() const { return mGroup; }
+
+    const nsACString& GetGroupNoSuffix() const { return mGroupNoSuffix; }
+
+    const OriginAttributes& GetAttributes() const {
+      MOZ_ASSERT(mAttributes);
+
+      return *mAttributes;
+    }
+
+   private:
+    void InitMembers() {
+      mAttributes = MakeUnique<OriginAttributes>();
+
+      MOZ_ALWAYS_TRUE(mAttributes->PopulateFromOrigin(mGroup, mGroupNoSuffix));
     }
   };
 
@@ -97,10 +133,6 @@ class OriginScope {
       return *mPattern;
     }
 
-    void SetPattern(const OriginAttributesPattern& aPattern) {
-      mPattern = MakeUnique<OriginAttributesPattern>(aPattern);
-    }
-
     nsString GetJSONPattern() const {
       MOZ_ASSERT(mPattern);
 
@@ -113,19 +145,24 @@ class OriginScope {
 
   struct Null {};
 
-  using DataType = Variant<Origin, Prefix, Pattern, Null>;
+  using DataType = Variant<Origin, Prefix, Group, Pattern, Null>;
 
   DataType mData;
 
  public:
   OriginScope() : mData(Null()) {}
 
-  static OriginScope FromOrigin(const nsACString& aOrigin) {
-    return OriginScope(std::move(Origin(aOrigin)));
+  // XXX Consider renaming these static methods to Create
+  static OriginScope FromOrigin(const PrincipalMetadata& aPrincipalMetadata) {
+    return OriginScope(std::move(Origin(aPrincipalMetadata)));
   }
 
-  static OriginScope FromPrefix(const nsACString& aPrefix) {
-    return OriginScope(std::move(Prefix(aPrefix)));
+  static OriginScope FromPrefix(const PrincipalMetadata& aPrincipalMetadata) {
+    return OriginScope(std::move(Prefix(aPrincipalMetadata)));
+  }
+
+  static OriginScope FromGroup(const nsACString& aGroup) {
+    return OriginScope(std::move(Group(aGroup)));
   }
 
   static OriginScope FromPattern(const OriginAttributesPattern& aPattern) {
@@ -146,12 +183,12 @@ class OriginScope {
 
   bool IsNull() const { return mData.is<Null>(); }
 
-  void SetFromOrigin(const nsACString& aOrigin) {
-    mData = AsVariant(Origin(aOrigin));
+  void SetFromOrigin(const PrincipalMetadata& aPrincipalMetadata) {
+    mData = AsVariant(Origin(aPrincipalMetadata));
   }
 
-  void SetFromPrefix(const nsACString& aPrefix) {
-    mData = AsVariant(Prefix(aPrefix));
+  void SetFromPrefix(const PrincipalMetadata& aPrincipalMetadata) {
+    mData = AsVariant(Prefix(aPrincipalMetadata));
   }
 
   void SetFromPattern(const OriginAttributesPattern& aPattern) {
@@ -164,16 +201,16 @@ class OriginScope {
 
   void SetFromNull() { mData = AsVariant(Null()); }
 
+  const PrincipalMetadata& GetPrincipalMetadata() const {
+    MOZ_ASSERT(IsOrigin());
+
+    return mData.as<Origin>().GetPrincipalMetadata();
+  }
+
   const nsACString& GetOrigin() const {
     MOZ_ASSERT(IsOrigin());
 
     return mData.as<Origin>().GetOrigin();
-  }
-
-  void SetOrigin(const nsACString& aOrigin) {
-    MOZ_ASSERT(IsOrigin());
-
-    mData.as<Origin>().SetOrigin(aOrigin);
   }
 
   const nsACString& GetOriginNoSuffix() const {
@@ -183,12 +220,6 @@ class OriginScope {
       return mData.as<Origin>().GetOriginNoSuffix();
     }
     return mData.as<Prefix>().GetOriginNoSuffix();
-  }
-
-  void SetOriginNoSuffix(const nsACString& aOriginNoSuffix) {
-    MOZ_ASSERT(IsPrefix());
-
-    mData.as<Prefix>().SetOriginNoSuffix(aOriginNoSuffix);
   }
 
   const OriginAttributesPattern& GetPattern() const {
@@ -203,12 +234,6 @@ class OriginScope {
     return mData.as<Pattern>().GetJSONPattern();
   }
 
-  void SetPattern(const OriginAttributesPattern& aPattern) {
-    MOZ_ASSERT(IsPattern());
-
-    mData.as<Pattern>().SetPattern(aPattern);
-  }
-
   bool Matches(const OriginScope& aOther) const {
     struct Matcher {
       const OriginScope& mThis;
@@ -221,6 +246,10 @@ class OriginScope {
 
       bool operator()(const Prefix& aOther) {
         return mThis.MatchesPrefix(aOther);
+      }
+
+      bool operator()(const Group& aOther) {
+        return mThis.MatchesGroup(aOther);
       }
 
       bool operator()(const Pattern& aOther) {
@@ -241,6 +270,8 @@ class OriginScope {
 
   explicit OriginScope(const Prefix&& aPrefix) : mData(aPrefix) {}
 
+  explicit OriginScope(const Group&& aGroup) : mData(aGroup) {}
+
   explicit OriginScope(const Pattern&& aPattern) : mData(aPattern) {}
 
   explicit OriginScope(const Null&& aNull) : mData(aNull) {}
@@ -260,6 +291,10 @@ class OriginScope {
 
       bool operator()(const Prefix& aThis) {
         return aThis.GetOriginNoSuffix().Equals(mOther.GetOriginNoSuffix());
+      }
+
+      bool operator()(const Group& aThis) {
+        return aThis.GetGroup().Equals(mOther.GetGroup());
       }
 
       bool operator()(const Pattern& aThis) {
@@ -289,6 +324,10 @@ class OriginScope {
         return aThis.GetOriginNoSuffix().Equals(mOther.GetOriginNoSuffix());
       }
 
+      bool operator()(const Group& aThis) {
+        return aThis.GetGroupNoSuffix().Equals(mOther.GetGroupNoSuffix());
+      }
+
       bool operator()(const Pattern& aThis) {
         // The match will be always true here because any origin attributes
         // pattern overlaps any origin prefix (an origin prefix targets all
@@ -303,6 +342,37 @@ class OriginScope {
     };
 
     return mData.match(PrefixMatcher(aOther));
+  }
+
+  bool MatchesGroup(const Group& aOther) const {
+    struct GroupMatcher {
+      const Group& mOther;
+
+      explicit GroupMatcher(const Group& aOther) : mOther(aOther) {}
+
+      bool operator()(const Origin& aThis) {
+        return aThis.GetGroup().Equals(mOther.GetGroup());
+      }
+
+      bool operator()(const Prefix& aThis) {
+        return aThis.GetGroupNoSuffix().Equals(mOther.GetGroupNoSuffix());
+      }
+
+      bool operator()(const Group& aThis) {
+        return aThis.GetGroup().Equals(mOther.GetGroup());
+      }
+
+      bool operator()(const Pattern& aThis) {
+        return aThis.GetPattern().Matches(mOther.GetAttributes());
+      }
+
+      bool operator()(const Null& aThis) {
+        // Null covers everything.
+        return true;
+      }
+    };
+
+    return mData.match(GroupMatcher(aOther));
   }
 
   bool MatchesPattern(const Pattern& aOther) const {
@@ -320,6 +390,10 @@ class OriginScope {
         // pattern overlaps any origin prefix (an origin prefix targets all
         // origin attributes).
         return true;
+      }
+
+      bool operator()(const Group& aThis) {
+        return mOther.GetPattern().Matches(aThis.GetAttributes());
       }
 
       bool operator()(const Pattern& aThis) {

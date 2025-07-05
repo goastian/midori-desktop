@@ -17,7 +17,7 @@ using mozilla::dom::GPUCommandBufferDescriptor from "mozilla/dom/WebGPUBinding.h
 using mozilla::dom::GPUBufferDescriptor from "mozilla/dom/WebGPUBinding.h";
 using mozilla::webgpu::PopErrorScopeResult from "mozilla/webgpu/WebGPUTypes.h";
 using mozilla::webgpu::WebGPUCompilationMessage from "mozilla/webgpu/WebGPUTypes.h";
-[MoveOnly] using class mozilla::ipc::UnsafeSharedMemoryHandle from "mozilla/ipc/RawShmem.h";
+[MoveOnly] using mozilla::ipc::MutableSharedMemoryHandle from "mozilla/ipc/SharedMemoryHandle.h";
 using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
 
 include "mozilla/ipc/ByteBufUtils.h";
@@ -48,10 +48,15 @@ parent:
   async ComputePass(RawId selfId, RawId aDeviceId, ByteBuf buf);
   async BumpImplicitBindGroupLayout(RawId pipelineId, bool isCompute, uint32_t index, RawId assignId);
 
-  async DeviceCreateBuffer(RawId deviceId, RawId bufferId, GPUBufferDescriptor desc, UnsafeSharedMemoryHandle shm);
+  async DeviceCreateBuffer(RawId deviceId, RawId bufferId, GPUBufferDescriptor desc, MutableSharedMemoryHandle shm);
 
-  async InstanceRequestAdapter(GPURequestAdapterOptions options, RawId[] ids) returns (ByteBuf byteBuf);
-  async AdapterRequestDevice(RawId selfId, ByteBuf buf, RawId newId) returns (bool success);
+  async InstanceRequestAdapter(GPURequestAdapterOptions options, RawId aAdapterId) returns (ByteBuf byteBuf);
+  async AdapterRequestDevice(
+      RawId adapterId,
+      ByteBuf descriptorBuf,
+      RawId newDeviceId,
+      RawId newQueueId
+  ) returns (bool success);
   async AdapterDrop(RawId selfId);
   // TODO: We want to return an array of compilation messages.
   async DeviceCreateShaderModule(RawId selfId, RawId bufferId, nsString label, nsCString code) returns (WebGPUCompilationMessage[] messages);
@@ -63,6 +68,7 @@ parent:
   async TextureDrop(RawId selfId);
   async TextureViewDrop(RawId selfId);
   async SamplerDrop(RawId selfId);
+  async QuerySetDrop(RawId selfId);
   async DeviceDestroy(RawId selfId);
   async DeviceDrop(RawId selfId);
 
@@ -71,7 +77,8 @@ parent:
   async RenderBundleDrop(RawId selfId);
   async QueueSubmit(RawId selfId, RawId aDeviceId, RawId[] commandBuffers, RawId[] textureIds);
   async QueueOnSubmittedWorkDone(RawId selfId) returns (void_t ok);
-  async QueueWriteAction(RawId selfId, RawId aDeviceId, ByteBuf buf, UnsafeSharedMemoryHandle shmem);
+  // In the case of a zero-sized write action, `shmem` will be an invalid handle.
+  async QueueWriteAction(RawId selfId, RawId aDeviceId, ByteBuf buf, MutableSharedMemoryHandle shmem);
 
   async BindGroupLayoutDrop(RawId selfId);
   async PipelineLayoutDrop(RawId selfId);

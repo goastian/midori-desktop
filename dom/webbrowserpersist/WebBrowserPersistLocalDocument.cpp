@@ -715,7 +715,7 @@ nsresult PersistNodeFixup::FixupAttribute(nsINode* aNode,
     attr->GetValue(uri);
     rv = FixupURI(uri);
     if (NS_SUCCEEDED(rv)) {
-      attr->SetValue(uri, IgnoreErrors());
+      attr->SetValueInternal(uri, IgnoreErrors());
     }
   }
 
@@ -766,7 +766,7 @@ nsresult PersistNodeFixup::FixupAnchor(nsINode* aNode) {
       nsAutoCString uriSpec;
       rv = newURI->GetSpec(uriSpec);
       NS_ENSURE_SUCCESS(rv, rv);
-      attr->SetValue(NS_ConvertUTF8toUTF16(uriSpec), IgnoreErrors());
+      attr->SetValueInternal(NS_ConvertUTF8toUTF16(uriSpec), IgnoreErrors());
     }
   }
 
@@ -1093,8 +1093,7 @@ PersistNodeFixup::FixupNode(nsINode* aNodeIn, bool* aSerializeCloneKids,
       // Update element node attributes with user-entered form state
       RefPtr<dom::HTMLInputElement> outElt =
           dom::HTMLInputElement::FromNode((*aNodeOut)->AsContent());
-      nsCOMPtr<nsIFormControl> formControl = do_QueryInterface(*aNodeOut);
-      switch (formControl->ControlType()) {
+      switch (nsIFormControl::FromNode(*aNodeOut)->ControlType()) {
         case FormControlType::InputEmail:
         case FormControlType::InputSearch:
         case FormControlType::InputText:

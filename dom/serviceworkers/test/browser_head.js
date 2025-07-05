@@ -84,8 +84,9 @@ async function clear_qm_origin_group_via_clearData(origin) {
 
   // Initiate group clearing and wait for it.
   await new Promise((resolve, reject) => {
-    Services.clearData.deleteDataFromBaseDomain(
+    Services.clearData.deleteDataFromSite(
       baseDomain,
+      {},
       false,
       Services.clearData.CLEAR_DOM_QUOTA,
       failedFlags => {
@@ -114,11 +115,14 @@ function swm_lookup_reg(swDesc) {
 
 /**
  * Install a ServiceWorker according to the provided descriptor by opening a
- * fresh tab that will be closed when we are done.  Returns the
- * `nsIServiceWorkerRegistrationInfo` corresponding to the registration.
+ * fresh tab that waits for the installed worker to be active and then closes
+ * the tab.  Returns the`nsIServiceWorkerRegistrationInfo` corresponding to the
+ * registration.
  *
  * The descriptor may have the following properties:
- * - scope: Optional.
+ * - scope: Optional.  This is usually a relative path for tests and because
+ *   there are (security) checks if the scope is more generic than the page
+ *   URL, you almost never would want to specify an absolute scope here.
  * - script: The script, which usually just wants to be a relative path.
  * - origin: Requred, the origin (which should not include a trailing slash).
  */
@@ -149,6 +153,79 @@ async function install_sw(swDesc) {
   info(`ServiceWorker installed`);
 
   return swm_lookup_reg(swDesc);
+}
+
+async function createMessagingHelperTab(origin, channelName) {
+  const pageUrlStr = `${origin}/${DIR_PATH}/empty_with_utils.html`;
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, pageUrlStr);
+
+  // For hygiene reasons we make sure the helper establishes its message channel
+  // in a task distinct from any of the tasks that will initiate events.
+  await SpecialPowers.spawn(tab.linkedBrowser, [channelName], channelName => {
+    content.wrappedJSObject.setupMessagingChannel(channelName);
+  });
+
+  return {
+    async postMessageScopeAndWaitFor(scope, messageToSend, messageToWaitFor) {
+      info(
+        `Sending message to SW scope ${scope} via helper page: ${messageToSend}`
+      );
+      info(`Waiting for message via helper page: ${messageToWaitFor}`);
+      await SpecialPowers.spawn(
+        tab.linkedBrowser,
+        [channelName, scope, messageToSend, messageToWaitFor],
+        async (channelName, scope, messageToSend, messageToWaitFor) => {
+          await content.wrappedJSObject.postMessageScopeAndWaitFor(
+            channelName,
+            scope,
+            messageToSend,
+            messageToWaitFor
+          );
+        }
+      );
+      ok(true, "Expected message received");
+    },
+
+    async broadcastAndWaitFor(messageToBroadcast, messageToWaitFor) {
+      info(`Sending messageToBroadcast via helper page: ${messageToBroadcast}`);
+      info(`Waiting for message via helper page: ${messageToWaitFor}`);
+      await SpecialPowers.spawn(
+        tab.linkedBrowser,
+        [channelName, messageToBroadcast, messageToWaitFor],
+        async (channelName, messageToBroadcast, messageToWaitFor) => {
+          await content.wrappedJSObject.broadcastAndWaitFor(
+            channelName,
+            messageToBroadcast,
+            messageToWaitFor
+          );
+        }
+      );
+      ok(true, "Expected message received");
+    },
+
+    async updateScopeAndWaitFor(scope, messageToWaitFor) {
+      info(`Updating scope ${scope} via helper page`);
+      info(`Waiting for message via helper page: ${messageToWaitFor}`);
+      await SpecialPowers.spawn(
+        tab.linkedBrowser,
+        [channelName, scope, messageToWaitFor],
+        async (channelName, scope, messageToWaitFor) => {
+          await content.wrappedJSObject.updateScopeAndWaitFor(
+            channelName,
+            scope,
+            messageToWaitFor
+          );
+        }
+      );
+      ok(true, "Expected message received");
+    },
+
+    async closeHelperTab() {
+      await BrowserTestUtils.removeTab(tab);
+      tab = null;
+    },
+  };
 }
 
 /**

@@ -13,7 +13,7 @@ interface HTMLScriptElement : HTMLElement {
   [HTMLConstructor] constructor();
 
   [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, SetterThrows]
-  attribute DOMString src;
+  attribute (TrustedScriptURL or DOMString) src;
   [CEReactions, SetterThrows]
   attribute DOMString type;
   [CEReactions, SetterThrows]
@@ -28,8 +28,8 @@ interface HTMLScriptElement : HTMLElement {
   attribute DOMString? crossOrigin;
   [CEReactions, SetterThrows]
   attribute DOMString referrerPolicy;
-  [CEReactions, Throws]
-  attribute DOMString text;
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Throws]
+  attribute (TrustedScript or DOMString) text;
   [Pref="dom.element.blocking.enabled", SameObject, PutForwards=value]
   readonly attribute DOMTokenList blocking;
   [Pref="network.fetchpriority.enabled", CEReactions]
@@ -50,4 +50,11 @@ partial interface HTMLScriptElement {
 partial interface HTMLScriptElement {
   [CEReactions, SetterThrows]
   attribute DOMString integrity;
+};
+
+// https://w3c.github.io/trusted-types/dist/spec/#enforcement-in-scripts
+partial interface HTMLScriptElement {
+  [CEReactions, SetterNeedsSubjectPrincipal=NonSystem, Throws] attribute (TrustedScript or [LegacyNullToEmptyString] DOMString) innerText;
+  [CEReactions, SetterThrows, GetterCanOOM,
+   SetterNeedsSubjectPrincipal=NonSystem, BinaryName="trustedScriptOrStringTextContent"] attribute (TrustedScript or DOMString)? textContent;
 };

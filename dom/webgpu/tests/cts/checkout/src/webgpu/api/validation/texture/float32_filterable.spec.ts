@@ -4,9 +4,9 @@ Tests for capabilities added by float32-filterable flag.
 
 import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { kTextureSampleTypes } from '../../../capability_info.js';
-import { ValidationTest } from '../validation_test.js';
+import { UniqueFeaturesOrLimitsGPUTest } from '../../../gpu_test.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(UniqueFeaturesOrLimitsGPUTest);
 
 const kFloat32Formats: GPUTextureFormat[] = ['r32float', 'rg32float', 'rgba32float'];
 
@@ -51,7 +51,7 @@ float32-filterable is enabled.
     );
     t.expectValidationError(() => {
       t.device.createBindGroup({
-        entries: [{ binding: 0, resource: t.device.createTexture(textureDesc).createView() }],
+        entries: [{ binding: 0, resource: t.createTextureTracked(textureDesc).createView() }],
         layout,
       });
     }, shouldError);

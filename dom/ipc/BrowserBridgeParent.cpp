@@ -71,6 +71,9 @@ nsresult BrowserBridgeParent::InitWithProcess(
   browsingContext->Group()->EnsureHostProcess(aContentParent);
   browsingContext->SetOwnerProcessId(aContentParent->ChildID());
 
+  browsingContext->Group()->NotifyFocusedOrActiveBrowsingContextToProcess(
+      aContentParent);
+
   // Construct the BrowserParent object for our subframe.
   auto browserParent = MakeRefPtr<BrowserParent>(
       aContentParent, aTabId, *aParentBrowser, browsingContext, aChromeFlags);
@@ -177,7 +180,7 @@ IPCResult BrowserBridgeParent::RecvResumeLoad(uint64_t aPendingSwitchID) {
 }
 
 IPCResult BrowserBridgeParent::RecvUpdateDimensions(
-    const nsIntRect& aRect, const ScreenIntSize& aSize) {
+    const LayoutDeviceIntRect& aRect, const LayoutDeviceIntSize& aSize) {
   mBrowserParent->UpdateDimensions(aRect, aSize);
   return IPC_OK();
 }

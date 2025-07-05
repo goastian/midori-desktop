@@ -15,6 +15,8 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/NamedNodeMapBinding.h"
 #include "mozilla/dom/NodeInfoInlines.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
 #include "nsAttrName.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -174,8 +176,8 @@ Attr* nsDOMAttributeMap::GetNamedItem(const nsAString& aAttrName) {
   return NamedGetter(aAttrName, dummy);
 }
 
-already_AddRefed<Attr> nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr,
-                                                         ErrorResult& aError) {
+already_AddRefed<Attr> nsDOMAttributeMap::SetNamedItemNS(
+    Attr& aAttr, nsIPrincipal* aSubjectPrincipal, ErrorResult& aError) {
   NS_ENSURE_TRUE(mContent, nullptr);
 
   // XXX should check same-origin between mContent and aAttr however
@@ -193,6 +195,28 @@ already_AddRefed<Attr> nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr,
     // node.
     RefPtr<Attr> attribute = &aAttr;
     return attribute.forget();
+  }
+
+  nsAutoString value;
+  aAttr.GetValue(value);
+
+  RefPtr<NodeInfo> ni = aAttr.NodeInfo();
+
+  Maybe<nsAutoString> compliantStringHolder;
+  RefPtr<nsAtom> nameAtom = ni->NameAtom();
+  nsCOMPtr<Element> element = mContent;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantAttributeValue(
+          *element, nameAtom, ni->NamespaceID(), value, aSubjectPrincipal,
+          compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return nullptr;
+  }
+  // After the GetTrustedTypesCompliantAttributeValue() call, the attribute may
+  // have been attached to another element.
+  if (aAttr.GetMap() && aAttr.GetMap() != this) {
+    aError.Throw(NS_ERROR_DOM_INUSE_ATTRIBUTE_ERR);
+    return nullptr;
   }
 
   nsresult rv;
@@ -243,11 +267,6 @@ already_AddRefed<Attr> nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr,
     }
   }
 
-  nsAutoString value;
-  aAttr.GetValue(value);
-
-  RefPtr<NodeInfo> ni = aAttr.NodeInfo();
-
   // Add the new attribute to the attribute map before updating
   // its value in the element. @see bug 364413.
   nsAttrKey attrkey(ni->NamespaceID(), ni->NameAtom());
@@ -255,7 +274,7 @@ already_AddRefed<Attr> nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr,
   aAttr.SetMap(this);
 
   rv = mContent->SetAttr(ni->NamespaceID(), ni->NameAtom(), ni->GetPrefixAtom(),
-                         value, true);
+                         *compliantString, true);
   if (NS_FAILED(rv)) {
     DropAttribute(ni->NamespaceID(), ni->NameAtom());
     aError.Throw(rv);
@@ -295,8 +314,10 @@ Attr* nsDOMAttributeMap::IndexedGetter(uint32_t aIndex, bool& aFound) {
   aFound = false;
   NS_ENSURE_TRUE(mContent, nullptr);
 
-  const nsAttrName* name = mContent->GetAttrNameAt(aIndex);
-  NS_ENSURE_TRUE(name, nullptr);
+  const nsAttrName* name;
+  if (!mContent->GetAttrNameAt(aIndex, &name)) {
+    return nullptr;
+  }
 
   aFound = true;
   // Don't use the nodeinfo even if one exists since it can have the wrong

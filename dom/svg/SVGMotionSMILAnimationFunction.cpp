@@ -16,7 +16,6 @@
 #include "SVGAnimatedOrient.h"
 #include "SVGMotionSMILPathUtils.h"
 #include "SVGMotionSMILType.h"
-#include "SVGPathDataParser.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::dom::SVGAngle_Binding;
@@ -209,13 +208,21 @@ void SVGMotionSMILAnimationFunction::RebuildPathAndVerticesFromMpathElem(
   mPathSourceType = ePathSourceType_Mpath;
 
   // Use the shape that's the target of our chosen <mpath> child.
-  SVGGeometryElement* shapeElem = aMpathElem->GetReferencedPath();
-  if (shapeElem && shapeElem->HasValidDimensions()) {
-    bool ok = shapeElem->GetDistancesFromOriginToEndsOfVisibleSegments(
-        &mPathVertices);
-    if (ok && mPathVertices.Length()) {
-      mPath = shapeElem->GetOrBuildPathForMeasuring();
-    }
+  SVGGeometryElement* shape = aMpathElem->GetReferencedPath();
+  if (!shape || !shape->HasValidDimensions()) {
+    return;
+  }
+  if (!shape->GetDistancesFromOriginToEndsOfVisibleSegments(&mPathVertices)) {
+    mPathVertices.Clear();
+    return;
+  }
+  if (mPathVertices.IsEmpty()) {
+    return;
+  }
+  mPath = shape->GetOrBuildPathForMeasuring();
+  if (!mPath) {
+    mPathVertices.Clear();
+    return;
   }
 }
 
@@ -224,21 +231,17 @@ void SVGMotionSMILAnimationFunction::RebuildPathAndVerticesFromPathAttr() {
   mPathSourceType = ePathSourceType_PathAttr;
 
   // Generate Path from |path| attr
-  SVGPathData path;
-  SVGPathDataParser pathParser(pathSpec, &path);
+  SVGPathData path{NS_ConvertUTF16toUTF8(pathSpec)};
 
-  // We ignore any failure returned from Parse() since the SVG spec says to
-  // accept all segments up to the first invalid token. Instead we must
-  // explicitly check that the parse produces at least one path segment (if
-  // the path data doesn't begin with a valid "M", then it's invalid).
-  pathParser.Parse();
-  if (!path.Length()) {
+  // We must explicitly check that the parse produces at least one path segment
+  // (if the path data doesn't begin with a valid "M", then it's invalid).
+  if (path.IsEmpty()) {
     return;
   }
 
-  mPath = path.BuildPathForMeasuring();
+  mPath = path.BuildPathForMeasuring(1.0f);
   bool ok = path.GetDistancesFromOriginToEndsOfVisibleSegments(&mPathVertices);
-  if (!ok || !mPathVertices.Length()) {
+  if (!ok || mPathVertices.IsEmpty() || !mPath) {
     mPath = nullptr;
     mPathVertices.Clear();
   }
@@ -266,14 +269,13 @@ void SVGMotionSMILAnimationFunction::RebuildPathAndVertices(
     mValueNeedsReparsingEverySample = false;
   } else {
     // Get path & vertices from basic SMIL attrs: from/by/to/values
-
     RebuildPathAndVerticesFromBasicAttrs(aTargetElement);
     mValueNeedsReparsingEverySample = true;
   }
   mIsPathStale = false;
 }
 
-bool SVGMotionSMILAnimationFunction::GenerateValuesForPathAndPoints(
+nsresult SVGMotionSMILAnimationFunction::GenerateValuesForPathAndPoints(
     Path* aPath, bool aIsKeyPoints, FallibleTArray<double>& aPointDistances,
     SMILValueArray& aResult) {
   MOZ_ASSERT(aResult.IsEmpty(), "outparam is non-empty");
@@ -281,16 +283,22 @@ bool SVGMotionSMILAnimationFunction::GenerateValuesForPathAndPoints(
   // If we're using "keyPoints" as our list of input distances, then we need
   // to de-normalize from the [0, 1] scale to the [0, totalPathLen] scale.
   double distanceMultiplier = aIsKeyPoints ? aPath->ComputeLength() : 1.0;
+  if (!std::isfinite(distanceMultiplier)) {
+    return NS_ERROR_FAILURE;
+  }
   const uint32_t numPoints = aPointDistances.Length();
   for (uint32_t i = 0; i < numPoints; ++i) {
     double curDist = aPointDistances[i] * distanceMultiplier;
+    if (!std::isfinite(curDist)) {
+      return NS_ERROR_FAILURE;
+    }
     if (!aResult.AppendElement(SVGMotionSMILType::ConstructSMILValue(
                                    aPath, curDist, mRotateType, mRotateAngle),
                                fallible)) {
-      return false;
+      return NS_ERROR_OUT_OF_MEMORY;
     }
   }
-  return true;
+  return NS_OK;
 }
 
 nsresult SVGMotionSMILAnimationFunction::GetValues(const SMILAttr& aSMILAttr,
@@ -309,14 +317,9 @@ nsresult SVGMotionSMILAnimationFunction::GetValues(const SMILAttr& aSMILAttr,
 
   // Now: Make the actual list of SMILValues (using keyPoints, if set)
   bool isUsingKeyPoints = !mKeyPoints.IsEmpty();
-  bool success = GenerateValuesForPathAndPoints(
+  return GenerateValuesForPathAndPoints(
       mPath, isUsingKeyPoints, isUsingKeyPoints ? mKeyPoints : mPathVertices,
       aResult);
-  if (!success) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  return NS_OK;
 }
 
 void SVGMotionSMILAnimationFunction::CheckValueListDependentAttrs(

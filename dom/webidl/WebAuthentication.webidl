@@ -83,6 +83,14 @@ partial interface PublicKeyCredential {
     [Throws, Pref="security.webauthn.enable_json_serialization_methods"] static PublicKeyCredentialCreationOptions parseCreationOptionsFromJSON(PublicKeyCredentialCreationOptionsJSON options);
 };
 
+// https://w3c.github.io/webauthn/#sctn-getClientCapabilities
+[SecureContext]
+partial interface PublicKeyCredential {
+        [Throws] static Promise<PublicKeyCredentialClientCapabilities> getClientCapabilities();
+};
+
+typedef record<DOMString, boolean> PublicKeyCredentialClientCapabilities;
+
 dictionary PublicKeyCredentialCreationOptionsJSON {
     required PublicKeyCredentialRpEntity                    rp;
     required PublicKeyCredentialUserEntityJSON              user;
@@ -217,12 +225,14 @@ typedef record<DOMString, DOMString> AuthenticationExtensionsAuthenticatorInputs
 // CollectedClientData is only consumed by the relying party, and because
 // [GenerateToJSON] does not produce the correct serialization algorithm, the
 // definition below is commented out. Please keep this definition in sync with
-// in AssembleClientData in dom/webauthn/WebAuthnManager.cpp.
+// in AssembleClientData in dom/webauthn/WebAuthnTransactionParent.cpp.
 //
 // dictionary CollectedClientData {
 //     required DOMString           type;
 //     required DOMString           challenge;
 //     required DOMString           origin;
+//     boolean                      crossOrigin;
+//     DOMString                    topOrigin;
 // };
 
 dictionary PublicKeyCredentialDescriptor {
@@ -288,10 +298,32 @@ partial dictionary AuthenticationExtensionsClientOutputsJSON {
  * <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-defined-extensions>
  */
 
+// credProtect
+// <https://fidoalliance.org/specs/fido-v2.2-rd-20230321/fido-client-to-authenticator-protocol-v2.2-rd-20230321.html#sctn-credProtect-extension>
+enum CredentialProtectionPolicy {
+  "userVerificationOptional",
+  "userVerificationOptionalWithCredentialIDList",
+  "userVerificationRequired",
+};
+
+partial dictionary AuthenticationExtensionsClientInputs {
+  CredentialProtectionPolicy credentialProtectionPolicy;
+  // The specification includes a default `= false` value for
+  // enforceCredentialProtectionPolicy. We omit it here to distinguish between
+  // three logical cases: the extension was not sent, the extension was sent
+  // with value false, the extension was sent with value true.
+  boolean enforceCredentialProtectionPolicy;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+  CredentialProtectionPolicy credentialProtectionPolicy;
+  boolean enforceCredentialProtectionPolicy;
+};
+
 // hmac-secret
 // <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-hmac-secret-extension>
-// note: we don't support hmac-secret in get(), so we only define the create()
-// inputs and outputs here.
+// note: we don't support hmac-secret in get() (see instead the prf extension)
+// so we only define the create() inputs and outputs here.
 
 partial dictionary AuthenticationExtensionsClientInputs {
     boolean hmacCreateSecret;
@@ -309,7 +341,49 @@ partial dictionary AuthenticationExtensionsClientOutputsJSON {
     boolean hmacCreateSecret;
 };
 
-// hmac-secret
+// largeBlob
+// <https://w3c.github.io/webauthn/#sctn-large-blob-extension>
+partial dictionary AuthenticationExtensionsClientInputs {
+    AuthenticationExtensionsLargeBlobInputs largeBlob;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+    AuthenticationExtensionsLargeBlobInputsJSON largeBlob;
+};
+
+dictionary AuthenticationExtensionsLargeBlobInputs {
+    DOMString support;
+    boolean read;
+    BufferSource write;
+};
+
+dictionary AuthenticationExtensionsLargeBlobInputsJSON {
+    DOMString support;
+    boolean read;
+    Base64URLString write;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputs {
+    AuthenticationExtensionsLargeBlobOutputs largeBlob;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputsJSON {
+    AuthenticationExtensionsLargeBlobOutputsJSON largeBlob;
+};
+
+dictionary AuthenticationExtensionsLargeBlobOutputs {
+    boolean supported;
+    ArrayBuffer blob;
+    boolean written;
+};
+
+dictionary AuthenticationExtensionsLargeBlobOutputsJSON {
+    boolean supported;
+    Base64URLString blob;
+    boolean written;
+};
+
+// minPinLength
 // <https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-errata-20220621.html#sctn-minpinlength-extension>
 partial dictionary AuthenticationExtensionsClientInputs {
   boolean minPinLength;
@@ -317,4 +391,53 @@ partial dictionary AuthenticationExtensionsClientInputs {
 
 partial dictionary AuthenticationExtensionsClientInputsJSON {
   boolean minPinLength;
+};
+
+
+// prf
+// <https://w3c.github.io/webauthn/#prf-extension>
+dictionary AuthenticationExtensionsPRFValues {
+  required BufferSource first;
+  BufferSource second;
+};
+
+dictionary AuthenticationExtensionsPRFValuesJSON {
+  required Base64URLString first;
+  Base64URLString second;
+};
+
+dictionary AuthenticationExtensionsPRFInputs {
+  AuthenticationExtensionsPRFValues eval;
+  record<USVString, AuthenticationExtensionsPRFValues> evalByCredential;
+};
+
+dictionary AuthenticationExtensionsPRFInputsJSON {
+  AuthenticationExtensionsPRFValuesJSON eval;
+  record<USVString, AuthenticationExtensionsPRFValuesJSON> evalByCredential;
+};
+
+partial dictionary AuthenticationExtensionsClientInputs {
+  AuthenticationExtensionsPRFInputs prf;
+};
+
+partial dictionary AuthenticationExtensionsClientInputsJSON {
+  AuthenticationExtensionsPRFInputsJSON prf;
+};
+
+dictionary AuthenticationExtensionsPRFOutputs {
+  boolean enabled;
+  AuthenticationExtensionsPRFValues results;
+};
+
+dictionary AuthenticationExtensionsPRFOutputsJSON {
+  boolean enabled;
+  AuthenticationExtensionsPRFValuesJSON results;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputs {
+  AuthenticationExtensionsPRFOutputs prf;
+};
+
+partial dictionary AuthenticationExtensionsClientOutputsJSON {
+  AuthenticationExtensionsPRFOutputsJSON prf;
 };

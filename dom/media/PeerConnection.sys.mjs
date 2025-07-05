@@ -30,7 +30,6 @@ function logWebRTCMsg(msg, file, line, flag, win) {
   scriptError.initWithWindowID(
     `WebRTC: ${msg}`,
     file,
-    null,
     line,
     0,
     flag,
@@ -58,13 +57,13 @@ export class GlobalPCList {
     this._networkdown = false; // XXX Need to query current state somehow
     this._lifecycleobservers = {};
     this._nextId = 1;
-    Services.obs.addObserver(this, "inner-window-destroyed", true);
-    Services.obs.addObserver(this, "profile-change-net-teardown", true);
-    Services.obs.addObserver(this, "network:offline-about-to-go-offline", true);
-    Services.obs.addObserver(this, "network:offline-status-changed", true);
-    Services.obs.addObserver(this, "gmp-plugin-crash", true);
-    Services.obs.addObserver(this, "PeerConnection:response:allow", true);
-    Services.obs.addObserver(this, "PeerConnection:response:deny", true);
+    Services.obs.addObserver(this, "inner-window-destroyed");
+    Services.obs.addObserver(this, "profile-change-net-teardown");
+    Services.obs.addObserver(this, "network:offline-about-to-go-offline");
+    Services.obs.addObserver(this, "network:offline-status-changed");
+    Services.obs.addObserver(this, "gmp-plugin-crash");
+    Services.obs.addObserver(this, "PeerConnection:response:allow");
+    Services.obs.addObserver(this, "PeerConnection:response:deny");
     if (Services.cpmm) {
       Services.cpmm.addMessageListener("gmp-plugin-crash", this);
     }
@@ -208,10 +207,7 @@ export class GlobalPCList {
 }
 
 setupPrototype(GlobalPCList, {
-  QueryInterface: ChromeUtils.generateQI([
-    "nsIObserver",
-    "nsISupportsWeakReference",
-  ]),
+  QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
   classID: PC_MANAGER_CID,
 });
 
@@ -366,59 +362,6 @@ setupPrototype(RTCSessionDescription, {
   QueryInterface: ChromeUtils.generateQI(["nsIDOMGlobalPropertyInitializer"]),
 });
 
-// Records PC related telemetry
-class PeerConnectionTelemetry {
-  // ICE connection state enters connected or completed.
-  recordConnected() {
-    Services.telemetry.scalarAdd("webrtc.peerconnection.connected", 1);
-    this.recordConnected = () => {};
-  }
-  // DataChannel is created
-  _recordDataChannelCreated() {
-    Services.telemetry.scalarAdd(
-      "webrtc.peerconnection.datachannel_created",
-      1
-    );
-    this._recordDataChannelCreated = () => {};
-  }
-  // DataChannel initialized with maxRetransmitTime
-  _recordMaxRetransmitTime(maxRetransmitTime) {
-    if (maxRetransmitTime === undefined) {
-      return false;
-    }
-    Services.telemetry.scalarAdd(
-      "webrtc.peerconnection.datachannel_max_retx_used",
-      1
-    );
-    this._recordMaxRetransmitTime = () => true;
-    return true;
-  }
-  // DataChannel initialized with maxPacketLifeTime
-  _recordMaxPacketLifeTime(maxPacketLifeTime) {
-    if (maxPacketLifeTime === undefined) {
-      return false;
-    }
-    Services.telemetry.scalarAdd(
-      "webrtc.peerconnection.datachannel_max_life_used",
-      1
-    );
-    this._recordMaxPacketLifeTime = () => true;
-    return true;
-  }
-  // DataChannel initialized
-  recordDataChannelInit(maxRetransmitTime, maxPacketLifeTime) {
-    const retxUsed = this._recordMaxRetransmitTime(maxRetransmitTime);
-    if (this._recordMaxPacketLifeTime(maxPacketLifeTime) && retxUsed) {
-      Services.telemetry.scalarAdd(
-        "webrtc.peerconnection.datachannel_max_retx_and_life_used",
-        1
-      );
-      this.recordDataChannelInit = () => {};
-    }
-    this._recordDataChannelCreated();
-  }
-}
-
 export class RTCPeerConnection {
   constructor() {
     this._pc = null;
@@ -441,8 +384,6 @@ export class RTCPeerConnection {
 
     this._hasStunServer = this._hasTurnServer = false;
     this._iceGatheredRelayCandidates = false;
-    // Records telemetry
-    this._pcTelemetry = new PeerConnectionTelemetry();
   }
 
   init(win) {
@@ -1029,10 +970,33 @@ export class RTCPeerConnection {
       });
   }
 
+  _maybeDuplicateFingerprints(sdp) {
+    if (this._pc.duplicateFingerprintQuirk) {
+      // hack to put a=fingerprint under all m= lines
+      const lines = sdp.split("\n");
+      const fingerprint = lines.find(line => line.startsWith("a=fingerprint"));
+      if (fingerprint) {
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith("m=")) {
+            let j = i + 1;
+            while (j < lines.length && lines[j].startsWith("c=")) {
+              j++;
+            }
+            lines.splice(j, 0, fingerprint);
+          }
+        }
+        sdp = lines.join("\n");
+      }
+    }
+    return sdp;
+  }
+
   _createOffer(options) {
     this._checkClosed();
     this._ensureTransceiversForOfferToReceive(options);
-    return this._chain(() => this._createAnOffer(options));
+    return this._chain(async () =>
+      Cu.cloneInto(await this._createAnOffer(options), this._win)
+    );
   }
 
   async _createAnOffer(options = {}) {
@@ -1057,11 +1021,12 @@ export class RTCPeerConnection {
       this._onCreateOfferFailure = reject;
       this._pc.createOffer(options);
     });
+    sdp = this._maybeDuplicateFingerprints(sdp);
     if (haveAssertion) {
       await haveAssertion;
       sdp = this._localIdp.addIdentityAttribute(sdp);
     }
-    return Cu.cloneInto({ type: "offer", sdp }, this._win);
+    return { type: "offer", sdp };
   }
 
   createAnswer(optionsOrOnSucc, onErr) {
@@ -1074,7 +1039,9 @@ export class RTCPeerConnection {
 
   _createAnswer() {
     this._checkClosed();
-    return this._chain(() => this._createAnAnswer());
+    return this._chain(async () =>
+      Cu.cloneInto(await this._createAnAnswer(), this._win)
+    );
   }
 
   async _createAnAnswer() {
@@ -1095,11 +1062,12 @@ export class RTCPeerConnection {
       this._onCreateAnswerFailure = reject;
       this._pc.createAnswer();
     });
+    sdp = this._maybeDuplicateFingerprints(sdp);
     if (haveAssertion) {
       await haveAssertion;
       sdp = this._localIdp.addIdentityAttribute(sdp);
     }
-    return Cu.cloneInto({ type: "answer", sdp }, this._win);
+    return { type: "answer", sdp };
   }
 
   async _getPermission() {
@@ -1175,9 +1143,9 @@ export class RTCPeerConnection {
       }
       if (!sdp) {
         if (type == "offer") {
-          await this._createAnOffer();
+          sdp = (await this._createAnOffer()).sdp;
         } else if (type == "answer") {
-          await this._createAnAnswer();
+          sdp = (await this._createAnAnswer()).sdp;
         }
       } else {
         this._sanityCheckSdp(sdp);
@@ -1759,10 +1727,6 @@ export class RTCPeerConnection {
     } = {}
   ) {
     this._checkClosed();
-    this._pcTelemetry.recordDataChannelInit(
-      maxRetransmitTime,
-      maxPacketLifeTime
-    );
 
     if (maxPacketLifeTime === undefined) {
       maxPacketLifeTime = maxRetransmitTime;

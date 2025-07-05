@@ -16,6 +16,7 @@
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowserBridgeChild.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/IdentityCredential.h"
 #include "mozilla/dom/SecurityPolicyViolationEvent.h"
 #include "mozilla/dom/SessionStoreRestoreData.h"
 #include "mozilla/dom/WindowGlobalActorsBinding.h"
@@ -255,6 +256,13 @@ already_AddRefed<WindowGlobalChild> WindowGlobalChild::GetByInnerWindowId(
 
 dom::BrowsingContext* WindowGlobalChild::BrowsingContext() {
   return mWindowContext->GetBrowsingContext();
+}
+
+Nullable<WindowProxyHolder> WindowGlobalChild::GetContentWindow() {
+  if (IsCurrentGlobal()) {
+    return WindowProxyHolder(BrowsingContext());
+  }
+  return nullptr;
 }
 
 uint64_t WindowGlobalChild::InnerWindowId() {
@@ -564,6 +572,26 @@ IPCResult WindowGlobalChild::RecvNotifyPermissionChange(const nsCString& aType,
       aPermission != nsIPermissionManager::ALLOW_ACTION) {
     this->GetWindowGlobal()->SaveStorageAccessPermissionRevoked();
   }
+  return IPC_OK();
+}
+
+IPCResult WindowGlobalChild::RecvNavigateForIdentityCredentialDiscovery(
+    const nsCString& aURI, const IdentityLoginTargetType& aType) {
+  AutoJSAPI jsapi;
+  if (!jsapi.Init(GetWindowGlobal())) {
+    return IPC_OK();
+  }
+  MOZ_ASSERT(WindowContext()->TopWindowContext());
+  nsGlobalWindowOuter* outer = nsGlobalWindowOuter::GetOuterWindowWithId(
+      WindowContext()->TopWindowContext()->OuterWindowId());
+  bool popup = aType == IdentityLoginTargetType::Popup;
+  RefPtr<dom::BrowsingContext> newBC;
+  if (popup) {
+    Unused << outer->OpenJS(aURI, u"_blank"_ns, u"popup"_ns,
+                            getter_AddRefs(newBC));
+    return IPC_OK();
+  }
+  Unused << outer->OpenJS(aURI, u"_top"_ns, u""_ns, getter_AddRefs(newBC));
   return IPC_OK();
 }
 

@@ -1379,6 +1379,9 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
 
   nsCOMPtr<nsILoadInfo> loadInfo = inputChannel->LoadInfo();
   loadInfo->SetIsUserTriggeredSave(true);
+  if (mPersistFlags & nsIWebBrowserPersist::PERSIST_FLAGS_DISABLE_HTTPS_ONLY) {
+    loadInfo->SetHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_EXEMPT);
+  }
 
   // Set the referrer, post data and headers if any
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(inputChannel));
@@ -1410,31 +1413,11 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
 
     // Headers
     if (aExtraHeaders) {
-      nsAutoCString oneHeader;
-      nsAutoCString headerName;
-      nsAutoCString headerValue;
-      int32_t crlf = 0;
-      int32_t colon = 0;
-      const char* kWhitespace = "\b\t\r\n ";
-      nsAutoCString extraHeaders(aExtraHeaders);
-      while (true) {
-        crlf = extraHeaders.Find("\r\n");
-        if (crlf == -1) break;
-        extraHeaders.Mid(oneHeader, 0, crlf);
-        extraHeaders.Cut(0, crlf + 2);
-        colon = oneHeader.Find(":");
-        if (colon == -1) break;  // Should have a colon
-        oneHeader.Left(headerName, colon);
-        colon++;
-        oneHeader.Mid(headerValue, colon, oneHeader.Length() - colon);
-        headerName.Trim(kWhitespace);
-        headerValue.Trim(kWhitespace);
-        // Add the header (merging if required)
-        rv = httpChannel->SetRequestHeader(headerName, headerValue, true);
-        if (NS_FAILED(rv)) {
-          EndDownload(NS_ERROR_FAILURE);
-          return NS_ERROR_FAILURE;
-        }
+      rv = mozilla::net::AddExtraHeaders(httpChannel,
+                                         nsDependentCString(aExtraHeaders));
+      if (NS_FAILED(rv)) {
+        EndDownload(NS_ERROR_FAILURE);
+        return NS_ERROR_FAILURE;
       }
     }
   }

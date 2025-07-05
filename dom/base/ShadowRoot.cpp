@@ -20,7 +20,10 @@
 #include "mozilla/dom/MutationObservers.h"
 #include "mozilla/dom/Text.h"
 #include "mozilla/dom/TreeOrderedArrayInlines.h"
+#include "mozilla/dom/TrustedTypeUtils.h"
+#include "mozilla/dom/TrustedTypesConstants.h"
 #include "mozilla/dom/UnbindContext.h"
+#include "mozilla/GlobalStyleSheetCache.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/IdentifierMapEntry.h"
 #include "mozilla/PresShell.h"
@@ -253,6 +256,8 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
     return;
   }
 
+  InvalidateStyleAndLayoutOnSubtree(aSlot);
+
   HTMLSlotElement* oldSlot = currentSlots->SafeElementAt(1);
   if (SlotAssignment() == SlotAssignmentMode::Named) {
     if (oldSlot) {
@@ -273,8 +278,6 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
       if (doEnqueueSlotChange) {
         oldSlot->EnqueueSlotChangeEvent();
         aSlot->EnqueueSlotChangeEvent();
-        SlotStateChanged(oldSlot);
-        SlotStateChanged(aSlot);
       }
     } else {
       bool doEnqueueSlotChange = false;
@@ -292,7 +295,6 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
 
       if (doEnqueueSlotChange) {
         aSlot->EnqueueSlotChangeEvent();
-        SlotStateChanged(aSlot);
       }
     }
   } else {
@@ -311,7 +313,6 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
     }
     if (doEnqueueSlotChange) {
       aSlot->EnqueueSlotChangeEvent();
-      SlotStateChanged(aSlot);
     }
   }
 }
@@ -410,7 +411,7 @@ void ShadowRoot::RuleRemoved(StyleSheet& aSheet, css::Rule& aRule) {
 }
 
 void ShadowRoot::RuleChanged(StyleSheet& aSheet, css::Rule*,
-                             StyleRuleChangeKind) {
+                             const StyleRuleChange&) {
   if (!aSheet.IsApplicable()) {
     return;
   }
@@ -525,8 +526,8 @@ void ShadowRoot::InsertSheetIntoAuthorData(
 // presumably.
 void ShadowRoot::StyleSheetApplicableStateChanged(StyleSheet& aSheet) {
   auto& sheetList = aSheet.IsConstructed() ? mAdoptedStyleSheets : mStyleSheets;
-  int32_t index = sheetList.LastIndexOf(&aSheet);
-  if (index < 0) {
+  size_t index = sheetList.LastIndexOf(&aSheet);
+  if (index == sheetList.NoIndex) {
     // NOTE(emilio): @import sheets are handled in the relevant RuleAdded
     // notification, which only notifies after the sheet is loaded.
     //
@@ -537,7 +538,7 @@ void ShadowRoot::StyleSheetApplicableStateChanged(StyleSheet& aSheet) {
     return;
   }
   if (aSheet.IsApplicable()) {
-    InsertSheetIntoAuthorData(size_t(index), aSheet, sheetList);
+    InsertSheetIntoAuthorData(index, aSheet, sheetList);
   } else {
     MOZ_ASSERT(mServoStyles);
     if (mStyleRuleMap) {
@@ -546,6 +547,15 @@ void ShadowRoot::StyleSheetApplicableStateChanged(StyleSheet& aSheet) {
     Servo_AuthorStyles_RemoveStyleSheet(mServoStyles.get(), &aSheet);
     ApplicableRulesChanged();
   }
+}
+
+void ShadowRoot::AppendBuiltInStyleSheet(BuiltInStyleSheet aSheet) {
+  auto* cache = GlobalStyleSheetCache::Singleton();
+  // NOTE(emilio): It's important to Clone() the stylesheet to avoid leaking,
+  // since the built-in sheet is kept alive forever, and AppendStyleSheet will
+  // set the associated global of the stylesheet.
+  RefPtr sheet = cache->BuiltInSheet(aSheet)->Clone(nullptr, nullptr);
+  AppendStyleSheet(*sheet);
 }
 
 void ShadowRoot::RemoveSheetFromStyles(StyleSheet& aSheet) {
@@ -583,14 +593,14 @@ void ShadowRoot::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
 
   // https://dom.spec.whatwg.org/#ref-for-get-the-parent%E2%91%A6
   if (!aVisitor.mEvent->mFlags.mComposed) {
-    nsCOMPtr<nsIContent> originalTarget =
+    nsIContent* originalTarget =
         nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mOriginalTarget);
     if (originalTarget && originalTarget->GetContainingShadow() == this) {
       // If we do stop propagation, we still want to propagate
       // the event to chrome (nsPIDOMWindow::GetParentTarget()).
       // The load event is special in that we don't ever propagate it
       // to chrome.
-      nsCOMPtr<nsPIDOMWindowOuter> win = OwnerDoc()->GetWindow();
+      nsPIDOMWindowOuter* win = OwnerDoc()->GetWindow();
       EventTarget* parentTarget = win && aVisitor.mEvent->mMessage != eLoad
                                       ? win->GetParentTarget()
                                       : nullptr;
@@ -603,8 +613,8 @@ void ShadowRoot::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   nsIContent* shadowHost = GetHost();
   aVisitor.SetParentTarget(shadowHost, false);
 
-  nsCOMPtr<nsIContent> content(
-      nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mTarget));
+  nsIContent* content =
+      nsIContent::FromEventTargetOrNull(aVisitor.mEvent->mTarget);
   if (content && content->GetContainingShadow() == this) {
     aVisitor.mEventTargetAtParent = shadowHost;
   }
@@ -884,9 +894,42 @@ nsresult ShadowRoot::Clone(dom::NodeInfo* aNodeInfo, nsINode** aResult) const {
   return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
 }
 
-void ShadowRoot::SetHTMLUnsafe(const nsAString& aHTML) {
+void ShadowRoot::SetHTML(const nsAString& aHTML, const SetHTMLOptions& aOptions,
+                         ErrorResult& aError) {
   RefPtr<Element> host = GetHost();
-  nsContentUtils::SetHTMLUnsafe(this, host, aHTML);
+  nsContentUtils::SetHTML(this, host, aHTML, aOptions, aError);
+}
+
+void ShadowRoot::SetHTMLUnsafe(const TrustedHTMLOrString& aHTML,
+                               const SetHTMLUnsafeOptions& aOptions,
+                               nsIPrincipal* aSubjectPrincipal,
+                               ErrorResult& aError) {
+  RefPtr<Element> host = GetHost();
+  nsContentUtils::SetHTMLUnsafe(this, host, aHTML, aOptions,
+                                true /*aIsShadowRoot*/, aSubjectPrincipal,
+                                aError);
+}
+
+void ShadowRoot::GetInnerHTML(
+    OwningTrustedHTMLOrNullIsEmptyString& aInnerHTML) {
+  DocumentFragment::GetInnerHTML(aInnerHTML.SetAsNullIsEmptyString());
+}
+
+MOZ_CAN_RUN_SCRIPT void ShadowRoot::SetInnerHTML(
+    const TrustedHTMLOrNullIsEmptyString& aInnerHTML,
+    nsIPrincipal* aSubjectPrincipal, ErrorResult& aError) {
+  constexpr nsLiteralString sink = u"ShadowRoot innerHTML"_ns;
+
+  Maybe<nsAutoString> compliantStringHolder;
+  const nsAString* compliantString =
+      TrustedTypeUtils::GetTrustedTypesCompliantString(
+          aInnerHTML, sink, kTrustedTypesOnlySinkGroup, *this,
+          aSubjectPrincipal, compliantStringHolder, aError);
+  if (aError.Failed()) {
+    return;
+  }
+
+  SetInnerHTMLInternal(*compliantString, aError);
 }
 
 void ShadowRoot::GetHTML(const GetHTMLOptions& aOptions, nsAString& aResult) {

@@ -49,6 +49,9 @@ namespace mozilla::dom {
 #endif  // LOGV
 #define LOGV(msg, ...) LOG_INTERNAL(Verbose, msg, ##__VA_ARGS__)
 
+#define AUTO_ENCODER_MARKER(var, postfix) \
+  AutoWebCodecsMarker var(EncoderType::Name.get(), postfix);
+
 /*
  * Below are ControlMessage classes implementations
  */
@@ -740,6 +743,8 @@ void EncoderTemplate<EncoderType>::Configure(
     RefPtr<ConfigureMessage> aMessage) {
   MOZ_ASSERT(!mAgent);
 
+  AUTO_ENCODER_MARKER(marker, ".configure");
+
   LOG("Configuring encoder: %s", aMessage->Config()->ToString().get());
 
   mOutputNewDecoderConfig = true;
@@ -776,9 +781,10 @@ void EncoderTemplate<EncoderType>::Configure(
   EncoderConfig config = mActiveConfig->ToEncoderConfig();
   mAgent->Configure(config)
       ->Then(GetCurrentSerialEventTarget(), __func__,
-             [self = RefPtr{this}, id = mAgent->mId, aMessage](
+             [self = RefPtr{this}, id = mAgent->mId, aMessage,
+              m = std::move(marker)](
                  const EncoderAgent::ConfigurePromise::ResolveOrRejectValue&
-                     aResult) MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+                     aResult) mutable {
                MOZ_ASSERT(self->mProcessingMessage);
                MOZ_ASSERT(self->mProcessingMessage->AsConfigureMessage());
                MOZ_ASSERT(self->mState == CodecState::Configured);
@@ -826,6 +832,8 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessEncodeMessage(
   MOZ_ASSERT(mState == CodecState::Configured);
   MOZ_ASSERT(aMessage->AsEncodeMessage());
 
+  AUTO_ENCODER_MARKER(marker, ".encode");
+
   if (mProcessingMessage) {
     return MessageProcessedResult::NotProcessed;
   }
@@ -866,8 +874,10 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessEncodeMessage(
 
   mAgent->Encode(data.get())
       ->Then(GetCurrentSerialEventTarget(), __func__,
-             [self = RefPtr{this}, id = mAgent->mId, aMessage](
-                 EncoderAgent::EncodePromise::ResolveOrRejectValue&& aResult) {
+             [self = RefPtr{this}, id = mAgent->mId, aMessage,
+              m = std::move(marker)](
+                 EncoderAgent::EncodePromise::ResolveOrRejectValue&&
+                     aResult) mutable {
                MOZ_ASSERT(self->mProcessingMessage);
                MOZ_ASSERT(self->mProcessingMessage->AsEncodeMessage());
                MOZ_ASSERT(self->mState == CodecState::Configured);
@@ -907,10 +917,15 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessEncodeMessage(
                  LOGV("%s %p, schedule %zu encoded data output for %s",
                       EncoderType::Name.get(), self.get(), data.Length(),
                       msgStr.get());
+
+                 m.End();
+                 AUTO_ENCODER_MARKER(outMarker, ".encode-output");
+
                  self->QueueATask(
                      "Output encoded Data",
-                     [self = RefPtr{self}, data2 = std::move(data)]()
-                         MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+                     [self = RefPtr{self}, data2 = std::move(data),
+                      om = std::move(outMarker)]()
+                         MOZ_CAN_RUN_SCRIPT_BOUNDARY mutable {
                            self->OutputEncodedData(std::move(data2));
                          });
                }
@@ -927,6 +942,8 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessFlushMessage(
   AssertIsOnOwningThread();
   MOZ_ASSERT(mState == CodecState::Configured);
   MOZ_ASSERT(aMessage->AsFlushMessage());
+
+  AUTO_ENCODER_MARKER(marker, ".flush");
 
   if (mProcessingMessage) {
     return MessageProcessedResult::NotProcessed;
@@ -948,8 +965,10 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessFlushMessage(
 
   mAgent->Drain()
       ->Then(GetCurrentSerialEventTarget(), __func__,
-             [self = RefPtr{this}, id = mAgent->mId, aMessage, this](
-                 EncoderAgent::EncodePromise::ResolveOrRejectValue&& aResult) {
+             [self = RefPtr{this}, id = mAgent->mId, aMessage,
+              m = std::move(marker),
+              this](EncoderAgent::EncodePromise::ResolveOrRejectValue&&
+                        aResult) mutable {
                MOZ_ASSERT(self->mProcessingMessage);
                MOZ_ASSERT(self->mProcessingMessage->AsFlushMessage());
                MOZ_ASSERT(self->mState == CodecState::Configured);
@@ -1010,10 +1029,15 @@ MessageProcessedResult EncoderTemplate<EncoderType>::ProcessFlushMessage(
 
                const auto flushPromiseId =
                    static_cast<int64_t>(aMessage->mMessageId);
+
+               m.End();
+               AUTO_ENCODER_MARKER(outMarker, ".flush-output");
+
                self->QueueATask(
                    "Flush: output encoded data task",
-                   [self = RefPtr{self}, data = std::move(data),
-                    flushPromiseId]() MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+                   [self = RefPtr{self}, data = std::move(data), flushPromiseId,
+                    om = std::move(
+                        outMarker)]() MOZ_CAN_RUN_SCRIPT_BOUNDARY mutable {
                      self->OutputEncodedData(std::move(data));
                      // If Reset() was invoked before this task executes, or
                      // during the output callback above in the execution of

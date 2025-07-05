@@ -72,7 +72,8 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 already_AddRefed<StaticRange> StaticRange::Create(nsINode* aNode) {
   MOZ_ASSERT(aNode);
   if (!sCachedRanges || sCachedRanges->IsEmpty()) {
-    return do_AddRef(new StaticRange(aNode));
+    return do_AddRef(
+        new StaticRange(aNode, RangeBoundaryIsMutationObserved::No));
   }
   RefPtr<StaticRange> staticRange = sCachedRanges->PopLastElement().forget();
   staticRange->Init(aNode);
@@ -85,7 +86,7 @@ already_AddRefed<StaticRange> StaticRange::Create(
     const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
     const RangeBoundaryBase<EPT, ERT>& aEndBoundary, ErrorResult& aRv) {
   RefPtr<StaticRange> staticRange =
-      StaticRange::Create(aStartBoundary.Container());
+      StaticRange::Create(aStartBoundary.GetContainer());
   staticRange->DoSetRange(aStartBoundary, aEndBoundary, nullptr);
 
   return staticRange.forget();
@@ -101,8 +102,8 @@ bool StaticRange::IsValid() const {
   }
 
   MOZ_ASSERT(mAreStartAndEndInSameTree ==
-             (RangeUtils::ComputeRootNode(mStart.Container()) ==
-              RangeUtils::ComputeRootNode(mEnd.Container())));
+             (RangeUtils::ComputeRootNode(mStart.GetContainer()) ==
+              RangeUtils::ComputeRootNode(mEnd.GetContainer())));
   if (!mAreStartAndEndInSameTree) {
     return false;
   }
@@ -116,10 +117,11 @@ void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
                              const RangeBoundaryBase<EPT, ERT>& aEndBoundary,
                              nsINode* aRootNode) {
   bool checkCommonAncestor =
-      IsInAnySelection() && (mStart.Container() != aStartBoundary.Container() ||
-                             mEnd.Container() != aEndBoundary.Container());
-  mStart.CopyFrom(aStartBoundary, RangeBoundaryIsMutationObserved::No);
-  mEnd.CopyFrom(aEndBoundary, RangeBoundaryIsMutationObserved::No);
+      IsInAnySelection() &&
+      (mStart.GetContainer() != aStartBoundary.GetContainer() ||
+       mEnd.GetContainer() != aEndBoundary.GetContainer());
+  mStart.CopyFrom(aStartBoundary, mIsMutationObserved);
+  mEnd.CopyFrom(aEndBoundary, mIsMutationObserved);
   MOZ_ASSERT(mStart.IsSet() == mEnd.IsSet());
   mIsPositioned = mStart.IsSet() && mEnd.IsSet();
 
@@ -127,8 +129,9 @@ void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
     UpdateCommonAncestorIfNecessary();
   }
 
-  mAreStartAndEndInSameTree = RangeUtils::ComputeRootNode(mStart.Container()) ==
-                              RangeUtils::ComputeRootNode(mEnd.Container());
+  mAreStartAndEndInSameTree =
+      RangeUtils::ComputeRootNode(mStart.GetContainer()) ==
+      RangeUtils::ComputeRootNode(mEnd.GetContainer());
 }
 
 /* static */

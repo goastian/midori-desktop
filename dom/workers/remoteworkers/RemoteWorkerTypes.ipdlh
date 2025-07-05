@@ -16,10 +16,12 @@ include "mozilla/dom/ReferrerInfoUtils.h";
 include "mozilla/dom/WorkerIPCUtils.h";
 
 using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
-using mozilla::dom::RequestCredentials from "mozilla/dom/RequestBinding.h";
+using mozilla::dom::WorkerOptions from "mozilla/dom/WorkerBinding.h";
 using mozilla::StorageAccess from "mozilla/StorageAccess.h";
 using mozilla::OriginTrials from "mozilla/OriginTrialsIPCUtils.h";
-using mozilla::dom::WorkerType from "mozilla/dom/WorkerBinding.h";
+using mozilla::RFPTargetSet from "nsRFPService.h";
+
+[RefCounted] using class nsIPrincipal from "nsIPrincipal.h";
 
 namespace mozilla {
 namespace dom {
@@ -53,9 +55,7 @@ struct RemoteWorkerData
   URIParams baseScriptURL;
   URIParams resolvedScriptURL;
 
-  nsString name;
-  WorkerType type;
-  RequestCredentials credentials;
+  WorkerOptions workerOptions;
 
   PrincipalInfo loadingPrincipalInfo;
   PrincipalInfo principalInfo;
@@ -70,6 +70,14 @@ struct RemoteWorkerData
 
   bool isSecureContext;
 
+  // For SharedWorkers this serves as the loadingClientInfo for the script loads
+  // and the basis for CSP for the global.
+  //
+  // For ServiceWorkers this is pre-created ClientSource information which
+  // should be used instead of a freshly created ClientSource.  This is done so
+  // that a ServiceWorker's client id can have a mapping established in the
+  // parent so that the keepalive contribution of ServiceWorkers to other
+  // ServiceWorkers is limited to their own keepalive lifetime.
   IPCClientInfo? clientInfo;
 
   nullable nsIReferrerInfo referrerInfo;
@@ -80,7 +88,9 @@ struct RemoteWorkerData
 
   bool shouldResistFingerprinting;
 
-  uint64_t? overriddenFingerprintingSettings;
+  RFPTargetSet? overriddenFingerprintingSettings;
+
+  bool isOn3PCBExceptionList;
 
   OriginTrials originTrials;
 
@@ -102,7 +112,7 @@ struct ErrorDataNote {
   uint32_t lineNumber;
   uint32_t columnNumber;
   nsString message;
-  nsString filename;
+  nsCString filename;
 };
 
 struct ErrorData {
@@ -110,8 +120,7 @@ struct ErrorData {
   uint32_t lineNumber;
   uint32_t columnNumber;
   nsString message;
-  nsString filename;
-  nsString line;
+  nsCString filename;
   ErrorDataNote[] notes;
 };
 
@@ -119,11 +128,35 @@ struct CSPViolation {
   nsString json;
 };
 
+struct ErrorMismatchOptions {};
+
 union ErrorValue {
   nsresult;
   ErrorData;
   CSPViolation;
+  ErrorMismatchOptions;
   void_t;
+};
+
+
+// Followings are data structures used to for RemoteWorkerDebugger
+
+struct RemoteWorkerDebuggerInfo {
+  bool isChrome;
+  uint32_t type;
+  nsString url;
+  uint64_t windowID;
+  nsIPrincipal principal;
+  uint64_t serviceWorkerID;
+  nsString Id;
+  nsString name;
+  nsString parentId;
+};
+
+struct RemoteWorkerDebuggerErrorInfo {
+  nsCString fileName;
+  uint32_t lineNo;
+  nsString message;
 };
 
 } // namespace dom

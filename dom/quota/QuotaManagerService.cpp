@@ -11,6 +11,7 @@
 #include "Client.h"
 #include "QuotaManager.h"
 #include "QuotaRequests.h"
+#include "QuotaResults.h"
 
 // Global includes
 #include <cstdint>
@@ -30,13 +31,16 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/Variant.h"
+#include "mozilla/dom/quota/PrincipalUtils.h"
 #include "mozilla/dom/quota/PQuota.h"
 #include "mozilla/dom/quota/PersistenceType.h"
+#include "mozilla/dom/quota/QuotaUsageRequestChild.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
 #include "mozilla/fallible.h"
 #include "mozilla/hal_sandbox/PHal.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundUtils.h"
+#include "mozilla/ipc/Endpoint.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsCOMPtr.h"
@@ -80,7 +84,7 @@ nsresult CheckedPrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
     return rv;
   }
 
-  if (NS_WARN_IF(!QuotaManager::IsPrincipalInfoValid(aPrincipalInfo))) {
+  if (NS_WARN_IF(!IsPrincipalInfoValid(aPrincipalInfo))) {
     return NS_ERROR_FAILURE;
   }
 
@@ -92,71 +96,131 @@ nsresult CheckedPrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
   return NS_OK;
 }
 
-nsresult GetClearResetOriginParams(nsIPrincipal* aPrincipal,
-                                   const nsACString& aPersistenceType,
-                                   const nsAString& aClientType,
-                                   ClearResetOriginParams& aParams) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aPrincipal);
+template <typename ResponseType>
+struct ResponseTypeTraits;
 
-  nsresult rv =
-      CheckedPrincipalToPrincipalInfo(aPrincipal, aParams.principalInfo());
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+template <>
+struct ResponseTypeTraits<BoolResponse> {
+  static constexpr auto kType = BoolResponse::Tbool;
+
+  static RefPtr<nsVariant> CreateVariant(const BoolResponse& aResponse) {
+    auto variant = MakeRefPtr<nsVariant>();
+    variant->SetAsBool(aResponse.get_bool());
+    return variant;
   }
+};
 
-  if (aPersistenceType.IsVoid()) {
-    aParams.persistenceTypeIsExplicit() = false;
-  } else {
-    const auto maybePersistenceType =
-        PersistenceTypeFromString(aPersistenceType, fallible);
-    if (NS_WARN_IF(maybePersistenceType.isNothing())) {
-      return NS_ERROR_INVALID_ARG;
+template <>
+struct ResponseTypeTraits<UInt64Response> {
+  static constexpr auto kType = UInt64Response::Tuint64_t;
+
+  static RefPtr<nsVariant> CreateVariant(const UInt64Response& aResponse) {
+    RefPtr<nsVariant> variant = new nsVariant();
+    variant->SetAsUint64(aResponse.get_uint64_t());
+    return variant;
+  }
+};
+
+template <>
+struct ResponseTypeTraits<CStringArrayResponse> {
+  static constexpr auto kType = CStringArrayResponse::TArrayOfnsCString;
+
+  static RefPtr<nsVariant> CreateVariant(
+      const CStringArrayResponse& aResponse) {
+    const CStringArray& strings = aResponse.get_ArrayOfnsCString();
+
+    auto variant = MakeRefPtr<nsVariant>();
+
+    if (strings.IsEmpty()) {
+      MOZ_ALWAYS_SUCCEEDS(variant->SetAsEmptyArray());
+    } else {
+      nsTArray<const char*> stringPointers(strings.Length());
+
+      std::transform(strings.cbegin(), strings.cend(),
+                     MakeBackInserter(stringPointers),
+                     std::mem_fn(&nsCString::get));
+
+      QM_TRY(MOZ_TO_RESULT(variant->SetAsArray(
+                 nsIDataType::VTYPE_CHAR_STR, /* aIID */ nullptr,
+                 stringPointers.Length(), stringPointers.Elements())),
+             nullptr);
     }
 
-    aParams.persistenceType() = maybePersistenceType.value();
-    aParams.persistenceTypeIsExplicit() = true;
+    return variant;
   }
+};
 
-  if (aClientType.IsVoid()) {
-    aParams.clientTypeIsExplicit() = false;
-  } else {
-    Client::Type clientType;
-    bool ok = Client::TypeFromText(aClientType, clientType, fallible);
-    if (NS_WARN_IF(!ok)) {
-      return NS_ERROR_INVALID_ARG;
+template <>
+struct ResponseTypeTraits<OriginUsageMetadataArrayResponse> {
+  static constexpr auto kType =
+      OriginUsageMetadataArrayResponse::TOriginUsageMetadataArray;
+
+  static RefPtr<nsVariant> CreateVariant(
+      const OriginUsageMetadataArrayResponse& aResponse) {
+    const OriginUsageMetadataArray& originUsages =
+        aResponse.get_OriginUsageMetadataArray();
+
+    auto variant = MakeRefPtr<nsVariant>();
+
+    if (originUsages.IsEmpty()) {
+      variant->SetAsEmptyArray();
+    } else {
+      nsTArray<RefPtr<UsageResult>> usageResults(originUsages.Length());
+
+      for (const auto& originUsage : originUsages) {
+        usageResults.AppendElement(MakeRefPtr<UsageResult>(
+            originUsage.mOrigin, originUsage.mPersisted, originUsage.mUsage,
+            originUsage.mLastAccessTime));
+      }
+
+      variant->SetAsArray(
+          nsIDataType::VTYPE_INTERFACE_IS, &NS_GET_IID(nsIQuotaUsageResult),
+          usageResults.Length(), static_cast<void*>(usageResults.Elements()));
     }
 
-    aParams.clientType() = clientType;
-    aParams.clientTypeIsExplicit() = true;
+    return variant;
   }
+};
 
-  return NS_OK;
-}
+template <>
+struct ResponseTypeTraits<UsageInfoResponse> {
+  static constexpr auto kType = UsageInfoResponse::TUsageInfo;
 
-class BoolResponsePromiseResolveOrRejectCallback {
+  static RefPtr<nsVariant> CreateVariant(const UsageInfoResponse& aResponse) {
+    RefPtr<OriginUsageResult> result =
+        new OriginUsageResult(aResponse.get_UsageInfo());
+
+    auto variant = MakeRefPtr<nsVariant>();
+    variant->SetAsInterface(NS_GET_IID(nsIQuotaOriginUsageResult), result);
+
+    return variant;
+  }
+};
+
+template <typename RequestType, typename PromiseType, typename ResponseType>
+class ResponsePromiseResolveOrRejectCallback {
  public:
-  using PromiseType = BoolResponsePromise;
-  using RequestType = Request;
-
-  explicit BoolResponsePromiseResolveOrRejectCallback(
-      RefPtr<RequestType> aRequest)
+  explicit ResponsePromiseResolveOrRejectCallback(RefPtr<RequestType> aRequest)
       : mRequest(std::move(aRequest)) {}
 
-  void operator()(const PromiseType::ResolveOrRejectValue& aValue) {
+  void operator()(const typename PromiseType::ResolveOrRejectValue& aValue) {
     if (aValue.IsResolve()) {
-      const BoolResponse& response = aValue.ResolveValue();
+      const ResponseType& response = aValue.ResolveValue();
 
       switch (response.type()) {
-        case BoolResponse::Tnsresult:
+        case ResponseType::Tnsresult:
           mRequest->SetError(response.get_nsresult());
           break;
 
-        case BoolResponse::Tbool: {
-          RefPtr<nsVariant> variant = new nsVariant();
-          variant->SetAsBool(response.get_bool());
+        case ResponseTypeTraits<ResponseType>::kType: {
+          RefPtr<nsVariant> variant =
+              ResponseTypeTraits<ResponseType>::CreateVariant(response);
 
-          mRequest->SetResult(variant);
+          if (variant) {
+            mRequest->SetResult(variant);
+          } else {
+            mRequest->SetError(NS_ERROR_FAILURE);
+          }
           break;
         }
         default:
@@ -172,6 +236,23 @@ class BoolResponsePromiseResolveOrRejectCallback {
   RefPtr<RequestType> mRequest;
 };
 
+using BoolResponsePromiseResolveOrRejectCallback =
+    ResponsePromiseResolveOrRejectCallback<Request, BoolResponsePromise,
+                                           BoolResponse>;
+using UInt64ResponsePromiseResolveOrRejectCallback =
+    ResponsePromiseResolveOrRejectCallback<Request, UInt64ResponsePromise,
+                                           UInt64Response>;
+using CStringArrayResponsePromiseResolveOrRejectCallback =
+    ResponsePromiseResolveOrRejectCallback<Request, CStringArrayResponsePromise,
+                                           CStringArrayResponse>;
+using OriginUsageMetadataArrayResponsePromiseResolveOrRejectCallback =
+    ResponsePromiseResolveOrRejectCallback<
+        UsageRequest, OriginUsageMetadataArrayResponsePromise,
+        OriginUsageMetadataArrayResponse>;
+using UsageInfoResponsePromiseResolveOrRejectCallback =
+    ResponsePromiseResolveOrRejectCallback<
+        UsageRequest, UsageInfoResponsePromise, UsageInfoResponse>;
+
 }  // namespace
 
 class QuotaManagerService::PendingRequestInfo {
@@ -186,19 +267,6 @@ class QuotaManagerService::PendingRequestInfo {
   RequestBase* GetRequest() const { return mRequest; }
 
   virtual nsresult InitiateRequest(QuotaChild* aActor) = 0;
-};
-
-class QuotaManagerService::UsageRequestInfo : public PendingRequestInfo {
-  UsageRequestParams mParams;
-
- public:
-  UsageRequestInfo(UsageRequest* aRequest, const UsageRequestParams& aParams)
-      : PendingRequestInfo(aRequest), mParams(aParams) {
-    MOZ_ASSERT(aRequest);
-    MOZ_ASSERT(aParams.type() != UsageRequestParams::T__None);
-  }
-
-  virtual nsresult InitiateRequest(QuotaChild* aActor) override;
 };
 
 class QuotaManagerService::RequestInfo : public PendingRequestInfo {
@@ -445,7 +513,7 @@ void QuotaManagerService::RemoveIdleObserver() {
 NS_IMPL_ADDREF(QuotaManagerService)
 NS_IMPL_RELEASE_WITH_DESTROY(QuotaManagerService, Destroy())
 NS_IMPL_QUERY_INTERFACE(QuotaManagerService, nsIQuotaManagerService,
-                        nsIObserver)
+                        nsIQuotaManagerServiceInternal, nsIObserver)
 
 NS_IMETHODIMP
 QuotaManagerService::StorageName(nsIQuotaRequest** _retval) {
@@ -493,6 +561,27 @@ QuotaManagerService::StorageInitialized(nsIQuotaRequest** _retval) {
 }
 
 NS_IMETHODIMP
+QuotaManagerService::PersistentStorageInitialized(nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendPersistentStorageInitialized()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 QuotaManagerService::TemporaryStorageInitialized(nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
@@ -514,6 +603,125 @@ QuotaManagerService::TemporaryStorageInitialized(nsIQuotaRequest** _retval) {
 }
 
 NS_IMETHODIMP
+QuotaManagerService::TemporaryGroupInitialized(nsIPrincipal* aPrincipal,
+                                               nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendTemporaryGroupInitialized(principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::PersistentOriginInitialized(nsIPrincipal* aPrincipal,
+                                                 nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendPersistentOriginInitialized(principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::TemporaryOriginInitialized(
+    const nsACString& aPersistenceType, nsIPrincipal* aPrincipal,
+    nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(
+      const auto& persistenceType,
+      ([&aPersistenceType]() -> Result<PersistenceType, nsresult> {
+        const auto persistenceType =
+            PersistenceTypeFromString(aPersistenceType, fallible);
+        QM_TRY(MOZ_TO_RESULT(persistenceType.isSome()),
+               Err(NS_ERROR_INVALID_ARG));
+
+        QM_TRY(
+            MOZ_TO_RESULT(IsBestEffortPersistenceType(persistenceType.ref())),
+            Err(NS_ERROR_INVALID_ARG));
+
+        return persistenceType.ref();
+      }()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor
+      ->SendTemporaryOriginInitialized(persistenceType, principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 QuotaManagerService::Init(nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
@@ -527,6 +735,27 @@ QuotaManagerService::Init(nsIQuotaRequest** _retval) {
   RefPtr<Request> request = new Request();
 
   mBackgroundActor->SendInitializeStorage()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::InitializePersistentStorage(nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendInitializePersistentStorage()->Then(
       GetCurrentSerialEventTarget(), __func__,
       BoolResponsePromiseResolveOrRejectCallback(request));
 
@@ -556,83 +785,62 @@ QuotaManagerService::InitTemporaryStorage(nsIQuotaRequest** _retval) {
 }
 
 NS_IMETHODIMP
+QuotaManagerService::InitializeAllTemporaryOrigins(nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendInitializeAllTemporaryOrigins()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::InitializeTemporaryGroup(nsIPrincipal* aPrincipal,
+                                              nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendInitializeTemporaryGroup(principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 QuotaManagerService::InitializePersistentOrigin(nsIPrincipal* aPrincipal,
-                                                nsIQuotaRequest** _retval) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
-
-  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  RefPtr<Request> request = new Request();
-
-  InitializePersistentOriginParams params;
-
-  nsresult rv =
-      CheckedPrincipalToPrincipalInfo(aPrincipal, params.principalInfo());
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  RequestInfo info(request, params);
-
-  rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  request.forget(_retval);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-QuotaManagerService::InitializeTemporaryOrigin(
-    const nsACString& aPersistenceType, nsIPrincipal* aPrincipal,
-    nsIQuotaRequest** _retval) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
-
-  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  RefPtr<Request> request = new Request();
-
-  InitializeTemporaryOriginParams params;
-
-  const auto maybePersistenceType =
-      PersistenceTypeFromString(aPersistenceType, fallible);
-  if (NS_WARN_IF(maybePersistenceType.isNothing())) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
-  if (NS_WARN_IF(!IsBestEffortPersistenceType(maybePersistenceType.value()))) {
-    return NS_ERROR_FAILURE;
-  }
-
-  params.persistenceType() = maybePersistenceType.value();
-
-  nsresult rv =
-      CheckedPrincipalToPrincipalInfo(aPrincipal, params.principalInfo());
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  RequestInfo info(request, params);
-
-  rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  request.forget(_retval);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-QuotaManagerService::InitializePersistentClient(nsIPrincipal* aPrincipal,
-                                                const nsAString& aClientType,
                                                 nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
@@ -643,32 +851,21 @@ QuotaManagerService::InitializePersistentClient(nsIPrincipal* aPrincipal,
 
   QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
 
-  QM_TRY_INSPECT(
-      const auto& principalInfo,
-      ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
-        PrincipalInfo principalInfo;
-        QM_TRY(MOZ_TO_RESULT(
-            PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
-        QM_TRY(MOZ_TO_RESULT(QuotaManager::IsPrincipalInfoValid(principalInfo)),
-               Err(NS_ERROR_INVALID_ARG));
-
-        return principalInfo;
-      }()));
-
-  QM_TRY_INSPECT(const auto& clientType,
-                 ([&aClientType]() -> Result<Client::Type, nsresult> {
-                   Client::Type clientType;
-                   QM_TRY(MOZ_TO_RESULT(Client::TypeFromText(
-                              aClientType, clientType, fallible)),
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
                           Err(NS_ERROR_INVALID_ARG));
 
-                   return clientType;
+                   return principalInfo;
                  }()));
 
-  RefPtr<Request> request = new Request();
+  auto request = MakeRefPtr<Request>();
 
-  mBackgroundActor->SendInitializePersistentClient(principalInfo, clientType)
+  mBackgroundActor->SendInitializePersistentOrigin(principalInfo)
       ->Then(GetCurrentSerialEventTarget(), __func__,
              BoolResponsePromiseResolveOrRejectCallback(request));
 
@@ -677,9 +874,9 @@ QuotaManagerService::InitializePersistentClient(nsIPrincipal* aPrincipal,
 }
 
 NS_IMETHODIMP
-QuotaManagerService::InitializeTemporaryClient(
+QuotaManagerService::InitializeTemporaryOrigin(
     const nsACString& aPersistenceType, nsIPrincipal* aPrincipal,
-    const nsAString& aClientType, nsIQuotaRequest** _retval) {
+    bool aCreateIfNonExistent, nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
   MOZ_ASSERT(nsContentUtils::IsCallerChrome());
@@ -704,18 +901,115 @@ QuotaManagerService::InitializeTemporaryClient(
         return persistenceType.ref();
       }()));
 
-  QM_TRY_INSPECT(
-      const auto& principalInfo,
-      ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
-        PrincipalInfo principalInfo;
-        QM_TRY(MOZ_TO_RESULT(
-            PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
-        QM_TRY(MOZ_TO_RESULT(QuotaManager::IsPrincipalInfoValid(principalInfo)),
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  auto request = MakeRefPtr<Request>();
+
+  mBackgroundActor
+      ->SendInitializeTemporaryOrigin(persistenceType, principalInfo,
+                                      aCreateIfNonExistent)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::InitializePersistentClient(nsIPrincipal* aPrincipal,
+                                                const nsAString& aClientType,
+                                                nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  QM_TRY_INSPECT(const auto& clientType,
+                 ([&aClientType]() -> Result<Client::Type, nsresult> {
+                   Client::Type clientType;
+                   QM_TRY(MOZ_TO_RESULT(Client::TypeFromText(
+                              aClientType, clientType, fallible)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return clientType;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendInitializePersistentClient(principalInfo, clientType)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::InitializeTemporaryClient(
+    const nsACString& aPersistenceType, nsIPrincipal* aPrincipal,
+    const nsAString& aClientType, bool aCreateIfNonExistent,
+    nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  QM_TRY(MOZ_TO_RESULT(StaticPrefs::dom_quotaManager_testing()),
+         NS_ERROR_UNEXPECTED);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(
+      const auto& persistenceType,
+      ([&aPersistenceType]() -> Result<PersistenceType, nsresult> {
+        const auto persistenceType =
+            PersistenceTypeFromString(aPersistenceType, fallible);
+        QM_TRY(MOZ_TO_RESULT(persistenceType.isSome()),
                Err(NS_ERROR_INVALID_ARG));
 
-        return principalInfo;
+        QM_TRY(
+            MOZ_TO_RESULT(IsBestEffortPersistenceType(persistenceType.ref())),
+            Err(NS_ERROR_INVALID_ARG));
+
+        return persistenceType.ref();
       }()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
 
   QM_TRY_INSPECT(const auto& clientType,
                  ([&aClientType]() -> Result<Client::Type, nsresult> {
@@ -731,7 +1025,7 @@ QuotaManagerService::InitializeTemporaryClient(
 
   mBackgroundActor
       ->SendInitializeTemporaryClient(persistenceType, principalInfo,
-                                      clientType)
+                                      clientType, aCreateIfNonExistent)
       ->Then(GetCurrentSerialEventTarget(), __func__,
              BoolResponsePromiseResolveOrRejectCallback(request));
 
@@ -756,8 +1050,7 @@ QuotaManagerService::GetFullOriginMetadata(const nsACString& aPersistenceType,
 
   PrincipalInfo principalInfo;
   QM_TRY(MOZ_TO_RESULT(PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
-  QM_TRY(OkIf(QuotaManager::IsPrincipalInfoValid(principalInfo)),
-         NS_ERROR_INVALID_ARG);
+  QM_TRY(OkIf(IsPrincipalInfoValid(principalInfo)), NS_ERROR_INVALID_ARG);
 
   RefPtr<Request> request = new Request();
 
@@ -780,18 +1073,23 @@ QuotaManagerService::GetUsage(nsIQuotaUsageCallback* aCallback, bool aGetAll,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aCallback);
 
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
   RefPtr<UsageRequest> request = new UsageRequest(aCallback);
 
-  AllUsageParams params;
+  RefPtr<QuotaUsageRequestChild> usageRequestChild =
+      new QuotaUsageRequestChild(request);
 
-  params.getAll() = aGetAll;
+  ManagedEndpoint<PQuotaUsageRequestParent> usageRequestParentEndpoint =
+      mBackgroundActor->OpenPQuotaUsageRequestEndpoint(usageRequestChild);
+  QM_TRY(MOZ_TO_RESULT(usageRequestParentEndpoint.IsValid()));
 
-  UsageRequestInfo info(request, params);
+  mBackgroundActor->SendGetUsage(aGetAll, std::move(usageRequestParentEndpoint))
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             OriginUsageMetadataArrayResponsePromiseResolveOrRejectCallback(
+                 request));
 
-  nsresult rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  request->SetBackgroundActor(usageRequestChild);
 
   request.forget(_retval);
   return NS_OK;
@@ -800,30 +1098,70 @@ QuotaManagerService::GetUsage(nsIQuotaUsageCallback* aCallback, bool aGetAll,
 NS_IMETHODIMP
 QuotaManagerService::GetUsageForPrincipal(nsIPrincipal* aPrincipal,
                                           nsIQuotaUsageCallback* aCallback,
-                                          bool aFromMemory,
                                           nsIQuotaUsageRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
   MOZ_ASSERT(aCallback);
 
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
   RefPtr<UsageRequest> request = new UsageRequest(aPrincipal, aCallback);
 
-  OriginUsageParams params;
+  RefPtr<QuotaUsageRequestChild> usageRequestChild =
+      new QuotaUsageRequestChild(request);
 
-  nsresult rv =
-      CheckedPrincipalToPrincipalInfo(aPrincipal, params.principalInfo());
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  ManagedEndpoint<PQuotaUsageRequestParent> usageRequestParentEndpoint =
+      mBackgroundActor->OpenPQuotaUsageRequestEndpoint(usageRequestChild);
+  QM_TRY(MOZ_TO_RESULT(usageRequestParentEndpoint.IsValid()));
 
-  params.fromMemory() = aFromMemory;
+  mBackgroundActor
+      ->SendGetOriginUsage(principalInfo, std::move(usageRequestParentEndpoint))
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             UsageInfoResponsePromiseResolveOrRejectCallback(request));
 
-  UsageRequestInfo info(request, params);
+  request->SetBackgroundActor(usageRequestChild);
 
-  rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::GetCachedUsageForPrincipal(nsIPrincipal* aPrincipal,
+                                                nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendGetCachedOriginUsage(principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             UInt64ResponsePromiseResolveOrRejectCallback(request));
 
   request.forget(_retval);
   return NS_OK;
@@ -889,7 +1227,7 @@ QuotaManagerService::ClearStoragesForOriginAttributesPattern(
 NS_IMETHODIMP
 QuotaManagerService::ClearStoragesForPrincipal(
     nsIPrincipal* aPrincipal, const nsACString& aPersistenceType,
-    const nsAString& aClientType, nsIQuotaRequest** _retval) {
+    nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
 
@@ -910,37 +1248,79 @@ QuotaManagerService::ClearStoragesForPrincipal(
         return persistenceType;
       }()));
 
-  QM_TRY_INSPECT(
-      const auto& principalInfo,
-      ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
-        PrincipalInfo principalInfo;
-        QM_TRY(MOZ_TO_RESULT(
-            PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
-        QM_TRY(MOZ_TO_RESULT(QuotaManager::IsPrincipalInfoValid(principalInfo)),
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor->SendClearStoragesForOrigin(persistenceType, principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::ClearStoragesForClient(nsIPrincipal* aPrincipal,
+                                            const nsAString& aClientType,
+                                            const nsACString& aPersistenceType,
+                                            nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(
+      const auto& persistenceType,
+      ([&aPersistenceType]() -> Result<Maybe<PersistenceType>, nsresult> {
+        if (aPersistenceType.IsVoid()) {
+          return Maybe<PersistenceType>();
+        }
+
+        const auto persistenceType =
+            PersistenceTypeFromString(aPersistenceType, fallible);
+        QM_TRY(MOZ_TO_RESULT(persistenceType.isSome()),
                Err(NS_ERROR_INVALID_ARG));
 
-        return principalInfo;
+        return persistenceType;
       }()));
 
-  QM_TRY_INSPECT(const auto& clientType,
-                 ([&aClientType]() -> Result<Maybe<Client::Type>, nsresult> {
-                   if (aClientType.IsVoid()) {
-                     return Maybe<Client::Type>();
-                   }
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  QM_TRY_INSPECT(const auto& clientType,
+                 ([&aClientType]() -> Result<Client::Type, nsresult> {
                    Client::Type clientType;
                    QM_TRY(MOZ_TO_RESULT(Client::TypeFromText(
                               aClientType, clientType, fallible)),
                           Err(NS_ERROR_INVALID_ARG));
 
-                   return Some(clientType);
+                   return clientType;
                  }()));
 
   RefPtr<Request> request = new Request();
 
   mBackgroundActor
-      ->SendClearStoragesForOrigin(persistenceType, principalInfo, clientType)
+      ->SendClearStoragesForClient(persistenceType, principalInfo, clientType)
       ->Then(GetCurrentSerialEventTarget(), __func__,
              BoolResponsePromiseResolveOrRejectCallback(request));
 
@@ -979,7 +1359,7 @@ QuotaManagerService::ClearStoragesForOriginPrefix(
         QM_TRY(MOZ_TO_RESULT(
             PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
-        QM_TRY(MOZ_TO_RESULT(QuotaManager::IsPrincipalInfoValid(principalInfo)),
+        QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
                Err(NS_ERROR_INVALID_ARG));
 
         if (principalInfo.type() == PrincipalInfo::TContentPrincipalInfo) {
@@ -1026,33 +1406,104 @@ QuotaManagerService::Reset(nsIQuotaRequest** _retval) {
 NS_IMETHODIMP
 QuotaManagerService::ResetStoragesForPrincipal(
     nsIPrincipal* aPrincipal, const nsACString& aPersistenceType,
-    const nsAString& aClientType, nsIQuotaRequest** _retval) {
+    nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
 
-  if (NS_WARN_IF(!StaticPrefs::dom_quotaManager_testing())) {
-    return NS_ERROR_UNEXPECTED;
-  }
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
 
-  RefPtr<Request> request = new Request(aPrincipal);
+  QM_TRY_INSPECT(
+      const auto& persistenceType,
+      ([&aPersistenceType]() -> Result<Maybe<PersistenceType>, nsresult> {
+        if (aPersistenceType.IsVoid()) {
+          return Maybe<PersistenceType>();
+        }
 
-  ClearResetOriginParams commonParams;
+        const auto persistenceType =
+            PersistenceTypeFromString(aPersistenceType, fallible);
+        QM_TRY(MOZ_TO_RESULT(persistenceType.isSome()),
+               Err(NS_ERROR_INVALID_ARG));
 
-  nsresult rv = GetClearResetOriginParams(aPrincipal, aPersistenceType,
-                                          aClientType, commonParams);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+        return persistenceType;
+      }()));
 
-  RequestParams params;
-  params = ResetOriginParams(commonParams);
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
 
-  RequestInfo info(request, params);
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
 
-  rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+                   return principalInfo;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor
+      ->SendShutdownStoragesForOrigin(persistenceType, principalInfo)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::ResetStoragesForClient(nsIPrincipal* aPrincipal,
+                                            const nsAString& aClientType,
+                                            const nsACString& aPersistenceType,
+                                            nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  QM_TRY_INSPECT(
+      const auto& persistenceType,
+      ([&aPersistenceType]() -> Result<Maybe<PersistenceType>, nsresult> {
+        if (aPersistenceType.IsVoid()) {
+          return Maybe<PersistenceType>();
+        }
+
+        const auto persistenceType =
+            PersistenceTypeFromString(aPersistenceType, fallible);
+        QM_TRY(MOZ_TO_RESULT(persistenceType.isSome()),
+               Err(NS_ERROR_INVALID_ARG));
+
+        return persistenceType;
+      }()));
+
+  QM_TRY_INSPECT(const auto& principalInfo,
+                 ([&aPrincipal]() -> Result<PrincipalInfo, nsresult> {
+                   PrincipalInfo principalInfo;
+                   QM_TRY(MOZ_TO_RESULT(
+                       PrincipalToPrincipalInfo(aPrincipal, &principalInfo)));
+
+                   QM_TRY(MOZ_TO_RESULT(IsPrincipalInfoValid(principalInfo)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return principalInfo;
+                 }()));
+
+  QM_TRY_INSPECT(const auto& clientType,
+                 ([&aClientType]() -> Result<Client::Type, nsresult> {
+                   Client::Type clientType;
+                   QM_TRY(MOZ_TO_RESULT(Client::TypeFromText(
+                              aClientType, clientType, fallible)),
+                          Err(NS_ERROR_INVALID_ARG));
+
+                   return clientType;
+                 }()));
+
+  RefPtr<Request> request = new Request();
+
+  mBackgroundActor
+      ->SendShutdownStoragesForClient(persistenceType, principalInfo,
+                                      clientType)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             BoolResponsePromiseResolveOrRejectCallback(request));
 
   request.forget(_retval);
   return NS_OK;
@@ -1145,18 +1596,44 @@ NS_IMETHODIMP
 QuotaManagerService::ListOrigins(nsIQuotaRequest** _retval) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  RefPtr<Request> request = new Request();
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
 
-  ListOriginsParams params;
+  auto request = MakeRefPtr<Request>();
 
-  RequestInfo info(request, params);
-
-  nsresult rv = InitiateRequest(info);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
+  mBackgroundActor->SendListOrigins()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      CStringArrayResponsePromiseResolveOrRejectCallback(request));
 
   request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::ListCachedOrigins(nsIQuotaRequest** _retval) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  auto request = MakeRefPtr<Request>();
+
+  mBackgroundActor->SendListCachedOrigins()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      CStringArrayResponsePromiseResolveOrRejectCallback(request));
+
+  request.forget(_retval);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+QuotaManagerService::SetThumbnailPrivateIdentityId(
+    uint32_t aThumbnailPrivateIdentityId) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  QM_TRY(MOZ_TO_RESULT(EnsureBackgroundActor()));
+
+  mBackgroundActor->SendSetThumbnailPrivateIdentityId(
+      aThumbnailPrivateIdentityId);
+
   return NS_OK;
 }
 
@@ -1207,24 +1684,6 @@ QuotaManagerService::Observe(nsISupports* aSubject, const char* aTopic,
 void QuotaManagerService::Notify(const hal::BatteryInformation& aBatteryInfo) {
   // This notification is received when battery data changes. We don't need to
   // deal with this notification.
-}
-
-nsresult QuotaManagerService::UsageRequestInfo::InitiateRequest(
-    QuotaChild* aActor) {
-  MOZ_ASSERT(aActor);
-
-  auto request = static_cast<UsageRequest*>(mRequest.get());
-
-  auto actor = new QuotaUsageRequestChild(request);
-
-  if (!aActor->SendPQuotaUsageRequestConstructor(actor, mParams)) {
-    request->SetError(NS_ERROR_FAILURE);
-    return NS_ERROR_FAILURE;
-  }
-
-  request->SetBackgroundActor(actor);
-
-  return NS_OK;
 }
 
 nsresult QuotaManagerService::RequestInfo::InitiateRequest(QuotaChild* aActor) {
