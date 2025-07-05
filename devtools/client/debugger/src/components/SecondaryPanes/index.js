@@ -19,7 +19,6 @@ import actions from "../../actions/index";
 import {
   getTopFrame,
   getExpressions,
-  getPauseCommand,
   isMapScopesEnabled,
   getSelectedFrame,
   getSelectedSource,
@@ -41,7 +40,7 @@ import Threads from "./Threads";
 import Accordion from "../shared/Accordion";
 import CommandBar from "./CommandBar";
 import XHRBreakpoints from "./XHRBreakpoints";
-import EventListeners from "./EventListeners";
+import EventListeners from "../shared/EventListeners";
 import DOMMutationBreakpoints from "./DOMMutationBreakpoints";
 import WhyPaused from "./WhyPaused";
 
@@ -75,6 +74,7 @@ class SecondaryPanes extends Component {
     this.state = {
       showExpressionsInput: false,
       showXHRInput: false,
+      expandedFrameGroups: {},
     };
   }
 
@@ -88,15 +88,13 @@ class SecondaryPanes extends Component {
       mapScopesEnabled: PropTypes.bool.isRequired,
       pauseReason: PropTypes.string.isRequired,
       shouldBreakpointsPaneOpenOnPause: PropTypes.bool.isRequired,
-      thread: PropTypes.string.isRequired,
-      renderWhyPauseDelay: PropTypes.number.isRequired,
-      selectedFrame: PropTypes.object,
+      thread: PropTypes.string,
       skipPausing: PropTypes.bool.isRequired,
-      source: PropTypes.object,
+      showScopesButtons: PropTypes.bool.isRequired,
       toggleEventLogging: PropTypes.func.isRequired,
       resetBreakpointsPaneState: PropTypes.func.isRequired,
       toggleMapScopes: PropTypes.func.isRequired,
-      threads: PropTypes.array.isRequired,
+      showThreads: PropTypes.bool.isRequired,
       removeAllBreakpoints: PropTypes.func.isRequired,
       removeAllXHRBreakpoints: PropTypes.func.isRequired,
     };
@@ -108,6 +106,12 @@ class SecondaryPanes extends Component {
 
   onXHRAdded = () => {
     this.setState({ showXHRInput: false });
+  };
+
+  onExpandFrameGroup = expandedFrameGroups => {
+    this.setState({
+      expandedFrameGroups: { ...expandedFrameGroups },
+    });
   };
 
   watchExpressionHeaderButtons() {
@@ -184,6 +188,7 @@ class SecondaryPanes extends Component {
     return {
       header: L10N.getStr("scopes.header"),
       className: "scopes-pane",
+      id: "scopes-pane",
       component: React.createElement(Scopes, null),
       opened: prefs.scopesVisible,
       buttons: this.getScopesButtons(),
@@ -194,11 +199,10 @@ class SecondaryPanes extends Component {
   }
 
   getScopesButtons() {
-    const { selectedFrame, mapScopesEnabled, source } = this.props;
-
-    if (!selectedFrame || !source?.isOriginal || source?.isPrettyPrinted) {
+    if (!this.props.showScopesButtons) {
       return null;
     }
+    const { mapScopesEnabled } = this.props;
 
     return [
       div(
@@ -304,6 +308,11 @@ class SecondaryPanes extends Component {
       className: "call-stack-pane",
       component: React.createElement(Frames, {
         panel: "debugger",
+        // These props enable storing and using the current expanded state
+        // of the frame groups. This is we always handle displaying selected frames
+        // in groups correctly.
+        onExpandFrameGroup: this.onExpandFrameGroup,
+        expandedFrameGroups: this.state.expandedFrameGroups,
       }),
       opened: prefs.callStackVisible,
       onToggle: opened => {
@@ -357,7 +366,9 @@ class SecondaryPanes extends Component {
       id: "event-listeners-pane",
       className: "event-listeners-pane",
       buttons: this.getEventButtons(),
-      component: React.createElement(EventListeners, null),
+      component: React.createElement(EventListeners, {
+        panelKey: "breakpoint",
+      }),
       opened: prefs.eventListenersVisible || pauseReason === "eventBreakpoint",
       onToggle: opened => {
         prefs.eventListenersVisible = opened;
@@ -388,7 +399,7 @@ class SecondaryPanes extends Component {
     const { horizontal, hasFrames } = this.props;
 
     if (horizontal) {
-      if (this.props.threads.length) {
+      if (this.props.showThreads) {
         items.push(this.getThreadsItem());
       }
 
@@ -419,7 +430,7 @@ class SecondaryPanes extends Component {
     }
 
     const items = [];
-    if (this.props.threads.length) {
+    if (this.props.showThreads) {
       items.push(this.getThreadsItem());
     }
 
@@ -437,12 +448,9 @@ class SecondaryPanes extends Component {
   }
 
   renderHorizontalLayout() {
-    const { renderWhyPauseDelay } = this.props;
     return div(
       null,
-      React.createElement(WhyPaused, {
-        delay: renderWhyPauseDelay,
-      }),
+      React.createElement(WhyPaused),
       React.createElement(Accordion, {
         items: this.getItems(),
       })
@@ -461,9 +469,7 @@ class SecondaryPanes extends Component {
             width: "inherit",
           },
         },
-        React.createElement(WhyPaused, {
-          delay: this.props.renderWhyPauseDelay,
-        }),
+        React.createElement(WhyPaused),
         React.createElement(Accordion, {
           items: this.getStartItems(),
         })
@@ -499,21 +505,10 @@ class SecondaryPanes extends Component {
   }
 }
 
-// Checks if user is in debugging mode and adds a delay preventing
-// excessive vertical 'jumpiness'
-function getRenderWhyPauseDelay(state, thread) {
-  const inPauseCommand = !!getPauseCommand(state, thread);
-
-  if (!inPauseCommand) {
-    return 100;
-  }
-
-  return 0;
-}
-
 const mapStateToProps = state => {
   const thread = getCurrentThread(state);
-  const selectedFrame = getSelectedFrame(state, thread);
+  const selectedFrame = getSelectedFrame(state);
+  const selectedSource = getSelectedSource(state);
   const pauseReason = getPauseReason(state, thread);
   const shouldBreakpointsPaneOpenOnPause = getShouldBreakpointsPaneOpenOnPause(
     state,
@@ -523,13 +518,15 @@ const mapStateToProps = state => {
   return {
     expressions: getExpressions(state),
     hasFrames: !!getTopFrame(state, thread),
-    renderWhyPauseDelay: getRenderWhyPauseDelay(state, thread),
-    selectedFrame,
     mapScopesEnabled: isMapScopesEnabled(state),
-    threads: getThreads(state),
+    showThreads: !!getThreads(state).length,
     skipPausing: getSkipPausing(state),
     logEventBreakpoints: shouldLogEventBreakpoints(state),
-    source: getSelectedSource(state),
+    showScopesButtons:
+      selectedFrame &&
+      selectedSource &&
+      selectedSource.isOriginal &&
+      !selectedSource.isPrettyPrinted,
     pauseReason: pauseReason?.type ?? "",
     shouldBreakpointsPaneOpenOnPause,
     thread,

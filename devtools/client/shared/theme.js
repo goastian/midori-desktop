@@ -4,35 +4,9 @@
 
 "use strict";
 
-const variableFileContents = require("raw!chrome://devtools/skin/variables.css");
-
-const THEME_SELECTOR_STRINGS = {
-  light: ":root.theme-light {",
-  dark: ":root.theme-dark {",
-  root: ":root {",
-};
 const THEME_PREF = "devtools.theme";
 
-/**
- * Takes a theme name and returns the contents of its variable rule block.
- * The first time this runs fetches the variables CSS file and caches it.
- */
-function getThemeFile(name) {
-  // If there's no theme expected for this name, use `light` as default.
-  const selector = THEME_SELECTOR_STRINGS[name] || THEME_SELECTOR_STRINGS.light;
-
-  // This is a pretty naive way to find the contents between:
-  // selector {
-  //   name: val;
-  // }
-  // There is test coverage for this feature (browser_theme.js)
-  // so if an } is introduced in the variables file it will catch that.
-  let theme = variableFileContents;
-  theme = theme.substring(theme.indexOf(selector));
-  theme = theme.substring(0, theme.indexOf("}"));
-
-  return theme;
-}
+/* eslint-disable no-unused-vars */
 
 /**
  * Returns the "auto" theme.
@@ -46,7 +20,7 @@ const getAutoTheme = (exports.getAutoTheme = () => {
  * like "dark" or "light".
  */
 const getTheme = (exports.getTheme = () => {
-  const theme = Services.prefs.getCharPref(THEME_PREF);
+  const theme = getThemePrefValue();
   if (theme == "auto") {
     return getAutoTheme();
   }
@@ -54,27 +28,36 @@ const getTheme = (exports.getTheme = () => {
 });
 
 /**
- * Returns a color indicated by `type` (like "toolbar-background", or
- * "highlight-red"), with the ability to specify a theme, or use whatever the
- * current theme is if left unset. If theme not found, falls back to "light"
- * theme. Returns null if the type cannot be found for the theme given.
+ * Returns the value of the pref of the current theme,
+ * like "auto", "dark" or "light".
  */
-/* eslint-disable no-unused-vars */
-const getColor = (exports.getColor = (type, theme) => {
-  const themeName = theme || getTheme();
-  let themeFile = getThemeFile(themeName);
-  let match = themeFile.match(new RegExp("--theme-" + type + ": (.*);"));
-  const variableMatch = match ? match[1].match(/var\((.*)\)/) : null;
+const getThemePrefValue = (exports.getThemePrefValue = () => {
+  return Services.prefs.getCharPref(THEME_PREF, "");
+});
 
-  // Check if the match is a color variable and retrieve the value of the color variable
-  // if needed
-  if (variableMatch) {
-    themeFile = getThemeFile("root");
-    match = themeFile.match(new RegExp(`${variableMatch[1]}: (.*);`));
+/**
+ * Returns the color of a CSS variable (--theme-toolbar-background, --theme-highlight-red),
+ * for the current toolbox theme, or null if the variable does not exist, or it's not a
+ * registered property, or doesn't have a <color> syntax.
+ *
+ * @param {String} variableName
+ * @param {Window} win: The window into which the variable should be defined.
+ * @returns {String|null}
+ */
+const getCssVariableColor = (exports.getCssVariableColor = (
+  variableName,
+  win
+) => {
+  const value = win
+    .getComputedStyle(win.document.documentElement)
+    .getPropertyValue(variableName);
+
+  if (!value) {
+    console.warn("Unknown", variableName, "CSS variable");
+    return null;
   }
 
-  // Return the appropriate variable in the theme, or otherwise, null.
-  return match ? match[1] : null;
+  return value;
 });
 
 /**

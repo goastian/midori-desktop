@@ -28,7 +28,7 @@ add_task(async function () {
 
   info("Call firstCall() and wait for the debugger statement to be reached.");
   const dbg = createDebuggerContext(toolbox);
-  await pauseDebugger(dbg);
+  await pauseDebugger(dbg, { shouldWaitForInlinePreviews: false });
 
   info("Switch back to the console");
   await gDevTools.showToolboxForTab(tab, { toolId: "webconsole" });
@@ -45,16 +45,7 @@ add_task(async function () {
 
   info("Expanding the array object inspector");
   const [oi] = objectInspectors;
-  const onOiExpanded = waitFor(() => {
-    return oi.querySelectorAll(".node").length === 3;
-  });
-  oi.querySelector(".arrow").click();
-  await onOiExpanded;
-
-  ok(
-    oi.querySelector(".arrow").classList.contains("expanded"),
-    "Object inspector expanded"
-  );
+  await expandObjectInspectorNode(oi.querySelector(".tree-node"));
 
   // The object inspector now looks like:
   // Object { testProp2: "testValue2" }

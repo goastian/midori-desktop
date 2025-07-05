@@ -160,7 +160,7 @@ class ShapesInContextEditor {
     }
 
     if (this.swatch) {
-      this.swatch.classList.remove("active");
+      this.swatch.setAttribute("aria-pressed", false);
     }
     this.swatch = null;
     this.rule = null;
@@ -186,9 +186,9 @@ class ShapesInContextEditor {
     }
 
     const valueSpan = this.textProperty.editor.valueSpan;
-    this.swatch = valueSpan.querySelector(".ruleview-shapeswatch");
+    this.swatch = valueSpan.querySelector(".inspector-shapeswatch");
     if (this.swatch) {
-      this.swatch.classList.add("active");
+      this.swatch.setAttribute("aria-pressed", true);
     }
   }
 
@@ -252,7 +252,7 @@ class ShapesInContextEditor {
       return;
     }
 
-    const pointSelector = ".ruleview-shape-point";
+    const pointSelector = ".inspector-shape-point";
     // First, unmark all highlighted coordinate nodes from Rule view
     for (const node of shapeValueEl.querySelectorAll(
       `${pointSelector}.active`

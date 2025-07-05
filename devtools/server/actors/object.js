@@ -12,6 +12,12 @@ const { assert } = DevToolsUtils;
 
 loader.lazyRequireGetter(
   this,
+  "propertyDescriptor",
+  "resource://devtools/server/actors/object/property-descriptor.js",
+  true
+);
+loader.lazyRequireGetter(
+  this,
   "PropertyIteratorActor",
   "resource://devtools/server/actors/object/property-iterator.js",
   true
@@ -77,45 +83,36 @@ const {
   isArray,
   isStorage,
   isTypedArray,
+  createValueGrip,
 } = require("resource://devtools/server/actors/object/utils.js");
 
 class ObjectActor extends Actor {
   /**
    * Creates an actor for the specified object.
    *
-   * @param obj Debugger.Object
+   * @param ThreadActor threadActor
+   *        The current thread actor from where this object is running from.
+   * @param Debugger.Object obj
    *        The debuggee object.
    * @param Object
    *        A collection of abstract methods that are implemented by the caller.
    *        ObjectActor requires the following functions to be implemented by
    *        the caller:
-   *          - createValueGrip
-   *              Creates a value grip for the given object
-   *          - createEnvironmentActor
-   *              Creates and return an environment actor
-   *          - getGripDepth
-   *              An actor's grip depth getter
-   *          - incrementGripDepth
-   *              Increment the actor's grip depth
-   *          - decrementGripDepth
-   *              Decrement the actor's grip depth
-   * @param DevToolsServerConnection conn
+   *        - {Number} customFormatterObjectTagDepth: See `processObjectTag`
+   *        - {Debugger.Object} customFormatterConfigDbgObj
+   *        - {bool} allowSideEffect: allow side effectful operations while
+   *                                  constructing a preview
    */
   constructor(
+    threadActor,
     obj,
     {
-      thread,
-      createValueGrip: createValueGripHook,
-      createEnvironmentActor,
-      getGripDepth,
-      incrementGripDepth,
-      decrementGripDepth,
       customFormatterObjectTagDepth,
       customFormatterConfigDbgObj,
-    },
-    conn
+      allowSideEffect = true,
+    }
   ) {
-    super(conn, objectSpec);
+    super(threadActor.conn, objectSpec);
 
     assert(
       !obj.optimizedOut,
@@ -123,38 +120,55 @@ class ObjectActor extends Actor {
     );
 
     this.obj = obj;
-    this.thread = thread;
+    this.targetActor = threadActor.targetActor;
+    this.threadActor = threadActor;
+    this.rawObj = obj.unsafeDereference();
+    this.safeRawObj = this.#getSafeRawObject();
+    this.allowSideEffect = allowSideEffect;
+
+    // Cache obj.class as it can be costly when queried from previewers if this is in a hot path
+    // (e.g. logging objects within a for loops).
+    this.className = this.obj.class;
+
     this.hooks = {
-      createValueGrip: createValueGripHook,
-      createEnvironmentActor,
-      getGripDepth,
-      incrementGripDepth,
-      decrementGripDepth,
       customFormatterObjectTagDepth,
       customFormatterConfigDbgObj,
     };
   }
 
-  rawValue() {
-    return this.obj.unsafeDereference();
-  }
-
   addWatchpoint(property, label, watchpointType) {
-    this.thread.addWatchpoint(this, { property, label, watchpointType });
+    this.threadActor.addWatchpoint(this, { property, label, watchpointType });
   }
 
   removeWatchpoint(property) {
-    this.thread.removeWatchpoint(this, property);
+    this.threadActor.removeWatchpoint(this, property);
   }
 
   removeWatchpoints() {
-    this.thread.removeWatchpoint(this);
+    this.threadActor.removeWatchpoint(this);
+  }
+
+  createValueGrip(value, depth) {
+    if (typeof depth != "number") {
+      throw new Error("Missing 'depth' argument to createValeuGrip()");
+    }
+    return createValueGrip(
+      this.threadActor,
+      value,
+      // Register any nested object actor in the same pool as their parent object actor
+      this.getParent(),
+      depth,
+      this.hooks
+    );
   }
 
   /**
    * Returns a grip for this actor for returning in a protocol message.
+   *
+   * @param {Number} depth
+   *                 Current depth in the generated preview object sent to the client.
    */
-  form() {
+  form({ depth = 0 } = {}) {
     const g = {
       type: "object",
       actor: this.actorID,
@@ -164,12 +178,12 @@ class ObjectActor extends Actor {
     if (unwrapped === undefined) {
       // Objects belonging to an invisible-to-debugger compartment might be proxies,
       // so just in case they shouldn't be accessed.
-      g.class = "InvisibleToDebugger: " + this.obj.class;
+      g.class = "InvisibleToDebugger: " + this.className;
       return g;
     }
 
     // Only process custom formatters if the feature is enabled.
-    if (this.thread?.targetActor?.customFormatters) {
+    if (this.threadActor?.targetActor?.customFormatters) {
       const result = customFormatterHeader(this);
       if (result) {
         const { formatter, ...header } = result;
@@ -186,9 +200,7 @@ class ObjectActor extends Actor {
       // Proxy objects can run traps when accessed, so just create a preview with
       // the target and the handler.
       g.class = "Proxy";
-      this.hooks.incrementGripDepth();
-      previewers.Proxy[0](this, g, null);
-      this.hooks.decrementGripDepth();
+      previewers.Proxy[0](this, g, depth + 1);
       return g;
     }
 
@@ -198,7 +210,7 @@ class ObjectActor extends Actor {
       // If the debuggee does not subsume the object's compartment, most properties won't
       // be accessible. Cross-orgin Window and Location objects might expose some, though.
       // Change the displayed class, but when creating the preview use the original one.
-      class: unwrapped === null ? "Restricted" : this.obj.class,
+      class: unwrapped === null ? "Restricted" : this.className,
       ownPropertyLength: Number.isFinite(ownPropertyLength)
         ? ownPropertyLength
         : undefined,
@@ -208,24 +220,24 @@ class ObjectActor extends Actor {
       isError: this.obj.isError,
     });
 
-    this.hooks.incrementGripDepth();
-
     if (g.class == "Function") {
       g.isClassConstructor = this.obj.isClassConstructor;
     }
 
-    const raw = this.getRawObject();
-    this._populateGripPreview(g, raw);
-    this.hooks.decrementGripDepth();
+    this._populateGripPreview(g, depth + 1);
 
-    if (raw && Node.isInstance(raw) && lazy.ContentDOMReference) {
+    if (
+      this.safeRawObj &&
+      Node.isInstance(this.safeRawObj) &&
+      lazy.ContentDOMReference
+    ) {
       // ContentDOMReference.get takes a DOM element and returns an object with
       // its browsing context id, as well as a unique identifier. We are putting it in
       // the grip here in order to be able to retrieve the node later, potentially from a
       // different DevToolsServer running in the same process.
       // If ContentDOMReference.get throws, we simply don't add the property to the grip.
       try {
-        g.contentDomReference = lazy.ContentDOMReference.get(raw);
+        g.contentDomReference = lazy.ContentDOMReference.get(this.safeRawObj);
       } catch (e) {}
     }
 
@@ -256,8 +268,8 @@ class ObjectActor extends Actor {
     return null;
   }
 
-  getRawObject() {
-    let raw = this.obj.unsafeDereference();
+  #getSafeRawObject() {
+    let raw = this.rawObj;
 
     // If Cu is not defined, we are running on a worker thread, where xrays
     // don't exist.
@@ -274,14 +286,16 @@ class ObjectActor extends Actor {
 
   /**
    * Populate the `preview` property on `grip` given its type.
+   *
+   * @param {Object} grip
+   *                 Object onto which preview data attribute should be added.
+   * @param {Number} depth
+   *                 Current depth in the generated preview object sent to the client.
    */
-  _populateGripPreview(grip, raw) {
-    // Cache obj.class as it can be costly if this is in a hot path (e.g. logging objects
-    // within a for loop).
-    const className = this.obj.class;
-    for (const previewer of previewers[className] || previewers.Object) {
+  _populateGripPreview(grip, depth) {
+    for (const previewer of previewers[this.className] || previewers.Object) {
       try {
-        const previewerResult = previewer(this, grip, raw, className);
+        const previewerResult = previewer(this, grip, depth);
         if (previewerResult) {
           return;
         }
@@ -301,9 +315,9 @@ class ObjectActor extends Actor {
     const promiseState = { state };
 
     if (state == "fulfilled") {
-      promiseState.value = this.hooks.createValueGrip(value);
+      promiseState.value = this.createValueGrip(value, 0);
     } else if (state == "rejected") {
-      promiseState.reason = this.hooks.createValueGrip(reason);
+      promiseState.reason = this.createValueGrip(reason, 0);
     }
 
     promiseState.creationTimestamp = Date.now() - this.obj.promiseLifetime;
@@ -382,21 +396,21 @@ class ObjectActor extends Actor {
     const ownSymbols = [];
 
     for (const name of names) {
-      ownProperties[name] = this._propertyDescriptor(name);
+      ownProperties[name] = propertyDescriptor(this, name, 0);
     }
 
     for (const sym of symbols) {
       ownSymbols.push({
         name: sym.toString(),
-        descriptor: this._propertyDescriptor(sym),
+        descriptor: propertyDescriptor(this, sym, 0),
       });
     }
 
     return {
-      prototype: this.hooks.createValueGrip(objProto),
+      prototype: this.createValueGrip(objProto, 0),
       ownProperties,
       ownSymbols,
-      safeGetterValues: this._findSafeGetterValues(names),
+      safeGetterValues: this._findSafeGetterValues(names, 0),
     };
   }
 
@@ -407,13 +421,15 @@ class ObjectActor extends Actor {
    * @param array ownProperties
    *        The array that holds the list of known ownProperties names for
    *        |this.obj|.
+   * @param {Number} depth
+   *                 Current depth in the generated preview object sent to the client.
    * @param number [limit=Infinity]
    *        Optional limit of getter values to find.
    * @return object
    *         An object that maps property names to safe getter descriptors as
    *         defined by the remote debugging protocol.
    */
-  _findSafeGetterValues(ownProperties, limit = Infinity) {
+  _findSafeGetterValues(ownProperties, depth, limit = Infinity) {
     const safeGetterValues = Object.create(null);
     let obj = this.obj;
     let level = 0,
@@ -428,7 +444,11 @@ class ObjectActor extends Actor {
     // prototype. Avoid calling getOwnPropertyNames on objects that may have
     // many properties like Array, strings or js objects. That to avoid
     // freezing firefox when doing so.
-    if (isArray(this.obj) || ["Object", "String"].includes(this.obj.class)) {
+    if (
+      this.className == "Object" ||
+      this.className == "String" ||
+      isArray(this.obj)
+    ) {
       obj = obj.proto;
       level++;
     }
@@ -458,7 +478,7 @@ class ObjectActor extends Actor {
         }
 
         const getterValue = this._evaluateGetter(desc.get);
-        if (getterValue === undefined) {
+        if (getterValue === this._evaluateGetterNoResult) {
           continue;
         }
 
@@ -477,7 +497,7 @@ class ObjectActor extends Actor {
         // WebIDL attributes specified with the LenientThis extended attribute
         // return undefined and should be ignored.
         safeGetterValues[name] = {
-          getterValue: this.hooks.createValueGrip(getterValue),
+          getterValue: this.createValueGrip(getterValue, depth),
           getterPrototypeLevel: level,
           enumerable: desc.enumerable,
           writable: level == 0 ? desc.writable : true,
@@ -496,6 +516,8 @@ class ObjectActor extends Actor {
     return safeGetterValues;
   }
 
+  _evaluateGetterNoResult = Symbol();
+
   /**
    * Evaluate the getter function |desc.get|.
    * @param {Object} getter
@@ -503,10 +525,10 @@ class ObjectActor extends Actor {
   _evaluateGetter(getter) {
     const result = getter.call(this.obj);
     if (!result || "throw" in result) {
-      return undefined;
+      return this._evaluateGetterNoResult;
     }
 
-    let getterValue = undefined;
+    let getterValue = this._evaluateGetterNoResult;
     if ("return" in result) {
       getterValue = result.return;
     } else if ("yield" in result) {
@@ -579,7 +601,7 @@ class ObjectActor extends Actor {
     if (DevToolsUtils.isSafeDebuggerObject(this.obj)) {
       objProto = this.obj.proto;
     }
-    return { prototype: this.hooks.createValueGrip(objProto) };
+    return { prototype: this.createValueGrip(objProto, 0) };
   }
 
   /**
@@ -597,7 +619,7 @@ class ObjectActor extends Actor {
       );
     }
 
-    return { descriptor: this._propertyDescriptor(name) };
+    return { descriptor: propertyDescriptor(this, name, 0) };
   }
 
   /**
@@ -704,84 +726,14 @@ class ObjectActor extends Actor {
     if (value) {
       completionGrip = {};
       if ("return" in value) {
-        completionGrip.return = this.hooks.createValueGrip(value.return);
+        completionGrip.return = this.createValueGrip(value.return, 0);
       }
       if ("throw" in value) {
-        completionGrip.throw = this.hooks.createValueGrip(value.throw);
+        completionGrip.throw = this.createValueGrip(value.throw, 0);
       }
     }
 
     return completionGrip;
-  }
-
-  /**
-   * A helper method that creates a property descriptor for the provided object,
-   * properly formatted for sending in a protocol response.
-   *
-   * @private
-   * @param string name
-   *        The property that the descriptor is generated for.
-   * @param boolean [onlyEnumerable]
-   *        Optional: true if you want a descriptor only for an enumerable
-   *        property, false otherwise.
-   * @return object|undefined
-   *         The property descriptor, or undefined if this is not an enumerable
-   *         property and onlyEnumerable=true.
-   */
-  _propertyDescriptor(name, onlyEnumerable) {
-    if (!DevToolsUtils.isSafeDebuggerObject(this.obj)) {
-      return undefined;
-    }
-
-    let desc;
-    try {
-      desc = this.obj.getOwnPropertyDescriptor(name);
-    } catch (e) {
-      // Calling getOwnPropertyDescriptor on wrapped native prototypes is not
-      // allowed (bug 560072). Inform the user with a bogus, but hopefully
-      // explanatory, descriptor.
-      return {
-        configurable: false,
-        writable: false,
-        enumerable: false,
-        value: e.name,
-      };
-    }
-
-    if (isStorage(this.obj)) {
-      if (name === "length") {
-        return undefined;
-      }
-      return desc;
-    }
-
-    if (!desc || (onlyEnumerable && !desc.enumerable)) {
-      return undefined;
-    }
-
-    const retval = {
-      configurable: desc.configurable,
-      enumerable: desc.enumerable,
-    };
-    const obj = this.rawValue();
-
-    if ("value" in desc) {
-      retval.writable = desc.writable;
-      retval.value = this.hooks.createValueGrip(desc.value);
-    } else if (this.thread.getWatchpoint(obj, name.toString())) {
-      const watchpoint = this.thread.getWatchpoint(obj, name.toString());
-      retval.value = this.hooks.createValueGrip(watchpoint.desc.value);
-      retval.watchpoint = watchpoint.watchpointType;
-    } else {
-      if ("get" in desc) {
-        retval.get = this.hooks.createValueGrip(desc.get);
-      }
-
-      if ("set" in desc) {
-        retval.set = this.hooks.createValueGrip(desc.set);
-      }
-    }
-    return retval;
   }
 
   /**
@@ -799,8 +751,8 @@ class ObjectActor extends Actor {
       );
     }
     return {
-      proxyTarget: this.hooks.createValueGrip(this.obj.proxyTarget),
-      proxyHandler: this.hooks.createValueGrip(this.obj.proxyHandler),
+      proxyTarget: this.createValueGrip(this.obj.proxyTarget, 0),
+      proxyHandler: this.createValueGrip(this.obj.proxyHandler, 0),
     };
   }
 
@@ -814,7 +766,9 @@ class ObjectActor extends Actor {
     }
     this._customFormatterItem = null;
     this.obj = null;
-    this.thread = null;
+    this.rawObj = null;
+    this.safeRawObj = null;
+    this.threadActor = null;
   }
 }
 

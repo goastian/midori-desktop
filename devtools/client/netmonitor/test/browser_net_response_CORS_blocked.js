@@ -39,8 +39,8 @@ add_task(async function testCORSNotificationPresent() {
   info("Waiting until the requests appear in netmonitor");
   await wait;
 
-  info("selecting first request");
-  const firstItem = document.querySelectorAll(".request-list-item")[0];
+  info("selecting preflight request at index 1");
+  const firstItem = document.querySelectorAll(".request-list-item")[1];
   EventUtils.sendMouseEvent({ type: "mousedown" }, firstItem);
 
   const waitForRespPanel = waitForDOM(
@@ -96,8 +96,8 @@ add_task(async function testCORSNotificationNotPresent() {
   info("waiting for requests to appear in netmonitor");
   await wait;
 
-  info("selecting first request");
-  const firstItem = document.querySelectorAll(".request-list-item")[0];
+  info("selecting preflight request at index 1");
+  const firstItem = document.querySelectorAll(".request-list-item")[1];
   EventUtils.sendMouseEvent({ type: "mousedown" }, firstItem);
 
   const waitForRespPanel = waitForDOM(document, "#response-panel");

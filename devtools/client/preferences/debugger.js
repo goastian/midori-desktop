@@ -50,7 +50,7 @@ pref("devtools.debugger.logging", false);
 pref("devtools.debugger.map-scopes-enabled", false);
 pref("devtools.debugger.log-actions", false);
 pref("devtools.debugger.log-event-breakpoints", false);
-pref("devtools.debugger.javascript-tracing-log-method", "console");
+pref("devtools.debugger.javascript-tracing-log-method", "debugger-sidebar");
 pref("devtools.debugger.javascript-tracing-values", false);
 
 pref("devtools.debugger.features.wasm", true);
@@ -60,5 +60,4 @@ pref("devtools.debugger.features.map-expression-bindings", true);
 pref("devtools.debugger.features.log-points", true);
 pref("devtools.debugger.features.inline-preview", true);
 pref("devtools.debugger.features.javascript-tracing", false);
-pref("devtools.debugger.features.codemirror-next", false);
 pref("devtools.debugger.features.overlay", true);

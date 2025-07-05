@@ -104,6 +104,16 @@ export const ContentProcessWatcherRegistry = {
   },
 
   /**
+   * Similar to `getAllWatcherDataObjects`, but will only return the already existing registered watchers in this process.
+   */
+  getAllExistingWatchersDataObjects() {
+    if (!gAllWatcherData) {
+      return [];
+    }
+    return gAllWatcherData.values();
+  },
+
+  /**
    * Get the watcher data object for a given watcher actor.
    *
    * @param {String} watcherActorID
@@ -382,7 +392,7 @@ function createWatcherDataObject(watcherActorID, sessionData) {
   // Ensure appending a final slash, otherwise the prefix may be the same between childID 1 and 10...
   const forwardingPrefix =
     parentConnectionPrefix +
-    "process" +
+    ".process" +
     ChromeUtils.domProcessChild.childID +
     "/";
 
@@ -428,17 +438,31 @@ function createWatcherDataObject(watcherActorID, sessionData) {
     // List of active WindowGlobal and ContentProcess target actor instances.
     actors: [],
 
-    // {Array<Object>}
-    // We store workers independently as we don't have access to the TargetActor instance (it is in the worker thread)
-    // and we need to keep reference to some other specifics
+    // {Object<Array<Object>>}
+    // We can't use `actors` list for workers as this code runs in the main thread and the WorkerTargetActors
+    // run in the worker thread.
+    // We store in each array, specific to each worker type (having a dedicated target watcher class),
+    // an object with the following attributes:
     // - {WorkerDebugger} dbg
-    workers: [],
+    // - {String} workerThreadServerForwardingPrefix
+    // - {Object} workerTargetForm
+    // - {DevToolsTransport} transport
+    workers: {
+      service_worker: [],
+      shared_worker: [],
+      worker: [],
+    },
 
-    // {Set<Array<Object>>}
+    // {Object<Set<Array<Object>>>}
     // A Set of arrays which will be populated with concurrent Session Data updates
     // being done while a worker target is being instantiated.
     // Each pending worker being initialized register a new dedicated array which will be removed
     // from the Set once its initialization is over.
-    pendingWorkers: new Set(),
+    // We maintain one Set per target type which is managed by a dedicated target watcher class.
+    pendingWorkers: {
+      service_worker: new Set(),
+      shared_worker: new Set(),
+      worker: new Set(),
+    },
   };
 }

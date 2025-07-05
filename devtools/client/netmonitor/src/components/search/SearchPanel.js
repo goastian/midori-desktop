@@ -8,21 +8,25 @@ const {
   Component,
   createRef,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const { div, span } = dom;
 const Actions = require("resource://devtools/client/netmonitor/src/actions/index.js");
 const {
   PANELS,
 } = require("resource://devtools/client/netmonitor/src/constants.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
-const TreeViewClass = require("resource://devtools/client/shared/components/tree/TreeView.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
+const TreeViewClass = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/tree/TreeView.mjs"
+).default;
 const TreeView = createFactory(TreeViewClass);
 const LabelCell = createFactory(
-  require("resource://devtools/client/shared/components/tree/LabelCell.js")
+  ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/tree/LabelCell.mjs"
+  ).default
 );
 const {
   SearchProvider,
@@ -36,6 +40,19 @@ const StatusBar = createFactory(
 const {
   limitTooltipLength,
 } = require("resource://devtools/client/netmonitor/src/utils/tooltips.js");
+const {
+  L10N,
+} = require("resource://devtools/client/netmonitor/src/utils/l10n.js");
+loader.lazyRequireGetter(
+  this,
+  "showMenu",
+  "resource://devtools/client/shared/components/menu/utils.js",
+  true
+);
+
+const PropertiesViewContextMenu = require("resource://devtools/client/netmonitor/src/widgets/PropertiesViewContextMenu.js");
+const RequestListContextMenu = require("resource://devtools/client/netmonitor/src/widgets/RequestListContextMenu.js");
+
 // There are two levels in the search panel tree hierarchy:
 // 0: Resource - represents the source request object
 // 1: Search Result - represents a match coming from the parent resource
@@ -60,6 +77,18 @@ class SearchPanel extends Component {
       results: PropTypes.array,
       navigate: PropTypes.func.isRequired,
       isDisplaying: PropTypes.bool.isRequired,
+      blockedUrls: PropTypes.array.isRequired,
+      requests: PropTypes.array.isRequired,
+      cloneRequest: PropTypes.func.isRequired,
+      openDetailsPanelTab: PropTypes.func.isRequired,
+      openHTTPCustomRequestTab: PropTypes.func.isRequired,
+      closeHTTPCustomRequestTab: PropTypes.func.isRequired,
+      sendCustomRequest: PropTypes.func.isRequired,
+      sendHTTPCustomRequest: PropTypes.func.isRequired,
+      openStatistics: PropTypes.func.isRequired,
+      openRequestBlockingAndAddUrl: PropTypes.func.isRequired,
+      openRequestBlockingAndDisableUrls: PropTypes.func.isRequired,
+      removeBlockedUrl: PropTypes.func.isRequired,
     };
   }
 
@@ -70,6 +99,7 @@ class SearchPanel extends Component {
     this.renderValue = this.renderValue.bind(this);
     this.renderLabel = this.renderLabel.bind(this);
     this.onClickTreeRow = this.onClickTreeRow.bind(this);
+    this.onContextMenuTreeRow = this.onContextMenuTreeRow.bind(this);
     this.provider = SearchProvider;
   }
 
@@ -122,6 +152,89 @@ class SearchPanel extends Component {
     });
   }
 
+  onContextMenuTreeRow(member, evt) {
+    evt.preventDefault();
+
+    // if selected item is associated to a request --> show suitable contextmenu
+    const request = member?.object?.resource;
+    if (typeof request === "object") {
+      // test if request is still available:
+      const requestId = request.id;
+      const storedRequest = this.props.requests.find(
+        currentStoredRequest => requestId === currentStoredRequest?.id
+      );
+
+      if (typeof storedRequest === "object") {
+        // request is in cache --> open full context menu:
+        this.openRequestListContextMenu(evt, request);
+      } else {
+        // request is not in the cache anymore --> open context menu with note about it:
+        const menuItems = [
+          {
+            id: "simple-view-context-menu-request-not-available-anymore",
+            label: L10N.getStr("netmonitor.context.hintRequestNotAvailable"),
+            disabled: true,
+          },
+        ];
+
+        showMenu(menuItems, {
+          screenX: evt.screenX,
+          screenY: evt.screenY,
+        });
+      }
+    } else {
+      // for other content -> open simple context menu with copy only
+      if (!this.contextMenuSimple) {
+        this.contextMenuSimple = new PropertiesViewContextMenu();
+      }
+      this.contextMenuSimple.open(evt, window.getSelection(), {
+        member,
+      });
+    }
+  }
+
+  openRequestListContextMenu(evt, request) {
+    // reuse context menu of request list:
+    if (!this.contextMenuRequest) {
+      const {
+        connector,
+        cloneRequest,
+        openDetailsPanelTab,
+        openHTTPCustomRequestTab,
+        closeHTTPCustomRequestTab,
+        sendCustomRequest,
+        sendHTTPCustomRequest,
+        openStatistics,
+        openRequestBlockingAndAddUrl,
+        openRequestBlockingAndDisableUrls,
+        removeBlockedUrl,
+      } = this.props;
+      this.contextMenuRequest = new RequestListContextMenu({
+        connector,
+        cloneRequest,
+        openDetailsPanelTab,
+        openHTTPCustomRequestTab,
+        closeHTTPCustomRequestTab,
+        sendCustomRequest,
+        sendHTTPCustomRequest,
+        openStatistics,
+        openRequestBlockingAndAddUrl,
+        openRequestBlockingAndDisableUrls,
+        removeBlockedUrl,
+      });
+    }
+
+    const { blockedUrls, results } = this.props;
+    const allRequestsInResults = results.map(r => r.resource);
+
+    this.contextMenuRequest.open(
+      evt,
+      request,
+      allRequestsInResults,
+      blockedUrls
+    );
+  }
+
   renderTree() {
     const { results } = this.props;
     return TreeView({
@@ -129,6 +242,7 @@ class SearchPanel extends Component {
       provider: this.provider,
       expandableStrings: false,
       renderLabelCell: this.renderLabel,
+      onContextMenuRow: this.onContextMenuTreeRow,
       columns: [],
       onClickRow: this.onClickTreeRow,
     });
@@ -162,18 +276,18 @@ class SearchPanel extends Component {
           const highlightedMatch = [
             span(
               { key: "match-" + match },
-              object.value.substring(indexStart, match - query.length)
+              object.value.substring(indexStart, match)
             ),
             span(
               {
                 className: "query-match",
                 key: "match-" + match + "-highlight",
               },
-              object.value.substring(match - query.length, match)
+              object.value.substring(match, match + query.length)
             ),
           ];
 
-          indexStart = match;
+          indexStart = match + query.length;
 
           return highlightedMatch;
         });
@@ -252,13 +366,31 @@ module.exports = connect(
     ongoingSearch: state.search.ongoingSearch,
     isDisplaying: state.ui.selectedActionBarTabId === PANELS.SEARCH,
     status: state.search.status,
+    blockedUrls: state.requestBlocking.blockedUrls,
+    requests: state.requests.requests,
   }),
-  dispatch => ({
+  (dispatch, props) => ({
     closeSearch: () => dispatch(Actions.closeSearch()),
     openSearch: () => dispatch(Actions.openSearch()),
     search: () => dispatch(Actions.search()),
     clearSearchResults: () => dispatch(Actions.clearSearchResults()),
     addSearchQuery: query => dispatch(Actions.addSearchQuery(query)),
     navigate: searchResult => dispatch(Actions.navigate(searchResult)),
+    cloneRequest: id => dispatch(Actions.cloneRequest(id)),
+    openDetailsPanelTab: () => dispatch(Actions.openNetworkDetails(true)),
+    openHTTPCustomRequestTab: () =>
+      dispatch(Actions.openHTTPCustomRequest(true)),
+    closeHTTPCustomRequestTab: () =>
+      dispatch(Actions.openHTTPCustomRequest(false)),
+    sendCustomRequest: () => dispatch(Actions.sendCustomRequest()),
+    sendHTTPCustomRequest: request =>
+      dispatch(Actions.sendHTTPCustomRequest(request)),
+    openStatistics: open =>
+      dispatch(Actions.openStatistics(props.connector, open)),
+    openRequestBlockingAndAddUrl: url =>
+      dispatch(Actions.openRequestBlockingAndAddUrl(url)),
+    openRequestBlockingAndDisableUrls: url =>
+      dispatch(Actions.openRequestBlockingAndDisableUrls(url)),
+    removeBlockedUrl: url => dispatch(Actions.removeBlockedUrl(url)),
   })
 )(SearchPanel);

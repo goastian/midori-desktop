@@ -4,7 +4,6 @@
 
 "use strict";
 
-const Telemetry = require("resource://devtools/client/shared/telemetry.js");
 const {
   FrontClassWithSpec,
   registerFront,
@@ -19,14 +18,14 @@ loader.lazyRequireGetter(
   "resource://devtools/client/shared/screenshot.js",
   true
 );
+const lazy = {};
 
-const TELEMETRY_EYEDROPPER_OPENED = "DEVTOOLS_EYEDROPPER_OPENED_COUNT";
-const TELEMETRY_EYEDROPPER_OPENED_MENU =
-  "DEVTOOLS_MENU_EYEDROPPER_OPENED_COUNT";
+ChromeUtils.defineESModuleGetters(lazy, {
+  TYPES: "resource://devtools/shared/highlighters.mjs",
+});
+
 const SHOW_ALL_ANONYMOUS_CONTENT_PREF =
   "devtools.inspector.showAllAnonymousContent";
-
-const telemetry = new Telemetry();
 
 /**
  * Client side of the inspector actor, which is used to create
@@ -69,10 +68,12 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
       return null;
     }
 
-    this.initialized = await Promise.all([
-      this._getWalker(),
-      this._getPageStyle(),
-    ]);
+    const promises = [this._getWalker(), this._getPageStyle()];
+    if (this.targetFront.commands.descriptorFront.isTabDescriptor) {
+      promises.push(this._enableViewportSizeOnResizeHighlighter());
+    }
+
+    this.initialized = await Promise.all(promises);
 
     return this.initialized;
   }
@@ -97,6 +98,13 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
 
   async _getPageStyle() {
     this.pageStyle = await super.getPageStyle();
+  }
+
+  async _enableViewportSizeOnResizeHighlighter() {
+    const highlighter = await this.getOrCreateHighlighterByType(
+      lazy.TYPES.VIEWPORT_SIZE_ON_RESIZE
+    );
+    await highlighter.show(this);
   }
 
   async getCompatibilityFront() {
@@ -226,9 +234,9 @@ class InspectorFront extends FrontClassWithSpec(inspectorSpec) {
     });
 
     if (options?.fromMenu) {
-      telemetry.getHistogramById(TELEMETRY_EYEDROPPER_OPENED_MENU).add(true);
+      Glean.devtools.menuEyedropperOpenedCount.add(1);
     } else {
-      telemetry.getHistogramById(TELEMETRY_EYEDROPPER_OPENED).add(true);
+      Glean.devtools.eyedropperOpenedCount.add(1);
     }
   }
 

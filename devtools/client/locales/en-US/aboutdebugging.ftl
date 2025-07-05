@@ -140,6 +140,9 @@ about-debugging-setup-usb-step-enable-dev-menu2 = Enable Developer menu on your 
 about-debugging-setup-usb-step-enable-debug2 = Enable USB Debugging in the Android Developer Menu.
 
 # USB section step by step guide
+about-debugging-setup-usb-step-enable-file-transfer = Enable file transfer and ensure that your device is not in charging-only mode.
+
+# USB section step by step guide
 about-debugging-setup-usb-step-enable-debug-firefox2 = Enable USB Debugging in Firefox on the Android device.
 
 # USB section step by step guide
@@ -160,9 +163,6 @@ about-debugging-setup-network-troubleshoot = Problems connecting via network loc
 # Text of a button displayed after the network locations "Host" input.
 # Clicking on it will add the new network location to the list.
 about-debugging-network-locations-add-button = Add
-
-# Text to display when there are no locations to show.
-about-debugging-network-locations-empty-text = No network locations have been added yet.
 
 # Text of the label for the text input that allows users to add new network locations in
 # the Connect page. A host is a hostname and a port separated by a colon, as suggested by
@@ -385,6 +385,10 @@ about-debugging-worker-scope =
 # of a worker
 about-debugging-worker-push-service =
   .label = Push Service
+
+# Displayed for service workers in runtime pages, to label the origin of a worker.
+about-debugging-worker-origin =
+  .label = Origin
 
 # Displayed as title of the inspect button when service worker debugging is disabled.
 about-debugging-worker-inspect-action-disabled =

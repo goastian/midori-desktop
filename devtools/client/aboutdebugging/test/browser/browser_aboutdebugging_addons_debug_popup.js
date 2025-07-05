@@ -5,6 +5,12 @@
 /* import-globals-from helper-addons.js */
 Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-addons.js", this);
 
+/* import-globals-from ../../../inspector/test/shared-head.js */
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/devtools/client/inspector/test/shared-head.js",
+  this
+);
+
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
 const { PromiseTestUtils } = ChromeUtils.importESModule(
@@ -86,8 +92,12 @@ add_task(async function testWebExtensionsToolboxWebConsole() {
   btn.click();
 
   const menuList = toolbox.doc.getElementById("toolbox-frame-menu");
+  await waitFor(
+    () => menuList.querySelectorAll(".command").length == 3,
+    "Wait for fallback, background and popup documents to be listed"
+  );
   const frames = Array.from(menuList.querySelectorAll(".command"));
-  is(frames.length, 2, "Has the expected number of frames");
+  is(frames.length, 3, "Has the expected number of frames");
 
   const popupFrameBtn = frames
     .filter(frame => {
@@ -100,8 +110,14 @@ add_task(async function testWebExtensionsToolboxWebConsole() {
   info(
     "Click on the extension popup frame and wait for a `dom-complete` resource"
   );
-  const { onDomCompleteResource } =
-    await waitForNextTopLevelDomCompleteResource(toolbox.commands);
+  const { onResource: onDomCompleteResource } =
+    await toolbox.commands.resourceCommand.waitForNextResource(
+      toolbox.commands.resourceCommand.TYPES.DOCUMENT_EVENT,
+      {
+        ignoreExistingResources: true,
+        predicate: resource => resource.name === "dom-complete",
+      }
+    );
   popupFrameBtn.click();
   await onDomCompleteResource;
 
@@ -116,6 +132,16 @@ add_task(async function testWebExtensionsToolboxWebConsole() {
     ADDON_NAME,
     "Got the expected manifest from WebExtension API"
   );
+
+  info("Check that node screenshots work in webextension targets");
+  const inspector = await toolbox.selectTool("inspector");
+  await selectNode("#node-to-screenshot", inspector);
+  const redScreenshot = await takeNodeScreenshot(inspector);
+  await assertSingleColorScreenshotImage(redScreenshot, 10, 10, {
+    r: 255,
+    g: 0,
+    b: 0,
+  });
 
   await closeWebExtAboutDevtoolsToolbox(devtoolsWindow, aboutDebuggingWindow);
 
@@ -170,6 +196,7 @@ async function installTestAddon(doc) {
         browser_action: {
           default_title: "WebExtension Popup Debugging",
           default_popup: "popup.html",
+          default_area: "navbar",
         },
       },
       files: {
@@ -181,6 +208,10 @@ async function installTestAddon(doc) {
           </head>
           <body>
             Background Page Body Test Content
+            <div
+              id="node-to-screenshot"
+              style="height: 10px; width: 10px; background: red;">
+            </div>
           </body>
         </html>
       `,

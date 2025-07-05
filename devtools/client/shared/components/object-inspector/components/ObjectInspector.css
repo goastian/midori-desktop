@@ -16,7 +16,7 @@
 }
 
 .tree.object-inspector .lessen,
-.tree.object-inspector .lessen *,
+.tree.object-inspector .lessen :not(button),
 .tree.object-inspector .lessen .object-label,
 .tree.object-inspector .lessen .object-label * {
   color: var(--theme-comment);
@@ -40,7 +40,7 @@
   white-space: pre-wrap;
 }
 
-.object-inspector .tree-node .arrow {
+.object-inspector .tree-node .theme-twisty {
   display: inline-block;
   vertical-align: middle;
   margin-inline-start: -1px;

@@ -7,7 +7,7 @@ const isEveryFrameTargetEnabled = Services.prefs.getBoolPref(
   false
 );
 
-const WEBEXTENSION_FALLBACK_DOC_URL =
+export const WEBEXTENSION_FALLBACK_DOC_URL =
   "chrome://devtools/content/shared/webextension-fallback.html";
 
 /**
@@ -419,6 +419,7 @@ export function getAllBrowsingContextsForContext(
 }
 
 if (typeof module == "object") {
+  // eslint-disable-next-line no-undef
   module.exports = {
     isBrowsingContextPartOfContext,
     isWindowGlobalPartOfContext,

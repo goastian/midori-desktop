@@ -11,6 +11,8 @@ const PRETTY_PRINTED_FILENAME = `${TEST_FILENAME}:formatted`;
 
 const BREAKABLE_LINE_HINT_CHAR = `➤`;
 
+requestLongerTimeout(2);
+
 // Import helpers for the inspector
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/inspector/test/shared-head.js",
@@ -71,7 +73,7 @@ add_task(async function () {
   const firstMessageLink = firstMessage.querySelector(".frame-link-source");
   is(
     firstMessageLink.innerText,
-    `${PRETTY_PRINTED_FILENAME}:18:8`,
+    `${PRETTY_PRINTED_FILENAME}:18:9`,
     "first console message has expected location"
   );
   info(
@@ -92,7 +94,7 @@ add_task(async function () {
   const secondMessageLink = secondMessage.querySelector(".frame-link-source");
   is(
     secondMessageLink.innerText,
-    `${PRETTY_PRINTED_FILENAME}:41:12`,
+    `${PRETTY_PRINTED_FILENAME}:41:13`,
     "second console message has expected location"
   );
   info(

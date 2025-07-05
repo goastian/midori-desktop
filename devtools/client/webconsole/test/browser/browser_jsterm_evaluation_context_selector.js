@@ -11,7 +11,8 @@ const IFRAME_PATH = `${FILE_FOLDER}/test-console-evaluation-context-selector-chi
 requestLongerTimeout(2);
 
 add_task(async function () {
-  await pushPref("devtools.webconsole.input.context", true);
+  // Force instantiating worker target in order to show them in the context selector
+  await pushPref("dom.worker.console.dispatch_events_to_main_thread", false);
 
   const hud = await openNewTabWithIframesAndConsole(TEST_URI, [
     `https://example.org/${IFRAME_PATH}?id=iframe-1`,
@@ -60,6 +61,11 @@ add_task(async function () {
     label: "Top",
     tooltip: TEST_URI,
   };
+  const expectedWorkerItem = {
+    label: "my worker",
+    tooltip: `data:application/javascript,console.log("worker")`,
+    indented: true,
+  };
   const expectedSeparatorItem = { separator: true };
   const expectedFirstIframeItem = {
     label: "iframe-1|example.org",
@@ -74,6 +80,10 @@ add_task(async function () {
     {
       ...expectedTopItem,
       checked: true,
+    },
+    {
+      ...expectedWorkerItem,
+      checked: false,
     },
     expectedSeparatorItem,
     {
@@ -115,6 +125,10 @@ add_task(async function () {
       ...expectedTopItem,
       checked: false,
     },
+    {
+      ...expectedWorkerItem,
+      checked: false,
+    },
     expectedSeparatorItem,
     {
       ...expectedFirstIframeItem,
@@ -151,6 +165,10 @@ add_task(async function () {
   await checkContextSelectorMenu(hud, [
     {
       ...expectedTopItem,
+      checked: false,
+    },
+    {
+      ...expectedWorkerItem,
       checked: false,
     },
     expectedSeparatorItem,

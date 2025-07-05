@@ -14,25 +14,15 @@ import { getVisibleBreakpoints } from "./visibleBreakpoints";
 import { getSelectedLocation } from "../utils/selected-location";
 import { sortSelectedLocations } from "../utils/location";
 import { getLineText } from "../utils/source";
-import { features } from "../utils/prefs";
 
 function contains(location, range) {
-  if (features.codemirrorNext) {
-    // If the location is within the viewport lines or if the location is on the first or last line
-    // and the columns are within the start or end line content.
-    return (
-      (location.line > range.start.line && location.line < range.end.line) ||
-      (location.line == range.start.line &&
-        location.column >= range.start.column) ||
-      (location.line == range.end.line && location.column <= range.end.column)
-    );
-  }
+  // If the location is within the viewport lines or if the location is on the first or last line
+  // and the columns are within the start or end line content.
   return (
-    location.line >= range.start.line &&
-    location.line <= range.end.line &&
-    (!location.column ||
-      (location.column >= range.start.column &&
-        location.column <= range.end.column))
+    (location.line > range.start.line && location.line < range.end.line) ||
+    (location.line == range.start.line &&
+      location.column >= range.start.column) ||
+    (location.line == range.end.line && location.column <= range.end.column)
   );
 }
 
@@ -88,17 +78,22 @@ export function getColumnBreakpoints(
       continue;
     }
     for (const breakpointPosition of positionsPerLine) {
-      const location = getSelectedLocation(breakpointPosition, selectedSource);
-      const { line } = location;
-
-      // Ignore any further computation if there is no breakpoint on that line.
-      const breakpointsPerColumn = breakpointsPerLine.get(line);
-      if (!breakpointsPerColumn) {
+      // For minified sources we want to limit the amount of displayed column breakpoints
+      // This is nice to have for perf reasons
+      if (columnBreakpoints.length >= 100) {
         continue;
       }
 
+      const location = getSelectedLocation(breakpointPosition, selectedSource);
       // Only consider positions visible in the current CodeMirror viewport
       if (!contains(location, viewport)) {
+        continue;
+      }
+
+      const { line } = location;
+      // Ignore any further computation if there is no breakpoint on that line.
+      const breakpointsPerColumn = breakpointsPerLine.get(line);
+      if (!breakpointsPerColumn) {
         continue;
       }
 

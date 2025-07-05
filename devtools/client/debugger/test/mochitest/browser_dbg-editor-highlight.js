@@ -25,7 +25,7 @@ add_task(async function () {
 
   info("Select line 16 and make sure the editor scrolled.");
   await selectSource(dbg, "long.js", 16);
-  await waitForElementWithSelector(dbg, ".CodeMirror-code > .highlight-line");
+  await waitForElement(dbg, "highlightLine");
   assertHighlightLocation(dbg, "long.js", 16);
 
   info("Select several locations and check that we have one highlight");
@@ -36,7 +36,7 @@ add_task(async function () {
   // Test jumping to a line in a source that exists but hasn't been
   // loaded yet.
   info("Select an unloaded source");
-  selectSource(dbg, "simple1.js", 6);
+  const onSourceSelected = selectSource(dbg, "simple1.js", 6);
 
   // Make sure the source is in the loading state, wait for it to be
   // fully loaded, and check the highlighted line.
@@ -44,7 +44,7 @@ add_task(async function () {
   const location = createLocation({ source: simple1 });
   is(getSettledSourceTextContent(location), null);
 
-  await waitForSelectedSource(dbg, "simple1.js");
+  await onSourceSelected;
   ok(getSettledSourceTextContent(location).value.value);
   assertHighlightLocation(dbg, "simple1.js", 6);
 });

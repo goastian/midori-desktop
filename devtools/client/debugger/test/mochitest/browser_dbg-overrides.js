@@ -52,15 +52,15 @@ add_task(async function () {
     noExpand: false,
   });
 
+  let overrides = [
+    ...findAllElementsWithSelector(dbg, ".has-network-override"),
+  ];
+  is(overrides.length, 0, "No override is displayed in the debugger");
+
   info("Load and assert the content of the test.js script");
-  await selectSourceFromSourceTree(
-    dbg,
-    "test.js",
-    3,
-    "Select the `test.js` script for the tree"
-  );
+  await selectSourceFromSourceTree(dbg, "test.js");
   is(
-    getCM(dbg).getValue(),
+    getEditorContent(dbg),
     testSourceContent,
     "The test.js is the original source content"
   );
@@ -99,9 +99,9 @@ add_task(async function () {
   const onReloaded = reload(dbg, "test.js");
   await waitForPaused(dbg);
 
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "test.js").id, 2);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "test.js").id, 2);
   is(
-    getCM(dbg).getValue(),
+    getEditorContent(dbg),
     testOverrideSourceContent,
     "The test.js is the overridden source content"
   );
@@ -109,8 +109,25 @@ add_task(async function () {
   await resume(dbg);
   await onReloaded;
 
+  info("Check that an override icon is displayed in the source tree");
+  overrides = [...findAllElementsWithSelector(dbg, ".has-network-override")];
+  is(overrides.length, 1, "One override should be displayed in the debugger");
+
+  const otherDebugger = await initDebuggerWithAbsoluteURL(
+    BASE_URL + "index.html",
+    "test.js"
+  );
+  await waitForSourcesInSourceTree(otherDebugger, ["test.js"], {
+    noExpand: false,
+  });
+  overrides = [
+    ...findAllElementsWithSelector(otherDebugger, ".has-network-override"),
+  ];
+  is(overrides.length, 0, "No override is displayed in the other debugger");
+  await closeToolboxAndTab(otherDebugger.toolbox);
+
   info("Remove override and test");
-  const removed = waitForDispatch(dbg.store, "REMOVE_OVERRIDE");
+  const removed = waitForDispatch(dbg.toolbox.store, "REMOVE_NETWORK_OVERRIDE");
   await triggerSourceTreeContextMenu(
     dbg,
     findSourceNodeWithText(dbg, "test.js"),
@@ -123,7 +140,7 @@ add_task(async function () {
   await waitForSelectedSource(dbg, "test.js");
 
   is(
-    getCM(dbg).getValue(),
+    getEditorContent(dbg),
     testSourceContent,
     "The test.js is the original source content"
   );

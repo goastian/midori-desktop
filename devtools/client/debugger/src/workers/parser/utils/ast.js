@@ -25,6 +25,8 @@ const sourceOptions = {
       "classPrivateProperties",
       "classPrivateMethods",
       "classProperties",
+      "explicitResourceManagement",
+      "importAttributes",
       "objectRestSpread",
       "optionalChaining",
       "privateIn",
@@ -36,23 +38,25 @@ const sourceOptions = {
     sourceType: "unambiguous",
     tokens: true,
     plugins: [
-      "jsx",
-      "flow",
-      "doExpressions",
-      "optionalChaining",
-      "nullishCoalescingOperator",
-      "decorators-legacy",
-      "objectRestSpread",
-      "classStaticBlock",
-      "classPrivateProperties",
+      "asyncGenerators",
       "classPrivateMethods",
+      "classPrivateProperties",
       "classProperties",
+      "classStaticBlock",
+      "decorators-legacy",
+      "doExpressions",
+      "dynamicImport",
+      "explicitResourceManagement",
       "exportDefaultFrom",
       "exportNamespaceFrom",
-      "asyncGenerators",
+      "flow",
       "functionBind",
       "functionSent",
-      "dynamicImport",
+      "importAttributes",
+      "jsx",
+      "nullishCoalescingOperator",
+      "objectRestSpread",
+      "optionalChaining",
       "react-jsx",
       "regexpUnicodeSets",
     ],
@@ -117,6 +121,7 @@ export function parseConsoleScript(text, opts) {
         "classStaticBlock",
         "classPrivateProperties",
         "classPrivateMethods",
+        "explicitResourceManagement",
         "objectRestSpread",
         "dynamicImport",
         "nullishCoalescingOperator",
@@ -186,16 +191,6 @@ export function clearASTs(sourceIds) {
   for (const sourceId of sourceIds) {
     ASTs.delete(sourceId);
   }
-}
-
-export function traverseAst(sourceId, visitor, state) {
-  const ast = getAst(sourceId);
-  if (!ast || !Object.keys(ast).length) {
-    return null;
-  }
-
-  t.traverse(ast, visitor, state);
-  return ast;
 }
 
 export function hasNode(rootNode, predicate) {

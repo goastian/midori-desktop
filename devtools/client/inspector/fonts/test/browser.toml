@@ -2,6 +2,7 @@
 tags = "devtools"
 subsuite = "devtools"
 support-files = [
+  "devtools-mono.otf",
   "doc_browser_fontinspector.html",
   "doc_browser_fontinspector_iframe.html",
   "test_iframe.html",
@@ -18,13 +19,13 @@ support-files = [
 ["browser_fontinspector.js"]
 
 ["browser_fontinspector_all-fonts.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1963212
+]
 
 ["browser_fontinspector_copy-URL.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_fontinspector_edit-previews.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_fontinspector_editor-font-size-conversion.js"]
 
@@ -35,7 +36,6 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_fontinspector_editor-values.js"]
 
 ["browser_fontinspector_expand-css-code.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_fontinspector_font-type-telemetry.js"]
 
@@ -44,12 +44,7 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_fontinspector_no-fonts.js"]
 
 ["browser_fontinspector_reveal-in-page.js"]
-skip-if = [
-  "http3", # Bug 1829298
-  "http2",
-]
 
 ["browser_fontinspector_text-node.js"]
 
 ["browser_fontinspector_theme-change.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled

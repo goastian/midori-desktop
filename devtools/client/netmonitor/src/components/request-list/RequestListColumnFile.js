@@ -6,21 +6,29 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   L10N,
 } = require("resource://devtools/client/netmonitor/src/utils/l10n.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const {
+  getUrlToolTip,
   propertiesEqual,
 } = require("resource://devtools/client/netmonitor/src/utils/request-utils.js");
 const {
   getFormattedTime,
 } = require("resource://devtools/client/netmonitor/src/utils/format-utils.js");
+const { truncateString } = require("resource://devtools/shared/string.js");
+const {
+  MAX_UI_STRING_LENGTH,
+} = require("resource://devtools/client/netmonitor/src/constants.js");
+const {
+  getOverriddenUrl,
+} = require("resource://devtools/client/netmonitor/src/selectors/index.js");
 
 const UPDATED_FILE_PROPS = ["urlDetails", "waitingTime"];
 
@@ -30,48 +38,42 @@ class RequestListColumnFile extends Component {
       item: PropTypes.object.isRequired,
       slowLimit: PropTypes.number,
       onWaterfallMouseDown: PropTypes.func,
+      isOverridden: PropTypes.bool.isRequired,
+      overriddenUrl: PropTypes.string,
     };
   }
 
   shouldComponentUpdate(nextProps) {
-    return !propertiesEqual(
-      UPDATED_FILE_PROPS,
-      this.props.item,
-      nextProps.item
+    return (
+      !propertiesEqual(UPDATED_FILE_PROPS, this.props.item, nextProps.item) ||
+      nextProps.overriddenUrl !== this.props.overriddenUrl
     );
   }
 
   render() {
     const {
       item: { urlDetails, waitingTime },
+      isOverridden,
       slowLimit,
       onWaterfallMouseDown,
+      overriddenUrl,
     } = this.props;
 
-    const originalFileURL = urlDetails.url;
-    const decodedFileURL = urlDetails.unicodeUrl;
-    const ORIGINAL_FILE_URL = L10N.getFormatStr(
-      "netRequest.originalFileURL.tooltip",
-      originalFileURL
-    );
-    const DECODED_FILE_URL = L10N.getFormatStr(
-      "netRequest.decodedFileURL.tooltip",
-      decodedFileURL
-    );
     const requestedFile = urlDetails.baseNameWithQuery;
-    const fileToolTip =
-      originalFileURL === decodedFileURL
-        ? originalFileURL
-        : ORIGINAL_FILE_URL + "\n\n" + DECODED_FILE_URL;
+    const fileToolTip = getUrlToolTip(urlDetails);
 
     const isSlow = slowLimit > 0 && !!waitingTime && waitingTime > slowLimit;
+
+    // Build extra content for the title if the request is overridden.
+    const overrideTitle = isOverridden ? ` → ${overriddenUrl}` : "";
 
     return dom.td(
       {
         className: "requests-list-column requests-list-file",
-        title: fileToolTip,
+        title:
+          truncateString(fileToolTip, MAX_UI_STRING_LENGTH) + overrideTitle,
       },
-      dom.div({}, requestedFile),
+      dom.div({}, truncateString(requestedFile, MAX_UI_STRING_LENGTH)),
       isSlow &&
         dom.div({
           title: L10N.getFormatStr(
@@ -86,6 +88,15 @@ class RequestListColumnFile extends Component {
   }
 }
 
-module.exports = connect(state => ({
-  slowLimit: state.ui.slowLimit,
-}))(RequestListColumnFile);
+module.exports = connect(
+  (state, props) => {
+    const overriddenUrl = getOverriddenUrl(state, props.item.urlDetails?.url);
+    return {
+      isOverridden: !!overriddenUrl,
+      overriddenUrl,
+    };
+  },
+  {},
+  undefined,
+  { storeKey: "toolbox-store" }
+)(RequestListColumnFile);

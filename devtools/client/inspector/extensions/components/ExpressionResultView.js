@@ -7,8 +7,8 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const Accordion = createFactory(
   require("resource://devtools/client/shared/components/Accordion.js")
@@ -19,8 +19,12 @@ const Types = require("resource://devtools/client/inspector/extensions/types.js"
 const {
   REPS: { Grip },
   MODE,
-  objectInspector: { ObjectInspector: ObjectInspectorClass },
-} = require("resource://devtools/client/shared/components/reps/index.js");
+} = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/reps/index.mjs"
+);
+const {
+  ObjectInspector: ObjectInspectorClass,
+} = require("resource://devtools/client/shared/components/object-inspector/index.js");
 
 loader.lazyRequireGetter(
   this,

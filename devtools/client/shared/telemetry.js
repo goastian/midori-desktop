@@ -10,7 +10,6 @@
 
 "use strict";
 
-const TelemetryStopwatch = require("TelemetryStopwatch");
 const {
   getNthPathExcluding,
 } = require("resource://devtools/shared/platform/stack.js");
@@ -18,8 +17,6 @@ const { TelemetryEnvironment } = ChromeUtils.importESModule(
   "resource://gre/modules/TelemetryEnvironment.sys.mjs"
 );
 const WeakMapMap = require("resource://devtools/client/shared/WeakMapMap.js");
-
-const CATEGORY = "devtools.main";
 
 // Object to be shared among all instances.
 const PENDING_EVENT_PROPERTIES = new WeakMapMap();
@@ -43,14 +40,8 @@ class Telemetry {
 
     // Bind pretty much all functions so that callers do not need to.
     this.msSystemNow = this.msSystemNow.bind(this);
-    this.getHistogramById = this.getHistogramById.bind(this);
     this.getKeyedHistogramById = this.getKeyedHistogramById.bind(this);
-    this.scalarSet = this.scalarSet.bind(this);
-    this.scalarAdd = this.scalarAdd.bind(this);
-    this.keyedScalarAdd = this.keyedScalarAdd.bind(this);
-    this.keyedScalarSet = this.keyedScalarSet.bind(this);
     this.recordEvent = this.recordEvent.bind(this);
-    this.setEventRecordingEnabled = this.setEventRecordingEnabled.bind(this);
     this.preparePendingEvent = this.preparePendingEvent.bind(this);
     this.addEventProperty = this.addEventProperty.bind(this);
     this.addEventProperties = this.addEventProperties.bind(this);
@@ -91,138 +82,6 @@ class Telemetry {
   }
 
   /**
-   * Starts a timer associated with a telemetry histogram. The timer can be
-   * directly associated with a histogram, or with a pair of a histogram and
-   * an object.
-   *
-   * @param {String} histogramId
-   *        A string which must be a valid histogram name.
-   * @param {Object} obj
-   *        The telemetry event or ping is associated with this object, meaning
-   *        that multiple events or pings for the same histogram may be run
-   *        concurrently, as long as they are associated with different objects.
-   * @param {Object}  [options.inSeconds=false]
-   *        Record elapsed time for this histogram in seconds instead of
-   *        milliseconds. Defaults to false.
-   * @returns {Boolean}
-   *          True if the timer was successfully started, false otherwise. If a
-   *          timer already exists, it can't be started again.
-   */
-  start(histogramId, obj, { inSeconds } = {}) {
-    if (TelemetryStopwatch.running(histogramId, obj)) {
-      return false;
-    }
-
-    return TelemetryStopwatch.start(histogramId, obj, { inSeconds });
-  }
-
-  /**
-   * Starts a timer associated with a keyed telemetry histogram. The timer can
-   * be directly associated with a histogram and its key. Similarly to
-   * TelemetryStopwatch.start the histogram and its key can be associated
-   * with an object. Each key may have multiple associated objects and each
-   * object can be associated with multiple keys.
-   *
-   * @param {String} histogramId
-   *        A string which must be a valid histogram name.
-   * @param {String} key
-   *        A string which must be a valid histgram key.
-   * @param {Object} obj
-   *        The telemetry event or ping is associated with this object, meaning
-   *        that multiple events or pings for the same histogram may be run
-   *        concurrently, as long as they are associated with different objects.
-   * @param {Object}  [options.inSeconds=false]
-   *        Record elapsed time for this histogram in seconds instead of
-   *        milliseconds. Defaults to false.
-   *
-   * @returns {Boolean}
-   *          True if the timer was successfully started, false otherwise. If a
-   *          timer already exists, it can't be started again, and the existing
-   *          one will be cleared in order to avoid measurements errors.
-   */
-  startKeyed(histogramId, key, obj, { inSeconds } = {}) {
-    return TelemetryStopwatch.startKeyed(histogramId, key, obj, { inSeconds });
-  }
-
-  /**
-   * Stops the timer associated with the given histogram (and object),
-   * calculates the time delta between start and finish, and adds the value
-   * to the histogram.
-   *
-   * @param {String} histogramId
-   *        A string which must be a valid histogram name.
-   * @param {Object} obj
-   *        The telemetry event or ping is associated with this object, meaning
-   *        that multiple events or pings for the same histogram may be run
-   *        concurrently, as long as they are associated with different objects.
-   * @param {Boolean} canceledOkay
-   *        Optional parameter which will suppress any warnings that normally
-   *        fire when a stopwatch is finished after being canceled.
-   *        Defaults to false.
-   *
-   * @returns {Boolean}
-   *          True if the timer was succesfully stopped and the data was added
-   *          to the histogram, False otherwise.
-   */
-  finish(histogramId, obj, canceledOkay) {
-    return TelemetryStopwatch.finish(histogramId, obj, canceledOkay);
-  }
-
-  /**
-   * Stops the timer associated with the given keyed histogram (and object),
-   * calculates the time delta between start and finish, and adds the value
-   * to the keyed histogram.
-   *
-   * @param {String} histogramId
-   *        A string which must be a valid histogram name.
-   * @param {String} key
-   *        A string which must be a valid histogram key.
-   * @param {Object} obj
-   *        The telemetry event or ping is associated with this object, meaning
-   *        that multiple events or pings for the same histogram may be run
-   *        concurrently, as long as they are associated with different objects.
-   * @param {Boolean} canceledOkay
-   *        Optional parameter which will suppress any warnings that normally
-   *        fire when a stopwatch is finished after being canceled.
-   *        Defaults to false.
-   *
-   * @returns {Boolean}
-   *          True if the timer was succesfully stopped and the data was added
-   *          to the histogram, False otherwise.
-   */
-  finishKeyed(histogramId, key, obj, canceledOkay) {
-    return TelemetryStopwatch.finishKeyed(histogramId, key, obj, canceledOkay);
-  }
-
-  /**
-   * Log a value to a histogram.
-   *
-   * @param  {String} histogramId
-   *         Histogram in which the data is to be stored.
-   */
-  getHistogramById(histogramId) {
-    let histogram = null;
-
-    if (histogramId) {
-      try {
-        histogram = Services.telemetry.getHistogramById(histogramId);
-      } catch (e) {
-        dump(
-          `Warning: An attempt was made to write to the ${histogramId} ` +
-            `histogram, which is not defined in Histograms.json\n` +
-            `CALLER: ${getCaller()}`
-        );
-      }
-    }
-
-    return (
-      histogram || {
-        add: () => {},
-      }
-    );
-  }
-
-  /**
    * Get a keyed histogram.
    *
    * @param  {String} histogramId
@@ -247,157 +106,6 @@ class Telemetry {
         add: () => {},
       }
     );
-  }
-
-  /**
-   * Log a value to a scalar.
-   *
-   * @param  {String} scalarId
-   *         Scalar in which the data is to be stored.
-   * @param  value
-   *         Value to store.
-   */
-  scalarSet(scalarId, value) {
-    if (!scalarId) {
-      return;
-    }
-
-    try {
-      if (isNaN(value) && typeof value !== "boolean") {
-        dump(
-          `Warning: An attempt was made to write a non-numeric and ` +
-            `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
-            `numeric and boolean values are allowed.\n` +
-            `CALLER: ${getCaller()}`
-        );
-
-        return;
-      }
-      Services.telemetry.scalarSet(scalarId, value);
-    } catch (e) {
-      dump(
-        `Warning: An attempt was made to write to the ${scalarId} ` +
-          `scalar, which is not defined in Scalars.yaml\n` +
-          `CALLER: ${getCaller()}`
-      );
-    }
-  }
-
-  /**
-   * Log a value to a count scalar.
-   *
-   * @param  {String} scalarId
-   *         Scalar in which the data is to be stored.
-   * @param  value
-   *         Value to store.
-   */
-  scalarAdd(scalarId, value) {
-    if (!scalarId) {
-      return;
-    }
-
-    try {
-      if (isNaN(value)) {
-        dump(
-          `Warning: An attempt was made to write a non-numeric value ` +
-            `${value} to the ${scalarId} scalar. Only numeric values are ` +
-            `allowed.\n` +
-            `CALLER: ${getCaller()}`
-        );
-
-        return;
-      }
-      Services.telemetry.scalarAdd(scalarId, value);
-    } catch (e) {
-      dump(
-        `Warning: An attempt was made to write to the ${scalarId} ` +
-          `scalar, which is not defined in Scalars.yaml\n` +
-          `CALLER: ${getCaller()}`
-      );
-    }
-  }
-
-  /**
-   * Log a value to a keyed scalar.
-   *
-   * @param  {String} scalarId
-   *         Scalar in which the data is to be stored.
-   * @param  {String} key
-   *         The key within the  scalar.
-   * @param  value
-   *         Value to store.
-   */
-  keyedScalarSet(scalarId, key, value) {
-    if (!scalarId) {
-      return;
-    }
-
-    try {
-      if (isNaN(value) && typeof value !== "boolean") {
-        dump(
-          `Warning: An attempt was made to write a non-numeric and ` +
-            `non-boolean value ${value} to the ${scalarId} scalar. Only ` +
-            `numeric and boolean values are allowed.\n` +
-            `CALLER: ${getCaller()}`
-        );
-
-        return;
-      }
-      Services.telemetry.keyedScalarSet(scalarId, key, value);
-    } catch (e) {
-      dump(
-        `Warning: An attempt was made to write to the ${scalarId} ` +
-          `scalar, which is not defined in Scalars.yaml\n` +
-          `CALLER: ${getCaller()}`
-      );
-    }
-  }
-
-  /**
-   * Log a value to a keyed count scalar.
-   *
-   * @param  {String} scalarId
-   *         Scalar in which the data is to be stored.
-   * @param  {String} key
-   *         The key within the  scalar.
-   * @param  value
-   *         Value to store.
-   */
-  keyedScalarAdd(scalarId, key, value) {
-    if (!scalarId) {
-      return;
-    }
-
-    try {
-      if (isNaN(value)) {
-        dump(
-          `Warning: An attempt was made to write a non-numeric value ` +
-            `${value} to the ${scalarId} scalar. Only numeric values are ` +
-            `allowed.\n` +
-            `CALLER: ${getCaller()}`
-        );
-
-        return;
-      }
-      Services.telemetry.keyedScalarAdd(scalarId, key, value);
-    } catch (e) {
-      dump(
-        `Warning: An attempt was made to write to the ${scalarId} ` +
-          `scalar, which is not defined in Scalars.yaml\n` +
-          `CALLER: ${getCaller()}`
-      );
-    }
-  }
-
-  /**
-   * Event telemetry is disabled by default. Use this method to enable or
-   * disable it.
-   *
-   * @param {Boolean} enabled
-   *        Enabled: true or false.
-   */
-  setEventRecordingEnabled(enabled) {
-    return Services.telemetry.setEventRecordingEnabled(CATEGORY, enabled);
   }
 
   /**
@@ -633,8 +341,16 @@ class Telemetry {
       extra = {};
     }
     extra.session_id = this.sessionId;
+    if (value !== null) {
+      extra.value = value;
+    }
 
-    Services.telemetry.recordEvent(CATEGORY, method, object, value, extra);
+    // Using the Glean API directly insteade of doing string manipulations
+    // would be better. See bug 1921793.
+    const eventName = `${method}_${object}`.replace(/(_[a-z])/g, c =>
+      c[1].toUpperCase()
+    );
+    Glean.devtoolsMain[eventName]?.record(extra);
   }
 
   /**
@@ -672,14 +388,16 @@ class Telemetry {
         this.msSystemNow()
       );
     }
-    if (charts.timerHist) {
-      this.start(charts.timerHist, obj, { inSeconds: true });
+    if (charts.gleanTimingDist) {
+      if (!obj._timerIDs) {
+        obj._timerIDs = new Map();
+      }
+      if (!obj._timerIDs.has(id)) {
+        obj._timerIDs.set(id, charts.gleanTimingDist.start());
+      }
     }
-    if (charts.countHist) {
-      this.getHistogramById(charts.countHist).add(true);
-    }
-    if (charts.countScalar) {
-      this.scalarAdd(charts.countScalar, 1);
+    if (charts.gleanCounter) {
+      charts.gleanCounter.add(1);
     }
   }
 
@@ -715,8 +433,12 @@ class Telemetry {
       });
     }
 
-    if (charts.timerHist) {
-      this.finish(charts.timerHist, obj, false);
+    if (charts.gleanTimingDist && obj._timerIDs) {
+      const timerID = obj._timerIDs.get(id);
+      if (timerID) {
+        charts.gleanTimingDist.stopAndAccumulate(timerID);
+        obj._timerIDs.delete(id);
+      }
     }
   }
 }
@@ -734,76 +456,70 @@ function getChartsFromToolId(id) {
     return null;
   }
 
-  const lowerCaseId = id.toLowerCase();
-
   let useTimedEvent = null;
-  let timerHist = null;
-  let countHist = null;
-  let countScalar = null;
+  let gleanCounter = null;
+  let gleanTimingDist = null;
 
-  id = id.toUpperCase();
-
-  if (id === "PERFORMANCE") {
-    id = "JSPROFILER";
+  if (id === "performance") {
+    id = "jsprofiler";
   }
 
   switch (id) {
-    case "ABOUTDEBUGGING":
-    case "BROWSERCONSOLE":
-    case "DOM":
-    case "INSPECTOR":
-    case "JSBROWSERDEBUGGER":
-    case "JSDEBUGGER":
-    case "JSPROFILER":
-    case "MEMORY":
-    case "NETMONITOR":
-    case "OPTIONS":
-    case "RESPONSIVE":
-    case "STORAGE":
-    case "STYLEEDITOR":
-    case "TOOLBOX":
-    case "WEBCONSOLE":
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
-      countHist = `DEVTOOLS_${id}_OPENED_COUNT`;
+    case "aboutdebugging":
+    case "browserconsole":
+    case "dom":
+    case "inspector":
+    case "jsbrowserdebugger":
+    case "jsdebugger":
+    case "jsprofiler":
+    case "memory":
+    case "netmonitor":
+    case "options":
+    case "responsive":
+    case "storage":
+    case "styleeditor":
+    case "toolbox":
+    case "webconsole":
+      gleanTimingDist = Glean.devtools[`${id}TimeActive`];
+      gleanCounter = Glean.devtools[`${id}OpenedCount`];
       break;
-    case "ACCESSIBILITY":
-    case "APPLICATION":
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
-      countScalar = `devtools.${lowerCaseId}.opened_count`;
+    case "accessibility":
+      gleanTimingDist = Glean.devtools.accessibilityTimeActive;
+      gleanCounter = Glean.devtoolsAccessibility.openedCount;
       break;
-    case "ACCESSIBILITY_PICKER":
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
-      countScalar = `devtools.accessibility.picker_used_count`;
+    case "accessibility_picker":
+      gleanTimingDist = Glean.devtools.accessibilityPickerTimeActive;
+      gleanCounter = Glean.devtoolsAccessibility.pickerUsedCount;
       break;
-    case "CHANGESVIEW":
+    case "changesview":
+      gleanTimingDist = Glean.devtools.changesviewTimeActive;
+      gleanCounter = Glean.devtoolsChangesview.openedCount;
+      break;
+    case "animationinspector":
+    case "compatibilityview":
+    case "computedview":
+    case "fontinspector":
+    case "layoutview":
+    case "ruleview":
       useTimedEvent = true;
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
-      countScalar = `devtools.${lowerCaseId}.opened_count`;
+      gleanTimingDist = Glean.devtools[`${id}TimeActive`];
+      gleanCounter = Glean.devtools[`${id}OpenedCount`];
       break;
-    case "ANIMATIONINSPECTOR":
-    case "COMPATIBILITYVIEW":
-    case "COMPUTEDVIEW":
-    case "FONTINSPECTOR":
-    case "LAYOUTVIEW":
-    case "RULEVIEW":
-      useTimedEvent = true;
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
-      countHist = `DEVTOOLS_${id}_OPENED_COUNT`;
+    case "flexbox_highlighter":
+      gleanTimingDist = Glean.devtools.flexboxHighlighterTimeActive;
       break;
-    case "FLEXBOX_HIGHLIGHTER":
-    case "GRID_HIGHLIGHTER":
-      timerHist = `DEVTOOLS_${id}_TIME_ACTIVE_SECONDS`;
+    case "grid_highlighter":
+      gleanTimingDist = Glean.devtools.gridHighlighterTimeActive;
       break;
     default:
-      timerHist = `DEVTOOLS_CUSTOM_TIME_ACTIVE_SECONDS`;
-      countHist = `DEVTOOLS_CUSTOM_OPENED_COUNT`;
+      gleanTimingDist = Glean.devtools.customTimeActive;
+      gleanCounter = Glean.devtools.customOpenedCount;
   }
 
   return {
     useTimedEvent,
-    timerHist,
-    countHist,
-    countScalar,
+    gleanCounter,
+    gleanTimingDist,
   };
 }
 

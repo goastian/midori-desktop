@@ -100,8 +100,6 @@
     return query;
   }
 
-  var queryDialog;
-
   function startSearch(cm, state, query) {
     state.queryText = query;
     state.query = parseQuery(query);
@@ -115,21 +113,23 @@
   }
 
   function doSearch(cm, rev, persistent, immediate) {
-    if (!queryDialog) {
-      let doc = cm.getWrapperElement().ownerDocument;
-      let inp = doc.createElement("input");
+    // We used to only build this input the first time the search was triggered and
+    // reuse it again on subsequent search.
+    // Unfortunately, this doesn't play well with the `persistent` parameter;
+    // new event listeners are added to the input each time `persistentDialog` is called,
+    // which would make a single `Enter` key trigger multiple "findNext" actions, making
+    // it look like the search would skip some results.
+    const doc = cm.getWrapperElement().ownerDocument;
+    const inp = doc.createElement("input");
 
-      inp.type = "search";
-      inp.placeholder = cm.l10n("findCmd.promptMessage");
-      inp.style.marginInlineStart = "1em";
-      inp.style.marginInlineEnd = "1em";
-      inp.style.flexGrow = "1";
-      inp.addEventListener("focus", () => inp.select());
+    inp.type = "search";
+    inp.classList.add("cm5-search-input");
+    inp.placeholder = cm.l10n("findCmd.promptMessage");
+    inp.addEventListener("focus", () => inp.select());
 
-      queryDialog = doc.createElement("div");
-      queryDialog.appendChild(inp);
-      queryDialog.style.display = "flex";
-    }
+    const queryDialog = doc.createElement("div");
+    queryDialog.classList.add("cm5-search-container");
+    queryDialog.appendChild(inp);
 
     var state = getSearchState(cm);
     if (state.query) return findNext(cm, rev);
@@ -231,13 +231,11 @@
 
     let searchField = doc.createElement("input");
     searchField.setAttribute("type", "text");
-    searchField.setAttribute("style", "width: 10em");
-    searchField.classList.add("CodeMirror-search-field");
+    searchField.classList.add("cm5-search-replace-input");
     replaceQueryFragment.appendChild(searchField);
 
     let searchHint = doc.createElement("span");
-    searchHint.setAttribute("style", "color: #888");
-    searchHint.classList.add("CodeMirror-search-hint");
+    searchHint.classList.add("cm5-search-replace-hint");
     searchHint.textContent = "(Use /re/ syntax for regexp search)";
     replaceQueryFragment.appendChild(searchHint);
 
@@ -253,8 +251,7 @@
 
       let replaceField = doc.createElement("input");
       replaceField.setAttribute("type", "text");
-      replaceField.setAttribute("style", "width: 10em");
-      replaceField.classList.add("CodeMirror-search-field");
+      replaceField.classList.add("cm5-search-replace-input");
       replacementQueryFragment.appendChild(replaceField);
 
       dialog(cm, replacementQueryFragment, "Replace with:", "", function(text) {

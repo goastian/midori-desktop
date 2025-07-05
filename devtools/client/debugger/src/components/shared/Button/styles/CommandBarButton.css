@@ -9,7 +9,7 @@
   display: inline-block;
   text-align: center;
   position: relative;
-  padding: 0px 5px;
+  padding: 0 5px;
   fill: currentColor;
   min-width: 30px;
   /* Adjust outline so it's not clipped */
@@ -18,8 +18,11 @@
 }
 
 .command-bar-button:disabled {
-  opacity: 0.6;
   cursor: default;
+
+  & .img {
+    background-color: var(--theme-icon-disabled-color);
+  }
 }
 
 .command-bar-button:not(.disabled):hover,
@@ -54,21 +57,4 @@
 
 .devtools-button.debugger-settings-menu-button::before {
   background-image: url("chrome://devtools/skin/images/settings.svg");
-}
-
-.devtools-button.debugger-trace-menu-button::before {
-  background-image: url(chrome://devtools/content/debugger/images/trace.svg);
-}
-.devtools-button.debugger-trace-menu-button:is(.active, .pending)::before {
-  fill: var(--theme-icon-checked-color);
-}
-.devtools-button.debugger-trace-menu-button.pending::after
-{
-  content: url("chrome://global/skin/icons/badge-blue.svg");
-  width: 14px;
-  height: 14px;
-  display: block;
-  position: absolute;
-  bottom: -2px;
-  right: 0;
 }

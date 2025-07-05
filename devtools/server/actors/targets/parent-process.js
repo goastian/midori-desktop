@@ -8,9 +8,8 @@
  * Target actor for the entire parent process.
  *
  * This actor extends WindowGlobalTargetActor.
- * This actor is extended by WebExtensionTargetActor.
  *
- * See devtools/docs/backend/actor-hierarchy.md for more details.
+ * See devtools/docs/contributor/backend/actor-hierarchy.md for more details about all the targets.
  */
 
 const {
@@ -34,26 +33,20 @@ class ParentProcessTargetActor extends WindowGlobalTargetActor {
    * RootActor.getProcess request. ParentProcessTargetActor exposes all target-scoped actors
    * via its form() request, like WindowGlobalTargetActor.
    *
-   * @param conn DevToolsServerConnection
+   * @param {DevToolsServerConnection} conn
    *        The connection to the client.
-   * @param {Object} options
-   *        - isTopLevelTarget: {Boolean} flag to indicate if this is the top
-   *          level target of the DevTools session
-   *        - sessionContext Object
-   *          The Session Context to help know what is debugged.
-   *          See devtools/server/actors/watcher/session-context.js
-   *        - customSpec Object
-   *          WebExtensionTargetActor inherits from ParentProcessTargetActor
-   *          and has to use its own protocol.js specification object.
+   * @param {Boolean} options.isTopLevelTarget
+   *        flag to indicate if this is the top
+   *        level target of the DevTools session
+   * @param {Object} options.sessionContext
+   *        The Session Context to help know what is debugged.
+   *        See devtools/server/actors/watcher/session-context.js
    */
-  constructor(
-    conn,
-    { isTopLevelTarget, sessionContext, customSpec = parentProcessTargetSpec }
-  ) {
+  constructor(conn, { isTopLevelTarget, sessionContext }) {
     super(conn, {
       isTopLevelTarget,
       sessionContext,
-      customSpec,
+      customSpec: parentProcessTargetSpec,
     });
 
     // This creates a Debugger instance for chrome debugging all globals.
@@ -72,17 +65,11 @@ class ParentProcessTargetActor extends WindowGlobalTargetActor {
     Services.obs.addObserver(this, "chrome-webnavigation-create");
     Services.obs.addObserver(this, "chrome-webnavigation-destroy");
 
-    // If we are the parent process target actor and not a subclass
-    // (i.e. if we aren't the webext target actor)
-    // set the parent process docshell:
-    if (customSpec == parentProcessTargetSpec) {
-      this.setDocShell(this._getInitialDocShell());
-    }
+    this.setDocShell(this._getInitialDocShell());
   }
 
   // Overload setDocShell in order to observe all the docshells.
-  // WindowGlobalTargetActor only observes the top level one,
-  // but we also need to observe all of them for WebExtensionTargetActor subclass.
+  // WindowGlobalTargetActor only observes the top level one.
   setDocShell(initialDocShell) {
     super.setDocShell(initialDocShell);
 
@@ -104,14 +91,36 @@ class ParentProcessTargetActor extends WindowGlobalTargetActor {
     // Default to any available top level window if there is no expected window
     // eg when running ./mach run --chrome chrome://browser/content/aboutTabCrashed.xhtml --jsdebugger
     if (!window) {
+      // If DevTools is started early enough, this window will be the
+      // early navigator:blank window created in BrowserGlue.sys.mjs
       window = Services.wm.getMostRecentWindow(null);
     }
 
-    // We really want _some_ window at least, so fallback to the hidden window if
-    // there's nothing else (such as during early startup).
+    // On Fenix, we may not have any document to inspect when there is no tab
+    // opened, so return a fake document, just to ensure the ParentProcessWindowGlobalTarget
+    // actor has a functional document to operate with.
     if (!window) {
-      window = Services.appShell.hiddenDOMWindow;
+      const browser = Services.appShell.createWindowlessBrowser(false);
+
+      // Keep a strong reference to the document to keep it alive
+      this.headlessBrowser = browser;
+
+      // Create a document in order to avoid being on the initial about:blank document
+      // and have the document be ignored because its `isInitialDocument` attribute being true
+      const systemPrincipal =
+        Services.scriptSecurityManager.getSystemPrincipal();
+      browser.docShell.createAboutBlankDocumentViewer(
+        systemPrincipal,
+        systemPrincipal
+      );
+
+      window = browser.docShell.domWindow;
+
+      // Set some content to be shown in the inspector
+      window.document.body.textContent =
+        "Fake DevTools document, as there is no tab opened yet";
     }
+
     return window.docShell;
   }
 
@@ -159,6 +168,8 @@ class ParentProcessTargetActor extends WindowGlobalTargetActor {
       }
       this._progressListener.unwatch(docShell);
     }
+
+    this.headlessBrowser = null;
 
     return super._detach();
   }

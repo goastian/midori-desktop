@@ -36,14 +36,13 @@ tags = "webextensions"
 ["browser_aboutdebugging_addons_debug_inspector.js"]
 tags = "webextensions"
 
+["browser_aboutdebugging_addons_debug_netmonitor.js"]
+tags = "webextensions"
+
 ["browser_aboutdebugging_addons_debug_nobg.js"]
 tags = "webextensions"
 
 ["browser_aboutdebugging_addons_debug_popup.js"]
-skip-if = [
-  "verify && debug", # verify: crashes on shutdown, timeouts
-  "os == 'linux' && debug", # linux debug Bug 1299001
-]
 tags = "webextensions"
 
 ["browser_aboutdebugging_addons_debug_reload.js"]
@@ -62,14 +61,14 @@ tags = "webextensions"
 tags = "webextensions"
 
 ["browser_aboutdebugging_addons_manifest_url.js"]
-skip-if = ["os == 'mac' && debug"] # ADB start() fails on linux 32, see Bug 1499638, macosx1014 debug due to 1514751
 
 ["browser_aboutdebugging_addons_popup_picker.js"]
 
 ["browser_aboutdebugging_addons_remote_runtime.js"]
 
+["browser_aboutdebugging_addons_remote_runtime_close_reopen.js"]
+
 ["browser_aboutdebugging_addons_temporary_addon_buttons.js"]
-skip-if = ["os == 'win'"] # On windows the AddonManager locks the XPI file loaded as a temporary extension and we can not test the reload of the extension.
 
 ["browser_aboutdebugging_addons_temporary_id_message.js"]
 
@@ -78,7 +77,6 @@ skip-if = ["os == 'win'"] # On windows the AddonManager locks the XPI file loade
 ["browser_aboutdebugging_addons_temporary_install_path.js"]
 
 ["browser_aboutdebugging_addons_temporary_reload_error.js"]
-skip-if = ["os == 'win'"] # On windows the AddonManager locks the XPI file loaded as a temporary extension and we can not test the reload of the extension.
 
 ["browser_aboutdebugging_addons_warnings.js"]
 
@@ -102,11 +100,15 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 
 ["browser_aboutdebugging_devtoolstoolbox_breakpoint.js"]
 
+["browser_aboutdebugging_devtoolstoolbox_concurrent.js"]
+
 ["browser_aboutdebugging_devtoolstoolbox_contextmenu.js"]
 
 ["browser_aboutdebugging_devtoolstoolbox_contextmenu_markupview.js"]
 
 ["browser_aboutdebugging_devtoolstoolbox_focus.js"]
+
+["browser_aboutdebugging_devtoolstoolbox_jstracer.js"]
 
 ["browser_aboutdebugging_devtoolstoolbox_menubar.js"]
 
@@ -115,28 +117,15 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_aboutdebugging_devtoolstoolbox_navigate_reload_button.js"]
 
 ["browser_aboutdebugging_devtoolstoolbox_navigate_to_url.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_aboutdebugging_devtoolstoolbox_reload.js"]
-skip-if = [
-  "verify",
-  "ccov",
-  "os == 'linux' && debug", #bug 1544828, test loads the toolbox 2 times for each panel, might timeout or OOM
-]
+skip-if = ["verify"]
 
 ["browser_aboutdebugging_devtoolstoolbox_shortcuts.js"]
-skip-if = [
-  "ccov",
-  "os == 'linux'", # Bug 1521349, Bug 1548015, Bug 1544828
-]
 
 ["browser_aboutdebugging_devtoolstoolbox_splitconsole_key.js"]
 
 ["browser_aboutdebugging_devtoolstoolbox_target_destroyed.js"]
-skip-if = [
-  "debug",
-  "asan", # This test leaks. See bug 1529005
-]
 
 ["browser_aboutdebugging_devtoolstoolbox_tooltip_markupview.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
@@ -144,10 +133,8 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_aboutdebugging_devtoolstoolbox_zoom.js"]
 
 ["browser_aboutdebugging_fenix_runtime_display.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_aboutdebugging_fenix_runtime_node_picker.js"]
-skip-if = ["a11y_checks"] # Bug 1849028, 1858041, and 1849179 for causing crashes
 
 ["browser_aboutdebugging_hidden_addons.js"]
 
@@ -162,7 +149,6 @@ skip-if = ["a11y_checks"] # Bug 1849028, 1858041, and 1849179 for causing crashe
 ["browser_aboutdebugging_process_main.js"]
 
 ["browser_aboutdebugging_process_main_local.js"]
-skip-if = ["debug"]
 
 ["browser_aboutdebugging_profiler_dialog.js"]
 support-files = ["!/devtools/client/performance-new/test/browser/helpers.js"]
@@ -191,11 +177,6 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_aboutdebugging_serviceworker_console.js"]
 
 ["browser_aboutdebugging_serviceworker_fetch_flag.js"]
-skip-if = [
-  "os == 'win' && debug",
-  "os == 'mac'",
-  "os == 'linux'", #Bug 1529824
-]
 
 ["browser_aboutdebugging_serviceworker_not_compatible.js"]
 
@@ -203,22 +184,22 @@ skip-if = [
 
 ["browser_aboutdebugging_serviceworker_pushservice_url.js"]
 
+["browser_aboutdebugging_serviceworker_runtime-page-origin.js"]
+
 ["browser_aboutdebugging_serviceworker_runtime-page.js"]
 
 ["browser_aboutdebugging_serviceworker_start.js"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan", # Bug 1947358
+]
 
 ["browser_aboutdebugging_serviceworker_status.js"]
 
 ["browser_aboutdebugging_serviceworker_timeout.js"]
-skip-if = [
-  "debug",
-  "asan", # Frequent intermittent failures, Bug 1522800
-]
 
 ["browser_aboutdebugging_serviceworker_unregister.js"]
 
 ["browser_aboutdebugging_sidebar_connection_state.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_aboutdebugging_sidebar_network_runtimes.js"]
 
@@ -247,10 +228,8 @@ skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 ["browser_aboutdebugging_telemetry_basic.js"]
 
 ["browser_aboutdebugging_telemetry_connection_attempt.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_aboutdebugging_telemetry_inspect.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_aboutdebugging_telemetry_navigate.js"]
 

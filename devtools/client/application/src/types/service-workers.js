@@ -4,13 +4,14 @@
 
 "use strict";
 
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const worker = {
   id: PropTypes.string.isRequired,
   state: PropTypes.number.isRequired,
   stateText: PropTypes.string.isRequired,
   url: PropTypes.string.isRequired,
+  origin: PropTypes.string.isRequired,
   workerDescriptorFront: PropTypes.object,
   registrationFront: PropTypes.object,
 };

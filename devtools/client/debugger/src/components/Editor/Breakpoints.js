@@ -3,39 +3,20 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
-import React, { Component } from "devtools/client/shared/vendor/react";
-import { div } from "devtools/client/shared/vendor/react-dom-factories";
-import Breakpoint from "./Breakpoint";
+import { Component } from "devtools/client/shared/vendor/react";
 
 import {
   getSelectedSource,
   getFirstVisibleBreakpoints,
 } from "../../selectors/index";
 import { getSelectedLocation } from "../../utils/selected-location";
-import { makeBreakpointId } from "../../utils/breakpoint/index";
 import { connect } from "devtools/client/shared/vendor/react-redux";
 import { fromEditorLine } from "../../utils/editor/index";
 import actions from "../../actions/index";
-import { features } from "../../utils/prefs";
+import { markerTypes } from "../../constants";
 const classnames = require("resource://devtools/client/shared/classnames.js");
 
 const isMacOS = Services.appinfo.OS === "Darwin";
-
-const breakpointSvg = document.createElement("div");
-const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-svg.setAttribute("viewBox", "0 0 60 15");
-svg.setAttribute("width", 60);
-svg.setAttribute("height", 15);
-
-const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-path.setAttributeNS(
-  null,
-  "d",
-  "M53.07.5H1.5c-.54 0-1 .46-1 1v12c0 .54.46 1 1 1h51.57c.58 0 1.15-.26 1.53-.7l4.7-6.3-4.7-6.3c-.38-.44-.95-.7-1.53-.7z"
-);
-
-svg.appendChild(path);
-breakpointSvg.appendChild(svg);
 
 class Breakpoints extends Component {
   static get propTypes() {
@@ -54,34 +35,48 @@ class Breakpoints extends Component {
     super(props);
   }
 
-  componentDidUpdate() {
-    const { selectedSource, breakpoints, editor } = this.props;
+  componentDidMount() {
+    this.setMarkers();
+  }
 
-    // Only for codemirror 6
-    if (!features.codemirrorNext) {
-      return;
-    }
+  componentDidUpdate() {
+    this.setMarkers();
+  }
+
+  setMarkers() {
+    const { selectedSource, editor, breakpoints } = this.props;
 
     if (!selectedSource || !breakpoints || !editor) {
       return;
     }
 
+    const isSourceWasm = editor.isWasm;
+    const wasmLineFormatter = editor.getWasmLineNumberFormatter();
     const markers = [
       {
-        id: "gutter-breakpoint-marker",
+        id: markerTypes.GUTTER_BREAKPOINT_MARKER,
         lineClassName: "cm6-gutter-breakpoint",
         condition: line => {
-          const lineNumber = fromEditorLine(selectedSource.id, line);
-          return breakpoints.some(bp => bp.location.line === lineNumber);
-        },
-        createLineElementNode: line => {
-          const lineNumber = fromEditorLine(selectedSource.id, line);
+          const lineNumber = fromEditorLine(selectedSource, line);
           const breakpoint = breakpoints.find(
-            bp => bp.location.line === lineNumber
+            bp => getSelectedLocation(bp, selectedSource).line === lineNumber
           );
+          if (!breakpoint) {
+            return false;
+          }
+          return breakpoint;
+        },
+        createLineElementNode: (line, breakpoint) => {
+          const lineNumber = fromEditorLine(selectedSource, line);
+          const displayLineNumber =
+            isSourceWasm && !selectedSource.isOriginal
+              ? wasmLineFormatter(line)
+              : lineNumber;
 
-          const breakpointNode = breakpointSvg.cloneNode(true);
-          breakpointNode.appendChild(document.createTextNode(lineNumber));
+          const breakpointNode = document.createElement("div");
+          breakpointNode.appendChild(
+            document.createTextNode(displayLineNumber)
+          );
           breakpointNode.className = classnames("breakpoint-marker", {
             "breakpoint-disabled": breakpoint.disabled,
             "has-condition": breakpoint?.options.condition,
@@ -137,39 +132,7 @@ class Breakpoints extends Component {
   };
 
   render() {
-    const {
-      breakpoints,
-      selectedSource,
-      editor,
-      showEditorEditBreakpointContextMenu,
-      continueToHere,
-      toggleBreakpointsAtLine,
-      removeBreakpointsAtLine,
-    } = this.props;
-
-    if (!selectedSource || !breakpoints) {
-      return null;
-    }
-
-    if (features.codemirrorNext) {
-      return null;
-    }
-
-    return div(
-      null,
-      breakpoints.map(breakpoint => {
-        return React.createElement(Breakpoint, {
-          key: makeBreakpointId(breakpoint.location),
-          breakpoint,
-          selectedSource,
-          showEditorEditBreakpointContextMenu,
-          continueToHere,
-          toggleBreakpointsAtLine,
-          removeBreakpointsAtLine,
-          editor,
-        });
-      })
-    );
+    return null;
   }
 }
 

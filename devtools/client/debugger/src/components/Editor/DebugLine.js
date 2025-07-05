@@ -4,26 +4,18 @@
 
 import { PureComponent } from "devtools/client/shared/vendor/react";
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
-import {
-  toEditorPosition,
-  fromEditorLine,
-  getDocument,
-  hasDocument,
-  startOperation,
-  endOperation,
-  getTokenEnd,
-} from "../../utils/editor/index";
+import { toEditorPosition } from "../../utils/editor/index";
 import { isException } from "../../utils/pause/index";
-import { getIndentation } from "../../utils/indentation";
 import { connect } from "devtools/client/shared/vendor/react-redux";
+import { markerTypes } from "../../constants";
 import {
   getVisibleSelectedFrame,
   getPauseReason,
   getSourceTextContent,
   getCurrentThread,
+  getViewport,
+  getSelectedTraceLocation,
 } from "../../selectors/index";
-import { isWasm } from "../../utils/wasm";
-import { features } from "../../utils/prefs";
 
 export class DebugLine extends PureComponent {
   debugExpression;
@@ -34,119 +26,89 @@ export class DebugLine extends PureComponent {
       selectedSource: PropTypes.object,
       location: PropTypes.object,
       why: PropTypes.object,
+      sourceTextContent: PropTypes.object,
     };
   }
 
   componentDidMount() {
-    const { why, location } = this.props;
-    if (features.codemirrorNext) {
-      return;
-    }
-    this.setDebugLine(why, location);
+    this.setDebugLine();
   }
 
   componentWillUnmount() {
-    const { why, location } = this.props;
-    if (features.codemirrorNext) {
-      return;
-    }
-    this.clearDebugLine(why, location);
+    this.clearDebugLine(this.props);
   }
 
   componentDidUpdate(prevProps) {
-    const { why, location, editor, selectedSource } = this.props;
-
-    if (features.codemirrorNext) {
-      if (!selectedSource) {
-        return;
-      }
-
-      if (
-        prevProps.location == this.props.location &&
-        prevProps.selectedSource?.id == selectedSource?.id
-      ) {
-        return;
-      }
-
-      const { lineClass, markTextClass } = this.getTextClasses(why);
-      // Remove the debug line marker when no longer paused, or the selected source
-      // is no longer the source where the pause occured.
-      if (!location || location.source.id !== selectedSource.id) {
-        editor.removeLineContentMarker("debug-line-marker");
-        editor.removePositionContentMarker("debug-position-marker");
-      } else {
-        const isSourceWasm = isWasm(selectedSource.id);
-        editor.setLineContentMarker({
-          id: "debug-line-marker",
-          lineClassName: lineClass,
-          condition(line) {
-            const lineNumber = fromEditorLine(
-              selectedSource.id,
-              line,
-              isSourceWasm
-            );
-            const editorLocation = toEditorPosition(location);
-            return editorLocation.line == lineNumber;
-          },
-        });
-        const editorLocation = toEditorPosition(location);
-        editor.setPositionContentMarker({
-          id: "debug-position-marker",
-          positionClassName: markTextClass,
-          positions: [editorLocation],
-        });
-      }
-    } else {
-      startOperation();
-      this.clearDebugLine(prevProps.why, prevProps.location);
-      this.setDebugLine(why, location);
-      endOperation();
-    }
+    this.clearDebugLine(prevProps);
+    this.setDebugLine();
   }
 
-  setDebugLine(why, location) {
+  setDebugLine() {
+    const { why, location, editor, selectedSource } = this.props;
     if (!location) {
       return;
     }
-    const doc = getDocument(location.source.id);
 
-    let { line, column } = toEditorPosition(location);
-    let { markTextClass, lineClass } = this.getTextClasses(why);
-    doc.addLineClass(line, "wrap", lineClass);
-
-    const lineText = doc.getLine(line);
-    column = Math.max(column, getIndentation(lineText));
-
-    // If component updates because user clicks on
-    // another source tab, codeMirror will be null.
-    const columnEnd = doc.cm ? getTokenEnd(doc.cm, line, column) : null;
-
-    if (columnEnd === null) {
-      markTextClass += " to-line-end";
-    }
-
-    this.debugExpression = doc.markText(
-      { ch: column, line },
-      { ch: columnEnd, line },
-      { className: markTextClass }
-    );
-  }
-
-  clearDebugLine(why, location) {
-    // Avoid clearing the line if we didn't set a debug line before,
-    // or, if the document is no longer available
-    if (!location || !hasDocument(location.source.id)) {
+    if (!selectedSource || location.source.id !== selectedSource.id) {
       return;
     }
 
-    if (this.debugExpression) {
-      this.debugExpression.clear();
-    }
+    const { lineClass, markTextClass } = this.getTextClasses(why);
+    const editorLocation = toEditorPosition(location);
 
-    const { line } = toEditorPosition(location);
-    const doc = getDocument(location.source.id);
-    const { lineClass } = this.getTextClasses(why);
-    doc.removeLineClass(line, "wrap", lineClass);
+    // Show the paused "caret", to highlight on which particular line **and column** we are paused.
+    //
+    // Using only a `positionClassName` wouldn't only be applied to the immediate
+    // token after the position and force to use ::before to show the paused location.
+    // Using ::before prevents using :hover to be able to hide the icon on mouse hovering.
+    //
+    // So we have to use `createPositionElementNode`, similarly to column breakpoints
+    // to have a new dedicated DOM element for the paused location.
+    editor.setPositionContentMarker({
+      id: markerTypes.PAUSED_LOCATION_MARKER,
+
+      // Ensure displaying the marker after all the other markers and especially the column breakpoint markers
+      displayLast: true,
+
+      positions: [editorLocation],
+      createPositionElementNode(_line, _column, isFirstNonSpaceColumn) {
+        const pausedLocation = document.createElement("span");
+        pausedLocation.className = `paused-location${isFirstNonSpaceColumn ? " first-column" : ""}`;
+
+        const bar = document.createElement("span");
+        bar.className = `vertical-bar`;
+        pausedLocation.appendChild(bar);
+
+        return pausedLocation;
+      },
+    });
+
+    editor.setLineContentMarker({
+      id: markerTypes.DEBUG_LINE_MARKER,
+      lineClassName: lineClass,
+      lines: [{ line: editorLocation.line }],
+    });
+    editor.setPositionContentMarker({
+      id: markerTypes.DEBUG_POSITION_MARKER,
+      positionClassName: markTextClass,
+      positions: [editorLocation],
+    });
+  }
+
+  clearDebugLine(otherProps = {}) {
+    const { location, editor, selectedSource } = this.props;
+    // Remove the debug line marker when no longer paused, or the selected source
+    // is no longer the source where the pause occured.
+    if (
+      !location ||
+      location.source.id !== selectedSource.id ||
+      otherProps?.location !== location ||
+      otherProps?.selectedSource?.id !== selectedSource.id
+    ) {
+      editor.removeLineContentMarker(markerTypes.DEBUG_LINE_MARKER);
+      editor.removePositionContentMarker(markerTypes.DEBUG_POSITION_MARKER);
+      editor.removePositionContentMarker(markerTypes.PAUSED_LOCATION_MARKER);
+    }
   }
 
   getTextClasses(why) {
@@ -157,7 +119,12 @@ export class DebugLine extends PureComponent {
       };
     }
 
-    return { markTextClass: "debug-expression", lineClass: "new-debug-line" };
+    // We no longer highlight the next token via debug-expression
+    // and only highlight the line via paused-line.
+    return {
+      markTextClass: null,
+      lineClass: why == "tracer" ? "traced-line" : "paused-line",
+    };
   }
 
   render() {
@@ -166,27 +133,48 @@ export class DebugLine extends PureComponent {
 }
 
 function isDocumentReady(location, sourceTextContent) {
-  return location && sourceTextContent && hasDocument(location.source.id);
+  return location && sourceTextContent;
 }
 
 const mapStateToProps = state => {
-  // Avoid unecessary intermediate updates when there is no location
-  // or the source text content isn't yet fully loaded
-  const frame = getVisibleSelectedFrame(state);
-  const location = frame?.location;
-  if (!location) {
+  // If we aren't paused, fallback on showing the JS tracer
+  // currently selected trace location.
+  // If any trace is selected in the JS Tracer, this takes the lead over
+  // any paused location. (the same choice is made when showing inline previews)
+  let why;
+  let location = getSelectedTraceLocation(state);
+  if (location) {
+    why = "tracer";
+  } else {
+    // Avoid unecessary intermediate updates when there is no location
+    // or the source text content isn't yet fully loaded
+    const frame = getVisibleSelectedFrame(state);
+    location = frame?.location;
+
+    // We are not tracing, nor pausing
+    if (!location) {
+      return {};
+    }
+
+    why = getPauseReason(state, getCurrentThread(state));
+  }
+
+  // if we have a valid viewport.
+  // This is a way to know if the actual source is displayed
+  // and we are no longer on the "loading..." message
+  if (!getViewport(state)) {
     return {};
   }
+
   const sourceTextContent = getSourceTextContent(state, location);
-  if (
-    !features.codemirrorNext &&
-    !isDocumentReady(location, sourceTextContent)
-  ) {
+  if (!isDocumentReady(location, sourceTextContent)) {
     return {};
   }
+
   return {
     location,
-    why: getPauseReason(state, getCurrentThread(state)),
+    why,
+    sourceTextContent,
   };
 };
 

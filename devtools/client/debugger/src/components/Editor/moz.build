@@ -8,22 +8,16 @@ DIRS += [
 ]
 
 CompiledModules(
-    "BlackboxLines.js",
-    "Breakpoint.js",
     "Breakpoints.js",
-    "ColumnBreakpoint.js",
     "ColumnBreakpoints.js",
     "ConditionalPanel.js",
     "DebugLine.js",
-    "EmptyLines.js",
-    "Exception.js",
     "Exceptions.js",
     "Footer.js",
     "HighlightLine.js",
     "HighlightLines.js",
     "index.js",
     "InlinePreview.js",
-    "InlinePreviewRow.js",
     "InlinePreviews.js",
     "SearchInFileBar.js",
     "Tab.js",

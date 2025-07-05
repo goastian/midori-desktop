@@ -5,7 +5,9 @@
 import React, { PureComponent } from "devtools/client/shared/vendor/react";
 import { span } from "devtools/client/shared/vendor/react-dom-factories";
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
-import Reps from "devtools/client/shared/components/reps/index";
+const Reps = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/reps/index.mjs"
+);
 
 const {
   REPS: {
@@ -22,6 +24,7 @@ class InlinePreview extends PureComponent {
       highlightDomElement: PropTypes.func.isRequired,
       openElementInInspector: PropTypes.func.isRequired,
       unHighlightDomElement: PropTypes.func.isRequired,
+      type: PropTypes.string.isRequired,
       value: PropTypes.any,
       variable: PropTypes.string.isRequired,
     };
@@ -34,6 +37,7 @@ class InlinePreview extends PureComponent {
 
   render() {
     const {
+      type,
       value,
       variable,
       openElementInInspector,
@@ -49,7 +53,7 @@ class InlinePreview extends PureComponent {
       },
       span(
         {
-          className: "inline-preview-label",
+          className: `inline-preview-label ${type}`,
         },
         variable,
         ":"

@@ -19,8 +19,11 @@
   --highlighter-font-size: 11px;
   --highlighter-guide-color: hsl(200, 100%, 40%);
   --highlighter-infobar-color: hsl(210, 30%, 85%);
+  --highlighter-rulers-opacity: 0.8;
+  --highlighter-viewport-size-background-color: rgba(255, 255, 255, var(--highlighter-rulers-opacity));
 
   --grey-40: #b1b1b3;
+  --grey-80: #2a2a2e;
   --red-40: #ff3b6b;
   --yellow-60: #d7b600;
   --blue-60: #0060df;
@@ -44,6 +47,10 @@
      If your highlighter has UI that needs to be interacted with, add
      'pointer-events:auto;' on its container element. */
   pointer-events: none;
+
+  /* Don't allow forced colors for now. We might revisit this once we have High Contrast Mode
+     support in the DevTools toolbox */
+  forced-color-adjust: none;
 }
 
 .highlighter-container.box-model {
@@ -250,7 +257,19 @@
   color: var(--grey-40);
 }
 
+/* CSS Flexbox Highlighter */
+
+.flexbox-root {
+  position: absolute;
+  overflow: hidden;
+}
+
 /* CSS Grid Highlighter */
+
+.css-grid-root {
+  position: absolute;
+  overflow: hidden;
+}
 
 .css-grid-canvas {
   position: absolute;
@@ -268,6 +287,8 @@
 .css-grid-cells {
   opacity: 0.5;
   stroke: none;
+  /* Set in css-grid.js */
+  fill: var(--grid-color);
 }
 
 .css-grid-area-infobar-name,
@@ -384,7 +405,7 @@
 }
 
 .rulers-highlighter-elements > g {
-  opacity: 0.8;
+  opacity: var(--highlighter-rulers-opacity);
 }
 
 .rulers-highlighter-elements > g > rect {
@@ -396,13 +417,13 @@
 }
 
 .rulers-highlighter-ruler-markers {
-  stroke: #202020;
+  stroke: var(--grey-80);
 }
 
 .rulers-highlighter-horizontal-labels > text,
 .rulers-highlighter-vertical-labels > text {
   stroke: none;
-  fill: #202020;
+  fill: var(--grey-80);
   font: var(--highlighter-font-family);
   font-size: 9px;
   dominant-baseline: hanging;
@@ -417,15 +438,24 @@
   text-anchor: end;
 }
 
-.viewport-size-highlighter-viewport-infobar-container {
+:is(
+  .viewport-size-highlighter-viewport-infobar-container,
+  .viewport-size-on-resize-highlighter-viewport-infobar-container
+) {
   shape-rendering: crispEdges;
-  background-color: rgba(255, 255, 255, 0.7);
+  background-color: var(--highlighter-viewport-size-background-color);
+  color: var(--grey-80);
   font: var(--highlighter-font-family);
+  font-variant-numeric: tabular-nums;
   position: fixed;
   top: 30px;
-  right: 0px;
+  right: 0;
   font-size: 12px;
   padding: 4px;
+}
+
+.viewport-size-on-resize-highlighter-viewport-infobar-container {
+  top: 0;
 }
 
 /* Measuring Tool Highlighter */
@@ -638,8 +668,9 @@
   position: absolute;
   inset-inline-start: 3px;
   inset-block-start: 3px;
-  box-shadow: 0px 0px 0px black;
+  box-shadow: 0 0 0 black;
   border: solid 1px #fff;
+  forced-color-adjust: none;
 }
 
 .eye-dropper-color-value {
@@ -705,7 +736,7 @@
   mask-size: 16px 16px;
   background-color: var(--text-color);
 
-  border: 0px;
+  border: 0;
   appearance: none;
 }
 
@@ -750,7 +781,7 @@ button.paused-dbg-resume-button {
 
 .paused-dbg-reason {
   padding: 3px 16px;
-  margin: 8px 0px;
+  margin: 8px 0;
   font: var(--highlighter-font-family);
   font-size: var(--highlighter-font-size);
 }
@@ -828,7 +859,7 @@ button.paused-dbg-resume-button {
 
 
 #node-picker-notice-hide-button {
-  border: 0px;
+  border: 0;
   border-radius: 2px;
   appearance: none;
   background-color: var(--toolbar-border);

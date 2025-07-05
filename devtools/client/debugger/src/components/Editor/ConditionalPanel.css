@@ -2,15 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+ /* CodeMirror 6 block widgets can't have margin, so we put a padding on a container element */
+.conditional-breakpoint-panel-container {
+  padding-block: 1em;
+}
+
 .conditional-breakpoint-panel {
   cursor: initial;
-  margin: 1em 0;
   position: relative;
   display: flex;
   align-items: center;
   background: var(--theme-toolbar-background);
   border-top: 1px solid var(--theme-splitter-color);
   border-bottom: 1px solid var(--theme-splitter-color);
+}
+
+.conditional-breakpoint-panel:focus-within {
+  outline: var(--theme-focus-outline);
+  outline-offset: -2px;
+  box-shadow: var(--theme-outline-box-shadow);
 }
 
 .conditional-breakpoint-panel .prompt {
@@ -38,7 +48,12 @@
   color: var(--theme-text-color-alt);
 }
 
-/* Removing the line padding for Codemirror 6 */
-.cm-line:has(div.conditional-breakpoint-panel) {
-  padding: 0;
+/* cm6 style */
+.conditional-breakpoint-panel .inline-codemirror-container {
+  flex: 1 1 100%;
+
+  /* We already set an outline on the conditional panel, so hide the default codemirror one */
+  .cm-editor.cm-focused {
+    outline: none;
+  }
 }

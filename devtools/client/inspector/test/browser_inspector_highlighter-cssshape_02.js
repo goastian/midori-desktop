@@ -7,12 +7,14 @@
 // Make sure that the CSS shapes highlighters have the correct attributes.
 
 const TEST_URL = URL_ROOT + "doc_inspector_highlighter_cssshapes.html";
-const HIGHLIGHTER_TYPE = "ShapesHighlighter";
+const { TYPES } = ChromeUtils.importESModule(
+  "resource://devtools/shared/highlighters.mjs"
+);
+const HIGHLIGHTER_TYPE = TYPES.SHAPES;
 
 add_task(async function () {
-  const { inspector, highlighterTestFront } = await openInspectorForURL(
-    TEST_URL
-  );
+  const { inspector, highlighterTestFront } =
+    await openInspectorForURL(TEST_URL);
   const front = inspector.inspectorFront;
   const highlighter = await front.getHighlighterByType(HIGHLIGHTER_TYPE);
 

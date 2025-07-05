@@ -30,6 +30,7 @@ import {
   getSourceByActorId,
   getPendingSelectedLocation,
   getPendingBreakpointsForSource,
+  getSelectedLocation,
 } from "../../selectors/index";
 
 import { prefs } from "../../utils/prefs";
@@ -343,22 +344,28 @@ export function newGeneratedSources(sourceResources) {
     (async () => {
       await dispatch(loadSourceMapsForSourceActors(newSourceActors));
 
-      // We would like to sync breakpoints after we are done
-      // loading source maps as sometimes generated and original
-      // files share the same paths.
+      // We have to force fetching the breakable lines for any incoming source actor
+      // related to HTML page as we may have the HTML page selected,
+      // and already fetched its breakable lines and won't try to update
+      // the breakable lines for any late coming inline <script> tag.
+      const selectedLocation = getSelectedLocation(getState());
       for (const sourceActor of newSourceActors) {
-        // For HTML pages, we fetch all new incoming inline script,
-        // which will be related to one dedicated source actor.
-        // Whereas, for regular sources, if we have many source actors,
-        // this is for the same URL. And code expecting to have breakable lines
-        // will request breakable lines for that particular source actor.
-        if (sourceActor.sourceObject.isHTML) {
+        if (
+          selectedLocation?.source == sourceActor.sourceObject &&
+          sourceActor.sourceObject.isHTML
+        ) {
           await dispatch(
             setBreakableLines(
               createLocation({ source: sourceActor.sourceObject, sourceActor })
             )
           );
         }
+      }
+
+      // We would like to sync breakpoints after we are done
+      // loading source maps as sometimes generated and original
+      // files share the same paths.
+      for (const sourceActor of newSourceActors) {
         dispatch(
           checkPendingBreakpoints(sourceActor.sourceObject, sourceActor)
         );
@@ -369,11 +376,29 @@ export function newGeneratedSources(sourceResources) {
   };
 }
 
+/**
+ * Common operations done against generated and original sources,
+ * just after having registered them in the reducers:
+ *  - automatically selecting the source if it matches the last known selected source
+ *    (i.e. the pending selected location).
+ *  - automatically notify the server about new sources that used to be blackboxed.
+ *    The blackboxing is per Source Actor and so we need to notify them individually
+ *    if the source used to be ignored.
+ */
 function checkNewSources(sources) {
   return async ({ dispatch }) => {
-    for (const source of sources) {
-      dispatch(checkSelectedSource(source.id));
-    }
+    // Waiting for `checkSelectedSource` completion is important for pretty printed sources.
+    // `checkPendingBreakpoints`, which is called after this method, is expected to be called
+    // only after the source is mapped and breakpoints positions are updated with the mapped locations.
+    // For source mapped sources, `loadSourceMapsForSourceActors` is called before calling
+    // `checkPendingBreakpoints` and will do all that. For pretty printed source, we rely on
+    // `checkSelectedSource` to do that. Selecting a minimized source which used to be pretty printed
+    // will automatically force pretty printing it and computing the mapped breakpoint positions.
+    await Promise.all(
+      sources.map(
+        async source => await dispatch(checkSelectedSource(source.id))
+      )
+    );
 
     await dispatch(restoreBlackBoxedSources(sources));
 

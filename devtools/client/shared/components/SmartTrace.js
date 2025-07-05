@@ -7,8 +7,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 
 const l10n = new LocalizationHelper(
@@ -18,7 +18,7 @@ const dbgL10n = new LocalizationHelper(
   "devtools/client/locales/debugger.properties"
 );
 const Frames = createFactory(
-  require("resource://devtools/client/debugger/src/components/SecondaryPanes/Frames/index.js")
+  require("resource://devtools/client/debugger/src/components/SecondaryPanes/Frames/Frames.js")
     .Frames
 );
 const {

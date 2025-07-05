@@ -14,52 +14,85 @@ ChromeUtils.defineESModuleGetters(
 );
 
 const { Actor } = require("resource://devtools/shared/protocol.js");
-const { tracerSpec } = require("resource://devtools/shared/specs/tracer.js");
-
-const { throttle } = require("resource://devtools/shared/throttle.js");
-
+const { createValueGrip } = require("devtools/server/actors/object/utils");
 const {
-  makeDebuggeeValue,
-  createValueGripForTarget,
-} = require("devtools/server/actors/object/utils");
-
+  ObjectActorPool,
+} = require("resource://devtools/server/actors/object/ObjectActorPool.js");
 const {
-  TYPES,
-  getResourceWatcher,
-} = require("resource://devtools/server/actors/resources/index.js");
-const { JSTRACER_TRACE } = TYPES;
+  tracerSpec,
+  TRACER_LOG_METHODS,
+} = require("resource://devtools/shared/specs/tracer.js");
 
 loader.lazyRequireGetter(
   this,
-  "GeckoProfileCollector",
-  "resource://devtools/server/actors/utils/gecko-profile-collector.js",
+  "StdoutTracingListener",
+  "resource://devtools/server/actors/tracer/stdout.js",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "ResourcesTracingListener",
+  "resource://devtools/server/actors/tracer/resources.js",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "ProfilerTracingListener",
+  "resource://devtools/server/actors/tracer/profiler.js",
   true
 );
 
-const LOG_METHODS = {
-  STDOUT: "stdout",
-  CONSOLE: "console",
-  PROFILER: "profiler",
-};
-exports.LOG_METHODS = LOG_METHODS;
-const VALID_LOG_METHODS = Object.values(LOG_METHODS);
+// Indexes of each data type within the array describing a trace
+exports.TRACER_FIELDS_INDEXES = {
+  // This is shared with all the data types
+  TYPE: 0,
 
-const CONSOLE_THROTTLING_DELAY = 250;
+  // Frame traces are slightly special and do not share any field with the other data types
+  FRAME_IMPLEMENTATION: 1,
+  FRAME_NAME: 2,
+  FRAME_SOURCEID: 3,
+  FRAME_LINE: 4,
+  FRAME_COLUMN: 5,
+  FRAME_URL: 6,
+
+  // These fields are shared with all but frame data types
+  PREFIX: 1,
+  FRAME_INDEX: 2,
+  TIMESTAMP: 3,
+  DEPTH: 4,
+
+  EVENT_NAME: 5,
+
+  ENTER_ARGS: 5,
+  ENTER_ARG_NAMES: 6,
+
+  EXIT_PARENT_FRAME_ID: 5,
+  EXIT_RETURNED_VALUE: 6,
+  EXIT_WHY: 7,
+
+  DOM_MUTATION_TYPE: 5,
+  DOM_MUTATION_ELEMENT: 6,
+};
+
+const VALID_LOG_METHODS = Object.values(TRACER_LOG_METHODS);
 
 class TracerActor extends Actor {
   constructor(conn, targetActor) {
     super(conn, tracerSpec);
     this.targetActor = targetActor;
-    this.sourcesManager = this.targetActor.sourcesManager;
-
-    this.throttledTraces = [];
-    // On workers, we don't have access to setTimeout and can't have throttling
-    this.throttleEmitTraces = isWorker
-      ? this.flushTraces.bind(this)
-      : throttle(this.flushTraces.bind(this), CONSOLE_THROTTLING_DELAY);
-
-    this.geckoProfileCollector = new GeckoProfileCollector();
   }
+
+  // When the tracer is stopped, save the result of the Listener Class.
+  // This is used by the profiler log method and the getProfile method.
+  #stopResult = null;
+
+  // A Pool for all JS values emitted by the Tracer Actor.
+  // This helps instantiate a unique Object Actor per JS Object communicated to the client.
+  // This also helps share the same Object Actor instances when evaluating JS via
+  // the console actor.
+  // This pool is created lazily, only once we start a new trace.
+  // We also clear the pool before starting the trace.
+  #tracerPool = null;
 
   destroy() {
     this.stopTracing();
@@ -96,6 +129,7 @@ class TracerActor extends Actor {
    *        Options used to configure JavaScriptTracer.
    *        See `JavaScriptTracer.startTracing`.
    */
+  // eslint-disable-next-line complexity
   startTracing(options = {}) {
     if (options.logMethod && !VALID_LOG_METHODS.includes(options.logMethod)) {
       throw new Error(
@@ -130,26 +164,48 @@ class TracerActor extends Actor {
       return;
     }
 
-    this.logMethod = options.logMethod || LOG_METHODS.STDOUT;
-
-    if (this.logMethod == LOG_METHODS.PROFILER) {
-      this.geckoProfileCollector.start();
+    // Flush any previous recorded data only when we start a new tracer
+    // as we may still analyse trace data after stopping the trace.
+    // The pool will then be re-created on demand from createValueGrip.
+    if (this.#tracerPool) {
+      this.#tracerPool.destroy();
+      this.#tracerPool = null;
     }
 
-    this.tracingListener = {
-      onTracingFrame: this.onTracingFrame.bind(this),
-      onTracingFrameStep: this.onTracingFrameStep.bind(this),
-      onTracingFrameExit: this.onTracingFrameExit.bind(this),
-      onTracingInfiniteLoop: this.onTracingInfiniteLoop.bind(this),
-      onTracingToggled: this.onTracingToggled.bind(this),
-      onTracingPending: this.onTracingPending.bind(this),
-      onTracingDOMMutation: this.onTracingDOMMutation.bind(this),
-    };
+    this.logMethod = options.logMethod || TRACER_LOG_METHODS.STDOUT;
+
+    let ListenerClass = null;
+    // Currently only the profiler output is supported with the native tracer.
+    let useNativeTracing = false;
+    switch (this.logMethod) {
+      case TRACER_LOG_METHODS.STDOUT:
+        ListenerClass = StdoutTracingListener;
+        break;
+      case TRACER_LOG_METHODS.CONSOLE:
+      case TRACER_LOG_METHODS.DEBUGGER_SIDEBAR:
+        // Console and debugger sidebar are both using JSTRACE_STATE/JSTRACE_TRACE resources
+        // to receive tracing data.
+        ListenerClass = ResourcesTracingListener;
+        break;
+      case TRACER_LOG_METHODS.PROFILER:
+        ListenerClass = ProfilerTracingListener;
+        // Recording function returns is mandatory when recording profiler output.
+        // Otherwise frames are not closed and mixed up in the profiler frontend.
+        options.traceFunctionReturn = true;
+        useNativeTracing = true;
+        break;
+    }
+    this.tracingListener = new ListenerClass({
+      targetActor: this.targetActor,
+      traceValues: !!options.traceValues,
+      traceActor: this,
+    });
     lazy.JSTracer.addTracingListener(this.tracingListener);
+
     this.traceValues = !!options.traceValues;
     try {
       lazy.JSTracer.startTracing({
-        global: this.targetActor.window || this.targetActor.workerGlobal,
+        global: this.targetActor.targetGlobal,
         prefix: options.prefix || "",
         // Enable receiving the `currentDOMEvent` being passed to `onTracingFrame`
         traceDOMEvents: true,
@@ -161,6 +217,8 @@ class TracerActor extends Actor {
         traceOnNextInteraction: !!options.traceOnNextInteraction,
         // Notify about frame exit / function call returning
         traceFunctionReturn: !!options.traceFunctionReturn,
+        // Use the native tracing implementation
+        useNativeTracing,
         // Ignore frames beyond the given depth
         maxDepth: options.maxDepth,
         // Stop the tracing after a number of top level frames
@@ -174,12 +232,14 @@ class TracerActor extends Actor {
     }
   }
 
-  stopTracing() {
+  async stopTracing() {
     if (!this.tracingListener) {
       return;
     }
     // Remove before stopping to prevent receiving the stop notification
     lazy.JSTracer.removeTracingListener(this.tracingListener);
+    // Save the result of the stop request for the profiler and the getProfile RDP method
+    this.#stopResult = this.tracingListener.stop();
     this.tracingListener = null;
 
     lazy.JSTracer.stopTracing();
@@ -192,428 +252,21 @@ class TracerActor extends Actor {
    *
    * @return {Object} Gecko profiler profile object.
    */
-  getProfile() {
-    const profile = this.geckoProfileCollector.stop();
-    // We only open the profile if it contains samples, otherwise it can crash the frontend.
-    if (profile.threads[0].samples.data.length) {
-      return profile;
-    }
-    return null;
+  async getProfile() {
+    // #stopResult is a promise
+    return this.#stopResult;
   }
 
-  /**
-   * Be notified by the underlying JavaScriptTracer class
-   * in case it stops by itself, instead of being stopped when the Actor's stopTracing
-   * method is called by the user.
-   *
-   * @param {Boolean} enabled
-   *        True if the tracer starts tracing, false it it stops.
-   * @return {Boolean}
-   *         Return true, if the JavaScriptTracer should log a message to stdout.
-   */
-  onTracingToggled(enabled) {
-    // stopTracing will clear `logMethod`, so compute this before calling it.
-    const shouldLogToStdout = this.logMethod == LOG_METHODS.STDOUT;
-
-    if (!enabled) {
-      this.stopTracing();
-    }
-    return shouldLogToStdout;
-  }
-
-  /**
-   * Called when "trace on next user interaction" is enabled, to notify the user
-   * that the tracer is initialized but waiting for the user first input.
-   */
-  onTracingPending() {
-    // Delegate to JavaScriptTracer to log to stdout
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      return true;
-    }
-
-    if (this.logMethod == LOG_METHODS.CONSOLE) {
-      const consoleMessageWatcher = getResourceWatcher(
-        this.targetActor,
-        TYPES.CONSOLE_MESSAGE
+  createValueGrip(value) {
+    if (!this.#tracerPool) {
+      this.#tracerPool = new ObjectActorPool(
+        this.targetActor.threadActor,
+        "tracer",
+        true
       );
-      if (consoleMessageWatcher) {
-        consoleMessageWatcher.emitMessages([
-          {
-            arguments: [lazy.JSTracer.NEXT_INTERACTION_MESSAGE],
-            styles: [],
-            level: "jstracer",
-            chromeContext: false,
-            timeStamp: ChromeUtils.dateNow(),
-          },
-        ]);
-      }
-      return false;
+      this.manage(this.#tracerPool);
     }
-    return false;
-  }
-
-  onTracingInfiniteLoop() {
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      return true;
-    }
-    if (this.logMethod == LOG_METHODS.PROFILER) {
-      this.geckoProfileCollector.stop();
-      return true;
-    }
-    const consoleMessageWatcher = getResourceWatcher(
-      this.targetActor,
-      TYPES.CONSOLE_MESSAGE
-    );
-    if (!consoleMessageWatcher) {
-      return true;
-    }
-
-    const message =
-      "Looks like an infinite recursion? We stopped the JavaScript tracer, but code may still be running!";
-    consoleMessageWatcher.emitMessages([
-      {
-        arguments: [message],
-        styles: [],
-        level: "jstracer",
-        chromeContext: false,
-        timeStamp: ChromeUtils.dateNow(),
-      },
-    ]);
-
-    return false;
-  }
-
-  /**
-   * Called by JavaScriptTracer class when a new mutation happened on any DOM Element.
-   *
-   * @param {Object} options
-   * @param {Number} options.depth
-   *        Represents the depth of the frame in the call stack.
-   * @param {String} options.prefix
-   *        A string to be displayed as a prefix of any logged frame.
-   * @param {nsIStackFrame} options.caller
-   *        The JS Callsite which caused this mutation.
-   * @param {String} options.type
-   *        Type of DOM Mutation:
-   *        - "add": Node being added,
-   *        - "attributes": Node whose attributes changed,
-   *        - "remove": Node being removed,
-   * @param {DOMNode} options.element
-   *        The DOM Node related to the current mutation.
-   */
-  onTracingDOMMutation({ depth, prefix, type, caller, element }) {
-    // Delegate to JavaScriptTracer to log to stdout
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      return true;
-    }
-
-    if (this.logMethod == LOG_METHODS.CONSOLE) {
-      const dbgObj = makeDebuggeeValue(this.targetActor, element);
-      this.throttledTraces.push({
-        resourceType: JSTRACER_TRACE,
-        prefix,
-        timeStamp: ChromeUtils.dateNow(),
-
-        filename: caller?.filename,
-        lineNumber: caller?.lineNumber,
-        columnNumber: caller?.columnNumber,
-        sourceId: caller.sourceId,
-
-        depth,
-        mutationType: type,
-        mutationElement: createValueGripForTarget(this.targetActor, dbgObj),
-      });
-      this.throttleEmitTraces();
-      return false;
-    }
-    return false;
-  }
-
-  /**
-   * Called by JavaScriptTracer class on each step of a function call.
-   *
-   * @param {Object} options
-   * @param {Debugger.Frame} options.frame
-   *        A descriptor object for the JavaScript frame.
-   * @param {Number} options.depth
-   *        Represents the depth of the frame in the call stack.
-   * @param {String} options.prefix
-   *        A string to be displayed as a prefix of any logged frame.
-   * @return {Boolean}
-   *         Return true, if the JavaScriptTracer should log the step to stdout.
-   */
-  onTracingFrameStep({ frame, depth, prefix }) {
-    const { script } = frame;
-    const { lineNumber, columnNumber } = script.getOffsetMetadata(frame.offset);
-    const url = script.source.url;
-
-    // NOTE: Debugger.Script.prototype.getOffsetMetadata returns
-    //       columnNumber in 1-based.
-    //       Convert to 0-based, while keeping the wasm's column (1) as is.
-    //       (bug 1863878)
-    const columnBase = script.format === "wasm" ? 0 : 1;
-
-    // Ignore blackboxed sources
-    if (
-      this.sourcesManager.isBlackBoxed(
-        url,
-        lineNumber,
-        columnNumber - columnBase
-      )
-    ) {
-      return false;
-    }
-
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      // By returning true, we let JavaScriptTracer class log the message to stdout.
-      return true;
-    }
-
-    if (this.logMethod == LOG_METHODS.CONSOLE) {
-      this.throttledTraces.push({
-        resourceType: JSTRACER_TRACE,
-        prefix,
-        timeStamp: ChromeUtils.dateNow(),
-
-        depth,
-        filename: url,
-        lineNumber,
-        columnNumber: columnNumber - columnBase,
-        sourceId: script.source.id,
-      });
-      this.throttleEmitTraces();
-    }
-
-    return false;
-  }
-  /**
-   * Called by JavaScriptTracer class when a new JavaScript frame is executed.
-   *
-   * @param {Debugger.Frame} frame
-   *        A descriptor object for the JavaScript frame.
-   * @param {Number} depth
-   *        Represents the depth of the frame in the call stack.
-   * @param {String} formatedDisplayName
-   *        A human readable name for the current frame.
-   * @param {String} prefix
-   *        A string to be displayed as a prefix of any logged frame.
-   * @param {String} currentDOMEvent
-   *        If this is a top level frame (depth==0), and we are currently processing
-   *        a DOM Event, this will refer to the name of that DOM Event.
-   *        Note that it may also refer to setTimeout and setTimeout callback calls.
-   * @return {Boolean}
-   *         Return true, if the JavaScriptTracer should log the frame to stdout.
-   */
-  onTracingFrame({
-    frame,
-    depth,
-    formatedDisplayName,
-    prefix,
-    currentDOMEvent,
-  }) {
-    const { script } = frame;
-    const { lineNumber, columnNumber } = script.getOffsetMetadata(frame.offset);
-    const url = script.source.url;
-
-    // NOTE: Debugger.Script.prototype.getOffsetMetadata returns
-    //       columnNumber in 1-based.
-    //       Convert to 0-based, while keeping the wasm's column (1) as is.
-    //       (bug 1863878)
-    const columnBase = script.format === "wasm" ? 0 : 1;
-
-    // Ignore blackboxed sources
-    if (
-      this.sourcesManager.isBlackBoxed(
-        url,
-        lineNumber,
-        columnNumber - columnBase
-      )
-    ) {
-      return false;
-    }
-
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      // By returning true, we let JavaScriptTracer class log the message to stdout.
-      return true;
-    }
-
-    if (this.logMethod == LOG_METHODS.CONSOLE) {
-      // We may receive the currently processed DOM event (if this relates to one).
-      // In this case, log a preliminary message, which looks different to highlight it.
-      if (currentDOMEvent && depth == 0) {
-        // Create a JSTRACER_TRACE resource with a slightly different shape
-        this.throttledTraces.push({
-          resourceType: JSTRACER_TRACE,
-          prefix,
-          timeStamp: ChromeUtils.dateNow(),
-
-          eventName: currentDOMEvent,
-        });
-      }
-
-      let args = undefined;
-      // Log arguments, but only when this feature is enabled as it introduce
-      // some significant overhead in perf as well as memory as it may hold the objects in memory.
-      // Also prevent trying to log function call arguments if we aren't logging a frame
-      // with arguments (e.g. Debugger evaluation frames, when executing from the console)
-      if (this.traceValues && frame.arguments) {
-        args = [];
-        for (let arg of frame.arguments) {
-          // Debugger.Frame.arguments contains either a Debugger.Object or primitive object
-          if (arg?.unsafeDereference) {
-            arg = arg.unsafeDereference();
-          }
-          // Instantiate a object actor so that the tools can easily inspect these objects
-          const dbgObj = makeDebuggeeValue(this.targetActor, arg);
-          args.push(createValueGripForTarget(this.targetActor, dbgObj));
-        }
-      }
-
-      // Create a message object that fits Console Message Watcher expectations
-      this.throttledTraces.push({
-        resourceType: JSTRACER_TRACE,
-        prefix,
-        timeStamp: ChromeUtils.dateNow(),
-
-        depth,
-        implementation: frame.implementation,
-        displayName: formatedDisplayName,
-        filename: url,
-        lineNumber,
-        columnNumber: columnNumber - columnBase,
-        sourceId: script.source.id,
-        args,
-      });
-      this.throttleEmitTraces();
-    } else if (this.logMethod == LOG_METHODS.PROFILER) {
-      this.geckoProfileCollector.addSample(
-        {
-          // formatedDisplayName has a lambda at the beginning, remove it.
-          name: formatedDisplayName.replace("λ ", ""),
-          url,
-          lineNumber,
-          columnNumber,
-          category: frame.implementation,
-        },
-        depth
-      );
-    }
-
-    return false;
-  }
-
-  /**
-   * Called by JavaScriptTracer class when a JavaScript frame exits (i.e. a function returns or throw).
-   *
-   * @param {Object} options
-   * @param {Number} options.frameId
-   *        Unique identifier for the current frame.
-   *        This should match a frame notified via onTracingFrame.
-   * @param {Debugger.Frame} options.frame
-   *        A descriptor object for the JavaScript frame.
-   * @param {Number} options.depth
-   *        Represents the depth of the frame in the call stack.
-   * @param {String} options.formatedDisplayName
-   *        A human readable name for the current frame.
-   * @param {String} options.prefix
-   *        A string to be displayed as a prefix of any logged frame.
-   * @param {String} options.why
-   *        A string to explain why the function stopped.
-   *        See tracer.sys.mjs's FRAME_EXIT_REASONS.
-   * @param {Debugger.Object|primitive} options.rv
-   *        The returned value. It can be the returned value, or the thrown exception.
-   *        It is either a primitive object, otherwise it is a Debugger.Object for any other JS Object type.
-   * @return {Boolean}
-   *         Return true, if the JavaScriptTracer should log the frame to stdout.
-   */
-  onTracingFrameExit({
-    frameId,
-    frame,
-    depth,
-    formatedDisplayName,
-    prefix,
-    why,
-    rv,
-  }) {
-    const { script } = frame;
-    const { lineNumber, columnNumber } = script.getOffsetMetadata(frame.offset);
-    const url = script.source.url;
-
-    // NOTE: Debugger.Script.prototype.getOffsetMetadata returns
-    //       columnNumber in 1-based.
-    //       Convert to 0-based, while keeping the wasm's column (1) as is.
-    //       (bug 1863878)
-    const columnBase = script.format === "wasm" ? 0 : 1;
-
-    // Ignore blackboxed sources
-    if (
-      this.sourcesManager.isBlackBoxed(
-        url,
-        lineNumber,
-        columnNumber - columnBase
-      )
-    ) {
-      return false;
-    }
-
-    if (this.logMethod == LOG_METHODS.STDOUT) {
-      // By returning true, we let JavaScriptTracer class log the message to stdout.
-      return true;
-    }
-
-    if (this.logMethod == LOG_METHODS.CONSOLE) {
-      let returnedValue = undefined;
-      // Log arguments, but only when this feature is enabled as it introduce
-      // some significant overhead in perf as well as memory as it may hold the objects in memory.
-      if (this.traceValues) {
-        // Debugger.Frame.arguments contains either a Debugger.Object or primitive object
-        if (rv?.unsafeDereference) {
-          rv = rv.unsafeDereference();
-        }
-        // Instantiate a object actor so that the tools can easily inspect these objects
-        const dbgObj = makeDebuggeeValue(this.targetActor, rv);
-        returnedValue = createValueGripForTarget(this.targetActor, dbgObj);
-      }
-
-      // Create a message object that fits Console Message Watcher expectations
-      this.throttledTraces.push({
-        resourceType: JSTRACER_TRACE,
-        prefix,
-        timeStamp: ChromeUtils.dateNow(),
-
-        depth,
-        displayName: formatedDisplayName,
-        filename: url,
-        lineNumber,
-        columnNumber: columnNumber - columnBase,
-        sourceId: script.source.id,
-
-        relatedTraceId: frameId,
-        returnedValue,
-        why,
-      });
-      this.throttleEmitTraces();
-    } else if (this.logMethod == LOG_METHODS.PROFILER) {
-      // For now, the profiler doesn't use this.
-    }
-
-    return false;
-  }
-
-  /**
-   * This method is throttled and will notify all pending traces to be logged in the console
-   * via the console message watcher.
-   */
-  flushTraces() {
-    const traceWatcher = getResourceWatcher(this.targetActor, JSTRACER_TRACE);
-    // Ignore the request if the frontend isn't listening to traces for that target.
-    if (!traceWatcher) {
-      return;
-    }
-    const traces = this.throttledTraces;
-    this.throttledTraces = [];
-
-    traceWatcher.emitTraces(traces);
+    return createValueGrip(this, value, this.#tracerPool);
   }
 }
 exports.TracerActor = TracerActor;

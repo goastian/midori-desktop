@@ -8,9 +8,9 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const EvaluationContextSelector = createFactory(
   require("resource://devtools/client/webconsole/components/Input/EvaluationContextSelector.js")
@@ -36,7 +36,6 @@ class EditorToolbar extends Component {
       reverseSearchInputVisible: PropTypes.bool.isRequired,
       serviceContainer: PropTypes.object.isRequired,
       webConsoleUI: PropTypes.object.isRequired,
-      showEvaluationContextSelector: PropTypes.bool,
     };
   }
 
@@ -60,10 +59,6 @@ class EditorToolbar extends Component {
   }
 
   renderEvaluationContextSelector() {
-    if (!this.props.showEvaluationContextSelector) {
-      return null;
-    }
-
     return EvaluationContextSelector({
       webConsoleUI: this.props.webConsoleUI,
     });

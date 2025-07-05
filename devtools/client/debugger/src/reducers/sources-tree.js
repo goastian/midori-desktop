@@ -24,13 +24,19 @@ const IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const IGNORED_EXTENSIONS = ["css", "svg", "png"];
 import { isPretty, getRawSourceURL } from "../utils/source";
 import { prefs } from "../utils/prefs";
+import { getDisplayURL } from "../utils/sources-tree/getURL";
+
+import TargetCommand from "resource://devtools/shared/commands/target/target-command.js";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   BinarySearch: "resource://gre/modules/BinarySearch.sys.mjs",
 });
 
-export function initialSourcesTreeState() {
+export function initialSourcesTreeState({
+  isWebExtension,
+  mainThreadProjectDirectoryRoots = {},
+} = {}) {
   return {
     // List of all Thread Tree Items.
     // All other item types are children of these and aren't store in
@@ -45,44 +51,64 @@ export function initialSourcesTreeState() {
     // It can be any type of Tree Item.
     focusedItem: null,
 
+    // Persisted main thread project roots by origin.
+    // These will be applied whenever a new main thread is added.
+    mainThreadProjectDirectoryRoots,
+
     // Project root set from the Source Tree.
     // This focuses the source tree on a subset of sources.
-    // This is a `uniquePath`, where ${thread} is replaced by "top-level"
-    // when we picked an item from the main thread. This allows to preserve
-    // the root selection on page reload.
-    projectDirectoryRoot: prefs.projectDirectoryRoot,
+    projectDirectoryRoot: "",
 
     // The name is displayed in Source Tree header
-    projectDirectoryRootName: prefs.projectDirectoryRootName,
+    projectDirectoryRootName: "",
 
-    // Reports if the top level target is a web extension.
+    // The full name is displayed in the Source Tree header's tooltip
+    projectDirectoryRootFullName: "",
+
+    // Reports if the debugged context is a web extension.
     // If so, we should display all web extension sources.
-    isWebExtension: false,
+    isWebExtension,
 
     /**
      * Boolean, to be set to true in order to display WebExtension's content scripts
      * that are applied to the current page we are debugging.
      *
      * Covered by: browser_dbg-content-script-sources.js
-     * Bound to: devtools.chrome.enabled
+     * Bound to: devtools.debugger.show-content-scripts
      *
      */
-    chromeAndExtensionsEnabled: prefs.chromeAndExtensionsEnabled,
+    showContentScripts: prefs.showContentScripts,
+
+    mutableExtensionSources: [],
   };
 }
 
 // eslint-disable-next-line complexity
 export default function update(state = initialSourcesTreeState(), action) {
   switch (action.type) {
+    case "SHOW_CONTENT_SCRIPTS": {
+      const { shouldShow } = action;
+      if (shouldShow !== state.showExtensionSources) {
+        prefs.showContentScripts = shouldShow;
+        return { ...state, showContentScripts: shouldShow };
+      }
+      return state;
+    }
     case "ADD_ORIGINAL_SOURCES": {
       const { generatedSourceActor } = action;
-      const validOriginalSources = action.originalSources.filter(source =>
-        isSourceVisibleInSourceTree(
+      const validOriginalSources = action.originalSources.filter(source => {
+        if (source.isExtension) {
+          state.mutableExtensionSources.push({
+            source,
+            sourceActor: generatedSourceActor,
+          });
+        }
+        return isSourceVisibleInSourceTree(
           source,
-          state.chromeAndExtensionsEnabled,
+          state.showContentScripts,
           state.isWebExtension
-        )
-      );
+        );
+      });
       if (!validOriginalSources.length) {
         return state;
       }
@@ -106,13 +132,19 @@ export default function update(state = initialSourcesTreeState(), action) {
       // But we do want to process source actors in order to be able to display
       // distinct Source Tree Items for sources with the same URL loaded in distinct thread.
       // (And may be also later be able to highlight the many sources with the same URL loaded in a given thread)
-      const newSourceActors = action.sourceActors.filter(sourceActor =>
-        isSourceVisibleInSourceTree(
+      const newSourceActors = action.sourceActors.filter(sourceActor => {
+        if (sourceActor.sourceObject.isExtension) {
+          state.mutableExtensionSources.push({
+            source: sourceActor.sourceObject,
+            sourceActor,
+          });
+        }
+        return isSourceVisibleInSourceTree(
           sourceActor.sourceObject,
-          state.chromeAndExtensionsEnabled,
+          state.showContentScripts,
           state.isWebExtension
-        )
-      );
+        );
+      });
       if (!newSourceActors.length) {
         return state;
       }
@@ -140,7 +172,7 @@ export default function update(state = initialSourcesTreeState(), action) {
     case "INSERT_THREAD":
       state = { ...state };
       addThread(state, action.newThread);
-      return state;
+      return applyMainThreadProjectDirectoryRoot(state, action.newThread);
 
     case "REMOVE_THREAD": {
       const { threadActorID } = action;
@@ -166,6 +198,18 @@ export default function update(state = initialSourcesTreeState(), action) {
         }
       }
 
+      // clear the project root if it was set to this thread
+      let {
+        projectDirectoryRoot,
+        projectDirectoryRootName,
+        projectDirectoryRootFullName,
+      } = state;
+      if (projectDirectoryRoot.startsWith(`${threadActorID}|`)) {
+        projectDirectoryRoot = "";
+        projectDirectoryRootName = "";
+        projectDirectoryRootFullName = "";
+      }
+
       const threadItems = [...state.threadItems];
       threadItems.splice(index, 1);
       return {
@@ -173,6 +217,9 @@ export default function update(state = initialSourcesTreeState(), action) {
         threadItems,
         focusedItem,
         expanded,
+        projectDirectoryRoot,
+        projectDirectoryRootName,
+        projectDirectoryRootFullName,
       };
     }
 
@@ -185,9 +232,16 @@ export default function update(state = initialSourcesTreeState(), action) {
     case "SET_SELECTED_LOCATION":
       return updateSelectedLocation(state, action.location);
 
-    case "SET_PROJECT_DIRECTORY_ROOT":
-      const { uniquePath, name } = action;
-      return updateProjectDirectoryRoot(state, uniquePath, name);
+    case "SET_PROJECT_DIRECTORY_ROOT": {
+      const { uniquePath, name, fullName, mainThread } = action;
+      return updateProjectDirectoryRoot(
+        state,
+        uniquePath,
+        name,
+        fullName,
+        mainThread
+      );
+    }
 
     case "BLACKBOX_WHOLE_SOURCES":
     case "BLACKBOX_SOURCE_RANGES": {
@@ -205,11 +259,6 @@ export default function update(state = initialSourcesTreeState(), action) {
 
 function addThread(state, thread) {
   const threadActorID = thread.actor;
-  // When processing the top level target,
-  // see if we are debugging an extension.
-  if (thread.isTopLevel) {
-    state.isWebExtension = thread.isWebExtension;
-  }
   let threadItem = state.threadItems.find(item => {
     return item.threadActorID == threadActorID;
   });
@@ -249,6 +298,7 @@ function updateBlackbox(state, sources, shouldBlackBox) {
           ...sourceTreeItem,
           isBlackBoxed: shouldBlackBox,
         });
+        threadItem.children = [...threadItem.children];
       }
     }
   }
@@ -269,24 +319,75 @@ function updateExpanded(state, action) {
 /**
  * Update the project directory root
  */
-function updateProjectDirectoryRoot(state, uniquePath, name) {
-  // Only persists root within the top level target.
-  // Otherwise the thread actor ID will change on page reload and we won't match anything
-  if (!uniquePath || uniquePath.startsWith("top-level")) {
-    prefs.projectDirectoryRoot = uniquePath;
-    prefs.projectDirectoryRootName = name;
+function updateProjectDirectoryRoot(
+  state,
+  uniquePath,
+  name,
+  fullName,
+  mainThread
+) {
+  let directoryRoots = state.mainThreadProjectDirectoryRoots;
+  if (mainThread) {
+    const { origin } = getDisplayURL(mainThread.url);
+    if (origin) {
+      // Update the persisted main thread project directory root for this origin
+      directoryRoots = { ...directoryRoots };
+      if (uniquePath.startsWith(`${mainThread.actor}|`)) {
+        directoryRoots[origin] = {
+          // uniquePath contains the thread actor name, origin and path,
+          // e.g. "server0.conn0.watcher2.process6//thread1|example.com|/src/"
+          // We remove the thread actor name and re-add it when
+          // applying this directory root to another thread because
+          // the new thread will in general have a different name
+          uniquePath: uniquePath.substring(mainThread.actor.length),
+          name,
+          fullName,
+        };
+      } else {
+        // The directory root is set to a thread other than the main thread,
+        // we don't persist it in this case because there is no reliable way
+        // to identify this thread after reloading
+        delete directoryRoots[origin];
+      }
+    }
   }
+
+  return {
+    ...state,
+    mainThreadProjectDirectoryRoots: directoryRoots,
+    projectDirectoryRoot: uniquePath,
+    projectDirectoryRootName: name,
+    projectDirectoryRootFullName: fullName,
+  };
+}
+
+function applyMainThreadProjectDirectoryRoot(state, thread) {
+  if (!thread.isTopLevel || !thread.url) {
+    return state;
+  }
+  const { origin } = getDisplayURL(thread.url);
+  if (!origin) {
+    return state;
+  }
+
+  const directoryRoot = state.mainThreadProjectDirectoryRoots[origin];
+  const uniquePath = directoryRoot
+    ? thread.actor + directoryRoot.uniquePath
+    : "";
+  const name = directoryRoot?.name ?? "";
+  const fullName = directoryRoot?.fullName ?? "";
 
   return {
     ...state,
     projectDirectoryRoot: uniquePath,
     projectDirectoryRootName: name,
+    projectDirectoryRootFullName: fullName,
   };
 }
 
 function isSourceVisibleInSourceTree(
   source,
-  chromeAndExtensionsEnabled,
+  showContentScripts,
   debuggeeIsWebExtension
 ) {
   return (
@@ -296,9 +397,7 @@ function isSourceVisibleInSourceTree(
     !isPretty(source) &&
     // Only accept web extension sources when the chrome pref is enabled (to allows showing content scripts),
     // or when we are debugging an extension
-    (!source.isExtension ||
-      chromeAndExtensionsEnabled ||
-      debuggeeIsWebExtension)
+    (!source.isExtension || showContentScripts || debuggeeIsWebExtension)
   );
 }
 
@@ -334,14 +433,14 @@ function addSource(threadItems, source, sourceActor) {
   // Then ensure creating or fetching the related Group Item
   // About `source` versus `sourceActor`:
   const { displayURL } = source;
-  const { group } = displayURL;
+  const { group, origin } = displayURL;
 
   let groupItem = threadItem.children.find(item => {
     return item.groupName == group;
   });
 
   if (!groupItem) {
-    groupItem = createGroupTreeItem(group, threadItem, source);
+    groupItem = createGroupTreeItem(group, origin, threadItem, source);
     // Copy children in order to force updating react in case we picked
     // this directory as a project root
     threadItem.children = [...threadItem.children];
@@ -352,7 +451,12 @@ function addSource(threadItems, source, sourceActor) {
   // Then ensure creating or fetching all possibly nested Directory Item(s)
   const { path } = displayURL;
   const parentPath = path.substring(0, path.lastIndexOf("/"));
-  const directoryItem = addOrGetParentDirectory(groupItem, parentPath);
+  const parentUrl = source.url.substring(0, source.url.lastIndexOf("/"));
+  const directoryItem = addOrGetParentDirectory(
+    groupItem,
+    parentPath,
+    parentUrl
+  );
 
   // Check if a previous source actor registered this source.
   // It happens if we load the same url multiple times, or,
@@ -384,13 +488,26 @@ function findSourceInThreadItem(source, threadItem) {
   const groupItem = threadItem.children.find(item => {
     return item.groupName == group;
   });
-  if (!groupItem) return null;
+  if (!groupItem) {
+    return null;
+  }
 
   const parentPath = path.substring(0, path.lastIndexOf("/"));
+
+  // If the parent path is empty, the source isn't in a sub directory,
+  // and instead is an immediate child of the group item.
+  if (!parentPath) {
+    return groupItem.children.find(item => {
+      return item.type == "source" && item.source == source;
+    });
+  }
+
   const directoryItem = groupItem._allGroupDirectoryItems.find(item => {
     return item.type == "directory" && item.path == parentPath;
   });
-  if (!directoryItem) return null;
+  if (!directoryItem) {
+    return null;
+  }
 
   return directoryItem.children.find(item => {
     return item.type == "source" && item.source == source;
@@ -412,58 +529,62 @@ function sortItems(a, b) {
   return 0;
 }
 
-function sortThreadItems(a, b) {
+const { TYPES } = TargetCommand;
+const TARGET_TYPE_ORDER = [
+  TYPES.PROCESS,
+  TYPES.FRAME,
+  TYPES.CONTENT_SCRIPT,
+  TYPES.SERVICE_WORKER,
+  TYPES.SHARED_WORKER,
+  TYPES.WORKER,
+];
+function sortThreadItems(threadItemA, threadItemB) {
   // Jest tests aren't emitting the necessary actions to populate the thread attributes.
   // Ignore sorting for them.
-  if (!a.thread || !b.thread) {
+  if (!threadItemA.thread || !threadItemB.thread) {
     return 0;
   }
-
+  return sortThreads(threadItemA.thread, threadItemB.thread);
+}
+export function sortThreads(a, b) {
   // Top level target is always listed first
-  if (a.thread.isTopLevel) {
+  if (a.isTopLevel) {
     return -1;
-  } else if (b.thread.isTopLevel) {
+  } else if (b.isTopLevel) {
     return 1;
   }
 
-  // Process targets should come next and after that frame targets
-  if (a.thread.targetType == "process" && b.thread.targetType == "frame") {
-    return -1;
-  } else if (
-    a.thread.targetType == "frame" &&
-    b.thread.targetType == "process"
-  ) {
+  // Order frame and content script per Window Global ID.
+  // It should order them by creation date.
+  if (a.innerWindowId > b.innerWindowId) {
     return 1;
+  } else if (a.innerWindowId < b.innerWindowId) {
+    return -1;
   }
 
-  // And we display the worker targets last.
-  if (
-    a.thread.targetType.endsWith("worker") &&
-    !b.thread.targetType.endsWith("worker")
-  ) {
-    return 1;
-  } else if (
-    !a.thread.targetType.endsWith("worker") &&
-    b.thread.targetType.endsWith("worker")
-  ) {
-    return -1;
+  // If the two target have a different type, order by type
+  if (a.targetType !== b.targetType) {
+    const idxA = TARGET_TYPE_ORDER.indexOf(a.targetType);
+    const idxB = TARGET_TYPE_ORDER.indexOf(b.targetType);
+    return idxA < idxB ? -1 : 1;
   }
 
   // Order the process targets by their process ids
-  if (a.thread.processID > b.thread.processID) {
-    return 1;
-  } else if (a.thread.processID < b.thread.processID) {
-    return -1;
+  if (a.processID && b.processID) {
+    if (a.processID > b.processID) {
+      return 1;
+    } else if (a.processID < b.processID) {
+      return -1;
+    }
   }
 
-  // Order the frame targets and the worker targets by their target name
-  if (a.thread.targetType == "frame" && b.thread.targetType == "frame") {
-    return a.thread.name.localeCompare(b.thread.name);
-  } else if (
-    a.thread.targetType.endsWith("worker") &&
-    b.thread.targetType.endsWith("worker")
+  // Order the frame, worker and content script targets by their target name
+  if (
+    (a.targetType == "frame" && b.targetType == "frame") ||
+    (a.targetType.endsWith("worker") && b.targetType.endsWith("worker")) ||
+    (a.targetType == "content_script" && b.targetType == "content_script")
   ) {
-    return a.thread.name.localeCompare(b.thread.name);
+    return a.name.localeCompare(b.name);
   }
 
   return 0;
@@ -478,11 +599,13 @@ function sortThreadItems(a, b) {
  *        The Group Item for the group where the path should be displayed.
  * @param {String} path
  *        Path of the directory for which we want a Directory Item.
+ * @param {String} url
+ *        URL of the directory for which we want a Directory Item.
  * @return {GroupItem|DirectoryItem}
  *        The parent Item where this path should be inserted.
  *        Note that it may be displayed right under the Group Item if the path is empty.
  */
-function addOrGetParentDirectory(groupItem, path) {
+function addOrGetParentDirectory(groupItem, path, url) {
   // We reached the top of the Tree, so return the Group Item.
   if (!path) {
     return groupItem;
@@ -497,10 +620,15 @@ function addOrGetParentDirectory(groupItem, path) {
   // It doesn't exists, so we will create a new Directory Item.
   // But now, lookup recursively for the parent Item for this to-be-create Directory Item
   const parentPath = path.substring(0, path.lastIndexOf("/"));
-  const parentDirectory = addOrGetParentDirectory(groupItem, parentPath);
+  const parentUrl = url.substring(0, url.lastIndexOf("/"));
+  const parentDirectory = addOrGetParentDirectory(
+    groupItem,
+    parentPath,
+    parentUrl
+  );
 
   // We can now create the new Directory Item and register it in its parent Item.
-  const directory = createDirectoryTreeItem(path, parentDirectory);
+  const directory = createDirectoryTreeItem(path, url, parentDirectory);
   // Copy children in order to force updating react in case we picked
   // this directory as a project root
   parentDirectory.children = [...parentDirectory.children];
@@ -554,7 +682,7 @@ function createThreadTreeItem(thread) {
     threadActorID: thread,
   };
 }
-function createGroupTreeItem(groupName, parent, source) {
+function createGroupTreeItem(groupName, origin, parent, source) {
   return {
     ...createBaseTreeItem({
       type: "group",
@@ -565,6 +693,7 @@ function createGroupTreeItem(groupName, parent, source) {
     }),
 
     groupName,
+    url: origin,
 
     // When a content script appear in a web page,
     // a dedicated group is created for it and should
@@ -577,7 +706,7 @@ function createGroupTreeItem(groupName, parent, source) {
     _allGroupDirectoryItems: [],
   };
 }
-function createDirectoryTreeItem(path, parent) {
+function createDirectoryTreeItem(path, url, parent) {
   // If the parent is a group we want to use '/' as separator
   const pathSeparator = parent.type == "directory" ? "/" : "|";
 
@@ -604,6 +733,7 @@ function createDirectoryTreeItem(path, parent) {
     // path will be:
     //   foo/bar
     path,
+    url,
   };
 }
 function createSourceTreeItem(source, sourceActor, parent) {

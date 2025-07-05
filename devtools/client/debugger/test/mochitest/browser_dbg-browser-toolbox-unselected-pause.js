@@ -29,11 +29,14 @@ add_task(async function () {
     waitForState,
     waitForSelectedSource,
     waitForLoadedScopes,
+    waitForInlinePreviews,
     waitForElement,
     findElement,
     getSelector,
     findElementWithSelector,
     createLocation,
+    getEditorContent,
+    getCMEditor,
   });
   // ToolboxTask.spawn pass input arguments by stringify them via string concatenation.
   // This mean we have to stringify the input object, but don't have to parse it from the task.
@@ -41,7 +44,7 @@ add_task(async function () {
     this.selectors = _selectors;
   });
 
-  addTab("data:text/html,<script>debugger;</script>");
+  const onTabOpened = addTab("data:text/html,<script>debugger;</script>");
 
   // The debugger should automatically be selected.
   await ToolboxTask.spawn(null, async () => {
@@ -64,4 +67,7 @@ add_task(async function () {
   ok(true, "Paused in new tab");
 
   await ToolboxTask.destroy();
+
+  // Wait for the tab to resume and finish loading after the browser toolbox is closed
+  await onTabOpened;
 });

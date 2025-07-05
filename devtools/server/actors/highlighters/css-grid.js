@@ -183,6 +183,8 @@ const gCachedGridPattern = new Map();
  * @param {Boolean} options.showInfiniteLines
  *        Displays an infinite line to represent the grid lines if isShown is
  *        true.
+ * @param {Number} options.isParent
+ *        Set to true if this is a "parent" grid, i.e. a grid with a subgrid.
  * @param {Number} options.zIndex
  *        The z-index to decide the displaying order.
  *
@@ -619,6 +621,10 @@ class CssGridHighlighter extends AutoRefreshHighlighter {
     return fragment.rows.lines[fragment.rows.lines.length - 1].start;
   }
 
+  getNode(id) {
+    return this.markup.content.root.getElementById(this.ID_CLASS_PREFIX + id);
+  }
+
   /**
    * The AutoRefreshHighlighter's _hasMoved method returns true only if the
    * element's quads have changed. Override it so it also returns true if the
@@ -725,6 +731,23 @@ class CssGridHighlighter extends AutoRefreshHighlighter {
 
     // Hide the canvas, grid element highlights and infobar.
     this._hide();
+
+    this.getElement("root").setAttribute(
+      "data-is-parent-grid",
+      !!this.options.isParent
+    );
+
+    // Set z-index.
+    this.markup.content.root.firstElementChild.style.setProperty(
+      "z-index",
+      this.options.zIndex
+    );
+
+    // Update the grid color
+    this.markup.content.root.firstElementChild.style.setProperty(
+      "--grid-color",
+      this.color
+    );
 
     return this._update();
   }
@@ -1800,24 +1823,7 @@ class CssGridHighlighter extends AutoRefreshHighlighter {
   _update() {
     setIgnoreLayoutChanges(true);
 
-    // Set z-index.
-    this.markup.content.root.firstElementChild.style.setProperty(
-      "z-index",
-      this.options.zIndex
-    );
-
-    const root = this.getElement("root");
-    const cells = this.getElement("cells");
-    const areas = this.getElement("areas");
-
-    // Set the grid cells and areas fill to the current grid colour.
-    cells.setAttribute("style", `fill: ${this.color}`);
-    areas.setAttribute("style", `fill: ${this.color}`);
-
-    // Hide the root element and force the reflow in order to get the proper window's
-    // dimensions without increasing them.
-    root.setAttribute("style", "display: none");
-    this.win.document.documentElement.offsetWidth;
+    const root = this.getNode("root");
     this._winDimensions = getWindowDimensions(this.win);
     const { width, height } = this._winDimensions;
 
@@ -1866,10 +1872,8 @@ class CssGridHighlighter extends AutoRefreshHighlighter {
     this._showGrid();
     this._showGridElements();
 
-    root.setAttribute(
-      "style",
-      `position: absolute; width: ${width}px; height: ${height}px; overflow: hidden`
-    );
+    root.style.setProperty("width", `${width}px`);
+    root.style.setProperty("height", `${height}px`);
 
     setIgnoreLayoutChanges(false, this.highlighterEnv.document.documentElement);
     return true;

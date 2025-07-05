@@ -628,8 +628,10 @@ async function checkClickOnNode(
     const column = frameLinkNode.getAttribute("data-column");
     ok(column, `source column found ("${column}")`);
 
+    // Redux location object uses 0-based column, while we display a 1-based one.
     is(
-      parseInt(dbg._selectors.getSelectedLocation(dbg._getState()).column, 10),
+      parseInt(dbg._selectors.getSelectedLocation(dbg._getState()).column, 10) +
+        1,
       parseInt(column, 10),
       "expected source column"
     );
@@ -637,11 +639,12 @@ async function checkClickOnNode(
 
   if (logPointExpr !== undefined && logPointExpr !== "") {
     const inputEl = dbg.panelWin.document.activeElement;
-    is(
-      inputEl.tagName,
-      "TEXTAREA",
-      "The textarea of logpoint panel is focused"
-    );
+
+    const isPanelFocused =
+      inputEl.classList.contains("cm-content") &&
+      inputEl.closest(".conditional-breakpoint-panel.log-point");
+
+    ok(isPanelFocused, "The textarea of logpoint panel is focused");
 
     const inputValue = inputEl.parentElement.parentElement.innerText.trim();
     is(
@@ -1269,13 +1272,55 @@ async function selectNodeWithPicker(toolbox, selector) {
  *
  * @param {HTMLElement} node: Object inspector node (.tree-node)
  */
-function expandObjectInspectorNode(node) {
+async function expandObjectInspectorNode(node) {
+  if (!node.classList.contains("tree-node")) {
+    ok(false, "Node should be a .tree-node");
+    return;
+  }
   const arrow = getObjectInspectorNodeArrow(node);
   if (!arrow) {
     ok(false, "Node can't be expanded");
     return;
   }
+  if (arrow.classList.contains("open")) {
+    ok(false, "Node already expanded");
+    return;
+  }
+  const isLongString = node.querySelector(".node > .objectBox-string");
+  let onMutation;
+  let textContentBeforeExpand;
+  if (!isLongString) {
+    const objectInspector = node.closest(".object-inspector");
+    onMutation = waitForNodeMutation(objectInspector, {
+      childList: true,
+    });
+  } else {
+    textContentBeforeExpand = node.textContent;
+  }
   arrow.click();
+
+  // Long strings are not going to be expanded into children element.
+  // Instead the tree node will update itself to show the long string.
+  // So that we can't wait for the childList mutation.
+  if (isLongString) {
+    // Reps will expand on click...
+    await waitFor(() => arrow.classList.contains("open"));
+    // ...but it will fetch the long string content asynchronously after having expanded the TreeNode.
+    // So also wait for the string to be updated and be longer.
+    await waitFor(
+      () => node.textContent.length > textContentBeforeExpand.length
+    );
+  } else {
+    await onMutation;
+    // Waiting for the object inspector mutation isn't enough,
+    // also wait for the children element, with higher aria-level to be added to the DOM.
+    await waitFor(() => !!getObjectInspectorChildrenNodes(node).length);
+  }
+
+  ok(
+    arrow.classList.contains("open"),
+    "The arrow of the root node of the tree is expanded after clicking on it"
+  );
 }
 
 /**
@@ -1285,7 +1330,7 @@ function expandObjectInspectorNode(node) {
  * @return {HTMLElement|null} the arrow element
  */
 function getObjectInspectorNodeArrow(node) {
-  return node.querySelector(".arrow");
+  return node.querySelector(".theme-twisty");
 }
 
 /**
@@ -1316,7 +1361,7 @@ function getObjectInspectorNodes(oi) {
  *                              deeper than the passed node)
  */
 function getObjectInspectorChildrenNodes(node) {
-  const getLevel = n => parseInt(n.getAttribute("aria-level"), 10);
+  const getLevel = n => parseInt(n.getAttribute("aria-level") || "0", 10);
   const level = getLevel(node);
   const childLevel = level + 1;
   const children = [];
@@ -1446,7 +1491,7 @@ async function selectFrame(dbg, frame) {
   await onScopes;
 }
 
-async function pauseDebugger(dbg, options = { shouldWaitForLoadScopes: true }) {
+async function pauseDebugger(dbg, options) {
   info("Waiting for debugger to pause");
   const onPaused = waitForPaused(dbg, null, options);
   SpecialPowers.spawn(gBrowser.selectedBrowser, [], function () {
@@ -1782,6 +1827,7 @@ function checkContextSelectorMenu(hud, expected) {
  * @param {String} expected.tooltip: The tooltip of the target element in the menu
  * @param {Boolean} expected.checked: if the target should be selected or not
  * @param {Boolean} expected.separator: if the element is a simple separator
+ * @param {Boolean} expected.indented: if the element is indented
  */
 function checkContextSelectorMenuItemAt(hud, index, expected) {
   const el = getContextSelectorItems(hud).at(index);
@@ -1794,6 +1840,7 @@ function checkContextSelectorMenuItemAt(hud, index, expected) {
   const elChecked = el.getAttribute("aria-checked") === "true";
   const elTooltip = el.getAttribute("title");
   const elLabel = el.querySelector(".label").innerText;
+  const indented = el.classList.contains("indented");
 
   is(elLabel, expected.label, `The item has the expected label`);
   is(elTooltip, expected.tooltip, `Item "${elLabel}" has the expected tooltip`);
@@ -1801,6 +1848,11 @@ function checkContextSelectorMenuItemAt(hud, index, expected) {
     elChecked,
     expected.checked,
     `Item "${elLabel}" is ${expected.checked ? "checked" : "unchecked"}`
+  );
+  is(
+    indented,
+    expected.indented ?? false,
+    `Item "${elLabel}" is ${!indented ? " not" : ""} indented`
   );
 }
 

@@ -6,6 +6,9 @@
   --min-container-width: 300px;
   --pseudo-class-text-color: var(--yellow-75);
 
+  --invalid-at-computed-value-time-icon: url(resource://devtools-shared-images/error-small.svg);
+  --invalid-at-computed-value-time-fill-color: var(--theme-highlight-red);
+
   &.theme-dark {
     --pseudo-class-text-color: var(--yellow-50);
   }
@@ -83,14 +86,55 @@ window {
 
 #inspector-searchlabel-container {
   display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 #inspector-searchlabel-container[hidden] {
   display: none;
 }
 
+#inspector-searchnavigation-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+#inspector-searchnavigation-container[hidden] {
+  display: none;
+}
+
+#inspector-searchnavigation-container
+  .inspector-searchnavigation-buttons::before {
+  background-size: 16px;
+  margin-inline: 0;
+}
+
+#inspector-searchnavigation-button-prev::before {
+  background-image: url("chrome://devtools/content/debugger/images/arrow-up.svg");
+}
+
+#inspector-searchnavigation-button-next::before {
+  background-image: url("chrome://devtools/content/debugger/images/arrow-down.svg");
+}
+
 #inspector-searchlabel {
   padding: 0 3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+  color: var(--theme-text-color-alt);
+}
+
+#inspector-search {
+  container: search-container / inline-size;
+}
+
+@container search-container (inline-size < 200px) {
+  #inspector-searchlabel {
+    display: none;
+  }
 }
 
 /* Add element toolbar button */
@@ -115,8 +159,8 @@ window {
 }
 
 #inspector-breadcrumbs-toolbar {
-  padding: 0px;
-  border-bottom-width: 0px;
+  padding: 0;
+  border-bottom-width: 0;
   border-top-width: 1px;
   border-top-color: var(--theme-splitter-color);
   /* Bug 1262668 - Use the same background as the body so the breadcrumbs toolbar doesn't
@@ -205,6 +249,11 @@ iframe {
 .inspector-tabpanel.extension-sidebar {
   height: 100%;
   overflow-y: auto;
+
+  /* Prevent overflow issue (Bug 1905000) */
+  iframe.inspector-extension-sidebar-page {
+    display: block;
+  }
 }
 
 /* Used for both the computed view and the rule view, to truncate extremely

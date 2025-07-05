@@ -7,6 +7,11 @@
 const { debounce } = require("resource://devtools/shared/debounce.js");
 const isMacOS = Services.appinfo.OS === "Darwin";
 
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  getFocusableElements: "resource://devtools/client/shared/focus.mjs",
+});
+
 loader.lazyRequireGetter(this, "Debugger", "Debugger");
 loader.lazyRequireGetter(
   this,
@@ -37,12 +42,6 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
-  "getFocusableElements",
-  "resource://devtools/client/shared/focus.js",
-  true
-);
-loader.lazyRequireGetter(
-  this,
   "l10n",
   "resource://devtools/client/webconsole/utils/messages.js",
   true
@@ -63,7 +62,7 @@ loader.lazyRequireGetter(
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   connect,
@@ -131,7 +130,6 @@ class JSTerm extends Component {
       editorPrettifiedAt: PropTypes.number,
       showEditorOnboarding: PropTypes.bool,
       autocomplete: PropTypes.bool,
-      showEvaluationContextSelector: PropTypes.bool,
       autocompletePopupPosition: PropTypes.string,
       inputEnabled: PropTypes.bool,
     };
@@ -522,24 +520,42 @@ class JSTerm extends Component {
       cm.on("paste", (_, event) => this.props.onPaste(event));
       cm.on("drop", (_, event) => this.props.onPaste(event));
 
-      this.node.addEventListener("keydown", event => {
-        if (event.keyCode === KeyCodes.DOM_VK_ESCAPE) {
-          if (this.autocompletePopup.isOpen) {
-            this.clearCompletion();
-            event.preventDefault();
-            event.stopPropagation();
-          }
-
+      this.#abortController = new AbortController();
+      const signal = this.#abortController.signal;
+      doc.addEventListener(
+        "visibilitychange",
+        () => {
           if (
-            this.props.autocompleteData &&
-            this.props.autocompleteData.getterPath
+            doc.visibilityState == "hidden" &&
+            this.autocompletePopup.isOpen
           ) {
-            this.props.autocompleteClear();
-            event.preventDefault();
-            event.stopPropagation();
+            this.autocompletePopup.hidePopup();
           }
-        }
-      });
+        },
+        { signal }
+      );
+      this.node.addEventListener(
+        "keydown",
+        event => {
+          if (event.keyCode === KeyCodes.DOM_VK_ESCAPE) {
+            if (this.autocompletePopup.isOpen) {
+              this.clearCompletion();
+              event.preventDefault();
+              event.stopPropagation();
+            }
+
+            if (
+              this.props.autocompleteData &&
+              this.props.autocompleteData.getterPath
+            ) {
+              this.props.autocompleteClear();
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }
+        },
+        { signal }
+      );
 
       this.resizeObserver = new ResizeObserver(() => {
         // If we don't have the node reference, or if the node isn't connected
@@ -571,6 +587,9 @@ class JSTerm extends Component {
       this.props.editorMode !== nextProps.editorMode
     );
   }
+
+  // AbortController to cancel all event listener on destroy.
+  #abortController = null;
 
   /**
    * Do all the imperative work needed after a Redux store update.
@@ -666,9 +685,9 @@ class JSTerm extends Component {
       // We only want to get visible focusable element, and for that we can assert that
       // the offsetParent isn't null. We can do that because we don't have fixed position
       // element in the console.
-      const items = getFocusableElements(el).filter(
-        ({ offsetParent }) => offsetParent !== null
-      );
+      const items = lazy
+        .getFocusableElements(el)
+        .filter(({ offsetParent }) => offsetParent !== null);
       const inputIndex = items.indexOf(inputField);
 
       if (items.length === 0 || (inputIndex > -1 && items.length === 1)) {
@@ -1473,6 +1492,11 @@ class JSTerm extends Component {
       this.autocompletePopup = null;
     }
 
+    if (this.#abortController) {
+      this.#abortController.abort();
+      this.#abortController = null;
+    }
+
     if (this.editor) {
       this.resizeObserver.disconnect();
       this.editor.destroy();
@@ -1499,7 +1523,7 @@ class JSTerm extends Component {
   }
 
   renderEvaluationContextSelector() {
-    if (this.props.editorMode || !this.props.showEvaluationContextSelector) {
+    if (this.props.editorMode) {
       return null;
     }
 
@@ -1579,7 +1603,6 @@ function mapStateToProps(state) {
     getValueFromHistory: direction => getHistoryValue(state, direction),
     autocompleteData: getAutocompleteState(state),
     showEditorOnboarding: state.ui.showEditorOnboarding,
-    showEvaluationContextSelector: state.ui.showEvaluationContextSelector,
     autocompletePopupPosition: state.prefs.eagerEvaluation ? "top" : "bottom",
     editorPrettifiedAt: state.ui.editorPrettifiedAt,
   };

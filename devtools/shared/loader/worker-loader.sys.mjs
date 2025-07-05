@@ -2,11 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global DebuggerNotificationObserver */
-
-// This module does import many attributes from the global object
-/* eslint-disable mozilla/reject-global-this */
-
 // A CommonJS module loader that is designed to run inside a worker debugger.
 // We can't simply use the SDK module loader, because it relies heavily on
 // Components, which isn't available in workers.
@@ -319,6 +314,10 @@ function WorkerDebuggerLoader(options) {
 }
 
 var loader = {
+  // There is only one loader in the worker thread.
+  // This will be used by DevToolsServer to build server prefix and actor IDs.
+  id: 0,
+
   lazyGetter(object, name, lambda) {
     Object.defineProperty(object, name, {
       get() {
@@ -370,7 +369,7 @@ var {
   loadSubScript,
   setImmediate,
   xpcInspector,
-} = function () {
+} = (function () {
   // Main thread
   if (typeof Components === "object") {
     const principal = Components.Constructor(
@@ -479,7 +478,7 @@ addDebuggerToGlobal(globalThis);
     setImmediate: globalThis.setImmediate,
     xpcInspector,
   };
-}.call(this);
+})();
 /* eslint-enable no-shadow */
 
 // Create the default instance of the worker loader, using the APIs we defined

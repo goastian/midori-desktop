@@ -24,20 +24,6 @@ loader.lazyRequireGetter(
   true
 );
 
-loader.lazyRequireGetter(
-  this,
-  "ObjectActor",
-  "resource://devtools/server/actors/object.js",
-  true
-);
-
-loader.lazyRequireGetter(
-  this,
-  "EnvironmentActor",
-  "resource://devtools/server/actors/environment.js",
-  true
-);
-
 /**
  * Get thisDebugger.Object referent's `promiseState`.
  *
@@ -114,12 +100,19 @@ function unwrapDebuggeeValue(value) {
 /**
  * Create a grip for the given debuggee value. If the value is an object or a long string,
  * it will create an actor and add it to the pool
- * @param {any} value: The debuggee value.
- * @param {Pool} pool: The pool where the created actor will be added.
- * @param {Function} makeObjectGrip: Function that will be called to create the grip for
- *                                   non-primitive values.
+ * @param {ThreadActor} threadActor 
+ *        The related Thread Actor.
+ * @param {any} value
+ *        The debuggee value.
+ * @param {Pool} pool
+ *        The pool where the created actor will be added to.
+ * @param {Number} [depth]
+ *        The current depth within the chain of nested object actor being previewed.
+ * @param {Object} [objectActorAttributes]
+ *        An optional object whose properties will be assigned to the ObjectActor if one
+ *        is created.
  */
-function createValueGrip(value, pool, makeObjectGrip) {
+function createValueGrip(threadActor, value, pool, depth = 0, objectActorAttributes = {}) {
   switch (typeof value) {
     case "boolean":
       return value;
@@ -140,10 +133,7 @@ function createValueGrip(value, pool, makeObjectGrip) {
       return value;
 
     case "bigint":
-      return {
-        type: "BigInt",
-        text: value.toString(),
-      };
+      return createBigIntValueGrip(value);
 
     // TODO(bug 1772157)
     // Record/tuple grips aren't fully implemented yet.
@@ -175,15 +165,32 @@ function createValueGrip(value, pool, makeObjectGrip) {
           missingArguments: value.missingArguments,
         };
       }
-      return makeObjectGrip(value, pool);
+      return pool.createObjectGrip(
+        value,
+        depth,
+        objectActorAttributes,
+      );
 
     case "symbol":
-      return symbolGrip(value, pool);
+      return symbolGrip(threadActor, value, pool);
 
     default:
       assert(false, "Failed to provide a grip for: " + value);
       return null;
   }
+}
+
+/**
+ * Returns a grip for the passed BigInt
+ *
+ * @param {BigInt} value
+ * @returns {Object}
+ */
+function createBigIntValueGrip(value) {
+  return {
+    type: "BigInt",
+    text: value.toString(),
+  };
 }
 
 /**
@@ -447,7 +454,7 @@ function makeDebuggeeValue(targetActor, value) {
   //
   // In the worker thread, we don't have access to Cu,
   // but at the same time, there is only one global, the worker one.
-  const valueGlobal = isWorker ? targetActor.workerGlobal : Cu.getGlobalForObject(value);
+  const valueGlobal = isWorker ? targetActor.targetGlobal : Cu.getGlobalForObject(value);
   let dbgGlobal;
   try {
     dbgGlobal = targetActor.dbg.makeGlobalObjectReference(
@@ -508,93 +515,14 @@ function createValueGripForTarget(
   depth = 0,
   objectActorAttributes = {}
 ) {
-  const makeObjectGrip = (objectActorValue, pool) =>
-    createObjectGrip(
-      targetActor,
-      depth,
-      objectActorValue,
-      pool,
-      objectActorAttributes
-    );
-  return createValueGrip(value, targetActor, makeObjectGrip);
-}
-
-/**
- * Create and return an environment actor that corresponds to the provided
- * Debugger.Environment. This is a straightforward clone of the ThreadActor's
- * method except that it stores the environment actor in the web console
- * actor's pool.
- *
- * @param Debugger.Environment environment
- *        The lexical environment we want to extract.
- * @param TargetActor targetActor
- *        The Target Actor to use as parent actor.
- * @return The EnvironmentActor for |environment| or |undefined| for host
- *         functions or functions scoped to a non-debuggee global.
- */
-function createEnvironmentActor(environment, targetActor) {
-  if (!environment) {
-    return undefined;
-  }
-
-  if (environment.actor) {
-    return environment.actor;
-  }
-
-  const actor = new EnvironmentActor(environment, targetActor);
-  targetActor.manage(actor);
-  environment.actor = actor;
-
-  return actor;
-}
-
-/**
- * Create a grip for the given object.
- *
- * @param TargetActor targetActor
- *        The Target Actor from which this object originates.
- * @param Number depth
- *        Depth of the object compared to the top level object,
- *        when we are inspecting nested attributes.
- * @param object object
- *        The object you want.
- * @param object pool
- *        A Pool where the new actor instance is added.
- * @param object [objectActorAttributes]
- *        An optional object whose properties will be assigned to the ObjectActor being created.
- * @param object
- *        The object grip.
- */
-function createObjectGrip(
-  targetActor,
-  depth,
-  object,
-  pool,
-  objectActorAttributes = {}
-) {
-  let gripDepth = depth;
-  const actor = new ObjectActor(
-    object,
-    {
-      ...objectActorAttributes,
-      thread: targetActor.threadActor,
-      getGripDepth: () => gripDepth,
-      incrementGripDepth: () => gripDepth++,
-      decrementGripDepth: () => gripDepth--,
-      createValueGrip: v => createValueGripForTarget(targetActor, v, gripDepth),
-      createEnvironmentActor: env => createEnvironmentActor(env, targetActor),
-    },
-    targetActor.conn
-  );
-  pool.manage(actor);
-
-  return actor.form();
+  return createValueGrip(targetActor.threadActor, value, targetActor.objectsPool, depth, objectActorAttributes);
 }
 
 module.exports = {
   getPromiseState,
   makeDebuggeeValueIfNeeded,
   unwrapDebuggeeValue,
+  createBigIntValueGrip,
   createValueGrip,
   stringIsLong,
   isTypedArray,

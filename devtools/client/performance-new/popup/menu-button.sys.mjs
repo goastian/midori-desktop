@@ -62,6 +62,28 @@ function isInNavbar() {
   return Boolean(CustomizableUI.getPlacementOfWidget("profiler-button"));
 }
 
+function ensureButtonInNavbar() {
+  // 1. Ensure the widget is enabled.
+  const featureFlagPref = "devtools.performance.popup.feature-flag";
+  const isPopupFeatureFlagEnabled = Services.prefs.getBoolPref(featureFlagPref);
+  if (!isPopupFeatureFlagEnabled) {
+    // Setting the pref will also run the menubutton initialization thanks to
+    // the observer set in DevtoolsStartup.
+    Services.prefs.setBoolPref("devtools.performance.popup.feature-flag", true);
+  }
+
+  // 2. Ensure it's added to the nav bar
+  if (!isInNavbar()) {
+    // Enable the profiler menu button.
+    addToNavbar();
+
+    // Dispatch the change event manually, so that the shortcuts will also be
+    // added.
+    const { CustomizableUI } = lazy.CustomizableUI();
+    CustomizableUI.dispatchToolboxEvent("customizationchange");
+  }
+}
+
 /**
  * Opens the popup for the profiler.
  * @param {Document} document
@@ -312,6 +334,7 @@ function initialize(toggleProfilerKeyShortcuts) {
 export const ProfilerMenuButton = {
   initialize,
   addToNavbar,
+  ensureButtonInNavbar,
   isInNavbar,
   openPopup,
   remove,

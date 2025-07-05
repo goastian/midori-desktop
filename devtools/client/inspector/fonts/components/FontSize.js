@@ -7,8 +7,8 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const FontPropertyValue = createFactory(
   require("resource://devtools/client/inspector/fonts/components/FontPropertyValue.js")
@@ -78,7 +78,7 @@ class FontSize extends PureComponent {
       onChange: this.props.onChange,
       step: getStepForUnit(unit),
       unit,
-      unitOptions: ["em", "rem", "%", "px", "vh", "vw"],
+      unitOptions: ["em", "rem", "%", "px", "pt", "vh", "vw"],
       value,
     });
   }

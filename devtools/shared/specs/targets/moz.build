@@ -6,8 +6,8 @@
 
 DevToolsModules(
     "content-process.js",
+    "content-script.js",
     "parent-process.js",
-    "webextension.js",
     "window-global.js",
     "worker.js",
 )

@@ -44,44 +44,39 @@ function sortWithClones(requests, sorter, a, b) {
   return sorter ? sorter(a, b) : defaultSorter;
 }
 
+const getActiveFilters = createSelector(
+  state => state.filters.requestFilterTypes,
+  requestFilterTypes =>
+    Object.keys(requestFilterTypes)
+      .filter(type => requestFilterTypes[type] && Filters[type])
+      .map(type => Filters[type])
+);
+
 /**
  * Take clones into account when filtering. If a request is
  * a clone, it's not filtered out.
  */
 const getFilterWithCloneFn = createSelector(
-  state => state.filters,
-  filters => r => {
-    const matchesType = Object.keys(filters.requestFilterTypes).some(filter => {
-      if (r.id.endsWith("-clone")) {
-        return true;
-      }
-      return (
-        filters.requestFilterTypes[filter] &&
-        Filters[filter] &&
-        Filters[filter](r)
-      );
-    });
-    return matchesType && isFreetextMatch(r, filters.requestFilterText);
+  getActiveFilters,
+  state => state.filters.requestFilterText,
+  (activeFilters, requestFilterText) => {
+    return r => {
+      const isClone = r.id.endsWith("-clone");
+      const matchesType = activeFilters.some(filter => filter(r));
+      return (isClone || matchesType) && isFreetextMatch(r, requestFilterText);
+    };
   }
 );
 
 const getTypeFilterFn = createSelector(
-  state => state.filters,
-  filters => r => {
-    return Object.keys(filters.requestFilterTypes).some(filter => {
-      return (
-        filters.requestFilterTypes[filter] &&
-        Filters[filter] &&
-        Filters[filter](r)
-      );
-    });
-  }
+  getActiveFilters,
+  activeFilters => r => activeFilters.some(filter => filter(r))
 );
 
 const getSortFn = createSelector(
-  state => state.requests,
+  state => state.requests.requests,
   state => state.sort,
-  ({ requests }, sort) => {
+  (requests, sort) => {
     const sorter = Sorters[sort.type || "waterfall"];
     const ascending = sort.ascending ? +1 : -1;
     return (a, b) => ascending * sortWithClones(requests, sorter, a, b);
@@ -89,22 +84,22 @@ const getSortFn = createSelector(
 );
 
 const getSortedRequests = createSelector(
-  state => state.requests,
+  state => state.requests.requests,
   getSortFn,
-  ({ requests }, sortFn) => [...requests].sort(sortFn)
+  (requests, sortFn) => [...requests].sort(sortFn)
 );
 
 const getDisplayedRequests = createSelector(
-  state => state.requests,
+  state => state.requests.requests,
   getFilterWithCloneFn,
   getSortFn,
-  ({ requests }, filterFn, sortFn) => requests.filter(filterFn).sort(sortFn)
+  (requests, filterFn, sortFn) => requests.filter(filterFn).sort(sortFn)
 );
 
 const getTypeFilteredRequests = createSelector(
-  state => state.requests,
+  state => state.requests.requests,
   getTypeFilterFn,
-  ({ requests }, filterFn) => requests.filter(filterFn)
+  (requests, filterFn) => requests.filter(filterFn)
 );
 
 const getDisplayedRequestsSummary = createSelector(
@@ -143,15 +138,16 @@ const getDisplayedRequestsSummary = createSelector(
 );
 
 const getSelectedRequest = createSelector(
-  state => state.requests,
-  ({ selectedId, requests }) =>
+  state => state.requests.requests,
+  state => state.requests.selectedId,
+  (requests, selectedId) =>
     selectedId ? requests.find(item => item.id === selectedId) : undefined
 );
 
 const isSelectedRequestVisible = createSelector(
-  state => state.requests,
+  state => state.requests.selectedId,
   getDisplayedRequests,
-  ({ selectedId }, displayedRequests) =>
+  (selectedId, displayedRequests) =>
     displayedRequests.some(r => r.id === selectedId)
 );
 
@@ -178,21 +174,36 @@ function getRecordingState(state) {
 }
 
 const getClickedRequest = createSelector(
-  state => state.requests,
-  ({ requests, clickedRequestId }) =>
+  state => state.requests.requests,
+  state => state.requests.clickedRequestId,
+  (requests, clickedRequestId) =>
     requests.find(request => request.id == clickedRequestId)
 );
+
+/**
+ * If a network override is set for the provided url, returns the override path.
+ * Otherwise returns null.
+ */
+function getOverriddenUrl(toolboxState, url) {
+  return toolboxState.networkOverrides.mutableOverrides[url] || null;
+}
+
+function hasOverride(toolboxState) {
+  return !!Object.keys(toolboxState.networkOverrides.mutableOverrides).length;
+}
 
 module.exports = {
   getClickedRequest,
   getDisplayedRequestById,
   getDisplayedRequests,
   getDisplayedRequestsSummary,
+  getOverriddenUrl,
   getRecordingState,
   getRequestById,
   getRequestByChannelId,
   getSelectedRequest,
   getSortedRequests,
   getTypeFilteredRequests,
+  hasOverride,
   isSelectedRequestVisible,
 };

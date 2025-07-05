@@ -24,6 +24,11 @@ add_task(async function () {
       fontPreviewData?.dataURL,
       "Returned a font preview with a valid dataURL"
     );
+    is(
+      fontPreviewData.ctx.font,
+      `40px ${Services.appinfo.OS === "WINNT" ? "Arial" : `"Liberation Sans"`}, serif`,
+      "Expected font style was used in the canvas"
+    );
 
     // Create <img> element and load the generated preview into it
     // to check whether the image is valid and get its dimensions
@@ -132,6 +137,62 @@ add_task(async function () {
       heightImage4,
       heightImage1,
       "Preview height is greater than with default parameters"
+    );
+
+    // Check generic family name
+    is(
+      getFontPreviewData("monospace", content.document).ctx.font,
+      `40px monospace, serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check font wrapped in double quotes
+    is(
+      getFontPreviewData(`"Zilla Bold"`, content.document).ctx.font,
+      `40px "Zilla Bold", serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check font wrapped in simple quotes
+    is(
+      getFontPreviewData(`'Font Awesome 5 Brands'`, content.document).ctx.font,
+      `40px "Font Awesome 5 Brands", serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check multiple font
+    is(
+      getFontPreviewData(`Menlo, monospace`, content.document).ctx.font,
+      `40px Menlo, monospace, serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check multiple font some with quotes, some not
+    is(
+      getFontPreviewData(
+        `Menlo Bold, "Fira Code", 'Mono Lisa', monospace`,
+        content.document
+      ).ctx.font,
+      `40px "Menlo Bold", "Fira Code", "Mono Lisa", monospace, serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check font-weight value
+    is(
+      getFontPreviewData(`monospace`, content.document, { fontWeight: "200" })
+        .ctx.font,
+      `200 40px monospace, serif`,
+      "Expected font style was used in the canvas"
+    );
+
+    // Check font-style value
+    is(
+      getFontPreviewData(`monospace`, content.document, {
+        fontWeight: "200",
+        fontStyle: "italic",
+      }).ctx.font,
+      `italic 200 40px monospace, serif`,
+      "Expected font style was used in the canvas"
     );
   });
 });

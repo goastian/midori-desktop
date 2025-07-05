@@ -6,12 +6,12 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   getUrlBaseName,
 } = require("resource://devtools/client/netmonitor/src/utils/request-utils.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 class RequestListColumnInitiator extends Component {
   static get propTypes() {

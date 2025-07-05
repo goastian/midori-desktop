@@ -22,11 +22,43 @@ const TEST_URI = `data:text/html;charset=utf-8,<!DOCTYPE html><script>
   /* Verify that the conflicting binding on user code doesn't break the
    * functionality. */
   function copy() { alert("user-defined function is called"); }
+  /* Check that trying to copy an object that can't be serialized displays an error in the UI */
+  var cyclical = {}; cyclical.cycle = cyclical;
+  console.log(cyclical);
+  
+  /* Verify that custom formatters don't break copying. */
+  window.devtoolsFormatters = [
+    {
+      header: (obj, config) => {
+        if (!obj?.useCustomFormatter)
+          return null;
+        return [
+          "span",
+          { "style": "color: red" },
+          "Hello, ",
+          [
+            "span",
+            { "style": "color: green" },
+            "world!"
+          ]
+        ];
+      },
+      hasBody: (obj) => {
+        return false;
+      },
+    }
+  ];
+  console.log({ useCustomFormatter: true, a: 5 });
 </script>`;
 const copyObjectMenuItemId = "#console-menu-copy-object";
 
 add_task(async function () {
+  await pushPref("devtools.custom-formatters.enabled", true);
+
   const hud = await openNewTabAndConsole(TEST_URI);
+
+  // Reload the browser to ensure the custom formatters are picked up
+  await reloadBrowser();
 
   const [msgWithText, msgWithObj, msgNested] = await waitFor(() =>
     findConsoleAPIMessages(hud, "foo")
@@ -81,6 +113,13 @@ add_task(async function () {
   const [nullMsgObj] = await waitFor(() =>
     findMessagePartsByType(hud, {
       text: `null`,
+      typeSelector: ".console-api",
+      partSelector: ".message-body",
+    })
+  );
+  const [customMsgObj] = await waitFor(() =>
+    findMessagePartsByType(hud, {
+      text: `Hello, world!`,
       typeSelector: ".console-api",
       partSelector: ".message-body",
     })
@@ -140,6 +179,49 @@ add_task(async function () {
   info("Check `Copy object` is enabled for undefined and null");
   await testCopyObject(hud, undefinedMsgObj, `undefined`, false);
   await testCopyObject(hud, nullMsgObj, `null`, false);
+
+  info("Check `Copy object` is enabled for custom-formatted objects");
+  await testCopyObject(
+    hud,
+    customMsgObj,
+    `{"useCustomFormatter":true,"a":5}`,
+    true
+  );
+
+  info(
+    "Check `Copy object` for an object with cyclical reference displays an error in the UI"
+  );
+  const clipboardContent = SpecialPowers.getClipboardData("text/plain");
+  const [cyclicalMsgObj] = await waitFor(() =>
+    findMessagePartsByType(hud, {
+      text: `cycle`,
+      typeSelector: ".console-api",
+      partSelector: ".message-body",
+    })
+  );
+  const menuPopup = await openContextMenu(
+    hud,
+    cyclicalMsgObj.querySelector(".objectBox-object")
+  );
+  menuPopup.activateItem(menuPopup.querySelector(copyObjectMenuItemId));
+
+  info("Wait until the notification box displays the error");
+  const notificationBox = await waitFor(() =>
+    hud.ui.document.getElementById("webconsole-notificationbox")
+  );
+  is(
+    notificationBox.querySelector(".notification").textContent,
+    "`copy` command failed, object can’t be stringified: TypeError: cyclic object value",
+    "Notification is displayed with expected message"
+  );
+
+  // Wait for a bit to check the clipboard isn't overridden
+  await wait(500);
+  is(
+    SpecialPowers.getClipboardData("text/plain"),
+    clipboardContent,
+    "clipboard wasn't overridden"
+  );
 });
 
 async function testCopyObject(hud, element, expectedMessage, objectInput) {

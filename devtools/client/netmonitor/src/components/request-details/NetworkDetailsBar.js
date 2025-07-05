@@ -6,12 +6,12 @@
 
 const {
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const Actions = require("resource://devtools/client/netmonitor/src/actions/index.js");
 const {
   getSelectedRequest,
@@ -26,6 +26,7 @@ loader.lazyGetter(this, "CustomRequestPanel", function () {
 loader.lazyGetter(this, "TabboxPanel", function () {
   return createFactory(
     require("resource://devtools/client/netmonitor/src/components/TabboxPanel.js")
+      .ConnectedTabboxPanel
   );
 });
 
@@ -45,6 +46,8 @@ function NetworkDetailsBar({
   openNetworkDetails,
   openLink,
   targetSearchResult,
+  defaultRawResponse,
+  setDefaultRawResponse,
 }) {
   if (!request) {
     return null;
@@ -72,6 +75,8 @@ function NetworkDetailsBar({
           toggleNetworkDetails,
           openNetworkDetails,
           targetSearchResult,
+          defaultRawResponse,
+          setDefaultRawResponse,
         })
   );
 }
@@ -90,11 +95,14 @@ NetworkDetailsBar.propTypes = {
   openLink: PropTypes.func,
   openNetworkDetails: PropTypes.func,
   targetSearchResult: PropTypes.object,
+  defaultRawResponse: PropTypes.bool,
+  setDefaultRawResponse: PropTypes.func,
 };
 
 module.exports = connect(
   state => ({
     activeTabId: state.ui.detailsPanelSelectedTab,
+    defaultRawResponse: state.ui.defaultRawResponse,
     request: getSelectedRequest(state),
     targetSearchResult: state.search.targetSearchResult,
   }),
@@ -103,5 +111,7 @@ module.exports = connect(
     selectTab: tabId => dispatch(Actions.selectDetailsPanelTab(tabId)),
     toggleNetworkDetails: () => dispatch(Actions.toggleNetworkDetails()),
     openNetworkDetails: open => dispatch(Actions.openNetworkDetails(open)),
+    setDefaultRawResponse: open =>
+      dispatch(Actions.setDefaultRawResponse(open)),
   })
 )(NetworkDetailsBar);

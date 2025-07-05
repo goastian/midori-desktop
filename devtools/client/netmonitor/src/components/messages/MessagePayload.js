@@ -7,14 +7,14 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const { div, input, label, span, h2 } = dom;
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 
 const {
   L10N,
@@ -104,9 +104,8 @@ class MessagePayload extends Component {
 
     getMessagePayload(selectedMessage.payload, connector.getLongString).then(
       async payload => {
-        const { formattedData, formattedDataTitle } = await this.parsePayload(
-          payload
-        );
+        const { formattedData, formattedDataTitle } =
+          await this.parsePayload(payload);
         this.setState({
           payload,
           isFormattedData: !!formattedData,
@@ -138,6 +137,15 @@ class MessagePayload extends Component {
       request.id,
       "responseHeaders"
     );
+
+    if (!responseHeaders.headers) {
+      // If the network event actor was destroyed while retrieving the request
+      // data, no headers will be available.
+      return {
+        formattedData: null,
+        formattedDataTitle: "",
+      };
+    }
 
     const wsProtocol = getResponseHeader(
       { responseHeaders },

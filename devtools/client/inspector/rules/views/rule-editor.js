@@ -45,6 +45,9 @@ const STYLE_INSPECTOR_PROPERTIES =
 const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 const STYLE_INSPECTOR_L10N = new LocalizationHelper(STYLE_INSPECTOR_PROPERTIES);
 
+const COMPONENT_PROPERTIES = "devtools/client/locales/components.properties";
+const COMPONENT_L10N = new LocalizationHelper(COMPONENT_PROPERTIES);
+
 loader.lazyGetter(this, "NEW_PROPERTY_NAME_INPUT_LABEL", function () {
   return STYLE_INSPECTOR_L10N.getStr("rule.newPropertyName.label");
 });
@@ -142,7 +145,11 @@ RuleEditor.prototype = {
     });
     this.source.addEventListener("click", this._onSourceClick);
 
-    const sourceLabel = this.doc.createElement("span");
+    // inline style are not visible in the StyleEditor, so don't create an actual link
+    // element for their location.
+    const sourceLabel = this.doc.createElement(
+      this.rule.domRule.type === ELEMENT_STYLE ? "span" : "a"
+    );
     sourceLabel.classList.add("ruleview-rule-source-label");
     this.source.appendChild(sourceLabel);
 
@@ -182,10 +189,8 @@ RuleEditor.prototype = {
             }`,
           });
 
-          // We can't use a button, otherwise a line break is added when copy/pasting the rule
-          const jumpToNodeButton = createChild(selectorContainer, "span", {
+          const jumpToNodeButton = createChild(selectorContainer, "button", {
             class: "open-inspector",
-            role: "button",
             title: l10n("rule.containerQuery.selectContainerButton.tooltip"),
           });
 
@@ -263,6 +268,8 @@ RuleEditor.prototype = {
             }
           }
           selectorContainer.append(this.doc.createTextNode(text));
+        } else if (ancestorData.type == "starting-style") {
+          selectorContainer.append(this.doc.createTextNode(`@starting-style`));
         } else if (ancestorData.selectors) {
           ancestorData.selectors.forEach((selector, i) => {
             if (i !== 0) {
@@ -349,13 +356,7 @@ RuleEditor.prototype = {
       // This is a "normal" rule with a selector.
       let computedSelector = "";
       if (this.rule.domRule.selectors) {
-        if (this.rule.domRule.hasMatchedSelectorIndexesTrait) {
-          computedSelector = this.rule.domRule.computedSelector;
-        } else {
-          // @backward-compat { version 128 } This else block can be removed once 128 hits
-          // release.
-          computedSelector = this.rule.domRule.desugaredSelectors?.join(", ");
-        }
+        computedSelector = this.rule.domRule.computedSelector;
         // Otherwise, the rule is either inherited or inline, and selectors will
         // be computed on demand when the highlighter is requested.
       }
@@ -516,7 +517,8 @@ RuleEditor.prototype = {
     this.updateSourceLink();
   },
 
-  _onSourceClick() {
+  _onSourceClick(e) {
+    e.preventDefault();
     if (this.source.hasAttribute("unselectable")) {
       return;
     }
@@ -552,17 +554,22 @@ RuleEditor.prototype = {
       constructed,
       href: displayURL,
     });
-    let title = displayURL ? displayURL : sourceTextContent;
+
+    let displayLocation = displayURL ? displayURL : sourceTextContent;
     if (line > 0) {
       sourceTextContent += ":" + line;
-      title += ":" + line;
+      displayLocation += ":" + line;
     }
+    const title = COMPONENT_L10N.getFormatStr(
+      "frame.viewsourceinstyleeditor",
+      displayLocation
+    );
 
     const sourceLabel = this.element.querySelector(
       ".ruleview-rule-source-label"
     );
     sourceLabel.setAttribute("title", title);
-    sourceLabel.setAttribute("data-url", displayURL);
+    sourceLabel.setAttribute("href", displayURL);
     sourceLabel.textContent = sourceTextContent;
   },
 
@@ -573,7 +580,7 @@ RuleEditor.prototype = {
       );
       const uaLabel = STYLE_INSPECTOR_L10N.getStr("rule.userAgentStyles");
       sourceLabel.textContent = uaLabel + " " + this.rule.title;
-      sourceLabel.setAttribute("data-url", this.rule.sheet?.href);
+      sourceLabel.setAttribute("href", this.rule.sheet?.href);
     } else {
       this._updateLocation(null);
     }
@@ -628,9 +635,8 @@ RuleEditor.prototype = {
     } else if (this.rule.domRule.type === CSSRule.KEYFRAME_RULE) {
       this.selectorText.textContent = this.rule.domRule.keyText;
     } else {
-      const desugaredSelectors = this.rule.domRule.desugaredSelectors;
       this.rule.domRule.selectors.forEach((selector, i) => {
-        this._populateSelector(selector, i, desugaredSelectors);
+        this._populateSelector(selector, i);
       });
     }
 
@@ -676,11 +682,8 @@ RuleEditor.prototype = {
    *
    * @param {String} selector: The selector text to display
    * @param {Number} selectorIndex: Its index in the rule
-   * @param {Array<String>} desugaredSelectors: The array of desugared selectors for the
-   *        rule. This is only for backward compatibility and can be removed when 128
-   *        hits release.
    */
-  _populateSelector(selector, selectorIndex, desugaredSelectors) {
+  _populateSelector(selector, selectorIndex) {
     if (selectorIndex !== 0) {
       createChild(this.selectorText, "span", {
         class: "ruleview-selector-separator",
@@ -693,21 +696,10 @@ RuleEditor.prototype = {
     // Only add matched/unmatched class when the rule does have some matched
     // selectors. We don't always have some (e.g. rules for pseudo elements)
 
-    if (this.rule.domRule.hasMatchedSelectorIndexesTrait) {
-      if (this.rule.matchedSelectorIndexes.length) {
-        containerClass += this.rule.matchedSelectorIndexes.includes(
-          selectorIndex
-        )
-          ? "matched"
-          : "unmatched";
-      }
-    } else if (this.rule.matchedDesugaredSelectors.length) {
-      // @backward-compat { version 128 } This whole elseif block can be removed once 128
-      // hits release, as matchedDesugaredSelectors shouldn't be used then.
-      const desugaredSelector = desugaredSelectors[selectorIndex];
-      const matchedSelector =
-        this.rule.matchedDesugaredSelectors.includes(desugaredSelector);
-      containerClass += matchedSelector ? "matched" : "unmatched";
+    if (this.rule.matchedSelectorIndexes.length) {
+      containerClass += this.rule.matchedSelectorIndexes.includes(selectorIndex)
+        ? "matched"
+        : "unmatched";
     }
 
     let selectorContainerTitle;
@@ -882,15 +874,17 @@ RuleEditor.prototype = {
     this.editor = new InplaceEditor({
       element: this.newPropSpan,
       done: this._onNewProperty,
+      // (Shift+)Tab will move the focus to the previous/next editable field
+      focusEditableFieldAfterApply: true,
+      focusEditableFieldContainerSelector: ".ruleview-rule",
       destroy: this._newPropertyDestroy,
       advanceChars: ":",
       contentType: InplaceEditor.CONTENT_TYPES.CSS_PROPERTY,
       popup: this.ruleView.popup,
       cssProperties: this.rule.cssProperties,
       inputAriaLabel: NEW_PROPERTY_NAME_INPUT_LABEL,
-      cssVariables: this.rule.elementStyle.getAllCustomProperties(
-        this.rule.pseudoElement
-      ),
+      getCssVariables: () =>
+        this.rule.elementStyle.getAllCustomProperties(this.rule.pseudoElement),
     });
 
     // Auto-close the input if multiple rules get pasted into new property.
@@ -980,11 +974,7 @@ RuleEditor.prototype = {
     this.isEditing = true;
 
     // Remove highlighter for the previous selector.
-    const computedSelector = this.rule.domRule.hasMatchedSelectorIndexesTrait
-      ? this.rule.domRule.computedSelector
-      : // @backward-compat { version 128 } We can remove the ternary and directly use
-        // this.rule.domRule.computedSelector once 128 hits release
-        this.rule.domRule.desugaredSelectors?.join(", ");
+    const computedSelector = this.rule.domRule.computedSelector;
     if (this.ruleView.isSelectorHighlighted(computedSelector)) {
       await this.ruleView.toggleSelectorHighlighter(
         this.rule,

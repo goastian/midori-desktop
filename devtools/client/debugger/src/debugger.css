@@ -29,7 +29,6 @@
 @import url("chrome://devtools/content/debugger/src/components/Editor/Editor.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Footer.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/InlinePreview.css");
-@import url("chrome://devtools/content/debugger/src/components/Editor/Preview.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Preview/Popup.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/SearchInFileBar.css");
 @import url("chrome://devtools/content/debugger/src/components/Editor/Tabs.css");
@@ -37,6 +36,7 @@
 @import url("chrome://devtools/content/debugger/src/components/PrimaryPanes/OutlineFilter.css");
 @import url("chrome://devtools/content/debugger/src/components/PrimaryPanes/ProjectSearch.css");
 @import url("chrome://devtools/content/debugger/src/components/PrimaryPanes/Sources.css");
+@import url("chrome://devtools/content/debugger/src/components/PrimaryPanes/Tracer.css");
 @import url("chrome://devtools/content/debugger/src/components/QuickOpenModal.css");
 @import url("chrome://devtools/content/debugger/src/components/SecondaryPanes/Breakpoints/Breakpoints.css");
 @import url("chrome://devtools/content/debugger/src/components/SecondaryPanes/CommandBar.css");

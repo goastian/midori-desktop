@@ -16,10 +16,14 @@ add_task(async function () {
   );
 
   await clickElement(dbg, "logEventsCheckbox");
-  await dbg.actions.addEventListenerBreakpoints(["event.mouse.click"]);
+  await dbg.actions.addEventListenerBreakpoints("breakpoint", [
+    "event.mouse.click",
+    "animationframe.request",
+  ]);
   clickElementInTab("#click-target");
 
-  await hasConsoleMessage(dbg, "click");
+  await hasConsoleMessage(dbg, "click { target: div#click-target");
+  await hasConsoleMessage(dbg, "function rafCallback()");
   await waitForRequestsToSettle(dbg);
   ok(true);
 });

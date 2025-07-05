@@ -7,8 +7,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   L10N,
@@ -19,18 +19,22 @@ const {
 } = require("resource://devtools/client/netmonitor/src/utils/request-utils.js");
 
 // Components
-const TreeViewClass = require("resource://devtools/client/shared/components/tree/TreeView.js");
+const TreeViewClass = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/tree/TreeView.mjs"
+).default;
 const PropertiesView = createFactory(
   require("resource://devtools/client/netmonitor/src/components/request-details/PropertiesView.js")
 );
 
 loader.lazyGetter(this, "Rep", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .REPS.Rep;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).REPS.Rep;
 });
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).MODE;
 });
 
 const { div, span } = dom;

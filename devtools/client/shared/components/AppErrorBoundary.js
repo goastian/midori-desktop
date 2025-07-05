@@ -7,10 +7,10 @@
 // React deps
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const { div, h1, h2, h3, p, a } = dom;
+const { div, h1, h2, h3, p, a, button } = dom;
 
 // Localized strings for (devtools/client/locales/en-US/components.properties)
 loader.lazyGetter(this, "L10N", function () {
@@ -43,6 +43,7 @@ class AppErrorBoundary extends Component {
       children: PropTypes.any.isRequired,
       panel: PropTypes.any.isRequired,
       componentName: PropTypes.string.isRequired,
+      openLink: PropTypes.func,
     };
   }
 
@@ -64,17 +65,47 @@ class AppErrorBoundary extends Component {
    */
   renderErrorInfo(info = {}) {
     if (Object.keys(info).length) {
-      return Object.keys(info).map((obj, outerIdx) => {
-        const traceParts = info[obj]
-          .split("\n")
-          .map((part, idx) => p({ key: `strace${idx}` }, part));
-        return div(
-          { key: `st-div-${outerIdx}`, className: "stack-trace-section" },
-          h3({}, "React Component Stack"),
-          p({ key: `st-p-${outerIdx}` }, obj.toString()),
-          traceParts
-        );
-      });
+      return Object.keys(info)
+        .filter(key => info[key])
+        .map((obj, outerIdx) => {
+          switch (obj) {
+            case "componentStack": {
+              const traceParts = info[obj]
+                .split("\n")
+                .map((part, idx) => p({ key: `strace${idx}` }, part));
+              return div(
+                { key: `st-div-${outerIdx}`, className: "stack-trace-section" },
+                h3({}, "React Component Stack"),
+                traceParts
+              );
+            }
+            case "clientPacket":
+            case "serverPacket": {
+              // Only serverPacket has a stack.
+              const stack = info[obj].stack;
+              const traceParts = stack
+                ? stack
+                    .split("\n")
+                    .map((part, idx) => p({ key: `strace${idx}` }, part))
+                : null;
+              return div(
+                { className: "stack-trace-section" },
+                h3(
+                  {},
+                  obj == "clientPacket" ? "Client packet" : "Server packet"
+                ),
+                // Display the packet as JSON, while removing the artifical `stack` attribute from it
+                p(
+                  {},
+                  JSON.stringify({ ...info[obj], stack: undefined }, null, 2)
+                ),
+                stack ? h3({}, "Server stack") : null,
+                traceParts
+              );
+            }
+          }
+          return null;
+        });
     }
 
     return p({}, "undefined errorInfo");
@@ -94,6 +125,24 @@ class AppErrorBoundary extends Component {
       h3({}, "Stacktrace"),
       traces
     );
+  }
+
+  renderServerPacket(packet) {
+    const traceParts = packet.stack
+      .split("\n")
+      .map((part, idx) => p({ key: `strace${idx}` }, part));
+    return [
+      div(
+        { className: "stack-trace-section" },
+        h3({}, "Server packet"),
+        p({}, JSON.stringify(packet, null, 2))
+      ),
+      div(
+        { className: "stack-trace-section" },
+        h3({}, "Server Stack"),
+        traceParts
+      ),
+    ];
   }
 
   // Return a valid object, even if we don't receive one
@@ -119,10 +168,26 @@ class AppErrorBoundary extends Component {
   }
 
   getBugLink() {
-    const compStack = this.getValidInfo(this.state.errorInfo).componentStack;
-    const errorMsg = this.state.errorMsg;
-    const errorStack = this.state.errorStack;
-    const msg = `Error: \n${errorMsg}\n\nReact Component Stack: ${compStack}\n\nStacktrace: \n${errorStack}`;
+    const { componentStack, clientPacket, serverPacket } = this.state.errorInfo;
+
+    let msg = `## Error in ${this.props.panel}: \n${this.state.errorMsg}\n\n`;
+
+    if (componentStack) {
+      msg += `## React Component Stack:${componentStack}\n\n`;
+    }
+
+    if (clientPacket) {
+      msg += `## Client Packet:\n\`\`\`\n${JSON.stringify(clientPacket, null, 2)}\n\`\`\`\n\n`;
+    }
+
+    if (serverPacket) {
+      // Display the packet as JSON, while removing the artifical `stack` attribute from it
+      msg += `## Server Packet:\n\`\`\`\n${JSON.stringify({ ...serverPacket, stack: undefined }, null, 2)}\n\`\`\`\n\n`;
+      msg += `## Server Stack:\n\`\`\`\n${serverPacket.stack}\n\`\`\`\n\n`;
+    }
+
+    msg += `## Stacktrace: \n\`\`\`\n${this.state.errorStack}\n\`\`\``;
+
     return `${bugLink}${this.props.componentName}&comment=${encodeURIComponent(
       msg
     )}`;
@@ -135,6 +200,9 @@ class AppErrorBoundary extends Component {
         "appErrorBoundary.description",
         this.props.panel
       );
+
+      const href = this.getBugLink();
+
       return div(
         {
           className: `app-error-panel`,
@@ -143,13 +211,22 @@ class AppErrorBoundary extends Component {
         a(
           {
             className: "error-panel-file-button",
-            href: this.getBugLink(),
-            onClick: () => {
-              window.open(this.getBugLink(), "_blank");
-            },
+            href,
+            target: "_blank",
+            onClick: this.props.openLink
+              ? e => this.props.openLink(href, e)
+              : null,
           },
           FILE_BUG_BUTTON
         ),
+        this.state.toolbox
+          ? button({
+              className: "devtools-tabbar-button error-panel-close",
+              onClick: () => {
+                this.state.toolbox.closeToolbox();
+              },
+            })
+          : null,
         h2({ className: "error-panel-error" }, this.state.errorMsg),
         div({}, this.renderErrorInfo(this.state.errorInfo)),
         div({}, this.renderStackTrace(this.state.errorStack)),

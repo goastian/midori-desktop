@@ -11,7 +11,6 @@
  * @typedef {import("../@types/perf").PageContext} PageContext
  * @typedef {import("../@types/perf").PanelWindow} PanelWindow
  * @typedef {import("../@types/perf").Store} Store
- * @typedef {import("../@types/perf").MinimallyTypedGeckoProfile} MinimallyTypedGeckoProfile
  * @typedef {import("../@types/perf").ProfileCaptureResult} ProfileCaptureResult
  * @typedef {import("../@types/perf").ProfilerViewMode} ProfilerViewMode
  * @typedef {import("../@types/perf").RootTraits} RootTraits
@@ -40,8 +39,8 @@
   scope.loader = browserLoader.loader;
 }
 
-const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.js");
-const React = require("resource://devtools/client/shared/vendor/react.js");
+const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.mjs");
+const React = require("resource://devtools/client/shared/vendor/react.mjs");
 const FluentReact = require("resource://devtools/client/shared/vendor/fluent-react.js");
 const {
   FluentL10n,
@@ -67,18 +66,17 @@ const reducers = require("resource://devtools/client/performance-new/store/reduc
 const actions = require("resource://devtools/client/performance-new/store/actions.js");
 const {
   openProfilerTab,
-  sharedLibrariesFromProfile,
 } = require("resource://devtools/client/performance-new/shared/browser.js");
 const { createLocalSymbolicationService } = ChromeUtils.importESModule(
   "resource://devtools/client/performance-new/shared/symbolication.sys.mjs"
 );
-const {
-  presets,
-  getProfilerViewModeForCurrentPreset,
-  registerProfileCaptureForBrowser,
-} = ChromeUtils.importESModule(
+const { registerProfileCaptureForBrowser } = ChromeUtils.importESModule(
   "resource://devtools/client/performance-new/shared/background.sys.mjs"
 );
+const { presets, getProfilerViewModeForCurrentPreset } =
+  ChromeUtils.importESModule(
+    "resource://devtools/shared/performance-new/prefs-presets.sys.mjs"
+  );
 
 /**
  * This file initializes the DevTools Panel UI. It is in charge of initializing
@@ -133,18 +131,42 @@ async function gInit(perfFront, traits, pageContext, openAboutProfiling) {
   );
 
   /**
-   * @param {MinimallyTypedGeckoProfile} profile
+   * @param {MockedExports.ProfileAndAdditionalInformation | null} profileAndAdditionalInformation
+   * @param {Error | string} [error]
    */
-  const onProfileReceived = async profile => {
+  const onProfileReceived = async (profileAndAdditionalInformation, error) => {
     const objdirs = selectors.getObjdirs(store.getState());
     const profilerViewMode = getProfilerViewModeForCurrentPreset(pageContext);
-    const sharedLibraries = sharedLibrariesFromProfile(profile);
+    const browser = await openProfilerTab({ profilerViewMode });
+
+    if (error || !profileAndAdditionalInformation) {
+      if (!error) {
+        error =
+          "No profile data has been passed to onProfileReceived, and no specific error has been specified. This is unexpected.";
+      }
+      /**
+       * @type {ProfileCaptureResult}
+       */
+      const profileCaptureResult = {
+        type: "ERROR",
+        error: typeof error === "string" ? new Error(error) : error,
+      };
+      registerProfileCaptureForBrowser(browser, profileCaptureResult, null);
+      return;
+    }
+
+    const { profile, additionalInformation } = profileAndAdditionalInformation;
+    const sharedLibraries = additionalInformation?.sharedLibraries ?? [];
+    if (!sharedLibraries.length) {
+      console.error(
+        `[devtools perf] No shared libraries information have been retrieved from the profiled target, this is unexpected.`
+      );
+    }
     const symbolicationService = createLocalSymbolicationService(
       sharedLibraries,
       objdirs,
       perfFront
     );
-    const browser = await openProfilerTab(profilerViewMode);
 
     /**
      * @type {ProfileCaptureResult}
@@ -185,5 +207,8 @@ async function gInit(perfFront, traits, pageContext, openAboutProfiling) {
 }
 
 function gDestroy() {
-  ReactDOM.unmountComponentAtNode(document.querySelector("#root"));
+  const root = document.querySelector("#root");
+  if (root) {
+    ReactDOM.unmountComponentAtNode(root);
+  }
 }

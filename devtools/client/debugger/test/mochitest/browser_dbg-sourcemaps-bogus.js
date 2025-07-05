@@ -38,7 +38,7 @@ add_task(async function () {
   await addBreakpoint(dbg, "non-existant-map.js", 4);
   invokeInTab("runCode");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "non-existant-map.js").id,
     4
@@ -74,7 +74,7 @@ add_task(async function () {
   await waitForPaused(dbg);
 
   // As the original file can't be loaded, the generated source is automatically selected
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "map-with-failed-original-request.js").id,
     7
@@ -92,9 +92,15 @@ add_task(async function () {
     notificationMessage,
     "There is no warning about source-map but rather one about original scopes"
   );
-  is(
-    getCM(dbg).getValue(),
-    `Error while fetching an original source: request failed with status 404\nSource URL: ${EXAMPLE_URL}map-with-failed-original-request.original.js`
+  const editorContent = getEditorContent(dbg);
+  Assert.stringContains(
+    editorContent,
+    `Error while fetching an original source: request failed with status 404\n`
+  );
+  // Ignore the stack logged in between these two strings
+  Assert.stringContains(
+    editorContent,
+    `Source URL: ${EXAMPLE_URL}map-with-failed-original-request.original.js`
   );
 
   footerButton = findElement(dbg, "sourceMapFooterButton");

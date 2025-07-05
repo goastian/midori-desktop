@@ -7,9 +7,8 @@
 
 add_task(async () => {
   const tab = await addTab(`${URL_ROOT_SSL}empty.html`);
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
 
   info("Assert the initial no of resources");
   assertNoOfResources(resourceCommand, 0, 0);
@@ -34,6 +33,19 @@ add_task(async () => {
     `await fetch("${EXAMPLE_DOMAIN}/request1.html", { method: "GET" });`,
     `await fetch("${EXAMPLE_DOMAIN}/request2.html", { method: "GET" });`,
   ]);
+
+  info("Wait for initial message resources");
+  await waitFor(
+    () =>
+      resourceCommand.getAllResources(resourceCommand.TYPES.CONSOLE_MESSAGE)
+        .length == 3
+  );
+  info("Wait for initial network resources");
+  await waitFor(
+    () =>
+      resourceCommand.getAllResources(resourceCommand.TYPES.NETWORK_EVENT)
+        .length == 2
+  );
 
   assertNoOfResources(resourceCommand, 3, 2);
 

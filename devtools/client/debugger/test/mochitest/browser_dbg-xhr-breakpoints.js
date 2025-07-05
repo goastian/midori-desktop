@@ -24,7 +24,7 @@ add_task(async function () {
   );
 
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "doc-early-xhr.html").id,
     10
@@ -33,7 +33,10 @@ add_task(async function () {
   const whyPaused = await waitFor(
     () => dbg.win.document.querySelector(".why-paused")?.innerText
   );
-  is(whyPaused, `Paused on XMLHttpRequest`);
+  is(
+    whyPaused,
+    `Paused on XMLHttpRequest\n(global) - doc-early-xhr.html:10:11`
+  );
 
   await resume(dbg);
 
@@ -65,7 +68,7 @@ add_task(async function () {
 
   invokeInTab("main", "doc-xhr.html");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "fetch.js").id, 4);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "fetch.js").id, 4);
   await resume(dbg);
 
   await dbg.actions.removeXHRBreakpoint(0);

@@ -13,7 +13,6 @@ support-files = [
 ]
 
 ["browser_grids_accordion-state.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_grids_color-in-rules-grid-toggle.js"]
 
@@ -32,10 +31,13 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_grids_grid-list-no-grids.js"]
 
 ["browser_grids_grid-list-on-iframe-reloaded.js"]
-skip-if = ["verify && (os == 'win' || os == 'linux')"]
 
 ["browser_grids_grid-list-on-mutation-element-added.js"]
-skip-if = ["true"] #Bug 1557326
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1557326
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1557326
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1557326
+]
 
 ["browser_grids_grid-list-on-mutation-element-removed.js"]
 
@@ -64,14 +66,8 @@ skip-if = ["true"] #Bug 1557326
 ["browser_grids_grid-outline-selected-grid.js"]
 
 ["browser_grids_grid-outline-updates-on-grid-change.js"]
-skip-if = [
-  "os == 'linux'",
-  "os == 'mac'",
-  "os == 'win' && (debug || asan)", #Bug 1557181
-]
 
 ["browser_grids_grid-outline-writing-mode.js"]
-skip-if = ["verify && os == 'win'"]
 
 ["browser_grids_highlighter-setting-rules-grid-toggle.js"]
 

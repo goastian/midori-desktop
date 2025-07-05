@@ -1,17 +1,18 @@
 [DEFAULT]
-prefs = ["devtools.performance.recording.ui-base-url='http://example.com'"] # This sets up the WebChannel so that it can be used for our tests.
+prefs = ["devtools.performance.recording.ui-base-url='https://example.com'"] # This sets up the WebChannel so that it can be used for our tests.
 tags = "devtools devtools-performance"
 subsuite = "devtools"
-skip-if = [
-  "tsan", # Bug 1804081, timeouts and data races in various tests
-  "http3", # Bug 1829298
-  "http2",
-]
 support-files = [
   "head.js",
   "helpers.js",
   "fake-frontend.html",
   "webchannel.html",
+  "webchannel-favicons.html",
+  "webchannel-open-script-in-debugger_assets/*",
+]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # Bug 1804081, timeouts and data races in various tests
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan", # Bug 1804081
 ]
 
 ["browser_aboutprofiling-entries.js"]
@@ -23,6 +24,8 @@ support-files = [
 ["browser_aboutprofiling-features.js"]
 
 ["browser_aboutprofiling-interval.js"]
+
+["browser_aboutprofiling-more-actions-menu.js"]
 
 ["browser_aboutprofiling-presets-custom.js"]
 
@@ -39,13 +42,10 @@ support-files = [
 ["browser_devtools-onboarding.js"]
 
 ["browser_devtools-presets.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_devtools-previously-started.js"]
 
 ["browser_devtools-record-capture.js"]
-https_first_disabled = true
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_devtools-record-discard.js"]
 
@@ -53,25 +53,23 @@ skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_popup-profiler-states.js"]
-https_first_disabled = true
 
 ["browser_popup-record-capture-view.js"]
-https_first_disabled = true
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_popup-record-capture.js"]
-https_first_disabled = true
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_popup-record-discard.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_split-toolbar-button.js"]
-https_first_disabled = true
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_webchannel-enable-menu-button-preset.js"]
-https_first_disabled = true
 
 ["browser_webchannel-enable-menu-button.js"]
-https_first_disabled = true
+
+["browser_webchannel-open-script-in-debugger.js"]
+
+["browser_webchannel-page-favicon-data.js"]

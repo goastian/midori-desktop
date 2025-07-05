@@ -13,9 +13,8 @@ const TEST_URI = "data:text/html;charset=utf-8,";
 add_task(async function () {
   const tab = await addTab(TEST_URI);
 
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
   const { CONSOLE_MESSAGE, ROOT_NODE } = resourceCommand.TYPES;
 
   info("Use console.log in the content page");
@@ -94,9 +93,7 @@ function logInTab(tab, message) {
 }
 
 function hasMessage(messageResources, text) {
-  return messageResources.find(
-    resource => resource.message.arguments[0] === text
-  );
+  return messageResources.find(resource => resource.arguments[0] === text);
 }
 
 // All resource command callbacks share the same pattern here: they add all

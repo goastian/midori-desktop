@@ -37,9 +37,8 @@ async function testWatchingCssMessages() {
   // Open a test tab
   const tab = await addTab(TEST_URI);
 
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
 
   const receivedMessages = [];
   const { onAvailable, onAllMessagesReceived } = setupOnAvailableFunction(
@@ -85,6 +84,9 @@ async function testWatchingCachedCssMessages() {
   // for CSS messages, we need to set the cssErrorReportingEnabled flag on the docShell.
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], function () {
     content.docShell.cssErrorReportingEnabled = true;
+    ChromeUtils.clearResourceCache({
+      types: ["stylesheet"],
+    });
   });
 
   // Setting the docShell flag only indicates to the Parser that from now on, it should
@@ -97,9 +99,8 @@ async function testWatchingCachedCssMessages() {
 
   // At this point, all messages should be in the ConsoleService cache, and we can begin
   // to watch and check that we do retrieve those messages.
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
 
   const receivedMessages = [];
   const { onAvailable } = setupOnAvailableFunction(

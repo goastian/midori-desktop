@@ -4,6 +4,12 @@
 
 "use strict";
 
+const DevToolsUtils = require("resource://devtools/shared/DevToolsUtils.js");
+loader.lazyRequireGetter(
+  this,
+  "ObjectUtils",
+  "resource://devtools/server/actors/object/utils.js"
+);
 const {
   formatDisplayName,
 } = require("resource://devtools/server/actors/frame.js");
@@ -27,12 +33,12 @@ function getThrownMessage(completion) {
 }
 module.exports.getThrownMessage = getThrownMessage;
 
-function logEvent({ threadActor, frame, level, expression, bindings }) {
-  const { sourceActor, line, column } =
-    threadActor.sourcesManager.getFrameLocation(frame);
+function evalAndLogEvent({ threadActor, frame, level, expression, bindings }) {
+  const frameLocation = threadActor.sourcesManager.getFrameLocation(frame);
+  const { sourceActor, line } = frameLocation;
   const displayName = formatDisplayName(frame);
 
-  // TODO remove this branch when (#1592584) lands (#1609540)
+  // TODO remove this branch when (#1749668) lands (#1609540)
   if (isWorker) {
     threadActor.targetActor._consoleActor.evaluateJS({
       text: `console.log(...${expression})`,
@@ -66,22 +72,63 @@ function logEvent({ threadActor, frame, level, expression, bindings }) {
     // The evaluation was killed (possibly by the slow script dialog).
     value = ["Evaluation failed"];
   } else if ("return" in completion) {
-    value = completion.return;
+    value = [];
+    const length = ObjectUtils.getArrayLength(completion.return);
+    for (let i = 0; i < length; i++) {
+      value.push(DevToolsUtils.getProperty(completion.return, i));
+    }
   } else {
     value = [getThrownMessage(completion)];
     level = `${level}Error`;
   }
 
-  if (value && typeof value.unsafeDereference === "function") {
-    value = value.unsafeDereference();
+  ChromeUtils.addProfilerMarker("Debugger log point", undefined, value);
+
+  emitConsoleMessage(threadActor, frameLocation, value, level);
+
+  return undefined;
+}
+
+function logEvent({ threadActor, frame }) {
+  const frameLocation = threadActor.sourcesManager.getFrameLocation(frame);
+  const { sourceActor, line } = frameLocation;
+
+  // TODO remove this branch when (#1749668) lands (#1609540)
+  if (isWorker) {
+    const bindings = {};
+    for (let i = 0; i < frame.arguments.length; i++) {
+      bindings[`x${i}`] = frame.arguments[i];
+    }
+    threadActor.targetActor._consoleActor.evaluateJS({
+      text: `console.log(${Object.keys(bindings).join(",")})`,
+      bindings,
+      url: sourceActor.url,
+      lineNumber: line,
+      disableBreaks: true,
+    });
+
+    return undefined;
   }
 
+  emitConsoleMessage(threadActor, frameLocation, frame.arguments, "logPoint");
+
+  return undefined;
+}
+
+function emitConsoleMessage(threadActor, frameLocation, args, level) {
   const targetActor = threadActor.targetActor;
+  const { sourceActor, line, column } = frameLocation;
+
   const message = {
     filename: sourceActor.url,
+
+    // The line is 1-based
     lineNumber: line,
-    columnNumber: column,
-    arguments: value,
+    // `frameLocation` comes from the SourcesManager which uses 0-base column
+    // whereas CONSOLE_MESSAGE resources emits 1-based columns.
+    columnNumber: column + 1,
+
+    arguments: args,
     level,
     timeStamp: ChromeUtils.dateNow(),
     chromeContext:
@@ -99,14 +146,18 @@ function logEvent({ threadActor, frame, level, expression, bindings }) {
     TYPES.CONSOLE_MESSAGE
   );
   if (consoleMessageWatcher) {
-    consoleMessageWatcher.emitMessages([message]);
+    consoleMessageWatcher.emitMessages([message], false);
   } else {
     // Bug 1642296: Once we enable ConsoleMessage resource on the server, we should remove onConsoleAPICall
     // from the WebConsoleActor, and only support the ConsoleMessageWatcher codepath.
+    message.arguments = message.arguments.map(arg =>
+      arg && typeof arg.unsafeDereference === "function"
+        ? arg.unsafeDereference()
+        : arg
+    );
     targetActor._consoleActor.onConsoleAPICall(message);
   }
-
-  return undefined;
 }
 
+module.exports.evalAndLogEvent = evalAndLogEvent;
 module.exports.logEvent = logEvent;

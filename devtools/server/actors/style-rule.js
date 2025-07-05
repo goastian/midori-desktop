@@ -57,6 +57,12 @@ loader.lazyRequireGetter(
   "resource://devtools/server/actors/utils/stylesheets-manager.js",
   true
 );
+loader.lazyRequireGetter(
+  this,
+  "DocumentWalker",
+  "devtools/server/actors/inspector/document-walker",
+  true
+);
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -69,11 +75,21 @@ const XHTML_NS = "http://www.w3.org/1999/xhtml";
  * with a special rule type (100).
  */
 class StyleRuleActor extends Actor {
-  constructor(pageStyle, item, userAdded = false) {
+  /**
+   *
+   * @param {Object} options
+   * @param {PageStyleActor} options.pageStyle
+   * @param {CSSStyleRule|Element} options.item
+   * @param {Boolean} options.userAdded: Optional boolean to distinguish rules added by the user.
+   * @param {String} options.pseudoElement An optional pseudo-element type in cases when
+   *        the CSS rule applies to a pseudo-element.
+   */
+  constructor({ pageStyle, item, userAdded = false, pseudoElement = null }) {
     super(pageStyle.conn, styleRuleSpec);
     this.pageStyle = pageStyle;
     this.rawStyle = item.style;
     this._userAdded = userAdded;
+    this._pseudoElement = pseudoElement;
     this._parentSheet = null;
     // Parsed CSS declarations from this.form().declarations used to check CSS property
     // names and values before tracking changes. Using cached values instead of accessing
@@ -253,20 +269,77 @@ class StyleRuleActor extends Actor {
       const inspectorActor = this.pageStyle.inspector;
       const resourceId =
         this.pageStyle.styleSheetsManager.getStyleSheetResourceId(sheet);
-      const styleSheetIndex =
-        this.pageStyle.styleSheetsManager.getStyleSheetIndex(resourceId);
       data.source = {
         // Inline stylesheets have a null href; Use window URL instead.
         type: sheet.href ? "stylesheet" : "inline",
         href: sheet.href || inspectorActor.window.location.toString(),
         id: resourceId,
-        index: styleSheetIndex,
         // Whether the stylesheet lives in a different frame than the host document.
         isFramed: inspectorActor.window !== inspectorActor.window.top,
       };
     }
 
     return data;
+  }
+
+  /**
+   * StyleRuleActor is spawned once per CSS Rule, but will be refreshed based on the
+   * currently selected DOM Element, which is updated when PageStyleActor.getApplied
+   * is called.
+   */
+  get currentlySelectedElement() {
+    let { selectedElement } = this.pageStyle;
+    if (!this._pseudoElement) {
+      return selectedElement;
+    }
+
+    // Otherwise, we can be in one of two cases:
+    // - we are selecting a pseudo element, and that pseudo element is referenced
+    //   by `selectedElement`
+    // - we are selecting the pseudo element "parent", we need to walk down the tree
+    //   from `selectedElemnt` to find the pseudo element.
+    const pseudo = this._pseudoElement.replaceAll(":", "");
+    const nodeName = `_moz_generated_content_${pseudo}`;
+
+    if (selectedElement.nodeName !== nodeName) {
+      const walker = new DocumentWalker(
+        selectedElement,
+        selectedElement.ownerGlobal
+      );
+
+      for (let next = walker.firstChild(); next; next = walker.nextSibling()) {
+        if (next.nodeName === nodeName) {
+          selectedElement = next;
+          break;
+        }
+      }
+    }
+
+    return selectedElement;
+  }
+
+  get currentlySelectedElementComputedStyle() {
+    if (!this._pseudoElement) {
+      return this.pageStyle.cssLogic.computedStyle;
+    }
+
+    const { selectedElement } = this.pageStyle;
+
+    // We can be in one of two cases:
+    // - we are selecting a pseudo element, and that pseudo element is referenced
+    //   by `selectedElement`
+    // - we are selecting the pseudo element "parent".
+    // implementPseudoElement returns the pseudo-element string if this element represents
+    // a pseudo-element, or null otherwise. See https://searchfox.org/mozilla-central/rev/1b90936792b2c71ef931cb1b8d6baff9d825592e/dom/webidl/Element.webidl#102-107
+    const isPseudoElementParentSelected =
+      selectedElement.implementedPseudoElement !== this._pseudoElement;
+
+    return selectedElement.ownerGlobal.getComputedStyle(
+      selectedElement,
+      // If we are selecting the pseudo element parent, we need to pass the pseudo element
+      // to getComputedStyle to actually get the computed style of the pseudo element.
+      isPseudoElementParentSelected ? this._pseudoElement : null
+    );
   }
 
   getDocument(sheet) {
@@ -293,8 +366,6 @@ class StyleRuleActor extends Actor {
         // Indicates whether StyleRuleActor implements and can use the setRuleText method.
         // It cannot use it if the stylesheet was programmatically mutated via the CSSOM.
         canSetRuleText: this.canSetRuleText,
-        // @backward-compat { version 128 } Can be removed when 128 hits release.
-        hasMatchedSelectorIndexes: true,
       },
     };
 
@@ -320,6 +391,12 @@ class StyleRuleActor extends Actor {
     form.authoredText = this.authoredText;
 
     switch (this.ruleClassName) {
+      case "CSSNestedDeclarations":
+        form.isNestedDeclarations = true;
+        form.selectors = [];
+        form.selectorsSpecificity = [];
+        form.cssText = this.rawStyle.cssText || "";
+        break;
       case "CSSStyleRule":
         form.selectors = [];
         form.selectorsSpecificity = [];
@@ -380,8 +457,8 @@ class StyleRuleActor extends Actor {
         cssText,
         true
       );
-      const el = this.pageStyle.selectedElement;
-      const style = this.pageStyle.cssLogic.computedStyle;
+      const el = this.currentlySelectedElement;
+      const style = this.currentlySelectedElementComputedStyle;
 
       // Whether the stylesheet is a user-agent stylesheet. This affects the
       // validity of some properties and property values.
@@ -434,6 +511,7 @@ class StyleRuleActor extends Actor {
 
         if (SharedCssLogic.isCssVariable(decl.name)) {
           decl.isCustomProperty = true;
+          decl.computedValue = style.getPropertyValue(decl.name);
 
           // If the variable is a registered property, we check if the variable is
           // invalid at computed-value time (e.g. if the declaration value matches
@@ -549,6 +627,10 @@ class StyleRuleActor extends Actor {
           type,
           start: rawRule.start,
           end: rawRule.end,
+        });
+      } else if (ruleClassName === "CSSStartingStyleRule") {
+        ancestorData.push({
+          type,
         });
       } else if (rawRule.selectorText) {
         // All the previous cases where about at-rules; this one is for regular rule
@@ -689,6 +771,7 @@ class StyleRuleActor extends Actor {
     "CSSKeyframesRule",
     "CSSLayerBlockRule",
     "CSSMediaRule",
+    "CSSNestedDeclarations",
     "CSSStyleRule",
     "CSSSupportsRule",
   ]);
@@ -732,13 +815,15 @@ class StyleRuleActor extends Actor {
     }
 
     try {
+      if (this.ruleClassName == "CSSNestedDeclarations") {
+        throw new Error("getRuleText doesn't deal well with bare declarations");
+      }
       const resourceId =
         this.pageStyle.styleSheetsManager.getStyleSheetResourceId(
           this._parentSheet
         );
-      const cssText = await this.pageStyle.styleSheetsManager.getText(
-        resourceId
-      );
+      const cssText =
+        await this.pageStyle.styleSheetsManager.getText(resourceId);
       const text = getRuleText(cssText, this.line, this.column);
       // Cache the result on the rule actor to avoid parsing again next time
       this._failedToGetRuleText = false;
@@ -785,9 +870,8 @@ class StyleRuleActor extends Actor {
         this.pageStyle.styleSheetsManager.getStyleSheetResourceId(
           this._parentSheet
         );
-      const stylesheetText = await this.pageStyle.styleSheetsManager.getText(
-        resourceId
-      );
+      const stylesheetText =
+        await this.pageStyle.styleSheetsManager.getText(resourceId);
 
       const [start, end] = getSelectorOffsets(
         stylesheetText,
@@ -839,9 +923,8 @@ class StyleRuleActor extends Actor {
           this._parentSheet
         );
 
-      const sheetText = await this.pageStyle.styleSheetsManager.getText(
-        resourceId
-      );
+      const sheetText =
+        await this.pageStyle.styleSheetsManager.getText(resourceId);
       const cssText = InspectorUtils.replaceBlockRuleBodyTextInStylesheet(
         sheetText,
         this.line,
@@ -983,9 +1066,8 @@ class StyleRuleActor extends Actor {
         this.pageStyle.styleSheetsManager.getStyleSheetResourceId(
           this._parentSheet
         );
-      let authoredText = await this.pageStyle.styleSheetsManager.getText(
-        resourceId
-      );
+      let authoredText =
+        await this.pageStyle.styleSheetsManager.getText(resourceId);
 
       const [startOffset, endOffset] = getSelectorOffsets(
         authoredText,
@@ -1279,8 +1361,8 @@ class StyleRuleActor extends Actor {
   maybeRefresh(forceRefresh) {
     let hasChanged = false;
 
-    const el = this.pageStyle.selectedElement;
-    const style = CssLogic.getComputedStyle(el);
+    const el = this.currentlySelectedElement;
+    const style = this.currentlySelectedElementComputedStyle;
 
     for (const decl of this._declarations) {
       // TODO: convert from Object to Boolean. See Bug 1574471

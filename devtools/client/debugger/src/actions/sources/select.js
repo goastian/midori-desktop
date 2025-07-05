@@ -6,10 +6,7 @@
  * Redux actions for the sources state
  * @module actions/sources
  */
-
-import { setSymbols } from "./symbols";
-import { setInScopeLines } from "../ast/index";
-import { prettyPrintAndSelectSource } from "./prettyPrint";
+import { prettyPrintSource, prettyPrintAndSelectSource } from "./prettyPrint";
 import { addTab, closeTab } from "../tabs";
 import { loadSourceText } from "./loadSourceText";
 import { setBreakableLines } from "./breakableLines";
@@ -42,12 +39,14 @@ import {
 export const setSelectedLocation = (
   location,
   shouldSelectOriginalLocation,
-  shouldHighlightSelectedLocation
+  shouldHighlightSelectedLocation,
+  shouldScrollToSelectedLocation
 ) => ({
   type: "SET_SELECTED_LOCATION",
   location,
   shouldSelectOriginalLocation,
   shouldHighlightSelectedLocation,
+  shouldScrollToSelectedLocation,
 });
 
 // This is only used by jest tests (and within this module)
@@ -85,6 +84,26 @@ export function selectSourceURL(url, options) {
 
     const location = createLocation({ ...options, source });
     return dispatch(selectLocation(location));
+  };
+}
+
+/**
+ * Function dedicated to the Source Tree.
+ *
+ * This would automatically select the pretty printed source
+ * if one exists for the passed source.
+ *
+ * We aren't relying on selectLocation's mayBeSelectMappedSource logic
+ * as the (0,0) location (line 0, column 0) may not be mapped
+ * and wouldn't be resolved to the pretty printed source.
+ */
+export function selectMayBePrettyPrintedLocation(location) {
+  return async ({ dispatch, getState }) => {
+    const prettySource = getPrettySource(getState(), location.source.id);
+    if (prettySource) {
+      location = createLocation({ source: prettySource });
+    }
+    await dispatch(selectLocation(location));
   };
 }
 
@@ -134,27 +153,31 @@ async function mayBeSelectMappedSource(location, keepContext, thunkArgs) {
   // If the currently selected source is original, we will
   // automatically map `location` to refer to the original source,
   // even if that used to refer only to the generated source.
-  let shouldSelectOriginalLocation = getShouldSelectOriginalLocation(
-    getState()
-  );
+  let shouldSelectOriginalLocation =
+    getShouldSelectOriginalLocation(getState());
   if (keepContext) {
     // Pretty print source may not be registered yet and getRelatedMapLocation may not return it.
     // Wait for the pretty print source to be fully processed.
+    const sourceHasPrettyTab = hasPrettyTab(getState(), location.source);
     if (
       !location.source.isOriginal &&
       shouldSelectOriginalLocation &&
-      hasPrettyTab(getState(), location.source)
+      sourceHasPrettyTab
     ) {
-      // Note that prettyPrintAndSelectSource has already been called a bit before when this generated source has been added
+      // Note that prettyPrintSource has already been called a bit before when this generated source has been added
       // but it is a slow operation and is most likely not resolved yet.
-      // prettyPrintAndSelectSource uses memoization to avoid doing the operation more than once, while waiting from both callsites.
-      await dispatch(prettyPrintAndSelectSource(location.source));
+      // prettyPrintSource uses memoization to avoid doing the operation more than once, while waiting from both callsites.
+      await dispatch(prettyPrintSource(location.source));
     }
     if (shouldSelectOriginalLocation != location.source.isOriginal) {
-      // Only try to map if the source is mapped. i.e. is original source or a bundle with a valid source map comment
+      // Only try to map the location if the source is mapped:
+      // - mapping from original to generated, if this is original source
+      // - mapping from generated to original, if the generated source has a source map URL comment
+      // - mapping from compressed to pretty print, if the compressed source has a matching pretty print tab opened
       if (
         location.source.isOriginal ||
-        isSourceActorWithSourceMap(getState(), location.sourceActor.id)
+        isSourceActorWithSourceMap(getState(), location.sourceActor.id) ||
+        sourceHasPrettyTab
       ) {
         // getRelatedMapLocation will convert to the related generated/original location.
         // i.e if the original location is passed, the related generated location will be returned and vice versa.
@@ -197,11 +220,15 @@ async function mayBeSelectMappedSource(location, keepContext, thunkArgs) {
  * @param {boolean} options.highlight
  *        True by default. To be set to false in order to preveng highlighting the selected location in the editor.
  *        We will only show the location, but do not put a special background on the line.
+ * @param {boolean} options.scroll
+ *        True by default. Is set to false to stop the editor from scrolling to the location that has been selected.
+ *        e.g is when clicking in the editor to just show the selected line / column in the footer
  */
 export function selectLocation(
   location,
-  { keepContext = true, highlight = true } = {}
+  { keepContext = true, highlight = true, scroll = true } = {}
 ) {
+  // eslint-disable-next-line complexity
   return async thunkArgs => {
     const { dispatch, getState, client } = thunkArgs;
 
@@ -252,9 +279,13 @@ export function selectLocation(
     if (!tabExists(getState(), source.id)) {
       dispatch(addTab(source, sourceActor));
     }
-
     dispatch(
-      setSelectedLocation(location, shouldSelectOriginalLocation, highlight)
+      setSelectedLocation(
+        location,
+        shouldSelectOriginalLocation,
+        highlight,
+        scroll
+      )
     );
 
     await dispatch(loadSourceText(source, sourceActor));
@@ -290,16 +321,6 @@ export function selectLocation(
       await dispatch(prettyPrintAndSelectSource(loadedSource));
       dispatch(closeTab(loadedSource));
     }
-
-    await dispatch(setSymbols(location));
-
-    // Stop the async work if we started selecting another location
-    if (getSelectedLocation(getState()) != location) {
-      return;
-    }
-
-    // /!\ we don't historicaly wait for this async action
-    dispatch(setInScopeLines());
 
     // When we select a generated source which has a sourcemap,
     // asynchronously fetch the related original location in order to display

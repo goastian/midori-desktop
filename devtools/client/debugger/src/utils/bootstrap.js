@@ -34,6 +34,9 @@ import { persistTabs } from "../utils/tabs";
 const {
   sanitizeBreakpoints,
 } = require("resource://devtools/client/shared/thread-utils.js");
+const {
+  visibilityHandlerStore,
+} = require("resource://devtools/client/shared/redux/visibilityHandlerStore.js");
 
 let gWorkers;
 
@@ -47,10 +50,15 @@ export function bootstrapStore(client, workers, panel, initialState) {
     },
   });
 
-  const store = createStore(combineReducers(reducers), initialState);
+  let store = createStore(combineReducers(reducers), initialState);
+
+  // Also wrap the store in order to pause store update notifications while the panel is hidden.
+  store = visibilityHandlerStore(store);
+
   registerStoreObserver(store, updatePrefs);
 
   const actions = bindActionCreators(
+    // eslint-disable-next-line mozilla/reject-relative-requires
     require("../actions/index").default,
     store.dispatch
   );
@@ -138,5 +146,10 @@ function updatePrefs(state, oldState) {
 
   if (hasChanged(selectors.getBlackBoxRanges)) {
     asyncStore.blackboxedRanges = selectors.getBlackBoxRanges(state);
+  }
+
+  if (hasChanged(selectors.getMainThreadProjectDirectoryRoots)) {
+    asyncStore.directoryRoots =
+      selectors.getMainThreadProjectDirectoryRoots(state);
   }
 }

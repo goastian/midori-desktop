@@ -4,19 +4,19 @@
 
 "use strict";
 
-const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.js");
+const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.mjs");
 const {
   FILTER_TAGS,
 } = require("resource://devtools/client/netmonitor/src/constants.js");
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const { Chart } = require("resource://devtools/client/shared/widgets/Chart.js");
 const { PluralForm } = require("resource://devtools/shared/plural-form.js");
 const Actions = require("resource://devtools/client/netmonitor/src/actions/index.js");

@@ -205,17 +205,16 @@ class SourcesManager extends EventEmitter {
       return false;
     }
 
-    try {
-      const url = new URL(uri);
+    const url = URL.parse(uri);
+    if (url) {
       const pathname = url.pathname;
       return MINIFIED_SOURCE_REGEXP.test(
         pathname.slice(pathname.lastIndexOf("/") + 1)
       );
-    } catch (e) {
-      // Not a valid URL so don't try to parse out the filename, just test the
-      // whole thing with the minified source regexp.
-      return MINIFIED_SOURCE_REGEXP.test(uri);
     }
+    // Not a valid URL so don't try to parse out the filename, just test the
+    // whole thing with the minified source regexp.
+    return MINIFIED_SOURCE_REGEXP.test(uri);
   }
 
   /**
@@ -265,6 +264,9 @@ class SourcesManager extends EventEmitter {
    *        boxed or not.
    */
   isBlackBoxed(url, line, column) {
+    if (this.blackBoxedSources.size == 0) {
+      return false;
+    }
     if (!this.blackBoxedSources.has(url)) {
       return false;
     }
@@ -281,6 +283,9 @@ class SourcesManager extends EventEmitter {
   }
 
   isFrameBlackBoxed(frame) {
+    if (this.blackBoxedSources.size == 0) {
+      return false;
+    }
     const { url, line, column } = this.getFrameLocation(frame);
     return this.isBlackBoxed(url, line, column);
   }
@@ -447,7 +452,7 @@ class SourcesManager extends EventEmitter {
     const win = this._thread.targetActor.window;
     let principal, cacheKey;
     // On xpcshell, we don't have a window but a Sandbox
-    if (!isWorker && win instanceof Ci.nsIDOMWindow) {
+    if (!isWorker && win instanceof Ci.nsIDOMWindow && win.docShell) {
       const docShell = win.docShell;
       const channel = docShell.currentDocumentChannel;
       principal = channel.loadInfo.loadingPrincipal;
@@ -480,7 +485,10 @@ class SourcesManager extends EventEmitter {
     // actual text (otherwise it will be very confusing or unusable for users),
     // so replace the contents with the actual text if there is a mismatch.
     const actors = [...this._sourceActors.values()].filter(
-      actor => actor.url == url
+      // Bug 1907977: some source may not have a valid source text content exposed by spidermonkey
+      // and have their text be "[no source]", so avoid falling back to them and consider
+      // the request fallback.
+      actor => actor.url == url && actor.actualText() != "[no source]"
     );
     if (!actors.every(actor => actor.contentMatches(result))) {
       if (actors.length > 1) {

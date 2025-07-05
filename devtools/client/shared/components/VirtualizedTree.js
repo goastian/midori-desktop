@@ -7,22 +7,21 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const {
-  scrollIntoView,
-} = require("resource://devtools/client/shared/scroll.js");
+const { scrollIntoView } = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/scroll.mjs"
+);
 const {
   preventDefaultAndStopPropagation,
 } = require("resource://devtools/client/shared/events.js");
 
-loader.lazyRequireGetter(
-  this,
-  ["wrapMoveFocus", "getFocusableElements"],
-  "resource://devtools/client/shared/focus.js",
-  true
-);
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  wrapMoveFocus: "resource://devtools/client/shared/focus.mjs",
+  getFocusableElements: "resource://devtools/client/shared/focus.mjs",
+});
 
 const AUTO_EXPAND_DEPTH = 0;
 const NUMBER_OF_OFFSCREEN_ITEMS = 1;
@@ -300,7 +299,10 @@ class Tree extends Component {
   }
 
   // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillReceiveProps() {
+  UNSAFE_componentWillReceiveProps(nextProps) {
+    if (nextProps.autoExpandDepth != this.props.autoExpandDepth) {
+      this.setState({ seen: new Set() });
+    }
     this._autoExpand();
     this._updateHeight();
   }
@@ -316,8 +318,10 @@ class Tree extends Component {
     );
   }
 
-  componentDidUpdate() {
-    this._scrollItemIntoView();
+  componentDidUpdate(prevProps) {
+    if (prevProps.shown != this.props.shown) {
+      this._scrollItemIntoView();
+    }
   }
 
   componentWillUnmount() {
@@ -498,7 +502,7 @@ class Tree extends Component {
     if (scrollTop >= elementTop + itemHeight) {
       scrollTo = elementTop;
     } else if (scrollTop + clientHeight <= elementTop) {
-      scrollTo = elementTop + itemHeight - clientHeight;
+      scrollTo = elementTop;
     }
 
     if (scrollTo != undefined) {
@@ -943,7 +947,7 @@ class TreeNodeClass extends Component {
     // Make sure that none of the focusable elements inside the tree node container are
     // tabbable if the tree node is not active. If the tree node is active and focus is
     // outside its container, focus on the first focusable element inside.
-    const elms = getFocusableElements(this.refs.treenode);
+    const elms = lazy.getFocusableElements(this.refs.treenode);
     if (elms.length === 0) {
       return;
     }
@@ -965,8 +969,8 @@ class TreeNodeClass extends Component {
       return;
     }
 
-    const focusMoved = !!wrapMoveFocus(
-      getFocusableElements(this.refs.treenode),
+    const focusMoved = !!lazy.wrapMoveFocus(
+      lazy.getFocusableElements(this.refs.treenode),
       target,
       shiftKey
     );
@@ -989,17 +993,11 @@ class TreeNodeClass extends Component {
     });
 
     const classList = ["tree-node", "div"];
-    if (this.props.index % 2) {
-      classList.push("tree-node-odd");
-    }
-    if (this.props.first) {
-      classList.push("tree-node-first");
-    }
-    if (this.props.last) {
-      classList.push("tree-node-last");
-    }
     if (this.props.active) {
       classList.push("tree-node-active");
+    }
+    if (this.props.focused) {
+      classList.push("focused");
     }
 
     let ariaExpanded;
@@ -1024,7 +1022,8 @@ class TreeNodeClass extends Component {
         "data-depth": this.props.depth,
         style: {
           padding: 0,
-          margin: 0,
+          // This helps the CSS compute a margin based on the depth.
+          "--tree-node-depth": this.props.depth,
         },
       },
 

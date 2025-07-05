@@ -362,8 +362,11 @@ function initialHTML(doc) {
         element("body", {}, [
           element("div", { id: "content" }, [element("div", { id: "json" })]),
           element("script", {
-            src: baseURI + "lib/require.js",
-            "data-main": baseURI + "viewer-config.js",
+            src: baseURI + "json-viewer.mjs",
+            type: "module",
+            // This helps ensure that the ES Module get evaluated early,
+            // even if the HTTP request is transmitted in chunks (browser_jsonview_chunked_json.js).
+            async: "true",
           }),
         ]),
       ]

@@ -52,7 +52,8 @@ add_task(async function testBreakpointsPanePersistOnStepping() {
 
   await stepIn(dbg);
 
-  ok(isFrameSelected(dbg, 1, "nestedB"), "nestedB  frame is selected");
+  const frameElements = findAllElements(dbg, "frames");
+  assertFrameIsSelected(dbg, frameElements[0], "nestedB");
 
   is(getPaneElements(dbg).length, 1, "Breakpoints pane is still closed");
 });
@@ -88,7 +89,8 @@ add_task(async function testBreakpointsPanePersistOnFrameSelection() {
 
   await clickElement(dbg, "frame", 2);
 
-  ok(isFrameSelected(dbg, 2, "nestedA"), "Second frame is selected");
+  const frameElements = findAllElements(dbg, "frames");
+  assertFrameIsSelected(dbg, frameElements[1], "nestedA");
 
   is(getPaneElements(dbg).length, 1, "Breakpoint pane is still closed");
 });
@@ -126,11 +128,15 @@ add_task(async function testBreakpointsPanePersistOnPauseToggle() {
 
   await resume(dbg);
 
+  // After resuming from the breakpoint, the debugger statement will be hit.
+  await waitForPaused(dbg, "simple3.js");
+  await resume(dbg);
+
   is(getPaneElements(dbg).length, 2, "Breakpoints pane is still open");
 });
 
 // Tests that the breakpoint pane remains closed when event breakpoints log is toggled
-add_task(async function testBreakpointsPanePersistOnPauseToggle() {
+add_task(async function testBreakpointsPaneRemainsClosedWhenLogToggled() {
   const dbg = await initDebugger("doc-scripts.html", "simple3.js");
 
   await selectSource(dbg, "simple3.js");

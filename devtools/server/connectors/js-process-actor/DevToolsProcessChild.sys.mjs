@@ -9,6 +9,8 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(
   lazy,
   {
+    ContentScriptTargetWatcher:
+      "resource://devtools/server/connectors/js-process-actor/target-watchers/content_script.sys.mjs",
     ProcessTargetWatcher:
       "resource://devtools/server/connectors/js-process-actor/target-watchers/process.sys.mjs",
     SessionDataHelpers:
@@ -84,6 +86,13 @@ export class DevToolsProcessChild extends JSProcessActorChild {
       activeListener: 0,
       get watcher() {
         return lazy.SharedWorkerTargetWatcher;
+      },
+    },
+
+    content_script: {
+      activeListener: 0,
+      get watcher() {
+        return lazy.ContentScriptTargetWatcher;
       },
     },
   };
@@ -531,7 +540,7 @@ export class DevToolsProcessChild extends JSProcessActorChild {
   didDestroy() {
     // Unregister all the active watchers.
     // This will destroy all the active target actors and unregister the target observers.
-    for (const watcherDataObject of ContentProcessWatcherRegistry.getAllWatchersDataObjects()) {
+    for (const watcherDataObject of ContentProcessWatcherRegistry.getAllExistingWatchersDataObjects()) {
       this.#destroyWatcher(watcherDataObject);
     }
 

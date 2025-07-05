@@ -4,7 +4,8 @@
 
 "use strict";
 
-const { DevToolsServer } = require("resource://devtools/server/devtools-server.js");
+/* global Temporal, TrustedHTML, TrustedScript, TrustedScriptURL */
+
 const DevToolsUtils = require("resource://devtools/shared/DevToolsUtils.js");
 loader.lazyRequireGetter(
   this,
@@ -15,6 +16,12 @@ loader.lazyRequireGetter(
   this,
   "PropertyIterators",
   "resource://devtools/server/actors/object/property-iterator.js"
+);
+loader.lazyRequireGetter(
+  this,
+  "propertyDescriptor",
+  "resource://devtools/server/actors/object/property-descriptor.js",
+  true
 );
 
 // Number of items to preview in objects, arrays, maps, sets, lists,
@@ -36,6 +43,7 @@ const ERROR_CLASSNAMES = new Set([
   "LinkError",
   "RuntimeError",
   "Exception", // This related to Components.Exception()
+  "SuppressedError",
 ]);
 const ARRAY_LIKE_CLASSNAMES = new Set([
   "DOMStringList",
@@ -51,6 +59,7 @@ const OBJECT_WITH_URL_CLASSNAMES = new Set([
   "CSSImportRule",
   "CSSStyleSheet",
   "Location",
+  "TrustedScriptURL"
 ]);
 
 /**
@@ -62,66 +71,60 @@ const OBJECT_WITH_URL_CLASSNAMES = new Set([
  * arguments:
  *   - the ObjectActor instance and its hooks to make a preview for,
  *   - the grip object being prepared for the client,
- *   - the raw JS object after calling Debugger.Object.unsafeDereference(). This
- *   argument is only provided if the object is safe for reading properties and
- *   executing methods. See DevToolsUtils.isSafeJSObject().
- *   - the object class (result of objectActor.obj.class). This is passed so we don't have
- *   to access it on each previewer, which can add some overhead.
+ *   - the depth of the object compared to the top level object,
+ *     when we are inspecting nested attributes.
  *
  * Functions must return false if they cannot provide preview
  * information for the debugger object, or true otherwise.
  */
 const previewers = {
   String: [
-    function(objectActor, grip, rawObj) {
+    function(objectActor, grip, depth) {
       return wrappedPrimitivePreviewer(
-        "String",
         String,
         objectActor,
         grip,
-        rawObj
+        depth
       );
     },
   ],
 
   Boolean: [
-    function(objectActor, grip, rawObj) {
+    function(objectActor, grip, depth) {
       return wrappedPrimitivePreviewer(
-        "Boolean",
         Boolean,
         objectActor,
         grip,
-        rawObj
+        depth
       );
     },
   ],
 
   Number: [
-    function(objectActor, grip, rawObj) {
+    function(objectActor, grip, depth) {
       return wrappedPrimitivePreviewer(
-        "Number",
         Number,
         objectActor,
         grip,
-        rawObj
+        depth
       );
     },
   ],
 
   Symbol: [
-    function(objectActor, grip, rawObj) {
+    function(objectActor, grip, depth) {
       return wrappedPrimitivePreviewer(
-        "Symbol",
         Symbol,
         objectActor,
         grip,
-        rawObj
+        depth
       );
     },
   ],
 
   Function: [
-    function({ obj, hooks }, grip) {
+    function(objectActor, grip, depth) {
+      const { obj } = objectActor;
       if (obj.name) {
         grip.name = obj.name;
       }
@@ -149,7 +152,7 @@ const previewers = {
         typeof userDisplayName.value == "string" &&
         userDisplayName.value
       ) {
-        grip.userDisplayName = hooks.createValueGrip(userDisplayName.value);
+        grip.userDisplayName = objectActor.createValueGrip(userDisplayName.value, depth);
       }
 
       grip.isAsync = obj.isAsyncFunction;
@@ -172,60 +175,190 @@ const previewers = {
   ],
 
   RegExp: [
-    function({ obj, hooks }, grip) {
-      const str = DevToolsUtils.callPropertyOnObject(obj, "toString");
+    function(objectActor, grip, depth) {
+      let str;
+      if (isWorker) {
+        // For some reason, the following incantation on the worker thread returns "/undefined/undefined"
+        // str = RegExp.prototype.toString.call(objectActor.obj.unsafeDereference());
+        //
+        // The following method will throw in case of method being overloaded by the page,
+        // and a more generic previewer will render the object.
+        try {
+          str = DevToolsUtils.callPropertyOnObject(objectActor.obj, "toString");
+        } catch(e) {
+          // Ensure displaying something in case of error.
+          // Otherwise this would render an object with an empty label
+          grip.displayString = "RegExp with overloaded toString";
+        }
+      } else {
+        const { RegExp } = objectActor.targetActor.targetGlobal;
+        str = RegExp.prototype.toString.call(objectActor.safeRawObj);
+      }
+
       if (typeof str != "string") {
         return false;
       }
 
-      grip.displayString = hooks.createValueGrip(str);
+      grip.displayString = objectActor.createValueGrip(str, depth);
       return true;
     },
   ],
 
   Date: [
-    function({ obj, hooks }, grip) {
-      const time = DevToolsUtils.callPropertyOnObject(obj, "getTime");
+    function(objectActor, grip, depth) {
+      let time;
+      if (isWorker) {
+        // Also, targetGlobal is an opaque wrapper, from which we can't access its Date object,
+        // so fallback to the privileged one
+        //
+        // In worker objectActor.safeRawObj is considered unsafe and is null,
+        // so retrieve the objectActor.rawObj object directly from Debugger.Object.unsafeDereference
+        time = Date.prototype.getTime.call(objectActor.rawObj);
+      } else {
+        const { Date } = objectActor.targetActor.targetGlobal;
+        time = Date.prototype.getTime.call(objectActor.safeRawObj);
+      }
       if (typeof time != "number") {
         return false;
       }
 
       grip.preview = {
-        timestamp: hooks.createValueGrip(time),
+        timestamp: objectActor.createValueGrip(time, depth),
+      };
+      return true;
+    },
+  ],
+
+  "Temporal.Instant": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.Instant, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.PlainDate": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.PlainDate, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.PlainDateTime": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.PlainDateTime, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.PlainMonthDay": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.PlainMonthDay, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.PlainTime": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.PlainTime, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.PlainYearMonth": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.PlainYearMonth, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.ZonedDateTime": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.ZonedDateTime, objectActor, grip);
+      return true;
+    },
+  ],
+
+  "Temporal.Duration": [
+    function(objectActor, grip, _depth) {
+      temporalPreviewer(Temporal.Duration, objectActor, grip);
+      return true;
+    },
+  ],
+
+  TrustedHTML: [
+    function(objectActor, grip, depth) {
+      const text = TrustedHTML.prototype.toString.call(
+        // In worker objectActor.safeRawObj is considered unsafe and is null
+        objectActor.safeRawObj || objectActor.rawObj
+      );
+
+      grip.preview = {
+        kind: "ObjectWithText",
+        text: objectActor.createValueGrip(text, depth)
+      };
+      return true;
+    },
+  ],
+
+  TrustedScript: [
+    function(objectActor, grip, depth) {
+      const text = TrustedScript.prototype.toString.call(
+        // In worker objectActor.safeRawObj is considered unsafe and is null
+        objectActor.safeRawObj || objectActor.rawObj
+      );
+
+      grip.preview = {
+        kind: "ObjectWithText",
+        text: objectActor.createValueGrip(text, depth)
+      };
+      return true;
+    },
+  ],
+
+  TrustedScriptURL: [
+    function(objectActor, grip, depth) {
+      const url = TrustedScriptURL.prototype.toString.call(
+        // In worker objectActor.safeRawObj is considered unsafe and is null
+        objectActor.safeRawObj || objectActor.rawObj
+      );
+
+      grip.preview = {
+        kind: "ObjectWithURL",
+        url: objectActor.createValueGrip(url, depth)
       };
       return true;
     },
   ],
 
   Array: [
-    function({ obj, hooks }, grip) {
-      const length = ObjectUtils.getArrayLength(obj);
+    function(objectActor, grip, depth) {
+      const length = ObjectUtils.getArrayLength(objectActor.obj);
 
       grip.preview = {
         kind: "ArrayLike",
-        length: length,
+        length,
       };
 
-      if (hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
-      const raw = obj.unsafeDereference();
+      const { obj, rawObj } = objectActor;
       const items = (grip.preview.items = []);
 
       for (let i = 0; i < length; ++i) {
-        if (raw && !isWorker) {
+        if (rawObj && !isWorker) {
           // Array Xrays filter out various possibly-unsafe properties (like
           // functions, and claim that the value is undefined instead. This
           // is generally the right thing for privileged code accessing untrusted
           // objects, but quite confusing for Object previews. So we manually
           // override this protection by waiving Xrays on the array, and re-applying
           // Xrays on any indexed value props that we pull off of it.
-          const desc = Object.getOwnPropertyDescriptor(Cu.waiveXrays(raw), i);
+          const desc = Object.getOwnPropertyDescriptor(Cu.waiveXrays(rawObj), i);
           if (desc && !desc.get && !desc.set) {
             let value = Cu.unwaiveXrays(desc.value);
             value = ObjectUtils.makeDebuggeeValueIfNeeded(obj, value);
-            items.push(hooks.createValueGrip(value));
+            items.push(objectActor.createValueGrip(value, depth));
           } else if (!desc) {
             items.push(null);
           } else {
@@ -233,21 +366,21 @@ const previewers = {
             if (desc.get) {
               let getter = Cu.unwaiveXrays(desc.get);
               getter = ObjectUtils.makeDebuggeeValueIfNeeded(obj, getter);
-              item.get = hooks.createValueGrip(getter);
+              item.get = objectActor.createValueGrip(getter, depth);
             }
             if (desc.set) {
               let setter = Cu.unwaiveXrays(desc.set);
               setter = ObjectUtils.makeDebuggeeValueIfNeeded(obj, setter);
-              item.set = hooks.createValueGrip(setter);
+              item.set = objectActor.createValueGrip(setter, depth);
             }
             items.push(item);
           }
-        } else if (raw && !obj.getOwnPropertyDescriptor(i)) {
+        } else if (rawObj && !obj.getOwnPropertyDescriptor(i)) {
           items.push(null);
         } else {
           // Workers do not have access to Cu.
           const value = DevToolsUtils.getProperty(obj, i);
-          items.push(hooks.createValueGrip(value));
+          items.push(objectActor.createValueGrip(value, depth));
         }
 
         if (items.length == OBJECT_PREVIEW_MAX_ITEMS) {
@@ -260,7 +393,7 @@ const previewers = {
   ],
 
   Set: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       const size = DevToolsUtils.getProperty(objectActor.obj, "size");
       if (typeof size != "number") {
         return false;
@@ -272,12 +405,12 @@ const previewers = {
       };
 
       // Avoid recursive object grips.
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
       const items = (grip.preview.items = []);
-      for (const item of PropertyIterators.enumSetEntries(objectActor)) {
+      for (const item of PropertyIterators.enumSetEntries(objectActor, depth)) {
         items.push(item);
         if (items.length == OBJECT_PREVIEW_MAX_ITEMS) {
           break;
@@ -289,8 +422,8 @@ const previewers = {
   ],
 
   WeakSet: [
-    function(objectActor, grip) {
-      const enumEntries = PropertyIterators.enumWeakSetEntries(objectActor);
+    function(objectActor, grip, depth) {
+      const enumEntries = PropertyIterators.enumWeakSetEntries(objectActor, depth);
 
       grip.preview = {
         kind: "ArrayLike",
@@ -298,7 +431,7 @@ const previewers = {
       };
 
       // Avoid recursive object grips.
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -315,7 +448,7 @@ const previewers = {
   ],
 
   Map: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       const size = DevToolsUtils.getProperty(objectActor.obj, "size");
       if (typeof size != "number") {
         return false;
@@ -323,15 +456,15 @@ const previewers = {
 
       grip.preview = {
         kind: "MapLike",
-        size: size,
+        size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
       const entries = (grip.preview.entries = []);
-      for (const entry of PropertyIterators.enumMapEntries(objectActor)) {
+      for (const entry of PropertyIterators.enumMapEntries(objectActor, depth)) {
         entries.push(entry);
         if (entries.length == OBJECT_PREVIEW_MAX_ITEMS) {
           break;
@@ -343,15 +476,15 @@ const previewers = {
   ],
 
   WeakMap: [
-    function(objectActor, grip) {
-      const enumEntries = PropertyIterators.enumWeakMapEntries(objectActor);
+    function(objectActor, grip, depth) {
+      const enumEntries = PropertyIterators.enumWeakMapEntries(objectActor, depth);
 
       grip.preview = {
         kind: "MapLike",
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -368,15 +501,15 @@ const previewers = {
   ],
 
   URLSearchParams: [
-    function(objectActor, grip) {
-      const enumEntries = PropertyIterators.enumURLSearchParamsEntries(objectActor);
+    function(objectActor, grip, depth) {
+      const enumEntries = PropertyIterators.enumURLSearchParamsEntries(objectActor, depth);
 
       grip.preview = {
         kind: "MapLike",
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -393,15 +526,15 @@ const previewers = {
   ],
 
   FormData: [
-    function(objectActor, grip) {
-      const enumEntries = PropertyIterators.enumFormDataEntries(objectActor);
+    function(objectActor, grip, depth) {
+      const enumEntries = PropertyIterators.enumFormDataEntries(objectActor, depth);
 
       grip.preview = {
         kind: "MapLike",
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -418,19 +551,19 @@ const previewers = {
   ],
 
   Headers: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       // Bug 1863776: Headers can't be yet previewed from workers
       if (isWorker) {
         return false;
       }
-      const enumEntries = PropertyIterators.enumHeadersEntries(objectActor);
+      const enumEntries = PropertyIterators.enumHeadersEntries(objectActor, depth);
 
       grip.preview = {
         kind: "MapLike",
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -448,15 +581,15 @@ const previewers = {
 
 
   HighlightRegistry: [
-    function(objectActor, grip) {
-      const enumEntries = PropertyIterators.enumHighlightRegistryEntries(objectActor);
+    function(objectActor, grip, depth) {
+      const enumEntries = PropertyIterators.enumHighlightRegistryEntries(objectActor, depth);
 
       grip.preview = {
         kind: "MapLike",
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -473,9 +606,10 @@ const previewers = {
   ],
 
   MIDIInputMap: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       const enumEntries = PropertyIterators.enumMidiInputMapEntries(
-        objectActor
+        objectActor,
+        depth
       );
 
       grip.preview = {
@@ -483,7 +617,7 @@ const previewers = {
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -500,9 +634,10 @@ const previewers = {
   ],
 
   MIDIOutputMap: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       const enumEntries = PropertyIterators.enumMidiOutputMapEntries(
-        objectActor
+        objectActor,
+        depth
       );
 
       grip.preview = {
@@ -510,7 +645,7 @@ const previewers = {
         size: enumEntries.size,
       };
 
-      if (objectActor.hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
@@ -527,8 +662,9 @@ const previewers = {
   ],
 
   DOMStringMap: [
-    function({ obj, hooks }, grip, rawObj) {
-      if (!rawObj) {
+    function(objectActor, grip, depth) {
+      const { obj, safeRawObj } = objectActor;
+      if (!safeRawObj) {
         return false;
       }
 
@@ -538,14 +674,14 @@ const previewers = {
         size: keys.length,
       };
 
-      if (hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
 
       const entries = (grip.preview.entries = []);
       for (const key of keys) {
-        const value = ObjectUtils.makeDebuggeeValueIfNeeded(obj, rawObj[key]);
-        entries.push([key, hooks.createValueGrip(value)]);
+        const value = ObjectUtils.makeDebuggeeValueIfNeeded(obj, safeRawObj[key]);
+        entries.push([key, objectActor.createValueGrip(value, depth)]);
         if (entries.length == OBJECT_PREVIEW_MAX_ITEMS) {
           break;
         }
@@ -556,20 +692,20 @@ const previewers = {
   ],
 
   Promise: [
-    function({ obj, hooks }, grip, rawObj) {
-      const { state, value, reason } = ObjectUtils.getPromiseState(obj);
+    function(objectActor, grip, depth) {
+      const { state, value, reason } = ObjectUtils.getPromiseState(objectActor.obj);
       const ownProperties = Object.create(null);
       ownProperties["<state>"] = { value: state };
       let ownPropertiesLength = 1;
 
       // Only expose <value> or <reason> in top-level promises, to avoid recursion.
       // <state> is not problematic because it's a string.
-      if (hooks.getGripDepth() === 1) {
+      if (depth === 1) {
         if (state == "fulfilled") {
-          ownProperties["<value>"] = { value: hooks.createValueGrip(value) };
+          ownProperties["<value>"] = { value: objectActor.createValueGrip(value, depth) };
           ++ownPropertiesLength;
         } else if (state == "rejected") {
-          ownProperties["<reason>"] = { value: hooks.createValueGrip(reason) };
+          ownProperties["<reason>"] = { value: objectActor.createValueGrip(reason, depth) };
           ++ownPropertiesLength;
         }
       }
@@ -585,12 +721,14 @@ const previewers = {
   ],
 
   Proxy: [
-    function({ obj, hooks }, grip, rawObj) {
+    function(objectActor, grip, depth) {
       // Only preview top-level proxies, avoiding recursion. Otherwise, since both the
       // target and handler can also be proxies, we could get an exponential behavior.
-      if (hooks.getGripDepth() > 1) {
+      if (depth > 1) {
         return true;
       }
+
+      const { obj } = objectActor;
 
       // The `isProxy` getter of the debuggee object only detects proxies without
       // security wrappers. If false, the target and handler are not available.
@@ -604,8 +742,8 @@ const previewers = {
 
       if (hasTargetAndHandler) {
         Object.assign(grip.preview.ownProperties, {
-          "<target>": { value: hooks.createValueGrip(obj.proxyTarget) },
-          "<handler>": { value: hooks.createValueGrip(obj.proxyHandler) },
+          "<target>": { value: objectActor.createValueGrip(obj.proxyTarget, depth) },
+          "<handler>": { value: objectActor.createValueGrip(obj.proxyHandler, depth) },
         });
       }
 
@@ -614,7 +752,7 @@ const previewers = {
   ],
 
   CustomStateSet: [
-    function(objectActor, grip) {
+    function(objectActor, grip, depth) {
       const size = DevToolsUtils.getProperty(objectActor.obj, "size");
       if (typeof size != "number") {
         return false;
@@ -626,7 +764,7 @@ const previewers = {
       };
 
       const items = (grip.preview.items = []);
-      for (const item of PropertyIterators.enumCustomStateSetEntries(objectActor)) {
+      for (const item of PropertyIterators.enumCustomStateSetEntries(objectActor, depth)) {
         items.push(item);
         if (items.length == OBJECT_PREVIEW_MAX_ITEMS) {
           break;
@@ -642,8 +780,6 @@ const previewers = {
  * Generic previewer for classes wrapping primitives, like String,
  * Number and Boolean.
  *
- * @param string className
- *        Class name to expect.
  * @param object classObj
  *        The class to expect, eg. String. The valueOf() method of the class is
  *        invoked on the given object.
@@ -651,18 +787,21 @@ const previewers = {
  *        The object actor
  * @param Object grip
  *        The result grip to fill in
+ * @param Number depth
+ *        Depth of the object compared to the top level object,
+ *        when we are inspecting nested attributes.
  * @return Booolean true if the object was handled, false otherwise
  */
 function wrappedPrimitivePreviewer(
-  className,
   classObj,
   objectActor,
   grip,
-  rawObj
+  depth
 ) {
+  const { safeRawObj } = objectActor;
   let v = null;
   try {
-    v = classObj.prototype.valueOf.call(rawObj);
+    v = classObj.prototype.valueOf.call(safeRawObj);
   } catch (ex) {
     // valueOf() can throw if the raw JS object is "misbehaved".
     return false;
@@ -672,30 +811,51 @@ function wrappedPrimitivePreviewer(
     return false;
   }
 
-  const { obj, hooks } = objectActor;
-
-  const canHandle = GenericObject(objectActor, grip, rawObj, className);
+  const canHandle = GenericObject(objectActor, grip, depth);
   if (!canHandle) {
     return false;
   }
 
-  grip.preview.wrappedValue = hooks.createValueGrip(
-    ObjectUtils.makeDebuggeeValueIfNeeded(obj, v)
+  grip.preview.wrappedValue = objectActor.createValueGrip(
+    ObjectUtils.makeDebuggeeValueIfNeeded(objectActor.obj, v),
+    depth
   );
   return true;
+}
+
+/**
+ * Previewer for Temporal objects
+ *
+ * @param cls
+ *        The class of the object we're previewing (e.g. `Temporal.Instant`)
+ * @param ObjectActor objectActor
+ *        The object actor
+ * @param Object grip
+ *        The result grip to fill in
+ */
+function temporalPreviewer(cls, objectActor, grip) {
+  grip.preview = {
+    kind: "ObjectWithText",
+    text: cls.prototype.toString.call(
+      // In worker objectActor.safeRawObj is considered unsafe and is null
+      objectActor.safeRawObj || objectActor.rawObj
+    )
+  }
 }
 
 /**
  * @param {ObjectActor} objectActor
  * @param {Object} grip: The grip built by the objectActor, for which we need to populate
  *                       the `preview` property.
- * @param {*} rawObj: The native js object
- * @param {String} className: objectActor.obj.class
+ * @param {Number} depth
+ *        Depth of the object compared to the top level object,
+ *        when we are inspecting nested attributes.
  * @returns
  */
-function GenericObject(objectActor, grip, rawObj, className) {
-  const { obj, hooks } = objectActor;
-  if (grip.preview || grip.displayString || hooks.getGripDepth() > 1) {
+// eslint-disable-next-line complexity
+function GenericObject(objectActor, grip, depth) {
+  const { obj, safeRawObj } = objectActor;
+  if (grip.preview || grip.displayString || depth > 1) {
     return false;
   }
 
@@ -704,12 +864,12 @@ function GenericObject(objectActor, grip, rawObj, className) {
     ownProperties: Object.create(null),
   });
 
-  const names = ObjectUtils.getPropNamesFromObject(obj, rawObj);
+  const names = ObjectUtils.getPropNamesFromObject(obj, safeRawObj);
   preview.ownPropertiesLength = names.length;
 
   let length,
     i = 0;
-  let specialStringBehavior = className === "String";
+  let specialStringBehavior = objectActor.className === "String";
   if (specialStringBehavior) {
     length = DevToolsUtils.getProperty(obj, "length");
     if (typeof length != "number") {
@@ -725,7 +885,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
       }
     }
 
-    const desc = objectActor._propertyDescriptor(name, true);
+    const desc = propertyDescriptor(objectActor, name, depth, true);
     if (!desc) {
       continue;
     }
@@ -743,7 +903,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
   const privatePropertiesSymbols = ObjectUtils.getSafePrivatePropertiesSymbols(
     obj
   );
-  if (privatePropertiesSymbols.length > 0) {
+  if (privatePropertiesSymbols.length) {
     preview.privatePropertiesLength = privatePropertiesSymbols.length;
     preview.privateProperties = [];
 
@@ -755,7 +915,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
       ) {
         continue;
       }
-      const descriptor = objectActor._propertyDescriptor(privateProperty);
+      const descriptor = propertyDescriptor(objectActor, privateProperty, depth);
       if (!descriptor) {
         continue;
       }
@@ -765,7 +925,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
           {
             descriptor,
           },
-          hooks.createValueGrip(privateProperty)
+          objectActor.createValueGrip(privateProperty, depth)
         )
       );
 
@@ -780,12 +940,12 @@ function GenericObject(objectActor, grip, rawObj, className) {
   }
 
   const symbols = ObjectUtils.getSafeOwnPropertySymbols(obj);
-  if (symbols.length > 0) {
+  if (symbols.length) {
     preview.ownSymbolsLength = symbols.length;
     preview.ownSymbols = [];
 
     for (const symbol of symbols) {
-      const descriptor = objectActor._propertyDescriptor(symbol, true);
+      const descriptor = propertyDescriptor(objectActor, symbol, depth, true);
       if (!descriptor) {
         continue;
       }
@@ -795,7 +955,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
           {
             descriptor,
           },
-          hooks.createValueGrip(symbol)
+          objectActor.createValueGrip(symbol, depth)
         )
       );
 
@@ -811,6 +971,7 @@ function GenericObject(objectActor, grip, rawObj, className) {
 
   const safeGetterValues = objectActor._findSafeGetterValues(
     Object.keys(preview.ownProperties),
+    depth,
     OBJECT_PREVIEW_MAX_ITEMS - i
   );
   if (Object.keys(safeGetterValues).length) {
@@ -822,7 +983,8 @@ function GenericObject(objectActor, grip, rawObj, className) {
 
 // Preview functions that do not rely on the object class.
 previewers.Object = [
-  function TypedArray({ obj, hooks }, grip) {
+  function TypedArray(objectActor, grip, depth) {
+    const { obj, className } = objectActor;
     if (!ObjectUtils.isTypedArray(obj)) {
       return false;
     }
@@ -832,7 +994,7 @@ previewers.Object = [
       length: ObjectUtils.getArrayLength(obj),
     };
 
-    if (hooks.getGripDepth() > 1) {
+    if (depth > 1) {
       return true;
     }
 
@@ -841,28 +1003,39 @@ previewers.Object = [
       grip.preview.length
     );
     grip.preview.items = [];
+    const isBigIntArray = className.startsWith("BigInt") || className.startsWith("BigUint");
+
     for (let i = 0; i < previewLength; i++) {
       const desc = obj.getOwnPropertyDescriptor(i);
       if (!desc) {
         break;
       }
-      grip.preview.items.push(desc.value);
+
+      // We need to create grips for items of BigInt arrays. Other typed arrays are fine
+      // as they hold serializable primitives (Numbers)
+      const item = isBigIntArray
+        ? ObjectUtils.createBigIntValueGrip(desc.value)
+        : desc.value;
+      grip.preview.items.push(item);
     }
 
     return true;
   },
 
-  function Error(objectActor, grip, rawObj, className) {
-    if (!ERROR_CLASSNAMES.has(className)) {
+  function Error(objectActor, grip, depth) {
+    if (!ERROR_CLASSNAMES.has(objectActor.className)) {
       return false;
     }
 
-    const { hooks, obj } = objectActor;
+    const { obj, allowSideEffect = false } = objectActor;
 
-    // The name and/or message could be getters, and even if it's unsafe, we do want
-    // to show it to the user (See Bug 1710694).
-    const name = DevToolsUtils.getProperty(obj, "name", true);
-    const msg = DevToolsUtils.getProperty(obj, "message", true);
+    // The name and/or message could be getters, and even if it's unsafe,
+    // we do want to show it to the user, unless the error is muted
+    // (See Bug 1710694).
+    const invokeUnsafeGetters = allowSideEffect && !obj.isMutedError;
+
+    const name = DevToolsUtils.getProperty(obj, "name", invokeUnsafeGetters);
+    const msg = DevToolsUtils.getProperty(obj, "message", invokeUnsafeGetters);
     const stack = DevToolsUtils.getProperty(obj, "stack");
     const fileName = DevToolsUtils.getProperty(obj, "fileName");
     const lineNumber = DevToolsUtils.getProperty(obj, "lineNumber");
@@ -870,102 +1043,102 @@ previewers.Object = [
 
     grip.preview = {
       kind: "Error",
-      name: hooks.createValueGrip(name),
-      message: hooks.createValueGrip(msg),
-      stack: hooks.createValueGrip(stack),
-      fileName: hooks.createValueGrip(fileName),
-      lineNumber: hooks.createValueGrip(lineNumber),
-      columnNumber: hooks.createValueGrip(columnNumber),
+      name: objectActor.createValueGrip(name, depth),
+      message: objectActor.createValueGrip(msg, depth),
+      stack: objectActor.createValueGrip(stack, depth),
+      fileName: objectActor.createValueGrip(fileName, depth),
+      lineNumber: objectActor.createValueGrip(lineNumber, depth),
+      columnNumber: objectActor.createValueGrip(columnNumber, depth),
     };
 
     const errorHasCause = obj.getOwnPropertyNames().includes("cause");
     if (errorHasCause) {
-      grip.preview.cause = hooks.createValueGrip(
-        DevToolsUtils.getProperty(obj, "cause", true)
+      grip.preview.cause = objectActor.createValueGrip(
+        DevToolsUtils.getProperty(obj, "cause", true),
+        depth
       );
     }
 
     return true;
   },
 
-  function CSSMediaRule(objectActor, grip, rawObj, className) {
-    if (!rawObj || className != "CSSMediaRule" || isWorker) {
+  function CSSMediaRule(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
+    if (!safeRawObj || objectActor.className != "CSSMediaRule" || isWorker) {
       return false;
     }
-    const { hooks } = objectActor;
     grip.preview = {
       kind: "ObjectWithText",
-      text: hooks.createValueGrip(rawObj.conditionText),
+      text: objectActor.createValueGrip(safeRawObj.conditionText, depth),
     };
     return true;
   },
 
-  function CSSStyleRule(objectActor, grip, rawObj, className) {
-    if (!rawObj || className != "CSSStyleRule" || isWorker) {
+  function CSSStyleRule(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
+    if (!safeRawObj || objectActor.className != "CSSStyleRule" || isWorker) {
       return false;
     }
-    const { hooks } = objectActor;
     grip.preview = {
       kind: "ObjectWithText",
-      text: hooks.createValueGrip(rawObj.selectorText),
+      text: objectActor.createValueGrip(safeRawObj.selectorText, depth),
     };
     return true;
   },
 
-  function ObjectWithURL(objectActor, grip, rawObj, className) {
-    if (isWorker || !rawObj) {
+  function ObjectWithURL(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
+    if (isWorker || !safeRawObj) {
       return false;
     }
 
-    const isWindow = Window.isInstance(rawObj);
-    if (!OBJECT_WITH_URL_CLASSNAMES.has(className) && !isWindow) {
+    const isWindow = Window.isInstance(safeRawObj);
+    if (!OBJECT_WITH_URL_CLASSNAMES.has(objectActor.className) && !isWindow) {
       return false;
     }
-
-    const { hooks } = objectActor;
 
     let url;
-    if (isWindow && rawObj.location) {
+    if (isWindow && safeRawObj.location) {
       try {
-        url = rawObj.location.href;
+        url = safeRawObj.location.href;
       } catch(e) {
         // This can happen when we have a cross-process window.
         // In such case, let's retrieve the url from the iframe.
         // For window.top from a remote iframe, there's no way we can't retrieve the URL,
         // so return a label that help user know what's going on.
-        url = rawObj.browsingContext?.embedderElement?.src || "Restricted";
+        url = safeRawObj.browsingContext?.embedderElement?.src || "Restricted";
       }
-    } else if (rawObj.href) {
-      url = rawObj.href;
+    } else if (safeRawObj.href) {
+      url = safeRawObj.href;
     } else {
       return false;
     }
 
     grip.preview = {
       kind: "ObjectWithURL",
-      url: hooks.createValueGrip(url),
+      url: objectActor.createValueGrip(url, depth),
     };
 
     return true;
   },
 
-  function ArrayLike(objectActor, grip, rawObj, className) {
+  function ArrayLike(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
     if (
-      !rawObj ||
-      !ARRAY_LIKE_CLASSNAMES.has(className) ||
-      typeof rawObj.length != "number" ||
+      !safeRawObj ||
+      !ARRAY_LIKE_CLASSNAMES.has(objectActor.className) ||
+      typeof safeRawObj.length != "number" ||
       isWorker
     ) {
       return false;
     }
 
-    const { obj, hooks } = objectActor;
     grip.preview = {
       kind: "ArrayLike",
-      length: rawObj.length,
+      length: safeRawObj.length,
     };
 
-    if (hooks.getGripDepth() > 1) {
+    if (depth > 1) {
       return true;
     }
 
@@ -973,146 +1146,158 @@ previewers.Object = [
 
     for (
       let i = 0;
-      i < rawObj.length && items.length < OBJECT_PREVIEW_MAX_ITEMS;
+      i < safeRawObj.length && items.length < OBJECT_PREVIEW_MAX_ITEMS;
       i++
     ) {
-      const value = ObjectUtils.makeDebuggeeValueIfNeeded(obj, rawObj[i]);
-      items.push(hooks.createValueGrip(value));
+      const value = ObjectUtils.makeDebuggeeValueIfNeeded(objectActor.obj, safeRawObj[i]);
+      items.push(objectActor.createValueGrip(value, depth));
     }
 
     return true;
   },
 
-  function CSSStyleDeclaration(objectActor, grip, rawObj, className) {
+  function CSSStyleDeclaration(objectActor, grip, depth) {
+    const { safeRawObj, className } = objectActor;
     if (
-      !rawObj ||
+      !safeRawObj ||
       (className != "CSSStyleDeclaration" && className != "CSS2Properties") ||
       isWorker
     ) {
       return false;
     }
 
-    const { hooks } = objectActor;
     grip.preview = {
       kind: "MapLike",
-      size: rawObj.length,
+      size: safeRawObj.length,
     };
 
     const entries = (grip.preview.entries = []);
 
-    for (let i = 0; i < OBJECT_PREVIEW_MAX_ITEMS && i < rawObj.length; i++) {
-      const prop = rawObj[i];
-      const value = rawObj.getPropertyValue(prop);
-      entries.push([prop, hooks.createValueGrip(value)]);
+    for (let i = 0; i < OBJECT_PREVIEW_MAX_ITEMS && i < safeRawObj.length; i++) {
+      const prop = safeRawObj[i];
+      const value = safeRawObj.getPropertyValue(prop);
+      entries.push([prop, objectActor.createValueGrip(value, depth)]);
     }
 
     return true;
   },
 
-  function DOMNode(objectActor, grip, rawObj, className) {
+  function DOMNode(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
     if (
-      className == "Object" ||
-      !rawObj ||
-      !Node.isInstance(rawObj) ||
+      objectActor.className == "Object" ||
+      !safeRawObj ||
+      !Node.isInstance(safeRawObj) ||
       isWorker
     ) {
       return false;
     }
 
-    const { obj, hooks } = objectActor;
+    const { obj, className } = objectActor;
 
     const preview = (grip.preview = {
       kind: "DOMNode",
-      nodeType: rawObj.nodeType,
-      nodeName: rawObj.nodeName,
-      isConnected: rawObj.isConnected === true,
+      nodeType: safeRawObj.nodeType,
+      nodeName: safeRawObj.nodeName,
+      isConnected: safeRawObj.isConnected === true,
     });
 
-    if (rawObj.nodeType == rawObj.DOCUMENT_NODE && rawObj.location) {
-      preview.location = hooks.createValueGrip(rawObj.location.href);
-    } else if (obj.class == "DocumentFragment") {
-      preview.childNodesLength = rawObj.childNodes.length;
+    if (safeRawObj.nodeType == safeRawObj.DOCUMENT_NODE && safeRawObj.location) {
+      preview.location = objectActor.createValueGrip(safeRawObj.location.href, depth);
+    } else if (className == "DocumentFragment") {
+      preview.childNodesLength = safeRawObj.childNodes.length;
 
-      if (hooks.getGripDepth() < 2) {
+      if (depth < 2) {
         preview.childNodes = [];
-        for (const node of rawObj.childNodes) {
-          const actor = hooks.createValueGrip(obj.makeDebuggeeValue(node));
+        for (const node of safeRawObj.childNodes) {
+          const actor = objectActor.createValueGrip(obj.makeDebuggeeValue(node), depth);
           preview.childNodes.push(actor);
           if (preview.childNodes.length == OBJECT_PREVIEW_MAX_ITEMS) {
             break;
           }
         }
       }
-    } else if (Element.isInstance(rawObj)) {
+    } else if (Element.isInstance(safeRawObj)) {
       // For HTML elements (in an HTML document, at least), the nodeName is an
       // uppercased version of the actual element name.  Check for HTML
       // elements, that is elements in the HTML namespace, and lowercase the
       // nodeName in that case.
-      if (rawObj.namespaceURI == "http://www.w3.org/1999/xhtml") {
+      if (safeRawObj.namespaceURI == "http://www.w3.org/1999/xhtml") {
         preview.nodeName = preview.nodeName.toLowerCase();
       }
 
       // Add preview for DOM element attributes.
       preview.attributes = {};
-      preview.attributesLength = rawObj.attributes.length;
-      for (const attr of rawObj.attributes) {
-        preview.attributes[attr.nodeName] = hooks.createValueGrip(attr.value);
+      preview.attributesLength = safeRawObj.attributes.length;
+      for (const attr of safeRawObj.attributes) {
+        preview.attributes[attr.nodeName] = objectActor.createValueGrip(attr.value, depth);
       }
-    } else if (obj.class == "Attr") {
-      preview.value = hooks.createValueGrip(rawObj.value);
+
+      // Custom elements may have private properties. Ensure that we provide
+      // enough information for ObjectInspector to know it should check for
+      // them.
+      const privatePropertiesSymbols = ObjectUtils.getSafePrivatePropertiesSymbols(
+        obj
+      );
+      if (privatePropertiesSymbols.length) {
+        preview.privatePropertiesLength = privatePropertiesSymbols.length;
+      }
+    } else if (className == "Attr") {
+      preview.value = objectActor.createValueGrip(safeRawObj.value, depth);
     } else if (
-      obj.class == "Text" ||
-      obj.class == "CDATASection" ||
-      obj.class == "Comment"
+      className == "Text" ||
+      className == "CDATASection" ||
+      className == "Comment"
     ) {
-      preview.textContent = hooks.createValueGrip(rawObj.textContent);
+      preview.textContent = objectActor.createValueGrip(safeRawObj.textContent, depth);
     }
 
     return true;
   },
 
-  function DOMEvent(objectActor, grip, rawObj) {
-    if (!rawObj || !Event.isInstance(rawObj) || isWorker) {
+  function DOMEvent(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
+    if (!safeRawObj || !Event.isInstance(safeRawObj) || isWorker) {
       return false;
     }
 
-    const { obj, hooks } = objectActor;
+    const { obj, className } = objectActor;
     const preview = (grip.preview = {
       kind: "DOMEvent",
-      type: rawObj.type,
+      type: safeRawObj.type,
       properties: Object.create(null),
     });
 
-    if (hooks.getGripDepth() < 2) {
-      const target = obj.makeDebuggeeValue(rawObj.target);
-      preview.target = hooks.createValueGrip(target);
+    if (depth < 2) {
+      const target = obj.makeDebuggeeValue(safeRawObj.target);
+      preview.target = objectActor.createValueGrip(target, depth);
     }
 
-    if (obj.class == "KeyboardEvent") {
+    if (className == "KeyboardEvent") {
       preview.eventKind = "key";
-      preview.modifiers = ObjectUtils.getModifiersForEvent(rawObj);
+      preview.modifiers = ObjectUtils.getModifiersForEvent(safeRawObj);
     }
 
-    const props = ObjectUtils.getPropsForEvent(obj.class);
+    const props = ObjectUtils.getPropsForEvent(className);
 
     // Add event-specific properties.
     for (const prop of props) {
-      let value = rawObj[prop];
+      let value = safeRawObj[prop];
       if (ObjectUtils.isObjectOrFunction(value)) {
         // Skip properties pointing to objects.
-        if (hooks.getGripDepth() > 1) {
+        if (depth > 1) {
           continue;
         }
         value = obj.makeDebuggeeValue(value);
       }
-      preview.properties[prop] = hooks.createValueGrip(value);
+      preview.properties[prop] = objectActor.createValueGrip(value, depth);
     }
 
     // Add any properties we find on the event object.
     if (!props.length) {
       let i = 0;
-      for (const prop in rawObj) {
-        let value = rawObj[prop];
+      for (const prop in safeRawObj) {
+        let value = safeRawObj[prop];
         if (
           prop == "target" ||
           prop == "type" ||
@@ -1122,12 +1307,12 @@ previewers.Object = [
           continue;
         }
         if (value && typeof value == "object") {
-          if (hooks.getGripDepth() > 1) {
+          if (depth > 1) {
             continue;
           }
           value = obj.makeDebuggeeValue(value);
         }
-        preview.properties[prop] = hooks.createValueGrip(value);
+        preview.properties[prop] = objectActor.createValueGrip(value, depth);
         if (++i == OBJECT_PREVIEW_MAX_ITEMS) {
           break;
         }
@@ -1137,29 +1322,29 @@ previewers.Object = [
     return true;
   },
 
-  function DOMException(objectActor, grip, rawObj, className) {
-    if (!rawObj || className !== "DOMException" || isWorker) {
+  function DOMException(objectActor, grip, depth) {
+    const { safeRawObj } = objectActor;
+    if (!safeRawObj || objectActor.className !== "DOMException" || isWorker) {
       return false;
     }
 
-    const { hooks } = objectActor;
     grip.preview = {
       kind: "DOMException",
-      name: hooks.createValueGrip(rawObj.name),
-      message: hooks.createValueGrip(rawObj.message),
-      code: hooks.createValueGrip(rawObj.code),
-      result: hooks.createValueGrip(rawObj.result),
-      filename: hooks.createValueGrip(rawObj.filename),
-      lineNumber: hooks.createValueGrip(rawObj.lineNumber),
-      columnNumber: hooks.createValueGrip(rawObj.columnNumber),
-      stack: hooks.createValueGrip(rawObj.stack),
+      name: objectActor.createValueGrip(safeRawObj.name, depth),
+      message: objectActor.createValueGrip(safeRawObj.message, depth),
+      code: objectActor.createValueGrip(safeRawObj.code, depth),
+      result: objectActor.createValueGrip(safeRawObj.result, depth),
+      filename: objectActor.createValueGrip(safeRawObj.filename, depth),
+      lineNumber: objectActor.createValueGrip(safeRawObj.lineNumber, depth),
+      columnNumber: objectActor.createValueGrip(safeRawObj.columnNumber, depth),
+      stack: objectActor.createValueGrip(safeRawObj.stack, depth),
     };
 
     return true;
   },
 
-  function Object(objectActor, grip, rawObj, className) {
-    return GenericObject(objectActor, grip, rawObj, className);
+  function Object(objectActor, grip, depth) {
+    return GenericObject(objectActor, grip, depth);
   },
 ];
 

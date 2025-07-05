@@ -3,8 +3,6 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import { prefs, asyncStore, features } from "./prefs";
-import { getDocument } from "./editor/source-documents";
-import { wasmOffsetToLine } from "./wasm";
 
 function getThreadFront(dbg) {
   return dbg.targetCommand.targetFront.threadFront;
@@ -32,11 +30,6 @@ function bindSelectors(obj) {
   }, {});
 }
 
-function getCM() {
-  const cm = document.querySelector(".CodeMirror");
-  return cm?.CodeMirror;
-}
-
 function formatMappedLocation(mappedLocation) {
   const { location, generatedLocation } = mappedLocation;
   return {
@@ -57,11 +50,6 @@ function formatSelectedColumnBreakpoints(dbg) {
   return formatMappedLocations(positions);
 }
 
-function getDocumentForUrl(dbg, url) {
-  const source = findSource(dbg, url);
-  return getDocument(source.id);
-}
-
 const diff = (a, b) => Object.keys(a).filter(key => !Object.is(a[key], b[key]));
 
 export function setupHelper(obj) {
@@ -72,18 +60,12 @@ export function setupHelper(obj) {
     prefs,
     asyncStore,
     features,
-    getCM,
-
-    // Expose this to tests as they don't have access to debugger's browser loader require
-    // and so can't load utils/wasm.js
-    wasmOffsetToLine: (sourceId, offset) => wasmOffsetToLine(sourceId, offset),
 
     helpers: {
       findSource: url => findSource(dbg, url),
       findSources: url => findSources(dbg, url),
       evaluate: expression => evaluate(dbg, expression),
       dumpThread: () => getThreadFront(dbg).dumpThread(),
-      getDocument: url => getDocumentForUrl(dbg, url),
     },
     formatters: {
       mappedLocations: locations => formatMappedLocations(locations),

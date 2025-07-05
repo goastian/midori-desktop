@@ -5,6 +5,7 @@
 import { getThreadPauseState } from "../reducers/pause";
 import { getSelectedSource, getSelectedLocation } from "./sources";
 import { getBlackBoxRanges } from "./source-blackbox";
+import { getSelectedTraceSource } from "./tracer";
 
 // eslint-disable-next-line
 import { getSelectedLocation as _getSelectedLocation } from "../utils/selected-location";
@@ -12,9 +13,11 @@ import { isFrameBlackBoxed } from "../utils/source";
 import { createSelector } from "devtools/client/shared/vendor/reselect";
 
 export const getSelectedFrame = createSelector(
-  (state, thread) => state.pause.threads[thread],
+  (state, thread) => state.pause.threads[thread || getCurrentThread(state)],
   threadPauseState => {
-    if (!threadPauseState) return null;
+    if (!threadPauseState) {
+      return null;
+    }
     const { selectedFrameId, frames } = threadPauseState;
     if (frames) {
       return frames.find(frame => frame.id == selectedFrameId);
@@ -133,7 +136,8 @@ function getGeneratedFrameId(frameId) {
   }
   return frameId;
 }
-
+// This is Environment Scope information from the platform.
+// See https://searchfox.org/mozilla-central/rev/b0e8e4ceb46cb3339cdcb90310fcc161ef4b9e3e/devtools/server/actors/environment.js#42-81
 export function getGeneratedFrameScope(state, frame) {
   if (!frame) {
     return null;
@@ -200,22 +204,30 @@ export function getSelectedFrameBindings(state, thread) {
   return frameBindings;
 }
 
-function getFrameScope(state, frame) {
-  return (
-    getOriginalFrameScope(state, frame) || getGeneratedFrameScope(state, frame)
-  );
-}
-
-// This is only used by tests
-export function getSelectedScope(state, thread) {
-  const frame = getSelectedFrame(state, thread);
-
-  const frameScope = getFrameScope(state, frame);
-  if (!frameScope) {
+export function getSelectedScope(state) {
+  const frame = getSelectedFrame(state);
+  if (!frame) {
     return null;
   }
 
-  return frameScope.scope || null;
+  let scopes;
+  // For non-pretty printed original sources
+  if (
+    frame.location.source.isOriginal &&
+    !frame.location.source.isPrettyPrinted &&
+    !frame.generatedLocation?.source.isWasm
+  ) {
+    scopes = getOriginalFrameScope(state, frame)?.scope;
+    // Fallback to the generated scopes if there are no original scopes
+    if (!scopes) {
+      scopes = getGeneratedFrameScope(state, frame)?.scope;
+    }
+  } else {
+    // For generated sources
+    // For pretty printed sources - Even though are seen as original sources they do not include any rename of variables/function names.
+    scopes = getGeneratedFrameScope(state, frame)?.scope;
+  }
+  return scopes;
 }
 
 export function getSelectedOriginalScope(state, thread) {
@@ -238,6 +250,11 @@ export function getSelectedFrameId(state, thread) {
 
 export function isTopFrameSelected(state, thread) {
   const selectedFrameId = getSelectedFrameId(state, thread);
+  // Consider that the top frame is selected when none is specified,
+  // which happens when a JS Tracer frame is selected.
+  if (!selectedFrameId) {
+    return true;
+  }
   const topFrame = getTopFrame(state, thread);
   return selectedFrameId == topFrame?.id;
 }
@@ -271,21 +288,60 @@ export function isMapScopesEnabled(state) {
   return state.pause.mapScopes;
 }
 
-export function getInlinePreviews(state, thread, frameId) {
+/**
+ * This selector only returns inline previews object for current paused location.
+ * (it ignores the JS Tracer and ignore the selected location, which may different from paused location)
+ */
+export function getSelectedFrameInlinePreviews(state) {
+  const thread = getCurrentThread(state);
+  const frame = getSelectedFrame(state, thread);
+  if (!frame) {
+    return null;
+  }
   return getThreadPauseState(state.pause, thread).inlinePreview[
-    getGeneratedFrameId(frameId)
+    getGeneratedFrameId(frame.id)
   ];
 }
 
-// This is only used by tests
-export function getSelectedInlinePreviews(state) {
-  const thread = getCurrentThread(state);
-  const frameId = getSelectedFrameId(state, thread);
-  if (!frameId) {
+/**
+ * This selector returns the inline previews object for the selected location.
+ * It consider both paused and traced previews and will only return values
+ * if it matches the currently selected location.
+ */
+export function getInlinePreviews(state) {
+  const selectedSource = getSelectedSource(state);
+  if (!selectedSource) {
     return null;
   }
 
-  return getInlinePreviews(state, thread, frameId);
+  // We first check if a frame in the JS Tracer was selected and generated its previews
+  if (state.tracerFrames?.previews) {
+    const selectedTraceSource = getSelectedTraceSource(state);
+    if (selectedTraceSource) {
+      if (selectedTraceSource.id == selectedSource.id) {
+        return state.tracerFrames?.previews;
+      }
+
+      // If the "selected" versus "tracing selected" sources don't match, it means that we selected the original source
+      // while the traced source is the generated one. We don't yet support showing inline previews in this configuration.
+      return null;
+    }
+  }
+
+  // Otherwise, we fallback to look if we were paused and the inline preview is available
+  const thread = getCurrentThread(state);
+  const frame = getSelectedFrame(state, thread);
+  // When we are paused, we also check if the selected source matches the paused original or generated location.
+  if (
+    !frame ||
+    (frame.location.source.id != selectedSource.id &&
+      frame.generatedLocation.source.id != selectedSource.id)
+  ) {
+    return null;
+  }
+  return getThreadPauseState(state.pause, thread).inlinePreview[
+    getGeneratedFrameId(frame.id)
+  ];
 }
 
 export function getLastExpandedScopes(state, thread) {

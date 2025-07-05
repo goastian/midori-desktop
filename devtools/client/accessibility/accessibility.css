@@ -19,20 +19,18 @@
   --accessibility-tree-height: calc(var(--accessibility-main-height) - var(--theme-toolbar-height) - 1px);
   --accessibility-arrow-horizontal-padding: 4px;
   --accessibility-tree-row-height: 21px;
-  --accessibility-unfocused-tree-focused-node-background: var(--grey-20);
-  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-icon-dimmed-color);
+  --accessibility-unfocused-tree-focused-node-background: light-dark(var(--grey-20), var(--grey-70));
+  --accessibility-unfocused-tree-focused-node-twisty-fill: light-dark(var(--theme-icon-dimmed-color), var(--theme-selection-color));
   --accessibility-link-color: var(--theme-link-color);
-  --accessibility-link-color-active: var(--blue-70);
-  --accessibility-body-background-a90: rgba(255, 255, 255, 0.9);
-  --accessibility-code-background: var(--grey-20);
-}
+  --accessibility-link-color-active: light-dark(var(--blue-70), var(--blue-40));
+  --accessibility-body-background-a90: light-dark(rgba(255, 255, 255, 0.9), rgba(42, 42, 46, 0.9));
+  --accessibility-code-background: light-dark(var(--grey-20), var(--grey-70));
 
-:root.theme-dark {
-  --accessibility-unfocused-tree-focused-node-background: var(--grey-70);
-  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-selection-color);
-  --accessibility-link-color-active: var(--blue-40);
-  --accessibility-body-background-a90: rgba(42, 42, 46, 0.9);
-  --accessibility-code-background: var(--grey-70);
+  &[forced-colors-active] {
+    --accessibility-unfocused-tree-focused-node-background: GrayText;
+    --accessibility-unfocused-tree-focused-node-color: SelectedItemText;
+    --accessibility-unfocused-tree-focused-node-twisty-fill: SelectedItemText;
+  }
 }
 
 /* General */
@@ -71,7 +69,7 @@ body {
 
 .accessible .tree .node.focused .theme-twisty,
 .treeTable .treeRow.selected .theme-twisty {
-  fill: var(--theme-selection-color);
+  color: var(--theme-selection-color);
 }
 
 .mainFrame {
@@ -84,8 +82,7 @@ body {
   width: var(--accessibility-full-length-minus-splitter);
 }
 
-.devtools-button,
-.toggle-button {
+.devtools-button {
   cursor: pointer;
   border: 1px solid transparent;
 }
@@ -118,8 +115,7 @@ body {
 }
 
 .devtools-button:focus,
-.devtools-button > .btn-content:focus,
-.devtools-button::-moz-focus-inner {
+.devtools-button > .btn-content:focus {
   outline: none;
 }
 
@@ -209,11 +205,10 @@ body {
   width: 14px;
   height: 14px;
   background-size: contain;
-  margin: 0px 1px;
+  margin: 0 1px;
   vertical-align: text-bottom;
 }
 
-.devtools-toolbar .badge.toggle-button[disabled],
 .tooltip-container .menuitem > .command[disabled] {
   opacity: 0.5;
 }
@@ -232,14 +227,6 @@ body {
   background-color: transparent;
   text-align: start;
   width: 100%;
-}
-
-.devtools-toolbar .beta {
-  color: var(--theme-highlight-blue);
-  font-size: 80%;
-  font-weight: 500;
-  margin-inline-end: 3px;
-  margin-inline-start: 4px;
 }
 
 #audit-progress-container {
@@ -375,25 +362,21 @@ body {
   outline: 0;
 }
 
-.treeTable::-moz-focus-inner {
-  border: 0;
-}
-
 .treeTable:not(:focus, :focus-within) .treeRow.selected {
   background-color: var(--accessibility-unfocused-tree-focused-node-background);
-}
 
-.treeTable:not(:focus, :focus-within) .treeRow.selected .theme-twisty {
-  fill: var(--accessibility-unfocused-tree-focused-node-twisty-fill);
-}
+  & .theme-twisty {
+    color: var(--accessibility-unfocused-tree-focused-node-twisty-fill);
+  }
 
-.treeTable:not(:focus, :focus-within) .treeRow.selected *,
-.treeTable:not(:focus, :focus-within) .treeRow.selected .treeLabelCell:after {
-  color: inherit;
-}
+  & *,
+  & .treeLabelCell::after {
+    color: var(--accessibility-unfocused-tree-focused-node-color, inherit);
+  }
 
-.treeTable:not(:focus, :focus-within) .treeRow.selected .objectBox-string {
-  color: var(--string-color);
+  & .objectBox-string {
+    color: var(--accessibility-unfocused-tree-focused-node-color, var(--string-color));
+  }
 }
 
 .treeTable > thead {
@@ -438,7 +421,7 @@ body {
   font: message-box;
   font-size: var(--theme-body-font-size);
   border-radius: 3px;
-  padding: 0px 3px;
+  padding: 0 3px;
   margin-inline-start: 5px;
   color: var(--badge-color);
   background-color: var(--badge-background-color);
@@ -449,7 +432,7 @@ body {
 .badge.audit-badge::before {
   content: "";
   display: inline-block;
-  vertical-align: 0px;
+  vertical-align: 0;
   width: 9px;
   height: 9px;
   margin-inline-end: 2px;
@@ -479,13 +462,6 @@ body {
   }
 }
 
-.badge.toggle-button {
-  color: var(--theme-body-color);
-  background-color: var(--badge-interactive-background-color);
-  border-color: transparent;
-}
-
-.devtools-toolbar .badge.toggle-button:focus,
 .devtools-toolbar .toolbar-menu-button:focus {
   outline: 2px solid var(--accessibility-toolbar-focus);
   outline-offset: -2px;
@@ -494,23 +470,12 @@ body {
 
 .treeTable:focus-within .treeRow.selected .badges .badge {
   background-color: var(--badge-active-background-color);
-  border-color: var(--accessible-active-border-color);
+  border-color: var(--badge-active-border-color);
   color: var(--theme-selection-color);
 }
 
 .treeTable:not(:focus, :focus-within) .treeRow.selected .badges .badge {
   color: var(--badge-color);
-}
-
-.badge.toggle-button.checked {
-  background-color: var(--badge-active-background-color);
-  color: var(--theme-selection-color);
-}
-
-/* Avoid having a default dotted border on keyboard focus since we provide focus
-   styling*/
-.badge.toggle-button::-moz-focus-inner {
-  border: none;
 }
 
 /* Right Sidebar */
@@ -567,10 +532,6 @@ body {
   outline: 0;
 }
 
-.accessible .tree::-moz-focus-inner {
-  border: 0;
-}
-
 /* Unset tree styles leaking from reps.css */
 .accessible .tree .tree-node:not(.focused):hover {
   background-color: transparent;
@@ -578,11 +539,16 @@ body {
 
 .accessible .tree:not(:focus) .node.focused {
   background-color: var(--accessibility-unfocused-tree-focused-node-background);
+
+  :root[forced-colors-active] & {
+    color: var(--accessibility-unfocused-tree-focused-node-color);
+  }
+
+  & .theme-twisty {
+    color: var(--accessibility-unfocused-tree-focused-node-twisty-fill);
+  }
 }
 
-.accessible .tree:not(:focus) .node.focused .theme-twisty {
-  fill: var(--accessibility-unfocused-tree-focused-node-twisty-fill);
-}
 
 .accessible .tree .node:not(.focused):hover {
   background-color: var(--theme-selection-background-hover);
@@ -620,10 +586,6 @@ body {
   fill: var(--grey-40);
 }
 
-.accessible .tree .arrow {
-  flex-shrink: 0;
-}
-
 .accessible .tree .object-value {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -642,7 +604,7 @@ body {
   color: var(--badge-color);
   border: 1px solid var(--badge-border-color);
   border-radius: 3px;
-  padding: 0px 2px;
+  padding: 0 2px;
   margin-inline-start: 5px;
   user-select: none;
 }
@@ -821,7 +783,7 @@ body {
   width: 12px;
   height: 12px;
   margin-inline-end: 3px;
-  margin-inline-start: 0px;
+  margin-inline-start: 0;
   background: url("chrome://devtools/skin/images/eye.svg") no-repeat;
   -moz-context-properties: fill, stroke;
   fill: var(--theme-icon-color);

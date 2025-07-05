@@ -18,11 +18,26 @@ function handleRequest(request, response) {
     case "null":
       response.write('{ "greeting": null }');
       break;
+    case "root-null":
+      response.write(`null`);
+      break;
     case "nogrip":
       response.write('{"obj": {"type": "string" }}');
       break;
     case "empty":
       response.write("{}");
+      break;
+    case "numbers":
+      response.write(`{
+        "small": 12,
+        "negzero": -0,
+        "big": 1516340399466235648,
+        "precise": 3.141592653589793238462643383279,
+        "exp": 1e2
+      }`);
+      break;
+    case "large-root-integer":
+      response.write(`1516340399466235648`);
       break;
   }
 }

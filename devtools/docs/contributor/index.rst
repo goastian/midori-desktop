@@ -55,6 +55,7 @@ Automated tests
    DevTools mochitests <tests/mochitest-devtools.md>
    Node tests <tests/node-tests.md>
    Memory Allocation tests </devtools/tests/memory/index.md>
+   JavaScript Objects tests<tests/js-object-tests.md>
    Writing tests <tests/writing-tests.md>
    Debugging intermittent failures <tests/debugging-intermittents.md>
    Performance tests overview<tests/performance-tests-overview.md>
@@ -92,13 +93,13 @@ Frontend
 .. toctree::
    :maxdepth: 1
 
-  Panel SVGs <frontend/svgs.md>
-  React <frontend/react.md>
-  React Guidelines <frontend/react-guidelines.md>
-  Redux <frontend/redux.md>
-  Redux Guidelines <frontend/redux-guidelines.md>
-  Telemetry <frontend/telemetry.md>
-  Content Security Policy <frontend/csp.md>
+   Panel SVGs <frontend/svgs.md>
+   React <frontend/react.md>
+   React Guidelines <frontend/react-guidelines.md>
+   Redux <frontend/redux.md>
+   Redux Guidelines <frontend/redux-guidelines.md>
+   Telemetry <frontend/telemetry.md>
+   Content Security Policy <frontend/csp.md>
 
 
 Backend

@@ -7,8 +7,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   span,
 } = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
@@ -20,9 +20,9 @@ const AuditController = createFactory(
   require("resource://devtools/client/accessibility/components/AuditController.js")
 );
 
-const {
-  REPS,
-} = require("resource://devtools/client/shared/components/reps/index.js");
+const { REPS } = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/reps/index.mjs"
+);
 const { Grip } = REPS;
 const Rep = createFactory(REPS.Rep);
 

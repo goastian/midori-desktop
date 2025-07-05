@@ -6,7 +6,7 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   connect,
@@ -19,12 +19,16 @@ const {
 const actions = require("resource://devtools/client/webconsole/actions/index.js");
 
 loader.lazyGetter(this, "REPS", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .REPS;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs",
+    { global: "current" }
+  ).REPS;
 });
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs",
+    { global: "current" }
+  ).MODE;
 });
 loader.lazyRequireGetter(
   this,
@@ -39,7 +43,6 @@ class EagerEvaluation extends Component {
   static get propTypes() {
     return {
       terminalEagerResult: PropTypes.any,
-      hud: PropTypes.object.isRequired,
       highlightDomElement: PropTypes.func.isRequired,
       unHighlightDomElement: PropTypes.func.isRequired,
     };

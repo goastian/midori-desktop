@@ -8,7 +8,7 @@
  * Target actor for all resources in a content process of Firefox (chrome sandboxes, frame
  * scripts, documents, etc.)
  *
- * See devtools/docs/backend/actor-hierarchy.md for more details.
+ * See devtools/docs/contributor/backend/actor-hierarchy.md for more details about all the targets.
  */
 
 const { ThreadActor } = require("resource://devtools/server/actors/thread.js");
@@ -119,6 +119,10 @@ class ContentProcessTargetActor extends BaseTargetActor {
     return this._consoleScope;
   }
 
+  get targetGlobal() {
+    return this._consoleScope;
+  }
+
   get sourcesManager() {
     if (!this._sourcesManager) {
       assert(
@@ -161,6 +165,8 @@ class ContentProcessTargetActor extends BaseTargetActor {
 
     return {
       actor: this.actorID,
+      targetType: this.targetType,
+
       isXpcShellTarget: this.isXpcShellTarget,
       processID: Services.appinfo.processID,
       remoteType: Services.appinfo.remoteType,

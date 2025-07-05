@@ -118,7 +118,7 @@ function getNodeInfo(node, elementStyle) {
       sheetHref: rule.domRule.href,
       textProperty: declaration,
     };
-  } else if (declaration && classList.contains("ruleview-shape-point")) {
+  } else if (declaration && classList.contains("inspector-shape-point")) {
     type = VIEW_NODE_SHAPE_POINT_TYPE;
     value = {
       property: getPropertyNameAndValue(node).name,
@@ -144,7 +144,7 @@ function getNodeInfo(node, elementStyle) {
   } else if (node.classList.contains("ruleview-selector-warnings")) {
     type = VIEW_NODE_CSS_SELECTOR_WARNINGS;
     value = node.getAttribute("data-selector-warning-kind").split(",");
-  } else if (declaration && classList.contains("ruleview-shapeswatch")) {
+  } else if (declaration && classList.contains("inspector-shapeswatch")) {
     type = VIEW_NODE_SHAPE_SWATCH;
     value = {
       enabled: declaration.enabled,
@@ -153,8 +153,8 @@ function getNodeInfo(node, elementStyle) {
     };
   } else if (
     declaration &&
-    (classList.contains("ruleview-variable") ||
-      classList.contains("ruleview-unmatched-variable"))
+    (classList.contains("inspector-variable") ||
+      classList.contains("inspector-unmatched"))
   ) {
     type = VIEW_NODE_VARIABLE_TYPE;
     value = {
@@ -166,11 +166,15 @@ function getNodeInfo(node, elementStyle) {
       sheetHref: rule.domRule.href,
       textProperty: declaration,
       variable: node.dataset.variable,
+      variableComputed: node.dataset.variableComputed,
+      startingStyleVariable: node.dataset.startingStyleVariable,
       registeredProperty: {
         initialValue: node.dataset.registeredPropertyInitialValue,
         syntax: node.dataset.registeredPropertySyntax,
         inherits: node.dataset.registeredPropertyInherits,
       },
+      outputParserOptions: declaration.editor.outputParserOptions,
+      cssProperties: declaration.editor.ruleView.cssProperties,
     };
   } else if (
     declaration &&
@@ -207,7 +211,7 @@ function getNodeInfo(node, elementStyle) {
       ? node
       : node.querySelector(".ruleview-rule-source-label");
     value =
-      sourceLabelEl.getAttribute("data-url") || rule.sheet?.href || rule.title;
+      sourceLabelEl.getAttribute("href") || rule.sheet?.href || rule.title;
   } else {
     return null;
   }
@@ -264,7 +268,7 @@ function getShapeToggleActive(node) {
       node.classList.contains("ruleview-computed") ||
       node.classList.contains("ruleview-property")
     ) {
-      return node.querySelector(".ruleview-shapeswatch.active");
+      return node.querySelector(`.inspector-shapeswatch[aria-pressed="true"]`);
     }
 
     node = node.parentNode;

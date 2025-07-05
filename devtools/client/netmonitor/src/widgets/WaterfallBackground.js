@@ -4,8 +4,9 @@
 
 "use strict";
 
-const { getColor } = require("resource://devtools/client/shared/theme.js");
-const { colorUtils } = require("resource://devtools/shared/css/color.js");
+const {
+  getCssVariableColor,
+} = require("resource://devtools/client/shared/theme.js");
 const {
   REQUESTS_WATERFALL,
 } = require("resource://devtools/client/netmonitor/src/constants.js");
@@ -123,12 +124,12 @@ class WaterfallBackground {
       REQUESTS_WATERFALL;
     drawTimestamp(
       state.timingMarkers.firstDocumentDOMContentLoadedTimestamp,
-      this.getThemeColorAsRgba(DOMCONTENTLOADED_TICKS_COLOR, state.theme)
+      this.getThemeColorAsRgba(DOMCONTENTLOADED_TICKS_COLOR)
     );
 
     drawTimestamp(
       state.timingMarkers.firstDocumentLoadTimestamp,
-      this.getThemeColorAsRgba(LOAD_TICKS_COLOR, state.theme)
+      this.getThemeColorAsRgba(LOAD_TICKS_COLOR)
     );
 
     // Flush the image data and cache the waterfall background.
@@ -143,20 +144,25 @@ class WaterfallBackground {
   }
 
   /**
-   * Retrieve a color defined for the provided theme as a rgba array. The alpha channel is
-   * forced to the waterfall constant TICKS_COLOR_OPACITY.
+   * Retrieve a color defined for the provided theme as a rgba array.
    *
-   * @param {String} colorName
-   *        The name of the theme color
-   * @param {String} theme
-   *        The name of the theme
+   * @param {String} colorVariableName
+   *        The name of the variable defining the color
    * @return {Array} RGBA array for the color.
    */
-  getThemeColorAsRgba(colorName, theme) {
-    const colorStr = getColor(colorName, theme);
-    const color = new colorUtils.CssColor(colorStr);
-    const { r, g, b } = color.getRGBATuple();
-    return [r, g, b, REQUESTS_WATERFALL.TICKS_COLOR_OPACITY];
+  getThemeColorAsRgba(colorVariableName) {
+    const colorStr = getCssVariableColor(
+      colorVariableName,
+      document.ownerGlobal
+    );
+    const { r, g, b, a } = InspectorUtils.colorToRGBA(
+      // In theory colorStr shouldn't be null, but we got report that it was for someone (Bug 1924882).
+      // Until we actually get to the cause of this, let's use a default color that works
+      // for both light and dark themes.
+      colorStr || "#000",
+      document
+    );
+    return [r, g, b, a * 255];
   }
 
   destroy() {

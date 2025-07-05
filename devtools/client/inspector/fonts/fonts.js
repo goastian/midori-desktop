@@ -7,11 +7,13 @@
 const {
   gDevTools,
 } = require("resource://devtools/client/framework/devtools.js");
-const { getColor } = require("resource://devtools/client/shared/theme.js");
+const {
+  getCssVariableColor,
+} = require("resource://devtools/client/shared/theme.js");
 const {
   createFactory,
   createElement,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const {
   Provider,
 } = require("resource://devtools/client/shared/vendor/react-redux.js");
@@ -50,6 +52,9 @@ const {
 const {
   updatePreviewText,
 } = require("resource://devtools/client/inspector/fonts/actions/font-options.js");
+const { TYPES: HIGHLIGHTER_TYPES } = ChromeUtils.importESModule(
+  "resource://devtools/shared/highlighters.mjs"
+);
 
 const FONT_PROPERTIES = [
   "font-family",
@@ -70,8 +75,6 @@ const REGISTERED_AXES_TO_FONT_PROPERTIES = {
   wght: "font-weight",
 };
 const REGISTERED_AXES = Object.keys(REGISTERED_AXES_TO_FONT_PROPERTIES);
-
-const HISTOGRAM_FONT_TYPE_DISPLAYED = "DEVTOOLS_FONTEDITOR_FONT_TYPE_DISPLAYED";
 
 class FontInspector {
   constructor(inspector, window) {
@@ -113,7 +116,6 @@ class FontInspector {
     this.update = this.update.bind(this);
     this.updateFontVariationSettings =
       this.updateFontVariationSettings.bind(this);
-    this.onResourceAvailable = this.onResourceAvailable.bind(this);
 
     this.init();
   }
@@ -179,11 +181,6 @@ class FontInspector {
     this.inspector.selection.on("new-node-front", this.onNewNode);
     // @see ToolSidebar.onSidebarTabSelected()
     this.inspector.sidebar.on("fontinspector-selected", this.onNewNode);
-
-    this.inspector.toolbox.resourceCommand.watchResources(
-      [this.inspector.toolbox.resourceCommand.TYPES.DOCUMENT_EVENT],
-      { onAvailable: this.onResourceAvailable }
-    );
 
     // Listen for theme changes as the color of the previews depend on the theme
     gDevTools.on("theme-switched", this.onThemeChanged);
@@ -325,12 +322,6 @@ class FontInspector {
     this.ruleView.off("property-value-updated", this.onRulePropertyUpdated);
     gDevTools.off("theme-switched", this.onThemeChanged);
 
-    this.inspector.toolbox.resourceCommand.unwatchResources(
-      [this.inspector.toolbox.resourceCommand.TYPES.DOCUMENT_EVENT],
-      { onAvailable: this.onResourceAvailable }
-    );
-
-    this.fontsHighlighter = null;
     this.document = null;
     this.inspector = null;
     this.node = null;
@@ -341,21 +332,6 @@ class FontInspector {
     this.store = null;
     this.writers.clear();
     this.writers = null;
-  }
-
-  onResourceAvailable(resources) {
-    for (const resource of resources) {
-      if (
-        resource.resourceType ===
-          this.inspector.commands.resourceCommand.TYPES.DOCUMENT_EVENT &&
-        resource.name === "will-navigate" &&
-        resource.targetFront.isTopLevel
-      ) {
-        // Reset the fontsHighlighter so the next call to `onToggleFontHighlight` will
-        // re-create it from the inspector front tied to the new document.
-        this.fontsHighlighter = null;
-      }
-    }
   }
 
   /**
@@ -687,7 +663,6 @@ class FontInspector {
    */
   logTelemetryProbesOnNewNode() {
     const { fontEditor } = this.store.getState();
-    const { telemetry } = this.inspector;
 
     // Log data about the currently edited font (if any).
     // Note that the edited font is always the first one from the fontEditor.fonts array.
@@ -699,9 +674,9 @@ class FontInspector {
     const nbOfAxes = editedFont.variationAxes
       ? editedFont.variationAxes.length
       : 0;
-    telemetry
-      .getHistogramById(HISTOGRAM_FONT_TYPE_DISPLAYED)
-      .add(!nbOfAxes ? "nonvariable" : "variable");
+    Glean.devtoolsInspector.fonteditorFontTypeDisplayed[
+      !nbOfAxes ? "nonvariable" : "variable"
+    ].add(1);
   }
 
   /**
@@ -891,32 +866,24 @@ class FontInspector {
    *         just to the current element selection.
    */
   async onToggleFontHighlight(font, show, isForCurrentElement = true) {
-    if (!this.fontsHighlighter) {
-      try {
-        this.fontsHighlighter =
-          await this.inspector.inspectorFront.getHighlighterByType(
-            "FontsHighlighter"
-          );
-      } catch (e) {
-        // the FontsHighlighter won't be available when debugging a XUL document.
-        // Silently fail here and prevent any future calls to the function.
-        this.onToggleFontHighlight = () => {};
-        return;
-      }
-    }
-
     try {
       if (show) {
         const node = isForCurrentElement
-          ? this.node
+          ? this.inspector.selection.nodeFront
           : this.node.walkerFront.rootNode;
 
-        await this.fontsHighlighter.show(node, {
-          CSSFamilyName: font.CSSFamilyName,
-          name: font.name,
-        });
+        await this.inspector.highlighters.showHighlighterTypeForNode(
+          HIGHLIGHTER_TYPES.FONTS,
+          node,
+          {
+            CSSFamilyName: font.CSSFamilyName,
+            name: font.name,
+          }
+        );
       } else {
-        await this.fontsHighlighter.hide();
+        await this.inspector.highlighters.hideHighlighterType(
+          HIGHLIGHTER_TYPES.FONTS
+        );
       }
     } catch (e) {
       // Silently handle protocol errors here, because these might be called during
@@ -1031,7 +998,10 @@ class FontInspector {
       // Coerce the type of `supportsFontVariations` to a boolean.
       includeVariations: !!this.pageStyle.supportsFontVariations,
       previewText,
-      previewFillStyle: getColor("body-color"),
+      previewFillStyle: getCssVariableColor(
+        "--theme-body-color",
+        this.document.ownerGlobal
+      ),
     };
 
     // If there are no fonts used on the page, the result is an empty array.

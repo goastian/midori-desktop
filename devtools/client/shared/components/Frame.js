@@ -6,9 +6,9 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   getUnicodeUrl,
   getUnicodeUrlPath,
@@ -35,8 +35,14 @@ function savedFrameToLocation(frame) {
   const { source: url, line, column, sourceId } = frame;
   return {
     url,
+
+    // Line is 1-based everywhere.
     line,
-    column,
+
+    // The column received from spidermonkey Frame objects are 1-based,
+    // while most of DevTools frontend consider it to be 0-based.
+    column: column - 1,
+
     // The sourceId will be a string if it's a source actor ID, otherwise
     // it is either a Spidermonkey-internal ID from a SavedFrame or missing,
     // and in either case we can't use the ID for anything useful.
@@ -110,8 +116,7 @@ class Frame extends Component {
     this._locationChanged = this._locationChanged.bind(this);
   }
 
-  // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillMount() {
+  componentDidMount() {
     if (this.props.sourceMapURLService) {
       const location = savedFrameToLocation(this.props.frame);
       // Many things that make use of this component either:
@@ -153,8 +158,11 @@ class Frame extends Component {
     const source = currentLocation.url || "";
     const line =
       currentLocation.line != void 0 ? Number(currentLocation.line) : null;
+    // column is 0-based while we always display 1-based numbers
     const column =
-      currentLocation.column != void 0 ? Number(currentLocation.column) : null;
+      currentLocation.column != void 0
+        ? Number(currentLocation.column) + 1
+        : null;
     return {
       source,
       line,
@@ -259,10 +267,13 @@ class Frame extends Component {
       return {
         ...sourceElConfig,
         onClick: e => {
+          // We always need to prevent the default behavior of <a> link
           e.preventDefault();
-          e.stopPropagation();
+          if (onClick) {
+            e.stopPropagation();
 
-          onClick(generatedLocation);
+            onClick(generatedLocation);
+          }
         },
         href: source,
         draggable: false,

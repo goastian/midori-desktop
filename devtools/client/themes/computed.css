@@ -89,7 +89,7 @@
 }
 
 .computed-property-view {
-  padding: 2px 0px;
+  padding: 2px 0;
   padding-inline-start: 5px;
   display: flex;
   flex-wrap: wrap;
@@ -128,7 +128,7 @@
   background-repeat: no-repeat;
   background-size: contain;
   -moz-context-properties: fill;
-  fill: var(--theme-text-color-inactive);
+  fill: var(--theme-icon-dimmed-color);
 }
 
 .computed-other-property-value:dir(rtl)::before {
@@ -138,6 +138,23 @@
 .computed-property-value {
   padding-inline-start: 14px;
   outline: 0 !important;
+}
+
+.invalid-at-computed-value-time-warning {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: middle;
+  margin-inline-start: 4px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  -moz-context-properties: fill;
+  background-image: var(--invalid-at-computed-value-time-icon);
+  fill: var(--invalid-at-computed-value-time-fill-color);
+
+  &[hidden] {
+    display: none;
+  }
 }
 
 .matchedselectors {
@@ -196,6 +213,11 @@
   border-style: dotted;
   border-color: var(--theme-splitter-color);
   border-width: 1px 1px 0 1px;
+
+  /* Make the border more visible in High Contrast Mode */
+  :root[forced-colors-active]  &{
+    border-style: solid;
+  }
 }
 
 .matchedselectors > p:last-of-type {
@@ -206,9 +228,6 @@
   text-decoration: line-through;
 }
 
-.rule-text.parentmatch {
-  opacity: 0.5;
-}
 
 #computed-no-results {
   height: 100%;
@@ -226,6 +245,7 @@
   padding: 0 3px;
   cursor: pointer;
   float: inline-end;
+  color: var(--theme-internal-link-color);
 }
 
 /* Take away these two :visited rules to get a core dumper     */
@@ -236,28 +256,6 @@
   text-decoration-skip-ink: none;
 }
 
-.computed-colorswatch {
-  border-radius: 50%;
-  width: 0.9em;
-  height: 0.9em;
-  vertical-align: middle;
-  margin-inline-end: 5px;
-  display: inline-block;
-  position: relative;
-}
-
-.computed-colorswatch::before {
-  content: '';
-  background-color: #eee;
-  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc),
-                    linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc);
-  background-size: 12px 12px;
-  background-position: 0 0, 6px 6px;
-  position: absolute;
-  border-radius: 50%;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: -1;
+.computed-property-value .inspector-colorswatch {
+  --swatch-size: 0.9em;
 }

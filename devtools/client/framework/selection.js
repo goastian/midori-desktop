@@ -55,41 +55,51 @@ loader.lazyRequireGetter(
  *   "reparented" when the node (or one of its parents) is moved under
  *   a different node
  */
-function Selection() {
-  EventEmitter.decorate(this);
+class Selection extends EventEmitter {
+  constructor() {
+    super();
+
+    this.setNodeFront = this.setNodeFront.bind(this);
+  }
+
+  #nodeFront;
 
   // The WalkerFront is dynamic and is always set to the selected NodeFront's WalkerFront.
-  this._walker = null;
+  #walker = null;
+
   // A single node front can be represented twice on the client when the node is a slotted
   // element. It will be displayed once as a direct child of the host element, and once as
   // a child of a slot in the "shadow DOM". The latter is called the slotted version.
-  this._isSlotted = false;
+  #isSlotted = false;
 
-  this._onMutations = this._onMutations.bind(this);
-  this.setNodeFront = this.setNodeFront.bind(this);
-}
-
-Selection.prototype = {
-  _onMutations(mutations) {
+  #onMutations = mutations => {
     let attributeChange = false;
     let pseudoChange = false;
     let detached = false;
-    let parentNode = null;
+    let detachedNodeParent = null;
 
     for (const m of mutations) {
-      if (!attributeChange && m.type == "attributes") {
+      if (m.type == "attributes") {
         attributeChange = true;
-      }
-      if (m.type == "childList") {
-        if (!detached && !this.isConnected()) {
-          if (this.isNode()) {
-            parentNode = m.target;
-          }
-          detached = true;
-        }
       }
       if (m.type == "pseudoClassLock") {
         pseudoChange = true;
+      }
+      if (m.type == "childList") {
+        if (
+          // If the node that was selected was removed…
+          !this.isConnected() &&
+          // …directly in this mutation, let's pick its parent node
+          (m.removed.some(nodeFront => nodeFront == this.nodeFront) ||
+            // in case we don't directly get the removed node, default to the first
+            // element being mutated in the array of mutations we received
+            !detachedNodeParent)
+        ) {
+          if (this.isNode()) {
+            detachedNodeParent = m.target;
+          }
+          detached = true;
+        }
       }
     }
 
@@ -101,46 +111,46 @@ Selection.prototype = {
       this.emit("pseudoclass");
     }
     if (detached) {
-      this.emit("detached-front", parentNode);
+      this.emit("detached-front", detachedNodeParent);
     }
-  },
+  };
 
   destroy() {
     this.setWalker();
-    this._nodeFront = null;
-  },
+    this.#nodeFront = null;
+  }
 
   /**
    * @param {WalkerFront|null} walker
    */
   setWalker(walker = null) {
-    if (this._walker) {
-      this._removeWalkerFrontEventListeners(this._walker);
+    if (this.#walker) {
+      this.#removeWalkerFrontEventListeners(this.#walker);
     }
 
-    this._walker = walker;
-    if (this._walker) {
-      this._setWalkerFrontEventListeners(this._walker);
+    this.#walker = walker;
+    if (this.#walker) {
+      this.#setWalkerFrontEventListeners(this.#walker);
     }
-  },
+  }
 
   /**
    * Set event listeners on the passed walker front
    *
    * @param {WalkerFront} walker
    */
-  _setWalkerFrontEventListeners(walker) {
-    walker.on("mutations", this._onMutations);
-  },
+  #setWalkerFrontEventListeners(walker) {
+    walker.on("mutations", this.#onMutations);
+  }
 
   /**
    * Remove event listeners we previously set on walker front
    *
    * @param {WalkerFront} walker
    */
-  _removeWalkerFrontEventListeners(walker) {
-    walker.off("mutations", this._onMutations);
-  },
+  #removeWalkerFrontEventListeners(walker) {
+    walker.off("mutations", this.#onMutations);
+  }
 
   /**
    * Called when a target front is destroyed.
@@ -153,14 +163,14 @@ Selection.prototype = {
     // event so consumers can act accordingly (e.g. in the inspector, another node will be
     // selected)
     if (
-      this._walker &&
+      this.#walker &&
       !targetFront.isTopLevel &&
-      this._walker.targetFront == targetFront
+      this.#walker.targetFront == targetFront
     ) {
-      this._removeWalkerFrontEventListeners(this._walker);
+      this.#removeWalkerFrontEventListeners(this.#walker);
       this.emit("detached-front");
     }
-  },
+  }
 
   /**
    * Update the currently selected node-front.
@@ -182,7 +192,7 @@ Selection.prototype = {
       nodeFront = parentNode;
     }
 
-    if (this._nodeFront == null && nodeFront == null) {
+    if (this.#nodeFront == null && nodeFront == null) {
       // Avoid to notify multiple "unselected" events with a null/undefined nodeFront
       // (e.g. once when the webpage start to navigate away from the current webpage,
       // and then again while the new page is being loaded).
@@ -191,8 +201,8 @@ Selection.prototype = {
 
     this.emit("node-front-will-unset");
 
-    this._isSlotted = isSlotted;
-    this._nodeFront = nodeFront;
+    this.#isSlotted = isSlotted;
+    this.#nodeFront = nodeFront;
 
     if (nodeFront) {
       this.setWalker(nodeFront.walkerFront);
@@ -201,51 +211,51 @@ Selection.prototype = {
     }
 
     this.emit("new-node-front", nodeFront, this.reason);
-  },
+  }
 
   get nodeFront() {
-    return this._nodeFront;
-  },
+    return this.#nodeFront;
+  }
 
   isRoot() {
     return (
-      this.isNode() && this.isConnected() && this._nodeFront.isDocumentElement
+      this.isNode() && this.isConnected() && this.#nodeFront.isDocumentElement
     );
-  },
+  }
 
   isNode() {
-    return !!this._nodeFront;
-  },
+    return !!this.#nodeFront;
+  }
 
   isConnected() {
-    let node = this._nodeFront;
+    let node = this.#nodeFront;
     if (!node || node.isDestroyed()) {
       return false;
     }
 
     while (node) {
-      if (node === this._walker.rootNode) {
+      if (node === this.#walker.rootNode) {
         return true;
       }
       node = node.parentOrHost();
     }
     return false;
-  },
+  }
 
   isHTMLNode() {
     const xhtmlNs = "http://www.w3.org/1999/xhtml";
     return this.isNode() && this.nodeFront.namespaceURI == xhtmlNs;
-  },
+  }
 
   isSVGNode() {
     const svgNs = "http://www.w3.org/2000/svg";
     return this.isNode() && this.nodeFront.namespaceURI == svgNs;
-  },
+  }
 
   isMathMLNode() {
     const mathmlNs = "http://www.w3.org/1998/Math/MathML";
     return this.isNode() && this.nodeFront.namespaceURI == mathmlNs;
-  },
+  }
 
   // Node type
 
@@ -253,65 +263,65 @@ Selection.prototype = {
     return (
       this.isNode() && this.nodeFront.nodeType == nodeConstants.ELEMENT_NODE
     );
-  },
+  }
 
   isPseudoElementNode() {
     return this.isNode() && this.nodeFront.isPseudoElement;
-  },
+  }
 
   isAnonymousNode() {
     return this.isNode() && this.nodeFront.isAnonymous;
-  },
+  }
 
   isAttributeNode() {
     return (
       this.isNode() && this.nodeFront.nodeType == nodeConstants.ATTRIBUTE_NODE
     );
-  },
+  }
 
   isTextNode() {
     return this.isNode() && this.nodeFront.nodeType == nodeConstants.TEXT_NODE;
-  },
+  }
 
   isCDATANode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.CDATA_SECTION_NODE
     );
-  },
+  }
 
   isEntityRefNode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.ENTITY_REFERENCE_NODE
     );
-  },
+  }
 
   isEntityNode() {
     return (
       this.isNode() && this.nodeFront.nodeType == nodeConstants.ENTITY_NODE
     );
-  },
+  }
 
   isProcessingInstructionNode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.PROCESSING_INSTRUCTION_NODE
     );
-  },
+  }
 
   isCommentNode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.PROCESSING_INSTRUCTION_NODE
     );
-  },
+  }
 
   isDocumentNode() {
     return (
       this.isNode() && this.nodeFront.nodeType == nodeConstants.DOCUMENT_NODE
     );
-  },
+  }
 
   /**
    * @returns true if the selection is the <body> HTML element.
@@ -322,7 +332,7 @@ Selection.prototype = {
       this.isConnected() &&
       this.nodeFront.nodeName === "BODY"
     );
-  },
+  }
 
   /**
    * @returns true if the selection is the <head> HTML element.
@@ -333,35 +343,39 @@ Selection.prototype = {
       this.isConnected() &&
       this.nodeFront.nodeName === "HEAD"
     );
-  },
+  }
 
   isDocumentTypeNode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.DOCUMENT_TYPE_NODE
     );
-  },
+  }
 
   isDocumentFragmentNode() {
     return (
       this.isNode() &&
       this.nodeFront.nodeType == nodeConstants.DOCUMENT_FRAGMENT_NODE
     );
-  },
+  }
 
   isNotationNode() {
     return (
       this.isNode() && this.nodeFront.nodeType == nodeConstants.NOTATION_NODE
     );
-  },
+  }
 
   isSlotted() {
-    return this._isSlotted;
-  },
+    return this.#isSlotted;
+  }
 
   isShadowRootNode() {
     return this.isNode() && this.nodeFront.isShadowRoot;
-  },
-};
+  }
+
+  supportsScrollIntoView() {
+    return this.isElementNode();
+  }
+}
 
 module.exports = Selection;

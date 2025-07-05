@@ -6,9 +6,9 @@
 
 const {
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const {
   isKeyIn,
@@ -22,9 +22,22 @@ class ViewportDimension extends PureComponent {
   static get propTypes() {
     return {
       doResizeViewport: PropTypes.func.isRequired,
-      onRemoveDeviceAssociation: PropTypes.func.isRequired,
+      onRemoveDeviceAssociation: PropTypes.func,
       viewport: PropTypes.shape(Types.viewport).isRequired,
     };
+  }
+
+  static getDerivedStateFromProps(props, state) {
+    const { width, height } = props.viewport;
+    if (state.prevWidth !== width || state.prevHeight !== height) {
+      return {
+        width,
+        height,
+        prevWidth: width,
+        prevHeight: height,
+      };
+    }
+    return null;
   }
 
   constructor(props) {
@@ -35,6 +48,8 @@ class ViewportDimension extends PureComponent {
     this.state = {
       width,
       height,
+      prevWidth: width,
+      prevHeight: height,
       isEditing: false,
       isWidthValid: true,
       isHeightValid: true,
@@ -47,16 +62,6 @@ class ViewportDimension extends PureComponent {
     this.onInputKeyDown = this.onInputKeyDown.bind(this);
     this.onInputKeyUp = this.onInputKeyUp.bind(this);
     this.onInputSubmit = this.onInputSubmit.bind(this);
-  }
-
-  // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillReceiveProps(nextProps) {
-    const { width, height } = nextProps.viewport;
-
-    this.setState({
-      width,
-      height,
-    });
   }
 
   /**
@@ -157,8 +162,8 @@ class ViewportDimension extends PureComponent {
 
     // Change the device selector back to an unselected device
     // TODO: Bug 1332754: Logic like this probably belongs in the action creator.
-    if (viewport.device) {
-      onRemoveDeviceAssociation(viewport.id);
+    if (viewport.device && typeof onRemoveDeviceAssociation === "function") {
+      onRemoveDeviceAssociation(viewport.id, { resetProfile: false });
     }
 
     doResizeViewport(

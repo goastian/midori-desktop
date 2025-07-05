@@ -4,8 +4,8 @@
 
 "use strict";
 
-const React = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const React = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 class AuditController extends React.Component {
   static get propTypes() {
@@ -28,13 +28,9 @@ class AuditController extends React.Component {
     this.onAudited = this.onAudited.bind(this);
   }
 
-  // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillMount() {
+  componentDidMount() {
     const { accessibleFront } = this.props;
     accessibleFront.on("audited", this.onAudited);
-  }
-
-  componentDidMount() {
     this.maybeRequestAudit();
   }
 

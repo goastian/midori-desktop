@@ -13,16 +13,75 @@
   font: message-box;
   font-size: var(--theme-body-font-size);
 
-  /* TODO(bug 1022557): Perhaps we want to allow forced colors in devtools */
-  forced-color-adjust: none;
+  --tab-line-hover-color: light-dark(
+    rgba(0,0,0,.2),
+    rgba(255,255,255,.2)
+  );
 
-  --tab-line-hover-color: rgba(0,0,0,.2);
   --tab-line-selected-color: var(--blue-50);
-  --toggle-thumb-color: white;
+  --toggle-thumb-color: light-dark(white, var(--grey-40));
+  --toggle-thumb-color-pressed: white;
   --toggle-track-color: var(--grey-50);
+  --toggle-track-color-pressed: var(--blue-55);
+  --toggle-track-border-color: transparent;
+  /* In regular themes, the disabled style is handled by the lowered opacity,
+     the colors fall back to their "default" values */
+  --toggle-disabled-track-border-color: var(--toggle-track-border-color);
+  --toggle-disabled-track-color-pressed: var(--toggle-track-color-pressed);
+  --toggle-disabled-thumb-color: var(--toggle-disabled-thumb-color);
+  --toggle-track-disabled-opacity: 0.5;
+  /* We don't have distinct :hover style in regular themes, the colors fall back to their
+     "default" values */
+  --toggle-hover-track-color: var(--toggle-track-color);
+  --toggle-hover-track-border-color: var(--toggle-track-border-color);
+  --toggle-hover-track-color-pressed: var(--toggle-track-color-pressed);
+  --toggle-hover-thumb-color: var(--toggle-thumb-color);
 
-  --searchbox-no-match-background-color: #ffe5e5;
-  --searchbox-no-match-stroke-color: var(--red-60);
+  --searchbox-no-match-background-color: light-dark(#ffe5e5, #402325);
+  --searchbox-no-match-stroke-color: light-dark(var(--red-60),var(--red-50));
+  --searchbox-background-color: transparent;
+  --searchbox-border-color: transparent;
+
+  --devtools-searchinput-clear-cross-color: transparent;
+  --devtools-searchinput-clear-hover-cross-color: transparent;
+  --devtools-searchinput-clear-opacity: 0.8;
+
+  /* Don't allow forced colors in DevTools if they're not supported */
+  &:not([forced-colors-active]) {
+    forced-color-adjust: none;
+  }
+
+  /* Forced Colors / High Contrast Mode specifics */
+  &[forced-colors-active] {
+    --toggle-track-color: ButtonFace;
+    --toggle-track-color-pressed: ButtonText;
+    --toggle-thumb-color: ButtonText;
+    --toggle-thumb-color-pressed: ButtonFace;
+    --toggle-track-border-color: ButtonText;
+    --toggle-hover-track-color: SelectedItemText;
+    --toggle-hover-track-border-color: SelectedItem;
+    --toggle-hover-track-color-pressed: SelectedItem;
+    --toggle-hover-thumb-color: SelectedItem;
+    /* In High Contrast Mode, the opacity is not lowered, so the disabled style is
+       handled by modifiying the colors */
+    --toggle-disabled-track-border-color: GrayText;
+    --toggle-disabled-track-color-pressed: GrayText;
+    --toggle-disabled-thumb-color: GrayText;
+    --toggle-track-disabled-opacity: 1;
+
+    /* From High Contrast Mode guidelines:
+       > Error inputs in our traditional design system use color to indicate they are destructive.
+       > We cannot do this in HCM, so the default INPUT style should be used instead.
+      Given this, we should use the default color.
+    */
+    --searchbox-no-match-stroke-color: var(--theme-icon-color);
+    --searchbox-background-color: ButtonFace;
+    --searchbox-border-color: ButtonText;
+
+    --devtools-searchinput-clear-opacity: 1;
+    --devtools-searchinput-clear-cross-color: ButtonFace;
+    --devtools-searchinput-clear-hover-cross-color: SelectedItemText;
+  }
 }
 
 :root.theme-light {
@@ -31,12 +90,6 @@
 
 :root.theme-dark {
   color-scheme: dark;
-
-  --tab-line-hover-color: rgba(255,255,255,.2);
-  --toggle-thumb-color: var(--grey-40);
-
-  --searchbox-no-match-background-color: #402325;
-  --searchbox-no-match-stroke-color: var(--red-50);
 }
 
 :root[platform="mac"] {
@@ -143,7 +196,7 @@ iframe {
   --autocomplete-item-color-swatch-margin-inline: 5px;
   appearance: none !important;
   background-color: transparent;
-  border-width: 0px !important;
+  border-width: 0 !important;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
@@ -205,7 +258,8 @@ iframe {
 }
 
 .devtools-autocomplete-listbox .autocomplete-item:hover {
-  background-color: var(--theme-popup-dimmed);
+  background-color: var(--theme-popup-hover-background);
+  color: var(--theme-popup-hover-color);
 }
 
 .devtools-autocomplete-listbox .autocomplete-selected,
@@ -214,8 +268,25 @@ iframe {
   color: var(--theme-selection-color);
 }
 
+/* In High Contrast Mode, we want to distinguish betweeen hover and selected items.
+   Since hover is already adding a "SelectedItem" background we can't rely on the color
+   here, so add an outline as we do for focused element. This follows the HCM design
+   for dropdown (e.g. the Reader Mode voice selector) */
+:root[forced-colors-active] .devtools-autocomplete-listbox .autocomplete-selected {
+  outline: var(--theme-focus-outline);
+  outline-offset: -1px;
+  &:not(:hover) {
+    background-color: unset;
+    color: unset;
+  }
+}
+
 .devtools-autocomplete-listbox .autocomplete-selected > .initial-value {
   font-weight: bold;
+  :root[forced-colors-active] & {
+    background-color: Mark;
+    color: MarkText;
+  }
 }
 
 /* Autocomplete list clone used for accessibility. */
@@ -251,6 +322,10 @@ iframe {
   :is(input[type="radio"], input[type="checkbox"], checkbox)& {
     outline-offset: 2px;
   }
+
+  :is(input[type="text"], input[type="search"], input:not([type]))& {
+    outline-color: var(--theme-focus-textinput-outline-color);
+  }
 }
 
 /* Toolbar buttons */
@@ -261,7 +336,6 @@ iframe {
   border: none;
   border-radius: 2px;
   color: var(--theme-body-color);
-  transition: background-color 0.05s ease-in-out;
   align-items: center;
   text-shadow: none;
   padding: 2px;
@@ -276,11 +350,10 @@ iframe {
   border-block: 2px solid transparent;
   /* Separate the outline from the button as it might have a similar background color */
   outline-offset: 2px;
-}
 
-/* Remove system form border from devtools-button. */
-.devtools-button::-moz-focus-inner {
-  border: 0;
+  :root[forced-colors-active] & {
+    border: 1px solid currentColor;
+  }
 }
 
 /* Button with text */
@@ -297,7 +370,6 @@ iframe {
   width: 16px;
   height: 16px;
   margin: 0 3px;
-  transition: opacity 0.05s ease-in-out;
   color: var(--theme-icon-color);
   font-size: 11px;
   -moz-context-properties: fill;
@@ -324,11 +396,23 @@ iframe {
 /* Button states */
 .devtools-button:disabled {
   pointer-events: none;
-  opacity: 0.5 !important;
+
+  &::before {
+    fill: var(--theme-icon-disabled-color);
+  }
 }
 
-.devtools-button:empty:not([aria-expanded="true"]):hover {
+.devtools-button:empty:not(
+  [aria-expanded="true"],
+  [aria-pressed="true"],
+  .checked
+):hover {
   background: var(--toolbarbutton-hover-background);
+  color: var(--toolbarbutton-hover-color);
+
+  &::before {
+    color: var(--theme-icon-hover-color);
+  }
 }
 
 /* Standalone buttons */
@@ -346,18 +430,17 @@ iframe {
 /* Selectable button which is unchecked. */
 
 .devtools-button:not(:empty, .checked, [aria-pressed="true"]):hover,
-.devtools-button:empty:is(:hover:active,.checked, [aria-pressed="true"]),
 .devtools-button[aria-haspopup="menu"][aria-expanded="true"] {
   background-color: var(--toolbarbutton-hover-background);
+  color: var(--toolbarbutton-hover-color);
+}
+
+.devtools-button:empty:is(.checked, [aria-pressed="true"]) {
+  background-color: var(--toolbarbutton-checked-background);
 }
 
 .devtools-button:not(:empty, .checked, [aria-pressed="true"]):hover:active {
   background-color: var(--theme-selection-background-hover);
-}
-
-.devtools-button:not(:empty, .checked, [aria-pressed="true"]):focus {
-  background-color: var(--toolbarbutton-focus-background);
-  color: var(--toolbarbutton-focus-color);
 }
 
 .devtools-togglebutton:not([aria-pressed="true"]) {
@@ -367,6 +450,7 @@ iframe {
 
 .devtools-togglebutton:hover:not([aria-pressed="true"], :active) {
   background-color: var(--theme-toolbarbutton-hover-background);
+  color: var(--theme-toolbarbutton-hover-color);
 }
 
 /* Selectable button which is checked. */
@@ -374,10 +458,6 @@ iframe {
 .devtools-button:not(:empty):is(.checked, [aria-pressed="true"]) {
   background: var(--toolbarbutton-checked-background);
   color: var(--toolbarbutton-checked-color);
-
-  &:focus {
-    background-color: var(--toolbarbutton-checked-focus-background);
-  }
 }
 
 .devtools-togglebutton[aria-pressed="true"] {
@@ -391,12 +471,9 @@ iframe {
   color: var(--theme-toolbarbutton-checked-hover-color);
 }
 
-.devtools-togglebutton:active {
+/* Only apply active style on non High Contrast Mode */
+:root:not([forced-colors-active]) .devtools-togglebutton:active {
   background: var(--theme-toolbarbutton-active-background);
-}
-
-.devtools-togglebutton::-moz-focus-inner {
-  border-color: transparent;
 }
 
 /* Icons */
@@ -475,8 +552,11 @@ iframe {
 .devtools-searchbox {
   display: inline-flex;
   flex-grow: 1;
+  gap: 4px;
+  padding-inline-end: 4px;
   position: relative;
-  border: 1px solid transparent;
+  border: 1px solid var(--searchbox-border-color);
+  background-color: var(--searchbox-background-color);
   height: 100%;
   box-sizing: border-box;
 }
@@ -499,6 +579,7 @@ iframe {
    is focused (e.g. a button), we only want the outline on that element */
 .devtools-searchbox:focus-within:has(input:focus-visible) {
   outline: var(--theme-focus-outline);
+  outline-color: var(--theme-focus-textinput-outline-color);
   outline-offset: -2px;
 
   &.devtools-searchbox-no-match {
@@ -515,24 +596,27 @@ iframe {
 .devtools-searchinput-clear {
   flex: 0 0 auto;
   align-self: center;
-  margin: 0 4px;
+  margin: 0;
   padding: 0;
   border: 0;
   width: 16px;
   height: 16px;
   background-color: transparent;
   background-image: url("chrome://devtools/skin/images/search-clear.svg");
-  -moz-context-properties: fill, fill-opacity;
+  -moz-context-properties: fill, fill-opacity, stroke;
   fill: var(--theme-icon-color);
-  fill-opacity: 0.8;
+  fill-opacity: var(--devtools-searchinput-clear-opacity);
+  stroke: var(--devtools-searchinput-clear-cross-color);
+
+  &:hover {
+    fill-opacity: 1;
+    fill: var(--theme-icon-hover-color);
+    stroke: var(--devtools-searchinput-clear-hover-cross-color);
+  }
 }
 
 .devtools-searchbox-no-match > .devtools-searchinput-clear {
   fill: var(--searchbox-no-match-stroke-color);
-}
-
-.devtools-searchinput-clear:hover {
-  fill-opacity: 1;
 }
 
 /* MDN link within the searchbox */
@@ -575,7 +659,9 @@ iframe {
   background-repeat: no-repeat;
   background-size: 10px;
   -moz-context-properties: fill;
-  fill: var(--theme-icon-dimmed-color);
+  /* Set color and use currentColor in fill so we adapt in High Contrast Mode */
+  color: var(--theme-icon-dimmed-color);
+  fill: currentColor;
   transform: rotate(-90deg);
 }
 
@@ -586,7 +672,7 @@ iframe {
 }
 
 .theme-selected ~ .theme-twisty {
-  fill: var(--theme-selection-color);
+  color: var(--theme-selection-color);
 }
 
 .theme-twisty:is(
@@ -666,6 +752,10 @@ iframe {
   transition: transform 250ms var(--animation-curve), opacity 250ms var(--animation-curve);
   opacity: 0;
   transform: scaleX(0);
+
+  :root[forced-colors-active] & {
+    display: none;
+  }
 }
 
 .devtools-tab:hover .devtools-tab-line,
@@ -718,24 +808,39 @@ iframe {
   width: 2em;
   height: 1em;
   border-radius: 1em;
-  border: 1px solid transparent;
+  border: 1px solid var(--toggle-track-border-color);
   box-sizing: content-box;
-  /* Animate the thumb position between states of the checkbox. */
-  transition: background-color .1s ease-out;
+
+  &:checked {
+    --x-pos: 1.15em;
+    background-color: var(--toggle-track-color-pressed);
+  }
+
+  &:hover:not(:active, [disabled]) {
+    background-color: var(--toggle-hover-track-color);
+    border-color: var(--toggle-hover-track-border-color);
+
+    &:checked {
+      background-color: var(--toggle-hover-track-color-pressed);
+    }
+
+    &:not(:checked)::before {
+      background-color: var(--toggle-hover-thumb-color);
+    }
+  }
+
+  &[disabled] {
+    opacity: var(--toggle-track-disabled-opacity);
+    --toggle-track-border-color: var(--toggle-disabled-track-border-color);
+    --toggle-track-color-pressed: var(--toggle-disabled-track-color-pressed);
+    --toggle-thumb-color: var(--toggle-disabled-thumb-color);
+  }
 }
 
-.devtools-checkbox-toggle[disabled]{
-  opacity: 0.5;
-}
 
 /* For right-to-left layout, the toggle thumb goes in the opposite direction. */
 html[dir="rtl"] .devtools-checkbox-toggle {
   --x-pos: -.15em;
-}
-
-.devtools-checkbox-toggle:checked {
-  --x-pos: 1.15em;
-  background-color: var(--blue-55);
 }
 
 html[dir="rtl"] .devtools-checkbox-toggle:checked {
@@ -755,5 +860,13 @@ html[dir="rtl"] .devtools-checkbox-toggle:checked {
 }
 
 .devtools-checkbox-toggle:checked::before {
-  background-color: white;
+  background-color: var(--toggle-thumb-color-pressed);
+}
+
+/* Remove transition on toggle when prefers reduced motion is enabled */
+@media (prefers-reduced-motion) {
+  .devtools-checkbox-toggle,
+  .devtools-checkbox-toggle::before {
+    transition: none;
+  }
 }

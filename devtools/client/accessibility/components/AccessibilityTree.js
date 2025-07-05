@@ -9,19 +9,21 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
 } = require("resource://devtools/client/shared/vendor/react-redux.js");
 
 const TreeView = createFactory(
-  require("resource://devtools/client/shared/components/tree/TreeView.js")
+  ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/tree/TreeView.mjs"
+  ).default
 );
 // Reps
-const {
-  MODE,
-} = require("resource://devtools/client/shared/components/reps/index.js");
+const { MODE } = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/reps/index.mjs"
+);
 
 const {
   fetchChildren,
@@ -43,9 +45,9 @@ const {
   Provider,
 } = require("resource://devtools/client/accessibility/provider.js");
 
-const {
-  scrollIntoView,
-} = require("resource://devtools/client/shared/scroll.js");
+const { scrollIntoView } = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/scroll.mjs"
+);
 
 /**
  * Renders Accessibility panel tree.

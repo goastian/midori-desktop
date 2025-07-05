@@ -9,28 +9,32 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const {
   setTargetSearchResult,
 } = require("resource://devtools/client/netmonitor/src/actions/search.js");
 
 // Components
-const TreeViewClass = require("resource://devtools/client/shared/components/tree/TreeView.js");
+const TreeViewClass = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/tree/TreeView.mjs"
+).default;
 const TreeView = createFactory(TreeViewClass);
 const PropertiesViewContextMenu = require("resource://devtools/client/netmonitor/src/widgets/PropertiesViewContextMenu.js");
 
 loader.lazyGetter(this, "Rep", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .REPS.Rep;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).REPS.Rep;
 });
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).MODE;
 });
 
 // Constants
@@ -88,6 +92,8 @@ class PropertiesView extends Component {
     this.onFilter = this.onFilter.bind(this);
     this.renderValueWithRep = this.renderValueWithRep.bind(this);
     this.getSelectedPath = this.getSelectedPath.bind(this);
+
+    this.expandedNodes = new Set();
   }
 
   /**
@@ -217,6 +223,11 @@ class PropertiesView extends Component {
           maxLevel: AUTO_EXPAND_MAX_LEVEL,
           maxNodes: AUTO_EXPAND_MAX_NODES,
         });
+    } else {
+      // Ensure passing a stable expanded Set,
+      // so that TreeView doesn't reset to default prop's Set
+      // on each new received props.
+      currentExpandedNodes = this.expandedNodes;
     }
     return div(
       { className: "properties-view" },

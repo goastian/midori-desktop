@@ -6,11 +6,12 @@
   background-color: var(--theme-sidebar-background);
   width: 100%;
   list-style-type: none;
-  padding: 0px;
-  margin-top: 0px;
+  padding: 0;
+  margin-top: 0;
 }
 
 .accordion ._header {
+  --dbg-accordion-twisty-color: var(--theme-icon-dimmed-color);
   background-color: var(--theme-accordion-header-background);
   border-bottom: 1px solid var(--theme-splitter-color);
   display: flex;
@@ -20,23 +21,26 @@
   padding: 4px 6px;
   width: 100%;
   align-items: center;
-  margin: 0px;
+  margin: 0;
   font-weight: normal;
   cursor: default;
   user-select: none;
 }
 
 .accordion ._header:hover {
-  background-color: var(--theme-accordion-header-hover);
-}
+  background-color: var(--theme-accordion-header-hover-background);
 
+  :root[forced-colors-active] & {
+    --dbg-accordion-twisty-color: var(--theme-accordion-header-hover-color);
+  }
+}
 
 .accordion ._header .header-label {
   flex-grow: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--theme-toolbar-color);
+  color: var(--theme-accordion-header-color);
   background: transparent;
   padding: 0;
 
@@ -47,6 +51,7 @@
 
   &:hover {
     background: transparent;
+    color: var(--theme-accordion-header-hover-color);
   }
 
   /* The expand arrow needs to be displayed inside the button to be accessible */
@@ -58,13 +63,12 @@
     background-image: url(chrome://devtools/content/debugger/images/arrow.svg);
     background-size: contain;
     -moz-context-properties: fill;
-    fill: var(--theme-icon-dimmed-color);
+    fill: var(--dbg-accordion-twisty-color);
     rotate: -90deg;
     transition: rotate 180ms var(--animation-curve);
-
-    &:dir(rtl) {
-      rotate: 90deg;
-    }
+  }
+  &:dir(rtl)::before {
+    rotate: 90deg;
   }
 
   &[aria-expanded="true"]::before {
@@ -87,10 +91,6 @@
   margin: 0 2px;
   width: 16px;
   height: 16px;
-}
-
-.accordion ._header .header-buttons button::-moz-focus-inner {
-  border: none;
 }
 
 .accordion ._header .header-buttons button .img {

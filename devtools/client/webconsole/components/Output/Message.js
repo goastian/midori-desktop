@@ -9,7 +9,7 @@ const {
   Component,
   createFactory,
   createElement,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   l10n,
@@ -215,11 +215,14 @@ class Message extends Component {
       return null;
     }
 
+    const timestamp = this.props.timeStamp || Date.now();
+
     return dom.span(
       {
         className: "timestamp devtools-monospace",
+        title: l10n.dateString(timestamp),
       },
-      l10n.timestampString(this.props.timeStamp || Date.now())
+      l10n.timestampString(timestamp)
     );
   }
 

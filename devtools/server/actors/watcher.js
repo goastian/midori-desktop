@@ -65,7 +65,7 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *   target-available-form/target-destroyed-form events.
    * - observe resources related to the observed targets.
    *   This is done via watchResources/unwatchResources methods, and
-   *   resource-available-form/resource-updated-form/resource-destroyed-form events.
+   *   resources-available-array/resources-updated-array/resources-destroyed-array events.
    *   Note that these events are also emited on both the watcher actor,
    *   for resources observed from the parent process, as well as on the
    *   target actors, when the resources are observed from the target's process or thread.
@@ -96,6 +96,8 @@ exports.WatcherActor = class WatcherActor extends Actor {
       }
       this._browserElement = browsingContext.embedderElement;
     }
+
+    this.watcherConnectionPrefix = conn.allocID("watcher");
 
     // Sometimes we get iframe targets before the top-level targets
     // mostly when doing bfcache navigations, lets cache the early iframes targets and
@@ -151,7 +153,8 @@ exports.WatcherActor = class WatcherActor extends Actor {
     if (this.sessionContext.type == "browser-element") {
       return !this.browserElement.browsingContext;
     } else if (this.sessionContext.type == "webextension") {
-      return !BrowsingContext.get(this.sessionContext.addonBrowsingContextID);
+      // This is no obvious browsing context to target for extensions, so always consider it running
+      return false;
     } else if (this.sessionContext.type == "all") {
       return false;
     }
@@ -463,36 +466,19 @@ exports.WatcherActor = class WatcherActor extends Actor {
    *
    * @param String updateType
    *        Can be "available", "updated" or "destroyed"
+   * @param String resourceType
+   *        The type of resources to be notified about.
    * @param Array<json> resources
    *        List of all resource's form. A resource is a JSON object piped over to the client.
    *        It can contain actor IDs, actor forms, to be manually marshalled by the client.
    */
-  notifyResources(updateType, resources) {
+  notifyResources(updateType, resourceType, resources) {
     if (resources.length === 0) {
       // Don't try to emit if the resources array is empty.
       return;
     }
 
-    if (this.sessionContext.type == "webextension") {
-      this._overrideResourceBrowsingContextForWebExtension(resources);
-    }
-
-    this.emit(`resource-${updateType}-form`, resources);
-  }
-
-  /**
-   * For WebExtension, we have to hack all resource's browsingContextID
-   * in order to ensure emitting them with the fixed, original browsingContextID
-   * related to the fallback document created by devtools which always exists.
-   * The target's form will always be relating to that BrowsingContext IDs (browsing context ID and inner window id).
-   * Even if the target switches internally to another document via WindowGlobalTargetActor._setWindow.
-   *
-   * @param {Array<Objects>} List of resources
-   */
-  _overrideResourceBrowsingContextForWebExtension(resources) {
-    resources.forEach(resource => {
-      resource.browsingContextID = this.sessionContext.addonBrowsingContextID;
-    });
+    this.emit(`resources-${updateType}-array`, [[resourceType, resources]]);
   }
 
   /**
@@ -514,6 +500,9 @@ exports.WatcherActor = class WatcherActor extends Actor {
     // for a parent process page and lives in the parent process.
     const actors = TargetActorRegistry.getTargetActors(
       this.sessionContext,
+      // Note that we aren't using watcherConnectionPrefix as the ParentProcessTargetActor
+      // are registered in `this.conn` (i.e The connection which is bound to the client)
+      // directly and not in the DevToolsServerConnection running in the content process with `watcherConnectionPrefix`
       this.conn.prefix
     );
 
@@ -541,7 +530,7 @@ exports.WatcherActor = class WatcherActor extends Actor {
   /**
    * Start watching for a list of resource types.
    * This should only resolve once all "already existing" resources of these types
-   * are notified to the client via resource-available-form event on related target actors.
+   * are notified to the client via resources-available-array event on related target actors.
    *
    * @param {Array<string>} resourceTypes
    *        List of all types to listen to.
@@ -876,12 +865,8 @@ exports.WatcherActor = class WatcherActor extends Actor {
    * @param {String} newTargetUrl
    */
   async updateDomainSessionDataForServiceWorkers(newTargetUrl) {
-    let host = "";
-    // Accessing `host` can throw on some URLs with no valid host like about:home.
-    // In such scenario, reset the host to an empty string.
-    try {
-      host = new URL(newTargetUrl).host;
-    } catch (e) {}
+    // If the url could not be parsed the host defaults to an empty string.
+    const host = URL.parse(newTargetUrl)?.host ?? "";
 
     ParentProcessWatcherRegistry.addOrSetSessionDataEntry(
       this,

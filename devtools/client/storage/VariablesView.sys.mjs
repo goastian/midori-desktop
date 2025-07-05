@@ -10,7 +10,6 @@ const SCROLL_PAGE_SIZE_DEFAULT = 0;
 const PAGE_SIZE_SCROLL_HEIGHT_RATIO = 100;
 const PAGE_SIZE_MAX_JUMPS = 30;
 const SEARCH_ACTION_MAX_DELAY = 300; // ms
-const ITEM_FLASH_DURATION = 300; // ms
 
 import { require } from "resource://devtools/shared/loader/Loader.sys.mjs";
 
@@ -51,11 +50,6 @@ XPCOMUtils.defineLazyServiceGetter(
  * Iterable via "for (let [id, scope] of instance) { }".
  * Requires the devtools common.css and debugger.css skin stylesheets.
  *
- * To allow replacing variable or property values in this view, provide an
- * "eval" function property. To allow replacing variable or property names,
- * provide a "switch" function. To handle deleting variables or properties,
- * provide a "delete" function.
- *
  * @param Node aParentNode
  *        The parent node to hold this view.
  * @param object aFlags [optional]
@@ -65,8 +59,10 @@ XPCOMUtils.defineLazyServiceGetter(
 export function VariablesView(aParentNode, aFlags = {}) {
   this._store = []; // Can't use a Map because Scope names needn't be unique.
   this._itemsByElement = new WeakMap();
-  this._prevHierarchy = new Map();
-  this._currHierarchy = new Map();
+
+  // Note: The hierarchy is only used for an assertion in a test at the moment,
+  // to easily check the tree structure.
+  this._testOnlyHierarchy = new Map();
 
   this._parent = aParentNode;
   this._parent.classList.add("variables-view-container");
@@ -125,7 +121,7 @@ VariablesView.prototype = {
     const scope = new Scope(this, l10nId, { customClass: aCustomClass });
     this._store.push(scope);
     this._itemsByElement.set(scope._target, scope);
-    this._currHierarchy.set(l10nId, scope);
+    this._testOnlyHierarchy.set(l10nId, scope);
     scope.header = !!l10nId;
 
     return scope;
@@ -146,8 +142,7 @@ VariablesView.prototype = {
 
     this._store.length = 0;
     this._itemsByElement = new WeakMap();
-    this._prevHierarchy = this._currHierarchy;
-    this._currHierarchy = new Map(); // Don't clear, this is just simple swapping.
+    this._testOnlyHierarchy = new Map();
 
     // Check if this empty operation may be executed lazily.
     if (this.lazyEmpty && aTimeout > 0) {
@@ -176,7 +171,6 @@ VariablesView.prototype = {
    * normally.
    *
    * @see VariablesView.empty
-   * @see VariablesView.commitHierarchy
    */
   _emptySoon(aTimeout) {
     const prevList = this._list;
@@ -198,17 +192,6 @@ VariablesView.prototype = {
   },
 
   /**
-   * Optional DevTools toolbox containing this VariablesView. Used to
-   * communicate with the inspector and highlighter.
-   */
-  toolbox: null,
-
-  /**
-   * The controller for this VariablesView, if it has one.
-   */
-  controller: null,
-
-  /**
    * The amount of time (in milliseconds) it takes to empty this view lazily.
    */
   lazyEmptyDelay: LAZY_EMPTY_DELAY,
@@ -220,114 +203,11 @@ VariablesView.prototype = {
   lazyEmpty: false,
 
   /**
-   * Specifies if nodes in this view may be searched lazily.
-   */
-  lazySearch: true,
-
-  /**
    * The number of elements in this container to jump when Page Up or Page Down
    * keys are pressed. If falsy, then the page size will be based on the
    * container height.
    */
   scrollPageSize: SCROLL_PAGE_SIZE_DEFAULT,
-
-  /**
-   * Function called each time a variable or property's value is changed via
-   * user interaction. If null, then value changes are disabled.
-   *
-   * This property is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  eval: null,
-
-  /**
-   * Function called each time a variable or property's name is changed via
-   * user interaction. If null, then name changes are disabled.
-   *
-   * This property is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  switch: null,
-
-  /**
-   * Function called each time a variable or property is deleted via
-   * user interaction. If null, then deletions are disabled.
-   *
-   * This property is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  delete: null,
-
-  /**
-   * Function called each time a property is added via user interaction. If
-   * null, then property additions are disabled.
-   *
-   * This property is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  new: null,
-
-  /**
-   * Specifies if after an eval or switch operation, the variable or property
-   * which has been edited should be disabled.
-   */
-  preventDisableOnChange: false,
-
-  /**
-   * Specifies if, whenever a variable or property descriptor is available,
-   * configurable, enumerable, writable, frozen, sealed and extensible
-   * attributes should not affect presentation.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  preventDescriptorModifiers: false,
-
-  /**
-   * The tooltip text shown on a variable or property's value if an |eval|
-   * function is provided, in order to change the variable or property's value.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  editableValueTooltip: L10N.getStr("variablesEditableValueTooltip"),
-
-  /**
-   * The tooltip text shown on a variable or property's name if a |switch|
-   * function is provided, in order to change the variable or property's name.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  editableNameTooltip: L10N.getStr("variablesEditableNameTooltip"),
-
-  /**
-   * The tooltip text shown on a variable or property's edit button if an
-   * |eval| function is provided and a getter/setter descriptor is present,
-   * in order to change the variable or property to a plain value.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  editButtonTooltip: L10N.getStr("variablesEditButtonTooltip"),
-
-  /**
-   * The tooltip text shown on a variable or property's value if that value is
-   * a DOMNode that can be highlighted and selected in the inspector.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  domNodeValueTooltip: L10N.getStr("variablesDomNodeValueTooltip"),
-
-  /**
-   * The tooltip text shown on a variable or property's delete button if a
-   * |delete| function is provided, in order to delete the variable or property.
-   *
-   * This flag is applied recursively onto each scope in this view and
-   * affects only the child nodes when they're created.
-   */
-  deleteButtonTooltip: L10N.getStr("variablesCloseButtonTooltip"),
 
   /**
    * Specifies the context menu attribute set on variables and properties.
@@ -500,12 +380,6 @@ VariablesView.prototype = {
    *        The amount of milliseconds to wait until draining.
    */
   scheduleSearch(aToken, aWait) {
-    // Check if this search operation may not be executed lazily.
-    if (!this.lazySearch) {
-      this._doSearch(aToken);
-      return;
-    }
-
     // The amount of time to wait for the requests to settle.
     const maxDelay = SEARCH_ACTION_MAX_DELAY;
     const delay = aWait === undefined ? maxDelay / aToken.length : aWait;
@@ -526,25 +400,6 @@ VariablesView.prototype = {
    *        The variable or property to search for.
    */
   _doSearch(aToken) {
-    if (this.controller && this.controller.supportsSearch()) {
-      // Retrieve the main Scope in which we add attributes
-      const scope = this._store[0]._store.get(undefined);
-      if (!aToken) {
-        // Prune the view from old previous content
-        // so that we delete the intermediate search results
-        // we created in previous searches
-        for (const property of scope._store.values()) {
-          property.remove();
-        }
-      }
-      // Retrieve new attributes eventually hidden in splits
-      this.controller.performSearch(scope, aToken);
-      // Filter already displayed attributes
-      if (aToken) {
-        scope._performSearch(aToken.toLowerCase());
-      }
-      return;
-    }
     for (const scope of this._store) {
       switch (aToken) {
         case "":
@@ -880,29 +735,6 @@ VariablesView.prototype = {
 
       case KeyCodes.DOM_VK_END:
         this.focusLastVisibleItem();
-        return;
-
-      case KeyCodes.DOM_VK_RETURN:
-        // Start editing the value or name of the Variable or Property.
-        if (item instanceof Variable) {
-          if (e.metaKey || e.altKey || e.shiftKey) {
-            item._activateNameInput();
-          } else {
-            item._activateValueInput();
-          }
-        }
-        return;
-
-      case KeyCodes.DOM_VK_DELETE:
-      case KeyCodes.DOM_VK_BACK_SPACE:
-        // Delete the Variable or Property if allowed.
-        if (item instanceof Variable) {
-          item._onDelete(e);
-        }
-        return;
-
-      case KeyCodes.DOM_VK_INSERT:
-        item._onAddProperty(e);
     }
   },
 
@@ -1019,8 +851,7 @@ VariablesView.prototype = {
 
   _store: null,
   _itemsByElement: null,
-  _prevHierarchy: null,
-  _currHierarchy: null,
+  _testOnlyHierarchy: null,
 
   _enumVisible: true,
   _nonEnumVisible: true,
@@ -1060,198 +891,6 @@ VariablesView.isSortable = function (aClassName) {
 };
 
 /**
- * Generates the string evaluated when performing simple value changes.
- *
- * @param Variable | Property aItem
- *        The current variable or property.
- * @param string aCurrentString
- *        The trimmed user inputted string.
- * @param string aPrefix [optional]
- *        Prefix for the symbolic name.
- * @return string
- *         The string to be evaluated.
- */
-VariablesView.simpleValueEvalMacro = function (
-  aItem,
-  aCurrentString,
-  aPrefix = ""
-) {
-  return aPrefix + aItem.symbolicName + "=" + aCurrentString;
-};
-
-/**
- * Generates the string evaluated when overriding getters and setters with
- * plain values.
- *
- * @param Property aItem
- *        The current getter or setter property.
- * @param string aCurrentString
- *        The trimmed user inputted string.
- * @param string aPrefix [optional]
- *        Prefix for the symbolic name.
- * @return string
- *         The string to be evaluated.
- */
-VariablesView.overrideValueEvalMacro = function (
-  aItem,
-  aCurrentString,
-  aPrefix = ""
-) {
-  const property = escapeString(aItem._nameString);
-  const parent = aPrefix + aItem.ownerView.symbolicName || "this";
-
-  return (
-    "Object.defineProperty(" +
-    parent +
-    "," +
-    property +
-    "," +
-    "{ value: " +
-    aCurrentString +
-    ", enumerable: " +
-    parent +
-    ".propertyIsEnumerable(" +
-    property +
-    ")" +
-    ", configurable: true" +
-    ", writable: true" +
-    "})"
-  );
-};
-
-/**
- * Generates the string evaluated when performing getters and setters changes.
- *
- * @param Property aItem
- *        The current getter or setter property.
- * @param string aCurrentString
- *        The trimmed user inputted string.
- * @param string aPrefix [optional]
- *        Prefix for the symbolic name.
- * @return string
- *         The string to be evaluated.
- */
-VariablesView.getterOrSetterEvalMacro = function (
-  aItem,
-  aCurrentString,
-  aPrefix = ""
-) {
-  const type = aItem._nameString;
-  const propertyObject = aItem.ownerView;
-  const parentObject = propertyObject.ownerView;
-  const property = escapeString(propertyObject._nameString);
-  const parent = aPrefix + parentObject.symbolicName || "this";
-
-  switch (aCurrentString) {
-    case "":
-    case "null":
-    case "undefined":
-      const mirrorType = type == "get" ? "set" : "get";
-      const mirrorLookup =
-        type == "get" ? "__lookupSetter__" : "__lookupGetter__";
-
-      // If the parent object will end up without any getter or setter,
-      // morph it into a plain value.
-      if (
-        (type == "set" && propertyObject.getter.type == "undefined") ||
-        (type == "get" && propertyObject.setter.type == "undefined")
-      ) {
-        // Make sure the right getter/setter to value override macro is applied
-        // to the target object.
-        return propertyObject.evaluationMacro(
-          propertyObject,
-          "undefined",
-          aPrefix
-        );
-      }
-
-      // Construct and return the getter/setter removal evaluation string.
-      // e.g: Object.defineProperty(foo, "bar", {
-      //   get: foo.__lookupGetter__("bar"),
-      //   set: undefined,
-      //   enumerable: true,
-      //   configurable: true
-      // })
-      return (
-        "Object.defineProperty(" +
-        parent +
-        "," +
-        property +
-        "," +
-        "{" +
-        mirrorType +
-        ":" +
-        parent +
-        "." +
-        mirrorLookup +
-        "(" +
-        property +
-        ")" +
-        "," +
-        type +
-        ":" +
-        undefined +
-        ", enumerable: " +
-        parent +
-        ".propertyIsEnumerable(" +
-        property +
-        ")" +
-        ", configurable: true" +
-        "})"
-      );
-
-    default:
-      // Wrap statements inside a function declaration if not already wrapped.
-      if (!aCurrentString.startsWith("function")) {
-        const header = "function(" + (type == "set" ? "value" : "") + ")";
-        let body = "";
-        // If there's a return statement explicitly written, always use the
-        // standard function definition syntax
-        if (aCurrentString.includes("return ")) {
-          body = "{" + aCurrentString + "}";
-        } else if (aCurrentString.startsWith("{")) {
-          // If block syntax is used, use the whole string as the function body.
-          body = aCurrentString;
-        } else {
-          // Prefer an expression closure.
-          body = "(" + aCurrentString + ")";
-        }
-        aCurrentString = header + body;
-      }
-
-      // Determine if a new getter or setter should be defined.
-      const defineType =
-        type == "get" ? "__defineGetter__" : "__defineSetter__";
-
-      // Make sure all quotes are escaped in the expression's syntax,
-      const defineFunc =
-        'eval("(' + aCurrentString.replace(/"/g, "\\$&") + ')")';
-
-      // Construct and return the getter/setter evaluation string.
-      // e.g: foo.__defineGetter__("bar", eval("(function() { return 42; })"))
-      return (
-        parent + "." + defineType + "(" + property + "," + defineFunc + ")"
-      );
-  }
-};
-
-/**
- * Function invoked when a getter or setter is deleted.
- *
- * @param Property aItem
- *        The current getter or setter property.
- */
-VariablesView.getterOrSetterDeleteCallback = function (aItem) {
-  aItem._disable();
-
-  // Make sure the right getter/setter to value override macro is applied
-  // to the target object.
-  aItem.ownerView.eval(aItem, "");
-
-  return true; // Don't hide the element.
-};
-
-/**
  * A Scope is an object holding Variable instances.
  * Iterable via "for (let [name, variable] of instance) { }".
  *
@@ -1272,17 +911,6 @@ function Scope(aView, l10nId, aFlags = {}) {
   // Inherit properties and flags from the parent view. You can override
   // each of these directly onto any scope, variable or property instance.
   this.scrollPageSize = aView.scrollPageSize;
-  this.eval = aView.eval;
-  this.switch = aView.switch;
-  this.delete = aView.delete;
-  this.new = aView.new;
-  this.preventDisableOnChange = aView.preventDisableOnChange;
-  this.preventDescriptorModifiers = aView.preventDescriptorModifiers;
-  this.editableNameTooltip = aView.editableNameTooltip;
-  this.editableValueTooltip = aView.editableValueTooltip;
-  this.editButtonTooltip = aView.editButtonTooltip;
-  this.deleteButtonTooltip = aView.deleteButtonTooltip;
-  this.domNodeValueTooltip = aView.domNodeValueTooltip;
   this.contextMenuId = aView.contextMenuId;
   this.separatorStr = aView.separatorStr;
 
@@ -1362,7 +990,7 @@ Scope.prototype = {
     const child = this._createChild(aName, aDescriptor, aOptions);
     this._store.set(aName, child);
     this._variablesView._itemsByElement.set(child._target, child);
-    this._variablesView._currHierarchy.set(child.absoluteName, child);
+    this._variablesView._testOnlyHierarchy.set(child.absoluteName, child);
     child.header = aName !== undefined;
 
     return child;
@@ -1415,7 +1043,7 @@ Scope.prototype = {
     const view = this._variablesView;
     view._store.splice(view._store.indexOf(this), 1);
     view._itemsByElement.delete(this._target);
-    view._currHierarchy.delete(this._nameString);
+    view._testOnlyHierarchy.delete(this._nameString);
 
     this._target.remove();
 
@@ -1523,7 +1151,7 @@ Scope.prototype = {
    * Expands the scope, showing all the added details.
    */
   async expand() {
-    if (this._isExpanded || this._isLocked) {
+    if (this._isExpanded) {
       return;
     }
     if (this._variablesView._enumVisible) {
@@ -1547,7 +1175,7 @@ Scope.prototype = {
    * Collapses the scope, hiding all the added details.
    */
   collapse() {
-    if (!this._isExpanded || this._isLocked) {
+    if (!this._isExpanded) {
       return;
     }
     this._arrow.removeAttribute("open");
@@ -1674,15 +1302,6 @@ Scope.prototype = {
   get twisty() {
     return this._isArrowVisible;
   },
-
-  /**
-   * Gets the expand lock state.
-   * @return boolean
-   */
-  get locked() {
-    return this._isLocked;
-  },
-
   /**
    * Sets the visibility state.
    * @param boolean aFlag
@@ -1713,14 +1332,6 @@ Scope.prototype = {
    */
   set twisty(aFlag) {
     aFlag ? this.showArrow() : this.hideArrow();
-  },
-
-  /**
-   * Sets the expand lock state.
-   * @param boolean aFlag
-   */
-  set locked(aFlag) {
-    this._isLocked = aFlag;
   },
 
   /**
@@ -1895,13 +1506,7 @@ Scope.prototype = {
    * The click listener for this scope's title.
    */
   _onClick(e) {
-    if (
-      this.editing ||
-      e.button != 0 ||
-      e.target == this._editNode ||
-      e.target == this._deleteNode ||
-      e.target == this._addPropertyNode
-    ) {
+    if (e.button != 0) {
       return;
     }
     this.toggle();
@@ -2159,18 +1764,6 @@ Scope.prototype = {
   _window: null,
 
   ownerView: null,
-  eval: null,
-  switch: null,
-  delete: null,
-  new: null,
-  preventDisableOnChange: false,
-  preventDescriptorModifiers: false,
-  editing: false,
-  editableNameTooltip: "",
-  editableValueTooltip: "",
-  editButtonTooltip: "",
-  deleteButtonTooltip: "",
-  domNodeValueTooltip: "",
   contextMenuId: "",
   separatorStr: "",
 
@@ -2178,8 +1771,6 @@ Scope.prototype = {
   _enumItems: null,
   _nonEnumItems: null,
   _fetched: false,
-  _committed: false,
-  _isLocked: false,
   _isExpanded: false,
   _isContentVisible: true,
   _isHeaderVisible: true,
@@ -2224,12 +1815,6 @@ DevToolsUtils.defineLazyPrototypeGetter(
  *        Options of the form accepted by Scope.addItem
  */
 function Variable(aScope, aName, aDescriptor, aOptions) {
-  this._setTooltips = this._setTooltips.bind(this);
-  this._activateNameInput = this._activateNameInput.bind(this);
-  this._activateValueInput = this._activateValueInput.bind(this);
-  this.openNodeInInspector = this.openNodeInInspector.bind(this);
-  this.highlightDomNode = this.highlightDomNode.bind(this);
-  this.unhighlightDomNode = this.unhighlightDomNode.bind(this);
   this._internalItem = aOptions.internalItem;
 
   // Treat safe getter descriptors as descriptors with a value.
@@ -2283,19 +1868,9 @@ Variable.prototype = extend(Scope.prototype, {
    * Remove this Variable from its parent and remove all children recursively.
    */
   remove() {
-    if (this._linkedToInspector) {
-      this.unhighlightDomNode();
-      this._valueLabel.removeEventListener("mouseover", this.highlightDomNode);
-      this._valueLabel.removeEventListener("mouseout", this.unhighlightDomNode);
-      this._openInspectorNode.removeEventListener(
-        "mousedown",
-        this.openNodeInInspector
-      );
-    }
-
     this.ownerView._store.delete(this._nameString);
     this._variablesView._itemsByElement.delete(this._target);
-    this._variablesView._currHierarchy.delete(this.absoluteName);
+    this._variablesView._testOnlyHierarchy.delete(this.absoluteName);
 
     this._target.remove();
 
@@ -2551,44 +2126,6 @@ Variable.prototype = extend(Scope.prototype, {
     this._valueLabel.classList.add(this._valueClassName);
     this._valueLabel.setAttribute("value", this._valueString);
     this._separatorLabel.hidden = false;
-
-    // DOMNodes get special treatment since they can be linked to the inspector
-    if (this._valueGrip.preview && this._valueGrip.preview.kind === "DOMNode") {
-      this._linkToInspector();
-    }
-  },
-
-  /**
-   * Marks this variable as overridden.
-   *
-   * @param boolean aFlag
-   *        Whether this variable is overridden or not.
-   */
-  setOverridden(aFlag) {
-    if (aFlag) {
-      this._target.setAttribute("overridden", "");
-    } else {
-      this._target.removeAttribute("overridden");
-    }
-  },
-
-  /**
-   * Briefly flashes this variable.
-   *
-   * @param number aDuration [optional]
-   *        An optional flash animation duration.
-   */
-  flash(aDuration = ITEM_FLASH_DURATION) {
-    const fadeInDelay = this._variablesView.lazyEmptyDelay + 1;
-    const fadeOutDelay = fadeInDelay + aDuration;
-
-    setNamedTimeout("vview-flash-in" + this.absoluteName, fadeInDelay, () =>
-      this._target.setAttribute("changed", "")
-    );
-
-    setNamedTimeout("vview-flash-out" + this.absoluteName, fadeOutDelay, () =>
-      this._target.removeAttribute("changed")
-    );
   },
 
   /**
@@ -2601,9 +2138,6 @@ Variable.prototype = extend(Scope.prototype, {
     this._idString = generateId((this._nameString = aName));
     this._displayScope({ value: aName, targetClassName: this.targetClassName });
     this._displayVariable();
-    this._customizeVariable();
-    this._prepareTooltips();
-    this._setAttributes();
     this._addEventListeners();
 
     if (
@@ -2654,25 +2188,8 @@ Variable.prototype = extend(Scope.prototype, {
       separatorLabel.hidden = true;
       valueLabel.hidden = true;
 
-      // Changing getter/setter names is never allowed.
-      this.switch = null;
-
-      // Getter/setter properties require special handling when it comes to
-      // evaluation and deletion.
-      if (this.ownerView.eval) {
-        this.delete = VariablesView.getterOrSetterDeleteCallback;
-        this.evaluationMacro = VariablesView.overrideValueEvalMacro;
-      } else {
-        // Deleting getters and setters individually is not allowed if no
-        // evaluation method is provided.
-        this.delete = null;
-        this.evaluationMacro = null;
-      }
-
       const getter = this.addItem("get", { value: descriptor.get });
       const setter = this.addItem("set", { value: descriptor.set });
-      getter.evaluationMacro = VariablesView.getterOrSetterEvalMacro;
-      setter.evaluationMacro = VariablesView.getterOrSetterEvalMacro;
 
       getter.hideArrow();
       setter.hideArrow();
@@ -2681,482 +2198,10 @@ Variable.prototype = extend(Scope.prototype, {
   },
 
   /**
-   * Adds specific nodes for this variable based on custom flags.
-   */
-  _customizeVariable() {
-    const ownerView = this.ownerView;
-    const descriptor = this._initialDescriptor;
-
-    if ((ownerView.eval && this.getter) || this.setter) {
-      const editNode = (this._editNode =
-        this.document.createXULElement("toolbarbutton"));
-      editNode.className = "variables-view-edit";
-      editNode.addEventListener("mousedown", this._onEdit.bind(this));
-      this._title.insertBefore(editNode, this._spacer);
-    }
-
-    if (ownerView.delete) {
-      const deleteNode = (this._deleteNode =
-        this.document.createXULElement("toolbarbutton"));
-      deleteNode.className = "variables-view-delete";
-      deleteNode.addEventListener("click", this._onDelete.bind(this));
-      this._title.appendChild(deleteNode);
-    }
-
-    if (ownerView.new) {
-      const addPropertyNode = (this._addPropertyNode =
-        this.document.createXULElement("toolbarbutton"));
-      addPropertyNode.className = "variables-view-add-property";
-      addPropertyNode.addEventListener(
-        "mousedown",
-        this._onAddProperty.bind(this)
-      );
-      this._title.appendChild(addPropertyNode);
-
-      // Can't add properties to primitive values, hide the node in those cases.
-      if (VariablesView.isPrimitive(descriptor)) {
-        addPropertyNode.setAttribute("invisible", "");
-      }
-    }
-
-    if (ownerView.contextMenuId) {
-      this._title.setAttribute("context", ownerView.contextMenuId);
-    }
-
-    if (ownerView.preventDescriptorModifiers) {
-      return;
-    }
-
-    if (!descriptor.writable && !ownerView.getter && !ownerView.setter) {
-      const nonWritableIcon = this.document.createXULElement("hbox");
-      nonWritableIcon.className = "variable-or-property-non-writable-icon";
-      nonWritableIcon.setAttribute("optional-visibility", "");
-      this._title.appendChild(nonWritableIcon);
-    }
-    if (descriptor.value && typeof descriptor.value == "object") {
-      if (descriptor.value.frozen) {
-        const frozenLabel = this.document.createXULElement("label");
-        frozenLabel.className = "variable-or-property-frozen-label";
-        frozenLabel.setAttribute("optional-visibility", "");
-        frozenLabel.setAttribute("value", "F");
-        this._title.appendChild(frozenLabel);
-      }
-      if (descriptor.value.sealed) {
-        const sealedLabel = this.document.createXULElement("label");
-        sealedLabel.className = "variable-or-property-sealed-label";
-        sealedLabel.setAttribute("optional-visibility", "");
-        sealedLabel.setAttribute("value", "S");
-        this._title.appendChild(sealedLabel);
-      }
-      if (!descriptor.value.extensible) {
-        const nonExtensibleLabel = this.document.createXULElement("label");
-        nonExtensibleLabel.className =
-          "variable-or-property-non-extensible-label";
-        nonExtensibleLabel.setAttribute("optional-visibility", "");
-        nonExtensibleLabel.setAttribute("value", "N");
-        this._title.appendChild(nonExtensibleLabel);
-      }
-    }
-  },
-
-  /**
-   * Prepares all tooltips for this variable.
-   */
-  _prepareTooltips() {
-    this._target.addEventListener("mouseover", this._setTooltips);
-  },
-
-  /**
-   * Sets all tooltips for this variable.
-   */
-  _setTooltips() {
-    this._target.removeEventListener("mouseover", this._setTooltips);
-
-    const ownerView = this.ownerView;
-    if (ownerView.preventDescriptorModifiers) {
-      return;
-    }
-
-    const tooltip = this.document.createXULElement("tooltip");
-    tooltip.id = "tooltip-" + this._idString;
-    tooltip.setAttribute("orient", "horizontal");
-
-    const labels = [
-      "configurable",
-      "enumerable",
-      "writable",
-      "frozen",
-      "sealed",
-      "extensible",
-      "overridden",
-      "WebIDL",
-    ];
-
-    for (const type of labels) {
-      const labelElement = this.document.createXULElement("label");
-      labelElement.className = type;
-      labelElement.setAttribute("value", L10N.getStr(type + "Tooltip"));
-      tooltip.appendChild(labelElement);
-    }
-
-    this._target.appendChild(tooltip);
-    this._target.setAttribute("tooltip", tooltip.id);
-
-    if (this._editNode && ownerView.eval) {
-      this._editNode.setAttribute("tooltiptext", ownerView.editButtonTooltip);
-    }
-    if (this._openInspectorNode && this._linkedToInspector) {
-      this._openInspectorNode.setAttribute(
-        "tooltiptext",
-        this.ownerView.domNodeValueTooltip
-      );
-    }
-    if (this._valueLabel && ownerView.eval) {
-      this._valueLabel.setAttribute(
-        "tooltiptext",
-        ownerView.editableValueTooltip
-      );
-    }
-    if (this._name && ownerView.switch) {
-      this._name.setAttribute("tooltiptext", ownerView.editableNameTooltip);
-    }
-    if (this._deleteNode && ownerView.delete) {
-      this._deleteNode.setAttribute(
-        "tooltiptext",
-        ownerView.deleteButtonTooltip
-      );
-    }
-  },
-
-  /**
-   * Get the parent variablesview toolbox, if any.
-   */
-  get toolbox() {
-    return this._variablesView.toolbox;
-  },
-
-  /**
-   * Checks if this variable is a DOMNode and is part of a variablesview that
-   * has been linked to the toolbox, so that highlighting and jumping to the
-   * inspector can be done.
-   */
-  _isLinkableToInspector() {
-    const isDomNode =
-      this._valueGrip && this._valueGrip.preview.kind === "DOMNode";
-    const hasBeenLinked = this._linkedToInspector;
-    const hasToolbox = !!this.toolbox;
-
-    return isDomNode && !hasBeenLinked && hasToolbox;
-  },
-
-  /**
-   * If the variable is a DOMNode, and if a toolbox is set, then link it to the
-   * inspector (highlight on hover, and jump to markup-view on click)
-   */
-  _linkToInspector() {
-    if (!this._isLinkableToInspector()) {
-      return;
-    }
-
-    // Listen to value mouseover/click events to highlight and jump
-    this._valueLabel.addEventListener("mouseover", this.highlightDomNode);
-    this._valueLabel.addEventListener("mouseout", this.unhighlightDomNode);
-
-    // Add a button to open the node in the inspector
-    this._openInspectorNode = this.document.createXULElement("toolbarbutton");
-    this._openInspectorNode.className = "variables-view-open-inspector";
-    this._openInspectorNode.addEventListener(
-      "mousedown",
-      this.openNodeInInspector
-    );
-    this._title.appendChild(this._openInspectorNode);
-
-    this._linkedToInspector = true;
-  },
-
-  /**
-   * In case this variable is a DOMNode and part of a variablesview that has been
-   * linked to the toolbox's inspector, then select the corresponding node in
-   * the inspector, and switch the inspector tool in the toolbox
-   * @return a promise that resolves when the node is selected and the inspector
-   * has been switched to and is ready
-   */
-  openNodeInInspector(event) {
-    if (!this.toolbox) {
-      return Promise.reject(new Error("Toolbox not available"));
-    }
-
-    event && event.stopPropagation();
-
-    return async function () {
-      let nodeFront = this._nodeFront;
-      if (!nodeFront) {
-        const inspectorFront = await this.toolbox.target.getFront("inspector");
-        nodeFront = await inspectorFront.getNodeFrontFromNodeGrip(
-          this._valueGrip
-        );
-      }
-
-      if (nodeFront) {
-        await this.toolbox.selectTool("inspector");
-
-        const inspectorReady = new Promise(resolve => {
-          this.toolbox.getPanel("inspector").once("inspector-updated", resolve);
-        });
-
-        await this.toolbox.selection.setNodeFront(nodeFront, {
-          reason: "variables-view",
-        });
-        await inspectorReady;
-      }
-    }.bind(this)();
-  },
-
-  /**
-   * In case this variable is a DOMNode and part of a variablesview that has been
-   * linked to the toolbox's inspector, then highlight the corresponding node
-   */
-  async highlightDomNode() {
-    if (!this.toolbox) {
-      return;
-    }
-
-    if (!this._nodeFront) {
-      const inspectorFront = await this.toolbox.target.getFront("inspector");
-      this._nodeFront = await inspectorFront.getNodeFrontFromNodeGrip(
-        this._valueGrip
-      );
-    }
-
-    await this.toolbox.getHighlighter().highlight(this._nodeFront);
-  },
-
-  /**
-   * Unhighlight a previously highlit node
-   * @see highlightDomNode
-   */
-  unhighlightDomNode() {
-    if (!this.toolbox) {
-      return;
-    }
-
-    this.toolbox.getHighlighter().unhighlight();
-  },
-
-  /**
-   * Sets a variable's configurable, enumerable and writable attributes,
-   * and specifies if it's a 'this', '<exception>', '<return>' or '__proto__'
-   * reference.
-   */
-  // eslint-disable-next-line complexity
-  _setAttributes() {
-    const ownerView = this.ownerView;
-    if (ownerView.preventDescriptorModifiers) {
-      return;
-    }
-
-    const descriptor = this._initialDescriptor;
-    const target = this._target;
-    const name = this._nameString;
-
-    if (ownerView.eval) {
-      target.setAttribute("editable", "");
-    }
-
-    if (!descriptor.configurable) {
-      target.setAttribute("non-configurable", "");
-    }
-    if (!descriptor.enumerable) {
-      target.setAttribute("non-enumerable", "");
-    }
-    if (!descriptor.writable && !ownerView.getter && !ownerView.setter) {
-      target.setAttribute("non-writable", "");
-    }
-
-    if (descriptor.value && typeof descriptor.value == "object") {
-      if (descriptor.value.frozen) {
-        target.setAttribute("frozen", "");
-      }
-      if (descriptor.value.sealed) {
-        target.setAttribute("sealed", "");
-      }
-      if (!descriptor.value.extensible) {
-        target.setAttribute("non-extensible", "");
-      }
-    }
-
-    if (descriptor && "getterValue" in descriptor) {
-      target.setAttribute("safe-getter", "");
-    }
-
-    if (name == "this") {
-      target.setAttribute("self", "");
-    } else if (this._internalItem && name == "<exception>") {
-      target.setAttribute("exception", "");
-      target.setAttribute("pseudo-item", "");
-    } else if (this._internalItem && name == "<return>") {
-      target.setAttribute("return", "");
-      target.setAttribute("pseudo-item", "");
-    } else if (name == "__proto__") {
-      target.setAttribute("proto", "");
-      target.setAttribute("pseudo-item", "");
-    }
-
-    if (!Object.keys(descriptor).length) {
-      target.setAttribute("pseudo-item", "");
-    }
-  },
-
-  /**
    * Adds the necessary event listeners for this variable.
    */
   _addEventListeners() {
-    this._name.addEventListener("dblclick", this._activateNameInput);
-    this._valueLabel.addEventListener("mousedown", this._activateValueInput);
     this._title.addEventListener("mousedown", this._onClick);
-  },
-
-  /**
-   * Makes this variable's name editable.
-   */
-  _activateNameInput(e) {
-    if (!this._variablesView.alignedValues) {
-      this._separatorLabel.hidden = true;
-      this._valueLabel.hidden = true;
-    }
-
-    EditableName.create(
-      this,
-      {
-        onSave: aKey => {
-          if (!this._variablesView.preventDisableOnChange) {
-            this._disable();
-          }
-          this.ownerView.switch(this, aKey);
-        },
-        onCleanup: () => {
-          if (!this._variablesView.alignedValues) {
-            this._separatorLabel.hidden = false;
-            this._valueLabel.hidden = false;
-          }
-        },
-      },
-      e
-    );
-  },
-
-  /**
-   * Makes this variable's value editable.
-   */
-  _activateValueInput(e) {
-    EditableValue.create(
-      this,
-      {
-        onSave: aString => {
-          if (this._linkedToInspector) {
-            this.unhighlightDomNode();
-          }
-          if (!this._variablesView.preventDisableOnChange) {
-            this._disable();
-          }
-          this.ownerView.eval(this, aString);
-        },
-      },
-      e
-    );
-  },
-
-  /**
-   * Disables this variable prior to a new name switch or value evaluation.
-   */
-  _disable() {
-    // Prevent the variable from being collapsed or expanded.
-    this.hideArrow();
-
-    // Hide any nodes that may offer information about the variable.
-    for (const node of this._title.childNodes) {
-      node.hidden = node != this._arrow && node != this._name;
-    }
-    this._enum.hidden = true;
-    this._nonenum.hidden = true;
-  },
-
-  /**
-   * The current macro used to generate the string evaluated when performing
-   * a variable or property value change.
-   */
-  evaluationMacro: VariablesView.simpleValueEvalMacro,
-
-  /**
-   * The click listener for the edit button.
-   */
-  _onEdit(e) {
-    if (e.button != 0) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-    this._activateValueInput();
-  },
-
-  /**
-   * The click listener for the delete button.
-   */
-  _onDelete(e) {
-    if ("button" in e && e.button != 0) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (this.ownerView.delete) {
-      if (!this.ownerView.delete(this)) {
-        this.hide();
-      }
-    }
-  },
-
-  /**
-   * The click listener for the add property button.
-   */
-  _onAddProperty(e) {
-    if ("button" in e && e.button != 0) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    this.expanded = true;
-
-    const item = this.addItem(
-      " ",
-      {
-        value: undefined,
-        configurable: true,
-        enumerable: true,
-        writable: true,
-      },
-      { relaxed: true }
-    );
-
-    // Force showing the separator.
-    item._separatorLabel.hidden = false;
-
-    EditableNameAndValue.create(
-      item,
-      {
-        onSave: ([aKey, aValue]) => {
-          if (!this._variablesView.preventDisableOnChange) {
-            this._disable();
-          }
-          this.ownerView.new(this, aKey, aValue);
-        },
-      },
-      e
-    );
   },
 
   _symbolicName: null,
@@ -3166,10 +2211,6 @@ Variable.prototype = extend(Scope.prototype, {
   _separatorLabel: null,
   _valueLabel: null,
   _spacer: null,
-  _editNode: null,
-  _deleteNode: null,
-  _addPropertyNode: null,
-  _tooltip: null,
   _valueGrip: null,
   _valueString: "",
   _valueClassName: "",
@@ -3239,122 +2280,6 @@ VariablesView.prototype[Symbol.iterator] =
     function* () {
       yield* this._store;
     };
-
-/**
- * Forget everything recorded about added scopes, variables or properties.
- * @see VariablesView.commitHierarchy
- */
-VariablesView.prototype.clearHierarchy = function () {
-  this._prevHierarchy.clear();
-  this._currHierarchy.clear();
-};
-
-/**
- * Perform operations on all the VariablesView Scopes, Variables and Properties
- * after you've added all the items you wanted.
- *
- * Calling this method is optional, and does the following:
- *   - styles the items overridden by other items in parent scopes
- *   - reopens the items which were previously expanded
- *   - flashes the items whose values changed
- */
-VariablesView.prototype.commitHierarchy = function () {
-  for (const [, currItem] of this._currHierarchy) {
-    // Avoid performing expensive operations.
-    if (this.commitHierarchyIgnoredItems[currItem._nameString]) {
-      continue;
-    }
-    const overridden = this.isOverridden(currItem);
-    if (overridden) {
-      currItem.setOverridden(true);
-    }
-    const expanded = !currItem._committed && this.wasExpanded(currItem);
-    if (expanded) {
-      currItem.expand();
-    }
-    const changed = !currItem._committed && this.hasChanged(currItem);
-    if (changed) {
-      currItem.flash();
-    }
-    currItem._committed = true;
-  }
-  if (this.oncommit) {
-    this.oncommit(this);
-  }
-};
-
-// Some variables are likely to contain a very large number of properties.
-// It would be a bad idea to re-expand them or perform expensive operations.
-VariablesView.prototype.commitHierarchyIgnoredItems = extend(null, {
-  window: true,
-  this: true,
-});
-
-/**
- * Checks if the an item was previously expanded, if it existed in a
- * previous hierarchy.
- *
- * @param Scope | Variable | Property aItem
- *        The item to verify.
- * @return boolean
- *         Whether the item was expanded.
- */
-VariablesView.prototype.wasExpanded = function (aItem) {
-  if (!(aItem instanceof Scope)) {
-    return false;
-  }
-  const prevItem = this._prevHierarchy.get(
-    aItem.absoluteName || aItem._nameString
-  );
-  return prevItem ? prevItem._isExpanded : false;
-};
-
-/**
- * Checks if the an item's displayed value (a representation of the grip)
- * has changed, if it existed in a previous hierarchy.
- *
- * @param Variable | Property aItem
- *        The item to verify.
- * @return boolean
- *         Whether the item has changed.
- */
-VariablesView.prototype.hasChanged = function (aItem) {
-  // Only analyze Variables and Properties for displayed value changes.
-  // Scopes are just collections of Variables and Properties and
-  // don't have a "value", so they can't change.
-  if (!(aItem instanceof Variable)) {
-    return false;
-  }
-  const prevItem = this._prevHierarchy.get(aItem.absoluteName);
-  return prevItem ? prevItem._valueString != aItem._valueString : false;
-};
-
-/**
- * Checks if the an item was previously expanded, if it existed in a
- * previous hierarchy.
- *
- * @param Scope | Variable | Property aItem
- *        The item to verify.
- * @return boolean
- *         Whether the item was expanded.
- */
-VariablesView.prototype.isOverridden = function (aItem) {
-  // Only analyze Variables for being overridden in different Scopes.
-  if (!(aItem instanceof Variable) || aItem instanceof Property) {
-    return false;
-  }
-  const currVariableName = aItem._nameString;
-  const parentScopes = this.getParentScopesForVariableOrProperty(aItem);
-
-  for (const otherScope of parentScopes) {
-    for (const [otherVariableName] of otherScope) {
-      if (otherVariableName == currVariableName) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
 
 /**
  * Returns true if the descriptor represents an undefined, null or
@@ -3613,7 +2538,7 @@ VariablesView.getString = function (aGrip, aOptions = {}) {
       case "-Infinity":
       case "-0":
         return aGrip.type;
-      default:
+      default: {
         const stringifier = VariablesView.stringifiers.byType[aGrip.type];
         if (stringifier) {
           const result = stringifier(aGrip, aOptions);
@@ -3631,6 +2556,7 @@ VariablesView.getString = function (aGrip, aOptions = {}) {
         }
 
         return "[" + aGrip.type + " " + aGrip.class + "]";
+      }
     }
   }
 
@@ -4187,256 +3113,3 @@ export function escapeHTML(aString) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-
-/**
- * An Editable encapsulates the UI of an edit box that overlays a label,
- * allowing the user to edit the value.
- *
- * @param Variable aVariable
- *        The Variable or Property to make editable.
- * @param object aOptions
- *        - onSave
- *          The callback to call with the value when editing is complete.
- *        - onCleanup
- *          The callback to call when the editable is removed for any reason.
- */
-function Editable(aVariable, aOptions) {
-  this._variable = aVariable;
-  this._onSave = aOptions.onSave;
-  this._onCleanup = aOptions.onCleanup;
-}
-
-Editable.create = function (aVariable, aOptions, aEvent) {
-  const editable = new this(aVariable, aOptions);
-  editable.activate(aEvent);
-  return editable;
-};
-
-Editable.prototype = {
-  /**
-   * The class name for targeting this Editable type's label element. Overridden
-   * by inheriting classes.
-   */
-  className: null,
-
-  /**
-   * Boolean indicating whether this Editable should activate. Overridden by
-   * inheriting classes.
-   */
-  shouldActivate: null,
-
-  /**
-   * The label element for this Editable. Overridden by inheriting classes.
-   */
-  label: null,
-
-  /**
-   * Activate this editable by replacing the input box it overlays and
-   * initialize the handlers.
-   *
-   * @param Event e [optional]
-   *        Optionally, the Event object that was used to activate the Editable.
-   */
-  activate(e) {
-    if (!this.shouldActivate) {
-      this._onCleanup && this._onCleanup();
-      return;
-    }
-
-    const { label } = this;
-    const initialString = label.getAttribute("value");
-
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Create a texbox input element which will be shown in the current
-    // element's specified label location.
-    const input = (this._input = this._variable.document.createElementNS(
-      HTML_NS,
-      "input"
-    ));
-    input.className = this.className;
-    input.setAttribute("value", initialString);
-
-    // Replace the specified label with a textbox input element.
-    label.parentNode.replaceChild(input, label);
-    input.scrollIntoView({ block: "nearest" });
-    input.select();
-
-    // When the value is a string (displayed as "value"), then we probably want
-    // to change it to another string in the textbox, so to avoid typing the ""
-    // again, tackle with the selection bounds just a bit.
-    if (initialString.match(/^".+"$/)) {
-      input.selectionEnd--;
-      input.selectionStart++;
-    }
-
-    this._onKeydown = this._onKeydown.bind(this);
-    this._onBlur = this._onBlur.bind(this);
-    input.addEventListener("keydown", this._onKeydown);
-    input.addEventListener("blur", this._onBlur);
-
-    this._prevExpandable = this._variable.twisty;
-    this._prevExpanded = this._variable.expanded;
-    this._variable.collapse();
-    this._variable.hideArrow();
-    this._variable.locked = true;
-    this._variable.editing = true;
-  },
-
-  /**
-   * Remove the input box and restore the Variable or Property to its previous
-   * state.
-   */
-  deactivate() {
-    this._input.removeEventListener("keydown", this._onKeydown);
-    this._input.removeEventListener("blur", this.deactivate);
-    this._input.parentNode.replaceChild(this.label, this._input);
-    this._input = null;
-
-    const scrollbox = this._variable._variablesView._list;
-    scrollbox.scrollBy(-this._variable._target, 0);
-    this._variable.locked = false;
-    this._variable.twisty = this._prevExpandable;
-    this._variable.expanded = this._prevExpanded;
-    this._variable.editing = false;
-    this._onCleanup && this._onCleanup();
-  },
-
-  /**
-   * Save the current value and deactivate the Editable.
-   */
-  _save() {
-    const initial = this.label.getAttribute("value");
-    const current = this._input.value.trim();
-    this.deactivate();
-    if (initial != current) {
-      this._onSave(current);
-    }
-  },
-
-  /**
-   * Called when tab is pressed, allowing subclasses to link different
-   * behavior to tabbing if desired.
-   */
-  _next() {
-    this._save();
-  },
-
-  /**
-   * Called when escape is pressed, indicating a cancelling of editing without
-   * saving.
-   */
-  _reset() {
-    this.deactivate();
-    this._variable.focus();
-  },
-
-  /**
-   * Event handler for when the input loses focus.
-   */
-  _onBlur() {
-    this.deactivate();
-  },
-
-  /**
-   * Event handler for when the input receives a key press.
-   */
-  _onKeydown(e) {
-    e.stopPropagation();
-
-    switch (e.keyCode) {
-      case KeyCodes.DOM_VK_TAB:
-        this._next();
-        break;
-      case KeyCodes.DOM_VK_RETURN:
-        this._save();
-        break;
-      case KeyCodes.DOM_VK_ESCAPE:
-        this._reset();
-        break;
-    }
-  },
-};
-
-/**
- * An Editable specific to editing the name of a Variable or Property.
- */
-function EditableName(aVariable, aOptions) {
-  Editable.call(this, aVariable, aOptions);
-}
-
-EditableName.create = Editable.create;
-
-EditableName.prototype = extend(Editable.prototype, {
-  className: "element-name-input",
-
-  get label() {
-    return this._variable._name;
-  },
-
-  get shouldActivate() {
-    return !!this._variable.ownerView.switch;
-  },
-});
-
-/**
- * An Editable specific to editing the value of a Variable or Property.
- */
-function EditableValue(aVariable, aOptions) {
-  Editable.call(this, aVariable, aOptions);
-}
-
-EditableValue.create = Editable.create;
-
-EditableValue.prototype = extend(Editable.prototype, {
-  className: "element-value-input",
-
-  get label() {
-    return this._variable._valueLabel;
-  },
-
-  get shouldActivate() {
-    return !!this._variable.ownerView.eval;
-  },
-});
-
-/**
- * An Editable specific to editing the key and value of a new property.
- */
-function EditableNameAndValue(aVariable, aOptions) {
-  EditableName.call(this, aVariable, aOptions);
-}
-
-EditableNameAndValue.create = Editable.create;
-
-EditableNameAndValue.prototype = extend(EditableName.prototype, {
-  _reset() {
-    // Hide the Variable or Property if the user presses escape.
-    this._variable.remove();
-    this.deactivate();
-  },
-
-  _next() {
-    // Override _next so as to set both key and value at the same time.
-    const key = this._input.value;
-    this.label.setAttribute("value", key);
-
-    const valueEditable = EditableValue.create(this._variable, {
-      onSave: aValue => {
-        this._onSave([key, aValue]);
-      },
-    });
-    valueEditable._reset = () => {
-      this._variable.remove();
-      valueEditable.deactivate();
-    };
-  },
-
-  _save(e) {
-    // Both _save and _next activate the value edit box.
-    this._next(e);
-  },
-});

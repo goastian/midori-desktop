@@ -2,14 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "devtools/client/shared/vendor/react";
-import { div } from "devtools/client/shared/vendor/react-dom-factories";
+import { Component } from "devtools/client/shared/vendor/react";
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { features } from "../../utils/prefs";
 const classnames = require("resource://devtools/client/shared/classnames.js");
-
-import ColumnBreakpoint from "./ColumnBreakpoint";
 
 import {
   getSelectedSource,
@@ -17,9 +13,8 @@ import {
   isSourceBlackBoxed,
 } from "../../selectors/index";
 import actions from "../../actions/index";
+import { markerTypes } from "../../constants";
 import { connect } from "devtools/client/shared/vendor/react-redux";
-import { makeBreakpointId } from "../../utils/breakpoint/index";
-import { fromEditorLine } from "../../utils/editor/index";
 
 const breakpointButton = document.createElement("button");
 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -37,16 +32,15 @@ path.setAttributeNS(
 svg.appendChild(path);
 breakpointButton.appendChild(svg);
 
-const COLUMN_BREAKPOINT_MARKER = "column-breakpoint-marker";
-
 class ColumnBreakpoints extends Component {
   static get propTypes() {
     return {
-      columnBreakpoints: PropTypes.array.isRequired,
+      columnBreakpoints: PropTypes.array,
       editor: PropTypes.object.isRequired,
       selectedSource: PropTypes.object,
       addBreakpoint: PropTypes.func,
       removeBreakpoint: PropTypes.func,
+      setSkipPausing: PropTypes.func,
       toggleDisabledBreakpoint: PropTypes.func,
       showEditorCreateBreakpointContextMenu: PropTypes.func,
       showEditorEditBreakpointContextMenu: PropTypes.func,
@@ -56,44 +50,55 @@ class ColumnBreakpoints extends Component {
   componentDidUpdate() {
     const { selectedSource, columnBreakpoints, editor } = this.props;
 
-    // Only for codemirror 6
-    if (!features.codemirrorNext) {
-      return;
-    }
-
     if (!selectedSource || !editor) {
       return;
     }
 
     if (!columnBreakpoints.length) {
-      editor.removePositionContentMarker(COLUMN_BREAKPOINT_MARKER);
+      editor.removePositionContentMarker(markerTypes.COLUMN_BREAKPOINT_MARKER);
       return;
     }
 
     editor.setPositionContentMarker({
-      id: COLUMN_BREAKPOINT_MARKER,
-      positions: columnBreakpoints.map(bp => bp.location),
-      createPositionElementNode: (line, column) => {
-        const lineNumber = fromEditorLine(selectedSource.id, line);
-        const columnBreakpoint = columnBreakpoints.find(
-          bp => bp.location.line === lineNumber && bp.location.column === column
-        );
+      id: markerTypes.COLUMN_BREAKPOINT_MARKER,
+      positions: columnBreakpoints.map(cbp => {
+        return {
+          line: cbp.location.line,
+          column: cbp.location.column,
+          positionData: cbp,
+        };
+      }),
+      createPositionElementNode: (
+        line,
+        column,
+        isFirstNonSpaceColumn,
+        positionData
+      ) => {
         const breakpointNode = breakpointButton.cloneNode(true);
         breakpointNode.className = classnames("column-breakpoint", {
-          "has-condition": columnBreakpoint.breakpoint?.options.condition,
-          "has-log": columnBreakpoint.breakpoint?.options.logValue,
-          active:
-            columnBreakpoint.breakpoint &&
-            !columnBreakpoint.breakpoint.disabled,
-          disabled: columnBreakpoint.breakpoint?.disabled,
+          "has-condition": positionData.breakpoint?.options.condition,
+          "has-log": positionData.breakpoint?.options.logValue,
+          active: positionData.breakpoint && !positionData.breakpoint.disabled,
+          disabled: positionData.breakpoint?.disabled,
         });
         breakpointNode.addEventListener("click", event =>
-          this.onClick(event, columnBreakpoint)
+          this.onClick(event, positionData)
         );
         breakpointNode.addEventListener("contextmenu", event =>
-          this.onContextMenu(event, columnBreakpoint)
+          this.onContextMenu(event, positionData)
         );
         return breakpointNode;
+      },
+      customEq: (positionData, prevPositionData) => {
+        return (
+          positionData?.breakpoint?.id == prevPositionData?.breakpoint?.id &&
+          positionData?.breakpoint?.options.condition ==
+            prevPositionData?.breakpoint?.options.condition &&
+          positionData?.breakpoint?.options.logValue ==
+            prevPositionData?.breakpoint?.options.logValue &&
+          positionData?.breakpoint?.disabled ==
+            prevPositionData?.breakpoint?.disabled
+        );
       },
     });
   }
@@ -101,8 +106,12 @@ class ColumnBreakpoints extends Component {
   onClick = (event, columnBreakpoint) => {
     event.stopPropagation();
     event.preventDefault();
-    const { toggleDisabledBreakpoint, removeBreakpoint, addBreakpoint } =
-      this.props;
+    const {
+      toggleDisabledBreakpoint,
+      removeBreakpoint,
+      addBreakpoint,
+      setSkipPausing,
+    } = this.props;
 
     // disable column breakpoint on shift-click.
     if (event.shiftKey) {
@@ -113,6 +122,7 @@ class ColumnBreakpoints extends Component {
     if (columnBreakpoint.breakpoint) {
       removeBreakpoint(columnBreakpoint.breakpoint);
     } else {
+      setSkipPausing(false);
       addBreakpoint(columnBreakpoint.location);
     }
   };
@@ -135,42 +145,7 @@ class ColumnBreakpoints extends Component {
   };
 
   render() {
-    const {
-      editor,
-      columnBreakpoints,
-      selectedSource,
-      showEditorCreateBreakpointContextMenu,
-      showEditorEditBreakpointContextMenu,
-      toggleDisabledBreakpoint,
-      removeBreakpoint,
-      addBreakpoint,
-    } = this.props;
-
-    if (features.codemirrorNext) {
-      return null;
-    }
-
-    if (!selectedSource || columnBreakpoints.length === 0) {
-      return null;
-    }
-
-    let breakpoints;
-    editor.codeMirror.operation(() => {
-      breakpoints = columnBreakpoints.map(columnBreakpoint =>
-        React.createElement(ColumnBreakpoint, {
-          key: makeBreakpointId(columnBreakpoint.location),
-          columnBreakpoint,
-          editor,
-          source: selectedSource,
-          showEditorCreateBreakpointContextMenu,
-          showEditorEditBreakpointContextMenu,
-          toggleDisabledBreakpoint,
-          removeBreakpoint,
-          addBreakpoint,
-        })
-      );
-    });
-    return div(null, breakpoints);
+    return null;
   }
 }
 
@@ -196,4 +171,5 @@ export default connect(mapStateToProps, {
   toggleDisabledBreakpoint: actions.toggleDisabledBreakpoint,
   removeBreakpoint: actions.removeBreakpoint,
   addBreakpoint: actions.addBreakpoint,
+  setSkipPausing: actions.setSkipPausing,
 })(ColumnBreakpoints);

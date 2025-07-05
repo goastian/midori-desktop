@@ -26,6 +26,8 @@ support-files = [
   "code_math.js",
   "code_no_race.js",
   "doc_backward_forward_navigation.html",
+  "doc_broken_xml.xml",
+  "doc_broken_xml_frame.html",
   "doc_cached-resource.html",
   "doc_cached-resource_iframe.html",
   "doc_empty-tab-01.html",
@@ -51,16 +53,11 @@ prefs = ["security.allow_unsafe_parent_loads=true"] # This is far from ideal. Bu
 # We want this test to run for mochitest-dt as well, so we include it here
 skip-if = [
   "debug", # no point in running on both opt and debug, and will likely intermittently timeout on debug, Bug 1598726
-  "asan",
-  "ccov",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov",
 ]
 
 ["../../../../browser/base/content/test/static/browser_parsable_css.js"]
 # We want this test to run for mochitest-dt as well, so we include it here
-skip-if = [
-  "debug", # no point in running on both opt and debug, and will likely intermittently timeout on debug
-  "asan",
-]
 
 ["browser_about-devtools-toolbox_load.js"]
 
@@ -100,21 +97,17 @@ skip-if = [
 
 ["browser_source_map-no-race.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]
 
 ["browser_source_map-pub-sub.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]
 
 ["browser_source_map-reload.js"]
-skip-if = [
-  "http3", # Bug 1829298
-  "http2",
-]
 
 ["browser_tab_commands_factory.js"]
 
@@ -131,7 +124,7 @@ skip-if = [
 ["browser_target_loading.js"]
 
 ["browser_target_parents.js"]
-skip-if = ["tsan"] # bug 1807041
+skip-if = ["os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan"] # Bug 1897912
 
 ["browser_target_remote.js"]
 
@@ -140,12 +133,16 @@ skip-if = ["tsan"] # bug 1807041
 ["browser_target_support.js"]
 
 ["browser_toolbox_backward_forward_navigation.js"]
-skip-if = [
-  "os == 'linux' && bits == 64", # Bug 1770314
-  "os == 'mac'", # Bug 1770314
-]
+
+["browser_toolbox_broken_xml_frame.js"]
 
 ["browser_toolbox_browsertoolbox_host.js"]
+
+["browser_toolbox_connecting_with_frozen_process.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan",
+]
 
 ["browser_toolbox_contentpage_contextmenu.js"]
 
@@ -158,11 +155,10 @@ skip-if = [
 ["browser_toolbox_error_count_reset_on_navigation.js"]
 
 ["browser_toolbox_fission_navigation.js"]
-skip-if = [
-  "os == 'linux'", # Bug 1742672
-]
 
 ["browser_toolbox_frames_list.js"]
+
+["browser_toolbox_fullscreen.js"]
 
 ["browser_toolbox_getpanelwhenready.js"]
 
@@ -179,19 +175,18 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 
 ["browser_toolbox_keyboard_navigation_notification_box.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]
 
 ["browser_toolbox_many_toggles.js"]
-skip-if = ["os == 'win'"] # Content process killing throws on Window
+run-if = ["os != 'win'"] # Content process killing throws on Window
 
 ["browser_toolbox_meatball.js"]
 
 ["browser_toolbox_options.js"]
 
 ["browser_toolbox_options_disable_buttons.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_toolbox_options_disable_cache-01.js"]
 
@@ -199,16 +194,16 @@ skip-if = ["a11y_checks"] # Bug 1849028 and 1849179 for causing crashes
 
 ["browser_toolbox_options_disable_cache-03.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]
 
 ["browser_toolbox_options_disable_js.js"]
 
 ["browser_toolbox_options_enable_serviceworkers_testing.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]
 
 ["browser_toolbox_options_frames_button.js"]
@@ -229,7 +224,6 @@ disabled = "Bug 962258"
 ["browser_toolbox_remoteness_change.js"]
 
 ["browser_toolbox_screenshot_tool.js"]
-skip-if = ["a11y_checks"] # Bugs 1858041 and 1849028 for causing intermittent crashes
 
 ["browser_toolbox_select_event.js"]
 
@@ -258,6 +252,7 @@ skip-if = ["a11y_checks"] # Bugs 1858041 and 1849028 for causing intermittent cr
 ["browser_toolbox_theme_registration.js"]
 
 ["browser_toolbox_toggle.js"]
+skip-if = ["os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'"] # Bug 1767761
 
 ["browser_toolbox_tool_ready.js"]
 
@@ -265,7 +260,6 @@ skip-if = ["a11y_checks"] # Bugs 1858041 and 1849028 for causing intermittent cr
 
 ["browser_toolbox_toolbar_minimum_width.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
-skip-if = ["os == 'win' && !debug"] # Bug 1709840
 
 ["browser_toolbox_toolbar_overflow.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
@@ -296,6 +290,8 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 
 ["browser_toolbox_watchedByDevTools.js"]
 
+["browser_toolbox_window_global_debugging.js"]
+
 ["browser_toolbox_window_reload_target.js"]
 
 ["browser_toolbox_window_reload_target_force.js"]
@@ -307,12 +303,10 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_toolbox_window_title_frame_select.js"]
 
 ["browser_toolbox_zoom.js"]
-skip-if = ["os == 'win' && !debug"] # bug 1683265
 
 ["browser_toolbox_zoom_popup.js"]
 
 ["browser_webextension_descriptor.js"]
 
 ["browser_webextension_dropdown.js"]
-skip-if = ["os == 'linux' && !debug"] # Bug 1714106
 # We want these tests to run for mochitest-dt as well, so we include them here:

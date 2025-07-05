@@ -13,13 +13,7 @@
 
 import { Component } from "devtools/client/shared/vendor/react";
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
-import {
-  toEditorLine,
-  fromEditorLine,
-  endOperation,
-  startOperation,
-} from "../../utils/editor/index";
-import { getDocument, hasDocument } from "../../utils/editor/source-documents";
+import { toEditorLine } from "../../utils/editor/index";
 
 import { connect } from "devtools/client/shared/vendor/react-redux";
 import {
@@ -30,7 +24,7 @@ import {
   getCurrentThread,
   getShouldHighlightSelectedLocation,
 } from "../../selectors/index";
-import { features } from "../../utils/prefs";
+import { markerTypes } from "../../constants";
 
 function isDebugLine(selectedFrame, selectedLocation) {
   if (!selectedFrame) {
@@ -59,7 +53,7 @@ export class HighlightLine extends Component {
       selectedFrame: PropTypes.object,
       selectedLocation: PropTypes.object.isRequired,
       selectedSourceTextContent: PropTypes.object.isRequired,
-      shouldHighlightSelectedLocation: PropTypes.func.isRequired,
+      shouldHighlightSelectedLocation: PropTypes.bool.isRequired,
       editor: PropTypes.object,
     };
   }
@@ -78,15 +72,11 @@ export class HighlightLine extends Component {
 
   shouldSetHighlightLine({ selectedLocation, selectedSourceTextContent }) {
     const editorLine = toEditorLine(
-      selectedLocation.source.id,
+      selectedLocation.source,
       selectedLocation.line
     );
 
-    if (
-      !selectedLocation ||
-      !selectedSourceTextContent ||
-      (!features.codemirrorNext && !hasDocument(selectedLocation.source.id))
-    ) {
+    if (!selectedLocation || !selectedSourceTextContent) {
       return false;
     }
 
@@ -103,17 +93,11 @@ export class HighlightLine extends Component {
       this.isStepping = true;
     }
 
-    if (!features.codemirrorNext) {
-      startOperation();
-    }
     if (prevProps) {
       this.clearHighlightLine(prevProps);
     }
     if (shouldHighlightSelectedLocation) {
       this.setHighlightLine();
-    }
-    if (!features.codemirrorNext) {
-      endOperation();
     }
   }
 
@@ -124,8 +108,10 @@ export class HighlightLine extends Component {
     }
 
     this.isStepping = false;
-    const sourceId = selectedLocation.source.id;
-    const editorLine = toEditorLine(sourceId, selectedLocation.line);
+    const editorLine = toEditorLine(
+      selectedLocation.source,
+      selectedLocation.line
+    );
     this.previousEditorLine = editorLine;
 
     if (
@@ -135,19 +121,11 @@ export class HighlightLine extends Component {
       return;
     }
 
-    if (features.codemirrorNext) {
-      editor.setLineContentMarker({
-        id: "highlight-line-marker",
-        lineClassName: "highlight-line",
-        condition(line) {
-          const lineNumber = fromEditorLine(sourceId, line);
-          return selectedLocation.line == lineNumber;
-        },
-      });
-    } else {
-      const doc = getDocument(sourceId);
-      doc.addLineClass(editorLine, "wrap", "highlight-line");
-    }
+    editor.setLineContentMarker({
+      id: markerTypes.HIGHLIGHT_LINE_MARKER,
+      lineClassName: "highlight-line",
+      lines: [{ line: editorLine }],
+    });
     this.clearHighlightLineAfterDuration();
   }
 
@@ -173,22 +151,11 @@ export class HighlightLine extends Component {
       return;
     }
 
-    if (features.codemirrorNext) {
-      const { editor } = this.props;
-      if (editor) {
-        editor.removeLineContentMarker("highlight-line-marker");
-      }
+    const { editor } = this.props;
+    if (!editor) {
       return;
     }
-
-    if (!hasDocument(selectedLocation.source.id)) {
-      return;
-    }
-
-    const sourceId = selectedLocation.source.id;
-    const editorLine = toEditorLine(sourceId, selectedLocation.line);
-    const doc = getDocument(sourceId);
-    doc.removeLineClass(editorLine, "wrap", "highlight-line");
+    editor.removeLineContentMarker("highlight-line-marker");
   }
 
   render() {
@@ -198,9 +165,8 @@ export class HighlightLine extends Component {
 
 export default connect(state => {
   const selectedLocation = getSelectedLocation(state);
-
   if (!selectedLocation) {
-    throw new Error("must have selected location");
+    return {};
   }
   return {
     pauseCommand: getPauseCommand(state, getCurrentThread(state)),

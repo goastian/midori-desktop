@@ -46,6 +46,7 @@ const listeners = new Set();
 
 // Detecting worker is different if this file is loaded via Common JS loader (isWorker global)
 // or as a JSM (constructor name)
+// eslint-disable-next-line no-shadow
 const isWorker =
   globalThis.isWorker ||
   globalThis.constructor.name == "WorkerDebuggerGlobalScope";
@@ -66,6 +67,8 @@ const customLazy = {
     // this module no longer has WorkerDebuggerGlobalScope as global,
     // but has to use require() to pull Debugger.
     if (isWorker) {
+      // require is defined for workers.
+      // eslint-disable-next-line no-undef
       return require("Debugger");
     }
     const { addDebuggerToGlobal } = ChromeUtils.importESModule(
@@ -362,22 +365,25 @@ class JavaScriptTracer {
       signal: this.abortController.signal,
       capture: true,
     };
+    // When used for the parent process target, `tracedGlobal` is browser.xhtml's window, which doesn't have a chromeEventHandler.
+    const eventHandler =
+      this.tracedGlobal.docShell.chromeEventHandler || this.tracedGlobal;
     if (this.traceDOMMutations.includes(DOM_MUTATIONS.ADD)) {
-      this.tracedGlobal.docShell.chromeEventHandler.addEventListener(
+      eventHandler.addEventListener(
         "devtoolschildinserted",
         this.#onDOMMutation,
         eventOptions
       );
     }
     if (this.traceDOMMutations.includes(DOM_MUTATIONS.ATTRIBUTES)) {
-      this.tracedGlobal.docShell.chromeEventHandler.addEventListener(
+      eventHandler.addEventListener(
         "devtoolsattrmodified",
         this.#onDOMMutation,
         eventOptions
       );
     }
     if (this.traceDOMMutations.includes(DOM_MUTATIONS.REMOVE)) {
-      this.tracedGlobal.docShell.chromeEventHandler.addEventListener(
+      eventHandler.addEventListener(
         "devtoolschildremoved",
         this.#onDOMMutation,
         eventOptions
@@ -417,13 +423,17 @@ class JavaScriptTracer {
     }
 
     let shouldLogToStdout = true;
+
+    // The depth is the depth of the parent frame, consider the dom mutation as nested to it
+    const depth = this.depth + 1;
+
     if (listeners.size > 0) {
       shouldLogToStdout = false;
       for (const listener of listeners) {
         // If any listener return true, also log to stdout
         if (typeof listener.onTracingDOMMutation == "function") {
           shouldLogToStdout |= listener.onTracingDOMMutation({
-            depth: this.depth,
+            depth,
             prefix: this.prefix,
 
             type,
@@ -435,7 +445,7 @@ class JavaScriptTracer {
     }
 
     if (shouldLogToStdout) {
-      const padding = "—".repeat(this.depth + 1);
+      const padding = "—".repeat(depth + 1);
       this.loggingMethod(
         this.prefix +
           padding +
@@ -463,8 +473,14 @@ class JavaScriptTracer {
     // We don't need to maintain a stack of events as that's only consumed by onEnterFrame
     // which only cares about the very lastest event being currently trigerring some code.
     if (notification.phase == "pre") {
-      // We get notified about "real" DOM event, but also when some particular callbacks are called like setTimeout.
+      // We get notified about "real" DOM event when type is "domEvent",
+      // but also when some other DOM APIs are involved.
+      // notification's type will be "setTimeout" when the setTimeout method is called,
+      // or "setTimeoutCallback" when the callback passed to setTimeout is called.
+      // This also work against setInterval/clearTimeout/clearInterval and requestAnimationFrame.
       if (notification.type == "domEvent") {
+        // `targetType` can help distinguish same-name DOM events fired against XHR, window or workers.
+        const { targetType } = notification;
         let { type } = notification.event;
         if (!type) {
           // In the Worker thread, `notification.event` is an opaque wrapper.
@@ -475,7 +491,7 @@ class JavaScriptTracer {
             .makeDebuggeeValue(notification.event)
             .getProperty("type").return;
         }
-        this.currentDOMEvent = `DOM | ${type}`;
+        this.currentDOMEvent = `${targetType}.${type}`;
       } else {
         this.currentDOMEvent = notification.type;
       }
@@ -497,6 +513,7 @@ class JavaScriptTracer {
     }
 
     this.dbg.onEnterFrame = undefined;
+
     this.dbg.removeAllDebuggees();
     this.dbg.onNewGlobalObject = undefined;
     this.dbg = null;
@@ -596,25 +613,6 @@ class JavaScriptTracer {
   }
 
   /**
-   * Notify DevTools and/or the user via stdout that tracing
-   * stopped because of an infinite loop.
-   */
-  notifyInfiniteLoop() {
-    let shouldLogToStdout = listeners.size == 0;
-    for (const listener of listeners) {
-      if (typeof listener.onTracingInfiniteLoop == "function") {
-        shouldLogToStdout |= listener.onTracingInfiniteLoop();
-      }
-    }
-    if (shouldLogToStdout) {
-      this.loggingMethod(
-        this.prefix +
-          "Looks like an infinite recursion? We stopped the JavaScript tracer, but code may still be running!\n"
-      );
-    }
-  }
-
-  /**
    * Called by the Debugger API (this.dbg) when a new frame is executed.
    *
    * @param {Debugger.Frame} frame
@@ -660,13 +658,6 @@ class JavaScriptTracer {
           return;
         }
         this.records++;
-      }
-
-      // Consider depth > 100 as an infinite recursive loop and stop the tracer.
-      if (depth == 100) {
-        this.notifyInfiniteLoop();
-        this.stopTracing("infinite-loop");
-        return;
       }
 
       const frameId = this.frameId++;
@@ -750,6 +741,8 @@ class JavaScriptTracer {
       }
 
       frame.onPop = completion => {
+        this.depth--;
+
         // Special case async frames. We are exiting the current frame because of waiting for an async task.
         // (this is typically a `await foo()` from an async function)
         // This frame should later be "entered" again.
@@ -825,7 +818,9 @@ class JavaScriptTracer {
     // and are logging the topmost frame,
     // then log a preliminary dedicated line to mention that event type.
     if (this.currentDOMEvent && depth == 0) {
-      this.loggingMethod(this.prefix + padding + this.currentDOMEvent + "\n");
+      this.loggingMethod(
+        this.prefix + padding + "DOM | " + this.currentDOMEvent + "\n"
+      );
     }
 
     let message = `${padding}[${frame.implementation}]—> ${getTerminalHyperLink(
@@ -938,7 +933,7 @@ function objectToString(obj) {
   } else if (typeof obj === "function") {
     return `function ${obj.name || "anonymous"}()`;
   }
-  return obj;
+  return primitiveToString(obj);
 }
 
 function primitiveToString(value) {
@@ -957,7 +952,7 @@ function primitiveToString(value) {
   }
 
   // For all other types/cases, rely on native convertion to string
-  return value;
+  return String(value);
 }
 
 /**
@@ -1020,9 +1015,6 @@ function stopTracing() {
  *   Where state is a boolean to indicate if tracing has just been enabled of disabled.
  *   It may be immediatelly called if a tracer is already active.
  *
- * - onTracingInfiniteLoop()
- *   Called when the tracer stopped because of an infinite loop.
- *
  * - onTracingFrame({ frame, depth, formatedDisplayName, prefix })
  *   Called each time we enter a new JS frame.
  *   - frame is a Debugger.Frame object
@@ -1055,6 +1047,10 @@ function getFrameDepth(frame) {
     let depth = 0;
     let f = frame;
     while ((f = f.older)) {
+      if (f.depth) {
+        depth = depth + f.depth + 1;
+        break;
+      }
       depth++;
     }
     frame.depth = depth;
@@ -1116,4 +1112,5 @@ export const JSTracer = {
   removeTracingListener,
   NEXT_INTERACTION_MESSAGE,
   DOM_MUTATIONS,
+  objectToString,
 };

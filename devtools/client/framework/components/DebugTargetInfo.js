@@ -6,9 +6,9 @@
 const {
   PureComponent,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   CONNECTION_TYPES,
 } = require("resource://devtools/client/shared/remote-debugging/constants.js");
@@ -37,6 +37,7 @@ class DebugTargetInfo extends PureComponent {
         }).isRequired,
         descriptorType: PropTypes.oneOf(Object.values(DESCRIPTOR_TYPES))
           .isRequired,
+        descriptorName: PropTypes.string.isRequired,
       }).isRequired,
       L10N: PropTypes.object.isRequired,
       toolbox: PropTypes.object.isRequired,
@@ -183,7 +184,13 @@ class DebugTargetInfo extends PureComponent {
       console.error(ex);
     }
 
-    this.props.toolbox.target.navigateTo({ url });
+    // Do not waitForLoad as we don't wait navigateTo to resolve anyway.
+    // Bug 1968023: navigateTo is flaky and sometimes never catches the
+    // STATE_STOP notification necessary for waitForLoad=true.
+    this.props.toolbox.commands.targetCommand.navigateTo(
+      url,
+      false /* waitForLoad */
+    );
   }
 
   shallRenderConnection() {
@@ -234,25 +241,39 @@ class DebugTargetInfo extends PureComponent {
     );
   }
 
-  renderTargetTitle() {
-    const title = this.props.toolbox.target.name;
+  renderDescriptorName() {
+    const name = this.props.debugTargetData.descriptorName;
 
     const { image, l10nId } = this.getAssetsForDebugDescriptorType();
 
     return dom.span(
       {
-        className: "iconized-label debug-target-title",
+        className: "iconized-label debug-descriptor-title",
       },
       dom.img({ src: image, alt: this.props.L10N.getStr(l10nId) }),
-      title
-        ? dom.b({ className: "devtools-ellipsis-text qa-target-title" }, title)
+      name
+        ? dom.b(
+            { className: "devtools-ellipsis-text qa-descriptor-title" },
+            name
+          )
         : null
     );
   }
 
   renderTargetURI() {
-    const url = this.props.toolbox.target.url;
     const { descriptorType } = this.props.debugTargetData;
+    const { url } = this.props.toolbox.target;
+    const isWebExtension = descriptorType === DESCRIPTOR_TYPES.EXTENSION;
+
+    // Avoid displaying the target url for web extension as it is always
+    // the fallback document URL. Keeps rendering the url component
+    // as it use flex to align the "always on top" button on the right.
+    if (isWebExtension) {
+      return dom.span({
+        className: "debug-target-url",
+      });
+    }
+
     const isURLEditable = descriptorType === DESCRIPTOR_TYPES.TAB;
 
     return dom.span(
@@ -354,13 +375,13 @@ class DebugTargetInfo extends PureComponent {
           className: "qa-back-button",
           icon: "chrome://browser/skin/back.svg",
           l10nId: "toolbox.debugTargetInfo.back",
-          onClick: () => this.props.toolbox.target.goBack(),
+          onClick: () => this.props.toolbox.commands.targetCommand.goBack(),
         }),
         this.renderNavigationButton({
           className: "qa-forward-button",
           icon: "chrome://browser/skin/forward.svg",
           l10nId: "toolbox.debugTargetInfo.forward",
-          onClick: () => this.props.toolbox.target.goForward(),
+          onClick: () => this.props.toolbox.commands.targetCommand.goForward(),
         })
       );
     }
@@ -370,8 +391,7 @@ class DebugTargetInfo extends PureComponent {
         className: "qa-reload-button",
         icon: "chrome://global/skin/icons/reload.svg",
         l10nId: "toolbox.debugTargetInfo.reload",
-        onClick: () =>
-          this.props.toolbox.commands.targetCommand.reloadTopLevelTarget(),
+        onClick: () => this.props.toolbox.reload(),
       })
     );
 
@@ -390,7 +410,7 @@ class DebugTargetInfo extends PureComponent {
       },
       this.shallRenderConnection() ? this.renderConnection() : null,
       this.renderRuntime(),
-      this.renderTargetTitle(),
+      this.renderDescriptorName(),
       this.renderNavigation(),
       this.renderTargetURI(),
       ...this.renderAlwaysOnTopButton()

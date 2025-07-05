@@ -5,62 +5,83 @@
 /* Import stylesheets for specific tooltip widgets */
 @import url(chrome://devtools/skin/accessibility-color-contrast.css);
 @import url(chrome://devtools/skin/badge.css);
+@import url(chrome://devtools/skin/inspector-shared.css);
+@import url(chrome://devtools/skin/variables.css);
 @import url(chrome://devtools/content/shared/widgets/cubic-bezier.css);
 @import url(chrome://devtools/content/shared/widgets/filter-widget.css);
 @import url(chrome://devtools/content/shared/widgets/linear-widget.css);
 @import url(chrome://devtools/content/shared/widgets/spectrum.css);
-@import url(chrome://devtools/skin/variables.css);
 /*
  * compatibility.css is primarily used by the Compatibility panel, so import it in a layer
  * to give it a lower importance than the rule here and mitigate styling mismatch.
  */
 @import url(chrome://devtools/skin/compatibility.css) layer(shared);
 
-/* Tooltip specific theme variables */
-.theme-dark {
-  --bezier-diagonal-color: #eee;
-  --bezier-grid-color: rgba(255, 255, 255, 0.1);
-
-  /* Tooltips */
-  --theme-tooltip-color: var(--theme-text-color-strong);
-  --theme-tooltip-background: var(--theme-popup-background);
-  --theme-tooltip-shadow-color: rgba(25, 25, 25, 0.76);
-
-  /* Doorhangers */
-  /* These colors are based on the colors used for doorhangers elsewhere in
-   * Firefox. */
-  --theme-arrowpanel-background: var(--theme-popup-background);
-  --theme-arrowpanel-color: var(--theme-popup-color);
-  --theme-arrowpanel-border-color: var(--theme-popup-border-color);
-  --theme-arrowpanel-separator: rgba(249,249,250,.1);
-  --theme-arrowpanel-dimmed: var(--theme-popup-dimmed);
-  --theme-arrowpanel-dimmed-further: rgba(249,249,250,.15);
-  --theme-arrowpanel-disabled-color: rgba(249,249,250,.5);
+/* The following properties values are consumed by the client for drawing in canvas
+ * (e.g. for the CubicBezierWidget).
+ * Since they're defined in :root with light-dark(), we need to register them so we'll get
+ * the actual final (rgb) color, and not the declaration with substituted variables
+ */
+ @property --bezier-diagonal-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
 }
 
-.theme-light {
-  --bezier-diagonal-color: rgba(0, 0, 0, 0.2);
-  --bezier-grid-color: rgba(0, 0, 0, 0.05);
-
-  /* Tooltips */
-  --theme-tooltip-color: var(--theme-body-color);
-  --theme-tooltip-background: rgb(255, 255, 255);
-  --theme-tooltip-shadow-color: var(--grey-90-a10);
-
-  /* Doorhangers */
-  /* These colors are based on the colors used for doorhangers elsewhere in
-   * Firefox. */
-  --theme-arrowpanel-background: var(--theme-popup-background);
-  --theme-arrowpanel-color: var(--theme-popup-color);
-  --theme-arrowpanel-border-color: var(--theme-popup-border-color);
-  --theme-arrowpanel-separator: ThreeDShadow;
-  --theme-arrowpanel-dimmed: var(--theme-popup-dimmed);
-  --theme-arrowpanel-dimmed-further: hsla(0,0%,80%,.45);
-  --theme-arrowpanel-disabled-color: GrayText;
+@property --timing-function-control-point-background {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
 }
 
 :root {
   --theme-arrowpanel-border-radius: 3.5px;
+
+  --bezier-diagonal-color: light-dark(rgba(0, 0, 0, 0.2), #eee);
+  --timing-function-grid-color: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.1));
+  --timing-function-line-color: #4C9ED9;
+  --timing-function-preview-scale: light-dark(var(--grey-43), var(--grey-40));
+  --timing-function-preview-dot-border: white;
+  --timing-function-control-point-background: light-dark(var(--grey-55), var(--grey-20));
+
+  /* Tooltips */
+  --theme-tooltip-color: light-dark(var(--theme-body-color), var(--theme-text-color-strong));
+  --theme-tooltip-background: light-dark(rgb(255, 255, 255), var(--theme-popup-background));
+  --theme-tooltip-shadow-color: light-dark(var(--grey-90-a10), rgba(25, 25, 25, 0.76));
+
+  /* Doorhangers */
+  /* These colors are based on the colors used for doorhangers elsewhere in Firefox. */
+  --theme-arrowpanel-background: var(--theme-popup-background);
+  --theme-arrowpanel-color: var(--theme-popup-color);
+  --theme-arrowpanel-border-color: var(--theme-popup-border-color);
+  --theme-arrowpanel-separator: light-dark(ThreeDShadow, rgba(249,249,250,.1));
+  --theme-arrowpanel-active-background: light-dark(hsla(0,0%,80%,.45), rgba(249,249,250,.15));
+  --theme-arrowpanel-active-outline-color: transparent;
+  --theme-arrowpanel-disabled-color: light-dark(GrayText, rgba(249,249,250,.5));
+
+  &[forced-colors-active] {
+    /* The active state have a different background but with an outline in HCM */
+    --theme-arrowpanel-active-background: SelectedItem;
+    --theme-arrowpanel-active-color: SelectedItemText;
+    --theme-arrowpanel-active-outline-color: ButtonText;
+
+    /* This is used in a repeated gradient to create a grid pattern.
+       Using GrayText directly makes it hard to distinguish the
+       other elements in the chart, so lower the color opacity a bit.
+       It should be fine as it's not an important element. Also, this can
+       work even if we don't have a resulting system color, as the
+       consumers of this variable already need to opt out of forced colors
+       so it can be used in the background gradient */
+    --timing-function-grid-color: light-dark(
+      /* In light mode, the grid appears much more contrasted, so lower the opacity even more */
+      rgb(from GrayText r g b / 0.4),
+      rgb(from GrayText r g b / 0.7)
+    );
+    --timing-function-line-color: var(--theme-highlight-blue);
+    --timing-function-preview-dot-border: CanvasText;
+    --timing-function-control-point-background: ButtonText;
+    --bezier-diagonal-color: CanvasText;
+  }
 }
 
 :root[platform="mac"].theme-light {
@@ -84,25 +105,49 @@ strong {
 
 /* Tooltip: CSS variables tooltip */
 
+.tooltip-container:has(.devtools-tooltip-css-variable) {
+  /* By default, in dark mode, the tooltip background color is lighter than the background
+     color of the Rules view. Since we're using the same color than in the Rules view
+     for CSS values, this can lead to poor contrast.
+     To prevent this, we apply the same background color than in the Rules view */
+  --theme-tooltip-background: var(--theme-body-background);
+}
+
 .devtools-tooltip-css-variable {
   --block-padding: 8px;
   color: var(--theme-body-color);
   padding: var(--block-padding) 8px;
   direction: ltr;
+  overflow-wrap: break-word;
   /* Try to show the content of the tooltip on a single line */
   inline-size: max-content;
-  word-break: break-word;
-  max-inline-size: 100vw;
+  min-inline-size: 60px;
+  max-inline-size: min(500px, 100vw);
 
-  .variable-value:has(+ .registered-property) {
+  /* If only the "top" section is displayed, to avoid smaller text (e.g. `10px`) to look unbalanced */
+  .variable-value:not(:has(+ .variable-tooltip-section)) {
+    text-align: center;
+  }
+  /* If there are other sections, add some space below the value */
+  .variable-value:has(+ .variable-tooltip-section) {
     padding-block-end: var(--block-padding);
   }
 
-  .registered-property {
+  .variable-tooltip-section {
     border-block-start: 1px solid var(--theme-splitter-color);
     margin: 0;
-    padding: 0;
-    padding-block-start: var(--block-padding);
+    padding-block: var(--block-padding);
+
+    h2 {
+      margin-block: 0;
+      padding-block-start: 0;
+      padding-block-end: var(--block-padding);
+    }
+
+    dl {
+      padding: 0;
+      margin: 0;
+    }
 
     dt,dd {
       display: inline;
@@ -194,7 +239,7 @@ strong {
 
 .devtools-tooltip-query-container header {
   --block-end-space: 5px;
-  border-block-end: 1px solid var(--theme-arrowpanel-dimmed);
+  border-block-end: 1px solid var(--theme-popup-dimmed);
   padding-block-end: var(--block-end-space);
   margin-block-end: var(--block-end-space);
   max-width: 100%;
@@ -294,6 +339,16 @@ strong {
   flex-grow: 1;
 }
 
+/* Adding the scrollbar in the RDM tooltip */
+#device-selector-menu .tooltip-panel {
+  max-height: 500px;
+}
+
+#device-selector-menu .tooltip-panel > .checkbox-container {
+  height: 100%;
+  overflow-y: auto;
+}
+
 .tooltip-visible {
   display: flex;
 }
@@ -378,8 +433,7 @@ strong {
   width: 21px;
   height: 21px;
   margin-left: 4px;
-  background: linear-gradient(-45deg,
-    var(--theme-tooltip-background) 50%, transparent 50%);
+  background: var(--theme-tooltip-background);
   border: 0 none;
   pointer-events: all;
   box-sizing: border-box;
@@ -523,16 +577,19 @@ strong {
     }
 
     &:not([disabled],[open],:active):hover {
-      background-color: var(--theme-arrowpanel-dimmed);
+      background-color: var(--theme-popup-hover-background);
+      color: var(--theme-popup-hover-color);
     }
 
     &:not([disabled]):is([open],:hover:active) {
-      background-color: var(--theme-arrowpanel-dimmed-further);
+      background-color: var(--theme-arrowpanel-active-background);
+      color: var(--theme-arrowpanel-active-color);
       box-shadow: 0 1px 0 hsla(210,4%,10%,.03) inset;
+      outline: 1px solid var(--theme-arrowpanel-active-outline-color);
     }
 
     &[disabled] {
-      opacity: 0.5;
+      color: var(--theme-text-color-inactive);
     }
 
     &[aria-checked="true"] {
@@ -563,13 +620,21 @@ strong {
     }
   }
 
-  .menuitem > button.command:is([role="menuitem"],[role="menuitemcheckbox"],[role="link"]) {
+  /* Use :where to avoid having a high specificity that would take over the rule above */
+  .menuitem > button.command:where(
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="link"]
+  ) {
     appearance: none;
     border: none;
-    color: var(--theme-arrowpanel-color);
     background-color: transparent;
     text-align: start;
     width: 100%;
+
+    &:not([disabled]) {
+      color: var(--theme-arrowpanel-color);
+    }
   }
 
   .checkbox-container .menuitem > .command > .label {
@@ -954,4 +1019,14 @@ strong {
       border-block-start: 1px solid var(--theme-splitter-color);
     }
   }
+}
+
+/* Indent the content script items */
+.webconsole-evaluation-selector-item.indented::before {
+  content: "\2514\2500" !important;
+  z-index:1000;
+  margin-inline-start: 20px;
+}
+.checkbox-container .menuitem > .command.indented > .label {
+  padding-inline-start: 4px;
 }

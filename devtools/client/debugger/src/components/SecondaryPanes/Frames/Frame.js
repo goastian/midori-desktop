@@ -26,7 +26,6 @@ FrameTitle.propTypes = {
   frame: PropTypes.object.isRequired,
   options: PropTypes.object.isRequired,
   l10n: PropTypes.object.isRequired,
-  showFrameContextMenu: PropTypes.func.isRequired,
 };
 
 function getFrameLocation(frame, shouldDisplayOriginalLocation) {
@@ -102,8 +101,9 @@ export default class FrameComponent extends Component {
       panel: PropTypes.oneOf(["debugger", "webconsole"]).isRequired,
       selectFrame: PropTypes.func.isRequired,
       selectedFrame: PropTypes.object,
+      isTracerFrameSelected: PropTypes.bool.isRequired,
       shouldMapDisplayName: PropTypes.bool.isRequired,
-      shouldDisplayOriginalLocation: PropTypes.bool.isRequired,
+      shouldDisplayOriginalLocation: PropTypes.bool,
       showFrameContextMenu: PropTypes.func.isRequired,
     };
   }
@@ -116,69 +116,49 @@ export default class FrameComponent extends Component {
     return this.props.panel == "debugger";
   }
 
-  onContextMenu(event) {
-    event.stopPropagation();
-    event.preventDefault();
-
-    const { frame } = this.props;
-    this.props.showFrameContextMenu(event, frame);
-  }
-
-  onMouseDown(e, frame) {
-    if (e.button !== 0) {
-      return;
-    }
-
-    this.props.selectFrame(frame);
-  }
-
-  onKeyUp(event, frame) {
-    if (event.key != "Enter") {
-      return;
-    }
-
-    this.props.selectFrame(frame);
-  }
-
   render() {
     const {
       frame,
       selectedFrame,
+      isTracerFrameSelected,
       hideLocation,
       shouldMapDisplayName,
       displayFullUrl,
       getFrameTitle,
-      disableContextMenu,
       shouldDisplayOriginalLocation,
       isInGroup,
     } = this.props;
     const { l10n } = this.context;
 
+    const isSelected =
+      !isTracerFrameSelected && selectedFrame && selectedFrame.id === frame.id;
+
     const className = classnames("frame", {
-      selected: selectedFrame && selectedFrame.id === frame.id,
+      selected: isSelected,
+      // When a JS Tracer frame is selected, the frame will still be considered as selected,
+      // and switch from a blue to a grey background. It will still be considered as selected
+      // from the point of view of stepping buttons.
+      inactive:
+        isTracerFrameSelected && selectedFrame && selectedFrame.id === frame.id,
+      // Dead frames will likely not have inspectable scope
+      dead: frame.state && frame.state !== "on-stack",
     });
 
     const location = getFrameLocation(frame, shouldDisplayOriginalLocation);
     const title = getFrameTitle
       ? getFrameTitle(`${getFileURL(location.source, false)}:${location.line}`)
       : undefined;
+
     return React.createElement(
-      "div",
-      {
-        role: "listitem",
-        key: frame.id,
-        className,
-        onMouseDown: e => this.onMouseDown(e, frame, selectedFrame),
-        onKeyUp: e => this.onKeyUp(e, frame, selectedFrame),
-        onContextMenu: disableContextMenu ? null : e => this.onContextMenu(e),
-        tabIndex: 0,
-        title,
-      },
+      React.Fragment,
+      null,
       frame.asyncCause &&
         React.createElement(
-          "span",
+          "div",
           {
             className: "location-async-cause",
+            tabIndex: -1,
+            role: "presentation",
           },
           this.isSelectable && React.createElement(FrameIndent, null),
           this.isDebugger
@@ -195,35 +175,46 @@ export default class FrameComponent extends Component {
               className: "clipboard-only",
             })
         ),
-      this.isSelectable &&
-        React.createElement(FrameIndent, {
-          indentLevel: isInGroup ? 2 : 1,
-        }),
-      React.createElement(FrameTitle, {
-        frame,
-        options: {
-          shouldMapDisplayName,
+      React.createElement(
+        "div",
+        {
+          title,
+          className,
+          tabIndex: -1,
+          role: "option",
+          id: frame.id,
+          "aria-selected": isSelected ? "true" : "false",
         },
-        l10n,
-      }),
-      !hideLocation &&
-        React.createElement(
-          "span",
-          {
-            className: "clipboard-only",
-          },
-          " "
-        ),
-      !hideLocation &&
-        React.createElement(FrameLocation, {
+        this.isSelectable &&
+          React.createElement(FrameIndent, {
+            indentLevel: isInGroup ? 2 : 1,
+          }),
+        React.createElement(FrameTitle, {
           frame,
-          displayFullUrl,
-          shouldDisplayOriginalLocation,
+          options: {
+            shouldMapDisplayName,
+          },
+          l10n,
         }),
-      this.isSelectable &&
-        React.createElement("br", {
-          className: "clipboard-only",
-        })
+        !hideLocation &&
+          React.createElement(
+            "span",
+            {
+              className: "clipboard-only",
+            },
+            " "
+          ),
+        !hideLocation &&
+          React.createElement(FrameLocation, {
+            frame,
+            displayFullUrl,
+            shouldDisplayOriginalLocation,
+          }),
+        this.isSelectable &&
+          React.createElement("br", {
+            className: "clipboard-only",
+          })
+      )
     );
   }
 }

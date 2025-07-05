@@ -57,7 +57,7 @@ add_task(async function () {
 
   await selectSource(dbg, entrySrc);
   ok(
-    getCM(dbg).getValue().includes("window.keepMeAlive"),
+    getEditorContent(dbg).includes("window.keepMeAlive"),
     "Original source text loaded correctly"
   );
 
@@ -78,16 +78,16 @@ add_task(async function () {
 
   invokeInTab("keepMeAlive");
   await waitForPausedInOriginalFileAndToggleMapScopes(dbg);
-  assertPausedAtSourceAndLine(dbg, entrySrc.id, 15);
+  await assertPausedAtSourceAndLine(dbg, entrySrc.id, 15);
 
   await stepIn(dbg);
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "times2.js").id, 2);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "times2.js").id, 2);
 
   await stepOver(dbg);
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "times2.js").id, 3);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "times2.js").id, 3);
 
   await stepOut(dbg);
-  assertPausedAtSourceAndLine(dbg, entrySrc.id, 16);
+  await assertPausedAtSourceAndLine(dbg, entrySrc.id, 16);
 
   pendingSelectedLocation = Services.prefs.getStringPref(
     "devtools.debugger.pending-selected-location"
@@ -127,7 +127,7 @@ add_task(async function () {
   mappedSourceLink.click();
 
   await waitForSelectedSource(dbg, bundleSrc);
-  assertPausedAtSourceAndLine(dbg, bundleSrc.id, 62);
+  await assertPausedAtSourceAndLine(dbg, bundleSrc.id, 62);
   // The mapped source link is computed asynchronously when we are on the bundle
   mappedSourceLink = await waitFor(() => findElement(dbg, "mappedSourceLink"));
   mappedSourceLink = findElement(dbg, "mappedSourceLink");
@@ -155,7 +155,7 @@ add_task(async function () {
   );
 
   info("Move the cursor within the bundle to another original source");
-  getCM(dbg).setCursor({ line: 70, ch: 0 });
+  setEditorCursorAt(dbg, 70, 0);
   mappedSourceLink = await waitFor(() => findElement(dbg, "mappedSourceLink"));
   is(
     mappedSourceLink.textContent,

@@ -6,8 +6,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const PropertiesView = createFactory(
   require("resource://devtools/client/netmonitor/src/components/request-details/PropertiesView.js")
@@ -20,12 +20,16 @@ const {
 } = require("resource://devtools/client/netmonitor/src/utils/request-utils.js");
 
 const TreeRow = createFactory(
-  require("resource://devtools/client/shared/components/tree/TreeRow.js")
+  ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/tree/TreeRow.mjs",
+    { global: "current" }
+  ).default
 );
 
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).MODE;
 });
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 

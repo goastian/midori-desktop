@@ -10,6 +10,12 @@
 
 /* Intro */
 
+.perf-intro-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .perf-intro-row {
   margin: 1.7em 0;
   display: flex;
@@ -39,7 +45,13 @@
 
 .perf-toggle-text-label {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  gap: 1em;
+}
+
+.perf-toggle-feature-value {
+  font-size: 11px;
+  color: var(--text-color-deemphasized);
 }
 
 .perf-toggle-description {
@@ -126,11 +138,11 @@
   margin: 0;
   padding: 0;
   overflow-y: auto;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
 }
 
 .perf-settings-dir-list:hover {
-  border-color: var(--in-content-border-hover);
+  border-color: var(--border-color-interactive-hover);
 }
 
 .pref-settings-dir-list-item {

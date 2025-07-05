@@ -16,7 +16,7 @@
   height: -moz-fit-content;
   position: absolute;
   padding: 7px 5px;
-  margin: 0px;
+  margin: 0;
   top: 8px;
   inset-inline-start: 8px;
 }
@@ -70,8 +70,13 @@
   margin-inline-end: 3vw;
 }
 
-tr[data-statistic-name] td:first-of-type {
+/* Use a pseudo element for the "legend" so we can adapt to High Contrast Mode without
+   impacting the cell content */
+tr[data-statistic-name] td:first-of-type::before {
+  content: "";
   border-inline-start: 15px solid var(--stat-color);
+  forced-color-adjust: none;
+  margin-inline-end: 5px;
 }
 
 path[data-statistic-name] {
@@ -164,7 +169,7 @@ path[data-statistic-name] {
 
 .offscreen{
     position: absolute!important;
-    font-size: 0px;
+    font-size: 0;
     overflow: hidden;
     clip: rect(1px,1px,1px,1px);
     clip-path: polygon(0 0,0 0,0 0,0 0);

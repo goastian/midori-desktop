@@ -4,13 +4,15 @@
 
 
 :root {
-  --breakpoint-active-color: rgba(44,187,15,.2);
-  --breakpoint-active-color-hover: rgba(44,187,15,.5);
-}
+  --breakpoint-active-color: light-dark(rgba(44,187,15,.2), rgba(0,255,175,.4));
+  --breakpoint-active-color-hover: light-dark(rgba(44,187,15,.5), rgba(0,255,175,.7););
+  --gutter-background-color: var(--theme-sidebar-background);
+  --gutter-border-color: light-dark(var(--theme-splitter-color), var(--theme-toolbar-background));
 
-.theme-dark:root {
-  --breakpoint-active-color: rgba(0,255,175,.4);
-  --breakpoint-active-color-hover: rgba(0,255,175,.7);
+  &[forced-colors-active] {
+    /* overriding variable in HCM so the border is actually visible (see Bug 1953376) */
+    --gutter-border-color: var(--theme-splitter-color);
+  }
 }
 
 /* We don't want the focus style to be displayed on the CodeMirror scrollbars.
@@ -96,6 +98,12 @@
   cursor: default;
 }
 
+.cm-s-mozilla .CodeMirror-gutters,
+.cm-editor .cm-gutters { /* vertical line next to line numbers */
+  border-right-color: var(--gutter-border-color);
+  background-color: var(--gutter-background-color);
+}
+
 .cm-trailingspace {
   background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH3QUXCToH00Y1UgAAACFJREFUCNdjPMDBUc/AwNDAAAFMTAwMDA0OP34wQgX/AQBYgwYEx4f9lQAAAABJRU5ErkJggg==");
   opacity: 0.75;
@@ -111,6 +119,70 @@
   /* Use the translucent yellow background, because we want the text selection
      background (CodeMirror-selected) to show through this. */
   background-color: var(--theme-contrast-background-alpha);
+
+  :root[forced-colors-active] & {
+    border-bottom-width: 2px;
+    color: var(--theme-contrast-color);
+  }
+}
+
+/* CodeMirror 5 search addon input */
+.cm5-search-container {
+  display: flex;
+  padding: 4px 2px;
+
+  .CodeMirror-dialog:has(> &) {
+    background-color: var(--theme-body-background);
+    /* remove padding on the dialog so it's easier to style the focus indicator */
+    padding: 0;
+  }
+
+  .cm5-search-input {
+    margin-inline: 1em;
+    flex-grow: 1;
+  }
+
+  &:focus-within {
+    outline: var(--theme-focus-outline);
+    outline-offset: -2px;
+  }
+}
+
+.cm5-search-replace-input {
+  width: 10em;
+
+  &:focus {
+    outline: var(--theme-focus-outline) !important;
+  }
+}
+
+.cm5-search-replace-hint {
+  color: var(--theme-text-color-alt);
+  margin-inline-start: 8px;
+}
+
+/* CodeMirror 5 vim addon prompt/input */
+.cm5-vim-prompt {
+  font-family: monospace;
+  white-space: pre;
+
+  /* When there's a label, add some space before the input */
+  & label input {
+    margin-inline-start: 8px;
+  }
+
+  & input:focus {
+    outline: var(--theme-focus-outline) !important;
+  }
+}
+
+.cm5-vim-prompt-description {
+  color: var(--theme-text-color-alt);
+  margin-inline-start: 8px;
+}
+
+.cm5-vim-notification-error {
+  color: var(--theme-text-color-error);
 }
 
 /* CodeMirror dialogs styling */
@@ -305,9 +377,17 @@
 }
 
 /* CodeMirror matchhighlight styling */
-.cm-matchhighlight {
+.cm-matchhighlight, .cm-selectionMatch {
   outline: 1px solid var(--theme-contrast-border);
   border-radius: 2px;
+  /* Override cm6 inline */
+  background-color: transparent !important;
+}
+
+/* Make the outline a bit more visible in High Contrast Mode */
+:root[forced-colors-active] .cm-matchhighlight {
+  outline-width: 2px;
+  outline-offset: 2px;
 }
 
 .cm-non-printable-char {
@@ -328,6 +408,37 @@
   text-underline-offset: 3px;
 }
 
+.cm-s-mozilla.CodeMirror-focused .CodeMirror-selected { /* selected text (focused) */
+  background: var(--theme-text-selection-background);
+}
+
+.cm-s-mozilla .CodeMirror-selected { /* selected text (unfocused) */
+  background: var(--theme-text-selection-unfocused-background);
+}
+
+/* cm5 High Contrast Mode override */
+:root[forced-colors-active] {
+  .CodeMirror-selectedtext {
+    /* Set the color on the actual span elements */
+    color: var(--theme-text-selection-color);
+    /* We also need to set the background color to avoid the backplating and keep it readable  */
+    background-color: var(--theme-text-selection-background);
+
+    /* Set the background for the "active match" (i.e. when double clicking a word) */
+    &.cm-matchhighlight {
+      forced-color-adjust: auto;
+      background-color: var(--theme-text-selection-background) !important;
+      color: var(--theme-text-selection-color);
+    }
+  }
+
+  /* Matching brackets */
+  div.CodeMirror span.CodeMirror-matchingbracket {
+    background-color: Mark;
+    color: MarkText;
+  }
+}
+
 /****************************************/
 /***** CodeMirror 6 specific styles *****/
 /****************************************/
@@ -336,14 +447,36 @@
   max-height: 100%;
   height: 100%;
 }
+
+/* This makes sure we use the font-family set for devtools */
+.cm-editor .cm-scroller {
+  font-family: unset;
+}
+
 .cm-editor .cm-selectionBackground {
-  background: var(--theme-selection-background) !important;
+  background: var(--theme-text-selection-background) !important;
+}
+
+.cm-editor .cm-content ::selection {
+  /* We don't want forced colors on selection so we can adjust the colors as we want.
+     This especially helps for the unfocused selected text */
+  forced-color-adjust: none;
+}
+
+.cm-editor .cm-line ::selection {
+  color: inherit;
+}
+
+:root[forced-colors-active] .cm-editor .cm-line ::selection,
+:root[forced-colors-active] .cm-editor .cm-line::selection {
+  background-color: var(--theme-text-selection-background) !important;
+  color: var(--theme-text-selection-color) !important;
 }
 
 .cm6-dt-foldgutter__toggle-button {
-  height: 14px;
-  width: 14px;
-  margin-inline: 3px;
+  height: 20px;
+  width: 20px;
+  padding-inline: 3px;
   /* By default, the icon is a bit too low */
   translate: 0px -4px;
   background-image: url("chrome://devtools/skin/images/arrow.svg");
@@ -351,6 +484,7 @@
   background-repeat: no-repeat;
   background-color: transparent;
   border: none;
+  outline-offset: -2px;
   -moz-context-properties: fill;
   fill: var(--theme-icon-dimmed-color);
   /* make the icons smaller than regular twistys (10->8px) */
@@ -360,6 +494,10 @@
   &[aria-expanded=false] {
     transform: rotate(-90deg);
   }
+}
+
+.cm-editor .cm-gutter.cm-lineNumbers {
+  user-select: none;
 }
 
 .cm-editor .cm-foldPlaceholder {
@@ -372,12 +510,18 @@
   vertical-align: middle;
 }
 
-.cm-editor .cm-matchingBracket {
+/* Repeat .cm-matchingBracket to get a higher specificity than the default codemirror rule */
+.cm-editor .cm-matchingBracket.cm-matchingBracket {
   /* Removing the default background color */
-  background-color: unset !important;
+  background-color: unset;
   /* Applying the same color that was set in cm5. Set the color on the parent so the
      underline set on the parent has the correct color */
   color: #0b0;
+
+  :root[forced-colors-active] & {
+    background-color: Mark;
+    color: MarkText;
+  }
 
   .tok-punctuation {
     color: currentColor;

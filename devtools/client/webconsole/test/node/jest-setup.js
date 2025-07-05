@@ -27,8 +27,9 @@ if (!global.ResizeObserver) {
 }
 
 const mcRoot = `${__dirname}/../../../../../`;
-const { pref } = require(mcRoot +
-  "devtools/client/shared/test-helpers/jest-fixtures/Services");
+const { pref } = require(
+  mcRoot + "devtools/client/shared/test-helpers/jest-fixtures/Services"
+);
 pref("devtools.debugger.remote-timeout", 10000);
 pref("devtools.hud.loglimit", 10000);
 pref("devtools.webconsole.filter.error", true);
@@ -50,5 +51,4 @@ pref("devtools.webconsole.input.eagerEvaluation", true);
 pref("devtools.browserconsole.enableNetworkMonitoring", false);
 pref("devtools.webconsole.input.editorWidth", 800);
 pref("devtools.webconsole.input.editorOnboarding", true);
-pref("devtools.webconsole.input.context", false);
 pref("devtools.discovery.log", false);

@@ -84,8 +84,6 @@ const prefs = {
       EDITOR_WIDTH: "input.editorWidth",
       // Show the Editor onboarding UI
       EDITOR_ONBOARDING: "devtools.webconsole.input.editorOnboarding",
-      // Show the Input Context the selector
-      CONTEXT_SELECTOR: "devtools.webconsole.input.context",
       // Persist the "enable network monitoring" option
       ENABLE_NETWORK_MONITORING:
         "devtools.browserconsole.enableNetworkMonitoring",
@@ -160,7 +158,7 @@ const chromeRDPEnums = {
     CONTENT_BLOCKING_GROUP: "contentBlockingWarningGroup",
     STORAGE_ISOLATION_GROUP: "storageIsolationWarningGroup",
     TRACKING_PROTECTION_GROUP: "trackingProtectionWarningGroup",
-    COOKIE_SAMESITE_GROUP: "cookieSameSiteGroup",
+    COOKIE_GROUP: "cookieGroup",
     CORS_GROUP: "CORSWarningGroup",
     CSP_GROUP: "CSPWarningGroup",
     ASSERT: "assert",

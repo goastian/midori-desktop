@@ -9,9 +9,9 @@ const {
   createRef,
   Fragment,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   getFormatStr,
 } = require("resource://devtools/client/inspector/layout/utils/l10n.js");

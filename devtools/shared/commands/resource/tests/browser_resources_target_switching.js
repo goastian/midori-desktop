@@ -11,9 +11,8 @@ const TEST_URI =
 add_task(async function () {
   const tab = await addTab(TEST_URI);
 
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
   const { CONSOLE_MESSAGE, SOURCE } = resourceCommand.TYPES;
 
   info("Check the resources gotten from getAllResources at initial");
@@ -34,7 +33,7 @@ add_task(async function () {
 
   is(availableResources.length, 1, "Got the page message");
   is(
-    availableResources[0].message.arguments[0],
+    availableResources[0].arguments[0],
     "foo",
     "Got the expected page message"
   );

@@ -7,12 +7,12 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const {
   span,
   div,
 } = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
 } = require("resource://devtools/client/shared/vendor/react-redux.js");
@@ -93,8 +93,7 @@ class MainFrame extends Component {
     this.onCanBeDisabledChange = this.onCanBeDisabledChange.bind(this);
   }
 
-  // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillMount() {
+  componentDidMount() {
     this.props.startListeningForLifecycleEvents({
       init: this.resetAccessibility,
       shutdown: this.resetAccessibility,

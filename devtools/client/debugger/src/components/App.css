@@ -69,6 +69,11 @@ button:hover {
     var(--editor-footer-height);
   max-height: 100%;
   overflow-y: auto;
+  container-type: inline-size;
+
+  .source-header {
+    width: 100cqw;
+  }
 }
 
 .editor-notification-footer {
@@ -100,18 +105,13 @@ button:hover {
       height: 16px;
       content: "";
       background-image: url("chrome://devtools/skin/images/close.svg");
+      fill: var(--theme-icon-color);
+      -moz-context-properties: fill;
     }
   }
 }
 
 /* Utils */
-.absolute-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
 .d-flex {
   display: flex;
 }

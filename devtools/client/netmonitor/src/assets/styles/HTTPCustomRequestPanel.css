@@ -114,7 +114,7 @@
   align-items: flex-start;
   width: 100%;
   overflow: hidden;
-  padding: 0px 13px;
+  padding: 0 13px;
   padding-inline-end: 0;
 }
 
@@ -149,10 +149,6 @@
   background-color: transparent;
   position: absolute;
   right: 0;
-}
-
-.tabpanel-summary-container.http-custom-input .http-custom-delete-button::-moz-focus-inner {
-  border: none;
 }
 
 .tabpanel-summary-container.http-custom-input:hover .http-custom-delete-button {

@@ -13,34 +13,34 @@
 // do this registration before importing `shared-head`, since declaration
 // order matters.
 registerCleanupFunction(async () => {
-  const browser = gBrowser.selectedBrowser;
-  const contexts = browser.browsingContext.getAllBrowsingContextsInSubtree();
-  for (const context of contexts) {
-    await SpecialPowers.spawn(context, [], async () => {
-      const win = content.wrappedJSObject;
-
-      // Some windows (e.g., about: URLs) don't have storage available
-      try {
-        win.localStorage.clear();
-        win.sessionStorage.clear();
-      } catch (ex) {
-        // ignore
-      }
-
-      if (win.clear) {
-        // Do not get hung into win.clear() forever
-        await Promise.race([
-          new Promise(r => win.setTimeout(r, 10000)),
-          win.clear(),
-        ]);
-      }
-    });
-  }
-
   Services.cookies.removeAll();
 
   // Close tabs and force memory collection to happen
   while (gBrowser.tabs.length > 1) {
+    const browser = gBrowser.selectedBrowser;
+    const contexts = browser.browsingContext.getAllBrowsingContextsInSubtree();
+    for (const context of contexts) {
+      await SpecialPowers.spawn(context, [], async () => {
+        const win = content.wrappedJSObject;
+
+        // Some windows (e.g., about: URLs) don't have storage available
+        try {
+          win.localStorage.clear();
+          win.sessionStorage.clear();
+        } catch (ex) {
+          // ignore
+        }
+
+        if (win.clear) {
+          // Do not get hung into win.clear() forever
+          await Promise.race([
+            new Promise(r => win.setTimeout(r, 10000)),
+            win.clear(),
+          ]);
+        }
+      });
+    }
+
     await closeTabAndToolbox(gBrowser.selectedTab);
   }
   forceCollections();
@@ -962,9 +962,8 @@ var focusSearchBoxUsingShortcut = async function (panelWin, callback) {
 
   panelWin.focus();
 
-  const shortcut = await panelWin.document.l10n.formatValue(
-    "storage-filter-key"
-  );
+  const shortcut =
+    await panelWin.document.l10n.formatValue("storage-filter-key");
   synthesizeKeyShortcut(shortcut);
 
   await focused;
@@ -974,8 +973,8 @@ var focusSearchBoxUsingShortcut = async function (panelWin, callback) {
   }
 };
 
-function getCookieId(name, domain, path) {
-  return `${name}${SEPARATOR_GUID}${domain}${SEPARATOR_GUID}${path}`;
+function getCookieId(name, domain, path, partitionKey = "") {
+  return `${name}${SEPARATOR_GUID}${domain}${SEPARATOR_GUID}${path}${SEPARATOR_GUID}${partitionKey}`;
 }
 
 function setPermission(url, permission) {
@@ -1009,13 +1008,13 @@ function sidebarToggleVisible() {
 function sidebarParseTreeVisible(state) {
   if (state) {
     Assert.greater(
-      gUI.view._currHierarchy.size,
+      gUI.view._testOnlyHierarchy.size,
       2,
       "Parse tree should be visible."
     );
   } else {
     Assert.lessOrEqual(
-      gUI.view._currHierarchy.size,
+      gUI.view._testOnlyHierarchy.size,
       2,
       "Parse tree should not be visible."
     );

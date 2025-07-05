@@ -19,10 +19,15 @@ add_task(async function () {
   // Trigger the breakpoint ane ensure we're paused
   invokeInTab("main");
   await waitForPaused(dbg);
-  await waitForDispatch(dbg.store, "ADD_INLINE_PREVIEW");
 
   // Scroll element into view
   findElement(dbg, "frame", 2).focus();
+
+  let pausedLocation = findElementWithSelector(dbg, ".paused-location");
+  ok(
+    pausedLocation.classList.contains("first-column"),
+    "This paused caret is displayed as the first element in the line"
+  );
 
   // Click the call stack to get to debugger-line-1
   const dispatched = waitForDispatch(dbg.store, "ADD_INLINE_PREVIEW");
@@ -30,6 +35,13 @@ add_task(async function () {
   await dispatched;
   await waitForRequestsToSettle(dbg);
   await waitForSelectedSource(dbg, "simple1.js");
+  await waitForSelectedLocation(dbg, 4, 19);
+
+  pausedLocation = findElementWithSelector(dbg, ".paused-location");
+  ok(
+    !pausedLocation.classList.contains("first-column"),
+    "This paused caret is no longer displayed as the first element in the line"
+  );
 
   // Resume, which ends all pausing and would trigger the problem
   await resume(dbg);
@@ -39,7 +51,7 @@ add_task(async function () {
 
   info("Ensuring there's no zombie debug line");
   is(
-    findAllElements(dbg, "debugLine").length,
+    findAllElements(dbg, "pausedLine").length,
     0,
     "Debug line no longer exists!"
   );

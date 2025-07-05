@@ -7,19 +7,23 @@
 // React & Redux
 const {
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const Message = createFactory(
   require("resource://devtools/client/webconsole/components/Output/Message.js")
 );
 const GripMessageBody = require("resource://devtools/client/webconsole/components/Output/GripMessageBody.js");
 loader.lazyGetter(this, "REPS", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .REPS;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs",
+    { global: "current" }
+  ).REPS;
 });
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs",
+    { global: "current" }
+  ).MODE;
 });
 
 PageError.displayName = "PageError";

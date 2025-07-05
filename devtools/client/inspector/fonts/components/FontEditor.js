@@ -7,9 +7,9 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const FontAxis = createFactory(
   require("resource://devtools/client/inspector/fonts/components/FontAxis.js")
@@ -152,9 +152,9 @@ class FontEditor extends PureComponent {
   }
 
   renderFontGroup(family, fonts = []) {
-    const group = fonts.map(font => {
+    const group = fonts.map((font, i) => {
       return FontName({
-        key: font.name,
+        key: font.name + ":" + i,
         font,
         onToggleFontHighlight: this.props.onToggleFontHighlight,
       });

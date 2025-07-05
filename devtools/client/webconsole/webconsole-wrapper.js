@@ -6,8 +6,8 @@
 const {
   createElement,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.mjs");
 const {
   Provider,
   createProvider,
@@ -125,13 +125,21 @@ class WebConsoleWrapper {
         },
       });
 
+      const serviceContainer = this.getServiceContainer();
+
       const app = AppErrorBoundary(
         {
           componentName: "Console",
           panel: L10N.getStr("ToolboxTabWebconsole.label"),
+          // The AppErrorBoundary renders a link to file a bug, but in the case of the
+          // browser console, we need to have a specific handler to open the link in the
+          // main Firefox window
+          openLink: webConsoleUI.isBrowserConsole
+            ? serviceContainer.openLink
+            : null,
         },
         App({
-          serviceContainer: this.getServiceContainer(),
+          serviceContainer,
           webConsoleUI,
           onFirstMeaningfulPaint: resolve,
           closeSplitConsole: this.closeSplitConsole.bind(this),

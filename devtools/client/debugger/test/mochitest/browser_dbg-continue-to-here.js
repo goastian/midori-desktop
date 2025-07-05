@@ -15,7 +15,7 @@ add_task(async function () {
   await waitForInlinePreviews(dbg);
 
   await continueToLine(dbg, 31);
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "pause-points.js").id,
     31,
@@ -29,7 +29,7 @@ add_task(async function () {
   await waitForInlinePreviews(dbg);
 
   await continueToColumn(dbg, { line: 31, column: 8 });
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "pause-points.js").id,
     31,
@@ -39,7 +39,7 @@ add_task(async function () {
 });
 
 async function continueToLine(dbg, line) {
-  rightClickElement(dbg, "gutter", line);
+  rightClickElement(dbg, "gutterElement", line);
   await waitForContextMenu(dbg);
   selectContextMenuItem(dbg, selectors.editorContextMenu.continueToHere);
   await waitForDispatch(dbg.store, "RESUME");

@@ -7,10 +7,13 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
+const {
+  getStr,
+} = require("resource://devtools/client/inspector/fonts/utils/l10n.js");
 const FontName = createFactory(
   require("resource://devtools/client/inspector/fonts/components/FontName.js")
 );
@@ -19,6 +22,9 @@ const FontOrigin = createFactory(
 );
 const FontPreview = createFactory(
   require("resource://devtools/client/inspector/fonts/components/FontPreview.js")
+);
+const FontMetadata = createFactory(
+  require("resource://devtools/client/inspector/fonts/components/FontMetadata.js")
 );
 
 const Types = require("resource://devtools/client/inspector/fonts/types.js");
@@ -40,17 +46,6 @@ class Font extends PureComponent {
     };
 
     this.onFontFaceRuleToggle = this.onFontFaceRuleToggle.bind(this);
-  }
-
-  // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillReceiveProps(newProps) {
-    if (this.props.font.name === newProps.font.name) {
-      return;
-    }
-
-    this.setState({
-      isFontFaceRuleExpanded: false,
-    });
   }
 
   onFontFaceRuleToggle(event) {
@@ -85,9 +80,10 @@ class Font extends PureComponent {
       leading,
       isFontFaceRuleExpanded
         ? body
-        : dom.span({
-            className: "font-css-code-expander",
+        : dom.button({
+            className: "font-truncated-string-expander",
             onClick: this.onFontFaceRuleToggle,
+            title: getStr("fontinspector.showFullText"),
           }),
       trailing
     );
@@ -96,15 +92,12 @@ class Font extends PureComponent {
   renderFontCSSCodeTwisty() {
     const { isFontFaceRuleExpanded } = this.state;
 
-    const attributes = {
+    return dom.button({
       className: "theme-twisty",
       onClick: this.onFontFaceRuleToggle,
-    };
-    if (isFontFaceRuleExpanded) {
-      attributes.open = "true";
-    }
-
-    return dom.span(attributes);
+      "aria-expanded": isFontFaceRuleExpanded,
+      title: getStr("fontinspector.showFullText"),
+    });
   }
 
   renderFontFamilyName(family) {
@@ -131,7 +124,8 @@ class Font extends PureComponent {
       ),
       FontOrigin({ font }),
       FontPreview({ onPreviewClick, previewUrl }),
-      this.renderFontCSSCode(rule, ruleText)
+      this.renderFontCSSCode(rule, ruleText),
+      FontMetadata({ font })
     );
   }
 }

@@ -52,6 +52,7 @@ const tests = [
           "focused",
           "readonly",
           "focusable",
+          "selectable text",
           "opaque",
           "enabled",
           "sensitive",
@@ -113,7 +114,7 @@ const tests = [
       });
       EventUtils.sendMouseEvent(
         { type: "click" },
-        relations.querySelector(".arrow"),
+        relations.querySelector(".theme-twisty"),
         win
       );
       AccessibilityUtils.resetEnv();
@@ -153,7 +154,14 @@ const tests = [
         keyboardShortcut: "",
         childCount: 2,
         indexInParent: 0,
-        states: ["readonly", "focusable", "opaque", "enabled", "sensitive"],
+        states: [
+          "readonly",
+          "focusable",
+          "selectable text",
+          "opaque",
+          "enabled",
+          "sensitive",
+        ],
       },
     },
   },

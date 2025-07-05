@@ -7,8 +7,8 @@
 // React & Redux
 const {
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const GripMessageBody = require("resource://devtools/client/webconsole/components/Output/GripMessageBody.js");
 
@@ -86,7 +86,9 @@ function JSTracerTrace(props) {
   // When we are logging a DOM event, we have the `eventName` defined.
   let messageBody;
   if (eventName) {
-    messageBody = [dom.span({ className: "jstracer-dom-event" }, eventName)];
+    messageBody = [
+      dom.span({ className: "jstracer-dom-event" }, `DOM | ${eventName}`),
+    ];
   } else if (typeof relatedTraceId == "number") {
     messageBody = [
       dom.span({ className: "jstracer-io" }, "⟵ "),

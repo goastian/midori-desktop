@@ -12,8 +12,12 @@ const L10N = new LocalizationHelper(STRINGS_URI);
 
 // These values are used to truncate the resulting image if the captured area is bigger.
 // This is to avoid failing to produce a screenshot at all.
-// It is recommended to keep these values in sync with the corresponding screenshots addon
-// values in /browser/extensions/screenshots/selector/uicontrol.js
+// It is recommended to keep these values in sync with the corresponding screenshots features
+// values in browser/components/screenshots/ScreenshotsUtils.sys.mjs.
+//
+// TODO(Bug 1942439): Change the consts and related truncation warning logic to align it to the new consts
+// used by ScreenshotsUtils.sys.mjs, which does not use the same approach nor the MAX_IMAGE_WIDTH
+// and MAX_IMAGE_HEIGHT consts that the screenshots addon was originally using.
 const MAX_IMAGE_WIDTH = 10000;
 const MAX_IMAGE_HEIGHT = 10000;
 
@@ -83,15 +87,13 @@ async function captureScreenshot(args, browsingContext) {
   }
 
   let { left, top, width, height } = args.rect || {};
+  let _showScreenshotTruncationWarning = false;
 
   // Truncate the width and height if necessary.
   if (width && (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT)) {
+    _showScreenshotTruncationWarning = true;
     width = Math.min(width, MAX_IMAGE_WIDTH);
     height = Math.min(height, MAX_IMAGE_HEIGHT);
-    messages.push({
-      level: "warn",
-      text: L10N.getFormatStr("screenshotTruncationWarning", width, height),
-    });
   }
 
   let rect = null;
@@ -163,6 +165,17 @@ async function captureScreenshot(args, browsingContext) {
 
   if (data && args.disableFlash !== true) {
     simulateCameraFlash(browsingContext);
+  }
+
+  // Bug 1953285 - Incorrect message when taking a full page screenshot that's too large
+  // Previously Passing Incorrect value of width and height
+  // Now passing updated value of width and height i.e. renderWidth, renderHeight
+  // Took boolean _showScreenshotTruncationWarning to keep track
+  if (_showScreenshotTruncationWarning) {
+    messages.push({
+      level: "warn",
+      text: L10N.getFormatStr("screenshotTruncationWarning", width, height),
+    });
   }
 
   return {

@@ -11,11 +11,8 @@ class PauseScopedObjectActor extends ObjectActor {
    * Creates a pause-scoped actor for the specified object.
    * @see ObjectActor
    */
-  constructor(obj, hooks, conn) {
-    super(obj, hooks, conn);
-
-    this.hooks.promote = hooks.promote;
-    this.hooks.isThreadLifetimePool = hooks.isThreadLifetimePool;
+  constructor(threadActor, obj, hooks) {
+    super(threadActor, obj, hooks);
 
     const guardWithPaused = [
       "decompile",
@@ -32,14 +29,12 @@ class PauseScopedObjectActor extends ObjectActor {
       this[methodName] = this.withPaused(this[methodName]);
     }
 
-    /**
-     * Handle a protocol request to promote a pause-lifetime grip to a
-     * thread-lifetime grip.
-     */
-    this.threadGrip = this.withPaused(function () {
-      this.hooks.promote();
-      return {};
-    });
+    // Cache this thread actor attribute as we may query it after the actor destruction.
+    this.threadLifetimePool = this.threadActor.threadLifetimePool;
+  }
+
+  isThreadLifetimePool() {
+    return this.getParent() === this.threadLifetimePool;
   }
 
   isPaused() {
@@ -62,10 +57,23 @@ class PauseScopedObjectActor extends ObjectActor {
   }
 
   /**
+   * Handle a protocol request to promote a pause-lifetime grip to a
+   * thread-lifetime grip.
+   *
+   * This method isn't used by DevTools frontend, but by VS Code Firefox adapter
+   * in order to keep the object actor alive after resume and be able to remove
+   * watchpoints.
+   */
+  threadGrip() {
+    this.threadActor.promoteObjectToThreadLifetime(this);
+    return {};
+  }
+
+  /**
    * Handle a protocol request to release a thread-lifetime grip.
    */
   destroy() {
-    if (this.hooks.isThreadLifetimePool()) {
+    if (!this.isThreadLifetimePool()) {
       return {
         error: "notReleasable",
         message: "Only thread-lifetime actors can be released.",

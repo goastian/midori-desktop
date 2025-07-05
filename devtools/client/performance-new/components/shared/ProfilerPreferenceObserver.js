@@ -39,11 +39,11 @@ const {
   addPrefObserver,
   removePrefObserver,
 } = ChromeUtils.importESModule(
-  "resource://devtools/client/performance-new/shared/background.sys.mjs"
+  "resource://devtools/shared/performance-new/prefs-presets.sys.mjs"
 );
 const {
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const {
   connect,
 } = require("resource://devtools/client/shared/vendor/react-redux.js");

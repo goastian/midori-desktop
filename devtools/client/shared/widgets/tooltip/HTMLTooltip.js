@@ -6,12 +6,11 @@
 
 const EventEmitter = require("resource://devtools/shared/event-emitter.js");
 
-loader.lazyRequireGetter(
-  this,
-  "focusableSelector",
-  "resource://devtools/client/shared/focus.js",
-  true
-);
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  focusableSelector: "resource://devtools/client/shared/focus.mjs",
+});
+
 loader.lazyRequireGetter(
   this,
   "TooltipToggle",
@@ -491,7 +490,7 @@ HTMLTooltip.prototype = {
     this.container.classList.add("tooltip-visible");
 
     // Keep a pointer on the focused element to refocus it when hiding the tooltip.
-    this._focusedElement = this.doc.activeElement;
+    this._focusedElement = anchor.ownerDocument.activeElement;
 
     if (this.doc.defaultView) {
       if (!this._pendingEventListenerPromise) {
@@ -801,7 +800,8 @@ HTMLTooltip.prototype = {
 
     this.emit("hidden");
 
-    const tooltipHasFocus = this.container.contains(this.doc.activeElement);
+    const tooltipHasFocus =
+      this.doc.hasFocus() && this.container.contains(this.doc.activeElement);
     if (tooltipHasFocus && this._focusedElement) {
       this._focusedElement.focus();
       this._focusedElement = null;
@@ -939,7 +939,7 @@ HTMLTooltip.prototype = {
    * Returns true if we found something to focus on, false otherwise.
    */
   focus() {
-    const focusableElement = this.panel.querySelector(focusableSelector);
+    const focusableElement = this.panel.querySelector(lazy.focusableSelector);
     if (focusableElement) {
       focusableElement.focus();
     }
@@ -952,7 +952,9 @@ HTMLTooltip.prototype = {
    * Returns true if we found something to focus on, false otherwise.
    */
   focusEnd() {
-    const focusableElements = this.panel.querySelectorAll(focusableSelector);
+    const focusableElements = this.panel.querySelectorAll(
+      lazy.focusableSelector
+    );
     if (focusableElements.length) {
       focusableElements[focusableElements.length - 1].focus();
     }

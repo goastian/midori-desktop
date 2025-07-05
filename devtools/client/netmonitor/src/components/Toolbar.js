@@ -7,12 +7,12 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const Actions = require("resource://devtools/client/netmonitor/src/actions/index.js");
 const {
   FILTER_SEARCH_DELAY,
@@ -318,17 +318,10 @@ class Toolbar extends Component {
    * Render a ToggleRecording button.
    */
   renderToggleRecordingButton(recording, toggleRecording) {
-    // Calculate class-list for toggle recording button.
-    // The button has two states: pause/play.
-    const toggleRecordingButtonClass = [
-      "devtools-button",
-      "requests-list-pause-button",
-      recording ? "devtools-pause-icon" : "devtools-play-icon",
-    ].join(" ");
-
     return button({
-      className: toggleRecordingButtonClass,
+      className: "devtools-button requests-list-pause-button",
       title: TOOLBAR_TOGGLE_RECORDING,
+      "aria-pressed": !recording,
       onClick: toggleRecording,
     });
   }
@@ -354,13 +347,6 @@ class Toolbar extends Component {
     }
 
     const className = ["devtools-button", "requests-list-blocking-button"];
-    if (
-      networkActionBarOpen &&
-      networkActionBarSelectedPanel === PANELS.BLOCKING
-    ) {
-      className.push("checked");
-    }
-
     if (hasBlockedRequests) {
       className.push("requests-list-blocking-button-enabled");
     }
@@ -368,7 +354,9 @@ class Toolbar extends Component {
     return button({
       className: className.join(" "),
       title: TOOLBAR_BLOCKING,
-      "aria-pressed": networkActionBarOpen,
+      "aria-pressed":
+        networkActionBarOpen &&
+        networkActionBarSelectedPanel === PANELS.BLOCKING,
       onClick: toggleRequestBlockingPanel,
     });
   }
@@ -379,28 +367,11 @@ class Toolbar extends Component {
   renderSearchButton(toggleSearchPanel) {
     const { networkActionBarOpen, networkActionBarSelectedPanel } = this.props;
 
-    // The search feature is available behind a pref.
-    if (!Services.prefs.getBoolPref("devtools.netmonitor.features.search")) {
-      return null;
-    }
-
-    const className = [
-      "devtools-button",
-      "devtools-search-icon",
-      "requests-list-search-button",
-    ];
-
-    if (
-      networkActionBarOpen &&
-      networkActionBarSelectedPanel === PANELS.SEARCH
-    ) {
-      className.push("checked");
-    }
-
     return button({
-      className: className.join(" "),
+      className: "devtools-button devtools-search-icon",
       title: TOOLBAR_SEARCH,
-      "aria-pressed": networkActionBarOpen,
+      "aria-pressed":
+        networkActionBarOpen && networkActionBarSelectedPanel === PANELS.SEARCH,
       onClick: toggleSearchPanel,
     });
   }
@@ -424,23 +395,12 @@ class Toolbar extends Component {
       return null;
     }
 
-    const className = [
-      "devtools-button",
-      "devtools-http-custom-request-icon",
-      "requests-list-http-custom-request-button",
-    ];
-
-    if (
-      networkActionBarOpen &&
-      networkActionBarSelectedPanel === PANELS.HTTP_CUSTOM_REQUEST
-    ) {
-      className.push("checked");
-    }
-
     return button({
-      className: className.join(" "),
+      className: "devtools-button devtools-http-custom-request-icon",
       title: TOOLBAR_HTTP_CUSTOM_REQUEST,
-      "aria-pressed": networkActionBarOpen,
+      "aria-pressed":
+        networkActionBarOpen &&
+        networkActionBarSelectedPanel === PANELS.HTTP_CUSTOM_REQUEST,
       onClick: toggleHTTPCustomRequestPanel,
     });
   }
@@ -490,11 +450,13 @@ class Toolbar extends Component {
    * Render network throttling menu button.
    */
   renderThrottlingMenu() {
-    const { networkThrottling, onChangeNetworkThrottling } = this.props;
+    const { networkThrottling, onChangeNetworkThrottling, toolboxDoc } =
+      this.props;
 
     return NetworkThrottlingMenu({
       networkThrottling,
       onChangeNetworkThrottling,
+      toolboxDoc,
     });
   }
 
@@ -508,6 +470,9 @@ class Toolbar extends Component {
       placeholder: SEARCH_PLACE_HOLDER,
       type: "filter",
       ref: "searchbox",
+      initialValue: Services.prefs.getCharPref(
+        "devtools.netmonitor.requestfilter"
+      ),
       onChange: setRequestFilterText,
       onFocusKeyboardShortcut: this.onSearchBoxFocusKeyboardShortcut,
       onFocus: this.onSearchBoxFocus,
@@ -666,7 +631,8 @@ module.exports = connect(
     selectedRequest: getSelectedRequest(state),
   }),
   dispatch => ({
-    clearRequests: () => dispatch(Actions.clearRequests()),
+    clearRequests: () =>
+      dispatch(Actions.clearRequests({ isExplicitClear: true })),
     disableBrowserCache: disabled =>
       dispatch(Actions.disableBrowserCache(disabled)),
     enablePersistentLogs: (enabled, skipTelemetry) =>

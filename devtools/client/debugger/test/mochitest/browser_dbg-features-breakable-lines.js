@@ -9,6 +9,8 @@ const testServer = createVersionizedHttpTestServer(
 );
 const TEST_URL = testServer.urlFor("index.html");
 
+requestLongerTimeout(4);
+
 // Assert the behavior of the gutter that grays out non-breakable lines
 add_task(async function testBreakableLinesOverReloads() {
   const dbg = await initDebuggerWithAbsoluteURL(
@@ -78,7 +80,7 @@ add_task(async function testBreakableLinesOverReloads() {
   // When EFT is disabled, iframe.html is a regular source and the right content is displayed
   if (isEveryFrameTargetEnabled()) {
     is(
-      getCM(dbg).getValue(),
+      getEditorContent(dbg),
       `Error: Incorrect contents fetched, please reload.`
     );
   }

@@ -133,22 +133,26 @@ class InspectorCommand {
           firstPart,
           state
         );
-        for (const [suggestion, count, type] of suggestions) {
-          // Merge any already existing suggestion with the new one, by incrementing the count
-          // which is the second element of the array.
-          const existing = mergedSuggestions.find(
-            ([s, , t]) => s == suggestion && t == type
+
+        // @backward-compat { version 140 } The shape of the returned value from getSuggestionsForQuery
+        // changed in 140. This variable should be removed and considered as true when 140 hits release
+        const suggestionNewShape =
+          walker.traits.getSuggestionsForQueryWithoutCount;
+        for (const suggestion of suggestions) {
+          const value = suggestion[0];
+          const type = suggestionNewShape ? suggestion[1] : suggestion[2];
+
+          // Only add suggestions to final array if it doesn't exist yet.
+          const existing = mergedSuggestions.some(
+            ([s, t]) => s == value && t == type
           );
-          if (existing) {
-            existing[1] += count;
-          } else {
-            mergedSuggestions.push([suggestion, count, type]);
+          if (!existing) {
+            mergedSuggestions.push([value, type]);
           }
         }
       })
     );
 
-    // Descending sort the list by count, i.e. second element of the arrays
     return sortSuggestions(mergedSuggestions);
   }
 
@@ -197,9 +201,10 @@ class InspectorCommand {
       return null;
     }
 
-    const { walker } = await this.commands.targetCommand.targetFront.getFront(
-      "inspector"
-    );
+    const { walker } =
+      await this.commands.targetCommand.targetFront.getFront("inspector");
+    // Copy the array as we will mutate it
+    nodeSelectors = [...nodeSelectors];
     const querySelectors = async nodeFront => {
       const selector = nodeSelectors.shift();
       if (!selector) {
@@ -365,10 +370,15 @@ class InspectorCommand {
    * @returns {Promise<Array<Object>>}
    */
   async getCSSDeclarationBlockIssues(domRuleDeclarations) {
+    // Filter out custom property declarations as we can't have issue with those and
+    // they're already ignored on the server.
+    const nonCustomPropertyDeclarations = domRuleDeclarations.filter(
+      decl => !decl.isCustomProperty
+    );
     const resultIndex =
       this.#cssDeclarationBlockIssuesQueuedDomRulesDeclarations.length;
     this.#cssDeclarationBlockIssuesQueuedDomRulesDeclarations.push(
-      domRuleDeclarations
+      nonCustomPropertyDeclarations
     );
 
     // We're getting the target browsers from RemoteSettings, which can take some time.
@@ -410,9 +420,8 @@ class InspectorCommand {
    * @returns {Promise<Array<Array<Object>>>}
    */
   #batchedGetCSSDeclarationBlockIssues = async () => {
-    const declarations = Array.from(
-      this.#cssDeclarationBlockIssuesQueuedDomRulesDeclarations
-    );
+    const declarations =
+      this.#cssDeclarationBlockIssuesQueuedDomRulesDeclarations;
     this.#cssDeclarationBlockIssuesQueuedDomRulesDeclarations = [];
 
     const { targetFront } = this.commands.targetCommand;
@@ -453,10 +462,6 @@ class InspectorCommand {
 // https://searchfox.org/mozilla-central/rev/46a67b8656ac12b5c180e47bc4055f713d73983b/devtools/server/actors/inspector/walker.js#1447
 function sortSuggestions(suggestions) {
   const sorted = suggestions.sort((a, b) => {
-    // Computed a sortable string with first the inverted count, then the name
-    let sortA = 10000 - a[1] + a[0];
-    let sortB = 10000 - b[1] + b[0];
-
     // Prefixing ids, classes and tags, to group results
     const firstA = a[0].substring(0, 1);
     const firstB = b[0].substring(0, 1);
@@ -471,8 +476,8 @@ function sortSuggestions(suggestions) {
       return "0";
     };
 
-    sortA = getSortKeyPrefix(firstA) + sortA;
-    sortB = getSortKeyPrefix(firstB) + sortB;
+    const sortA = getSortKeyPrefix(firstA) + a[0];
+    const sortB = getSortKeyPrefix(firstB) + b[0];
 
     // String compare
     return sortA.localeCompare(sortB);

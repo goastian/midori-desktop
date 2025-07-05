@@ -31,9 +31,10 @@ addRDMTask(
 
     await testDefaults(ui);
     await testChangingDevice(ui);
-    await testResizingViewport(ui, true, false);
+    await testResizingViewport(ui, { hasDevice: true, touch: true });
+    await testDisableTouchSimulation(ui);
+    await testResizingViewport(ui, { hasDevice: false, touch: false });
     await testEnableTouchSimulation(ui);
-    await testResizingViewport(ui, false, true);
     await testDisableTouchSimulation(ui);
 
     reloadOnTouchChange(false);
@@ -56,7 +57,7 @@ async function waitStartup(ui) {
 async function testDefaults(ui) {
   info("Test Defaults");
 
-  await testTouchEventsOverride(ui, false);
+  testTouchEventsOverride(ui, false);
   testViewportDeviceMenuLabel(ui, "Responsive");
 }
 
@@ -65,11 +66,11 @@ async function testChangingDevice(ui) {
 
   await selectDevice(ui, testDevice.name);
   await waitForViewportResizeTo(ui, testDevice.width, testDevice.height);
-  await testTouchEventsOverride(ui, true);
+  testTouchEventsOverride(ui, true);
   testViewportDeviceMenuLabel(ui, testDevice.name);
 }
 
-async function testResizingViewport(ui, hasDevice, touch) {
+async function testResizingViewport(ui, { hasDevice, touch }) {
   info(`Test resizing the viewport, device ${hasDevice}, touch ${touch}`);
 
   await testViewportResize(
@@ -81,7 +82,7 @@ async function testResizingViewport(ui, hasDevice, touch) {
       hasDevice,
     }
   );
-  await testTouchEventsOverride(ui, touch);
+  testTouchEventsOverride(ui, touch);
   testViewportDeviceMenuLabel(ui, "Responsive");
 }
 
@@ -89,12 +90,12 @@ async function testEnableTouchSimulation(ui) {
   info("Test enabling touch simulation via button");
 
   await toggleTouchSimulation(ui);
-  await testTouchEventsOverride(ui, true);
+  testTouchEventsOverride(ui, true);
 }
 
 async function testDisableTouchSimulation(ui) {
   info("Test disabling touch simulation via button");
 
   await toggleTouchSimulation(ui);
-  await testTouchEventsOverride(ui, false);
+  testTouchEventsOverride(ui, false);
 }

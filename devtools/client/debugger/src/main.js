@@ -18,8 +18,10 @@ import {
 
 import { initialBreakpointsState } from "./reducers/breakpoints";
 import { initialSourcesState } from "./reducers/sources";
+import { initialSourcesTreeState } from "./reducers/sources-tree";
 import { initialUIState } from "./reducers/ui";
 import { initialSourceBlackBoxState } from "./reducers/source-blackbox";
+import { initialEventListenerState } from "./reducers/event-listeners";
 
 const {
   sanitizeBreakpoints,
@@ -59,14 +61,14 @@ function setPauseOnDebuggerStatement() {
 }
 
 function setPauseOnExceptions() {
-  const { pauseOnExceptions, pauseOnCaughtException } = prefs;
+  const { pauseOnExceptions, pauseOnCaughtExceptions } = prefs;
   return firefox.clientCommands.pauseOnExceptions(
     pauseOnExceptions,
-    pauseOnCaughtException
+    pauseOnCaughtExceptions
   );
 }
 
-async function loadInitialState() {
+async function loadInitialState(commands) {
   const pendingBreakpoints = sanitizeBreakpoints(
     await asyncStore.pendingBreakpoints
   );
@@ -74,9 +76,18 @@ async function loadInitialState() {
   const xhrBreakpoints = await asyncStore.xhrBreakpoints;
   const blackboxedRanges = await asyncStore.blackboxedRanges;
   const eventListenerBreakpoints = await asyncStore.eventListenerBreakpoints;
+  if (eventListenerBreakpoints && !eventListenerBreakpoints.byPanel) {
+    // Firefox 132 changed the layout of the event listener data to support both breakpoints and tracer
+    eventListenerBreakpoints.byPanel = initialEventListenerState().byPanel;
+  }
+
   const breakpoints = initialBreakpointsState(xhrBreakpoints);
   const sourceBlackBox = initialSourceBlackBoxState({ blackboxedRanges });
   const sources = initialSourcesState();
+  const sourcesTree = initialSourcesTreeState({
+    mainThreadProjectDirectoryRoots: await asyncStore.directoryRoots,
+    isWebExtension: commands.descriptorFront.isWebExtensionDescriptor,
+  });
   const ui = initialUIState();
 
   return {
@@ -85,6 +96,7 @@ async function loadInitialState() {
     breakpoints,
     eventListenerBreakpoints,
     sources,
+    sourcesTree,
     sourceBlackBox,
     ui,
   };
@@ -103,7 +115,7 @@ export async function bootstrap({
   // record events.
   setToolboxTelemetry(panel.toolbox.telemetry);
 
-  const initialState = await loadInitialState();
+  const initialState = await loadInitialState(commands);
   const workers = bootstrapWorkers(panelWorkers);
 
   const { store, actions, selectors } = bootstrapStore(

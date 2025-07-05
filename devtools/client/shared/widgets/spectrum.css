@@ -3,16 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 :root {
-  --learn-more-underline: var(--grey-30);
-}
+  --accessibility-contrast-swatch-border-color: var(--grey-40);
+  --learn-more-underline: light-dark(var(--grey-30), var(--grey-50));
 
-.theme-dark:root {
-  --learn-more-underline: var(--grey-50);
+  :root[forced-colors-adjust] & {
+    --accessibility-contrast-swatch-border-color: GrayText;
+    --learn-more-underline: CanvasText;
+  }
 }
 
 #eyedropper-button {
   margin-inline-end: 5px;
   display: block;
+
+  :root[forced-colors-active] & {
+    border: 1px solid currentColor;
+  }
 }
 
 #eyedropper-button::before {
@@ -41,12 +47,18 @@
     );
   background-size: 12px 12px;
   background-position: 0 0, 6px 6px;
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
 }
 
 .spectrum-box {
   border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 2px;
   background-clip: content-box;
+
+  :root[forced-colors-active] & {
+    border-color: initial;
+  }
 }
 
 /* Elements */
@@ -92,6 +104,12 @@
     linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%);
   background-size: 12px 12px;
   background-position: 0 0, 6px 6px;
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
+
+  :root[forced-colors-active] & {
+    border-color: CanvasText;
+  }
 }
 
 .spectrum-color-preview.high-luminance {
@@ -113,6 +131,8 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
   position: relative;
   width: 205px;
   height: 120px;
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
 }
 
 .spectrum-color {
@@ -169,6 +189,21 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
   border: none;
 }
 
+:root[forced-colors-active] :is(
+  .spectrum-hue-input,
+  .spectrum-alpha-input
+)::-moz-range-thumb {
+  background: ButtonFace;
+  border: 2px solid ButtonText;
+}
+
+:root[forced-colors-active] :is(
+  .spectrum-hue-input,
+  .spectrum-alpha-input
+):is(:hover, :focus-visible)::-moz-range-thumb {
+  border-color: SelectedItem;
+}
+
 .spectrum-hue-input::-moz-range-track {
   border-radius: 2px;
   height: 8px;
@@ -182,6 +217,8 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
     #ff00ff 83%,
     #ff0000 100%
   );
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
 }
 
 .spectrum-sat {
@@ -195,8 +232,8 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
 .spectrum-dragger {
   user-select: none;
   position: absolute;
-  top: 0px;
-  left: 0px;
+  top: 0;
+  left: 0;
   cursor: pointer;
   border-radius: 50%;
   height: 8px;
@@ -226,6 +263,7 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
 
 .spectrum-color-contrast.visible {
   display: block;
+  color: var(--theme-text-color-strong);
 }
 
 .spectrum-color-contrast.visible:not(.range) .contrast-ratio-single,
@@ -244,13 +282,14 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
 .contrast-ratio-label {
   font-size: 10px;
   padding-inline-end: 4px;
-  color: var(--theme-toolbar-color);
 }
 
 .spectrum-color-contrast .accessibility-contrast-value {
   font-size: 10px;
-  color: var(--theme-body-color);
   border-bottom: 1px solid var(--learn-more-underline);
+
+  /* opt-out of forced colors to avoid the blackplaing that clips the border */
+  forced-color-adjust: none;
 }
 
 .spectrum-color-contrast.visible:not(.error) .contrast-ratio-single .accessibility-contrast-value {
@@ -274,16 +313,18 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
   height: 9px;
   width: 9px;
   background-color: var(--accessibility-contrast-color);
+  /* opt-out of forced color so we can actually see the colors */
+  forced-color-adjust: none;
 }
 
 .spectrum-color-contrast.visible:not(.error):-moz-locale-dir(ltr) .contrast-value-and-swatch:before {
-  box-shadow: 0 0 0 1px var(--grey-40), 6px 5px var(--accessibility-contrast-bg),
-    6px 5px 0 1px var(--grey-40);
+  box-shadow: 0 0 0 1px var(--accessibility-contrast-swatch-border-color), 6px 5px var(--accessibility-contrast-bg),
+    6px 5px 0 1px var(--accessibility-contrast-swatch-border-color);
 }
 
 .spectrum-color-contrast.visible:not(.error):-moz-locale-dir(rtl) .contrast-value-and-swatch:before {
-  box-shadow: 0 0 0 1px var(--grey-40), -6px 5px var(--accessibility-contrast-bg),
-    -6px 5px 0 1px var(--grey-40);
+  box-shadow: 0 0 0 1px var(--accessibility-contrast-swatch-border-color), -6px 5px var(--accessibility-contrast-bg),
+    -6px 5px 0 1px var(--accessibility-contrast-swatch-border-color);
 }
 
 .spectrum-color-contrast .accessibility-color-contrast-separator:before {
@@ -319,11 +360,7 @@ http://www.briangrinstead.com/blog/keep-aspect-ratio-with-html-and-css */
 
 .learn-more:hover,
 .learn-more:focus {
-  fill: var(--theme-icon-color);
+  fill: var(--theme-icon-hover-color);
   cursor: pointer;
   outline: none;
-}
-
-.learn-more::-moz-focus-inner {
-  border: none;
 }

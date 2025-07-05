@@ -52,18 +52,12 @@ class Rule {
     this.domRule = options.rule;
     this.compatibilityIssues = null;
 
-    if (this.domRule.hasMatchedSelectorIndexesTrait) {
-      this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
-    } else {
-      // @backward-compat { version 128 } this.matchedDesugaredSelectors can be removed
-      // once 128 hits release
-      this.matchedDesugaredSelectors = options.matchedDesugaredSelectors || [];
-    }
-
-    this.pseudoElement = options.pseudoElement || "";
+    this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
     this.isSystem = options.isSystem;
     this.isUnmatched = options.isUnmatched || false;
+    this.darkColorScheme = options.darkColorScheme;
     this.inherited = options.inherited || null;
+    this.pseudoElement = options.pseudoElement || "";
     this.keyframes = options.keyframes || null;
     this.userAdded = options.rule.userAdded;
 
@@ -96,35 +90,15 @@ class Rule {
     return this.textProps;
   }
 
-  get inheritance() {
-    if (!this.inherited) {
-      return null;
-    }
-
-    return {
-      inherited: this.inherited,
-      inheritedSource: this.inheritedSource,
-    };
-  }
-
   get selector() {
-    const data = {
+    return {
       getUniqueSelector: this.getUniqueSelector,
+      matchedSelectorIndexes: this.matchedSelectorIndexes,
       selectors: this.domRule.selectors,
       selectorsSpecificity: this.domRule.selectorsSpecificity,
       selectorWarnings: this.domRule.selectors,
       selectorText: this.keyframes ? this.domRule.keyText : this.selectorText,
     };
-
-    if (this.domRule.hasMatchedSelectorIndexesTrait) {
-      data.matchedSelectorIndexes = this.matchedSelectorIndexes;
-    } else {
-      // @backward-compat { version 128 } matchedDesugaredSelectors can be removed
-      // once 128 hits release
-      data.matchedDesugaredSelectors = this.matchedDesugaredSelectors;
-    }
-
-    return data;
   }
 
   get sourceMapURLService() {
@@ -140,22 +114,25 @@ class Rule {
     return title;
   }
 
-  get inheritedSource() {
-    if (this._inheritedSource) {
-      return this._inheritedSource;
+  get inheritedSectionLabel() {
+    if (this._inheritedSectionLabel) {
+      return this._inheritedSectionLabel;
     }
-    this._inheritedSource = "";
+    this._inheritedSectionLabel = "";
     if (this.inherited) {
       let eltText = this.inherited.displayName;
       if (this.inherited.id) {
         eltText += "#" + this.inherited.id;
       }
-      this._inheritedSource = STYLE_INSPECTOR_L10N.getFormatStr(
+      if (CssLogic.ELEMENT_BACKED_PSEUDO_ELEMENTS.has(this.pseudoElement)) {
+        eltText += this.pseudoElement;
+      }
+      this._inheritedSectionLabel = STYLE_INSPECTOR_L10N.getFormatStr(
         "rule.inheritedFrom",
         eltText
       );
     }
-    return this._inheritedSource;
+    return this._inheritedSectionLabel;
   }
 
   get keyframesName() {
@@ -431,6 +408,7 @@ class Rule {
     const resultPromise = Promise.resolve(this._applyingModifications)
       .then(() => {
         const modifications = this.domRule.startModifyingProperties(
+          this.inspector.panelWin,
           this.cssProperties
         );
         modifier(modifications);
@@ -515,6 +493,7 @@ class Rule {
   previewPropertyValue(property, value, priority) {
     this.elementStyle.ruleView.emitForTests("start-preview-property-value");
     const modifications = this.domRule.startModifyingProperties(
+      this.inspector.panelWin,
       this.cssProperties
     );
     modifications.setProperty(
@@ -652,13 +631,10 @@ class Rule {
    * properties as needed.
    */
   refresh(options) {
-    if (this.domRule.hasMatchedSelectorIndexesTrait) {
-      this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
-    } else {
-      // @backward-compat { version 128 } this.matchedDesugaredSelectors can be removed
-      // once 128 hits release
-      this.matchedDesugaredSelectors = options.matchedDesugaredSelectors || [];
-    }
+    this.matchedSelectorIndexes = options.matchedSelectorIndexes || [];
+    const colorSchemeChanged = this.darkColorScheme !== options.darkColorScheme;
+    this.darkColorScheme = options.darkColorScheme;
+
     const newTextProps = this._getTextProperties();
 
     // The element style rule behaves differently on refresh. We basically need to update
@@ -699,6 +675,17 @@ class Rule {
         prop.updateEditor();
       } else {
         delete prop._visited;
+      }
+
+      // Valid properties that aren't disabled might need to get updated in some condition
+      if (
+        prop.enabled &&
+        prop.isValid() &&
+        // Update if it's using light-dark and the color scheme changed
+        colorSchemeChanged &&
+        prop.value.includes("light-dark")
+      ) {
+        prop.updateEditor();
       }
     }
 
@@ -878,6 +865,15 @@ class Rule {
         (otherRuleLayer.value || otherRuleLayer.actorID)
       );
     });
+  }
+
+  /**
+   * @returns {Boolean} Whether or not the rule is in a @starting-style rule
+   */
+  isInStartingStyle() {
+    return this.domRule.ancestorData.some(
+      ({ type }) => type === "starting-style"
+    );
   }
 
   /**

@@ -43,11 +43,11 @@
  * JSM module, that can be shared with the DevTools keyboard shortcut manager.
  */
 const { presets } = ChromeUtils.importESModule(
-  "resource://devtools/client/performance-new/shared/background.sys.mjs"
+  "resource://devtools/shared/performance-new/prefs-presets.sys.mjs"
 );
 
-const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.js");
-const React = require("resource://devtools/client/shared/vendor/react.js");
+const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom.mjs");
+const React = require("resource://devtools/client/shared/vendor/react.mjs");
 const FluentReact = require("resource://devtools/client/shared/vendor/fluent-react.js");
 const {
   FluentL10n,
@@ -132,7 +132,10 @@ async function gInit(
 
 async function gDestroy() {
   // This allows all unregister commands to run.
-  ReactDOM.unmountComponentAtNode(document.querySelector("#root"));
+  const root = document.querySelector("#root");
+  if (root) {
+    ReactDOM.unmountComponentAtNode(root);
+  }
 }
 
 // Automatically initialize the page if it's not a remote connection, otherwise

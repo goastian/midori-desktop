@@ -15,6 +15,11 @@ import {
 } from "devtools/client/shared/vendor/react-dom-factories";
 import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 import { connect } from "devtools/client/shared/vendor/react-redux";
+const MenuButton = require("resource://devtools/client/shared/components/menu/MenuButton.js");
+const MenuItem = require("resource://devtools/client/shared/components/menu/MenuItem.js");
+const MenuList = require("resource://devtools/client/shared/components/menu/MenuList.js");
+import { prefs } from "../../utils/prefs";
+import { createLocation } from "../../utils/location";
 
 // Selectors
 import {
@@ -22,6 +27,7 @@ import {
   getExpandedState,
   getProjectDirectoryRoot,
   getProjectDirectoryRootName,
+  getProjectDirectoryRootFullName,
   getSourcesTreeSources,
   getFocusedSourceItem,
   getHideIgnoredSources,
@@ -47,19 +53,25 @@ class SourcesTree extends Component {
   constructor(props) {
     super(props);
 
-    this.state = {};
+    this.state = {
+      hasOverflow: undefined,
+    };
+
+    // Monitor resize to check if the source tree shows a scrollbar.
+    this.onResize = this.onResize.bind(this);
+    this.resizeObserver = new ResizeObserver(this.onResize);
   }
 
   static get propTypes() {
     return {
-      mainThreadHost: PropTypes.string.isRequired,
+      mainThreadHost: PropTypes.string,
       expanded: PropTypes.object.isRequired,
       focusItem: PropTypes.func.isRequired,
       focused: PropTypes.object,
       projectRoot: PropTypes.string.isRequired,
-      selectSource: PropTypes.func.isRequired,
+      selectMayBePrettyPrintedLocation: PropTypes.func.isRequired,
       setExpandedState: PropTypes.func.isRequired,
-      rootItems: PropTypes.object.isRequired,
+      rootItems: PropTypes.array.isRequired,
       clearProjectDirectoryRoot: PropTypes.func.isRequired,
       projectRootName: PropTypes.string.isRequired,
       setHideOrShowIgnoredSources: PropTypes.func.isRequired,
@@ -67,8 +79,40 @@ class SourcesTree extends Component {
     };
   }
 
+  onResize() {
+    const tree = this.refs.tree;
+    if (!tree) {
+      return;
+    }
+
+    // "treeRef" is created via createRef() in the Tree component.
+    const treeEl = tree.treeRef.current;
+    const hasOverflow = treeEl.scrollHeight > treeEl.clientHeight;
+    if (hasOverflow !== this.state.hasOverflow) {
+      this.setState({ hasOverflow });
+    }
+  }
+
+  componentDidUpdate() {
+    this.onResize();
+  }
+
+  componentDidMount() {
+    this.resizeObserver.observe(this.refs.pane);
+    this.onResize();
+  }
+
+  componentWillUnmount() {
+    this.resizeObserver.disconnect();
+  }
+
   selectSourceItem = item => {
-    this.props.selectSource(item.source, item.sourceActor);
+    // Use a dedicated selection method to handle edgecases around pretty printed sources
+    // When a source is pretty printed, the `item.source` still refers to the minified source,
+    // whereas we expect to open the pretty printed version (if it exists).
+    this.props.selectMayBePrettyPrintedLocation(
+      createLocation({ source: item.source, sourceActor: item.sourceActor })
+    );
   };
 
   onFocus = item => {
@@ -204,7 +248,7 @@ class SourcesTree extends Component {
   };
 
   renderProjectRootHeader() {
-    const { projectRootName } = this.props;
+    const { projectRootName, projectRootFullName } = this.props;
 
     if (!projectRootName) {
       return null;
@@ -218,27 +262,30 @@ class SourcesTree extends Component {
         {
           className: "sources-clear-root",
           onClick: () => this.props.clearProjectDirectoryRoot(),
-          title: L10N.getStr("removeDirectoryRoot.label"),
+          title: L10N.getFormatStr("removeDirectoryRoot.label"),
         },
         React.createElement(AccessibleImage, {
-          className: "home",
-        }),
-        React.createElement(AccessibleImage, {
-          className: "breadcrumb",
-        }),
-        span(
-          {
-            className: "sources-clear-root-label",
-          },
-          projectRootName
-        )
+          className: "back",
+        })
+      ),
+      div({ className: "devtools-separator" }),
+      span(
+        {
+          className: "sources-clear-root-label",
+          title: L10N.getFormatStr(
+            "directoryRoot.tooltip.label",
+            projectRootFullName || projectRootName
+          ),
+        },
+        projectRootName
       )
     );
   }
 
-  renderItem = (item, depth, focused, _, expanded) => {
+  renderItem = (item, depth, focused, arrow, expanded) => {
     const { mainThreadHost } = this.props;
     return React.createElement(SourcesTreeItem, {
+      arrow,
       item,
       depth,
       focused,
@@ -270,6 +317,7 @@ class SourcesTree extends Component {
         return this.props.expanded.has(this.getKey(item));
       },
       onActivate: this.onActivate,
+      ref: "tree",
       renderItem: this.renderItem,
       preventBlur: true,
     };
@@ -309,27 +357,81 @@ class SourcesTree extends Component {
     return null;
   }
 
+  renderSettingsButton() {
+    const { toolboxDoc } = this.context;
+    return React.createElement(
+      MenuButton,
+      {
+        menuId: "sources-tree-settings-menu-button",
+        toolboxDoc,
+        className:
+          "devtools-button command-bar-button debugger-settings-menu-button",
+        title: L10N.getStr("sources-settings.button.label"),
+        "aria-label": L10N.getStr("sources-settings.button.label"),
+      },
+      () => this.renderSettingsMenuItems()
+    );
+  }
+
+  renderSettingsMenuItems() {
+    return React.createElement(
+      MenuList,
+      {
+        id: "sources-tree-settings-menu-list",
+      },
+      React.createElement(MenuItem, {
+        key: "debugger-settings-menu-item-hide-ignored-sources",
+        className: "menu-item debugger-settings-menu-item-hide-ignored-sources",
+        checked: prefs.hideIgnoredSources,
+        label: L10N.getStr("settings.hideIgnoredSources.label"),
+        tooltip: L10N.getStr("settings.hideIgnoredSources.tooltip"),
+        onClick: () =>
+          this.props.setHideOrShowIgnoredSources(!prefs.hideIgnoredSources),
+      }),
+      React.createElement(MenuItem, {
+        key: "debugger-settings-menu-item-show-content-scripts",
+        className: "menu-item debugger-settings-menu-item-show-content-scripts",
+        checked: prefs.showContentScripts,
+        label: L10N.getStr("sources-settings.showContentScripts.label"),
+        tooltip: L10N.getStr("sources-settings.showContentScripts.tooltip"),
+        onClick: () =>
+          this.props.setShowContentScripts(!prefs.showContentScripts),
+      })
+    );
+  }
+
   render() {
     const { projectRoot } = this.props;
     return div(
       {
         key: "pane",
+        ref: "pane",
         className: classnames("sources-list", {
           "sources-list-custom-root": !!projectRoot,
+          "sources-list-has-overflow": this.state.hasOverflow,
         }),
       },
+      this.renderSettingsButton(),
+      this.renderProjectRootHeader(),
       this.isEmpty()
-        ? this.renderEmptyElement(L10N.getStr("noSourcesText"))
+        ? this.renderEmptyElement(
+            L10N.getStr(
+              projectRoot ? "noSourcesInDirectoryRootText" : "noSourcesText"
+            )
+          )
         : React.createElement(
             Fragment,
             null,
-            this.renderProjectRootHeader(),
             this.renderTree(),
             this.renderFooter()
           )
     );
   }
 }
+
+SourcesTree.contextTypes = {
+  toolboxDoc: PropTypes.object,
+};
 
 const mapStateToProps = state => {
   return {
@@ -339,14 +441,16 @@ const mapStateToProps = state => {
     projectRoot: getProjectDirectoryRoot(state),
     rootItems: getSourcesTreeSources(state),
     projectRootName: getProjectDirectoryRootName(state),
+    projectRootFullName: getProjectDirectoryRootFullName(state),
     hideIgnoredSources: getHideIgnoredSources(state),
   };
 };
 
 export default connect(mapStateToProps, {
-  selectSource: actions.selectSource,
+  selectMayBePrettyPrintedLocation: actions.selectMayBePrettyPrintedLocation,
   setExpandedState: actions.setExpandedState,
   focusItem: actions.focusItem,
   clearProjectDirectoryRoot: actions.clearProjectDirectoryRoot,
   setHideOrShowIgnoredSources: actions.setHideOrShowIgnoredSources,
+  setShowContentScripts: actions.setShowContentScripts,
 })(SourcesTree);

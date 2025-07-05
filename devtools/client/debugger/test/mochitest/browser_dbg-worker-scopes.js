@@ -19,7 +19,7 @@ add_task(async function () {
   await removeBreakpointViaGutter(dbg, 11);
   // We should be paused at the first line of simple-worker.js
   const workerSource2 = dbg.selectors.getSelectedSource();
-  assertPausedAtSourceAndLine(dbg, workerSource2.id, 11);
+  await assertPausedAtSourceAndLine(dbg, workerSource2.id, 11);
 
   await toggleNode(dbg, "var_array");
   Assert.equal(findNodeValue(dbg, "0"), '"mango"', "array elem0");
@@ -93,10 +93,4 @@ function findNodeValue(dbg, text) {
       return getScopeNodeValue(dbg, index);
     }
   }
-}
-
-async function removeBreakpointViaGutter(dbg, line) {
-  const onRemoved = waitForDispatch(dbg.store, "REMOVE_BREAKPOINT");
-  await clickGutter(dbg, line);
-  await onRemoved;
 }

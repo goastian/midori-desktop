@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setTimeout, clearTimeout } from "resource://gre/modules/Timer.sys.mjs";
 import { loader } from "resource://devtools/shared/loader/Loader.sys.mjs";
 import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
 
@@ -24,30 +25,47 @@ export class DevToolsProcessParent extends JSProcessActorParent {
   constructor() {
     super();
 
-    // Map of DevToolsServerConnection's used to forward the messages from/to
-    // the client. The connections run in the parent process, as this code. We
-    // may have more than one when there is more than one client debugging the
-    // same frame. For example, a content toolbox and the browser toolbox.
-    //
-    // The map is indexed by the connection prefix.
-    // The values are objects containing the following properties:
-    // - actor: the frame target actor(as a form)
-    // - connection: the DevToolsServerConnection used to communicate with the
-    //   frame target actor
-    // - prefix: the forwarding prefix used by the connection to know
-    //   how to forward packets to the frame target
-    // - transport: the JsWindowActorTransport
-    //
-    // Reminder about prefixes: all DevToolsServerConnections have a `prefix`
-    // which can be considered as a kind of id. On top of this, parent process
-    // DevToolsServerConnections also have forwarding prefixes because they are
-    // responsible for forwarding messages to content process connections.
-
     EventEmitter.decorate(this);
   }
 
+  // Boolean to indicate if the related content process is slow to respond
+  // and may be hanging or frozen. When true, we should avoid waiting for its replies.
+  #frozen = false;
+
   #destroyed = false;
-  #connections = new Map();
+
+  // Map of various data specific to each active Watcher Actor.
+  // A Watcher will become "active" once we receive a first target actor
+  // notified by the content process, which happens only once
+  // the watcher starts watching for some target types.
+  //
+  // This Map is keyed by "watcher connection prefix".
+  // This is a unique prefix, per watcher actor, which will
+  // be used in the "forwardingPrefix" documented below.
+  //
+  // Note that We may have multiple Watcher actors,
+  // which will resuse the same DevToolsServerConnection (watcher.conn)
+  // if they are instantiated from the same client connection.
+  // Or be using distinct DevToolsServerConnection, if they
+  // are instantiated via distinct client connections.
+  //
+  // The Map's values are objects containing the following properties:
+  // - watcher:
+  //     The watcher actor instance.
+  // - targetActorForms:
+  //     The list of all active target actor forms
+  //     related to this watcher actor.
+  // - transport:
+  //     The JsWindowActorTransport which will receive and emit
+  //     the RDP packets from the current JS Process Actor's content process.
+  //     We spawn one transpart per Watcher and Content process pair.
+  // - forwardingPrefix:
+  //     The forwarding prefix is specific to the transport.
+  //     It helps redirect RDP packets between this "transport" and
+  //     the DevToolsServerConnection (watcher.conn), in the parent process,
+  //     which receives and emits RDP packet from/to the client.
+
+  #watchers = new Map();
 
   /**
    * Request the content process to create all the targets currently watched
@@ -118,7 +136,7 @@ export class DevToolsProcessParent extends JSProcessActorParent {
     // hook up the DevToolsServerConnection which will bridge
     // communication between the parent process DevToolsServer
     // and the content process.
-    if (!this.#connections.get(watcher.conn.prefix)) {
+    if (!this.#watchers.get(watcher.watcherConnectionPrefix)) {
       connection.on("closed", this.#onConnectionClosed);
 
       // Create a js-window-actor based transport.
@@ -135,9 +153,8 @@ export class DevToolsProcessParent extends JSProcessActorParent {
 
       connection.setForwarding(forwardingPrefix, transport);
 
-      this.#connections.set(watcher.conn.prefix, {
+      this.#watchers.set(watcher.watcherConnectionPrefix, {
         watcher,
-        connection,
         // This prefix is the prefix of the DevToolsServerConnection, running
         // in the content process, for which we should forward packets to, based on its prefix.
         // While `watcher.connection` is also a DevToolsServerConnection, but from this process,
@@ -149,8 +166,8 @@ export class DevToolsProcessParent extends JSProcessActorParent {
       });
     }
 
-    this.#connections
-      .get(watcher.conn.prefix)
+    this.#watchers
+      .get(watcher.watcherConnectionPrefix)
       .targetActorForms.push(targetActorForm);
 
     watcher.notifyTargetAvailable(targetActorForm);
@@ -169,43 +186,64 @@ export class DevToolsProcessParent extends JSProcessActorParent {
         continue;
       }
       watcher.notifyTargetDestroyed(targetActorForm, options);
-      const connectionInfo = this.#connections.get(watcher.conn.prefix);
-      if (connectionInfo) {
-        const idx = connectionInfo.targetActorForms.findIndex(
+      const watcherInfo = this.#watchers.get(watcher.watcherConnectionPrefix);
+      if (watcherInfo) {
+        const idx = watcherInfo.targetActorForms.findIndex(
           form => form.actor == targetActorForm.actor
         );
         if (idx != -1) {
-          connectionInfo.targetActorForms.splice(idx, 1);
+          watcherInfo.targetActorForms.splice(idx, 1);
         }
         // Once the last active target is removed, disconnect the DevTools transport
         // and cleanup everything bound to this DOM Process. We will re-instantiate
         // a new connection/transport on the next reported target actor.
-        if (!connectionInfo.targetActorForms.length) {
-          this.#cleanupConnection(connectionInfo.connection);
+        if (!watcherInfo.targetActorForms.length) {
+          this.#unregisterWatcher(watcherInfo.watcher, options);
         }
       }
     }
   }
 
   #onConnectionClosed = (status, prefix) => {
-    if (this.#connections.has(prefix)) {
-      const { connection } = this.#connections.get(prefix);
-      this.#cleanupConnection(connection);
+    for (const watcherInfo of this.#watchers.values()) {
+      if (watcherInfo.watcher.conn.prefix == prefix) {
+        this.#unregisterWatcher(watcherInfo.watcher);
+      }
     }
   };
 
   /**
-   * Close and unregister a given DevToolsServerConnection.
+   * Unregister a given watcher.
+   * This will also close and unregister the related given DevToolsServerConnection,
+   * if no other watcher is active on the same, possibly shared, connection.
+   * (when remote debugging many tabs on the same connection)
    *
-   * @param {DevToolsServerConnection} connection
+   * @param {WatcherActor} watcher
    * @param {object} options
    * @param {boolean} options.isModeSwitching
    *        true when this is called as the result of a change to the devtools.browsertoolbox.scope pref
    */
-  async #cleanupConnection(connection, options = {}) {
-    const watcherConnectionInfo = this.#connections.get(connection.prefix);
-    if (watcherConnectionInfo) {
-      const { forwardingPrefix, transport } = watcherConnectionInfo;
+  #unregisterWatcher(watcher, options = {}) {
+    const watcherInfo = this.#watchers.get(watcher.watcherConnectionPrefix);
+    if (!watcherInfo) {
+      return;
+    }
+    this.#watchers.delete(watcher.watcherConnectionPrefix);
+
+    for (const actor of watcherInfo.targetActorForms) {
+      watcherInfo.watcher.notifyTargetDestroyed(actor, options);
+    }
+
+    let connectionUsedByAnotherWatcher = false;
+    for (const info of this.#watchers.values()) {
+      if (info.watcher.conn == watcherInfo.watcher.conn) {
+        connectionUsedByAnotherWatcher = true;
+        break;
+      }
+    }
+
+    if (!connectionUsedByAnotherWatcher) {
+      const { forwardingPrefix, transport } = watcherInfo;
       if (transport) {
         // If we have a child transport, the actor has already
         // been created. We need to stop using this transport.
@@ -214,13 +252,10 @@ export class DevToolsProcessParent extends JSProcessActorParent {
       // When cancelling the forwarding, one RDP event is sent to the client to purge all requests
       // and actors related to a given prefix.
       // Be careful that any late RDP event would be ignored by the client passed this call.
-      connection.cancelForwarding(forwardingPrefix);
+      watcherInfo.watcher.conn.cancelForwarding(forwardingPrefix);
     }
 
-    connection.off("closed", this.#onConnectionClosed);
-
-    this.#connections.delete(connection.prefix);
-    if (!this.#connections.size) {
+    if (!this.#watchers.size) {
       this.#destroy(options);
     }
   }
@@ -238,15 +273,8 @@ export class DevToolsProcessParent extends JSProcessActorParent {
     }
     this.#destroyed = true;
 
-    for (const {
-      targetActorForms,
-      connection,
-      watcher,
-    } of this.#connections.values()) {
-      for (const actor of targetActorForms) {
-        watcher.notifyTargetDestroyed(actor, options);
-      }
-      this.#cleanupConnection(connection, options);
+    for (const watcherInfo of this.#watchers.values()) {
+      this.#unregisterWatcher(watcherInfo.watcher, options);
     }
   }
 
@@ -262,15 +290,71 @@ export class DevToolsProcessParent extends JSProcessActorParent {
    * JsProcessActor API
    */
 
+  /**
+   * JS Actor override of `sendQuery` method, whose main goal is the ignore possibly freezing processes.
+   * This also prints a warning when the query failed to be sent, or when a process hangs.
+   *
+   * @param String msg
+   * @param Array<json> args
+   * @return Promise<undefined>
+   *   We only use sendQuery for two queries ("watchTargets" and "addOrSetSessionDataEntry") and
+   *   none of them use any returned value (except a promise to know when their processing is done).
+   */
   async sendQuery(msg, args) {
-    try {
-      const res = await super.sendQuery(msg, args);
-      return res;
-    } catch (e) {
-      console.error("Failed to sendQuery in DevToolsProcessParent", msg);
-      console.error(e.toString());
-      throw e;
+    // If any preview query timed out and did not reply yet, the process is considered frozen
+    // and are no longer waiting for the process response.
+    if (this.#frozen) {
+      this.sendAsyncMessage(msg, args);
+      return Promise.resolve();
     }
+
+    // Cache `osPid` and avoid querying `this.manager` attribute later as it may result into
+    // a `AssertReturnTypeMatchesJitinfo` assertion crash into GenericGetter .
+    const { osPid } = this.manager;
+
+    return new Promise((resolve, reject) => {
+      // The process may be slow to resolve the query, or even be completely frozen.
+      // Use a timeout to detect when it happens.
+      const timeout = setTimeout(() => {
+        this.#frozen = true;
+        console.error(
+          `Content process ${osPid} isn't responsive while sending "${msg}" request. DevTools will ignore this process for now.`
+        );
+        // Do not consider timeout as an error as it may easily break the frontend.
+        resolve();
+      }, 1000);
+
+      super.sendQuery(msg, args).then(
+        () => {
+          if (this.#frozen && !this.#destroyed) {
+            console.error(
+              `Content process ${osPid} is responsive again. DevTools resumes operations against it.`
+            );
+          }
+          clearTimeout(timeout);
+          // If any of the ongoing query resolved, consider the process as responsive again
+          this.#frozen = false;
+
+          resolve();
+        },
+        async e => {
+          // Ignore frozen processes when the JS Process Actor is destroyed.
+          // Either the process was shut down or DevTools unregistered the Actor.
+          if (this.#frozen && !this.#destroyed) {
+            console.error(
+              `Content process ${osPid} is responsive again. DevTools resumes operations against it.`
+            );
+          }
+          clearTimeout(timeout);
+          // If any of the ongoing query resolved, consider the process as responsive again
+          this.#frozen = false;
+
+          console.error("Failed to sendQuery in DevToolsProcessParent", msg);
+          console.error(e.toString());
+          reject(e);
+        }
+      );
+    });
   }
 
   /**

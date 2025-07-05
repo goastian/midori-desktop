@@ -7,29 +7,28 @@ import {
   getSelectedFrame,
   getClosestBreakpointPosition,
   getBreakpoint,
-  getCurrentThread,
 } from "../../selectors/index";
 import { createLocation } from "../../utils/location";
 import { addHiddenBreakpoint } from "../breakpoints/index";
 import { setBreakpointPositions } from "../breakpoints/breakpointPositions";
+import { setSkipPausing } from "./skipPausing";
 
 import { resume } from "./commands";
 
 export function continueToHere(location) {
   return async function ({ dispatch, getState }) {
     const { line, column } = location;
-    const thread = getCurrentThread(getState());
     const selectedSource = getSelectedSource(getState());
-    const selectedFrame = getSelectedFrame(getState(), thread);
+    const selectedFrame = getSelectedFrame(getState());
 
     if (!selectedFrame || !selectedSource) {
       return;
     }
 
-    const debugLine = selectedFrame.location.line;
+    const pausedLine = selectedFrame.location.line;
     // If the user selects a line to continue to,
     // it must be different than the currently paused line.
-    if (!column && debugLine == line) {
+    if (!column && pausedLine == line) {
       return;
     }
 
@@ -43,6 +42,9 @@ export function continueToHere(location) {
     }
 
     const pauseLocation = column && position ? position.location : location;
+
+    // Ensure that breakpoints are enabled while running this
+    await dispatch(setSkipPausing(false));
 
     // Set a hidden breakpoint if we do not already have a breakpoint
     // at the closest position

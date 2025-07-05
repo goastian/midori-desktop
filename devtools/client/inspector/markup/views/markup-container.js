@@ -10,12 +10,10 @@ const {
   flashElementOff,
 } = require("resource://devtools/client/inspector/markup/utils.js");
 
-loader.lazyRequireGetter(
-  this,
-  "wrapMoveFocus",
-  "resource://devtools/client/shared/focus.js",
-  true
-);
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  wrapMoveFocus: "resource://devtools/client/shared/focus.mjs",
+});
 
 const DRAG_DROP_MIN_INITIAL_DISTANCE = 10;
 const TYPES = {
@@ -93,10 +91,7 @@ MarkupContainer.prototype = {
     this.updateIsDisplayed();
 
     if (node.isShadowRoot) {
-      this.markup.telemetry.scalarSet(
-        "devtools.shadowdom.shadow_root_displayed",
-        true
-      );
+      Glean.devtoolsShadowdom.shadowRootDisplayed.set(true);
     }
   },
 
@@ -366,10 +361,7 @@ MarkupContainer.prototype = {
     }
 
     if (this.node.isShadowRoot) {
-      this.markup.telemetry.scalarSet(
-        "devtools.shadowdom.shadow_root_expanded",
-        true
-      );
+      Glean.devtoolsShadowdom.shadowRootExpanded.set(true);
     }
   },
 
@@ -502,7 +494,7 @@ MarkupContainer.prototype = {
         // Only handle 'Tab' if tabbable element is on the edge (first or last).
         if (isInput) {
           // Corresponding tabbable element is editor's next sibling.
-          const next = wrapMoveFocus(
+          const next = lazy.wrapMoveFocus(
             this.focusableElms,
             target.nextSibling,
             shiftKey
@@ -517,7 +509,7 @@ MarkupContainer.prototype = {
             }
           }
         } else {
-          const next = wrapMoveFocus(this.focusableElms, target, shiftKey);
+          const next = lazy.wrapMoveFocus(this.focusableElms, target, shiftKey);
           if (next) {
             event.preventDefault();
           }
@@ -559,7 +551,7 @@ MarkupContainer.prototype = {
     this.markup.navigate(this);
     // Make container tabbable descendants tabbable and focus in.
     this.canFocus = true;
-    this.focus();
+    this.focus({ fromMouseEvent: true });
     event.stopPropagation();
 
     // Preventing the default behavior will avoid the body to gain focus on
@@ -821,12 +813,22 @@ MarkupContainer.prototype = {
 
   /**
    * Try to put keyboard focus on the current editor.
+   *
+   * @param {Object} options
+   * @param {Boolean} options.fromMouseEvent: Set to true if this is called from a mouse event.
    */
-  focus() {
+  focus({ fromMouseEvent = false } = {}) {
     // Elements with tabindex of -1 are not focusable.
     const focusable = this.editor.elt.querySelector("[tabindex='0']");
     if (focusable) {
-      focusable.focus();
+      // When focus is coming from a mouse event:
+      // - prevent :focus-visible to be applied to the element
+      // - don't scroll element into view, as this could change the horizontal scroll,
+      //   and the element is already visible since the user clicked on it.
+      focusable.focus({
+        preventScroll: fromMouseEvent,
+        focusVisible: !fromMouseEvent,
+      });
     }
   },
 

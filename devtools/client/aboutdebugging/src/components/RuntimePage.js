@@ -10,9 +10,9 @@ const {
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const FluentReact = require("resource://devtools/client/shared/vendor/fluent-react.js");
 const Localized = createFactory(FluentReact.Localized);
@@ -104,9 +104,7 @@ class RuntimePage extends PureComponent {
     };
   }
 
-  // TODO: avoid the use of this method
-  // https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
-  UNSAFE_componentWillMount() {
+  componentDidMount() {
     const { dispatch, runtimeId } = this.props;
     dispatch(Actions.selectPage(PAGE_TYPES.RUNTIME, runtimeId));
   }

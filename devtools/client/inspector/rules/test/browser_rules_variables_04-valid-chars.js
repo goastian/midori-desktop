@@ -27,11 +27,11 @@ async function testNumber(inspector, view) {
     view,
     "#a",
     "font-size"
-  ).valueSpan.querySelector(".ruleview-variable");
+  ).valueSpan.querySelector(".inspector-variable");
 
   is(
     upperCaseVarEl.dataset.variable,
-    "--10 = 10px",
+    "10px",
     "variable that starts with a number is valid"
   );
 }
@@ -48,11 +48,11 @@ async function testDash(inspector, view) {
     view,
     "#b",
     "color"
-  ).valueSpan.querySelector(".ruleview-variable");
+  ).valueSpan.querySelector(".inspector-variable");
 
   is(
     upperCaseVarEl.dataset.variable,
-    "---blue = blue",
+    "blue",
     "variable that starts with a dash is valid"
   );
 }

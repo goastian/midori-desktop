@@ -54,7 +54,7 @@ function TargetMixin(parentClass) {
       // [typeName:string => Front instance]
       this.fronts = new Map();
 
-      // `resource-available-form` and `resource-updated-form` events can be emitted
+      // `resources-available-array` and `resources-updated-array` events can be emitted
       // by target actors before the ResourceCommand could add event listeners.
       // The target front will cache those events until the ResourceCommand has
       // added the listeners.
@@ -62,18 +62,18 @@ function TargetMixin(parentClass) {
 
       // In order to avoid destroying the `_resourceCache[event]`, we need to call `super.on()`
       // instead of `this.on()`.
-      const offResourceAvailable = super.on(
-        "resource-available-form",
-        this._onResourceEvent.bind(this, "resource-available-form")
+      const offResourceAvailableArray = super.on(
+        "resources-available-array",
+        this._onResourceEventArray.bind(this, "resources-available-array")
       );
-      const offResourceUpdated = super.on(
-        "resource-updated-form",
-        this._onResourceEvent.bind(this, "resource-updated-form")
+      const offResourceUpdatedArray = super.on(
+        "resources-updated-array",
+        this._onResourceEventArray.bind(this, "resources-updated-array")
       );
 
       this._offResourceEvent = new Map([
-        ["resource-available-form", offResourceAvailable],
-        ["resource-updated-form", offResourceUpdated],
+        ["resources-available-array", offResourceAvailableArray],
+        ["resources-updated-array", offResourceUpdatedArray],
       ]);
 
       // Expose a promise that is resolved once the target front is usable
@@ -85,7 +85,7 @@ function TargetMixin(parentClass) {
 
     on(eventName, listener) {
       if (this._offResourceEvent && this._offResourceEvent.has(eventName)) {
-        // If a callsite sets an event listener for resource-(available|update)-form:
+        // If a callsite sets an event listener for resource-(available|update)-(form|array):
 
         // we want to remove the listener we set here in the constructor…
         const off = this._offResourceEvent.get(eventName);
@@ -113,7 +113,7 @@ function TargetMixin(parentClass) {
     }
 
     get targetType() {
-      return this._targetType;
+      return this.targetForm.targetType;
     }
 
     get isTopLevel() {
@@ -125,10 +125,6 @@ function TargetMixin(parentClass) {
       }
 
       return this.targetForm.isTopLevelTarget;
-    }
-
-    setTargetType(type) {
-      this._targetType = type;
     }
 
     setIsTopLevel(isTopLevel) {
@@ -277,8 +273,26 @@ function TargetMixin(parentClass) {
       return this.typeName === "windowGlobalTarget";
     }
 
+    /**
+     * Return the name to be displayed in the debugger and console context selector.
+     */
     get name() {
-      if (this.isWebExtension || this.isContentProcess) {
+      // When debugging Web Extensions, all documents have moz-extension://${uuid}/... URL
+      // When the developer don't set a custom title, fallback on displaying the pathname
+      // to avoid displaying long URL prefix with the addon internal UUID.
+      if (this.commands.descriptorFront.isWebExtensionDescriptor) {
+        if (this._title) {
+          return this._title;
+        }
+        const parsedURL = URL.parse(this._url);
+        if (parsedURL) {
+          return parsedURL.pathname;
+        }
+        // If document URL can't be parsed, fallback to the raw URL.
+        return this._url;
+      }
+
+      if (this.isContentProcess) {
         return this.targetForm.name;
       }
       return this.title;
@@ -296,15 +310,6 @@ function TargetMixin(parentClass) {
       // XXX Remove the check on `workerDescriptor` as part of Bug 1667404.
       return (
         this.typeName === "workerTarget" || this.typeName === "workerDescriptor"
-      );
-    }
-
-    get isWebExtension() {
-      return !!(
-        this.targetForm &&
-        this.targetForm.actor &&
-        (this.targetForm.actor.match(/conn\d+\.webExtension(Target)?\d+/) ||
-          this.targetForm.actor.match(/child\d+\/webExtension(Target)?\d+/))
       );
     }
 
@@ -328,25 +333,6 @@ function TargetMixin(parentClass) {
         this.targetForm.actor &&
         this.targetForm.actor.match(/conn\d+\.parentProcessTarget\d+/)
       );
-    }
-
-    getExtensionPathName(url) {
-      // Return the url if the target is not a webextension.
-      if (!this.isWebExtension) {
-        throw new Error("Target is not a WebExtension");
-      }
-
-      try {
-        const parsedURL = new URL(url);
-        // Only moz-extension URL should be shortened into the URL pathname.
-        if (parsedURL.protocol !== "moz-extension:") {
-          return url;
-        }
-        return parsedURL.pathname;
-      } catch (e) {
-        // Return the url if unable to resolve the pathname.
-        return url;
-      }
     }
 
     /**
@@ -544,11 +530,11 @@ function TargetMixin(parentClass) {
       this._url = null;
     }
 
-    _onResourceEvent(eventName, resources) {
+    _onResourceEventArray(eventName, array) {
       if (!this._resourceCache[eventName]) {
         this._resourceCache[eventName] = [];
       }
-      this._resourceCache[eventName].push(resources);
+      this._resourceCache[eventName].push(array);
     }
 
     toString() {
@@ -594,6 +580,17 @@ function TargetMixin(parentClass) {
         return this.logInPage({ text, category, flags: warningFlag });
       }
       return Promise.resolve();
+    }
+
+    /**
+     * The tracer actor emits frames which should be collected per target/thread.
+     * The tracer will emit other resources, refering to the frame indexes in that collected array.
+     * The indexes and this array in general is specific to a given tracer actor instance
+     * and so is specific per thread and target.
+     */
+    #jsTracerCollectedFrames = [];
+    getJsTracerCollectedFramesArray() {
+      return this.#jsTracerCollectedFrames;
     }
   }
   return Target;

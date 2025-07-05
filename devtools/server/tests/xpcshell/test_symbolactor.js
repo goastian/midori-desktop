@@ -18,8 +18,8 @@ const TEST_SYMBOL = Symbol(SYMBOL_NAME);
 
 function makeMockSymbolActor() {
   const symbol = TEST_SYMBOL;
-  const mockConn = null;
-  const actor = new SymbolActor(mockConn, symbol);
+  const mockThreadActor = { conn: null };
+  const actor = new SymbolActor(mockThreadActor, symbol);
   actor.actorID = "symbol1";
   const parentPool = {
     symbolActors: {
@@ -49,5 +49,5 @@ function test_SA_form() {
 
 function test_SA_raw() {
   const actor = makeMockSymbolActor();
-  strictEqual(actor.rawValue(), TEST_SYMBOL);
+  strictEqual(actor.rawObj, TEST_SYMBOL);
 }

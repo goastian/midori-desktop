@@ -26,7 +26,10 @@ const TEST_URI = `
   <div id="shape-polygon"></div>
 `;
 
-const HIGHLIGHTER_TYPE = "ShapesHighlighter";
+const { TYPES } = ChromeUtils.importESModule(
+  "resource://devtools/shared/highlighters.mjs"
+);
+const HIGHLIGHTER_TYPE = TYPES.SHAPES;
 
 add_task(async function () {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
@@ -49,7 +52,7 @@ add_task(async function () {
       selector,
       "clip-path"
     ).valueSpan;
-    const shapesToggle = container.querySelector(".ruleview-shapeswatch");
+    const shapesToggle = container.querySelector(".inspector-shapeswatch");
 
     if (expectShapesToogle) {
       ok(
@@ -72,8 +75,9 @@ add_task(async function () {
     shapesToggle.click();
     await onHighlighterShown;
 
-    ok(
-      shapesToggle.classList.contains("active"),
+    is(
+      shapesToggle.getAttribute("aria-pressed"),
+      "true",
       `Shapes highlighter toggle active for ${selector}`
     );
     ok(
@@ -90,8 +94,9 @@ add_task(async function () {
     shapesToggle.click();
     await onHighlighterHidden;
 
-    ok(
-      !shapesToggle.classList.contains("active"),
+    is(
+      shapesToggle.getAttribute("aria-pressed"),
+      "false",
       `Shapes highlighter toggle no longer active for ${selector}`
     );
     ok(

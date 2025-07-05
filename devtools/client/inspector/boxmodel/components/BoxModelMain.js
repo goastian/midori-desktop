@@ -7,9 +7,9 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const { KeyCodes } = require("resource://devtools/client/shared/keycodes.js");
 const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
 
@@ -154,7 +154,7 @@ class BoxModelMain extends PureComponent {
       parseFloat(layout["padding-bottom"]);
     property = parseFloat(property.toPrecision(6));
 
-    return property;
+    return property >= 0 ? property : "auto";
   }
 
   getMarginValue(property, direction) {
@@ -214,7 +214,7 @@ class BoxModelMain extends PureComponent {
       parseFloat(layout["padding-right"]);
     property = parseFloat(property.toPrecision(6));
 
-    return property;
+    return property >= 0 ? property : "auto";
   }
 
   /**

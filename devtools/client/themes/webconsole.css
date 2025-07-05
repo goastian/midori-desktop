@@ -21,44 +21,29 @@
   --console-warning-background: var(--theme-warning-background);
   --console-warning-border: var(--theme-warning-border);
   --console-warning-color: var(--theme-warning-color);
-}
 
-.theme-dark {
-  --console-input-background: var(--theme-tab-toolbar-background);
+  --console-input-background: light-dark(var(--theme-body-background), var(--theme-tab-toolbar-background));
   --console-message-background: var(--theme-body-background);
-  --console-message-border: var(--theme-splitter-color);
+  --console-message-border: light-dark(
+      color-mix(in srgb, var(--grey-10), var(--grey-20)),
+      var(--theme-splitter-color)
+    );
   --console-message-color: var(--theme-text-color-strong);
-  --console-error-background: hsl(345, 23%, 24%);
-  --console-error-border: hsl(345, 30%, 35%);
-  --console-error-color: var(--red-20);
+  --console-error-background: var(--theme-error-background);
+  --console-error-border: var(--theme-error-border);
+  --console-error-color: var(--theme-error-color);
   --console-navigation-color: var(--theme-highlight-blue);
-  --console-navigation-border: var(--blue-60);
+  --console-navigation-border: light-dark(var(--blue-30), var(--blue-60));
   --console-indent-border-color: var(--theme-highlight-blue);
-  --console-repeat-bubble-background: var(--blue-60);
+  --console-repeat-bubble-background: light-dark(var(--theme-highlight-blue), var(--blue-60));
 
   /* TODO in bug 1549195: colors used in shared components (e.g. Reps) should
      be renamed and/or moved to variables.css so they work everywhere */
-  --error-color: var(--red-20);
-  --console-output-color: white;
-}
+  --error-color: light-dark(var(--red-70), var(--red-20));
+  --console-output-color: light-dark(var(--grey-90), white);
 
-.theme-light {
-  --console-input-background: var(--theme-body-background);
-  --console-message-background: var(--theme-body-background);
-  --console-message-border: #f2f2f4; /* between Grey 10 and Grey 20 */
-  --console-message-color: var(--theme-text-color-strong);
-  --console-error-background: hsl(344, 73%, 97%);
-  --console-error-border: rgba(215, 0, 34, 0.12); /* Red 60 + opacity */
-  --console-error-color: var(--red-70);
-  --console-navigation-color: var(--theme-highlight-blue);
-  --console-navigation-border: var(--blue-30);
-  --console-indent-border-color: var(--theme-highlight-blue);
-  --console-repeat-bubble-background: var(--theme-highlight-blue);
-
-  /* TODO in bug 1549195: colors used in shared components (e.g. Reps) should
-     be renamed and/or moved to variables.css so they work everywhere */
-  --error-color: var(--red-70);
-  --console-output-color: var(--grey-90);
+  --console-tracer-dom-background: light-dark(var(--blue-55), #204e8a);
+  --console-tracer-dom-color: white;
 }
 
 /* General output styles */
@@ -324,7 +309,7 @@
 
 .message > .message-body-wrapper {
   flex: auto;
-  min-width: 0px;
+  min-width: 0;
   margin: var(--console-output-vertical-padding) 0;
 }
 
@@ -357,10 +342,18 @@
   background-color: var(--console-warning-color);
 }
 
+:root[forced-colors-active] :is(
+  .message-repeats,
+  .warning-group-badge
+) {
+  color: Canvas;
+  background-color: CanvasText;
+}
+
 .message-location {
   max-width: 40%;
   flex-shrink: 0;
-  color: var(--frame-link-source);
+  color: var(--theme-internal-link-color);
   margin-left: 1ch;
   /* Makes the file name truncated (and ellipsis shown) on the left side */
   direction: rtl;
@@ -567,7 +560,9 @@ html #webconsole-notificationbox {
   fill: var(--theme-icon-dimmed-color);
 }
 
-.jsterm-input-container > .CodeMirror-focused {
+/* We don't want to change the color in High Contrast Mode. A proper focus indicator
+   should be added on the input */
+:root:not([forced-colors-active]) .jsterm-input-container > .CodeMirror-focused {
   fill: var(--theme-icon-checked-color);
 }
 
@@ -709,46 +704,25 @@ a.learn-more-link.webconsole-learn-more-link {
   /* It's important to keep this in px as it's used in JS to control the display mode
    * of the filter toolbar. */
   min-width: 150px;
-}
 
-.webconsole-filterbar-primary .filter-checkbox {
-  flex-shrink: 0;
-  margin: 0 3px;
-  display: flex;
-  align-items: center;
-  user-select: none;
-}
-
-.webconsole-filterbar-filtered-messages {
-  /* Needed so the bar takes the whole horizontal space when it is wrapped */
-  flex-grow: 1;
-  justify-content: flex-end;
-  color: var(--theme-comment);
-  text-align: end;
-  align-items: center;
-  min-height: var(--primary-toolbar-height);
-  line-height: var(--primary-toolbar-height);
-}
-
-@media (max-width: 965px) {
-  /* This media query will make filtered message element to be displayed in new
-    line. This width is based on greek localized size since it is longer than
-    other localized strings. */
-  .webconsole-filterbar-filtered-messages {
-    grid-row: 2 / 3;
-    grid-column: 1 / -1;
-    justify-self: stretch;
+  /* High Contrast Mode */
+  :root[forced-colors-active] & {
+    /* Don't stretch so there is room around the input to show the borders
+       and the focus indicator */
+    align-self: unset;
+    outline-offset: 0;
   }
 }
 
-.webconsole-filterbar-filtered-messages .filter-message-text {
-  font-style: italic;
-  user-select: none;
+/* We always render the "X hidden" element in the filter bar for accessibility.
+   But when the filter input is not focused, or empty, and there is no filtered messages,
+   we don't want to display it as it provides little value
+*/
+.webconsole-filterbar-primary[data-has-filtered-by-text="false"]
+  .devtools-searchbox input:is(:not(:focus),:empty) ~ #devtools-console-output-filter-summary {
+  display: none;
 }
 
-.webconsole-filterbar-filtered-messages .reset-filters-button {
-  margin-inline-start: 0.5em;
-}
 
 /* Special casing String reps, and warning/error string colors
  * so they are legible */
@@ -808,12 +782,12 @@ a.learn-more-link.webconsole-learn-more-link {
   margin-inline: 2px;
 }
 .webconsole-app .jstracer-dom-event {
-  background-color: var(--toolbarbutton-checked-background);
-  color: var(--toolbarbutton-checked-color);
+  background-color: var( --console-tracer-dom-background);
+  color: var(--console-tracer-dom-color);
 }
 .webconsole-app .jstracer-dom-mutation {
-  background-color: var(--toolbarbutton-checked-background);
-  color: var(--toolbarbutton-checked-color);
+  background-color: var( --console-tracer-dom-background);
+  color: var(--console-tracer-dom-color);
   margin-inline-end: 4px;
 }
 .webconsole-app .jstracer-implementation {
@@ -840,7 +814,6 @@ a.learn-more-link.webconsole-learn-more-link {
   max-height: 250px;
   overflow: auto;
   position: relative;
-  border-width: 1px 0 0 1px;
   padding: 0;
   margin-block-end: var(--attachment-margin-block-end);
   border: 1px solid var(--consoletable-border);
@@ -939,8 +912,18 @@ a.learn-more-link.webconsole-learn-more-link {
   border-inline-start-color: var(--console-indent-border-color);
 }
 
-.webconsole-app .object-inspector.tree .tree-node:hover:not(.focused) {
+.webconsole-app .object-inspector.tree .tree-node:hover:not(.focused),
+/* also disable the highlight on the arrow expand */
+.webconsole-app .object-inspector.tree .tree-node:hover:not(.focused) .theme-twisty {
   background-color: var(--object-inspector-hover-background);
+}
+
+/* In RTL the tree arrows should usually point to the left, but in
+   this context it should point to the right.
+   This overrides the detault rules set on .theme-twisty. */
+.webconsole-app .tree .theme-twisty:dir(rtl):not(.open),
+.webconsole-app .object-inspector .tree-node .theme-twisty:dir(rtl):not(.open) {
+  transform: rotate(-90deg);
 }
 
 /*
@@ -981,10 +964,6 @@ a.learn-more-link.webconsole-learn-more-link {
   transform: rotate(0);
 }
 
-.collapse-button::-moz-focus-inner {
-  border: none;
-}
-
 /* Hide the icon, so that we can use the collapse-button in its place */
 .message.network:not(:where(.network-message-blocked, .disabled)) > .icon,
 .message.startGroup > .icon,
@@ -1006,38 +985,6 @@ a.learn-more-link.webconsole-learn-more-link {
   width: 100%;
   background-image: url("chrome://devtools/skin/images/arrow-big.svg");
   fill: var(--theme-icon-dimmed-color);
-}
-
-/* Apply a style similar to collapse-button for the object tree arrows */
-.webconsole-app .tree .arrow,
-.webconsole-app .object-inspector .tree-node .arrow {
-  width: 10px;
-  height: 10px;
-  background: url("chrome://devtools/skin/images/arrow.svg") no-repeat center;
-  background-size: 10px;
-  transform: rotate(-90deg);
-  /* Needed for alignment */
-  margin-top: -1px;
-  -moz-context-properties: fill;
-  fill: var(--theme-icon-dimmed-color);
-}
-
-/* In RTL the tree arrows should usually point to the left, but in
-   this context it should point to the right.
-   This overrides the rule from other stylesheets that does the opposite. */
-.webconsole-app .tree .arrow:dir(rtl),
-.webconsole-app .object-inspector .tree-node .arrow:dir(rtl) {
-  transform: rotate(-90deg);
-}
-
-.webconsole-app .tree .arrow.expanded,
-.webconsole-app .object-inspector .tree-node .arrow.expanded {
-  transform: rotate(0deg);
-}
-
-.webconsole-app .tree.focused .arrow,
-.webconsole-app .object-inspector .tree-node.focused .arrow {
-  fill: currentColor;
 }
 
 /** Utils **/

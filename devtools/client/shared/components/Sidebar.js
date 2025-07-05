@@ -7,14 +7,17 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const SidebarToggle = createFactory(
   require("resource://devtools/client/shared/components/SidebarToggle.js")
 );
 const Tabs = createFactory(
-  require("resource://devtools/client/shared/components/tabs/Tabs.js").Tabs
+  ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/tabs/Tabs.mjs",
+    { global: "current" }
+  ).Tabs
 );
 
 class Sidebar extends PureComponent {

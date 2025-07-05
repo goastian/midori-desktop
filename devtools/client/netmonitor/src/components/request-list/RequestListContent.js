@@ -7,12 +7,12 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const {
   HTMLTooltip,
 } = require("resource://devtools/client/shared/widgets/tooltip/HTMLTooltip.js");
@@ -26,6 +26,8 @@ const {
   getColumns,
   getSelectedRequest,
   getClickedRequest,
+  getWaterfallScale,
+  hasOverride,
 } = require("resource://devtools/client/netmonitor/src/selectors/index.js");
 
 loader.lazyRequireGetter(
@@ -66,7 +68,7 @@ const RIGHT_MOUSE_BUTTON = 2;
 /**
  * Renders the actual contents of the request list.
  */
-class RequestListContent extends Component {
+class RequestListContentComponent extends Component {
   static get propTypes() {
     return {
       blockedUrls: PropTypes.array.isRequired,
@@ -76,6 +78,8 @@ class RequestListContent extends Component {
       networkDetailsOpen: PropTypes.bool.isRequired,
       networkDetailsWidth: PropTypes.number,
       networkDetailsHeight: PropTypes.number,
+      waterfallScale: PropTypes.number,
+      slowLimit: PropTypes.number,
       cloneRequest: PropTypes.func.isRequired,
       clickedRequest: PropTypes.object,
       openDetailsPanelTab: PropTypes.func.isRequired,
@@ -182,9 +186,15 @@ class RequestListContent extends Component {
    * So it is needed in ComponentDidMount and ComponentDidUpdate. See Bug 1532914.
    */
   onResize() {
-    const parent = this.refs.scrollEl.parentNode;
-    this.refs.scrollEl.style.width = parent.offsetWidth + "px";
-    this.refs.scrollEl.style.height = parent.offsetHeight + "px";
+    // Wait for the next animation frame to measure the parentNode dimensions.
+    // Bug 1900682.
+    requestAnimationFrame(() => {
+      if (document.visibilityState == "visible") {
+        const parent = this.refs.scrollEl.parentNode;
+        this.refs.scrollEl.style.width = parent.offsetWidth + "px";
+        this.refs.scrollEl.style.height = parent.offsetHeight + "px";
+      }
+    });
   }
 
   onIntersect(entries) {
@@ -373,7 +383,6 @@ class RequestListContent extends Component {
         openRequestBlockingAndAddUrl,
         openRequestBlockingAndDisableUrls,
         removeBlockedUrl,
-        openRequestInTab: this.openRequestInTab,
       });
     }
 
@@ -396,6 +405,8 @@ class RequestListContent extends Component {
       openRequestBlockingAndDisableUrls,
       networkActionOpen,
       networkDetailsOpen,
+      slowLimit,
+      waterfallScale,
     } = this.props;
 
     return div(
@@ -445,6 +456,8 @@ class RequestListContent extends Component {
                 requestFilterTypes,
                 openRequestBlockingAndAddUrl,
                 openRequestBlockingAndDisableUrls,
+                slowLimit,
+                waterfallScale,
               });
             })
           )
@@ -458,16 +471,16 @@ class RequestListContent extends Component {
   }
 }
 
-module.exports = connect(
-  state => ({
-    blockedUrls: state.requestBlocking.blockedUrls
-      .map(({ enabled, url }) => (enabled ? url : null))
-      .filter(Boolean),
-    columns: getColumns(state),
+const RequestListContent = connect(
+  (state, props) => ({
+    blockedUrls: state.requestBlocking.blockedUrls,
+    columns: getColumns(state, props.hasOverride),
     networkActionOpen: state.ui.networkActionOpen,
     networkDetailsOpen: state.ui.networkDetailsOpen,
     networkDetailsWidth: state.ui.networkDetailsWidth,
     networkDetailsHeight: state.ui.networkDetailsHeight,
+    waterfallScale: getWaterfallScale(state),
+    slowLimit: state.ui.slowLimit,
     clickedRequest: getClickedRequest(state),
     displayedRequests: getDisplayedRequests(state),
     firstRequestStartedMs: state.requests.firstStartedMs,
@@ -521,4 +534,15 @@ module.exports = connect(
       dispatch(Actions.selectDetailsPanelTab("timings"));
     },
   })
+)(RequestListContentComponent);
+
+module.exports = connect(
+  state => {
+    return {
+      hasOverride: hasOverride(state),
+    };
+  },
+  {},
+  undefined,
+  { storeKey: "toolbox-store" }
 )(RequestListContent);

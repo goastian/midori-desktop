@@ -96,7 +96,6 @@ class MarkupContextMenu {
       return;
     }
 
-    this.telemetry.scalarSet("devtools.copy.full.css.selector.opened", 1);
     this.selection.nodeFront
       .getCssPath()
       .then(path => {
@@ -137,7 +136,6 @@ class MarkupContextMenu {
       return;
     }
 
-    this.telemetry.scalarSet("devtools.copy.unique.css.selector.opened", 1);
     this.selection.nodeFront
       .getUniqueSelector()
       .then(selector => {
@@ -154,7 +152,6 @@ class MarkupContextMenu {
       return;
     }
 
-    this.telemetry.scalarSet("devtools.copy.xpath.opened", 1);
     this.selection.nodeFront
       .getXPath()
       .then(path => {
@@ -743,7 +740,7 @@ class MarkupContextMenu {
     const isScreenshotable =
       isElement && this.selection.nodeFront.isTreeDisplayed;
 
-    const menu = new Menu();
+    const menu = new Menu({ id: "markup-context-menu" });
     menu.append(
       new MenuItem({
         id: "node-menu-edithtml",
@@ -878,7 +875,7 @@ class MarkupContextMenu {
         accesskey: INSPECTOR_L10N.getStr(
           "inspectorScrollNodeIntoView.accesskey"
         ),
-        disabled: !isElement,
+        disabled: !this.inspector.selection.supportsScrollIntoView(),
         click: () => this.markup.scrollNodeIntoView(),
       })
     );

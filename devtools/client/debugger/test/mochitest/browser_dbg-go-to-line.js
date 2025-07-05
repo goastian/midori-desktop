@@ -25,6 +25,14 @@ add_task(async function () {
   assertDisabled(dbg);
   is(findElement(dbg, "searchField"), null, "The 'go to line' box is closed");
 
+  info("Test the sourceeditor shortcut");
+  pressKey(dbg, "sourceeditorGoToLine");
+  assertEnabled(dbg);
+
+  pressKey(dbg, "Escape");
+  assertDisabled(dbg);
+  is(findElement(dbg, "searchField"), null, "The 'go to line' box is closed");
+
   info("Test closing by escape");
   pressKey(dbg, "goToLine");
   assertEnabled(dbg);
@@ -39,6 +47,16 @@ add_task(async function () {
   type(dbg, "66");
   pressKey(dbg, "Enter");
   await assertLine(dbg, 66);
+
+  info("Add breakpoint on line 66 using keyboard shortcut");
+  pressKey(dbg, "toggleBreakpoint");
+  await waitForDispatch(dbg.store, "SET_BREAKPOINT");
+  await assertBreakpoint(dbg, 66);
+
+  info("Remove breakpoint on line 66 using keyboard shortcut");
+  pressKey(dbg, "toggleBreakpoint");
+  await waitForBreakpointCount(dbg, 0);
+  await assertNoBreakpoint(dbg, 66);
 });
 
 function assertEnabled(dbg) {

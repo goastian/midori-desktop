@@ -17,8 +17,15 @@ const { isBrowsingContextPartOfContext } = ChromeUtils.importESModule(
   "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs",
   { global: "contextual" }
 );
+loader.lazyRequireGetter(
+  this,
+  "TRACER_LOG_METHODS",
+  "resource://devtools/shared/specs/tracer.js",
+  true
+);
 const { SUPPORTED_DATA } = SessionDataHelpers;
 const { TARGET_CONFIGURATION } = SUPPORTED_DATA;
+const LOG_DISABLED = -1;
 
 // List of options supported by this target configuration actor.
 /* eslint sort-keys: "error" */
@@ -31,6 +38,8 @@ const SUPPORTED_OPTIONS = {
   customFormatters: true,
   // Set a custom user agent
   customUserAgent: true,
+  // Is the tracer experimental feature manually enabled by the user?
+  isTracerFeatureEnabled: true,
   // Enable JavaScript
   javascriptEnabled: true,
   // Force a custom device pixel ratio (used in RDM). Set to null to restore origin ratio.
@@ -101,6 +110,11 @@ class TargetConfigurationActor extends Actor {
 
     this._browsingContext = this.watcherActor.browserElement?.browsingContext;
   }
+
+  // Value of `logging.console` pref, before starting recording JS Traces
+  #consolePrefValue;
+  // Value of `logging.PageMessages` pref, before starting recording JS Traces
+  #pageMessagesPrefValue;
 
   form() {
     return {
@@ -232,6 +246,11 @@ class TargetConfigurationActor extends Actor {
    * @param {Object} configuration: See `updateConfiguration`
    */
   _updateParentProcessConfiguration(configuration) {
+    // Process "tracerOptions" for all session types, as this isn't specific to tab debugging
+    if ("tracerOptions" in configuration) {
+      this._setTracerOptions(configuration.tracerOptions);
+    }
+
     if (!this._shouldHandleConfigurationInParentProcess()) {
       return;
     }
@@ -288,6 +307,11 @@ class TargetConfigurationActor extends Actor {
   }
 
   _restoreParentProcessConfiguration() {
+    // Always process tracer options as this isn't specific to tab debugging
+    if (this.#consolePrefValue !== undefined) {
+      this._setTracerOptions();
+    }
+
     if (!this._shouldHandleConfigurationInParentProcess()) {
       return;
     }
@@ -492,6 +516,57 @@ class TargetConfigurationActor extends Actor {
       this._restoreParentProcessConfiguration();
     }
     super.destroy();
+  }
+
+  /**
+   * Called when the tracer is toggled on/off by the frontend.
+   * Note that when `options` is defined, it is meant to be enabled.
+   * It may not actually be tracing yet depending on the passed options.
+   *
+   * @param {Object} options
+   */
+  _setTracerOptions(options) {
+    if (!options) {
+      if (this.#consolePrefValue === LOG_DISABLED) {
+        Services.prefs.clearUserPref("logging.console");
+      } else {
+        Services.prefs.setIntPref("logging.console", this.#consolePrefValue);
+      }
+      this.#consolePrefValue = undefined;
+      if (this.#pageMessagesPrefValue === LOG_DISABLED) {
+        Services.prefs.clearUserPref("logging.PageMessages");
+      } else {
+        Services.prefs.setIntPref(
+          "logging.PageMessages",
+          this.#pageMessagesPrefValue
+        );
+      }
+      this.#pageMessagesPrefValue = undefined;
+      return;
+    }
+
+    // Only enable the MOZ_LOG's when recording to the profiler,
+    // otherwise it would pollute firefox stdout unexpectedly.
+    if (options.logMethod != TRACER_LOG_METHODS.PROFILER) {
+      return;
+    }
+
+    // Enable `MOZ_LOG=console:5` via the logging.console so that all console API calls
+    // are stored in the profiler when recording JS Traces via the profiler.
+    //
+    // We do this from here as TargetConfiguration runs in the parent process,
+    // where we can set preferences. Whereas the profiler tracer actor runs in the content process.
+    const LOG_VERBOSE = 5;
+    this.#consolePrefValue = Services.prefs.getIntPref(
+      "logging.console",
+      LOG_DISABLED
+    );
+    Services.prefs.setIntPref("logging.console", LOG_VERBOSE);
+    this.#pageMessagesPrefValue = Services.prefs.getIntPref(
+      "logging.PageMessages",
+      LOG_DISABLED
+    );
+    Services.prefs.setIntPref("logging.PageMessages", LOG_VERBOSE);
   }
 }
 

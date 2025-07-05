@@ -9,8 +9,6 @@
  */
 
 add_task(async function () {
-  await pushPref("devtools.netmonitor.features.search", true);
-
   const { tab, monitor } = await initNetMonitor(HTTPS_CUSTOM_GET_URL, {
     requestCount: 1,
   });
@@ -31,8 +29,38 @@ add_task(async function () {
   });
   await wait;
 
+  const searchButton = document.querySelector(".devtools-search-icon");
+  is(
+    searchButton.getAttribute("aria-pressed"),
+    "false",
+    "The search toolbar button should not be highlighted"
+  );
+
   // Open the Search panel
-  store.dispatch(Actions.openSearch());
+  searchButton.click();
+
+  // Wait till the panel opens.
+  await waitForDOMIfNeeded(document, ".search-panel");
+
+  is(
+    searchButton.getAttribute("aria-pressed"),
+    "true",
+    "The search toolbar button should now be highlighted"
+  );
+  is(
+    document
+      .querySelector(".requests-list-blocking-button")
+      .getAttribute("aria-pressed"),
+    "false",
+    "The block toolbar button should not be highlighted"
+  );
+  is(
+    document
+      .querySelector(".devtools-http-custom-request-icon")
+      .getAttribute("aria-pressed"),
+    "false",
+    "The custom request toolbar button should not be highlighted"
+  );
 
   // Fill Filter input with text and check displayed messages.
   // The filter should be focused automatically.

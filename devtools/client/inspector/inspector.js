@@ -51,11 +51,6 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
-  "ExtensionSidebar",
-  "resource://devtools/client/inspector/extensions/extension-sidebar.js"
-);
-loader.lazyRequireGetter(
-  this,
   "PICKER_TYPES",
   "resource://devtools/shared/picker-constants.js"
 );
@@ -98,12 +93,8 @@ const PORTRAIT_MODE_WIDTH_THRESHOLD = 700;
 const SIDE_PORTAIT_MODE_WIDTH_THRESHOLD = 1000;
 
 const THREE_PANE_ENABLED_PREF = "devtools.inspector.three-pane-enabled";
-const THREE_PANE_ENABLED_SCALAR = "devtools.inspector.three_pane_enabled";
 const THREE_PANE_CHROME_ENABLED_PREF =
   "devtools.inspector.chrome.three-pane-enabled";
-const TELEMETRY_EYEDROPPER_OPENED = "devtools.toolbar.eyedropper.opened";
-const TELEMETRY_SCALAR_NODE_SELECTION_COUNT =
-  "devtools.inspector.node_selection_count";
 const DEFAULT_COLOR_UNIT_PREF = "devtools.defaultColorUnit";
 
 /**
@@ -167,6 +158,7 @@ function Inspector(toolbox, commands) {
   this._onTargetSelected = this._onTargetSelected.bind(this);
   this._onWillNavigate = this._onWillNavigate.bind(this);
   this._updateSearchResultsLabel = this._updateSearchResultsLabel.bind(this);
+  this._onSearchLabelClick = this._onSearchLabelClick.bind(this);
 
   this.onDetached = this.onDetached.bind(this);
   this.onHostChanged = this.onHostChanged.bind(this);
@@ -187,7 +179,6 @@ function Inspector(toolbox, commands) {
   this.onSidebarSelect = this.onSidebarSelect.bind(this);
   this.onSidebarShown = this.onSidebarShown.bind(this);
   this.onSidebarToggle = this.onSidebarToggle.bind(this);
-  this.onReflowInSelection = this.onReflowInSelection.bind(this);
   this.listenForSearchEvents = this.listenForSearchEvents.bind(this);
 
   this.prefObserver = new PrefObserver("devtools.");
@@ -203,8 +194,20 @@ Inspector.prototype = {
    * InspectorPanel.open() is effectively an asynchronous constructor.
    * Set any attributes or listeners that rely on the document being loaded or fronts
    * from the InspectorFront and Target here.
+   *
+   * @param {Object} options
+   * @param {NodeFront|undefined} options.defaultStartupNode: Optional node front that
+   *        will be selected when the first root node is available.
+   * @param {ElementIdentifier|undefined} options.defaultStartupNodeDomReference: Optional
+   *        element identifier whose matching node front will be selected when the first
+   *        root node is available.
+   *        Will be ignored if defaultStartupNode is passed.
+   * @param {String|undefined} options.defaultStartupNodeSelectionReason: Optional string
+   *        that will be used as a reason for the node selection when either
+   *        defaultStartupNode or defaultStartupNodeDomReference is passed
+   * @returns {Inspector}
    */
-  async init() {
+  async init(options = {}) {
     // Localize all the nodes containing a data-localization attribute.
     localizeMarkup(this.panelDoc);
 
@@ -223,6 +226,19 @@ Inspector.prototype = {
     // iframe if it had already been initialized.
     this.setupSplitter();
 
+    // Optional NodeFront/ElementIdentifier set on inspector startup, to be selected once the first root
+    // node is available.
+    this._defaultStartupNode = options.defaultStartupNode;
+    this._defaultStartupNodeDomReference =
+      options.defaultStartupNodeDomReference;
+    this._defaultStartupNodeSelectionReason =
+      options.defaultStartupNodeSelectionReason;
+
+    // NodeFront for the DOM Element selected when opening the inspector, or after each
+    // navigation (i.e. each time a new Root Node is available)
+    // This is used as a fallback if the currently selected node is removed.
+    this._defaultNode = null;
+
     await this.commands.targetCommand.watchTargets({
       types: [this.commands.targetCommand.TYPES.FRAME],
       onAvailable: this._onTargetAvailable,
@@ -230,15 +246,27 @@ Inspector.prototype = {
       onDestroyed: this._onTargetDestroyed,
     });
 
-    await this.toolbox.resourceCommand.watchResources(
-      [
-        this.toolbox.resourceCommand.TYPES.ROOT_NODE,
-        // To observe CSS change before opening changes view.
-        this.toolbox.resourceCommand.TYPES.CSS_CHANGE,
-        this.toolbox.resourceCommand.TYPES.DOCUMENT_EVENT,
-      ],
-      { onAvailable: this.onResourceAvailable }
-    );
+    const { TYPES } = this.toolbox.resourceCommand;
+    this._watchedResources = [
+      // To observe CSS change before opening changes view.
+      TYPES.CSS_CHANGE,
+      TYPES.DOCUMENT_EVENT,
+      TYPES.REFLOW,
+    ];
+    // The root node is retrieved from onTargetSelected which is now called
+    // on startup as well as on any navigation (= new top level target).
+    //
+    // We only listen to new root node in the browser toolbox, which is the last
+    // configuration to use one target for multiple window global.
+    const isBrowserToolbox =
+      this.commands.descriptorFront.isBrowserProcessDescriptor;
+    if (isBrowserToolbox) {
+      this._watchedResources.push(TYPES.ROOT_NODE);
+    }
+
+    await this.toolbox.resourceCommand.watchResources(this._watchedResources, {
+      onAvailable: this.onResourceAvailable,
+    });
 
     // Store the URL of the target page prior to navigation in order to ensure
     // telemetry counts in the Grid Inspector are not double counted on reload.
@@ -265,29 +293,21 @@ Inspector.prototype = {
     // Log the 3 pane inspector setting on inspector open. The question we want to answer
     // is:
     // "What proportion of users use the 3 pane vs 2 pane inspector on inspector open?"
-    this.telemetry.keyedScalarAdd(
-      THREE_PANE_ENABLED_SCALAR,
-      this.is3PaneModeEnabled,
-      1
-    );
+    Glean.devtoolsInspector.threePaneEnabled[this.is3PaneModeEnabled].add(1);
 
     return this;
   },
 
+  // The onTargetAvailable argument is mandatory for TargetCommand.watchTargets.
+  // The inspector ignore all targets but the currently selected one,
+  // so all the target work is done from onTargetSelected.
   async _onTargetAvailable({ targetFront }) {
-    // Ignore all targets but the top level one
     if (!targetFront.isTopLevel) {
       return;
     }
 
-    await this.initInspectorFront(targetFront);
-
-    // the target might have been destroyed when reloading quickly,
-    // while waiting for inspector front initialization
-    if (targetFront.isDestroyed()) {
-      return;
-    }
-
+    // Fetch data and fronts which aren't WindowGlobal specific
+    // and can be fetched once from the top level target.
     await Promise.all([
       this._getCssProperties(targetFront),
       this._getAccessibilityFront(targetFront),
@@ -314,9 +334,6 @@ Inspector.prototype = {
 
     const { walker } = await targetFront.getFront("inspector");
     const rootNodeFront = await walker.getRootNode();
-    // When a given target is focused, don't try to reset the selection
-    this.selectionCssSelectors = [];
-    this._defaultNode = null;
 
     // onRootNodeAvailable will take care of populating the markup view
     await this.onRootNodeAvailable(rootNodeFront);
@@ -339,6 +356,7 @@ Inspector.prototype = {
     for (const resource of resources) {
       const isTopLevelTarget = !!resource.targetFront?.isTopLevel;
       const isTopLevelDocument = !!resource.isTopLevelDocument;
+
       if (
         resource.resourceType ===
           this.toolbox.resourceCommand.TYPES.ROOT_NODE &&
@@ -360,6 +378,16 @@ Inspector.prototype = {
       ) {
         this._onWillNavigate();
       }
+
+      if (resource.resourceType === this.toolbox.resourceCommand.TYPES.REFLOW) {
+        this.emit("reflow");
+        if (resource.targetFront === this.selection?.nodeFront?.targetFront) {
+          // This event will be fired whenever a reflow is detected in the target front of the
+          // selected node front (so when a reflow is detected inside any of the windows that
+          // belong to the BrowsingContext where the currently selected node lives).
+          this.emit("reflow-in-selected-target");
+        }
+      }
     }
 
     return Promise.all(rootNodeAvailablePromises);
@@ -372,7 +400,6 @@ Inspector.prototype = {
     // Record new-root timing for telemetry
     this._newRootStart = this.panelWin.performance.now();
 
-    this._defaultNode = null;
     this.selection.setNodeFront(null);
     this._destroyMarkup();
 
@@ -383,8 +410,11 @@ Inspector.prototype = {
       }
 
       this.selection.setNodeFront(defaultNode, {
-        reason: "inspector-default-selection",
+        reason:
+          this._defaultStartupNodeSelectionReason ??
+          "inspector-default-selection",
       });
+      this._defaultStartupNodeSelectionReason = null;
 
       await this._initMarkupView();
 
@@ -452,9 +482,9 @@ Inspector.prototype = {
       // Only log the timing when inspector is not destroyed and is in foreground.
       if (this.toolbox && this.toolbox.currentToolId == "inspector") {
         const delay = this.panelWin.performance.now() - this._newRootStart;
-        const telemetryKey = "DEVTOOLS_INSPECTOR_NEW_ROOT_TO_RELOAD_DELAY_MS";
-        const histogram = this.telemetry.getHistogramById(telemetryKey);
-        histogram.add(delay);
+        Glean.devtoolsInspector.newRootToReloadDelay.accumulateSingleSample(
+          delay
+        );
       }
       delete this._newRootStart;
     }
@@ -522,7 +552,9 @@ Inspector.prototype = {
       this._search = new InspectorSearch(
         this,
         this.searchBox,
-        this.searchClearButton
+        this.searchClearButton,
+        this.searchPrevButton,
+        this.searchNextButton
       );
     }
 
@@ -592,17 +624,46 @@ Inspector.prototype = {
    *        The current root node front for the top walker.
    */
   async _getDefaultNodeForSelection(rootNodeFront) {
-    if (this._defaultNode) {
-      return this._defaultNode;
+    let node;
+    if (this._defaultStartupNode) {
+      node = this._defaultStartupNode;
+      this._defaultStartupNode = null;
+      this._defaultStartupNodeDomReference = null;
+      return node;
     }
 
     // Save the _pendingSelectionUnique on the current inspector instance.
     const pendingSelectionUnique = Symbol("pending-selection");
     this._pendingSelectionUnique = pendingSelectionUnique;
 
+    if (this._defaultStartupNodeDomReference) {
+      const domReference = this._defaultStartupNodeDomReference;
+      // nullify before calling the async getNodeActorFromContentDomReference so calls
+      // made to getDefaultNodeForSelection while the promise is pending will be properly
+      // ignored with the check on pendingSelectionUnique
+      this._defaultStartupNode = null;
+      this._defaultStartupNodeDomReference = null;
+
+      try {
+        node =
+          await this.inspectorFront.getNodeActorFromContentDomReference(
+            domReference
+          );
+      } catch (e) {
+        console.warn(
+          "Couldn't retrieve node front from dom reference",
+          domReference
+        );
+      }
+    }
+
     if (this._pendingSelectionUnique !== pendingSelectionUnique) {
       // If this method was called again while waiting, bail out.
       return null;
+    }
+
+    if (node) {
+      return node;
     }
 
     const walker = rootNodeFront.walkerFront;
@@ -624,7 +685,7 @@ Inspector.prototype = {
 
     // Try all default node selectors until a valid node is found.
     for (const selector of defaultNodeSelectors) {
-      const node = await selector();
+      node = await selector();
       if (this._pendingSelectionUnique !== pendingSelectionUnique) {
         // If this method was called again while waiting, bail out.
         return null;
@@ -643,7 +704,7 @@ Inspector.prototype = {
    * Top level target front getter.
    */
   get currentTarget() {
-    return this.commands.targetCommand.targetFront;
+    return this.commands.targetCommand.selectedTargetFront;
   },
 
   /**
@@ -657,15 +718,32 @@ Inspector.prototype = {
     this.searchResultsContainer = this.panelDoc.getElementById(
       "inspector-searchlabel-container"
     );
+    this.searchNavigationContainer = this.panelDoc.getElementById(
+      "inspector-searchnavigation-container"
+    );
+    this.searchPrevButton = this.panelDoc.getElementById(
+      "inspector-searchnavigation-button-prev"
+    );
+    this.searchNextButton = this.panelDoc.getElementById(
+      "inspector-searchnavigation-button-next"
+    );
     this.searchResultsLabel = this.panelDoc.getElementById(
       "inspector-searchlabel"
     );
+
+    this.searchResultsLabel.addEventListener("click", this._onSearchLabelClick);
 
     this.searchBox.addEventListener("focus", this.listenForSearchEvents, {
       once: true,
     });
 
     this.createSearchBoxShortcuts();
+  },
+
+  _onSearchLabelClick() {
+    // Focus on the search box as the search label
+    // appears to be "inside" input
+    this.searchBox.focus();
   },
 
   listenForSearchEvents() {
@@ -719,8 +797,10 @@ Inspector.prototype = {
           result.resultsIndex + 1,
           result.resultsLength
         );
+        this.searchNavigationContainer.hidden = false;
       } else {
         str = INSPECTOR_L10N.getStr("inspector.searchResultsNone");
+        this.searchNavigationContainer.hidden = true;
       }
 
       this.searchResultsContainer.hidden = false;
@@ -1301,6 +1381,11 @@ Inspector.prototype = {
       );
     }
 
+    // Load the ExtensionSidebar component via the Browser Loader as it ultimately loads Reps and Object Inspector,
+    // which are expected to be loaded in a document scope.
+    const ExtensionSidebar = this.browserRequire(
+      "resource://devtools/client/inspector/extensions/extension-sidebar.js"
+    );
     const extensionSidebar = new ExtensionSidebar(this, { id, title });
 
     // TODO(rpl): pass some extension metadata (e.g. extension name and icon) to customize
@@ -1330,6 +1415,9 @@ Inspector.prototype = {
 
     const panel = this._panels.get(id);
 
+    const ExtensionSidebar = this.browserRequire(
+      "resource://devtools/client/inspector/extensions/extension-sidebar.js"
+    );
     if (!(panel instanceof ExtensionSidebar)) {
       throw new Error(
         `The sidebar panel with id "${id}" is not an ExtensionSidebar`
@@ -1551,67 +1639,16 @@ Inspector.prototype = {
 
     this.updateAddElementButton();
     this.updateSelectionCssSelectors();
-    this.trackReflowsInSelection();
 
     const selfUpdate = this.updating("inspector-panel");
     executeSoon(() => {
       try {
         selfUpdate(this.selection.nodeFront);
-        this.telemetry.scalarAdd(TELEMETRY_SCALAR_NODE_SELECTION_COUNT, 1);
+        Glean.devtoolsInspector.nodeSelectionCount.add(1);
       } catch (ex) {
         console.error(ex);
       }
     });
-  },
-
-  /**
-   * Starts listening for reflows in the targetFront of the currently selected nodeFront.
-   */
-  async trackReflowsInSelection() {
-    this.untrackReflowsInSelection();
-    if (!this.selection.nodeFront) {
-      return;
-    }
-
-    if (this._destroyed) {
-      return;
-    }
-
-    try {
-      await this.commands.resourceCommand.watchResources(
-        [this.commands.resourceCommand.TYPES.REFLOW],
-        {
-          onAvailable: this.onReflowInSelection,
-        }
-      );
-    } catch (e) {
-      // it can happen that watchResources fails as the client closes while we're processing
-      // some asynchronous call.
-      // In order to still get valid exceptions, we re-throw the exception if the inspector
-      // isn't destroyed.
-      if (!this._destroyed) {
-        throw e;
-      }
-    }
-  },
-
-  /**
-   * Stops listening for reflows.
-   */
-  untrackReflowsInSelection() {
-    this.commands.resourceCommand.unwatchResources(
-      [this.commands.resourceCommand.TYPES.REFLOW],
-      {
-        onAvailable: this.onReflowInSelection,
-      }
-    );
-  },
-
-  onReflowInSelection() {
-    // This event will be fired whenever a reflow is detected in the target front of the
-    // selected node front (so when a reflow is detected inside any of the windows that
-    // belong to the BrowsingContext when the currently selected node lives).
-    this.emit("reflow-in-selected-target");
   },
 
   /**
@@ -1748,15 +1785,9 @@ Inspector.prototype = {
       onDestroyed: this._onTargetDestroyed,
     });
     const { resourceCommand } = this.toolbox;
-    resourceCommand.unwatchResources(
-      [
-        resourceCommand.TYPES.ROOT_NODE,
-        resourceCommand.TYPES.CSS_CHANGE,
-        resourceCommand.TYPES.DOCUMENT_EVENT,
-      ],
-      { onAvailable: this.onResourceAvailable }
-    );
-    this.untrackReflowsInSelection();
+    resourceCommand.unwatchResources(this._watchedResources, {
+      onAvailable: this.onResourceAvailable,
+    });
 
     this._InspectorTabPanel = null;
     this._TabBar = null;
@@ -1789,6 +1820,11 @@ Inspector.prototype = {
     this.sidebar = null;
     this.store = null;
     this.telemetry = null;
+    this.searchResultsLabel.removeEventListener(
+      "click",
+      this._onSearchLabelClick
+    );
+    this.searchResultsLabel = null;
   },
 
   _destroyMarkup() {
@@ -1839,7 +1875,6 @@ Inspector.prototype = {
     }
     // turn off node picker when color picker is starting
     this.toolbox.nodePicker.stop({ canceled: true }).catch(console.error);
-    this.telemetry.scalarSet(TELEMETRY_EYEDROPPER_OPENED, 1);
     this.eyeDropperButton.classList.add("checked");
     this.startEyeDropperListeners();
     return this.inspectorFront
@@ -1989,9 +2024,8 @@ Inspector.prototype = {
   },
 
   async inspectNodeActor(nodeGrip, reason) {
-    const nodeFront = await this.inspectorFront.getNodeFrontFromNodeGrip(
-      nodeGrip
-    );
+    const nodeFront =
+      await this.inspectorFront.getNodeFrontFromNodeGrip(nodeGrip);
     if (!nodeFront) {
       console.error(
         "The object cannot be linked to the inspector, the " +

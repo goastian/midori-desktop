@@ -101,10 +101,12 @@ add_task(async function test_backgroundtask_debugger() {
     waitForPaused,
     waitForResumed,
     waitForSelectedSource,
+    waitForInlinePreviews,
     waitForState,
     waitUntil,
     createLocation,
-    getCM,
+    getEditorContent,
+    getCMEditor,
     log: (msg, data) =>
       console.log(`${msg} ${!data ? "" : JSON.stringify(data)}`),
     info: (msg, data) =>

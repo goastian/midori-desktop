@@ -10,9 +10,9 @@ const {
   createFactory,
   createRef,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const ViewportDimension = createFactory(
   require("resource://devtools/client/responsive/components/ViewportDimension.js")
@@ -170,7 +170,6 @@ class DeviceForm extends PureComponent {
         ViewportDimension({
           viewport: { width, height },
           doResizeViewport: this.onChangeSize,
-          onRemoveDeviceAssociation: () => {},
         })
       ),
       dom.label(

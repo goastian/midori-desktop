@@ -45,7 +45,6 @@ export const DevToolsShim = {
   get telemetry() {
     if (!this._telemetry) {
       this._telemetry = new lazy.Telemetry();
-      this._telemetry.setEventRecordingEnabled(true);
     }
     return this._telemetry;
   },
@@ -255,6 +254,7 @@ export const DevToolsShim = {
    * @param {String} reason
    *        optional, if provided should be a valid entry point for DEVTOOLS_ENTRY_POINT
    *        in toolkit/components/telemetry/Histograms.json
+   *        and devtools:entry_point in devtools/client/shared/metrics.yaml
    */
   initDevTools(reason) {
     if (!this.isEnabled()) {

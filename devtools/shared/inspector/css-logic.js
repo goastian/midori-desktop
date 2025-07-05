@@ -75,6 +75,7 @@ exports.CSSAtRuleClassNameType = {
   CSSNamespaceRule: "namespace",
   CSSPageRule: "page",
   CSSScopeRule: "scope",
+  CSSStartingStyleRule: "starting-style",
   CSSSupportsRule: "supports",
 };
 
@@ -165,23 +166,19 @@ exports.shortSource = function (sheet) {
         : dataUrl[1];
   } else {
     // We try, in turn, the filename, filePath, query string, whole thing
-    let url = {};
-    try {
-      url = new URL(sheet.href);
-    } catch (ex) {
-      // Some UA-provided stylesheets are not valid URLs.
-    }
-
-    if (url.pathname) {
-      const index = url.pathname.lastIndexOf("/");
-      if (index !== -1 && index < url.pathname.length) {
-        name = url.pathname.slice(index + 1);
-      } else {
-        name = url.pathname;
+    const url = URL.parse(sheet.href);
+    if (url) {
+      if (url.pathname) {
+        const index = url.pathname.lastIndexOf("/");
+        if (index !== -1 && index < url.pathname.length) {
+          name = url.pathname.slice(index + 1);
+        } else {
+          name = url.pathname;
+        }
+      } else if (url.query) {
+        name = url.query;
       }
-    } else if (url.query) {
-      name = url.query;
-    }
+    } // else some UA-provided stylesheets are not valid URLs.
   }
 
   try {
@@ -558,16 +555,16 @@ function getBindingElementAndPseudo(node) {
 exports.getBindingElementAndPseudo = getBindingElementAndPseudo;
 
 /**
- * Returns css style rules for a given a node.
+ * Returns css rules for a given a node.
  * This function can handle ::before or ::after pseudo element as well as
  * normal element.
  */
-function getCSSStyleRules(node) {
+function getMatchingCSSRules(node) {
   const { bindingElement, pseudo } = getBindingElementAndPseudo(node);
-  const rules = InspectorUtils.getCSSStyleRules(bindingElement, pseudo);
+  const rules = InspectorUtils.getMatchingCSSRules(bindingElement, pseudo);
   return rules;
 }
-exports.getCSSStyleRules = getCSSStyleRules;
+exports.getMatchingCSSRules = getMatchingCSSRules;
 
 /**
  * Returns true if the given node has visited state.
@@ -842,3 +839,23 @@ function isCssVariable(input) {
   return !!input.match(IS_VARIABLE_TOKEN);
 }
 exports.isCssVariable = isCssVariable;
+
+/**
+ * This is a list of all the element backed pseudo elements.
+ *
+ * From https://drafts.csswg.org/css-pseudo-4/#element-backed :
+ * > The element-backed pseudo-elements, interact with most CSS and other platform features
+ * > as if they were real elements (and, in fact, often are real elements that are
+ * > not otherwise selectable).
+ *
+ * Those pseudo elements are not displayed in the markup view, but declarations in rules
+ * targetting them can then be inherited by their "children", and so we need to retrieve
+ * those rules to surface them in the Inspector (e.g. in "Inherited" sections in the Rules
+ * view, in the matched selectors section in the Computed panel, …).
+ *
+ * Any new element-backed pseudo elements should be added into this Set.
+ */
+exports.ELEMENT_BACKED_PSEUDO_ELEMENTS = new Set([
+  "::details-content",
+  "::file-selector-button",
+]);

@@ -20,6 +20,7 @@ if (!isWorker) {
   ChromeUtils.defineESModuleGetters(
     lazy,
     {
+      DownloadPaths: "resource://gre/modules/DownloadPaths.sys.mjs",
       FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
       NetworkHelper:
         "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
@@ -853,12 +854,16 @@ exports.saveAs = async function (
   try {
     returnFile = await exports.showSaveFileDialog(
       parentWindow,
-      fileName,
+      lazy.DownloadPaths.sanitize(fileName),
       filters
     );
   } catch (ex) {
     return null;
   }
+
+  // Sanitize the filename again in case the user renamed the file to use a
+  // vulnerable extension.
+  returnFile.leafName = lazy.DownloadPaths.sanitize(returnFile.leafName);
 
   await IOUtils.write(returnFile.path, dataArray, {
     tmpPath: returnFile.path + ".tmp",
@@ -965,6 +970,12 @@ function callPropertyOnObject(object, name, ...args) {
   const value = descriptor.value;
   if (typeof value !== "object" || value === null || !("callable" in value)) {
     throw new Error("Not a callable object.");
+  }
+
+  if (value.script !== undefined) {
+    throw new Error(
+      "The property isn't a native function and will execute code in the debuggee"
+    );
   }
 
   // Call the property.

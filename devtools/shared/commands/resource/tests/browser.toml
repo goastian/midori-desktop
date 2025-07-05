@@ -55,12 +55,8 @@ support-files = [
 ["browser_resources_css_messages.js"]
 
 ["browser_resources_css_registered_properties.js"]
-skip-if = ["!fission"]
 
 ["browser_resources_document_events.js"]
-skip-if = [
-  "os == 'linux' && bits == 64", # Bug 1715878
-]
 
 ["browser_resources_error_messages.js"]
 
@@ -83,6 +79,12 @@ skip-if = [
 ["browser_resources_platform_messages.js"]
 
 ["browser_resources_reflows.js"]
+skip-if = [
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && debug", # Bug 1767771
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1767771
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug", # Bug 1767771
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && debug", # Bug 1767771
+]
 
 ["browser_resources_root_node.js"]
 
@@ -94,9 +96,12 @@ skip-if = [
 
 ["browser_resources_sources.js"]
 skip-if = [
-  "os == 'linux' && bits == 64", # Bug 1744565
-  "win11_2009", # Bug 1767772
-  "apple_catalina", # Bug 1767772
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1744565
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1744565
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && debug", # Bug 1932913
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && asan", # Bug 1767772
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov", # Bug 1767772
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && debug", # Bug 1767772
 ]
 
 ["browser_resources_stylesheets.js"]
@@ -123,6 +128,6 @@ skip-if = [
 
 ["browser_resources_websocket.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]

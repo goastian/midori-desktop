@@ -8,7 +8,7 @@ import {
   getSelectedFrame,
 } from "../../selectors/index";
 
-import { mapFrames, fetchFrames } from "./index";
+import { mapFrames, fetchFrames, updateAllFrameDisplayNames } from "./index";
 import { removeBreakpoint } from "../breakpoints/index";
 import { evaluateExpressions } from "../expressions";
 import { selectLocation } from "../sources/index";
@@ -55,14 +55,24 @@ export function paused(pauseInfo) {
       // Prevent further computation if this happens.
       validateSelectedFrame(getState(), selectedFrame);
 
+      // Update the display names of the original frames
+      // Note that this depends on the source editor's `getClosestFunctionName`.
+      // so it needs to be called after the source is selected (to make sure the source editor is fully initialized).
+      // This can happen when paused on initial load.
+      await dispatch(updateAllFrameDisplayNames(thread));
+
       // Fetch the previews for variables visible in the currently selected paused stackframe
-      await dispatch(fetchScopes(selectedFrame));
+      await dispatch(fetchScopes());
+      // We might have resumed while fetching the scopes
+      // Prevent further computation if this happens.
+      validateSelectedFrame(getState(), selectedFrame);
 
       // Run after fetching scoping data so that it may make use of the sourcemap
       // expression mappings for local variables.
       const atException = why.type == "exception";
       if (!atException || !isEvaluatingExpression(getState(), thread)) {
         await dispatch(evaluateExpressions(selectedFrame));
+        validateSelectedFrame(getState(), selectedFrame);
       }
     }
   };

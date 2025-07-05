@@ -14,23 +14,12 @@ add_task(async function testTracingValues() {
     "data:text/html," + encodeURIComponent(`<script>${jsCode}</script>`)
   );
 
-  await openContextMenuInDebugger(dbg, "trace");
-  const toggled = waitForDispatch(
-    dbg.store,
-    "TOGGLE_JAVASCRIPT_TRACING_VALUES"
-  );
-  selectContextMenuItem(dbg, `#debugger-trace-menu-item-log-values`);
-  await toggled;
-  ok(true, "Toggled the log values setting");
+  // This test covers the Web Console, whereas it is no longer the default output
+  await toggleJsTracerMenuItem(dbg, "#jstracer-menu-item-console");
 
-  await clickElement(dbg, "trace");
+  await toggleJsTracerMenuItem(dbg, "#jstracer-menu-item-log-values");
 
-  const topLevelThreadActorID =
-    dbg.toolbox.commands.targetCommand.targetFront.threadFront.actorID;
-  info("Wait for tracing to be enabled");
-  await waitForState(dbg, () => {
-    return dbg.selectors.getIsThreadCurrentlyTracing(topLevelThreadActorID);
-  });
+  await toggleJsTracer(dbg.toolbox);
 
   invokeInTab("foo");
 

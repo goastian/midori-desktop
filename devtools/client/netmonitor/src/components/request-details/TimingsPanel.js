@@ -6,11 +6,11 @@
 
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   L10N,
@@ -42,7 +42,7 @@ class TimingsPanel extends Component {
     return {
       connector: PropTypes.object.isRequired,
       request: PropTypes.object.isRequired,
-      firstRequestStartedMs: PropTypes.number.isRequired,
+      firstRequestStartedMs: PropTypes.number,
     };
   }
 

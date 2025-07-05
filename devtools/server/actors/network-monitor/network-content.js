@@ -11,11 +11,15 @@ const {
 
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
-  NetworkUtils:
-    "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
+    NetworkUtils:
+      "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
 loader.lazyRequireGetter(
   this,
@@ -56,20 +60,33 @@ class NetworkContentActor extends Actor {
    */
   async sendHTTPRequest(request) {
     return new Promise(resolve => {
-      const { url, method, headers, body, cause } = request;
+      const { url, method, headers, body, cause, securityFlags } = request;
       // Set the loadingNode and loadGroup to the target document - otherwise the
       // request won't show up in the opened netmonitor.
       const doc = this.targetActor.window.document;
+      const channelURI = lazy.NetUtil.newURI(url);
 
       const channel = lazy.NetUtil.newChannel({
-        uri: lazy.NetUtil.newURI(url),
+        uri: channelURI,
         loadingNode: doc,
         securityFlags:
+          securityFlags ||
           Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_INHERITS_SEC_CONTEXT,
         contentPolicyType:
           lazy.NetworkUtils.stringToCauseType(cause.type) ||
           Ci.nsIContentPolicy.TYPE_OTHER,
       });
+
+      // If the load is of TYPE_DOCUMENT, we have to annotate the loadinfo
+      // with the appropriate HTTPS Telemetry information.
+      if (
+        channel.loadInfo.externalContentPolicyType ==
+        Ci.nsIContentPolicy.TYPE_DOCUMENT
+      ) {
+        channel.loadInfo.httpsUpgradeTelemetry = channelURI.schemeIs("https")
+          ? Ci.nsILoadInfo.ALREADY_HTTPS
+          : Ci.nsILoadInfo.NO_UPGRADE;
+      }
 
       channel.QueryInterface(Ci.nsIHttpChannel);
       channel.loadGroup = doc.documentLoadGroup;
@@ -107,7 +124,7 @@ class NetworkContentActor extends Actor {
         const bodyStream = Cc[
           "@mozilla.org/io/string-input-stream;1"
         ].createInstance(Ci.nsIStringInputStream);
-        bodyStream.setData(body, body.length);
+        bodyStream.setByteStringData(body);
         channel.explicitSetUploadStream(bodyStream, null, -1, method, false);
       }
 

@@ -18,7 +18,7 @@ import { connect } from "devtools/client/shared/vendor/react-redux";
 import { features } from "../../utils/prefs";
 import AccessibleImage from "../shared/AccessibleImage";
 
-import { objectInspector } from "devtools/client/shared/components/reps/index";
+import * as objectInspector from "resource://devtools/client/shared/components/object-inspector/index.js";
 
 import actions from "../../actions/index";
 import {
@@ -29,14 +29,12 @@ import {
   getIsCurrentThreadPaused,
   getSelectedFrame,
   getOriginalFrameScope,
-  getCurrentThread,
 } from "../../selectors/index";
 import { getExpressionResultGripAndFront } from "../../utils/expressions";
 
 import { CloseButton } from "../shared/Button/index";
 
 const { debounce } = require("resource://devtools/shared/debounce.js");
-const classnames = require("resource://devtools/client/shared/classnames.js");
 
 const { ObjectInspector } = objectInspector;
 
@@ -48,7 +46,6 @@ class Expressions extends Component {
       editing: false,
       editIndex: -1,
       inputValue: "",
-      focused: false,
     };
   }
 
@@ -87,7 +84,6 @@ class Expressions extends Component {
       editing: false,
       editIndex: -1,
       inputValue: "",
-      focused: false,
     }));
   };
 
@@ -105,7 +101,7 @@ class Expressions extends Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    const { editing, inputValue, focused } = this.state;
+    const { editing, inputValue } = this.state;
     const {
       expressions,
       showInput,
@@ -122,8 +118,7 @@ class Expressions extends Component {
         nextProps.isOriginalVariableMappingDisabled ||
       editing !== nextState.editing ||
       inputValue !== nextState.inputValue ||
-      nextProps.showInput !== showInput ||
-      focused !== nextState.focused
+      nextProps.showInput !== showInput
     );
   }
 
@@ -137,7 +132,7 @@ class Expressions extends Component {
     if (!prevState.editing && this.state.editing) {
       _input.setSelectionRange(0, _input.value.length);
       _input.focus();
-    } else if (this.props.showInput && !this.state.focused) {
+    } else if (this.props.showInput) {
       _input.focus();
     }
   }
@@ -176,16 +171,11 @@ class Expressions extends Component {
   };
 
   hideInput = () => {
-    this.setState({ focused: false });
     this.props.onExpressionAdded();
   };
 
   createElement = element => {
     return document.createElement(element);
-  };
-
-  onFocus = () => {
-    this.setState({ focused: true });
   };
 
   onBlur() {
@@ -362,13 +352,10 @@ class Expressions extends Component {
   }
 
   renderNewExpressionInput() {
-    const { editing, inputValue, focused } = this.state;
+    const { editing, inputValue } = this.state;
     return form(
       {
-        className: classnames(
-          "expression-input-container expression-input-form",
-          { focused }
-        ),
+        className: "expression-input-container expression-input-form",
         onSubmit: this.handleNewSubmit,
       },
       input({
@@ -378,7 +365,6 @@ class Expressions extends Component {
         onChange: this.handleChange,
         onBlur: this.hideInput,
         onKeyDown: this.handleKeyDown,
-        onFocus: this.onFocus,
         value: !editing ? inputValue : "",
         ref: c => (this._input = c),
         ...(features.autocompleteExpression && {
@@ -396,16 +382,11 @@ class Expressions extends Component {
   }
 
   renderExpressionEditInput(expression) {
-    const { inputValue, editing, focused } = this.state;
+    const { inputValue, editing } = this.state;
     return form(
       {
         key: expression.input,
-        className: classnames(
-          "expression-input-container expression-input-form",
-          {
-            focused,
-          }
-        ),
+        className: "expression-input-container expression-input-form",
         onSubmit: e => this.handleExistingSubmit(e, expression),
       },
       input({
@@ -414,7 +395,6 @@ class Expressions extends Component {
         onChange: this.handleChange,
         onBlur: this.clear,
         onKeyDown: this.handleKeyDown,
-        onFocus: this.onFocus,
         value: editing ? inputValue : expression.input,
         ref: c => (this._input = c),
         ...(features.autocompleteExpression && {
@@ -445,7 +425,7 @@ class Expressions extends Component {
 }
 
 const mapStateToProps = state => {
-  const selectedFrame = getSelectedFrame(state, getCurrentThread(state));
+  const selectedFrame = getSelectedFrame(state);
   const selectedSource = getSelectedSource(state);
   const isPaused = getIsCurrentThreadPaused(state);
   const mapScopesEnabled = isMapScopesEnabled(state);

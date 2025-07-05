@@ -50,7 +50,9 @@ export class WorkerTargetWatcherClass {
   async addOrSetSessionDataEntry(watcherDataObject, type, entries, updateType) {
     // Collect the SessionData update into `pendingWorkers` in order to notify
     // about the updates to workers which are still in process of being hooked by devtools.
-    for (const concurrentSessionUpdates of watcherDataObject.pendingWorkers) {
+    for (const concurrentSessionUpdates of watcherDataObject.pendingWorkers[
+      this.#workerTargetType
+    ]) {
       concurrentSessionUpdates.push({
         type,
         entries,
@@ -59,10 +61,8 @@ export class WorkerTargetWatcherClass {
     }
 
     const promises = [];
-    for (const {
-      dbg,
-      workerThreadServerForwardingPrefix,
-    } of watcherDataObject.workers) {
+    for (const { dbg, workerThreadServerForwardingPrefix } of watcherDataObject
+      .workers[this.#workerTargetType]) {
       promises.push(
         addOrSetSessionDataEntryInWorkerTarget({
           dbg,
@@ -77,10 +77,8 @@ export class WorkerTargetWatcherClass {
   }
 
   removeSessionDataEntry(watcherDataObject, type, entries) {
-    for (const {
-      dbg,
-      workerThreadServerForwardingPrefix,
-    } of watcherDataObject.workers) {
+    for (const { dbg, workerThreadServerForwardingPrefix } of watcherDataObject
+      .workers[this.#workerTargetType]) {
       if (!isWorkerDebuggerAlive(dbg)) {
         continue;
       }
@@ -122,9 +120,10 @@ export class WorkerTargetWatcherClass {
     for (const watcherDataObject of ContentProcessWatcherRegistry.getAllWatchersDataObjects(
       this.#workerTargetType
     )) {
-      const { watcherActorID, workers } = watcherDataObject;
+      const { watcherActorID } = watcherDataObject;
+      const workerList = watcherDataObject.workers[this.#workerTargetType];
       // Check if the worker registration was handled for this watcherActorID.
-      const unregisteredActorIndex = workers.findIndex(worker => {
+      const unregisteredActorIndex = workerList.findIndex(worker => {
         try {
           // Accessing the WorkerDebugger id might throw (NS_ERROR_UNEXPECTED).
           return worker.dbg.id === dbg.id;
@@ -136,7 +135,8 @@ export class WorkerTargetWatcherClass {
         continue;
       }
 
-      const { workerTargetForm, transport } = workers[unregisteredActorIndex];
+      const { workerTargetForm, transport } =
+        workerList[unregisteredActorIndex];
       // Close the transport made to the worker thread
       transport.close();
 
@@ -158,7 +158,7 @@ export class WorkerTargetWatcherClass {
         // and we are trying to notify about the destroyed targets.
       }
 
-      workers.splice(unregisteredActorIndex, 1);
+      workerList.splice(unregisteredActorIndex, 1);
     }
   }
 
@@ -215,13 +215,16 @@ export class WorkerTargetWatcherClass {
       dbg,
       workerThreadServerForwardingPrefix,
     };
-    watcherDataObject.workers.push(workerInfo);
+    const workerList = watcherDataObject.workers[this.#workerTargetType];
+    workerList.push(workerInfo);
 
     // The onConnectToWorker is async and we may receive new Session Data (e.g breakpoints)
     // while we are instantiating the worker targets.
     // Let cache the pending session data and flush it after the targets are being instantiated.
     const concurrentSessionUpdates = [];
-    watcherDataObject.pendingWorkers.add(concurrentSessionUpdates);
+    const pendingWorkers =
+      watcherDataObject.pendingWorkers[this.#workerTargetType];
+    pendingWorkers.add(concurrentSessionUpdates);
 
     try {
       await onConnectToWorker;
@@ -236,14 +239,11 @@ export class WorkerTargetWatcherClass {
         dbg.setDebuggerReady(true);
       }
       // Also unregister the worker
-      watcherDataObject.workers.splice(
-        watcherDataObject.workers.indexOf(workerInfo),
-        1
-      );
-      watcherDataObject.pendingWorkers.delete(concurrentSessionUpdates);
+      workerList.splice(workerList.indexOf(workerInfo), 1);
+      pendingWorkers.delete(concurrentSessionUpdates);
       return;
     }
-    watcherDataObject.pendingWorkers.delete(concurrentSessionUpdates);
+    pendingWorkers.delete(concurrentSessionUpdates);
 
     const { workerTargetForm, transport } = await onConnectToWorker;
     workerInfo.workerTargetForm = workerTargetForm;
@@ -251,7 +251,7 @@ export class WorkerTargetWatcherClass {
 
     // Bail out and cleanup the actor by closing the transport,
     // if we stopped listening for workers while waiting for onConnectToWorker resolution.
-    if (!watcherDataObject.workers.includes(workerInfo)) {
+    if (!workerList.includes(workerInfo)) {
       transport.close();
       return;
     }
@@ -274,10 +274,7 @@ export class WorkerTargetWatcherClass {
       // connection to communicate with the worker.
       transport.close();
       // Also unregister the worker
-      watcherDataObject.workers.splice(
-        watcherDataObject.workers.indexOf(workerInfo),
-        1
-      );
+      workerList.splice(workerList.indexOf(workerInfo), 1);
       return;
     }
 
@@ -300,7 +297,9 @@ export class WorkerTargetWatcherClass {
 
   destroyTargetsForWatcher(watcherDataObject) {
     // Notify to all worker threads to destroy their target actor running in them
-    for (const { transport } of watcherDataObject.workers) {
+    for (const { transport } of watcherDataObject.workers[
+      this.#workerTargetType
+    ]) {
       // The transport may not be set if the worker is still being connected to from createWorkerTargetActor.
       if (transport) {
         // Clean the DevToolsTransport created in the main thread to bridge RDP to the worker thread.
@@ -309,7 +308,7 @@ export class WorkerTargetWatcherClass {
       }
     }
     // Wipe all workers info
-    watcherDataObject.workers = [];
+    watcherDataObject.workers[this.#workerTargetType] = [];
   }
 
   /**
@@ -397,7 +396,7 @@ export class WorkerTargetWatcherClass {
     }
 
     if (dbg.type === TYPE_SHARED) {
-      // Don't expose shared workers when debugging a tab.
+      // Bug 1607778 - Don't expose shared workers when debugging a tab.
       // For now, they are only exposed in the browser toolbox, when Session Context Type is set to "all".
       return false;
     }

@@ -16,8 +16,15 @@ const TEST_URL = URL_ROOT + "incremental-js-value-script.sjs";
 add_task(async function () {
   info(" ### Test reloading a Tab");
 
+  // Load "?setup" to reinitialize the sjs state if necessary.
+  const tab = await addTab(TEST_URL + "?setup");
+
+  // Now navigate to actual test URL.
+  const onLoaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, TEST_URL);
+  await onLoaded;
+
   // Create a TargetCommand for a given test tab
-  const tab = await addTab(TEST_URL);
   const commands = await CommandsFactory.forTab(tab);
   const targetCommand = commands.targetCommand;
 
@@ -78,31 +85,41 @@ add_task(async function () {
   // We have to start listening in order to ensure having a targetFront available
   await targetCommand.startListening();
 
-  const { onResource: onReloaded } =
-    await commands.resourceCommand.waitForNextResource(
-      commands.resourceCommand.TYPES.DOCUMENT_EVENT,
-      {
-        ignoreExistingResources: true,
-        predicate(resource) {
-          return resource.name == "dom-loading";
-        },
-      }
-    );
+  // Observe the new document being reported while reloading
+  const reloadedTargets = [];
+  await commands.resourceCommand.watchResources(
+    [commands.resourceCommand.TYPES.DOCUMENT_EVENT],
+    {
+      onAvailable(resources) {
+        for (const resource of resources) {
+          if (resource.name == "dom-complete") {
+            reloadedTargets.push(
+              resource.targetFront.isFallbackExtensionDocument
+            );
+          }
+        }
+      },
+      ignoreExistingResources: true,
+    }
+  );
 
-  const backgroundPageURL = targetCommand.targetFront.url;
-  ok(backgroundPageURL, "Got the background page URL");
+  const targets = await targetCommand.getAllTargets(targetCommand.ALL_TYPES);
+  for (const targetFront of targets) {
+    is(
+      targetFront.addonId,
+      extension.id,
+      `Target ${targetFront.actorID} has the right addonId attribute`
+    );
+  }
+
   await targetCommand.reloadTopLevelTarget();
 
   info("Wait for next dom-loading DOCUMENT_EVENT");
-  const event = await onReloaded;
+  await waitFor(() => reloadedTargets.length == 1);
 
-  // If we get about:blank here, it most likely means we receive notification
-  // for the previous background page being unload and navigating to about:blank
-  is(
-    event.url,
-    backgroundPageURL,
-    "We received the DOCUMENT_EVENT's for the expected document: the new background page."
-  );
+  // We only get a new background document
+  // (the fallback stays alive)
+  Assert.deepEqual(reloadedTargets, [false], "All the targets got reloaded");
 
   await commands.destroy();
 

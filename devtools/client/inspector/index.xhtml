@@ -7,11 +7,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" dir="">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src chrome: resource:; img-src chrome: data:; style-src chrome: 'unsafe-inline';"
+    />
 
     <link rel="stylesheet" href="chrome://devtools/skin/breadcrumbs.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/inspector.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/badge.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/rules.css" />
+    <link rel="stylesheet" href="chrome://devtools/skin/inspector-shared.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/compatibility.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/computed.css" />
     <link rel="stylesheet" href="chrome://devtools/skin/changes.css" />
@@ -58,19 +63,7 @@
     />
 
     <script src="chrome://devtools/content/shared/theme-switching.js"></script>
-    <script>
-      /* eslint-disable */
-      var isInChrome = window.location.href.includes("chrome:");
-      if (isInChrome) {
-        var exports = {};
-        var { require, loader } = ChromeUtils.importESModule(
-          "resource://devtools/shared/loader/Loader.sys.mjs"
-        );
-        var { BrowserLoader } = ChromeUtils.importESModule(
-          "resource://devtools/shared/loader/browser-loader.sys.mjs"
-        );
-      }
-    </script>
+    <script src="chrome://devtools/content/inspector/index.js"></script>
 
     <script
       src="resource://devtools/client/inspector/inspector.js"
@@ -92,7 +85,6 @@
         <div
           id="inspector-toolbar"
           class="devtools-toolbar devtools-input-toolbar"
-          nowindowdrag="true"
         >
           <div id="inspector-search" class="devtools-searchbox">
             <input
@@ -101,16 +93,28 @@
               type="search"
               data-localization="placeholder=inspectorSearchHTML.label3"
             />
+            <div id="inspector-searchlabel-container" hidden="">
+              <span id="inspector-searchlabel"></span>
+              <div id="inspector-searchnavigation-container" hidden="">
+                <button
+                  class="inspector-searchnavigation-buttons devtools-button"
+                  id="inspector-searchnavigation-button-prev"
+                  data-localization="title=inspectorSearchHTML.prevButton.title"
+                ></button>
+                <button
+                  class="inspector-searchnavigation-buttons devtools-button"
+                  id="inspector-searchnavigation-button-next"
+                  data-localization="title=inspectorSearchHTML.nextButton.title"
+                ></button>
+              </div>
+              <div class="devtools-separator"></div>
+            </div>
             <button
               id="inspector-searchinput-clear"
               class="devtools-searchinput-clear"
               hidden=""
-              tabindex="-1"
+              data-localization="title=inspectorSearchHTML.clearButton.title"
             ></button>
-          </div>
-          <div id="inspector-searchlabel-container" hidden="">
-            <div class="devtools-separator"></div>
-            <span id="inspector-searchlabel"></span>
           </div>
           <div class="devtools-separator"></div>
           <button

@@ -13,7 +13,7 @@ let registration;
 
 const registerServiceWorker = async function() {
   try {
-    registration = await navigator.serviceWorker.register("controlled-sw.js");
+    registration = await navigator.serviceWorker.register("controlled-sw.worker.js");
     dump("Controlled service worker registered\n");
   } catch (e) {
     dump("Controlled service worker not registered: " + e + "\n");
@@ -28,6 +28,10 @@ window.getRegistration = function() {
 // Called from browser_aboutdebugging_serviceworker_status.js
 window.installServiceWorker = function() {
   registration.installing.postMessage("install-service-worker");
+};
+
+window.installServiceWorkerAndPause = function() {
+  registration.installing.postMessage("install-service-worker-and-pause");
 };
 
 // Register the service worker.

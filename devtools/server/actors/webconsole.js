@@ -11,11 +11,7 @@ const {
   webconsoleSpec,
 } = require("resource://devtools/shared/specs/webconsole.js");
 
-const {
-  DevToolsServer,
-} = require("resource://devtools/server/devtools-server.js");
 const { ThreadActor } = require("resource://devtools/server/actors/thread.js");
-const { ObjectActor } = require("resource://devtools/server/actors/object.js");
 const {
   LongStringActor,
 } = require("resource://devtools/server/actors/string.js");
@@ -62,12 +58,6 @@ loader.lazyRequireGetter(
   this,
   ["WebConsoleCommandsManager"],
   "resource://devtools/server/actors/webconsole/commands/manager.js",
-  true
-);
-loader.lazyRequireGetter(
-  this,
-  "EnvironmentActor",
-  "resource://devtools/server/actors/environment.js",
   true
 );
 loader.lazyRequireGetter(
@@ -141,23 +131,22 @@ function isObject(value) {
  * @constructor
  * @param object connection
  *        The connection to the client, DevToolsServerConnection.
- * @param object [parentActor]
+ * @param object [targetActor]
  *        Optional, the parent actor.
  */
 class WebConsoleActor extends Actor {
-  constructor(connection, parentActor) {
+  constructor(connection, targetActor) {
     super(connection, webconsoleSpec);
 
-    this.parentActor = parentActor;
+    this.targetActor = targetActor;
 
-    this.dbg = this.parentActor.dbg;
+    this.dbg = this.targetActor.dbg;
 
     this._gripDepth = 0;
     this._evalCounter = 0;
     this._listeners = new Set();
     this._lastConsoleInputEvaluation = undefined;
 
-    this.objectGrip = this.objectGrip.bind(this);
     this._onWillNavigate = this._onWillNavigate.bind(this);
     this._onChangedToplevelDocument =
       this._onChangedToplevelDocument.bind(this);
@@ -166,7 +155,7 @@ class WebConsoleActor extends Actor {
     this.onDocumentEvent = this.onDocumentEvent.bind(this);
 
     EventEmitter.on(
-      this.parentActor,
+      this.targetActor,
       "changed-toplevel-document",
       this._onChangedToplevelDocument
     );
@@ -201,10 +190,10 @@ class WebConsoleActor extends Actor {
    * @type nsIDOMWindow, WorkerGlobalScope or Sandbox
    */
   get global() {
-    if (this.parentActor.isRootActor) {
+    if (this.targetActor.isRootActor) {
       return this._getWindowForBrowserConsole();
     }
-    return this.parentActor.window || this.parentActor.workerGlobal;
+    return this.targetActor.targetGlobal;
   }
 
   /**
@@ -224,7 +213,7 @@ class WebConsoleActor extends Actor {
     // In case of WebExtension reload of the background page, the last
     // chrome window might be a dead wrapper, from which we can't check for window.closed.
     if (!window || Cu.isDeadWrapper(window) || window.closed) {
-      window = this.parentActor.window;
+      window = this.targetActor.window;
       if (!window) {
         // Try to find the Browser Console window to use instead.
         window = Services.wm.getMostRecentWindow("devtools:webconsole");
@@ -289,7 +278,7 @@ class WebConsoleActor extends Actor {
     this._evalGlobal = global;
 
     if (!this._progressListenerActive) {
-      EventEmitter.on(this.parentActor, "will-navigate", this._onWillNavigate);
+      EventEmitter.on(this.targetActor, "will-navigate", this._onWillNavigate);
       this._progressListenerActive = true;
     }
   }
@@ -340,7 +329,7 @@ class WebConsoleActor extends Actor {
     super.destroy();
 
     EventEmitter.off(
-      this.parentActor,
+      this.targetActor,
       "changed-toplevel-document",
       this._onChangedToplevelDocument
     );
@@ -351,40 +340,21 @@ class WebConsoleActor extends Actor {
   }
 
   /**
-   * Create and return an environment actor that corresponds to the provided
-   * Debugger.Environment. This is a straightforward clone of the ThreadActor's
-   * method except that it stores the environment actor in the web console
-   * actor's pool.
-   *
-   * @param Debugger.Environment environment
-   *        The lexical environment we want to extract.
-   * @return The EnvironmentActor for |environment| or |undefined| for host
-   *         functions or functions scoped to a non-debuggee global.
-   */
-  createEnvironmentActor(environment) {
-    if (!environment) {
-      return undefined;
-    }
-
-    if (environment.actor) {
-      return environment.actor;
-    }
-
-    const actor = new EnvironmentActor(environment, this);
-    this.manage(actor);
-    environment.actor = actor;
-
-    return actor;
-  }
-
-  /**
    * Create a grip for the given value.
    *
    * @param mixed value
+   * @param object objectActorAttributes
+   *        See createValueGrip in devtools/server/actors/object/utils.js
    * @return object
    */
-  createValueGrip(value) {
-    return createValueGrip(value, this, this.objectGrip);
+  createValueGrip(value, objectActorAttributes = {}) {
+    return createValueGrip(
+      this.targetActor.threadActor,
+      value,
+      this.targetActor.objectsPool,
+      0,
+      objectActorAttributes
+    );
   }
 
   /**
@@ -411,33 +381,6 @@ class WebConsoleActor extends Actor {
     }
     const dbgGlobal = this.dbg.makeGlobalObjectReference(this.global);
     return dbgGlobal.makeDebuggeeValue(value);
-  }
-
-  /**
-   * Create a grip for the given object.
-   *
-   * @param object object
-   *        The object you want.
-   * @param object pool
-   *        A Pool where the new actor instance is added.
-   * @param object
-   *        The object grip.
-   */
-  objectGrip(object, pool) {
-    const actor = new ObjectActor(
-      object,
-      {
-        thread: this.parentActor.threadActor,
-        getGripDepth: () => this._gripDepth,
-        incrementGripDepth: () => this._gripDepth++,
-        decrementGripDepth: () => this._gripDepth--,
-        createValueGrip: v => this.createValueGrip(v),
-        createEnvironmentActor: env => this.createEnvironmentActor(env),
-      },
-      this.conn
-    );
-    pool.manage(actor);
-    return actor.form();
   }
 
   /**
@@ -530,9 +473,9 @@ class WebConsoleActor extends Actor {
   // eslint-disable-next-line complexity
   async startListeners(listeners) {
     const startedListeners = [];
-    const global = !this.parentActor.isRootActor ? this.global : null;
+    const global = !this.targetActor.isRootActor ? this.global : null;
     const isTargetActorContentProcess =
-      this.parentActor.targetType === Targets.TYPES.PROCESS;
+      this.targetActor.targetType === Targets.TYPES.PROCESS;
 
     for (const event of listeners) {
       switch (event) {
@@ -546,7 +489,7 @@ class WebConsoleActor extends Actor {
               global,
               this.onConsoleServiceMessage,
               {
-                matchExactWindow: this.parentActor.ignoreSubFrames,
+                matchExactWindow: this.targetActor.ignoreSubFrames,
               }
             );
             this.consoleServiceListener.init();
@@ -561,8 +504,7 @@ class WebConsoleActor extends Actor {
               global,
               this.onConsoleAPICall,
               {
-                matchExactWindow: this.parentActor.ignoreSubFrames,
-                ...(this.parentActor.consoleAPIListenerOptions || {}),
+                matchExactWindow: this.targetActor.ignoreSubFrames,
               }
             );
             this.consoleAPIListener.init();
@@ -614,7 +556,7 @@ class WebConsoleActor extends Actor {
           }
           if (!this.documentEventsListener) {
             this.documentEventsListener = new DocumentEventsListener(
-              this.parentActor
+              this.targetActor
             );
 
             this.documentEventsListener.on("dom-loading", data =>
@@ -733,7 +675,7 @@ class WebConsoleActor extends Actor {
     const consoleServiceCachedMessages =
       messageTypes.includes("PageError") || messageTypes.includes("LogMessage")
         ? this.consoleServiceListener?.getCachedMessages(
-            !this.parentActor.isRootActor
+            !this.targetActor.isRootActor
           )
         : null;
 
@@ -750,7 +692,7 @@ class WebConsoleActor extends Actor {
             this.global?.performance?.timing?.navigationStart;
 
           const cache = this.consoleAPIListener.getCachedMessages(
-            !this.parentActor.isRootActor
+            !this.targetActor.isRootActor
           );
           cache.forEach(cachedMessage => {
             // Filter out messages that came from a ServiceWorker but happened
@@ -946,13 +888,13 @@ class WebConsoleActor extends Actor {
     // done for the client. This is used to disable all types of breakpoints for all sources
     // via `disabledBreaks`. When this flag is used, `reportExceptionsWhenBreaksAreDisabled`
     // allows to still pause on exceptions.
-    this.parentActor.threadActor.insideClientEvaluation = evalOptions;
+    this.targetActor.threadActor.insideClientEvaluation = evalOptions;
 
     let evalInfo;
     try {
       evalInfo = evalWithDebugger(input, evalOptions, this);
     } finally {
-      this.parentActor.threadActor.insideClientEvaluation = null;
+      this.targetActor.threadActor.insideClientEvaluation = null;
     }
 
     return new Promise((resolve, reject) => {
@@ -970,7 +912,8 @@ class WebConsoleActor extends Actor {
             evalInfo,
             input,
             request.eager,
-            mapped
+            mapped,
+            request.evalInTracer
           );
           resolve(result);
         } catch (err) {
@@ -981,7 +924,7 @@ class WebConsoleActor extends Actor {
   }
 
   // eslint-disable-next-line complexity
-  prepareEvaluationResult(evalInfo, input, eager, mapped) {
+  prepareEvaluationResult(evalInfo, input, eager, mapped, evalInTracer) {
     const evalResult = evalInfo.result;
     const helperResult = evalInfo.helperResult;
 
@@ -1009,26 +952,29 @@ class WebConsoleActor extends Actor {
         result = evalResult.yield;
       } else if ("throw" in evalResult) {
         const error = evalResult.throw;
-        errorGrip = this.createValueGrip(error);
+        const allowSideEffect = !eager;
+        errorGrip = this.createValueGrip(error, { allowSideEffect });
 
         exceptionStack = this.prepareStackForRemote(evalResult.stack);
 
         if (exceptionStack) {
-          // Set the frame based on the topmost stack frame for the exception.
-          const {
-            filename: source,
-            sourceId,
-            lineNumber: line,
-            columnNumber: column,
-          } = exceptionStack[0];
-          frame = { source, sourceId, line, column };
-
           exceptionStack =
             WebConsoleUtils.removeFramesAboveDebuggerEval(exceptionStack);
+
+          // Set the frame based on the topmost stack frame for the exception.
+          if (exceptionStack && exceptionStack.length) {
+            const {
+              filename: source,
+              sourceId,
+              lineNumber: line,
+              columnNumber: column,
+            } = exceptionStack[0];
+            frame = { source, sourceId, line, column };
+          }
         }
 
         errorMessage = String(error);
-        if (typeof error === "object" && error !== null) {
+        if (allowSideEffect && typeof error === "object" && error !== null) {
           try {
             errorMessage = DevToolsUtils.callPropertyOnObject(
               error,
@@ -1069,7 +1015,11 @@ class WebConsoleActor extends Actor {
           const line = error.errorLineNumber;
           const column = error.errorColumnNumber;
 
-          if (typeof line === "number" && typeof column === "number") {
+          if (
+            !frame &&
+            typeof line === "number" &&
+            typeof column === "number"
+          ) {
             // Set frame only if we have line/column numbers.
             frame = {
               source: "debugger eval code",
@@ -1101,16 +1051,18 @@ class WebConsoleActor extends Actor {
         }
       }
     }
-
     // If a value is encountered that the devtools server doesn't support yet,
     // the console should remain functional.
     let resultGrip;
     if (!awaitResult) {
       try {
         const objectActor =
-          this.parentActor.threadActor.getThreadLifetimeObject(result);
-        if (objectActor) {
-          resultGrip = this.parentActor.threadActor.createValueGrip(result);
+          this.targetActor.threadActor.getThreadLifetimeObject(result);
+        if (evalInTracer) {
+          const tracerActor = this.targetActor.getTargetScopedActor("tracer");
+          resultGrip = tracerActor.createValueGrip(result);
+        } else if (objectActor) {
+          resultGrip = this.targetActor.threadActor.createValueGrip(result);
         } else {
           resultGrip = this.createValueGrip(result);
         }
@@ -1317,7 +1269,7 @@ class WebConsoleActor extends Actor {
       return;
     }
 
-    const windowId = !this.parentActor.isRootActor
+    const windowId = !this.targetActor.isRootActor
       ? WebConsoleUtils.getInnerWindowId(this.global)
       : null;
 
@@ -1330,11 +1282,11 @@ class WebConsoleActor extends Actor {
       ConsoleAPIStorage.clearEvents(id);
     });
 
-    if (this.parentActor.isRootActor || !this.global) {
+    if (this.targetActor.isRootActor || !this.global) {
       // If were dealing with the root actor (e.g. the browser console), we want
       // to remove all cached messages, not only the ones specific to a window.
       Services.console.reset();
-    } else if (this.parentActor.ignoreSubFrames) {
+    } else if (this.targetActor.ignoreSubFrames) {
       Services.console.resetWindow(windowId);
     } else {
       WebConsoleUtils.getInnerWindowIDsForFrames(this.global).forEach(id =>
@@ -1369,7 +1321,7 @@ class WebConsoleActor extends Actor {
 
   getActorIdForInternalSourceId(id) {
     const actor =
-      this.parentActor.sourcesManager.getSourceActorByInternalSourceId(id);
+      this.targetActor.sourcesManager.getSourceActorByInternalSourceId(id);
     return actor ? actor.actorID : null;
   }
 
@@ -1414,14 +1366,6 @@ class WebConsoleActor extends Actor {
    */
   preparePageErrorForRemote(pageError) {
     const stack = this.prepareStackForRemote(pageError.stack);
-    let lineText = pageError.sourceLine;
-    if (
-      lineText &&
-      lineText.length > DevToolsServer.LONG_STRING_INITIAL_LENGTH
-    ) {
-      lineText = lineText.substr(0, DevToolsServer.LONG_STRING_INITIAL_LENGTH);
-    }
-
     let notesArray = null;
     const notes = pageError.notes;
     if (notes?.length) {
@@ -1458,7 +1402,6 @@ class WebConsoleActor extends Actor {
       exceptionDocURL: ErrorDocs.GetURL(pageError),
       sourceName,
       sourceId: this.getActorIdForInternalSourceId(sourceId),
-      lineText,
       lineNumber,
       columnNumber,
       category: pageError.category,
@@ -1657,7 +1600,9 @@ class WebConsoleActor extends Actor {
     const needEntries = ["Map", "WeakMap", "Set", "WeakSet"].includes(dataType);
     const ignoreNonIndexedProperties = isArray(tableItemGrip);
 
-    const tableItemActor = this.getActorByID(tableItemGrip.actor);
+    const tableItemActor = this.targetActor.objectsPool.getActorByID(
+      tableItemGrip.actor
+    );
     if (!tableItemActor) {
       return null;
     }
@@ -1681,8 +1626,9 @@ class WebConsoleActor extends Actor {
             const grip = desc[key];
 
             // We need to load sub-properties as well to render the table in a nice way.
-            const actor = grip && this.getActorByID(grip.actor);
-            if (actor) {
+            const actor =
+              grip && this.targetActor.objectsPool.getActorByID(grip.actor);
+            if (actor && typeof actor.enumProperties === "function") {
               const res = actor
                 .enumProperties({
                   ignoreNonIndexedProperties: isArray(grip),
@@ -1707,7 +1653,7 @@ class WebConsoleActor extends Actor {
   _onWillNavigate({ isTopLevel }) {
     if (isTopLevel) {
       this._evalGlobal = null;
-      EventEmitter.off(this.parentActor, "will-navigate", this._onWillNavigate);
+      EventEmitter.off(this.targetActor, "will-navigate", this._onWillNavigate);
       this._progressListenerActive = false;
     }
   }

@@ -4,7 +4,7 @@
 
 "use strict";
 
-const FRONTEND_BASE_HOST = "http://example.com";
+const FRONTEND_BASE_HOST = "https://example.com";
 const FRONTEND_BASE_PATH =
   "/browser/devtools/client/performance-new/test/browser/fake-frontend.html";
 const FRONTEND_BASE_URL = FRONTEND_BASE_HOST + FRONTEND_BASE_PATH;
@@ -25,7 +25,7 @@ add_task(async function test() {
 
   // This test assumes that the Web Developer preset is set by default, which is
   // not the case on Nightly and custom builds.
-  BackgroundJSM.changePreset(
+  PrefsPresets.changePreset(
     "aboutprofiling",
     "web-developer",
     Services.profiler.GetFeatures()
@@ -61,7 +61,7 @@ add_task(async function test_in_private_window() {
 
   // This test assumes that the Web Developer preset is set by default, which is
   // not the case on Nightly and custom builds.
-  BackgroundJSM.changePreset(
+  PrefsPresets.changePreset(
     "aboutprofiling",
     "web-developer",
     Services.profiler.GetFeatures()

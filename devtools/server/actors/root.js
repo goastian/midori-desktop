@@ -135,6 +135,18 @@ class RootActor extends Actor {
             "dom.worker.console.dispatch_events_to_main_thread"
           )
         : true,
+      // @backward-compat { version 143 } Process Descriptor's `getWatcher()`
+      // supports a new 'enableWindowGlobalThreadActors' flag to enable
+      // the WindowGlobal's thread actors when debugging the whole browser.
+      // This was actually changed in 137, but we support it for VSCode until
+      // ESR 140 is the only ESR available.
+      // This should happen when Firefox 143 gets released.
+      // Contact Holger Benl (hbenl) to make sure the VS Code extension is
+      // updated.
+      supportsEnableWindowGlobalThreadActors: true,
+      // @backward-compat { version 140 } Use the bulk API to transfer the
+      // performance profile data.
+      useBulkTransferForPerformanceProfile: true,
     };
   }
 
@@ -214,6 +226,17 @@ class RootActor extends Actor {
     this._globalActorPool = null;
     this._parameters = null;
   }
+
+  /**
+   * Method called by the client right after the root actor is communicated to it,
+   * with information about the frontend.
+   *
+   * For now this is used by Servo which implements different backend APIs,
+   * based on the frontend version. (backward compat to support many frontend versions
+   * on the same backend revision)
+   */
+  // eslint-disable-next-line no-unused-vars
+  connect({ frontendVersion }) {}
 
   /**
    * Gets the "root" form, which lists all the global actors that affect the entire
@@ -573,13 +596,15 @@ class RootActor extends Actor {
    *
    * @param String updateType
    *        Can be "available", "updated" or "destroyed"
+   * @param String resourceType
+   *        The type of resources to be notified about.
    * @param Array<json> resources
    *        List of all resources. A resource is a JSON object piped over to the client.
    *        It can contain actor IDs.
    *        It can also be or contain an actor form, to be manually marshalled by the client.
    *        (i.e. the frontend would have to manually instantiate a Front for the given actor form)
    */
-  notifyResources(updateType, resources) {
+  notifyResources(updateType, resourceType, resources) {
     if (resources.length === 0) {
       // Don't try to emit if the resources array is empty.
       return;
@@ -587,13 +612,13 @@ class RootActor extends Actor {
 
     switch (updateType) {
       case "available":
-        this.emit(`resource-available-form`, resources);
+        this.emit(`resources-available-array`, [[resourceType, resources]]);
         break;
       case "updated":
-        this.emit(`resource-updated-form`, resources);
+        this.emit(`resources-updated-array`, [[resourceType, resources]]);
         break;
       case "destroyed":
-        this.emit(`resource-destroyed-form`, resources);
+        this.emit(`resources-destroyed-array`, [[resourceType, resources]]);
         break;
       default:
         throw new Error("Unsupported update type: " + updateType);

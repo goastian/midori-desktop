@@ -77,18 +77,8 @@ export class ProjectSearch extends Component {
     return {
       doSearchForHighlight: PropTypes.func.isRequired,
       query: PropTypes.string.isRequired,
-      results: PropTypes.array.isRequired,
       searchSources: PropTypes.func.isRequired,
       selectSpecificLocationOrSameUrl: PropTypes.func.isRequired,
-      status: PropTypes.oneOf([
-        "INITIAL",
-        "FETCHING",
-        "CANCELED",
-        "DONE",
-        "ERROR",
-      ]).isRequired,
-      modifiers: PropTypes.object,
-      toggleProjectSearchModifier: PropTypes.func,
     };
   }
 
@@ -161,12 +151,7 @@ export class ProjectSearch extends Component {
       this.tooltip = tooltip;
       return;
     }
-    this.props.doSearchForHighlight(
-      this.state.query,
-      getEditor(),
-      matchItem.location.line,
-      matchItem.location.column
-    );
+    this.props.doSearchForHighlight(this.state.query, getEditor());
   };
 
   highlightMatches = lineMatch => {
@@ -375,6 +360,7 @@ export class ProjectSearch extends Component {
             expanded,
           });
         },
+        preventBlur: true,
         getKey: getFilePath,
       });
     }
@@ -384,7 +370,7 @@ export class ProjectSearch extends Component {
         : L10N.getStr("projectTextSearch.noResults");
     return div(
       {
-        className: "no-result-msg absolute-center",
+        className: "no-result-msg",
       },
       msg
     );

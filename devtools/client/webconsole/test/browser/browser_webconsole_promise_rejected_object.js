@@ -63,17 +63,17 @@ add_task(async function () {
     message.querySelector(".collapse-button").click();
     const framesEl = await waitFor(() => {
       const frames = message.querySelectorAll(
-        ".message-body-wrapper > .stacktrace .frame"
+        `.message-body-wrapper > .stacktrace .frame,
+         .message-body-wrapper > .stacktrace .location-async-cause`
       );
       return frames.length ? frames : null;
     }, "Couldn't find stacktrace");
 
-    const frames = Array.from(framesEl)
-      .map(frameEl =>
-        Array.from(
-          frameEl.querySelectorAll(".title, .location-async-cause")
-        ).map(el => el.textContent.trim())
-      )
+    const frames = [...framesEl]
+      .map(frameEl => {
+        const el = frameEl.querySelector(".title") || frameEl;
+        return el.textContent.trim();
+      })
       .flat();
 
     is(
@@ -101,16 +101,7 @@ add_task(async function () {
   ok(true, "The object was rendered in an ObjectInspector");
 
   info("Expanding the object");
-  const onOiExpanded = waitFor(() => {
-    return oi.querySelectorAll(".node").length === 3;
-  });
-  oi.querySelector(".arrow").click();
-  await onOiExpanded;
-
-  ok(
-    oi.querySelector(".arrow").classList.contains("expanded"),
-    "Object expanded"
-  );
+  await expandObjectInspectorNode(oi.querySelector(".tree-node"));
 
   // The object inspector now looks like:
   // Object { fav: "eggplant" }

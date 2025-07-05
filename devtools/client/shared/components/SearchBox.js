@@ -10,8 +10,8 @@ const {
   createFactory,
   createRef,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 
 const { LocalizationHelper } = require("resource://devtools/shared/l10n.js");
@@ -55,9 +55,10 @@ class SearchBox extends PureComponent {
       onKeyDown: PropTypes.func,
       placeholder: PropTypes.string.isRequired,
       summary: PropTypes.string,
+      summaryId: PropTypes.string,
       summaryTooltip: PropTypes.string,
       type: PropTypes.string,
-      value: PropTypes.string,
+      initialValue: PropTypes.string,
     };
   }
 
@@ -65,7 +66,7 @@ class SearchBox extends PureComponent {
     super(props);
 
     this.state = {
-      value: props.value || "",
+      value: props.initialValue || "",
       focused: false,
     };
 
@@ -215,6 +216,7 @@ class SearchBox extends PureComponent {
     const {
       autocompleteProvider,
       summary,
+      summaryId,
       summaryTooltip,
       learnMoreTitle,
       learnMoreUrl,
@@ -226,12 +228,10 @@ class SearchBox extends PureComponent {
       autocompleteProvider && this.state.focused && value !== "";
     const showLearnMoreLink = learnMoreUrl && value === "";
 
-    const inputClassList = [`devtools-${type}input`];
-
     return dom.div(
       { className: "devtools-searchbox" },
       dom.input({
-        className: inputClassList.join(" "),
+        className: `devtools-${type}input`,
         onBlur: this.onBlur,
         onChange: e => this.onChange(e.target.value),
         onFocus: this.onFocus,
@@ -240,6 +240,7 @@ class SearchBox extends PureComponent {
         ref: this.inputRef,
         value,
         type: "search",
+        "aria-describedby": (summary && summaryId) || undefined,
       }),
       showLearnMoreLink &&
         MDNLink({
@@ -250,7 +251,8 @@ class SearchBox extends PureComponent {
         ? dom.span(
             {
               className: "devtools-searchinput-summary",
-              title: summaryTooltip || "",
+              id: summaryId,
+              title: summaryTooltip,
             },
             summary
           )

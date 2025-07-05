@@ -46,10 +46,18 @@ add_task(async function () {
   });
 
   await waitForPaused(dbg, "original.js");
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "original.js").id, 8);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "original.js").id, 8);
   // Also open the genertated source to populate the reducer for original and generated sources
   await dbg.actions.jumpToMappedSelectedLocation();
   await waitForSelectedSource(dbg, "bundle.js");
+
+  const editor = getCMEditor(dbg);
+  // There are some sources in the soource editor
+  Assert.greater(
+    editor.sourcesCount(),
+    0,
+    "Some sources exists in the source editor cache"
+  );
 
   // Assert that reducer do have some data before remove the target.
   Assert.greater(dbg.selectors.getSourceCount(), 0, "Some sources exists");
@@ -64,8 +72,9 @@ add_task(async function () {
     !!dbg.selectors.getSourcesTreeSources().length,
     "There is sources displayed in the SourceTree"
   );
+  const location = dbg.selectors.getSelectedLocation();
   is(
-    dbg.selectors.getSelectedLocation().source.id,
+    location.source.id,
     findSource(dbg, "bundle.js").id,
     "The generated source is reporeted as selected"
   );
@@ -75,18 +84,8 @@ add_task(async function () {
     0,
     "Has some expanded source tree items"
   );
-
-  // But also directly querying the reducer states, as we don't necessarily
-  // have selectors exposing their raw internals
   let state = dbg.store.getState();
-  ok(
-    !!Object.keys(state.ast.mutableOriginalSourcesSymbols).length,
-    "Some symbols for original sources exists"
-  );
-  ok(
-    !!Object.keys(state.ast.mutableSourceActorSymbols).length,
-    "Some symbols for generated sources exists"
-  );
+
   ok(!!Object.keys(state.ast.mutableInScopeLines).length, "Some scopes exists");
   Assert.greater(
     state.sourceActors.mutableSourceActors.size,
@@ -125,6 +124,7 @@ add_task(async function () {
   // Assert they largest reducer data is cleared on thread removal
 
   // First via common selectors
+  is(editor.sourcesCount(), 0, "No sources exists in the source editor cache");
   is(dbg.selectors.getSourceCount(), 0, "No sources exists");
   is(dbg.selectors.getBreakpointCount(), 0, "No breakpoints exists");
   is(dbg.selectors.getSourceTabs().length, 0, "No tabs exists");
@@ -153,16 +153,6 @@ add_task(async function () {
   // But also directly querying the reducer states, as we don't necessarily
   // have selectors exposing their raw internals
   state = dbg.store.getState();
-  is(
-    Object.keys(state.ast.mutableOriginalSourcesSymbols).length,
-    0,
-    "No symbols for original sources exists"
-  );
-  is(
-    Object.keys(state.ast.mutableSourceActorSymbols).length,
-    0,
-    "No symbols for generated sources exists"
-  );
   is(Object.keys(state.ast.mutableInScopeLines).length, 0, "No scopes exists");
   is(state.sourceActors.mutableSourceActors.size, 0, "No source actor exists");
   is(

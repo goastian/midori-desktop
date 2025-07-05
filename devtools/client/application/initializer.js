@@ -14,11 +14,11 @@ const require = BrowserLoader({
 
 const {
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const {
   render,
   unmountComponentAtNode,
-} = require("resource://devtools/client/shared/vendor/react-dom.js");
+} = require("resource://devtools/client/shared/vendor/react-dom.mjs");
 const Provider = createFactory(
   require("resource://devtools/client/shared/vendor/react-redux.js").Provider
 );

@@ -8,8 +8,8 @@ const {
   Component,
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const ReactDOM = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 
 const FluentReact = require("resource://devtools/client/shared/vendor/fluent-react.js");

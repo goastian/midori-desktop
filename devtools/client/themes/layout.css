@@ -72,6 +72,8 @@
   display: inline-block;
   vertical-align: middle;
   outline-offset: 2px;
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
 }
 
 .layout-color-value {
@@ -109,15 +111,6 @@
 .layout-properties-wrapper .computed-property-value-container {
   flex: 1;
   display: block;
-}
-
-/**
- * Flex Container
- */
-
-#layout-flexbox-container {
-  display: flex;
-  flex-direction: column;
 }
 
 /**
@@ -332,10 +325,10 @@ html[dir="rtl"] .flex-item-list .devtools-button::after {
   /* Making sure the icon is visible against any background by creating a plain background
      around its shape, using a drop-shadow filter. */
   filter:
-    drop-shadow(1px 0px 0px var(--theme-body-background))
-    drop-shadow(0px 1px 0px var(--theme-body-background))
-    drop-shadow(-1px 0px 0px var(--theme-body-background))
-    drop-shadow(0px -1px 0px var(--theme-body-background));
+    drop-shadow(1px 0 0 var(--theme-body-background))
+    drop-shadow(0 1px 0 var(--theme-body-background))
+    drop-shadow(-1px 0 0 var(--theme-body-background))
+    drop-shadow(0 -1px 0 var(--theme-body-background));
 }
 
 .flex-outline.vertical-tb .flex-outline-final.clamped::after {

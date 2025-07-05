@@ -2,11 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-// Test enabling and disabling a breakpoint using the check boxes
-
 "use strict";
-
-add_task(async function () {
+// Test enabling and disabling a breakpoint using the check boxes
+add_task(async function testEnableDisableBreakpoints() {
   const dbg = await initDebugger("doc-scripts.html", "simple2.js");
 
   // Create two breakpoints
@@ -66,11 +64,57 @@ add_task(async function () {
   await cleanupBreakpoints(dbg);
 
   // Test creation of disabled breakpoint with shift-click
-  await shiftClickElement(dbg, "gutter", 3);
+  await shiftClickElement(dbg, "gutterElement", 3);
   await waitForBreakpoint(dbg, "simple2.js", 3);
 
   const bp = findBreakpoint(dbg, "simple2.js", 3);
   is(bp.disabled, true, "breakpoint is disabled");
+
+  // Cleanup
+  await cleanupBreakpoints(dbg);
+});
+
+// Test the keyboard events on the breakpoint list
+add_task(async function testBreakpointsKeyboardEvents() {
+  const dbg = await initDebugger("doc-scripts.html", "simple2.js");
+
+  // Create two breakpoints
+  await selectSource(dbg, "simple2.js");
+
+  info("Add two breakpoints");
+  await addBreakpoint(dbg, "simple2.js", 3);
+  await addBreakpoint(dbg, "simple2.js", 4);
+
+  info("Add conditional breakpoint to line 5");
+  setEditorCursorAt(dbg, 4, 1);
+  await setConditionalBreakpointWithKeyboardShortcut(dbg, "3");
+  pressKey(dbg, "Enter");
+  await waitForCondition(dbg, "3");
+
+  info("Focus and select first breakpoint with the keyboard shortcut");
+  let bp = findAllElements(dbg, "breakpointItems")[0];
+  bp.focus();
+  pressKey(dbg, "Enter");
+
+  info("Wait for line with the first breakpoint to be selected");
+  await waitFor(() => dbg.selectors.getSelectedLocation().line == 3);
+
+  info("Focus and select second breakpoint with the keyboard shortcut");
+  bp = findAllElements(dbg, "breakpointItems")[1];
+  bp.focus();
+  pressKey(dbg, "Space");
+
+  info("Wait for line with the second breakpoint to be selected");
+  await waitFor(() => dbg.selectors.getSelectedLocation().line == 4);
+
+  info(
+    "Focus and select and update conditional breakpoint with the keyboard shortcut"
+  );
+  bp = findAllElements(dbg, "breakpointItems")[2];
+  bp.focus();
+  pressKey(dbg, "ShiftEnter");
+  typeInPanel(dbg, "5");
+  await waitForCondition(dbg, "35");
 
   // Cleanup
   await cleanupBreakpoints(dbg);
@@ -95,8 +139,21 @@ async function enableBreakpoint(dbg, index) {
 }
 
 async function cleanupBreakpoints(dbg) {
-  clickElement(dbg, "gutter", 3);
-  clickElement(dbg, "gutter", 5);
+  ok(
+    findBreakpoint(dbg, "simple2.js", 3),
+    "Breakpoint on line 3 exists before trying to remove it"
+  );
+  let dispatched = waitForDispatch(dbg.store, "REMOVE_BREAKPOINT");
+  clickElement(dbg, "gutterElement", 3);
+  await dispatched;
   await waitForBreakpointRemoved(dbg, "simple2.js", 3);
+
+  // Breakpoint on line 5 doesn't always exists
+  if (!findBreakpoint(dbg, "simple2.js", 5)) {
+    return;
+  }
+  dispatched = waitForDispatch(dbg.store, "REMOVE_BREAKPOINT");
+  clickElement(dbg, "gutterElement", 5);
+  await dispatched;
   await waitForBreakpointRemoved(dbg, "simple2.js", 5);
 }

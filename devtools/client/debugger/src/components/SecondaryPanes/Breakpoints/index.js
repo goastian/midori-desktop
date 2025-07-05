@@ -44,6 +44,11 @@ class Breakpoints extends Component {
     this.removeEditor();
   }
 
+  /**
+   * Get an headless editor that can be used for syntax highlighting
+   *
+   * @returns {CodeMirror}
+   */
   getHeadlessEditor() {
     if (!this.headlessEditor) {
       this.headlessEditor = createHeadlessEditor();
@@ -119,6 +124,8 @@ class Breakpoints extends Component {
       return null;
     }
 
+    // We need to create a specific editor instance to handle cases where we don't have
+    // any editor opened yet.
     const editor = this.getHeadlessEditor();
     const sources = breakpointSources.map(({ source }) => source);
     return div(

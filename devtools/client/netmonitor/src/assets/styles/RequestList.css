@@ -33,16 +33,43 @@
 }
 
 .requests-list-slow-button {
-  width: 12px;
-  height: 12px;
+  width: 22px;
   position: absolute;
   right: 0;
-  transform: translateY(-50%);
-  top: 50%;
+  inset-block: 0;
   cursor: pointer;
+    /* The slow icon is absolutely positioned and can can overlap the column text.
+       This background gradient is added on its left side so the icon
+       has a solid background and the text slowly fades before the icon. */
   background-image: linear-gradient(to right,transparent, var(--theme-body-background) 43%);
-  padding-inline-end: 30px;
-  padding-inline-start: 5px;
+  padding-inline: 5px 30px;
+
+  &::before {
+    content: "";
+    width: 12px;
+    height: 100%;
+    display: inline-block;
+    background-image: url(chrome://devtools/content/netmonitor/src/assets/icons/turtle.svg);
+    background-repeat: no-repeat;
+    background-position: right center;
+    padding-inline-end: 14px;
+    fill: var(--theme-icon-dimmed-color);
+    -moz-context-properties: fill;
+  }
+
+  :root[forced-colors-active] & {
+    /* In High Contrast Mode, the background gradient is removed, so the icon would
+       overlap the text underneath, making it unreadable.
+       To fix this, we set a plain solid color on the icon in HCM, which also needed
+       some dimensions tweaks to make it look nice. */
+    background-color: Canvas;
+    padding-inline: 5px;
+
+    &::before {
+      color: CanvasText;
+      padding: 0;
+    }
+  }
 }
 
 .request-list-item:not(.selected).odd .requests-list-slow-button {
@@ -56,19 +83,13 @@
 
 .request-list-item.selected .requests-list-slow-button {
   background-image: linear-gradient(to right,transparent, var(--theme-selection-background) 43%);
-}
 
-.requests-list-slow-button::before {
-  content: "";
-  width: 12px;
-  height: 16px;
-  display: inline-block;
-  background-image: url(chrome://devtools/content/netmonitor/src/assets/icons/turtle.svg);
-  background-repeat: no-repeat;
-  background-position-x: right;
-  padding-inline-end: 14px;
-  fill: var(--grey-40);
-  -moz-context-properties: fill;
+  :root[forced-colors-active] & {
+    background-color: var(--theme-selection-background);
+    &::before {
+      color: var(--theme-selection-color);
+    }
+  }
 }
 
 .request-list-item.selected .requests-list-slow-button::before {
@@ -194,14 +215,12 @@
   background-color: transparent;
 }
 
-.requests-list-header-button::-moz-focus-inner,
-.message-list-header-button::-moz-focus-inner {
-  border: 0;
-  padding: 0;
-}
-
 .requests-list-header-button:hover {
   background-color: rgba(0, 0, 0, 0.1);
+}
+
+#requests-list-override-button:hover {
+  background-color: unset;
 }
 
 .requests-list-header-button > .button-text,
@@ -351,6 +370,14 @@
   fill: var(--theme-icon-dimmed-color);
 }
 
+.request-list-item.selected .status-code:not(.status-code-blocked) {
+  outline: 1px solid currentColor;
+}
+
+:root[forced-colors-active] .request-list-item.selected .status-code {
+  color: var(--theme-selection-color);
+}
+
 .request-list-item.selected .status-code-blocked,
 .request-list-item.selected .requests-security-state-icon,
 .request-list-item.selected .tracking-resource {
@@ -413,6 +440,15 @@
   /* Background created on a <canvas> in js. */
   /* @see devtools/client/netmonitor/src/widgets/WaterfallBackground.js */
   background-image: -moz-element(#waterfall-background);
+
+  :root[forced-colors-active] & {
+    /* Make sure that the background is visible in High Contrast Mode */
+    forced-color-adjust: none;
+    & > * {
+      /* and reset forced-color-adjust on children so we respect HCM */
+      forced-color-adjust: auto;
+    }
+  }
 }
 
 .requests-list-waterfall:dir(rtl) {
@@ -555,9 +591,9 @@
 }
 
 /*
- * Dim requests served from cache
+ * Dim requests served from cache when High Contrast Mode is not enabled
  */
-.request-list-item:not(.selected, :hover).fromCache {
+:root:not([forced-colors-active]) .request-list-item:not(.selected, :hover).fromCache {
   --table-icon-opacity: 0.7;
   color: var(--theme-text-color-alt);
 }

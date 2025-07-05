@@ -45,6 +45,8 @@ class WindowGlobalTargetFront extends TargetMixin(
     this.browsingContextID = json.browsingContextID;
     this.innerWindowId = json.innerWindowId;
     this.processID = json.processID;
+    this.isFallbackExtensionDocument = json.isFallbackExtensionDocument;
+    this.addonId = json.addonId;
 
     // Save the full form for Target class usage.
     // Do not use `form` name to avoid colliding with protocol.js's `form` method
@@ -81,10 +83,8 @@ class WindowGlobalTargetFront extends TargetMixin(
     event.isFrameSwitching = packet.isFrameSwitching;
 
     // Keep the title unmodified when a developer toolbox switches frame
-    // for a tab (Bug 1261687), but always update the title when the target
-    // is a WebExtension (where the addon name is always included in the title
-    // and the url is supposed to be updated every time the selected frame changes).
-    if (!packet.isFrameSwitching || this.isWebExtension) {
+    // for a tab (Bug 1261687).
+    if (!packet.isFrameSwitching) {
       this.setTitle(packet.title);
       this.setUrl(packet.url);
     }

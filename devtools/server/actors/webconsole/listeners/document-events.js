@@ -109,12 +109,22 @@ DocumentEventsListener.prototype = {
       return;
     }
 
-    const time = window.performance.timing.navigationStart;
+    const time = this._getPerformanceTiming(window, "navigationStart");
 
     this.emit("dom-loading", {
       time,
       isFrameSwitching,
     });
+
+    // Error pages, like the Offline page, i.e. about:neterror?...
+    // are special and the WebProgress listener doesn't trigger any notification for them.
+    // Also they are stuck on "interactive" state and never reach the "complete" state.
+    // So fake the two missing events.
+    if (window.docShell.currentDocumentChannel?.loadInfo.loadErrorPage) {
+      this.onContentLoaded({ target: window.document }, isFrameSwitching);
+      this.onLoad({ target: window.document }, isFrameSwitching);
+      return;
+    }
 
     const { readyState } = window.document;
     if (readyState != "interactive" && readyState != "complete") {
@@ -151,7 +161,7 @@ DocumentEventsListener.prototype = {
     // on the main document, that is when its Document.readyState changes to
     // 'interactive' and the corresponding readystatechange event is thrown
     const window = event.target.defaultView;
-    const time = window.performance.timing.domInteractive;
+    const time = this._getPerformanceTiming(window, "domInteractive");
     this.emit("dom-interactive", { time, isFrameSwitching });
   },
 
@@ -163,7 +173,7 @@ DocumentEventsListener.prototype = {
     // on the main document, that is when its Document.readyState changes to
     // 'complete' and the corresponding readystatechange event is thrown
     const window = event.target.defaultView;
-    const time = window.performance.timing.domComplete;
+    const time = this._getPerformanceTiming(window, "domComplete");
     this.emit("dom-complete", {
       time,
       isFrameSwitching,
@@ -183,10 +193,10 @@ DocumentEventsListener.prototype = {
     const isWindow = flag & Ci.nsIWebProgressListener.STATE_IS_WINDOW;
     const window = progress.DOMWindow;
     if (isDocument && isStop) {
-      const time = window.performance.timing.domInteractive;
+      const time = this._getPerformanceTiming(window, "domInteractive");
       this.emit("dom-interactive", { time });
     } else if (isWindow && isStop) {
-      const time = window.performance.timing.domComplete;
+      const time = this._getPerformanceTiming(window, "domComplete");
       this.emit("dom-complete", {
         time,
         hasNativeConsoleAPI: this.hasNativeConsoleAPI(window),
@@ -226,12 +236,39 @@ DocumentEventsListener.prototype = {
     this.targetActor.off("will-navigate", this.onWillNavigate);
     this.targetActor.off("window-ready", this.onWindowReady);
     if (this.webProgress) {
-      this.webProgress.removeProgressListener(
-        this,
-        Ci.nsIWebProgress.NOTIFY_STATE_WINDOW |
-          Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT
-      );
+      // Bug 1904733 - `removeProgressListener` may throw on toolbox/document destruction and lead to intermittent failure
+      try {
+        this.webProgress.removeProgressListener(
+          this,
+          Ci.nsIWebProgress.NOTIFY_STATE_WINDOW |
+            Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT
+        );
+      } catch (e) {}
+      this.webProgress = null;
     }
+  },
+
+  /**
+   * Safe getter for performance timings on the window object.
+   * See Bug 1934520.
+   *
+   * @param {Window} window
+   *     The window object for which the performance timing should be retrieved.
+   * @param {string} timing
+   *     The name of the timing property to retrieve.
+   *
+   * @returns {number}
+   *     The performance timing as a timestamp (milliseconds since epoch) or -1
+   *     if the performance object is not available.
+   */
+  _getPerformanceTiming(window, timing) {
+    if (!window.performance?.timing) {
+      // Some windows, such as the ones created for broken XML documents, don't
+      // have a valid performance object.
+      return -1;
+    }
+
+    return window.performance.timing[timing];
   },
 
   QueryInterface: ChromeUtils.generateQI([

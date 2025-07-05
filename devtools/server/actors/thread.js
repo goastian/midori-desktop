@@ -15,6 +15,9 @@ const { threadSpec } = require("resource://devtools/shared/specs/thread.js");
 const {
   createValueGrip,
 } = require("resource://devtools/server/actors/object/utils.js");
+const {
+  ObjectActorPool,
+} = require("resource://devtools/server/actors/object/ObjectActorPool.js");
 const DevToolsUtils = require("resource://devtools/shared/DevToolsUtils.js");
 const Debugger = require("Debugger");
 const { assert, dumpn, reportException } = DevToolsUtils;
@@ -29,11 +32,14 @@ const {
   WatchpointMap,
 } = require("resource://devtools/server/actors/utils/watchpoint-map.js");
 
-const {
-  logEvent,
-} = require("resource://devtools/server/actors/utils/logEvent.js");
 const Targets = require("devtools/server/actors/targets/index");
 
+loader.lazyRequireGetter(
+  this,
+  "logEvent",
+  "resource://devtools/server/actors/utils/logEvent.js",
+  true
+);
 loader.lazyRequireGetter(
   this,
   "EnvironmentActor",
@@ -44,12 +50,6 @@ loader.lazyRequireGetter(
   this,
   "BreakpointActorMap",
   "resource://devtools/server/actors/utils/breakpoint-actor-map.js",
-  true
-);
-loader.lazyRequireGetter(
-  this,
-  "PauseScopedObjectActor",
-  "resource://devtools/server/actors/pause-scoped.js",
   true
 );
 loader.lazyRequireGetter(
@@ -110,6 +110,7 @@ const getAsyncParentFrame = frame => {
     PROMISE_REACTIONS.get(frame.asyncPromise) ||
     frame.asyncPromise.getPromiseReactions();
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     // We loop here because we may have code like:
     //
@@ -223,8 +224,6 @@ class ThreadActor extends Actor {
     this.createCompletionGrip = this.createCompletionGrip.bind(this);
     this.onDebuggerStatement = this.onDebuggerStatement.bind(this);
     this.onNewScript = this.onNewScript.bind(this);
-    this.objectGrip = this.objectGrip.bind(this);
-    this.pauseObjectGrip = this.pauseObjectGrip.bind(this);
     this._onOpeningRequest = this._onOpeningRequest.bind(this);
     this._onNewDebuggee = this._onNewDebuggee.bind(this);
     this._onExceptionUnwind = this._onExceptionUnwind.bind(this);
@@ -272,9 +271,13 @@ class ThreadActor extends Actor {
     return this.state == STATES.RUNNING || this.state == STATES.PAUSED;
   }
 
+  get pauseLifetimePool() {
+    return this._pausePool;
+  }
+
   get threadLifetimePool() {
     if (!this._threadLifetimePool) {
-      this._threadLifetimePool = new Pool(this.conn, "thread");
+      this._threadLifetimePool = new ObjectActorPool(this, "thread", true);
       this._threadLifetimePool.objectActors = new WeakMap();
     }
     return this._threadLifetimePool;
@@ -284,8 +287,9 @@ class ThreadActor extends Actor {
     return this.threadLifetimePool.objectActors.get(raw);
   }
 
-  createValueGrip(value) {
-    return createValueGrip(value, this.threadLifetimePool, this.objectGrip);
+  promoteObjectToThreadLifetime(objectActor) {
+    this.threadLifetimePool.manage(objectActor);
+    this.threadLifetimePool.objectActors.set(objectActor.obj, objectActor);
   }
 
   get sourcesManager() {
@@ -598,9 +602,7 @@ class ThreadActor extends Actor {
   }
 
   getAvailableEventBreakpoints() {
-    return getAvailableEventBreakpoints(
-      this.targetActor.window || this.targetActor.workerGlobal
-    );
+    return getAvailableEventBreakpoints(this.targetActor.targetGlobal);
   }
   getActiveEventBreakpoints() {
     return Array.from(this._activeEventBreakpoints);
@@ -898,13 +900,7 @@ class ThreadActor extends Actor {
     }
 
     if (this._options.logEventBreakpoints) {
-      return logEvent({
-        threadActor: this,
-        frame,
-        level: "logPoint",
-        expression: `[_event]`,
-        bindings: { _event: frame.arguments[0] },
-      });
+      return logEvent({ threadActor: this, frame });
     }
 
     return this._pauseAndRespond(frame, {
@@ -1146,16 +1142,14 @@ class ThreadActor extends Actor {
       return packet;
     }
 
-    const createGrip = value =>
-      createValueGrip(value, this._pausePool, this.objectGrip);
     packet.why.frameFinished = {};
 
     if (completion.hasOwnProperty("return")) {
-      packet.why.frameFinished.return = createGrip(completion.return);
+      packet.why.frameFinished.return = this.createValueGrip(completion.return);
     } else if (completion.hasOwnProperty("yield")) {
-      packet.why.frameFinished.return = createGrip(completion.yield);
+      packet.why.frameFinished.return = this.createValueGrip(completion.yield);
     } else if (completion.hasOwnProperty("throw")) {
-      packet.why.frameFinished.throw = createGrip(completion.throw);
+      packet.why.frameFinished.throw = this.createValueGrip(completion.throw);
     }
 
     return packet;
@@ -1492,15 +1486,60 @@ class ThreadActor extends Actor {
   }
 
   addAllSources() {
-    // Compare the sources we find with the source URLs which have been loaded
-    // in debuggee realms. Count the number of sources associated with each
-    // URL so that we can detect if an HTML file has had some inline sources
-    // collected but not all.
+    // This method aims at instantiating Source Actors for all already existing
+    // sources (via `_addSource()`).
+    // This is called on each new target instantiation:
+    //   * when a new document or debugging context is instantiated. This
+    //     method should be a no-op as there should be no pre-existing sources.
+    //   * when devtools open. This time there might be pre-existing sources.
+    //
+    // We are using Debugger API `findSources()` for instantating source actors
+    // of all still-active sources. But we want to also "resurrect" sources
+    // which ran before DevTools were opened and were garbaged collected.
+    // `findSources()` won't return them.
+    // Debugger API `findSourceURLs()` will return the source URLs of all the
+    // sources, GC-ed and still active ones.
+    //
+    // We are using `urlMap` to identify the GC-ed sources.
+    //
+    // We have two special edgecases:
+    //
+    // # HTML sources and inline <script> tags
+    //
+    // HTML sources will be specific to a given URL, but may relate to multiple
+    // inline <script> tag. Each script will be related to a given Debugger API
+    // source and a given DevTools Source Actor.
+    // We collect all active sources in `urlMap`'s `sources` array so that we
+    // only resurrect the GC-ed inline <script> and not the one which are still
+    // active.
+    //
+    // # asm.js / wasm
+    //
+    // DevTools toggles Debugger API `allowUnobservedAsmJS` and
+    // `allowUnobservedWasm` to false on opening. This changes how asm.js and
+    // Wasm sources are compiled. But only to sources created after DevTools
+    // are opened. This typically requires to reload the page.
+    //
+    // Before DevTools are opened, the asm.js functions are compiled into wasm
+    // instances, and they are visible as "wasm" sources in `findSources()`.
+    // The wasm instance doesn't keep the top-level normal JS script and the
+    // corresponding JS source alive. If only the "wasm" source is found for
+    // certain URL, the source needs to be re-compiled.
+    //
+    // Here, we should be careful to re-compile these sources the way they were
+    // compiled before DevTools opening. Otherwise the re-compilation will
+    // create Debugger.Script instances backed by normal JS functions for those
+    // asm.js functions, which results in an inconsistency between what's
+    // running in the debuggee and what's shown in DevTools.
+    //
+    // We are using `urlMap`'s `hasWasm` to flag them and instruct
+    // `resurrectSource()` to re-compile the sources as if DevTools was off and
+    // without debugging ability.
     const urlMap = {};
     for (const url of this.dbg.findSourceURLs()) {
       if (url !== "self-hosted") {
         if (!urlMap[url]) {
-          urlMap[url] = { count: 0, sources: [] };
+          urlMap[url] = { count: 0, sources: [], hasWasm: false };
         }
         urlMap[url].count++;
       }
@@ -1510,6 +1549,13 @@ class ThreadActor extends Actor {
 
     for (const source of sources) {
       this._addSource(source);
+
+      if (source.introductionType === "wasm") {
+        const origURL = source.url.replace(/^wasm:/, "");
+        if (urlMap[origURL]) {
+          urlMap[origURL].hasWasm = true;
+        }
+      }
 
       // The following check should match the filtering done by `findSourceURLs`:
       // https://searchfox.org/mozilla-central/rev/ac7a567f036e1954542763f4722fbfce041fb752/js/src/debugger/Debugger.cpp#2406-2409
@@ -1528,7 +1574,7 @@ class ThreadActor extends Actor {
     // Resurrect any URLs for which not all sources are accounted for.
     for (const [url, data] of Object.entries(urlMap)) {
       if (data.count > 0) {
-        this._resurrectSource(url, data.sources);
+        this._resurrectSource(url, data.sources, data.hasWasm);
       }
     }
   }
@@ -1665,7 +1711,7 @@ class ThreadActor extends Actor {
     // Create the actor pool that will hold the pause actor and its
     // children.
     assert(!this._pausePool, "No pause pool should exist yet");
-    this._pausePool = new Pool(this.conn, "pause");
+    this._pausePool = new ObjectActorPool(this, "pause", true);
 
     // Give children of the pause pool a quick link back to the
     // thread...
@@ -1755,75 +1801,24 @@ class ThreadActor extends Actor {
   }
 
   /**
-   * Create a grip for the given debuggee object.
+   * Create a grip for the given debuggee value.
+   * Depdending on if the thread is paused, the object actor may have a different lifetime:
+   *  - when thread is paused, the object actor will be kept alive until the thread is resumed
+   *    (which also happens when we step)
+   *  - when thread is not paused, the object actor will be kept alive until the related target
+   *    is destroyed (thread stops or devtools closes)
    *
-   * @param value Debugger.Object
-   *        The debuggee object value.
-   * @param pool Pool
-   *        The actor pool where the new object actor will be added.
+   * @param value Debugger.Object|any
+   *        A Debugger.Object for all JS objects, or any primitive JS type.
+   * @return The value's grip
+   *        Primitive JS type, Object actor Form JSON object, or a JSON object to describe the value.
    */
-  objectGrip(value, pool) {
-    if (!pool.objectActors) {
-      pool.objectActors = new WeakMap();
-    }
+  createValueGrip(value) {
+    // When the thread is paused, all objects are stored in a transient pool
+    // which will be cleared on resume (which also happens when we step).
+    const pool = this._pausePool || this.threadLifetimePool;
 
-    if (pool.objectActors.has(value)) {
-      return pool.objectActors.get(value).form();
-    }
-
-    if (this.threadLifetimePool.objectActors.has(value)) {
-      return this.threadLifetimePool.objectActors.get(value).form();
-    }
-
-    const actor = new PauseScopedObjectActor(
-      value,
-      {
-        thread: this,
-        getGripDepth: () => this._gripDepth,
-        incrementGripDepth: () => this._gripDepth++,
-        decrementGripDepth: () => this._gripDepth--,
-        createValueGrip: v => {
-          if (this._pausePool) {
-            return createValueGrip(v, this._pausePool, this.pauseObjectGrip);
-          }
-
-          return createValueGrip(v, this.threadLifetimePool, this.objectGrip);
-        },
-        createEnvironmentActor: (e, p) => this.createEnvironmentActor(e, p),
-        promote: () => this.threadObjectGrip(actor),
-        isThreadLifetimePool: () =>
-          actor.getParent() !== this.threadLifetimePool,
-      },
-      this.conn
-    );
-    pool.manage(actor);
-    pool.objectActors.set(value, actor);
-    return actor.form();
-  }
-
-  /**
-   * Create a grip for the given debuggee object with a pause lifetime.
-   *
-   * @param value Debugger.Object
-   *        The debuggee object value.
-   */
-  pauseObjectGrip(value) {
-    if (!this._pausePool) {
-      throw new Error("Object grip requested while not paused.");
-    }
-
-    return this.objectGrip(value, this._pausePool);
-  }
-
-  /**
-   * Extend the lifetime of the provided object actor to thread lifetime.
-   *
-   * @param actor object
-   *        The object actor.
-   */
-  threadObjectGrip(actor) {
-    this.threadLifetimePool.manage(actor);
-    this.threadLifetimePool.objectActors.set(actor.obj, actor);
+    return createValueGrip(this, value, pool);
   }
 
   _onWindowReady({ isTopLevel, isBFCache }) {
@@ -1930,10 +1925,11 @@ class ThreadActor extends Actor {
         message: `DOM Mutation: '${mutationType}'`,
       },
       pkt => {
-        // We have to add this here because `_pausePool` is `null` beforehand.
-        pkt.why.nodeGrip = this.objectGrip(targetObj, this._pausePool);
+        // We have to create the object actors late, from here because `_pausePool` is `null` beforehand,
+        // and the actors created by createValueGrip would otherwise be registered in the thread lifetime pool
+        pkt.why.nodeGrip = this.createValueGrip(targetObj);
         pkt.why.ancestorGrip = ancestorObj
-          ? this.objectGrip(ancestorObj, this._pausePool)
+          ? this.createValueGrip(ancestorObj)
           : null;
         pkt.why.action = action;
         return pkt;
@@ -2057,7 +2053,7 @@ class ThreadActor extends Actor {
 
       packet.why = {
         type: PAUSE_REASONS.EXCEPTION,
-        exception: createValueGrip(value, this._pausePool, this.objectGrip),
+        exception: this.createValueGrip(value),
       };
       this.emit("paused", packet);
 
@@ -2205,8 +2201,11 @@ class ThreadActor extends Actor {
    * @param existingInlineSources The inline sources for the URL the debugger knows about
    *                              already, and that we shouldn't re-create (only used when
    *                              url content type is text/html).
+   * @param forceEnableAsmJS A boolean to force enable the asm.js feature.
+   *                         See the comment inside addAllSources for more
+   *                         details.
    */
-  async _resurrectSource(url, existingInlineSources) {
+  async _resurrectSource(url, existingInlineSources, forceEnableAsmJS) {
     let { content, contentType, sourceMapURL } =
       await this.sourcesManager.urlContents(
         url,
@@ -2296,6 +2295,7 @@ class ThreadActor extends Actor {
               startLine,
               startColumn,
               isScriptElement: true,
+              forceEnableAsmJS,
             })
           );
         } catch (e) {
@@ -2321,6 +2321,7 @@ class ThreadActor extends Actor {
           url,
           startLine: 1,
           sourceMapURL,
+          forceEnableAsmJS,
         })
       );
     } catch (e) {

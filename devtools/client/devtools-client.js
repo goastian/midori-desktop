@@ -13,6 +13,9 @@ const EventEmitter = require("resource://devtools/shared/event-emitter.js");
 const {
   UnsolicitedNotifications,
 } = require("resource://devtools/client/constants.js");
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
+);
 
 loader.lazyRequireGetter(
   this,
@@ -67,13 +70,29 @@ function DevToolsClient(transport) {
    * the connection's root actor.
    */
   this.mainRoot = null;
-  this.expectReply("root", packet => {
+  this.expectReply("root", async packet => {
     if (packet.error) {
       console.error("Error when waiting for root actor", packet);
       return;
     }
 
     this.mainRoot = createRootFront(this, packet);
+
+    // Once the root actor has been communicated by the server,
+    // emit a request to it to also push informations down to the server.
+    //
+    // This request has been added in Firefox 133.
+    try {
+      await this.mainRoot.connect({
+        frontendVersion: AppConstants.MOZ_APP_VERSION,
+      });
+    } catch (e) {
+      // Ignore errors of unsupported packet as the server may not yet support this request.
+      // The request may also fail to complete in tests when closing DevTools quickly after opening.
+      if (!e.message.includes("unrecognizedPacketType")) {
+        throw e;
+      }
+    }
 
     this.emit("connected", packet.applicationType, packet.traits);
   });
@@ -105,6 +124,7 @@ DevToolsClient.prototype = {
     return new Promise(resolve => {
       this.once("connected", (applicationType, traits) => {
         this.traits = traits;
+
         resolve([applicationType, traits]);
       });
 
@@ -158,29 +178,39 @@ DevToolsClient.prototype = {
    *           passed as event data.
    *         * bulk-reply: The server replied with bulk data, which you can read
    *           using the event data object containing:
-   *           * actor:  Name of actor that received the packet
-   *           * type:   Name of actor's method that was called on receipt
-   *           * length: Size of the data to be read
-   *           * stream: This input stream should only be used directly if you
-   *                     can ensure that you will read exactly |length| bytes
-   *                     and will not close the stream when reading is complete
-   *           * done:   If you use the stream directly (instead of |copyTo|
-   *                     below), you must signal completion by resolving /
-   *                     rejecting this promise.  If it's rejected, the
-   *                     transport will be closed.  If an Error is supplied as a
-   *                     rejection value, it will be logged via |dumpn|.  If you
-   *                     do use |copyTo|, resolving is taken care of for you
-   *                     when copying completes.
-   *           * copyTo: A helper function for getting your data out of the
-   *                     stream that meets the stream handling requirements
-   *                     above, and has the following signature:
+   *           * actor:        Name of actor that received the packet
+   *           * type:         Name of actor's method that was called on receipt
+   *           * length:       Size of the data to be read
+   *           * stream:       This input stream should only be used directly if you
+   *                           can ensure that you will read exactly |length| bytes
+   *                           and will not close the stream when reading is complete
+   *           * done:         If you use the stream directly (instead of |copyTo|
+   *                           or |copyToBuffer| below), you must signal
+   *                           completion by resolving / rejecting this promise.
+   *                           If it's rejected, the transport will be closed.
+   *                           If an Error is supplied as a rejection value, it
+   *                           will be logged via |dumpn|.  If you do use
+   *                           |copyTo| or |copyToBuffer|, resolving is taken
+   *                           care of for you when copying completes.
+   *           * copyTo:       A helper function for getting your data out of the
+   *                           stream that meets the stream handling requirements
+   *                           above, and has the following signature:
    *             @param  output nsIAsyncOutputStream
-   *                     The stream to copy to.
+   *                           The stream to copy to.
    *             @return Promise
-   *                     The promise is resolved when copying completes or
-   *                     rejected if any (unexpected) errors occur.
-   *                     This object also emits "progress" events for each chunk
-   *                     that is copied.  See stream-utils.js.
+   *                           The promise is resolved when copying completes or
+   *                           rejected if any (unexpected) errors occur.
+   *                           This object also emits "progress" events for each chunk
+   *                           that is copied.  See stream-utils.js.
+   *           * copyToBuffer: a helper function for getting your data out of the stream
+   *                           that meets the stream handling requirements above, and has
+   *                           the following signature:
+   *             @param output ArrayBuffer
+   *                           The buffer to copy to. It needs to be the same length as the data
+   *                           to be transfered.
+   *             @return Promise
+   *                           The promise is resolved when copying completes or rejected if any
+   *                           (unexpected) error occurs.
    */
   request(packet) {
     if (!this.mainRoot) {
@@ -263,20 +293,22 @@ DevToolsClient.prototype = {
    *         Events emitted:
    *         * bulk-send-ready: Ready to send bulk data to the server, using the
    *           event data object containing:
-   *           * stream:   This output stream should only be used directly if
-   *                       you can ensure that you will write exactly |length|
-   *                       bytes and will not close the stream when writing is
-   *                       complete
-   *           * done:     If you use the stream directly (instead of |copyFrom|
-   *                       below), you must signal completion by resolving /
-   *                       rejecting this promise.  If it's rejected, the
-   *                       transport will be closed.  If an Error is supplied as
-   *                       a rejection value, it will be logged via |dumpn|.  If
-   *                       you do use |copyFrom|, resolving is taken care of for
-   *                       you when copying completes.
-   *           * copyFrom: A helper function for getting your data onto the
-   *                       stream that meets the stream handling requirements
-   *                       above, and has the following signature:
+   *           * stream:         This output stream should only be used directly if
+   *                             you can ensure that you will write exactly |length|
+   *                             bytes and will not close the stream when writing is
+   *                             complete
+   *           * done:           If you use the stream directly (instead of |copyFrom|
+   *                             or |copyFromBuffer| below), you must signal
+   *                             completion by resolving / rejecting this
+   *                             promise.  If it's rejected, the transport will
+   *                             be closed.  If an Error is supplied as a
+   *                             rejection value, it will be logged via |dumpn|.
+   *                             If you do use |copyFrom| or |copyFromBuffer|,
+   *                             resolving is taken care of for you when copying
+   *                             completes.
+   *           * copyFrom:       A helper function for getting your data onto the
+   *                             stream that meets the stream handling requirements
+   *                             above, and has the following signature:
    *             @param  input nsIAsyncInputStream
    *                     The stream to copy from.
    *             @return Promise
@@ -284,33 +316,54 @@ DevToolsClient.prototype = {
    *                     rejected if any (unexpected) errors occur.
    *                     This object also emits "progress" events for each chunk
    *                     that is copied.  See stream-utils.js.
+   *           * copyFromBuffer: A helper function for getting your data onto
+   *                             the stream that meets the stream handling
+   *                             requirements above, and has the following
+   *                             signature:
+   *             @param  input ArrayBuffer
+   *                     The buffer to read from. It needs to be the same length
+   *                     as the data to write.
+   *             @return Promise
+   *                     The promise is resolved when copying completes or
+   *                     rejected if any (unexpected) errors occur.
    *         * json-reply: The server replied with a JSON packet, which is
    *           passed as event data.
    *         * bulk-reply: The server replied with bulk data, which you can read
    *           using the event data object containing:
-   *           * actor:  Name of actor that received the packet
-   *           * type:   Name of actor's method that was called on receipt
-   *           * length: Size of the data to be read
-   *           * stream: This input stream should only be used directly if you
-   *                     can ensure that you will read exactly |length| bytes
-   *                     and will not close the stream when reading is complete
-   *           * done:   If you use the stream directly (instead of |copyTo|
-   *                     below), you must signal completion by resolving /
-   *                     rejecting this promise.  If it's rejected, the
-   *                     transport will be closed.  If an Error is supplied as a
-   *                     rejection value, it will be logged via |dumpn|.  If you
-   *                     do use |copyTo|, resolving is taken care of for you
-   *                     when copying completes.
-   *           * copyTo: A helper function for getting your data out of the
-   *                     stream that meets the stream handling requirements
-   *                     above, and has the following signature:
+   *           * actor:        Name of actor that received the packet
+   *           * type:         Name of actor's method that was called on receipt
+   *           * length:       Size of the data to be read
+   *           * stream:       This input stream should only be used directly if you
+   *                           can ensure that you will read exactly |length| bytes
+   *                           and will not close the stream when reading is complete
+   *           * done:         If you use the stream directly (instead of |copyTo|
+   *                           |copyToBuffer| below), you must signal completion
+   *                           by resolving / rejecting this promise.  If it's
+   *                           rejected, the transport will be closed.  If an
+   *                           Error is supplied as a rejection value, it will
+   *                           be logged via |dumpn|.  If you do use |copyTo| or
+   *                           |copyToBuffer|, resolving is taken care of for
+   *                           you when copying completes.
+   *           * copyTo:       A helper function for getting your data out of the
+   *                           stream that meets the stream handling requirements
+   *                           above, and has the following signature:
    *             @param  output nsIAsyncOutputStream
-   *                     The stream to copy to.
+   *                           The stream to copy to.
    *             @return Promise
-   *                     The promise is resolved when copying completes or
-   *                     rejected if any (unexpected) errors occur.
-   *                     This object also emits "progress" events for each chunk
-   *                     that is copied.  See stream-utils.js.
+   *                           The promise is resolved when copying completes or
+   *                           rejected if any (unexpected) errors occur.
+   *                           This object also emits "progress" events for each chunk
+   *                           that is copied.  See stream-utils.js.
+   *
+   *           * copyToBuffer: a helper function for getting your data out of the stream
+   *                           that meets the stream handling requirements above, and has
+   *                           the following signature:
+   *             @param output ArrayBuffer
+   *                           The buffer to copy to. It needs to be the same length as the data
+   *                           to be transfered.
+   *             @return Promise
+   *                           The promise is resolved when copying completes or rejected if any
+   *                           (unexpected) error occurs.
    */
   startBulkRequest(request) {
     if (!this.mainRoot) {
@@ -502,29 +555,39 @@ DevToolsClient.prototype = {
    *
    * @param packet object
    *        The incoming packet, which contains:
-   *        * actor:  Name of actor that will receive the packet
-   *        * type:   Name of actor's method that should be called on receipt
-   *        * length: Size of the data to be read
-   *        * stream: This input stream should only be used directly if you can
-   *                  ensure that you will read exactly |length| bytes and will
-   *                  not close the stream when reading is complete
-   *        * done:   If you use the stream directly (instead of |copyTo|
-   *                  below), you must signal completion by resolving /
-   *                  rejecting this promise.  If it's rejected, the transport
-   *                  will be closed.  If an Error is supplied as a rejection
-   *                  value, it will be logged via |dumpn|.  If you do use
-   *                  |copyTo|, resolving is taken care of for you when copying
-   *                  completes.
-   *        * copyTo: A helper function for getting your data out of the stream
-   *                  that meets the stream handling requirements above, and has
-   *                  the following signature:
+   *        * actor:        Name of actor that will receive the packet
+   *        * type:         Name of actor's method that should be called on receipt
+   *        * length:       Size of the data to be read
+   *        * stream:       This input stream should only be used directly if you can
+   *                        ensure that you will read exactly |length| bytes and will
+   *                        not close the stream when reading is complete
+   *        * done:         If you use the stream directly (instead of |copyTo|
+   *                        or |copyToBuffer| below), you must signal completion
+   *                        by resolving / rejecting this promise.  If it's
+   *                        rejected, the transport will be closed.  If an Error
+   *                        is supplied as a rejection value, it will be logged
+   *                        via |dumpn|.  If you do use |copyTo| or
+   *                        |copyToBuffer|, resolving is taken care of for you
+   *                        when copying completes.
+   *        * copyTo:       A helper function for getting your data out of the stream
+   *                        that meets the stream handling requirements above, and has
+   *                        the following signature:
    *          @param  output nsIAsyncOutputStream
-   *                  The stream to copy to.
+   *                        The stream to copy to.
    *          @return Promise
-   *                  The promise is resolved when copying completes or rejected
-   *                  if any (unexpected) errors occur.
-   *                  This object also emits "progress" events for each chunk
-   *                  that is copied.  See stream-utils.js.
+   *                        The promise is resolved when copying completes or rejected
+   *                        if any (unexpected) errors occur.
+   *                        This object also emits "progress" events for each chunk
+   *                        that is copied.  See stream-utils.js.
+   *        * copyToBuffer: a helper function for getting your data out of the stream
+   *                        that meets the stream handling requirements above, and has
+   *                        the following signature:
+   *          @param output ArrayBuffer
+   *                        The buffer to copy to. It needs to be the same length as the data
+   *                        to be transfered.
+   *          @return Promise
+   *                        The promise is resolved when copying completes or rejected if any
+   *                        (unexpected) error occurs.
    */
   onBulkPacket(packet) {
     const { actor } = packet;
@@ -537,6 +600,12 @@ DevToolsClient.prototype = {
             JSON.stringify(packet)
         )
       );
+      return;
+    }
+
+    const front = this.getFrontByID(actor);
+    if (front) {
+      front.onBulkPacket(packet);
       return;
     }
 
@@ -669,10 +738,18 @@ DevToolsClient.prototype = {
    *
    * This is a fairly heavy weight process, so it's only meant to be used in tests.
    *
+   * @param {object=} options
+   * @param {boolean=} options.ignoreOrphanedFronts
+   *        Allow to ignore fronts which can no longer be retrieved via
+   *        getFrontByID, as their requests can never be completed now.
+   *        Ideally we should rather investigate and address those cases, but
+   *        since this is a test helper, allow to bypass them here. Defaults to
+   *        false.
+   *
    * @return Promise
    *         Resolved when all requests have settled.
    */
-  waitForRequestsToSettle() {
+  waitForRequestsToSettle({ ignoreOrphanedFronts = false } = {}) {
     let requests = [];
 
     // Gather all pending and active requests in this client
@@ -692,6 +769,12 @@ DevToolsClient.prototype = {
     // For each front, wait for its requests to settle
     for (const front of fronts) {
       if (front.hasRequests()) {
+        if (ignoreOrphanedFronts && !this.getFrontByID(front.actorID)) {
+          // If a front was stuck during its destroy but the pool managing it
+          // has been already removed, ignore its pending requests, they can
+          // never resolve.
+          continue;
+        }
         requests.push(front.waitForRequestsToSettle());
       }
     }
@@ -709,7 +792,7 @@ DevToolsClient.prototype = {
       })
       .then(() => {
         // Repeat, more requests may have started in response to those we just waited for
-        return this.waitForRequestsToSettle();
+        return this.waitForRequestsToSettle({ ignoreOrphanedFronts });
       });
   },
 
@@ -790,6 +873,14 @@ DevToolsClient.prototype = {
 
   get transport() {
     return this._transport;
+  },
+
+  /**
+   * Boolean flag to help identify client connected to the current runtime,
+   * via a LocalDevToolsTransport pipe.
+   */
+  get isLocalClient() {
+    return !!this._transport.isLocalTransport;
   },
 
   dumpPools() {

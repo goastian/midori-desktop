@@ -112,7 +112,10 @@ function connectToWorker(connection, dbg, forwardingPrefix, options) {
         options,
         workerDebuggerData: {
           id: dbg.id,
+          name: dbg.name,
           type: dbg.type,
+          relatedDocumentInnerWindowId:
+            dbg.window?.windowGlobalChild?.innerWindowId,
           url: absoluteURL,
           // We don't have access to Services.prefs in Worker thread, so pass its value
           // from here.

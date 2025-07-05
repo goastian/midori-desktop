@@ -7,8 +7,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   L10N,
@@ -18,7 +18,9 @@ const {
 } = require("resource://devtools/client/netmonitor/src/utils/request-utils.js");
 
 // Components
-const TreeViewClass = require("resource://devtools/client/shared/components/tree/TreeView.js");
+const TreeViewClass = ChromeUtils.importESModule(
+  "resource://devtools/client/shared/components/tree/TreeView.mjs"
+).default;
 const PropertiesView = createFactory(
   require("resource://devtools/client/netmonitor/src/components/request-details/PropertiesView.js")
 );

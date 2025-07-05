@@ -10,17 +10,97 @@
   box-shadow: 1px 1px 3px var(--popup-shadow-color);
 }
 
+/* Popover is used when previewing objects */
 .popover .preview-popup {
-  padding: 5px 10px;
   max-width: 450px;
   min-width: 200px;
+
+  &.preview-type-pause {
+    padding: 5px 10px;
+  }
+
+  /* Because of tracer header, we can't put a padding on the popup */
+  /* Nor can we put a margin on the .tree or .objectBox which causes overflows */
+  &.preview-type-tracer {
+    padding-bottom: 5px;
+    .tree {
+      padding: 0 5px;
+    }
+  }
 }
 
+/* Tooltip is used when previewing primitives and exceptions */
 .tooltip .preview-popup {
   max-width: inherit;
-  padding: 5px;
   min-height: inherit;
   max-height: 200px;
+
+  &.preview-type-pause {
+    padding: 5px;
+  }
+
+  &.preview-type-tracer {
+    padding-bottom: 5px;
+
+    .preview-tracer-header {
+      margin-bottom: 5px;
+    }
+    .objectBox {
+      padding: 0 5px;
+    }
+  }
+
+  &.exception-popup {
+    padding: 5px;
+    color: var(--theme-error-color);
+    background-color: var(--theme-error-background);
+  }
+}
+
+.preview-tracer-header {
+  --icon-url: url("chrome://devtools/content/debugger/images/trace.svg");
+  --icon-color: var(--theme-inline-preview-label-trace-color);
+  color: var(--theme-inline-preview-label-trace-color);
+  background-color: var(--theme-inline-preview-label-trace-background);
+  border-block-end: 1px solid oklch(from var(--theme-inline-preview-label-trace-color) l c h / 0.25);
+
+  /* Make sure the header is always visible */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* Add a bit more padding on the end to balance the icon, especially when have a small primitive value in preview */
+  padding-inline-end: 10px !important;
+}
+
+.preview-tracer-warning {
+  --icon-url: url("chrome://devtools/skin/images/info.svg");
+  --icon-color: currentColor;
+  background-color: var(--theme-body-alternate-emphasized-background);
+  border-bottom: 1px solid var(--theme-splitter-color);
+  margin-bottom: 5px;
+}
+
+.preview-tracer-header, .preview-tracer-warning {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  align-items: center;
+
+  &::before {
+    flex-shrink: 0;
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+
+    background-image: var(--icon-url);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    -moz-context-properties: fill;
+    fill: var(--icon-color);
+  }
 }
 
 .preview-popup .tree {
@@ -38,11 +118,38 @@
 }
 
 .popover .preview-popup .object-node {
-  padding-inline-start: 0px;
+  padding-inline-start: 0;
 }
 
 .preview-token:hover {
   cursor: default;
+}
+
+/**
+ * Use an animation in order to delay the preview-loading-token
+ * style 1/4s second after hovering a token.
+ *
+ * It avoids to render this intermediate style if the previews is ready
+ * right away.
+ */
+@keyframes animateLoading {
+  25% {
+    cursor: wait;
+    text-decoration: grey underline solid;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+    text-decoration-skip-ink: none;
+  }
+  100% {
+    cursor: wait;
+    text-decoration: grey underline solid;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+    text-decoration-skip-ink: none;
+  }
+}
+.preview-loading-token {
+  animation: animateLoading 1s forwards;
 }
 
 .preview-token,
@@ -58,6 +165,18 @@
 .theme-dark .cm-s-mozilla .preview-token,
 .theme-dark .cm-s-mozilla .debug-expression.preview-token {
   color: #e7ebee;
+}
+
+/* Use a color other than yellow to highlight the hovered token on the paused line
+   as the paused line is already yellow */
+.paused-line .preview-token {
+  background-color: light-dark(rgba(202, 227, 255, 0.5), rgba(202, 227, 255, 0.3));
+}
+
+/* This rule only make sure the text remains readable when hovering a token on the paused line. */
+:root[forced-colors-active] .paused-line :is(.preview-token, .debug-expression.preview-token) {
+  color: inherit;
+  background-color: inherit;
 }
 
 .theme-dark .popover .preview-popup {
@@ -77,36 +196,7 @@
 
 .tooltip .gap {
   height: 4px;
-  padding-top: 0px;
-}
-
-.add-to-expression-bar {
-  border: 1px solid var(--theme-splitter-color);
-  border-top: none;
-  display: -webkit-box;
-  display: -ms-flexbox;
-  display: flex;
-  -webkit-box-align: center;
-  -ms-flex-align: center;
-  align-items: center;
-  font-size: 14px;
-  line-height: 30px;
-  background: var(--theme-toolbar-background);
-  color: var(--theme-text-color-inactive);
-  padding: 0 4px;
-}
-
-.add-to-expression-bar .prompt {
-  width: 1em;
-}
-
-.add-to-expression-bar .expression-to-save-label {
-  width: calc(100% - 4em);
-}
-
-.add-to-expression-bar .expression-to-save-button {
-  font-size: 14px;
-  color: var(--theme-comment);
+  padding-top: 0;
 }
 
 /* Exception popup */

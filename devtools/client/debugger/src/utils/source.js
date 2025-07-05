@@ -18,8 +18,7 @@ import { getRelativePath } from "../utils/sources-tree/utils";
 import { endTruncateStr } from "./utils";
 import { truncateMiddleText } from "../utils/text";
 import { memoizeLast } from "../utils/memoizeLast";
-import { renderWasmText } from "./wasm";
-import { toEditorLine } from "./editor/index";
+import { toWasmSourceLine, getEditor } from "./editor/index";
 export { isMinified } from "./isMinified";
 
 import { isFulfilled } from "./async-value";
@@ -297,27 +296,6 @@ export function getFileURL(source, truncate = true) {
   return resolveFileURL(url, getUnicodeUrl, truncate);
 }
 
-/**
- * Returns amount of lines in the source. If source is a WebAssembly binary,
- * the function returns amount of bytes.
- */
-export function getSourceLineCount(content) {
-  if (content.type === "wasm") {
-    const { binary } = content.value;
-    return binary.length;
-  }
-
-  let count = 0;
-
-  for (let i = 0; i < content.value.length; ++i) {
-    if (content.value[i] === "\n") {
-      ++count;
-    }
-  }
-
-  return count + 1;
-}
-
 function getNthLine(str, lineNum) {
   let startIndex = -1;
 
@@ -346,9 +324,9 @@ export const getLineText = memoizeLast((sourceId, asyncContent, line) => {
   const content = asyncContent.value;
 
   if (content.type === "wasm") {
-    const editorLine = toEditorLine(sourceId, line);
-    const lines = renderWasmText(sourceId, content);
-    return lines[editorLine] || "";
+    const editor = getEditor();
+    const lines = editor.renderWasmText(content);
+    return lines[toWasmSourceLine(line)] || "";
   }
 
   const lineText = getNthLine(content.value, line - 1);
@@ -367,8 +345,6 @@ export function getTextAtPosition(sourceId, asyncContent, location) {
  *
  * @param {Object} source
  *        The reducer source object.
- * @param {Object} symbols
- *        The reducer symbol object for the given source.
  * @param {Boolean} isBlackBoxed
  *        To be set to true, when the given source is blackboxed.
  * @param {Boolean} hasPrettyTab
@@ -379,7 +355,6 @@ export function getTextAtPosition(sourceId, asyncContent, location) {
  */
 export function getSourceClassnames(
   source,
-  symbols,
   isBlackBoxed,
   hasPrettyTab = false
 ) {
@@ -399,10 +374,6 @@ export function getSourceClassnames(
 
   if (isBlackBoxed) {
     return "blackBox";
-  }
-
-  if (symbols && symbols.framework) {
-    return symbols.framework.toLowerCase();
   }
 
   if (isUrlExtension(source.url)) {

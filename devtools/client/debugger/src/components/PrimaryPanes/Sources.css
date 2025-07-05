@@ -48,6 +48,40 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
+}
+
+.sources-list .debugger-settings-menu-button {
+  position: absolute;
+  top: 0;
+
+  inset-inline-end: 1px;
+  /* The negative margin is set in order to collapse the inline-end border with
+     the border of its container. */
+  margin-inline-end: -1px;
+  html[dir="rtl"] & {
+    /* In RTL mode, there is a slightly different offset, so even if we use
+       inline-end, we have to set slightly different values. */
+    inset-inline-end: -1px;
+    margin-inline-end: 0;
+  }
+
+  z-index: 5;
+
+  background: var(--theme-toolbar-background);
+  min-width: unset;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--theme-splitter-color);
+  border-top-width: 0;
+}
+
+.sources-list.sources-list-has-overflow:not(.sources-list-custom-root)
+  .debugger-settings-menu-button {
+  inset-inline-end: 15px;
+  html[dir="rtl"] & {
+    inset-inline-end: 14px;
+  }
 }
 
 .sources-list .sources-clear-root-container {
@@ -62,8 +96,7 @@
 /*  Custom root */
 /****************/
 
-.sources-clear-root {
-  padding: 4px 8px;
+.sources-clear-root-container {
   width: 100%;
   text-align: start;
   white-space: nowrap;
@@ -72,19 +105,21 @@
   border-bottom: 1px solid var(--theme-splitter-color);
 }
 
-.sources-clear-root .home {
-  background-color: var(--theme-icon-dimmed-color);
+.sources-clear-root {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  outline-offset: -2px;
 }
 
-.sources-clear-root .breadcrumb {
-  width: 5px;
-  margin: 0 2px 0 6px;
-  vertical-align: bottom;
-  background: var(--theme-text-color-alt);
+.sources-clear-root-container .devtools-separator {
+  height: 20px;
+  margin: 2px 4px;
 }
 
 .sources-clear-root-label {
-  margin-left: 5px;
+  width: 100%;
+  padding: 4px;
   line-height: 16px;
 }
 
@@ -116,23 +151,11 @@
   padding-inline: 6px 8px;
 }
 
-.sources-list .tree .tree-node:not(.focused):hover {
-  background: var(--theme-toolbar-background-hover);
-}
-
-.sources-list .tree button {
-  display: block;
-}
-
 .sources-list .tree .node {
   padding: 2px 3px;
   position: relative;
 }
 
-.sources-list .tree .node.focused {
-  color: var(--theme-selection-color);
-  background-color: var(--theme-selection-background);
-}
 
 html:not([dir="rtl"]) .sources-list .tree .node > div {
   margin-left: 10px;
@@ -142,24 +165,8 @@ html[dir="rtl"] .sources-list .tree .node > div {
   margin-right: 10px;
 }
 
-.sources-list .tree-node button {
-  position: fixed;
-}
-
 .sources-list .img {
   margin-inline-end: 4px;
-}
-
-.sources-list .tree .focused .img {
-  --icon-color: #ffffff;
-  background-color: var(--icon-color);
-  fill: var(--icon-color);
-}
-
-/* Use the same width as .img.arrow */
-.sources-list .tree .img.no-arrow {
-  width: 10px;
-  visibility: hidden;
 }
 
 .sources-list .tree .label .suffix {
@@ -172,11 +179,7 @@ html[dir="rtl"] .sources-list .tree .node > div {
   color: inherit;
 }
 
-.theme-dark .source-list .node.focused {
-  background-color: var(--theme-tab-toolbar-background);
-}
-
-.sources-list .tree .blackboxed {
+.sources-list .tree .tree-node:not(.focused) .blackboxed {
   color: #806414;
 }
 

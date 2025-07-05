@@ -3,8 +3,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DevToolsModules(
+    "ObjectActorPool.js",
     "previewers.js",
     "private-properties-iterator.js",
+    "property-descriptor.js",
     "property-iterator.js",
     "symbol-iterator.js",
     "symbol.js",

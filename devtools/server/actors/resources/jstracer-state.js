@@ -4,17 +4,18 @@
 
 "use strict";
 
-const {
-  TYPES: { JSTRACER_STATE },
-} = require("resource://devtools/server/actors/resources/index.js");
-
 const { JSTracer } = ChromeUtils.importESModule(
   "resource://devtools/server/tracer/tracer.sys.mjs",
   { global: "contextual" }
 );
 
-const { LOG_METHODS } = require("resource://devtools/server/actors/tracer.js");
 const Targets = require("resource://devtools/server/actors/targets/index.js");
+loader.lazyRequireGetter(
+  this,
+  "TRACER_LOG_METHODS",
+  "resource://devtools/shared/specs/tracer.js",
+  true
+);
 
 class TracingStateWatcher {
   /**
@@ -62,7 +63,7 @@ class TracingStateWatcher {
    * @param {String} reason
    *        Optional string to justify why the tracer stopped.
    */
-  onTracingToggled(enabled, reason) {
+  async onTracingToggled(enabled, reason) {
     const tracerActor = this.targetActor.getTargetScopedActor("tracer");
     const logMethod = tracerActor?.getLogMethod();
 
@@ -76,15 +77,15 @@ class TracingStateWatcher {
 
     this.onAvailable([
       {
-        resourceType: JSTRACER_STATE,
         enabled,
         logMethod,
         profile:
-          logMethod == LOG_METHODS.PROFILER && !enabled
-            ? tracerActor.getProfile()
+          logMethod == TRACER_LOG_METHODS.PROFILER && !enabled
+            ? await tracerActor.getProfile()
             : undefined,
         timeStamp: ChromeUtils.dateNow(),
         reason,
+        traceValues: tracerActor.traceValues,
       },
     ]);
   }

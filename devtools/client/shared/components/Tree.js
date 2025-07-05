@@ -4,10 +4,10 @@
 
 "use strict";
 
-const React = require("resource://devtools/client/shared/vendor/react.js");
+const React = require("resource://devtools/client/shared/vendor/react.mjs");
 const { Component, createFactory } = React;
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 // Localized strings for (devtools/client/locales/en-US/components.properties)
 loader.lazyGetter(this, "L10N_COMPONENTS", function () {
@@ -58,11 +58,11 @@ class ArrowExpander extends Component {
   render() {
     const { expanded } = this.props;
 
-    const classNames = ["arrow"];
+    const classNames = ["theme-twisty"];
     const title = expanded ? COLLAPSE_LABEL : EXPAND_LABEL;
 
     if (expanded) {
-      classNames.push("expanded");
+      classNames.push("open");
     }
     return dom.button({
       className: classNames.join(" "),
@@ -124,7 +124,8 @@ class TreeNode extends Component {
       (this.props.shouldItemUpdate &&
         this.props.shouldItemUpdate(this.props.item, nextProps.item)) ||
       this.props.focused !== nextProps.focused ||
-      this.props.expanded !== nextProps.expanded
+      this.props.expanded !== nextProps.expanded ||
+      this.props.depth !== nextProps.depth
     );
   }
 

@@ -3,17 +3,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 :root {
-  --breakpoint-active-color: rgba(44, 187, 15, 0.2);
-  --breakpoint-active-color-hover: rgba(44, 187, 15, 0.5);
-  --debug-line-background: rgba(226, 236, 247, 0.5);
-  --debug-line-border: rgb(145, 188, 219);
+  --breakpoint-active-color: light-dark(
+    rgba(44, 187, 15, 0.2),
+    rgba(45, 210, 158, 0.5))
+  ;
+  --breakpoint-active-color-hover: light-dark(
+    rgba(44, 187, 15, 0.5),
+    rgba(0, 255, 175, 0.7)
+  );
+
+  /* use 30% opacity to allow showing text selection background */
+  --paused-line-background: light-dark(
+    hsl(from var(--paused-background-color) h s calc( l * 0.7 ) / 30%),
+    /* dark theme requires some specific luminosity factor */
+    hsl(from var(--paused-background-color) h s calc( l * 2 ) / 30%)
+  );
+  --paused-line-color: inherits;
+  --paused-line-border: var(--paused-color);
 }
 
-.theme-dark:root {
-  --debug-line-background: rgb(73, 82, 103);
-  --debug-line-border: rgb(119, 134, 162);
-  --breakpoint-active-color: rgba(45, 210, 158, 0.5);
-  --breakpoint-active-color-hover: rgba(0, 255, 175, 0.7);
+:root[forced-colors-active] {
+  --paused-line-background: Mark;
+  --paused-line-color: MarkText;
+  --paused-line-border: SelectedItem;
 }
 
 .CodeMirror .errors {
@@ -43,18 +55,22 @@
   pointer-events: none;
 }
 
-.theme-dark .debug-line .CodeMirror-linenumber {
-  color: #c0c0c0;
+/* For CM6 */
+.cm-editor .cm-line.paused-line {
+  background-color: var(--paused-line-background);
+  color: var(--paused-line-color);
+  outline: var(--paused-line-border) solid 1px;
 }
 
-.debug-line .CodeMirror-line {
-  background-color: var(--debug-line-background) !important;
-  outline: var(--debug-line-border) solid 1px;
+/* For CM6 */
+.cm-editor .cm-line.traced-line {
+  background-color: var(--theme-inline-preview-label-trace-background);
+  outline: var(--theme-inline-preview-label-trace-color) solid 1px;
 }
 
 /* Don't display the highlight color since the debug line
    is already highlighted */
-.debug-line .CodeMirror-activeline-background {
+.paused-line .CodeMirror-activeline-background {
   display: none;
 }
 

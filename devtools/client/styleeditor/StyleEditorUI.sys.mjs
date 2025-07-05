@@ -250,9 +250,8 @@ export class StyleEditorUI extends EventEmitter {
       el.addEventListener(
         "click",
         async () => {
-          const stylesheetsFront = await this.currentTarget.getFront(
-            "stylesheets"
-          );
+          const stylesheetsFront =
+            await this.currentTarget.getFront("stylesheets");
           stylesheetsFront.addStyleSheet(null);
           this.#clearFilterInput();
         },
@@ -567,9 +566,8 @@ export class StyleEditorUI extends EventEmitter {
       const promise = (async () => {
         // When the StyleSheet is mapped to one or many original sources,
         // do not create an editor for the minified StyleSheet.
-        const hasValidOriginalSource = await this.#tryAddingOriginalStyleSheets(
-          resource
-        );
+        const hasValidOriginalSource =
+          await this.#tryAddingOriginalStyleSheets(resource);
         if (hasValidOriginalSource) {
           return null;
         }
@@ -652,31 +650,60 @@ export class StyleEditorUI extends EventEmitter {
   }
 
   #getInlineStyleSheetsCount() {
-    return this.editors.filter(editor => !editor.styleSheet.href).length;
+    let count = 0;
+    for (const editor of this.editors) {
+      if (!editor.styleSheet.href && !editor.styleSheet.constructed) {
+        count++;
+      }
+    }
+    return count;
   }
 
   #getNewStyleSheetsCount() {
-    return this.editors.filter(editor => editor.isNew).length;
+    let count = 0;
+    for (const editor of this.editors) {
+      if (editor.isNew) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  #getConstructedSheetsCount() {
+    let count = 0;
+    for (const editor of this.editors) {
+      if (editor.styleSheet.constructed) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
-   * Finds the index to be shown in the Style Editor for inline or
-   * user-created style sheets, returns undefined if not of either type.
+   * Finds the index to be shown in the Style Editor for inline, constructed or
+   * user-created style sheets, returns undefined if not any of those.
    *
-   * @param {StyleSheet}  styleSheet
+   * @param {StyleSheet} styleSheet
    *        Object representing stylesheet
-   * @return {(Number|undefined)}
-   *         Optional Integer representing the index of the current stylesheet
-   *         among all stylesheets of its type (inline or user-created)
+   * @return {Number}
+   *         1-based Integer representing the index of the current stylesheet
+   *         among all stylesheets of its type (inline, constructed or user-created).
+   *         Defaults to 0 when non-applicable (e.g. for stylesheet with href)
    */
   #getNextFriendlyIndex(styleSheet) {
     if (styleSheet.href) {
-      return undefined;
+      return 0;
     }
 
-    return styleSheet.isNew
-      ? this.#getNewStyleSheetsCount()
-      : this.#getInlineStyleSheetsCount();
+    if (styleSheet.isNew) {
+      return this.#getNewStyleSheetsCount() + 1;
+    }
+
+    if (styleSheet.constructed) {
+      return this.#getConstructedSheetsCount() + 1;
+    }
+
+    return this.#getInlineStyleSheetsCount() + 1;
   }
 
   /**
@@ -764,9 +791,8 @@ export class StyleEditorUI extends EventEmitter {
           );
           stream.close();
 
-          const stylesheetsFront = await this.currentTarget.getFront(
-            "stylesheets"
-          );
+          const stylesheetsFront =
+            await this.currentTarget.getFront("stylesheets");
           stylesheetsFront.addStyleSheet(source, selectedFile.path);
         }
       );
@@ -1626,6 +1652,11 @@ export class StyleEditorUI extends EventEmitter {
   };
 
   #onResourceUpdated = async updates => {
+    // The editors are instantiated asynchronously from onResourceAvailable,
+    // but we may receive updates right after due to throttling.
+    // Ensure waiting for this async work before trying to update the related editors.
+    await this.#waitForLoadingStyleSheets();
+
     for (const { resource, update } of updates) {
       if (
         update.resourceType === this.#toolbox.resourceCommand.TYPES.STYLESHEET
@@ -1633,6 +1664,13 @@ export class StyleEditorUI extends EventEmitter {
         const editor = this.editors.find(
           e => e.resourceId === update.resourceId
         );
+
+        if (!editor) {
+          console.warn(
+            "Could not find StyleEditor to apply STYLESHEET resource update"
+          );
+          continue;
+        }
 
         switch (update.updateType) {
           case "style-applied": {

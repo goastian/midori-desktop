@@ -52,8 +52,8 @@ class FormatterError extends Error {
  *                               the object.
  */
 function customFormatterHeader(objectActor) {
-  const rawValue = objectActor.rawValue();
-  const globalWrapper = Cu.getGlobalForObject(rawValue);
+  const { rawObj } = objectActor;
+  const globalWrapper = Cu.getGlobalForObject(rawObj);
   const global = globalWrapper?.wrappedJSObject;
 
   // We expect a `devtoolsFormatters` global attribute and it to be an array
@@ -71,7 +71,7 @@ function customFormatterHeader(objectActor) {
     return null;
   }
 
-  const { targetActor } = objectActor.thread;
+  const { targetActor } = objectActor.threadActor;
 
   const {
     customFormatterConfigDbgObj: configDbgObj,
@@ -134,7 +134,7 @@ exports.customFormatterHeader = customFormatterHeader;
  * @param {BrowsingContextTargetActor} options.targetActor
  *        See buildJsonMlFromCustomFormatterHookResult JSDoc.
  * @param {Debugger.Object} options.valueDbgObj
- *        The Debugger.Object of rawValue.
+ *        The Debugger.Object of rawObj.
  *
  * @returns {Object} See customFormatterHeader jsdoc, it returns the same object.
  */
@@ -247,13 +247,13 @@ function processFormatterForHeader({
  *          - {*} customFormatterBody Data of the custom formatter body.
  */
 async function customFormatterBody(objectActor, formatter) {
-  const rawValue = objectActor.rawValue();
-  const globalWrapper = Cu.getGlobalForObject(rawValue);
+  const { rawObj } = objectActor;
+  const globalWrapper = Cu.getGlobalForObject(rawObj);
   const global = globalWrapper?.wrappedJSObject;
 
   const customFormatterIndex = global.devtoolsFormatters.indexOf(formatter);
 
-  const { targetActor } = objectActor.thread;
+  const { targetActor } = objectActor.threadActor;
   try {
     const { customFormatterConfigDbgObj, customFormatterObjectTagDepth } =
       objectActor.hooks;
@@ -355,12 +355,11 @@ exports.customFormatterBody = customFormatterBody;
 function logCustomFormatterError(window, errorMsg, script) {
   const scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
   const scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
-  const { url, source, startLine, startColumn } = script ?? {};
+  const { url, startLine, startColumn } = script ?? {};
 
   scriptError.initWithWindowID(
     `Custom formatter failed: ${errorMsg}`,
     url,
-    source,
     startLine,
     startColumn,
     Ci.nsIScriptError.errorFlag,

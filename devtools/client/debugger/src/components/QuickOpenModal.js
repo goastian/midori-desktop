@@ -54,6 +54,8 @@ export class QuickOpenModal extends Component {
   // Put it on the class so it can be retrieved in tests
   static UPDATE_RESULTS_THROTTLE = 100;
 
+  #willUnmountCalled = false;
+
   constructor(props) {
     super(props);
     this.state = { results: null, selectedIndex: 0 };
@@ -84,6 +86,7 @@ export class QuickOpenModal extends Component {
       toggleShortcutsModal: PropTypes.func.isRequired,
       projectDirectoryRoot: PropTypes.string,
       getFunctionSymbols: PropTypes.func.isRequired,
+      updateCursorPosition: PropTypes.func.isRequired,
     };
   }
 
@@ -110,6 +113,10 @@ export class QuickOpenModal extends Component {
     if (queryChanged) {
       this.updateResults(this.props.query);
     }
+  }
+
+  componentWillUnmount() {
+    this.#willUnmountCalled = true;
   }
 
   closeModal = () => {
@@ -208,27 +215,37 @@ export class QuickOpenModal extends Component {
     );
   };
 
-  updateResults = throttle(query => {
-    if (this.isGotoQuery()) {
-      return;
-    }
+  updateResults = throttle(async query => {
+    try {
+      if (this.isGotoQuery()) {
+        return;
+      }
 
-    if (query == "" && !this.isShortcutQuery()) {
-      this.showTopSources();
-      return;
-    }
+      if (query == "" && !this.isShortcutQuery()) {
+        this.showTopSources();
+        return;
+      }
 
-    if (this.isSymbolSearch()) {
-      this.searchSymbols(query);
-      return;
-    }
+      if (this.isSymbolSearch()) {
+        await this.searchSymbols(query);
+        return;
+      }
 
-    if (this.isShortcutQuery()) {
-      this.searchShortcuts(query);
-      return;
-    }
+      if (this.isShortcutQuery()) {
+        this.searchShortcuts(query);
+        return;
+      }
 
-    this.searchSources(query);
+      this.searchSources(query);
+    } catch (e) {
+      // Due to throttling this might get scheduled after the component and the
+      // toolbox are destroyed.
+      if (this.#willUnmountCalled) {
+        console.warn("Throttled QuickOpen.updateResults failed", e);
+      } else {
+        throw e;
+      }
+    }
   }, QuickOpenModal.UPDATE_RESULTS_THROTTLE);
 
   setModifier = item => {
@@ -301,16 +318,17 @@ export class QuickOpenModal extends Component {
   };
 
   gotoLocation = location => {
-    const { selectSpecificLocation, selectedLocation } = this.props;
+    const { selectSpecificLocation, selectedLocation, updateCursorPosition } =
+      this.props;
 
     if (location != null) {
-      selectSpecificLocation(
-        createLocation({
-          source: location.source || selectedLocation?.source,
-          line: location.line,
-          column: location.column,
-        })
-      );
+      const sourceLocation = createLocation({
+        source: location.source || selectedLocation?.source,
+        line: location.line,
+        column: location.column || 0,
+      });
+      selectSpecificLocation(sourceLocation);
+      updateCursorPosition(sourceLocation);
       this.closeModal();
     }
   };
@@ -505,4 +523,5 @@ export default connect(mapStateToProps, {
   clearHighlightLineRange: actions.clearHighlightLineRange,
   closeQuickOpen: actions.closeQuickOpen,
   getFunctionSymbols: actions.getFunctionSymbols,
+  updateCursorPosition: actions.updateCursorPosition,
 })(QuickOpenModal);

@@ -14,7 +14,7 @@ import { createPendingSelectedLocation } from "../utils/location";
 export const UNDEFINED_LOCATION = Symbol("Undefined location");
 export const NO_LOCATION = Symbol("No location");
 
-export function initialSourcesState(state) {
+export function initialSourcesState() {
   /* eslint sort-keys: "error" */
   return {
     /**
@@ -33,7 +33,9 @@ export function initialSourcesState(state) {
     /**
      * List of all breakable lines for original sources only.
      *
-     * Map(source id => array<int : breakable line numbers>)
+     * Map(source id => promise or array<int> : breakable line numbers>)
+     *
+     * The value can be a promise to indicate the lines are being loaded.
      */
     mutableOriginalBreakableLines: new Map(),
 
@@ -44,13 +46,6 @@ export function initialSourcesState(state) {
      * Map(source id => array<Original Source ID>)
      */
     mutableOriginalSources: new Map(),
-
-    /**
-     * List of override objects whose sources texts have been locally overridden.
-     *
-     * Object { sourceUrl, path }
-     */
-    mutableOverrideSources: state?.mutableOverrideSources || new Map(),
 
     /**
      * Mapping of source id's to one or more source-actor's.
@@ -157,6 +152,7 @@ function update(state = initialSourcesState(), action) {
         pendingSelectedLocation,
         shouldSelectOriginalLocation: action.shouldSelectOriginalLocation,
         shouldHighlightSelectedLocation: action.shouldHighlightSelectedLocation,
+        shouldScrollToSelectedLocation: action.shouldScrollToSelectedLocation,
       };
     }
 
@@ -209,7 +205,7 @@ function update(state = initialSourcesState(), action) {
     case "SET_ORIGINAL_BREAKABLE_LINES": {
       state.mutableOriginalBreakableLines.set(
         action.source.id,
-        action.breakableLines
+        action.promise || action.breakableLines
       );
 
       return {
@@ -233,20 +229,20 @@ function update(state = initialSourcesState(), action) {
       };
     }
 
+    case "CLEAR_BREAKPOINT_POSITIONS": {
+      if (!state.mutableBreakpointPositions.has(action.source.id)) {
+        return state;
+      }
+
+      state.mutableBreakpointPositions.delete(action.source.id);
+
+      return {
+        ...state,
+      };
+    }
+
     case "REMOVE_THREAD": {
       return removeSourcesAndActors(state, action);
-    }
-
-    case "SET_OVERRIDE": {
-      state.mutableOverrideSources.set(action.url, action.path);
-      return state;
-    }
-
-    case "REMOVE_OVERRIDE": {
-      if (state.mutableOverrideSources.has(action.url)) {
-        state.mutableOverrideSources.delete(action.url);
-      }
-      return state;
     }
   }
 

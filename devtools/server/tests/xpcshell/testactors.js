@@ -204,7 +204,12 @@ class TestTargetActor extends BaseTargetActor {
 
   targetType = Targets.TYPES.FRAME;
 
+  // This is still used by the web console startListeners method
   get window() {
+    return this._global;
+  }
+
+  get targetGlobal() {
     return this._global;
   }
 
@@ -229,6 +234,7 @@ class TestTargetActor extends BaseTargetActor {
       actor: this.actorID,
       title: this.title,
       threadActor: this.threadActor.actorID,
+      targetType: this.targetType,
     };
 
     // Walk over target-scoped actors and add them to a new LazyPool.
@@ -266,7 +272,7 @@ class TestTargetActor extends BaseTargetActor {
     delete this._extraActors[name];
   }
 
-  notifyResources(updateType, resources) {
-    this.emit(`resource-${updateType}-form`, resources);
+  notifyResources(updateType, resourceType, resources) {
+    this.emit(`resources-${updateType}-array`, [[resourceType, resources]]);
   }
 }

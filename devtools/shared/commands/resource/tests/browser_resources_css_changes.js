@@ -11,9 +11,8 @@ add_task(async function () {
     "data:text/html,<body style='color: lime;'>CSS Changes</body>"
   );
 
-  const { client, resourceCommand, targetCommand } = await initResourceCommand(
-    tab
-  );
+  const { client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
 
   // CSS_CHANGE watcher doesn't record modification made before watching,
   // so we have to start watching before doing any DOM mutation.
@@ -39,6 +38,12 @@ add_task(async function () {
   await resourceCommand.watchResources([resourceCommand.TYPES.CSS_CHANGE], {
     onAvailable: resources => availableResources.push(...resources),
   });
+
+  // There is no guarantee that the CSS change will be already available when calling watchResources,
+  // so wait for it to be received.
+  info("Wait for CSS change to be received");
+  await waitFor(() => availableResources.length == 1);
+
   assertResource(
     availableResources[0],
     { index: 0, property: "color", value: "black" },
@@ -127,25 +132,33 @@ function assertChange(change, expected) {
 }
 
 async function setProperty(rule, index, property, value) {
-  const modifications = rule.startModifyingProperties({ isKnown: true });
+  const modifications = rule.startModifyingProperties(window, {
+    isKnown: true,
+  });
   modifications.setProperty(index, property, value, "");
   await modifications.apply();
 }
 
 async function renameProperty(rule, index, oldName, newName) {
-  const modifications = rule.startModifyingProperties({ isKnown: true });
+  const modifications = rule.startModifyingProperties(window, {
+    isKnown: true,
+  });
   modifications.renameProperty(index, oldName, newName);
   await modifications.apply();
 }
 
 async function createProperty(rule, index, property, value) {
-  const modifications = rule.startModifyingProperties({ isKnown: true });
+  const modifications = rule.startModifyingProperties(window, {
+    isKnown: true,
+  });
   modifications.createProperty(index, property, value, "", true);
   await modifications.apply();
 }
 
 async function setPropertyEnabled(rule, index, property, isEnabled) {
-  const modifications = rule.startModifyingProperties({ isKnown: true });
+  const modifications = rule.startModifyingProperties(window, {
+    isKnown: true,
+  });
   modifications.setPropertyEnabled(index, property, isEnabled);
   await modifications.apply();
 }

@@ -29,6 +29,13 @@ const {
   findMostRelevantCssPropertyIndex,
 } = require("resource://devtools/client/shared/suggestion-picker.js");
 
+loader.lazyRequireGetter(
+  this,
+  "InspectorCSSParserWrapper",
+  "resource://devtools/shared/css/lexer.js",
+  true
+);
+
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const CONTENT_TYPES = {
   PLAIN_TEXT: 0,
@@ -96,6 +103,8 @@ function isKeyIn(key, ...keys) {
  * @param {Object} options: Options for the editable field
  * @param {Element} options.element:
  *        (required) The span to be edited on focus.
+ * @param {String} options.inputClass:
+ *        An optional class to be added to the input.
  * @param {Function} options.canEdit:
  *        Will be called before creating the inplace editor.  Editor
  *        won't be created if canEdit returns false.
@@ -113,6 +122,7 @@ function isKeyIn(key, ...keys) {
  *        This function is called before the editor has been torn down.
  * @param {Function} options.destroy:
  *        Called when the editor is destroyed and has been torn down.
+ *        This may be called with the return value of the options.done callback (if it is passed).
  * @param {Function} options.contextMenu:
  *        Called when the user triggers a contextmenu event on the input.
  * @param {Object} options.advanceChars:
@@ -147,7 +157,8 @@ function isKeyIn(key, ...keys) {
  *        from `element` to the new input.
  *        defaults to false
  * @param {Object} options.cssProperties: An instance of CSSProperties.
- * @param {Object} options.cssVariables: A Map object containing all CSS variables.
+ * @param {Object} options.getCssVariables: A function that returns a Map containing
+ *        all CSS variables. The Map key is the variable name, the value is the variable value
  * @param {Number} options.defaultIncrement: The value by which the input is incremented
  *        or decremented by default (0.1 for properties like opacity and 1 by default)
  * @param {Function} options.getGridLineNames:
@@ -246,6 +257,8 @@ function editableItem(options, callback) {
   // Mark the element editable field for tab
   // navigation while editing.
   element._editable = true;
+  // And an attribute that can be used to target
+  element.setAttribute("editable", "");
 
   // Save the trigger type so we can dispatch this later
   element._trigger = trigger;
@@ -282,7 +295,9 @@ class InplaceEditor extends EventEmitter {
     this.doc = doc;
     this.elt.inplaceEditor = this;
     this.cssProperties = options.cssProperties;
-    this.cssVariables = options.cssVariables || new Map();
+    this.getCssVariables = options.getCssVariables
+      ? options.getCssVariables.bind(this)
+      : null;
     this.change = options.change;
     this.done = options.done;
     this.contextMenu = options.contextMenu;
@@ -362,6 +377,7 @@ class InplaceEditor extends EventEmitter {
       this.#onKeyPress,
       eventListenerConfig
     );
+    this.input.addEventListener("wheel", this.#onWheel, eventListenerConfig);
     this.input.addEventListener("input", this.#onInput, eventListenerConfig);
     this.input.addEventListener(
       "dblclick",
@@ -409,6 +425,8 @@ class InplaceEditor extends EventEmitter {
   #pressedKey;
   #preventSuggestions;
   #selectedIndex;
+  #variableNames;
+  #variables;
 
   get currentInputValue() {
     const val = this.trimOutput ? this.input.value.trim() : this.input.value;
@@ -423,6 +441,8 @@ class InplaceEditor extends EventEmitter {
    *        Optional aria-label attribute value that will be added to the input.
    * @param {String} options.inputAriaLabelledBy
    *        Optional aria-labelledby attribute value that will be added to the input.
+   * @param {String} options.inputClass:
+   *        Optional class to be added to the input.
    */
   #createInput(options = {}) {
     this.input = this.doc.createElementNS(
@@ -440,6 +460,9 @@ class InplaceEditor extends EventEmitter {
     }
 
     this.input.classList.add("styleinspector-propertyeditor");
+    if (options.inputClass) {
+      this.input.classList.add(options.inputClass);
+    }
     this.input.value = this.initial;
     if (options.inputAriaLabel) {
       this.input.setAttribute("aria-label", options.inputAriaLabel);
@@ -454,8 +477,12 @@ class InplaceEditor extends EventEmitter {
 
   /**
    * Get rid of the editor.
+   *
+   * @param {*|null} doneCallResult: When #clear is called after calling #apply, this will
+   *        be the returned value of the call to options.done that is done there.
+   *        Will be null when options.done is undefined.
    */
-  #clear() {
+  #clear(doneCallResult) {
     if (!this.input) {
       // Already cleared.
       return;
@@ -477,7 +504,7 @@ class InplaceEditor extends EventEmitter {
     delete this.elt;
 
     if (this.destroy) {
-      this.destroy();
+      this.destroy(doneCallResult);
     }
   }
 
@@ -1135,8 +1162,8 @@ class InplaceEditor extends EventEmitter {
     ) {
       this.#acceptPopupSuggestion();
     } else {
-      this.#apply();
-      this.#clear();
+      const onApplied = this.#apply();
+      this.#clear(onApplied);
     }
   };
 
@@ -1276,14 +1303,20 @@ class InplaceEditor extends EventEmitter {
     } else if (
       // We may show the suggestion completion if Ctrl+space is pressed, or if an
       // otherwise unhandled key is pressed and the user is not cycling through the
-      // options in the pop-up menu, it is not an expanded shorthand property, and no
-      // modifier key is pressed.
+      // options in the pop-up menu, it is not an expanded shorthand property, no
+      // modifier key is pressed, and the pressed key isn't Shift+Arrow(Up|Down).
       (event.key === " " && event.ctrlKey) ||
       (!cycling &&
         !multilineNavigation &&
         !event.metaKey &&
         !event.altKey &&
-        !event.ctrlKey)
+        !event.ctrlKey &&
+        // We only need to handle the case where the Shift key is pressed because maybeSuggestCompletion
+        // will trigger the completion because there are selected character here, and it
+        // will look like a "regular" completion with a suggested value. We don't need
+        // to care about other shift + key (e.g. LEFT, HOME, …), since we're not coming
+        // here for them.
+        !(isKeyIn(key, "UP", "DOWN") && event.shiftKey))
     ) {
       this.#maybeSuggestCompletion(true);
     }
@@ -1335,7 +1368,7 @@ class InplaceEditor extends EventEmitter {
         }
       }
 
-      this.#apply(direction, key);
+      const onApplied = this.#apply(direction, key);
 
       // Close the popup if open
       if (this.popup && this.popup.isOpen) {
@@ -1361,7 +1394,7 @@ class InplaceEditor extends EventEmitter {
         }
       }
 
-      this.#clear();
+      this.#clear(onApplied);
     } else if (isKeyIn(key, "ESCAPE")) {
       // Cancel and blur ourselves.
       // Now we don't want to suggest anything as we are moving out.
@@ -1371,8 +1404,8 @@ class InplaceEditor extends EventEmitter {
         this.#hideAutocompletePopup();
       } else {
         this.cancelled = true;
-        this.#apply();
-        this.#clear();
+        const onApplied = this.#apply();
+        this.#clear(onApplied);
       }
       prevent = true;
       event.stopPropagation();
@@ -1422,41 +1455,59 @@ class InplaceEditor extends EventEmitter {
   }
 
   /**
-   * Get the increment/decrement step to use for the provided key event.
+   * Get the increment/decrement step to use for the provided key or wheel
+   * event.
+   *
+   * @param {Event} event
+   *        The event from which the increment should be comuted
+   * @return {number} The computed increment value.
    */
   #getIncrement(event) {
-    const getSmallIncrementKey = evt => {
-      if (isOSX) {
-        return evt.altKey;
-      }
-      return evt.ctrlKey;
-    };
-
     const largeIncrement = 100;
     const mediumIncrement = 10;
     const smallIncrement = 0.1;
 
     let increment = 0;
+
+    let wheelUp = false;
+    let wheelDown = false;
+    if (event.type === "wheel") {
+      if (event.wheelDelta > 0) {
+        wheelUp = true;
+      } else if (event.wheelDelta < 0) {
+        wheelDown = true;
+      }
+    }
+
     const key = event.keyCode;
 
-    if (isKeyIn(key, "UP", "PAGE_UP")) {
+    if (wheelUp || isKeyIn(key, "UP", "PAGE_UP")) {
       increment = 1 * this.defaultIncrement;
-    } else if (isKeyIn(key, "DOWN", "PAGE_DOWN")) {
+    } else if (wheelDown || isKeyIn(key, "DOWN", "PAGE_DOWN")) {
       increment = -1 * this.defaultIncrement;
     }
 
-    if (event.shiftKey && !getSmallIncrementKey(event)) {
+    const largeIncrementKeyPressed = event.shiftKey;
+    const smallIncrementKeyPressed = this.#isSmallIncrementKeyPressed(event);
+    if (largeIncrementKeyPressed && !smallIncrementKeyPressed) {
       if (isKeyIn(key, "PAGE_UP", "PAGE_DOWN")) {
         increment *= largeIncrement;
       } else {
         increment *= mediumIncrement;
       }
-    } else if (getSmallIncrementKey(event) && !event.shiftKey) {
+    } else if (smallIncrementKeyPressed && !largeIncrementKeyPressed) {
       increment *= smallIncrement;
     }
 
     return increment;
   }
+
+  #isSmallIncrementKeyPressed = evt => {
+    if (isOSX) {
+      return evt.altKey;
+    }
+    return evt.ctrlKey;
+  };
 
   /**
    * Handle the input field's keyup event.
@@ -1485,6 +1536,24 @@ class InplaceEditor extends EventEmitter {
     // In case that the current value becomes empty, show the suggestions if needed.
     if (this.currentInputValue === "" && this.showSuggestCompletionOnEmpty) {
       this.#maybeSuggestCompletion(false);
+    }
+  };
+
+  /**
+   * Handle the input field's wheel event.
+   *
+   * @param {WheelEvent} event
+   */
+  #onWheel = event => {
+    const isPlainText = this.contentType == CONTENT_TYPES.PLAIN_TEXT;
+    let increment = 0;
+    if (!isPlainText) {
+      increment = this.#getIncrement(event);
+    }
+
+    if (increment && this.#incrementValue(increment)) {
+      this.#updateSize();
+      event.preventDefault();
     }
   };
 
@@ -1565,33 +1634,106 @@ class InplaceEditor extends EventEmitter {
       if (this.contentType == CONTENT_TYPES.CSS_PROPERTY) {
         list = this.#getCSSVariableNames().concat(this.#getCSSPropertyList());
       } else if (this.contentType == CONTENT_TYPES.CSS_VALUE) {
-        // Get the last query to be completed before the caret.
-        const match = /([^\s,.\/]+$)/.exec(query);
-        if (match) {
-          startCheckQuery = match[0];
-        } else {
-          startCheckQuery = "";
+        // Build the context for the autocomplete
+        // TODO: We may want to parse the whole input, or at least, until we get into
+        // an empty state (e.g. if cursor is in a function, we might check what's after
+        // the cursor to build good autocomplete).
+        const lexer = new InspectorCSSParserWrapper(query);
+        const functionStack = [];
+        let token;
+        // The last parsed token that isn't a whitespace or a comment
+        let lastMeaningfulToken;
+        let foundImportant = false;
+        let importantState = "";
+
+        let queryStartIndex = 0;
+        while ((token = lexer.nextToken())) {
+          const currentFunction = functionStack.at(-1);
+          if (
+            token.tokenType !== "WhiteSpace" &&
+            token.tokenType !== "Comment"
+          ) {
+            lastMeaningfulToken = token;
+            if (currentFunction) {
+              currentFunction.tokens.push(token);
+            }
+          }
+          if (
+            token.tokenType === "Function" ||
+            token.tokenType === "ParenthesisBlock"
+          ) {
+            functionStack.push({ fnToken: token, tokens: [] });
+          } else if (token.tokenType === "CloseParenthesis") {
+            functionStack.pop();
+          }
+
+          if (
+            token.tokenType === "WhiteSpace" ||
+            token.tokenType === "Comma" ||
+            token.tokenType === "Function" ||
+            (token.tokenType === "Comment" &&
+              // The parser already returns a comment token for non-closed comment, like "/*".
+              // But we only want to start the completion after the comment is closed
+              // Make sure we have a closed comment,i.e. at least `/**/`
+              token.text.length >= 4 &&
+              token.text.endsWith("*/"))
+          ) {
+            queryStartIndex = token.endOffset;
+          }
+
+          // Checking for the presence of !important (once is enough)
+          if (!foundImportant) {
+            // !important is composed of 2 tokens, `!` is a Delim, and `important` is an Ident.
+            // Here we have a potential start
+            if (token.tokenType === "Delim" && token.text === "!") {
+              importantState = "!";
+            } else if (importantState === "!") {
+              // If we saw the "!" char, then we need to have an "important" Ident
+              if (token.tokenType === "Ident" && token.text === "important") {
+                foundImportant = true;
+                break;
+              } else {
+                // otherwise, we can reset the state.
+                importantState = "";
+              }
+            }
+          }
         }
 
-        // Check if the query to be completed is a CSS variable.
-        const varMatch = /^var\(([^\s]+$)/.exec(startCheckQuery);
+        startCheckQuery = query.substring(queryStartIndex);
 
-        if (varMatch && varMatch.length == 2) {
-          startCheckQuery = varMatch[1];
-          list = this.#getCSSVariableNames();
-          postLabelValues = list.map(varName =>
-            this.#getCSSVariableValue(varName)
-          );
+        const lastFunctionEntry = functionStack.at(-1);
+        const functionValues = lastFunctionEntry
+          ? this.#getAutocompleteDataForFunction(lastFunctionEntry)
+          : null;
+
+        // Don't autocomplete after !important
+        if (foundImportant) {
+          list = [];
+          postLabelValues = [];
+        } else if (functionValues) {
+          list = functionValues.list;
+          postLabelValues = functionValues.postLabelValues;
         } else {
-          list = [
-            "!important",
-            ...this.#getCSSValuesForPropertyName(this.property.name),
-          ];
-        }
-
-        if (query == "") {
-          // Do not suggest '!important' without any manually typed character.
-          list.splice(0, 1);
+          list = this.#getCSSValuesForPropertyName(this.property.name);
+          // Only show !important if:
+          if (
+            // we're not in a function
+            !functionStack.length &&
+            // and there is no non-whitespace items after the cursor
+            !input.value.slice(input.selectionStart).trim() &&
+            // and the last meaningful token wasn't a delimiter or a comma
+            lastMeaningfulToken &&
+            (lastMeaningfulToken.tokenType !== "Delim" ||
+              lastMeaningfulToken.text !== "/") &&
+            lastMeaningfulToken.tokenType !== "Comma" &&
+            // and the input value doesn't start with ! ("!important" is parsed as a
+            // Delim, "!", and then an indent, "important", so we can't just check the
+            // last token)
+            !input.value.trim().startsWith("!")
+          ) {
+            list.unshift("!important");
+          }
         }
       } else if (
         this.contentType == CONTENT_TYPES.CSS_MIXED &&
@@ -1728,13 +1870,61 @@ class InplaceEditor extends EventEmitter {
   }
 
   /**
+   * Returns the autocomplete data for the passed function.
+   *
+   * @param {Object} functionStackEntry
+   * @param {InspectorCSSToken} functionStackEntry.fnToken: The token for the
+   *        function call
+   * @returns {Object|null} Return null if there's nothing specific to display for the function.
+   *          Otherwise, return an object of the following shape:
+   *            - {Array<String>} list: The list of autocomplete items
+   *            - {Array<String>} postLabelValue: The list of autocomplete items
+   *              post labels (e.g. for variable names, their values).
+   */
+  #getAutocompleteDataForFunction(functionStackEntry) {
+    const functionName = functionStackEntry?.fnToken?.value;
+    if (!functionName) {
+      return null;
+    }
+
+    let list = [];
+    let postLabelValues = [];
+
+    if (functionName === "var") {
+      // We only want to return variables for the first parameters of var(), not for its
+      // fallback. If we get more than one tokens, and given we don't get comments or
+      // whitespace, this means we're in the fallback value already.
+      if (functionStackEntry.tokens.length > 1) {
+        // In such case we'll use the default behavior
+        return null;
+      }
+      list = this.#getCSSVariableNames();
+      postLabelValues = list.map(varName => this.#getCSSVariableValue(varName));
+    } else if (functionName.includes("gradient")) {
+      // For gradient functions we want to display named colors and color functions,
+      // but only if the user didn't already entered a color token after the last comma.
+      list = this.#getCSSValuesForPropertyName("color");
+    }
+
+    // TODO: Handle other functions, e.g. color functions to autocomplete on relative
+    // color format (Bug 1898273), `color()` to suggest color space (Bug 1898277),
+    // `anchor()` to display existing anchor names (Bug 1903278)
+
+    return { list, postLabelValues };
+  }
+
+  /**
    * Automatically add closing parenthesis and skip closing parenthesis when needed.
    */
   #autocloseParenthesis() {
     // Split the current value at the cursor index to rebuild the string.
+    const { selectionStart, selectionEnd } = this.input;
+
     const parts = this.#splitStringAt(
       this.input.value,
-      this.input.selectionStart
+      // Use selectionEnd, so when an autocomplete item was inserted, we put the closing
+      // parenthesis after the suggestion
+      selectionEnd
     );
 
     // Lookup the character following the caret to know if the string should be modified.
@@ -1751,6 +1941,9 @@ class InplaceEditor extends EventEmitter {
     if (this.#pressedKey == ")" && nextChar == ")") {
       this.#updateValue(parts[0] + parts[1].substring(1));
     }
+
+    // set original selection range
+    this.input.setSelectionRange(selectionStart, selectionEnd);
 
     this.#pressedKey = null;
   }
@@ -1825,13 +2018,31 @@ class InplaceEditor extends EventEmitter {
       .sort();
   }
 
+  #getCSSVariablesMap() {
+    if (!this.getCssVariables) {
+      return null;
+    }
+
+    if (!this.#variables) {
+      this.#variables = this.getCssVariables();
+    }
+    return this.#variables;
+  }
+
   /**
    * Returns the list of all CSS variables to use for the autocompletion.
    *
    * @return {Array} array of CSS variable names (Strings)
    */
   #getCSSVariableNames() {
-    return Array.from(this.cssVariables.keys()).sort();
+    if (!this.#variableNames) {
+      const variables = this.#getCSSVariablesMap();
+      if (!variables) {
+        return [];
+      }
+      this.#variableNames = Array.from(variables.keys()).sort();
+    }
+    return this.#variableNames;
   }
 
   /**
@@ -1842,7 +2053,7 @@ class InplaceEditor extends EventEmitter {
    * @return {String} the variable value to the given CSS variable name
    */
   #getCSSVariableValue(varName) {
-    return this.cssVariables.get(varName);
+    return this.#getCSSVariablesMap()?.get(varName);
   }
 }
 

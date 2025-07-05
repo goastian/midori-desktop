@@ -62,17 +62,7 @@ add_task(async function () {
   const [oi] = objectInspectors;
 
   info("Expanding the Object");
-  const onMapOiMutation = waitForNodeMutation(oi, {
-    childList: true,
-  });
-
-  oi.querySelector(".arrow").click();
-  await onMapOiMutation;
-
-  ok(
-    oi.querySelector(".arrow").classList.contains("expanded"),
-    "The arrow of the node has the expected class after clicking on it"
-  );
+  await expandObjectInspectorNode(oi.querySelector(".tree-node"));
 
   const oiNodes = getObjectInspectorNodes(oi);
   // The object inspector should look like this:
@@ -130,7 +120,7 @@ add_task(async function () {
   );
 
   info("Expand public property disguised as private property");
-  expandObjectInspectorNode(publicDisguisedAsPrivateNodeEl);
+  await expandObjectInspectorNode(publicDisguisedAsPrivateNodeEl);
   const publicPropChildren = await waitFor(() => {
     const children = getObjectInspectorChildrenNodes(
       publicDisguisedAsPrivateNodeEl
@@ -162,7 +152,7 @@ add_task(async function () {
   );
 
   info("Expand private property");
-  expandObjectInspectorNode(privatePropertyNodeEl);
+  await expandObjectInspectorNode(privatePropertyNodeEl);
   const privatePropChildren = await waitFor(() => {
     const children = getObjectInspectorChildrenNodes(privatePropertyNodeEl);
     if (children.length === 0) {
@@ -231,7 +221,7 @@ add_task(async function () {
   );
 
   info("Expand private property prototype");
-  expandObjectInspectorNode(privatePropertyPrototypeEl);
+  await expandObjectInspectorNode(privatePropertyPrototypeEl);
   const privatePropertyPrototypeChildren = await waitFor(() => {
     const children = getObjectInspectorChildrenNodes(
       privatePropertyPrototypeEl
@@ -296,6 +286,73 @@ add_task(async function () {
   //   `<get #privateGetter>: "function"`,
   //   "private getter function is displayed as expected"
   // );
+});
+
+// Check viewing private properties on Custom Elements.
+add_task(async function () {
+  const ELEMENT_TEST_URI =
+    "https://example.com/browser/devtools/client/webconsole/test/browser/page_webconsole_object_inspector_private_properties.html";
+
+  const hud = await openNewTabAndConsole(ELEMENT_TEST_URI);
+
+  const node = await waitFor(() =>
+    findConsoleAPIMessage(hud, "custom-element-private-properties-test")
+  );
+  const objectInspectors = [...node.querySelectorAll(".tree")];
+  is(
+    objectInspectors.length,
+    1,
+    "There is the expected number of object inspectors"
+  );
+
+  const [oi] = objectInspectors;
+
+  info("Expanding the Element");
+  await expandObjectInspectorNode(oi.querySelector(".tree-node"));
+
+  const oiNodes = getObjectInspectorNodes(oi);
+  // Asserting the number of oiNodes in this case feels very brittle,
+  // since the addition of any new Node/Element/etc. properties to the
+  // standard will change that number. Let's not.
+
+  const publicDisguisedAsPrivateNodeEl = oiNodes[1];
+  // As long as element properties are always sorted alphabetically,
+  // same as any other object, this will be "#privateProperty" and
+  // will sort above everything else. Note that oiNodes[0] is the
+  // custom element itself.
+
+  checkOiNodeText(
+    publicDisguisedAsPrivateNodeEl,
+    `"#privateProperty": \"Actually a public property\"`,
+    `"fake" private property on a custom element has expected text`
+  );
+
+  // Since the number of oiNodes is unpredictable, the indices of the
+  // properties we want is also unpredictable. Just search for them
+  // instead.
+  let foundPublicProperty = false;
+  let foundPrivateProperty = false;
+  for (const oiNode of oiNodes) {
+    const textContent = oiNode.querySelector(".node").textContent.trim();
+    switch (textContent) {
+      case "publicProperty: 1":
+        foundPublicProperty = true;
+        break;
+      case "#privateProperty: 2":
+        foundPrivateProperty = true;
+        break;
+    }
+  }
+  is(
+    foundPublicProperty,
+    true,
+    "public property of a custom element is displayed as expected"
+  );
+  is(
+    foundPrivateProperty,
+    true,
+    "private property of a custom element is displayed as expected"
+  );
 });
 
 function checkOiNodeText(oiNode, expectedText, assertionName) {

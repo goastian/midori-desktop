@@ -60,7 +60,7 @@ html[dir="rtl"] .scopes-content .object-node {
 }
 
 .scopes-list {
-  padding: 4px 0px;
+  padding: 4px 0;
 }
 
 .scopes-list .function-signature {
@@ -90,7 +90,7 @@ html[dir="rtl"] .scopes-content .object-node {
   align-items: center;
 }
 
-.scopes-list .tree.object-inspector .tree-node button.arrow,
+.scopes-list .tree.object-inspector .tree-node button.theme-twisty,
 .scopes-list button.invoke-getter {
   margin-top: 2px;
 }

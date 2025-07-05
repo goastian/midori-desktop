@@ -6,9 +6,9 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 /*
  * Response preview component
@@ -18,34 +18,31 @@ class HTMLPreview extends Component {
   static get propTypes() {
     return {
       responseContent: PropTypes.object.isRequired,
+      responseHeaders: PropTypes.object,
+      url: PropTypes.string.isRequired,
     };
   }
 
   componentDidMount() {
     const { container } = this.refs;
-    const iframe = container.ownerDocument.createXULElement("iframe");
-    this.iframe = iframe;
-    iframe.setAttribute("type", "content");
-    iframe.setAttribute("remote", "true");
-
-    // For some reason, when we try to select some text,
-    // a drag of the whole page is initiated.
-    // Workaround this by canceling any start of drag.
-    iframe.addEventListener("dragstart", e => e.preventDefault(), {
-      capture: true,
-    });
+    const browser = container.ownerDocument.createXULElement("browser");
+    this.browser = browser;
+    browser.setAttribute("type", "content");
+    browser.setAttribute("remote", "true");
+    browser.setAttribute("maychangeremoteness", "true");
+    browser.setAttribute("disableglobalhistory", "true");
 
     // Bug 1800916 allow interaction with the preview page until
     // we find a way to prevent navigation without preventing copy paste from it.
     //
-    // iframe.addEventListener("mousedown", e => e.preventDefault(), {
+    // browser.addEventListener("mousedown", e => e.preventDefault(), {
     //   capture: true,
     // });
-    container.appendChild(iframe);
+    container.appendChild(browser);
 
-    // browsingContext attribute is only available after the iframe
+    // browsingContext attribute is only available after the browser
     // is attached to the DOM Tree.
-    iframe.browsingContext.allowJavascript = false;
+    browser.browsingContext.allowJavascript = false;
 
     this.#updatePreview();
   }
@@ -55,16 +52,35 @@ class HTMLPreview extends Component {
   }
 
   componentWillUnmount() {
-    this.iframe.remove();
+    this.browser.remove();
   }
 
   #updatePreview() {
-    const { responseContent } = this.props;
+    const { responseContent, responseHeaders, url } = this.props;
     const htmlBody = responseContent ? responseContent.content.text : "";
-    this.iframe.setAttribute(
-      "src",
+    const uri = Services.io.newURI(
       "data:text/html;charset=UTF-8," + encodeURIComponent(htmlBody)
     );
+
+    let csp = null;
+    const cspHeaders = responseHeaders?.headers.filter(
+      e => e.name.toLowerCase() === "content-security-policy"
+    );
+    if (cspHeaders?.length) {
+      // Merge multiple CSP headers with a comma.
+      const merged = cspHeaders.map(e => e.value).join(",");
+      csp = ChromeUtils.createCSPFromHeader(
+        merged,
+        new URL(url).URI,
+        Services.scriptSecurityManager.createNullPrincipal({})
+      );
+    }
+
+    const options = {
+      csp,
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    };
+    this.browser.loadURI(uri, options);
   }
 
   render() {

@@ -8,6 +8,7 @@
     "    ch    # The column location of the cursor",
     "  ],",
     "  suggestions # Array of expected results",
+    "  pref-suggestions # Optional array of additional pref-enabled suggestions: [pref, suggestion]",
     "]"
   ],
   "tests": [
@@ -59,13 +60,14 @@
     ],
     [
       [21, 9],
-      ["auto", "inherit", "initial", "revert", "revert-layer", "unset"]
+      ["auto", "inherit", "initial", "revert", "revert-layer", "unset"],
+      [["layout.css.anchor-positioning.enabled", "anchor-size"]]
     ],
     [
       [25, 26],
       [
-        ".devtools-toolbarbutton > tab",
         ".devtools-toolbarbutton > hbox",
+        ".devtools-toolbarbutton > tab",
         ".devtools-toolbarbutton > .toolbarbutton-menubutton-button"
       ]
     ],
@@ -75,7 +77,7 @@
     ],
     [
       [29, 20],
-      [".devtools-menulist:after", ".devtools-menulist:active"]
+      [".devtools-menulist:active", ".devtools-menulist:after"]
     ],
     [
       [30, 10],
@@ -92,14 +94,14 @@
     [
       [43, 51],
       [
-        ".devtools-toolbarbutton:not([checked=true]):hover:after",
-        ".devtools-toolbarbutton:not([checked=true]):hover:active"
+        ".devtools-toolbarbutton:not([checked=true]):hover:active",
+        ".devtools-toolbarbutton:not([checked=true]):hover:after"
       ]
     ],
     [[58, 36], ["!important;"]],
     [
       [73, 42],
-      [":lang(", ":last-of-type", ":link", ":last-child"]
+      [":lang(", ":last-child", ":last-of-type", ":link"]
     ],
     [[77, 25], [".visible"]]
   ]

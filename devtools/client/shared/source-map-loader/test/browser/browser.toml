@@ -16,6 +16,6 @@ support-files = [
 
 ["browser_wasm-source-map.js"]
 skip-if = [
-  "http3", # Bug 1829298
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1829298
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1829298
 ]

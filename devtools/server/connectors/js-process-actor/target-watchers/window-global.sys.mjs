@@ -10,8 +10,8 @@ ChromeUtils.defineESModuleGetters(
   {
     isWindowGlobalPartOfContext:
       "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs",
-    WindowGlobalLogger:
-      "resource://devtools/server/connectors/js-window-actor/WindowGlobalLogger.sys.mjs",
+    WEBEXTENSION_FALLBACK_DOC_URL:
+      "resource://devtools/server/actors/watcher/browsing-context-helpers.sys.mjs",
   },
   { global: "contextual" }
 );
@@ -31,24 +31,6 @@ const isEveryFrameTargetEnabled = Services.prefs.getBoolPref(
   "devtools.every-frame-target.enabled",
   false
 );
-
-// If true, log info about DOMProcess's being created.
-const DEBUG = false;
-
-/**
- * Print information about operation being done against each Window Global.
- *
- * @param {WindowGlobalChild} windowGlobal
- *        The window global for which we should log a message.
- * @param {String} message
- *        Message to log.
- */
-function logWindowGlobal(windowGlobal, message) {
-  if (!DEBUG) {
-    return;
-  }
-  lazy.WindowGlobalLogger.logWindowGlobal(windowGlobal, message);
-}
 
 function watch() {
   // Set the following preference in this function, so that we can easily
@@ -153,7 +135,32 @@ function createTargetsForWatcher(watcherDataObject, isProcessActorStartup) {
       }
     }
   }
-  for (const window of Services.ww.getWindowEnumerator()) {
+
+  const topWindows = [];
+  // Do not use a for loop on `windowEnumerator` as underlying call to `getNext` may throw on some windows
+  const windowEnumerator = Services.ww.getWindowEnumerator();
+  while (windowEnumerator.hasMoreElements()) {
+    try {
+      const window = windowEnumerator.getNext();
+      topWindows.push(window);
+    } catch (e) {
+      console.error("Failed to process a top level window", e);
+    }
+  }
+
+  // When debugging an extension, we have to ensure create the top level target first.
+  // The top level target is the one for the fallback document.
+  if (sessionContext.type == "webextension") {
+    const fallbackWindowIndex = topWindows.findIndex(window =>
+      window.location.href.startsWith(lazy.WEBEXTENSION_FALLBACK_DOC_URL)
+    );
+    if (fallbackWindowIndex != -1) {
+      const [fallbackWindow] = topWindows.splice(fallbackWindowIndex, 1);
+      topWindows.unshift(fallbackWindow);
+    }
+  }
+
+  for (const window of topWindows) {
     lookupForTargets(window);
 
     // `lookupForTargets` uses `getAllBrowsingContextsInSubTree`, but this will ignore browser elements
@@ -164,7 +171,8 @@ function createTargetsForWatcher(watcherDataObject, isProcessActorStartup) {
     for (const browser of window.document.querySelectorAll(
       `browser[type="content"]`
     )) {
-      const childWindow = browser.browsingContext.window;
+      // Bug 1947777 - the browser context may not have an active DOM Window
+      const childWindow = browser.browsingContext?.window;
       // If the tab isn't on a document loaded in the parent process,
       // the window will be null.
       if (childWindow) {
@@ -373,8 +381,6 @@ function createWindowGlobalTargetActor(
   windowGlobalChild,
   isDocumentCreation = false
 ) {
-  logWindowGlobal(windowGlobalChild, "Instantiate WindowGlobalTarget");
-
   // When debugging privileged pages running a the shared system compartment, and we aren't in the browser toolbox (which already uses a distinct loader),
   // we have to use the distinct loader in order to ensure running DevTools in a distinct compartment than the page we are about to debug
   // Such page could be about:addons, chrome://browser/content/browser.xhtml,...
@@ -395,9 +401,24 @@ function createWindowGlobalTargetActor(
   // any parent BC and shouldn't be considered as top-level.
   // This is why we check for browserId's.
   const { sessionContext } = watcherDataObject;
-  const isTopLevelTarget =
+  let isTopLevelTarget =
     !browsingContext.parent &&
     browsingContext.browserId == sessionContext.browserId;
+
+  // Web Extension are many of many "top level" browsing context.
+  // i.e. browsing context with no parent.
+  // The background page and popup top browsing context have no parent.
+  // Given that none of these browsing context are guaranteed to be active,
+  // not guarantee to be always active while debugging an add-on,
+  // the WebExtension Descriptor Actor will spawn an "fallback document",
+  // which is guaranteed to be always active and dedicated to eachd debugged addon.
+  // Thus, allowing us to have an identifier top level document to be provided
+  // to an unique top level target actor.
+  if (sessionContext.type == "webextension") {
+    isTopLevelTarget = browsingContext.window.location.href.startsWith(
+      lazy.WEBEXTENSION_FALLBACK_DOC_URL
+    );
+  }
 
   // Create the actual target actor.
   const targetActor = new WindowGlobalTargetActor(connection, {

@@ -10,32 +10,45 @@ add_task(async function () {
   const dbg = await initDebugger("doc-scripts.html", "simple2.js");
   const doc = dbg.win.document;
 
+  const focusableEditorElementSelector = ".cm-content";
   await selectSource(dbg, "simple2.js");
 
-  await waitForElementWithSelector(dbg, ".CodeMirror");
-  findElementWithSelector(dbg, ".CodeMirror").focus();
-
-  // Enter code editor
-  pressKey(dbg, "Enter");
-  is(
-    findElementWithSelector(dbg, "textarea"),
-    doc.activeElement,
-    "Editor is enabled"
+  const focusableEditorElement = await waitForElementWithSelector(
+    dbg,
+    focusableEditorElementSelector
   );
 
-  // Exit code editor and focus on container
-  pressKey(dbg, "Escape");
+  info("Focus on the editor");
+  focusableEditorElement.focus();
+
+  is(doc.activeElement, focusableEditorElement, "Editor is focused");
+
+  info(
+    "Press shift + tab to navigate out of the editor to the previous tab element"
+  );
+  pressKey(dbg, "ShiftTab");
+
   is(
-    findElementWithSelector(dbg, ".CodeMirror"),
-    doc.activeElement,
-    "Focused on container"
+    doc.activeElement.className,
+    findElementWithSelector(dbg, ".cm6-dt-foldgutter__toggle-button").className,
+    "The left sidebar toggle button is focused"
   );
 
-  // Enter code editor
+  info("Press tab to navigate back to the editor");
   pressKey(dbg, "Tab");
+
   is(
-    findElementWithSelector(dbg, "textarea"),
+    findElementWithSelector(dbg, focusableEditorElementSelector),
     doc.activeElement,
-    "Editor is enabled"
+    "Editor is focused again"
+  );
+
+  info("Press tab again to navigate out of the editor to the next tab element");
+  pressKey(dbg, "Tab");
+
+  is(
+    findElementWithSelector(dbg, ".action.black-box"),
+    doc.activeElement,
+    "The ignore source button is focused"
   );
 });

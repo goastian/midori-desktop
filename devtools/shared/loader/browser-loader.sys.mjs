@@ -36,9 +36,27 @@ const BROWSER_BASED_DIRS = [
   "resource://devtools/client/shared/fluent-l10n",
   "resource://devtools/client/shared/redux",
   "resource://devtools/client/shared/vendor",
+  // Ensure loading debugger modules in the document scope
+  // when they are loaded from SmartTrace, which requires to load Reps/ObjectInspector
+  // in a document scope
+  "resource://devtools/client/debugger/src",
 ];
 
 const COMMON_LIBRARY_DIRS = ["resource://devtools/client/shared/vendor"];
+
+const VENDOR_URI = "resource://devtools/client/shared/vendor/";
+const REACT_ESM_MODULES = new Set([
+  VENDOR_URI + "react-dev.js",
+  VENDOR_URI + "react.js",
+  VENDOR_URI + "react-dom-dev.js",
+  VENDOR_URI + "react-dom.js",
+  VENDOR_URI + "react-dom-factories.js",
+  VENDOR_URI + "react-dom-server-dev.js",
+  VENDOR_URI + "react-dom-server.js",
+  VENDOR_URI + "react-prop-types-dev.js",
+  VENDOR_URI + "react-prop-types.js",
+  VENDOR_URI + "react-test-renderer.js",
+]);
 
 // Any directory that matches the following regular expression
 // is also considered as browser based module directory.
@@ -85,6 +103,7 @@ export function BrowserLoader(options) {
   return {
     loader: browserLoaderBuilder.loader,
     require: browserLoaderBuilder.require,
+    lazyRequireGetter: browserLoaderBuilder.lazyRequireGetter,
   };
 }
 
@@ -143,13 +162,26 @@ function BrowserLoaderBuilder({
         return devtoolsRequire(id);
       }
 
-      const uri = require.resolve(id);
+      let uri = require.resolve(id);
 
       // The mocks can be set from tests using browser-loader-mocks.js setMockedModule().
       // If there is an entry for a given uri in the `mocks` object, return it instead of
       // requiring the module.
       if (flags.testing && lazy.getMockedModule(uri)) {
         return lazy.getMockedModule(uri);
+      }
+
+      // Load all React modules as ES Modules, in the Browser Loader global.
+      // For this we have to ensure using ChromeUtils.importESModule with `global:"current"`,
+      // but executed from the Loader global scope. `syncImport` does that.
+      if (REACT_ESM_MODULES.has(uri)) {
+        uri = uri.replace(/.js$/, ".mjs");
+        const moduleExports = syncImport(uri);
+        return moduleExports.default || moduleExports;
+      }
+      if (uri.endsWith(".mjs")) {
+        const moduleExports = syncImport(uri);
+        return moduleExports.default || moduleExports;
       }
 
       if (
@@ -185,11 +217,20 @@ function BrowserLoaderBuilder({
 
   const mainModule = BaseLoader.Module(baseURI, joinURI(baseURI, "main.js"));
   this.loader = BaseLoader.Loader(opts);
+
+  const scope = this.loader.sharedGlobal;
+  Cu.evalInSandbox(
+    "function __syncImport(uri) { return ChromeUtils.importESModule(uri, {global: 'current'})}",
+    scope
+  );
+  const syncImport = scope.__syncImport;
+
   // When running tests, expose the BrowserLoader instance for metrics tests.
   if (flags.testing) {
     window.getBrowserLoaderForWindow = () => this;
   }
   this.require = BaseLoader.Require(this.loader, mainModule);
+  this.lazyRequireGetter = this.lazyRequireGetter.bind(this);
 }
 
 BrowserLoaderBuilder.prototype = {

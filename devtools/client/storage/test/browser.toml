@@ -2,8 +2,8 @@
 tags = "devtools"
 subsuite = "devtools"
 skip-if = [
-  "http3", # Many tests relying on test1/test2.example.org
-  "http2",
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Many tests relying on test1/test2.example.org
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Many tests relying on test1/test2.example.org
 ]
 support-files = [
   "storage-blank.html",
@@ -43,6 +43,9 @@ support-files = [
   "!/devtools/client/shared/test/shared-head.js",
   "!/devtools/client/shared/test/telemetry-test-helpers.js",
 ]
+prefs = [
+  "network.cookie.CHIPS.enabled=true",
+]
 
 ["browser_storage_basic.js"]
 
@@ -58,7 +61,6 @@ tags = "usercontextid"
 ["browser_storage_cache_error.js"]
 
 ["browser_storage_cache_navigation.js"]
-skip-if = ["win11_2009"] # Bug 1797751
 
 ["browser_storage_cache_overflow.js"]
 
@@ -69,6 +71,7 @@ skip-if = ["win11_2009"] # Bug 1797751
 ["browser_storage_cookies_domain.js"]
 
 ["browser_storage_cookies_domain_port.js"]
+https_first_disabled = true
 
 ["browser_storage_cookies_edit.js"]
 
@@ -77,15 +80,16 @@ skip-if = ["win11_2009"] # Bug 1797751
 ["browser_storage_cookies_hostOnly.js"]
 
 ["browser_storage_cookies_navigation.js"]
-skip-if = [
-  "os == 'linux' && debug && fission && socketprocess_networking", # high frequency intermittent
-]
+
+["browser_storage_cookies_partitioned.js"]
 
 ["browser_storage_cookies_samesite.js"]
-skip-if = ["true"] # Bug 1448484 - sameSite1 is "Unset" - Got undefined, expected Unset
 
 ["browser_storage_cookies_sort.js"]
-skip-if = ["a11y_checks"] # Bug 1858037 to investigate intermittent a11y_checks results (fails on Autoland, passes on Try)
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt && a11y_checks", # Bug 1858037 to investigate intermittent a11y_checks results (fails on Autoland, passes on Try)
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && a11y_checks", # Bug 1858037 to investigate intermittent a11y_checks results (fails on Autoland, passes on Try)
+]
 
 ["browser_storage_cookies_tab_navigation.js"]
 
@@ -99,8 +103,6 @@ skip-if = ["a11y_checks"] # Bug 1858037 to investigate intermittent a11y_checks 
 tags = "usercontextid"
 
 ["browser_storage_dfpi.js"]
-
-["browser_storage_dfpi_always_partition_storage.js"]
 
 ["browser_storage_dynamic_updates_cookies.js"]
 
@@ -132,17 +134,21 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_storage_indexeddb_delete_blocked.js"]
 
 ["browser_storage_indexeddb_duplicate_names.js"]
-skip-if = [
-  "win11_2009", # Bug 1797751
-]
 
 ["browser_storage_indexeddb_hide_internal_dbs.js"]
-skip-if = ["asan"] # Bug 1591064
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1591064
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && asan", # Bug 1591064
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1929421
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && asan", # Bug 1591064
+]
 
 ["browser_storage_indexeddb_navigation.js"]
 skip-if = [
-  "win10_2009 && bits == 64", # Bug 1694274
-  "os == 'linux' && bits == 64", # Bug 1694274
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1781497
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1781497
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # Bug 1781497
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && a11y_checks",
 ]
 
 ["browser_storage_indexeddb_overflow.js"]

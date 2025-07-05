@@ -19,7 +19,7 @@ add_task(async function () {
 
   await selectSource(dbg, entrySrc);
   ok(
-    getCM(dbg).getValue().includes("window.keepMeAlive"),
+    getEditorContent(dbg).includes("window.keepMeAlive"),
     "Original source text loaded correctly"
   );
 
@@ -32,7 +32,7 @@ add_task(async function () {
   await waitForDispatch(dbg.store, "LOAD_ORIGINAL_SOURCE_TEXT");
 
   await waitForPausedInOriginalFileAndToggleMapScopes(dbg, "entry.js");
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "entry.js").id, 5);
+  await assertPausedAtSourceAndLine(dbg, findSource(dbg, "entry.js").id, 5);
 
   await waitForBreakpointCount(dbg, 2);
   is(getBreakpointCount(), 2, "Two breakpoints exist");

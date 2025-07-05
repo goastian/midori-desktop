@@ -13,9 +13,9 @@ loader.lazyRequireGetter(
 );
 
 module.exports = function ({ resource, targetFront }) {
-  if (Array.isArray(resource.message.arguments)) {
-    // We might need to create fronts for each of the message arguments.
-    resource.message.arguments = resource.message.arguments.map(arg =>
+  // We might need to create fronts for each of the message arguments.
+  if (Array.isArray(resource.arguments)) {
+    resource.arguments = resource.arguments.map(arg =>
       getAdHocFrontOrPrimitiveGrip(arg, targetFront)
     );
   }

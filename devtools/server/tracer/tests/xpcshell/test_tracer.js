@@ -563,3 +563,45 @@ add_task(async function testTracingAllGlobals() {
   Assert.stringContains(logs[2], "sandbox2.js:1:18");
   Assert.equal(logs[3], "Stop tracing JavaScript\n");
 });
+
+add_task(async function testTracingInfiniteLoop() {
+  // Test that the tracer handles infinite loops
+  const sandbox = Cu.Sandbox("https://example.com");
+  Cu.evalInSandbox(
+    `function foo() { bar(); }; function bar() { foo() };`,
+    sandbox
+  );
+
+  // Pass an override method to catch all strings tentatively logged to stdout
+  const logs = [];
+  function loggingMethod(str) {
+    logs.push(str);
+  }
+
+  info("Start tracing");
+  JSTracer.startTracing({
+    global: sandbox,
+    loggingMethod,
+  });
+
+  info("Call some code");
+  try {
+    sandbox.foo();
+    Assert.fail("Should have thrown error because of infinite loop");
+  } catch (e) {
+    Assert.equal(e.message, "too much recursion");
+  }
+
+  Assert.greater(logs.length, 1000);
+  Assert.equal(logs[0], "Start tracing JavaScript\n");
+
+  // This will stop logging trace once spidermonkey stopped the execution
+  Assert.stringContains(logs[1], "λ foo");
+  Assert.stringContains(logs[2], "λ bar");
+  Assert.stringContains(logs[3], "λ foo");
+  Assert.stringContains(logs[4], "λ bar");
+  Assert.stringContains(logs[5], "λ foo");
+
+  info("Stop tracing");
+  JSTracer.stopTracing();
+});

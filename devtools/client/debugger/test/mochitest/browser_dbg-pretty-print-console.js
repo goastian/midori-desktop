@@ -15,26 +15,26 @@ add_task(async function () {
   invokeInTab("arithmetic");
 
   info("Switch to console and check message");
-  const minifiedLink = await waitForConsoleLink(
-    dbg,
+  const minifiedLink = await waitForConsoleMessageLink(
+    dbg.toolbox,
     "arithmetic",
-    "math.min.js:3:73"
+    "math.min.js:4:73"
   );
 
   info("Click on the link to open the debugger");
   minifiedLink.click();
   await waitForSelectedSource(dbg, "math.min.js");
-  await waitForSelectedLocation(dbg, 3);
+  await waitForSelectedLocation(dbg, 4, 73);
 
   info("Click on pretty print button and wait for the file to be formatted");
   clickElement(dbg, "prettyPrintButton");
   await waitForSelectedSource(dbg, "math.min.js:formatted");
 
   info("Switch back to console and check message");
-  const formattedLink = await waitForConsoleLink(
-    dbg,
+  const formattedLink = await waitForConsoleMessageLink(
+    dbg.toolbox,
     "arithmetic",
-    "math.min.js:formatted:31:24"
+    "math.min.js:formatted:31:25"
   );
   ok(true, "Message location was updated as expected");
 
@@ -43,24 +43,5 @@ add_task(async function () {
   );
   formattedLink.click();
   await selectSource(dbg, "math.min.js:formatted");
-  await waitForSelectedLocation(dbg, 31);
+  await waitForSelectedLocation(dbg, 31, 25);
 });
-
-async function waitForConsoleLink(dbg, messageText, linkText) {
-  const { toolbox } = dbg;
-  await toolbox.selectTool("webconsole");
-
-  return waitFor(async () => {
-    // Wait until the message updates.
-    const [message] = await findConsoleMessages(toolbox, messageText);
-    if (!message) {
-      return false;
-    }
-    const linkEl = message.querySelector(".frame-link-source");
-    if (!linkEl) {
-      return false;
-    }
-
-    return linkEl.textContent == linkText ? linkEl : false;
-  });
-}

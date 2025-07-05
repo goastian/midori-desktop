@@ -36,6 +36,12 @@ loader.lazyRequireGetter(
   true
 );
 const ZoomKeys = require("resource://devtools/client/shared/zoom-keys.js");
+loader.lazyRequireGetter(
+  this,
+  "TRACER_LOG_METHODS",
+  "resource://devtools/shared/specs/tracer.js",
+  true
+);
 
 const PREF_SIDEBAR_ENABLED = "devtools.webconsole.sidebarToggle";
 const PREF_BROWSERTOOLBOX_SCOPE = "devtools.browsertoolbox.scope";
@@ -466,10 +472,13 @@ class WebConsoleUI {
     this._watchedResources.push(resourceCommand.TYPES.CSS_MESSAGE);
   }
 
+  // eslint-disable-next-line complexity
   _onResourceAvailable(resources) {
     if (this._destroyed) {
       return;
     }
+
+    const { logMethod } = this.hud.commands.tracerCommand.getTracingOptions();
 
     const messages = [];
     for (const resource of resources) {
@@ -503,11 +512,17 @@ class WebConsoleUI {
       if (
         (this.isBrowserToolboxConsole || this.isBrowserConsole) &&
         resource.isAlreadyExistingResource &&
-        (resource.pageError?.private || resource.message?.private)
+        (resource.pageError?.private || resource.private)
       ) {
         continue;
       }
 
+      if (
+        resource.resourceType === TYPES.JSTRACER_TRACE &&
+        logMethod != TRACER_LOG_METHODS.CONSOLE
+      ) {
+        continue;
+      }
       if (resource.resourceType === TYPES.NETWORK_EVENT_STACKTRACE) {
         this.networkDataProvider?.onStackTraceAvailable(resource);
         continue;
@@ -574,10 +589,16 @@ class WebConsoleUI {
 
     // Initialize module loader and load all the WebConsoleWrapper. The entire code-base
     // doesn't need any extra privileges and runs entirely in content scope.
-    const WebConsoleWrapper = BrowserLoader({
+    const browserLoader = BrowserLoader({
       baseURI: "resource://devtools/client/webconsole/",
       window: this.window,
-    }).require("resource://devtools/client/webconsole/webconsole-wrapper.js");
+    });
+    // Expose `require` for the CustomFormatter ESM in order to allow it to load
+    // ObjectInspector, which are still CommonJS modules, via the same BrowserLoader instance.
+    this.window.browserLoaderRequire = browserLoader.require;
+    const WebConsoleWrapper = browserLoader.require(
+      "resource://devtools/client/webconsole/webconsole-wrapper.js"
+    );
 
     this.wrapper = new WebConsoleWrapper(
       this.outputNode,

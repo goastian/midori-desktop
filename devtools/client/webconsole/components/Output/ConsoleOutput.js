@@ -7,11 +7,11 @@ const {
   Component,
   createElement,
   createRef,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
+} = require("resource://devtools/client/shared/vendor/react-redux.js");
 const {
   initialize,
 } = require("resource://devtools/client/webconsole/actions/ui.js");
@@ -72,7 +72,7 @@ class ConsoleOutput extends Component {
       editorMode: PropTypes.bool.isRequired,
       cacheGeneration: PropTypes.number.isRequired,
       disableVirtualization: PropTypes.bool,
-      lastMessageId: PropTypes.string.isRequired,
+      lastMessageId: PropTypes.string,
     };
   }
 

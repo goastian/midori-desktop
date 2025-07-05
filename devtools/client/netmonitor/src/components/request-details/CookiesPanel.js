@@ -7,8 +7,8 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 const {
   L10N,
@@ -36,7 +36,10 @@ const Accordion = createFactory(
 
 loader.lazyGetter(this, "TreeRow", function () {
   return createFactory(
-    require("resource://devtools/client/shared/components/tree/TreeRow.js")
+    ChromeUtils.importESModule(
+      "resource://devtools/client/shared/components/tree/TreeRow.mjs",
+      { global: "current" }
+    ).default
   );
 });
 

@@ -20,31 +20,48 @@ function addBaseHtmlElements(body) {
   return `<html><head></head><body>${body}</body></html>`;
 }
 
-// This first page asserts we can redirect to another URL, even if JS happen to be executed
-const FETCH_CONTENT_1 = addBaseHtmlElements(
-  `Fetch 1<script>window.parent.location.href = "${REDIRECT_URL}";</script>`
-);
-// This second page asserts that JS is disabled
-const FETCH_CONTENT_2 = addBaseHtmlElements(
-  `Fetch 2<script>document.write("JS activated")</script>`
-);
-// This third page asserts that links and forms are disabled
-const FETCH_CONTENT_3 = addBaseHtmlElements(
-  `Fetch 3<a href="${REDIRECT_URL}">link</a> -- <form action="${REDIRECT_URL}"><input type="submit"></form>`
-);
-// This fourth page asserts responses with line breaks
-const FETCH_CONTENT_4 = addBaseHtmlElements(`
+const TEST_PAGES = {
+  // This page asserts we can redirect to another URL, even if JS happen to be executed
+  redirect: addBaseHtmlElements(
+    `Fetch 1<script>window.parent.location.href = "${REDIRECT_URL}";</script>`
+  ),
+
+  // #1 This page asserts that JS is disabled
+  js: addBaseHtmlElements(
+    `Fetch 2<script>document.write("JS activated")</script>`
+  ),
+
+  // #2 This page asserts that links and forms are disabled
+  forms: addBaseHtmlElements(
+    `Fetch 3<a href="${REDIRECT_URL}">link</a> -- <form action="${REDIRECT_URL}"><input type="submit"></form>`
+  ),
+
+  // #3 This page asserts responses with line breaks work
+  lineBreak: addBaseHtmlElements(`
   <a href="#" id="link1">link1</a>
   <a href="#" id="link2">link2</a>
-`);
+  `),
+
+  // #4 This page asserts that we apply inline styles
+  styles: addBaseHtmlElements(`<p style="color: red;">Hello World</p>`),
+
+  // #5 This page asserts that (multiple) Content-Security-Policy headers are applied
+  csp: addBaseHtmlElements(`
+  <base href="https://example.com/">
+
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2P4v5ThPwAG7wKklwQ/bwAAAABJRU5ErkJggg==">
+  <iframe src="/foo.html"></iframe>
+  `),
+};
 
 // Use fetch in order to prevent actually running this code in the test page
-const TEST_HTML = addBaseHtmlElements(`<div id="to-copy">HTML</div><script>
-  fetch("${BASE_URL}fetch-1.html");
-  fetch("${BASE_URL}fetch-2.html");
-  fetch("${BASE_URL}fetch-3.html");
-  fetch("${BASE_URL}fetch-4.html");
-</script>`);
+const TEST_HTML = addBaseHtmlElements(
+  `<div id="to-copy">HTML</div><script>` +
+    Object.keys(TEST_PAGES)
+      .map(name => `fetch("${BASE_URL}fetch-${name}.html");`)
+      .join("\n") +
+    `</script>`
+);
 const TEST_URL = BASE_URL + "doc-html-preview.html";
 
 httpServer.registerPathHandler(
@@ -54,22 +71,21 @@ httpServer.registerPathHandler(
     response.write(TEST_HTML);
   }
 );
-httpServer.registerPathHandler("/fetch-1.html", (request, response) => {
-  response.setStatusLine(request.httpVersion, 200, "OK");
-  response.write(FETCH_CONTENT_1);
-});
-httpServer.registerPathHandler("/fetch-2.html", (request, response) => {
-  response.setStatusLine(request.httpVersion, 200, "OK");
-  response.write(FETCH_CONTENT_2);
-});
-httpServer.registerPathHandler("/fetch-3.html", (request, response) => {
-  response.setStatusLine(request.httpVersion, 200, "OK");
-  response.write(FETCH_CONTENT_3);
-});
-httpServer.registerPathHandler("/fetch-4.html", (request, response) => {
-  response.setStatusLine(request.httpVersion, 200, "OK");
-  response.write(FETCH_CONTENT_4);
-});
+
+for (const [name, content] of Object.entries(TEST_PAGES)) {
+  httpServer.registerPathHandler(`/fetch-${name}.html`, (request, response) => {
+    response.setStatusLine(request.httpVersion, 200, "OK");
+
+    if (name === "csp") {
+      // Duplicate un-merged headers
+      response.setHeaderNoCheck("Content-Security-Policy", "img-src 'none'");
+      response.setHeaderNoCheck("Content-Security-Policy", "base-uri 'self'");
+    }
+
+    response.write(content);
+  });
+}
+
 httpServer.registerPathHandler("/redirect.html", (request, response) => {
   response.setStatusLine(request.httpVersion, 200, "OK");
   response.write("Redirected!");
@@ -88,76 +104,96 @@ add_task(async function () {
 
   store.dispatch(Actions.batchEnable(false));
 
-  const onNetworkEvent = waitForNetworkEvents(monitor, 3);
+  const onNetworkEvent = waitForNetworkEvents(
+    monitor,
+    1 + Object.keys(TEST_PAGES).length
+  );
   await reloadBrowser();
   await onNetworkEvent;
 
   // The new lines are stripped when using outerHTML to retrieve HTML content of the preview iframe
-  await selectIndexAndWaitForHtmlView(0, TEST_HTML);
-  await selectIndexAndWaitForHtmlView(1, FETCH_CONTENT_1);
-  await selectIndexAndWaitForHtmlView(2, FETCH_CONTENT_2);
-  await selectIndexAndWaitForHtmlView(3, FETCH_CONTENT_3);
-  await selectIndexAndWaitForHtmlView(4, FETCH_CONTENT_4);
+  await selectIndexAndWaitForHtmlView(0, "initial-page", TEST_HTML);
+  let index = 1;
+  for (const [name, content] of Object.entries(TEST_PAGES)) {
+    await selectIndexAndWaitForHtmlView(index, name, content);
+    index++;
+  }
 
   await teardown(monitor);
 
-  async function selectIndexAndWaitForHtmlView(index, expectedHtmlPreview) {
-    info(`Select the request #${index}`);
+  async function selectIndexAndWaitForHtmlView(
+    index_,
+    name,
+    expectedHtmlPreview
+  ) {
+    info(`Select the request "${name}" #${index_}`);
     const onResponseContent = monitor.panelWin.api.once(
       TEST_EVENTS.RECEIVED_RESPONSE_CONTENT
     );
-    store.dispatch(Actions.selectRequestByIndex(index));
+    store.dispatch(Actions.selectRequestByIndex(index_));
 
-    info("Open the Response tab");
     document.querySelector("#response-tab").click();
 
-    const [iframe] = await waitForDOM(
+    const [browser] = await waitForDOM(
       document,
-      "#response-panel .html-preview iframe"
+      "#response-panel .html-preview browser"
     );
 
-    // <xul:iframe type=content remote=true> don't emit "load" event.
-    // And SpecialPowsers.spawn throws if kept running during a page load.
-    // So poll for the end of the iframe load...
-    await waitFor(async () => {
-      // Note that if spawn executes early, the iframe may not yet be loading
-      // and would throw for the reason mentioned in previous comment.
-      try {
-        const rv = await SpecialPowers.spawn(iframe.browsingContext, [], () => {
-          return content.document.readyState == "complete";
-        });
-        return rv;
-      } catch (e) {
-        return false;
-      }
-    });
+    await BrowserTestUtils.browserLoaded(browser);
 
     info("Wait for response content to be loaded");
     await onResponseContent;
 
     is(
-      iframe.browsingContext.currentWindowGlobal.isInProcess,
+      browser.browsingContext.currentWindowGlobal.isInProcess,
       false,
       "The preview is loaded in a content process"
     );
 
     await SpecialPowers.spawn(
-      iframe.browsingContext,
+      browser.browsingContext,
       [expectedHtmlPreview],
       async function (expectedHtml) {
         is(
           content.document.documentElement.outerHTML,
           expectedHtml,
-          "The text shown in the iframe is incorrect for the html request."
+          "The text shown in the browser is incorrect for the html request."
         );
       }
     );
 
+    if (name === "style") {
+      await SpecialPowers.spawn(browser.browsingContext, [], async function () {
+        const p = content.document.querySelector("p");
+        const computed = content.window.getComputedStyle(p);
+        is(
+          computed.getPropertyValue("color"),
+          "rgb(255, 0, 0)",
+          "The inline style was not applied"
+        );
+      });
+    }
+
+    if (name == "csp") {
+      await SpecialPowers.spawn(browser.browsingContext, [], async function () {
+        is(
+          content.document.querySelector("img").complete,
+          false,
+          "img was blocked"
+        );
+        is(
+          content.document.querySelector("iframe").src,
+          "/foo.html",
+          "URL of iframe was not changed by <base>"
+        );
+      });
+    }
+
     // Only assert copy to clipboard on the first test page
-    if (expectedHtmlPreview == TEST_HTML) {
+    if (name == "initial-page") {
       await waitForClipboardPromise(async function () {
         await SpecialPowers.spawn(
-          iframe.browsingContext,
+          browser.browsingContext,
           [],
           async function () {
             const elt = content.document.getElementById("to-copy");
@@ -170,7 +206,5 @@ add_task(async function () {
         );
       }, "HTML");
     }
-
-    return iframe;
   }
 });

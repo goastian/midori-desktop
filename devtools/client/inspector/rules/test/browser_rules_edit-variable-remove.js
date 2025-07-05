@@ -21,13 +21,7 @@ add_task(async function () {
   await selectNode("div", inspector);
 
   info("Check the initial state of the --color variable");
-  checkCSSVariableOutput(
-    view,
-    "div",
-    "color",
-    "ruleview-variable",
-    "--color = lime"
-  );
+  checkCSSVariableOutput(view, "div", "color", "inspector-variable", "lime");
 
   info("Remove the --color variable declaration");
   const prop = getTextProperty(view, 1, { "--color": "lime" });
@@ -36,7 +30,7 @@ add_task(async function () {
     view,
     "div",
     "color",
-    "ruleview-unmatched-variable",
+    "inspector-unmatched",
     "--color is not set"
   );
 });

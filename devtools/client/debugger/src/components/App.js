@@ -31,8 +31,6 @@ const KeyShortcuts = require("resource://devtools/client/shared/key-shortcuts.js
 const SplitBox = require("resource://devtools/client/shared/components/splitter/SplitBox.js");
 const AppErrorBoundary = require("resource://devtools/client/shared/components/AppErrorBoundary.js");
 
-const shortcuts = new KeyShortcuts({ window });
-
 const horizontalLayoutBreakpoint = window.matchMedia("(min-width: 800px)");
 const verticalLayoutBreakpoint = window.matchMedia(
   "(min-width: 10px) and (max-width: 799px)"
@@ -48,8 +46,15 @@ import EditorFooter from "./Editor/Footer";
 import QuickOpenModal from "./QuickOpenModal";
 
 class App extends Component {
+  #shortcuts;
+
   constructor(props) {
     super(props);
+
+    // The shortcuts should be built as early as possible because they are
+    // exposed via getChildContext.
+    this.#shortcuts = new KeyShortcuts({ window });
+
     this.state = {
       shortcutsModalEnabled: false,
       startPanelSize: 0,
@@ -67,7 +72,7 @@ class App extends Component {
       openQuickOpen: PropTypes.func.isRequired,
       orientation: PropTypes.oneOf(["horizontal", "vertical"]).isRequired,
       quickOpenEnabled: PropTypes.bool.isRequired,
-      selectedLocation: PropTypes.object,
+      showWelcomeBox: PropTypes.bool.isRequired,
       setActiveSearch: PropTypes.func.isRequired,
       setOrientation: PropTypes.func.isRequired,
       setPrimaryPaneTab: PropTypes.func.isRequired,
@@ -81,7 +86,7 @@ class App extends Component {
     return {
       fluentBundles: this.props.fluentBundles,
       toolboxDoc: this.props.toolboxDoc,
-      shortcuts,
+      shortcuts: this.#shortcuts,
       l10n: L10N,
     };
   }
@@ -91,50 +96,35 @@ class App extends Component {
     verticalLayoutBreakpoint.addListener(this.onLayoutChange);
     this.setOrientation();
 
-    shortcuts.on(L10N.getStr("symbolSearch.search.key2"), e =>
+    this.#shortcuts.on(L10N.getStr("symbolSearch.search.key2"), e =>
       this.toggleQuickOpenModal(e, "@")
     );
 
     [
       L10N.getStr("sources.search.key2"),
       L10N.getStr("sources.search.alt.key"),
-    ].forEach(key => shortcuts.on(key, this.toggleQuickOpenModal));
+    ].forEach(key => this.#shortcuts.on(key, this.toggleQuickOpenModal));
 
-    shortcuts.on(L10N.getStr("gotoLineModal.key3"), e =>
-      this.toggleQuickOpenModal(e, ":")
-    );
+    [
+      L10N.getStr("gotoLineModal.key3"),
+      // For consistency with sourceeditor and codemirror5 shortcuts, map
+      // sourceeditor jumpToLine command key.
+      `CmdOrCtrl+${L10N.getStr("jumpToLine.commandkey")}`,
+    ].forEach(key => this.#shortcuts.on(key, this.toggleJumpToLine));
 
-    shortcuts.on(
+    this.#shortcuts.on(
       L10N.getStr("projectTextSearch.key"),
       this.jumpToProjectSearch
     );
 
-    shortcuts.on("Escape", this.onEscape);
-    shortcuts.on("CmdOrCtrl+/", this.onCommandSlash);
+    this.#shortcuts.on("Escape", this.onEscape);
+    this.#shortcuts.on("CmdOrCtrl+/", this.onCommandSlash);
   }
 
   componentWillUnmount() {
     horizontalLayoutBreakpoint.removeListener(this.onLayoutChange);
     verticalLayoutBreakpoint.removeListener(this.onLayoutChange);
-    shortcuts.off(
-      L10N.getStr("symbolSearch.search.key2"),
-      this.toggleQuickOpenModal
-    );
-
-    [
-      L10N.getStr("sources.search.key2"),
-      L10N.getStr("sources.search.alt.key"),
-    ].forEach(key => shortcuts.off(key, this.toggleQuickOpenModal));
-
-    shortcuts.off(L10N.getStr("gotoLineModal.key3"), this.toggleQuickOpenModal);
-
-    shortcuts.off(
-      L10N.getStr("projectTextSearch.key"),
-      this.jumpToProjectSearch
-    );
-
-    shortcuts.off("Escape", this.onEscape);
-    shortcuts.off("CmdOrCtrl+/", this.onCommandSlash);
+    this.#shortcuts.destroy();
   }
 
   jumpToProjectSearch = e => {
@@ -175,6 +165,10 @@ class App extends Component {
   isHorizontal() {
     return this.props.orientation === "horizontal";
   }
+
+  toggleJumpToLine = e => {
+    this.toggleQuickOpenModal(e, ":");
+  };
 
   toggleQuickOpenModal = (e, query) => {
     const { quickOpenEnabled, openQuickOpen, closeQuickOpen } = this.props;
@@ -265,7 +259,7 @@ class App extends Component {
           startPanelSize,
           endPanelSize,
         }),
-        !this.props.selectedLocation
+        this.props.showWelcomeBox
           ? React.createElement(WelcomeBox, {
               horizontal,
               toggleShortcutsModal: () => this.toggleShortcutsModal(),
@@ -383,7 +377,7 @@ const mapStateToProps = state => {
 
   return {
     showOriginalVariableMappingWarning,
-    selectedLocation,
+    showWelcomeBox: !selectedLocation,
     startPanelCollapsed: getPaneCollapse(state, "start"),
     endPanelCollapsed: getPaneCollapse(state, "end"),
     activeSearch: getActiveSearch(state),

@@ -16,7 +16,6 @@ import actions from "../../actions/index";
 
 import {
   getSelectedFrame,
-  getCurrentThread,
   getSelectedSource,
   getGeneratedFrameScope,
   getOriginalFrameScope,
@@ -31,7 +30,7 @@ import {
 } from "../../utils/pause/scopes";
 import { clientCommands } from "../../client/firefox";
 
-import { objectInspector } from "devtools/client/shared/components/reps/index";
+import * as objectInspector from "resource://devtools/client/shared/components/object-inspector/index.js";
 const { ObjectInspector } = objectInspector;
 
 class Scopes extends PureComponent {
@@ -313,6 +312,7 @@ class Scopes extends PureComponent {
           onDOMNodeMouseOver: grip => highlightDomElement(grip),
           onDOMNodeMouseOut: grip => unHighlightDomElement(grip),
           onContextMenu: this.onContextMenu,
+          preventBlur: true,
           setExpanded: (path, expand) =>
             setExpandedScope(selectedFrame, path, expand),
           initiallyExpanded,
@@ -347,7 +347,7 @@ class Scopes extends PureComponent {
 
 const mapStateToProps = state => {
   // This component doesn't need any prop when we are not paused
-  const selectedFrame = getSelectedFrame(state, getCurrentThread(state));
+  const selectedFrame = getSelectedFrame(state);
   if (!selectedFrame) {
     return {};
   }
@@ -359,7 +359,7 @@ const mapStateToProps = state => {
   let originalFrameScopes;
   let generatedFrameScopes;
   let isLoading;
-  let mapScopesEnabled;
+  let mapScopesEnabled = false;
 
   if (
     selectedSource?.isOriginal &&

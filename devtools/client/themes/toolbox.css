@@ -125,7 +125,7 @@
 /*
  * XXX: This was added to match the padding 8px used by the reload button.
  * This padding makes the debug target component taller and also creates
- * spacing with the debug-target-title separator.
+ * spacing with the debug-descriptor-title separator.
  * See Bug 1641920 for improving the CSS of the DebugTargetInfo component.
  */
 .debug-target-info .debug-target-url-readonly {
@@ -305,11 +305,7 @@
 
 .devtools-tab:hover {
   background-color: var(--theme-toolbar-hover);
-}
-
-/* Remove system control border from devtools-tab. */
-.devtools-tab::-moz-focus-inner {
-  border: 0;
+  color: var(--theme-toolbar-hover-color);
 }
 
 .devtools-tab:hover:active {
@@ -318,6 +314,12 @@
 
 .devtools-tab.selected {
   color: var(--theme-toolbar-selected-color);
+  background-color: var(--theme-toolbar-selected-background);
+
+  &:hover {
+    background-color: var(--theme-toolbar-selected-hover);
+    color: var(--theme-toolbar-selected-hover-color);
+  }
 }
 
 .devtools-tab > img {
@@ -330,6 +332,10 @@
   flex-shrink: 0;
   -moz-context-properties: fill;
   fill: var(--theme-icon-color);
+}
+
+.devtools-tab:hover > img {
+  fill: var(--theme-toolbar-hover-color);
 }
 
 .devtools-tab.selected > img {
@@ -376,22 +382,18 @@
   background-repeat: no-repeat;
 }
 
-.devtools-tabbar-button::-moz-focus-inner {
-  border: none;
-}
-
-.devtools-tabbar-button:hover,
-.devtools-tabbar-button.checked {
+.devtools-tabbar-button:hover {
   background-color: var(--theme-toolbar-hover);
+  color: var(--theme-toolbar-hover-color);
 }
 
-.devtools-tabbar-button.checked,
-.devtools-tabbar-button:active {
-  color: var(--theme-icon-checked-color);
+.devtools-tabbar-button.checked {
+  color: var(--toolbarbutton-checked-color);
+  background-color: var(--toolbarbutton-checked-background);
 }
 
 .devtools-tabbar-button:disabled {
-  color: var(--theme-icon-dimmed-color) !important;
+  color: var(--theme-icon-disabled-color) !important;
   background-color: transparent !important;
 }
 
@@ -541,6 +543,26 @@
   background-image: url("chrome://devtools/skin/images/command-measure.svg");
 }
 
+#command-button-jstracer {
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+
+  &::before {
+    background-image: url("chrome://devtools/content/debugger/images/trace.svg");
+  }
+
+  &.pending::after {
+    content: url("chrome://global/skin/icons/badge-blue.svg");
+    width: 14px;
+    height: 14px;
+    display: block;
+    position: absolute;
+    bottom: -2px;
+    right: 0;
+  }
+}
+
 #command-button-frames::before {
   background-image: url("chrome://devtools/skin/images/command-frames.svg");
   -moz-context-properties: fill, fill-opacity;
@@ -570,9 +592,9 @@
 /* Toolbox panels */
 
 .toolbox-panel {
-  display: flex;
-  flex: 1;
-  visibility: collapse;
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
 }
 
 .toolbox-panel[selected] {
@@ -586,25 +608,8 @@
  * attribute.
  */
 .toolbox-panel *,
-#toolbox-panel-webconsole[collapsed] * {
+#toolbox-panel-webconsole[hidden] * {
   -moz-user-focus: ignore;
-}
-
-#toolbox-panel-webconsole {
-  min-height: 75px;
-  flex: 1 auto;
-}
-
-#toolbox-panel-webconsole[collapsed],
-#toolbox-deck[collapsed] {
-  height: 0 !important;
-  min-height: 0 !important;
-}
-
-#toolbox-deck:not([collapsed]),
-#toolbox-panel-webconsole[expanded] {
-  /* Override the splitter-set height and flex instead */
-  height: auto !important;
 }
 
 /**
@@ -613,6 +618,31 @@
  */
 .toolbox-panel[selected] * {
   -moz-user-focus: normal;
+}
+
+/* This is the container of #toolbox-deck and #toolbox-panel-webconsole */
+.panels-and-console {
+  position: relative;
+}
+
+#toolbox-panel-webconsole {
+  min-height: 75px;
+}
+
+:is(
+  #toolbox-panel-webconsole,
+  #toolbox-deck
+)[hidden] {
+  visibility: hidden;
+}
+
+/* The Web Console panel will be expanded when showing it
+   as any other tool, in full height.
+   i.e. not as split console */
+#toolbox-panel-webconsole[expanded] {
+  position: absolute;
+  inset: 0;
+  visibility: visible;
 }
 
 .toolbox-panel-iframe {
@@ -627,12 +657,9 @@
 }
 
 #toolbox-deck {
+  position: relative;
   min-height: 75px;
-  /* Set large flex to allow the toolbox-panel-webconsole to have a
-     height set to a small value without flexing to fill up extra
-     space. There must be a flex on both to ensure that the console
-     panel itself is sized properly */
-  flex: 10000 10000;
+  flex: 1;
 }
 
 #toolbox-container:focus {
@@ -653,6 +680,12 @@
 }
 
 #toolbox-container.tabs-reordering .devtools-tab.selected {
-  background-color: var(--theme-toolbar-hover);
+  background-color: var(--theme-toolbar-reordering-background);
+  color: var(--theme-toolbar-reordering-color);
   z-index: 1;
+}
+
+.app-error-panel {
+  /* ensure that the panel hides the possibly broken toolbox displayed behind */
+  background-color: var(--theme-body-background);
 }

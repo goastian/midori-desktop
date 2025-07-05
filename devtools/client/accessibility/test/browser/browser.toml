@@ -3,27 +3,24 @@ tags = "devtools"
 subsuite = "devtools"
 support-files = [
   "head.js",
+  "test_audit_all.css",
+  "test_audit_all.html",
   "!/devtools/client/shared/test/shared-head.js",
   "!/devtools/client/shared/test/highlighter-test-actor.js",
   "!/devtools/client/inspector/test/shared-head.js",
   "!/devtools/client/shared/test/telemetry-test-helpers.js",
 ]
 
+["browser_accessibility.js"]
+
 ["browser_accessibility_context_menu_browser.js"]
 
 ["browser_accessibility_context_menu_inspector.js"]
-skip-if = [
-  "apple_catalina", # Bug 1713392
-]
 
 ["browser_accessibility_fission_switch_target.js"]
 https_first_disabled = true
-skip-if = ["os == 'linux' && asan"] # bug 1666940
 
 ["browser_accessibility_mutations.js"]
-skip-if = [
-  "os == 'linux' && bits == 64 && fission", # Bug 1675445
-]
 
 ["browser_accessibility_panel_audit_hidden_iframe.js"]
 
@@ -32,7 +29,12 @@ skip-if = [
 ["browser_accessibility_panel_toolbar_checks.js"]
 
 ["browser_accessibility_panel_toolbar_pref_scroll.js"]
-skip-if = ["true"] # bug 1674060
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1674060
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1674060
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1674060
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1674060
+]
 
 ["browser_accessibility_print_to_json.js"]
 
@@ -43,12 +45,16 @@ skip-if = ["true"] # bug 1674060
 ["browser_accessibility_sidebar.js"]
 
 ["browser_accessibility_sidebar_checks.js"]
-skip-if = ["os == 'linux' && !debug"]  # Bug 1767748
 
 ["browser_accessibility_sidebar_dom_nodes.js"]
 
 ["browser_accessibility_simulation.js"]
-skip-if = ["true"] # bug 1674060
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1674060
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1674060
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1674060
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1674060
+]
 
 ["browser_accessibility_tabbing_order_highlighter.js"]
 
@@ -57,6 +63,8 @@ skip-if = ["true"] # bug 1674060
 ["browser_accessibility_tree.js"]
 
 ["browser_accessibility_tree_audit.js"]
+
+["browser_accessibility_tree_audit_all.js"]
 
 ["browser_accessibility_tree_audit_long.js"]
 

@@ -25,9 +25,13 @@ add_task(async function () {
   let whyPaused = await waitFor(
     () => dbg.win.document.querySelector(".why-paused")?.innerText
   );
-  is(whyPaused, "Paused on breakpoint");
+  is(whyPaused, "Paused on breakpoint\n(global) - doc-scripts.html:21:6");
 
-  assertPausedAtSourceAndLine(dbg, findSource(dbg, "doc-scripts.html").id, 21);
+  await assertPausedAtSourceAndLine(
+    dbg,
+    findSource(dbg, "doc-scripts.html").id,
+    21
+  );
   await resume(dbg);
   info("Wait for reload to complete after resume");
   await onReloaded;
@@ -37,19 +41,38 @@ add_task(async function () {
   await waitForPaused(dbg);
   const source = getSelectedSource();
   ok(!source.url, "It is an eval source");
-  assertPausedAtSourceAndLine(dbg, source.id, 2);
+  await assertPausedAtSourceAndLine(dbg, source.id, 2);
 
   whyPaused = await waitFor(
     () => dbg.win.document.querySelector(".why-paused")?.innerText
   );
-  is(whyPaused, "Paused on debugger statement");
+  is(whyPaused, "Paused on debugger statement\n:2:8");
 
   await resume(dbg);
 
   await addBreakpoint(dbg, source, 5);
   invokeInTab("evaledFunc");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 5);
+  await assertPausedAtSourceAndLine(dbg, source.id, 5);
 
+  await resume(dbg);
+
+  info("Check that we pause in workers");
+  await SpecialPowers.spawn(gBrowser.selectedBrowser, [], () => {
+    const blob = new content.Blob(
+      [
+        `onmessage = function(request) {
+          // Keep the bigint declaration here, this covers Bug 1956197
+          const bigint64 = new BigInt64Array([1n, 2n]);
+          debugger;
+        }`,
+      ],
+      { type: "text/javascript" }
+    );
+    const url = content.URL.createObjectURL(blob);
+    const worker = new content.Worker(url);
+    worker.postMessage("break in debugger");
+  });
+  await waitForPaused(dbg);
   await resume(dbg);
 });

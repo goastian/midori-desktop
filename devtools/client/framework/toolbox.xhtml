@@ -3,11 +3,13 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<?csp default-src chrome: resource:; img-src chrome: resource: data:; object-src
+'none'; ?>
+
 <!DOCTYPE window>
 <window
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   xmlns:html="http://www.w3.org/1999/xhtml"
-  csp="default-src chrome: resource:; img-src chrome: resource: data:; object-src 'none'"
   role="application"
 >
   <linkset>
@@ -24,6 +26,10 @@
     <html:link
       rel="stylesheet"
       href="chrome://devtools/content/framework/components/ChromeDebugToolbar.css"
+    />
+    <html:link
+      rel="stylesheet"
+      href="chrome://devtools/content/shared/components/AppErrorBoundary.css"
     />
 
     <html:link rel="localization" href="devtools/client/tooltips.ftl" />
@@ -43,7 +49,7 @@
       id="toolbox-toolbar-mount"
       role="toolbar"
     />
-    <vbox flex="1" class="theme-body">
+    <vbox flex="1" class="panels-and-console theme-body">
       <box id="toolbox-deck" />
       <splitter
         id="toolbox-console-splitter"

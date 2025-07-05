@@ -6,7 +6,7 @@
 // Make this available to both AMD and CJS environments
 define(function (require, exports, module) {
   // Dependencies
-  const React = require("devtools/client/shared/vendor/react");
+  const React = require("resource://devtools/client/shared/vendor/react.mjs");
 
   /**
    * Create React factories for given arguments.
@@ -14,7 +14,7 @@ define(function (require, exports, module) {
    *   const {
    *     Tabs,
    *     TabPanel
-   *   } = createFactories(require("devtools/client/shared/components/tabs/Tabs"));
+   *   } = createFactories(ChromeUtils.importESModule("devtools/client/shared/components/tabs/Tabs.mjs"));
    */
   function createFactories(args) {
     const result = {};

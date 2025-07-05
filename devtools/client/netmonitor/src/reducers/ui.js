@@ -25,6 +25,7 @@ const {
   MIN_COLUMN_WIDTH,
   SET_COLUMNS_WIDTH,
   SET_HEADERS_URL_PREVIEW_EXPANDED,
+  SET_DEFAULT_RAW_RESPONSE,
 } = require("resource://devtools/client/netmonitor/src/constants.js");
 
 const cols = {
@@ -32,6 +33,7 @@ const cols = {
   method: true,
   domain: true,
   file: true,
+  path: false,
   url: false,
   protocol: false,
   scheme: false,
@@ -81,6 +83,10 @@ function UI(initialState = {}) {
     persistentLogsEnabled: Services.prefs.getBoolPref(
       "devtools.netmonitor.persistlog"
     ),
+    defaultRawResponse: Services.prefs.getBoolPref(
+      "devtools.netmonitor.ui.default-raw-response",
+      false
+    ),
     browserCacheDisabled: Services.prefs.getBoolPref("devtools.cache.disabled"),
     slowLimit: Services.prefs.getIntPref("devtools.netmonitor.audits.slow"),
     statisticsOpen: false,
@@ -101,6 +107,9 @@ function resetColumns(state) {
 }
 
 function resizeWaterfall(state, action) {
+  if (state.waterfallWidth == action.width) {
+    return state;
+  }
   return {
     ...state,
     waterfallWidth: action.width,
@@ -108,6 +117,9 @@ function resizeWaterfall(state, action) {
 }
 
 function openNetworkDetails(state, action) {
+  if (state.networkDetailsOpen == action.open) {
+    return state;
+  }
   return {
     ...state,
     networkDetailsOpen: action.open,
@@ -115,6 +127,9 @@ function openNetworkDetails(state, action) {
 }
 
 function openNetworkAction(state, action) {
+  if (state.networkActionOpen == action.open) {
+    return state;
+  }
   return {
     ...state,
     networkActionOpen: action.open,
@@ -122,6 +137,12 @@ function openNetworkAction(state, action) {
 }
 
 function resizeNetworkDetails(state, action) {
+  if (
+    state.networkDetailsWidth == action.width &&
+    state.networkDetailsHeight == action.height
+  ) {
+    return state;
+  }
   return {
     ...state,
     networkDetailsWidth: action.width,
@@ -130,6 +151,9 @@ function resizeNetworkDetails(state, action) {
 }
 
 function enablePersistentLogs(state, action) {
+  if (action.persistentLogsEnabled == action.enabled) {
+    return state;
+  }
   return {
     ...state,
     persistentLogsEnabled: action.enabled,
@@ -137,6 +161,9 @@ function enablePersistentLogs(state, action) {
 }
 
 function disableBrowserCache(state, action) {
+  if (state.browserCacheDisabled == action.disabled) {
+    return state;
+  }
   return {
     ...state,
     browserCacheDisabled: action.disabled,
@@ -144,6 +171,9 @@ function disableBrowserCache(state, action) {
 }
 
 function openStatistics(state, action) {
+  if (state.statisticsOpen == action.open) {
+    return state;
+  }
   return {
     ...state,
     statisticsOpen: action.open,
@@ -151,6 +181,9 @@ function openStatistics(state, action) {
 }
 
 function setDetailsPanelTab(state, action) {
+  if (state.detailsPanelSelectedTab == action.id) {
+    return state;
+  }
   return {
     ...state,
     detailsPanelSelectedTab: action.id,
@@ -158,6 +191,9 @@ function setDetailsPanelTab(state, action) {
 }
 
 function setActionBarTab(state, action) {
+  if (state.selectedActionBarTabId == action.id) {
+    return state;
+  }
   return {
     ...state,
     selectedActionBarTabId: action.id,
@@ -165,6 +201,9 @@ function setActionBarTab(state, action) {
 }
 
 function setHeadersUrlPreviewExpanded(state, action) {
+  if (state.shouldExpandHeadersUrlPreview == action.expanded) {
+    return state;
+  }
   return {
     ...state,
     shouldExpandHeadersUrlPreview: action.expanded,
@@ -211,6 +250,13 @@ function setColumnsWidth(state, action) {
   };
 }
 
+function setDefaultRawResponse(state, action) {
+  return {
+    ...state,
+    defaultRawResponse: action.enabled,
+  };
+}
+
 function ui(state = UI(), action) {
   switch (action.type) {
     case CLEAR_REQUESTS:
@@ -247,6 +293,8 @@ function ui(state = UI(), action) {
       return openNetworkAction(state, action);
     case SET_HEADERS_URL_PREVIEW_EXPANDED:
       return setHeadersUrlPreviewExpanded(state, action);
+    case SET_DEFAULT_RAW_RESPONSE:
+      return setDefaultRawResponse(state, action);
     default:
       return state;
   }

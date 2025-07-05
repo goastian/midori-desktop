@@ -53,23 +53,22 @@ function getVisibleColumns(columns) {
 }
 
 const getColumns = createSelector(
-  state => state.ui,
-  state => state.search,
-  (ui, search) => {
-    if (
-      ((ui.networkDetailsOpen || search.panelOpen) &&
-        getVisibleColumns(ui.columns).length === 1 &&
-        ui.columns.waterfall) ||
-      (!ui.networkDetailsOpen && !search.panelOpen)
-    ) {
-      return ui.columns;
+  state => state.ui.columns,
+  state => state.ui.networkDetailsOpen || state.search.panelOpen,
+  (_, hasOverride) => hasOverride,
+  (columns, isSidePanelOpen, hasOverride) => {
+    columns = { ...columns };
+    const isWaterfallOnly =
+      getVisibleColumns(columns).length === 1 && columns.waterfall;
+    if (isSidePanelOpen && !isWaterfallOnly) {
+      // Remove the Waterfall column if it is not the only column and a side
+      // panel is open.
+      delete columns.waterfall;
     }
 
-    // Remove the Waterfall/Timeline column from the list of available
-    // columns if the details side-bar is opened and more than one column is
-    // visible.
-    const columns = { ...ui.columns };
-    delete columns.waterfall;
+    // Automatically add the override column if any override is currently
+    // configured in the toolbox.
+    columns.override = hasOverride;
     return columns;
   }
 );

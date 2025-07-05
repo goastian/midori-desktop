@@ -20,34 +20,48 @@ function generalEvent(groupID, eventType, condition) {
     name: eventType,
     message: `DOM '${eventType}' event`,
     eventType,
-    filter: "general",
+    // DOM Events which may fire on the global object, or on DOM Elements
+    targetTypes: ["global", "node"],
     condition,
   };
 }
 function nodeEvent(groupID, eventType) {
   return {
     ...generalEvent(groupID, eventType),
-    filter: "node",
+    targetTypes: ["node"],
   };
 }
 function mediaNodeEvent(groupID, eventType) {
   return {
     ...generalEvent(groupID, eventType),
-    filter: "media",
+    targetTypes: ["node"],
+
+    // Media events need some specific handling in `eventBreakpointForNotification()`
+    // to ensure that the event is fired on either <video> or <audio> tags.
+    isMediaEvent: true,
   };
 }
 function globalEvent(groupID, eventType) {
   return {
     ...generalEvent(groupID, eventType),
     message: `Global '${eventType}' event`,
-    filter: "global",
+    // DOM Events which are only fired on the global object
+    targetTypes: ["global"],
   };
 }
 function xhrEvent(groupID, eventType) {
   return {
     ...generalEvent(groupID, eventType),
     message: `XHR '${eventType}' event`,
-    filter: "xhr",
+    targetTypes: ["xhr"],
+  };
+}
+
+function closeWatcherEvent(groupID, eventType) {
+  return {
+    ...generalEvent(groupID, eventType),
+    message: `CloseWatcher '${eventType}' event`,
+    targetTypes: ["closewatcher"],
   };
 }
 
@@ -55,7 +69,7 @@ function webSocketEvent(groupID, eventType) {
   return {
     ...generalEvent(groupID, eventType),
     message: `WebSocket '${eventType}' event`,
-    filter: "websocket",
+    targetTypes: ["websocket"],
   };
 }
 
@@ -63,7 +77,7 @@ function workerEvent(eventType) {
   return {
     ...generalEvent("worker", eventType),
     message: `Worker '${eventType}' event`,
-    filter: "worker",
+    targetTypes: ["worker"],
   };
 }
 
@@ -127,13 +141,20 @@ const AVAILABLE_BREAKPOINTS = [
     ],
   },
   {
+    name: "CloseWatcher",
+    items: [
+      closeWatcherEvent("closewatcher", "cancel", () =>
+        Services.prefs.getBoolPref("dom.closewatcher.enabled")
+      ),
+      closeWatcherEvent("closewatcher", "close", () =>
+        Services.prefs.getBoolPref("dom.closewatcher.enabled")
+      ),
+    ],
+  },
+  {
     name: "Control",
     items: [
-      // The condition should be removed when "dom.element.popover.enabled" is removed
-      generalEvent("control", "beforetoggle", () =>
-        // Services.prefs isn't available on worker targets
-        Services.prefs?.getBoolPref("dom.element.popover.enabled")
-      ),
+      generalEvent("control", "beforetoggle"),
       generalEvent("control", "blur"),
       generalEvent("control", "change"),
       generalEvent("control", "focus"),
@@ -280,6 +301,7 @@ const AVAILABLE_BREAKPOINTS = [
       generalEvent("pointer", "pointerup"),
       generalEvent("pointer", "pointermove"),
       generalEvent("pointer", "pointercancel"),
+      generalEvent("pointer", "pointerrawupdate"),
       generalEvent("pointer", "gotpointercapture"),
       generalEvent("pointer", "lostpointercapture"),
     ],
@@ -371,23 +393,10 @@ for (const eventBP of FLAT_EVENTS) {
     }
     SIMPLE_EVENTS[notificationType] = eventBP.id;
   } else if (eventBP.type === "event") {
-    const { eventType, filter } = eventBP;
+    const { eventType, targetTypes } = eventBP;
 
-    let targetTypes;
-    if (filter === "global") {
-      targetTypes = ["global"];
-    } else if (filter === "xhr") {
-      targetTypes = ["xhr"];
-    } else if (filter === "websocket") {
-      targetTypes = ["websocket"];
-    } else if (filter === "worker") {
-      targetTypes = ["worker"];
-    } else if (filter === "general") {
-      targetTypes = ["global", "node"];
-    } else if (filter === "node" || filter === "media") {
-      targetTypes = ["node"];
-    } else {
-      throw new Error("Unexpected filter type");
+    if (!Array.isArray(targetTypes) || !targetTypes.length) {
+      throw new Error("Expect a targetTypes array for each event definition");
     }
 
     for (const targetType of targetTypes) {
@@ -435,7 +444,9 @@ function eventBreakpointForNotification(dbg, notification) {
     }
     const eventBreakpoint = EVENTS_BY_ID[id];
 
-    if (eventBreakpoint.filter === "media") {
+    // Does some additional checks for media events to ensure the DOM Event
+    // was fired on either <audio> or <video> tags.
+    if (eventBreakpoint.isMediaEvent) {
       const currentTarget = evt.getProperty("currentTarget").return;
       if (!currentTarget) {
         return null;
@@ -493,8 +504,16 @@ exports.getAvailableEventBreakpoints = getAvailableEventBreakpoints;
  * Get all available event breakpoints
  *
  * @param {Window|WorkerGlobalScope} global
- * @returns {Array<Object>} An array containing object with 2 properties, an id and a name,
- *          representing the event.
+ * @returns {Array<Object>} An array containing object with a few properties :
+ *    - {String} id: unique identifier
+ *    - {String} name: Description for the event to be displayed in UI (no translated)
+ *    - {String} type: Either "simple" or "event"
+ *    Only for type="simple":
+ *    - {String} notificationType: platform name of the event
+ *    Only for type="event":
+ *    - {String} eventType: platform name of the event
+ *    - {Array<String>} targetTypes: List of potential target on which the event is fired.
+ *                                   Can be "global", "node", "xhr", "worker",...
  */
 function getAvailableEventBreakpoints(global) {
   const available = [];
@@ -505,7 +524,19 @@ function getAvailableEventBreakpoints(global) {
         .filter(item => !item.condition || item.condition(global))
         .map(item => ({
           id: item.id,
+
+          // The name to be displayed in UI
           name: item.name,
+
+          // The type of event: either simple or event
+          type: item.type,
+
+          // For type=simple
+          notificationType: item.notificationType,
+
+          // For type=event
+          eventType: item.eventType,
+          targetTypes: item.targetTypes,
         })),
     });
   }

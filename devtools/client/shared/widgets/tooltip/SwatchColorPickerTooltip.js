@@ -22,20 +22,18 @@ loader.lazyRequireGetter(
   true
 );
 
-loader.lazyRequireGetter(
-  this,
-  ["getFocusableElements", "wrapMoveFocus"],
-  "resource://devtools/client/shared/focus.js",
-  true
-);
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  getFocusableElements: "resource://devtools/client/shared/focus.mjs",
+  wrapMoveFocus: "resource://devtools/client/shared/focus.mjs",
+});
+
 loader.lazyRequireGetter(
   this,
   "PICKER_TYPES",
   "resource://devtools/shared/picker-constants.js"
 );
 
-const TELEMETRY_PICKER_EYEDROPPER_OPEN_COUNT =
-  "DEVTOOLS_PICKER_EYEDROPPER_OPENED_COUNT";
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
 /**
@@ -207,7 +205,7 @@ class SwatchColorPickerTooltip extends SwatchBasedEditorTooltip {
       return;
     }
 
-    const focusMoved = !!wrapMoveFocus(
+    const focusMoved = !!lazy.wrapMoveFocus(
       this.focusableElements,
       target,
       shiftKey
@@ -269,11 +267,9 @@ class SwatchColorPickerTooltip extends SwatchBasedEditorTooltip {
   }
 
   _openEyeDropper() {
-    const { inspectorFront, toolbox, telemetry } = this.inspector;
+    const { inspectorFront, toolbox } = this.inspector;
 
-    telemetry
-      .getHistogramById(TELEMETRY_PICKER_EYEDROPPER_OPEN_COUNT)
-      .add(true);
+    Glean.devtools.pickerEyedropperOpenedCount.add(1);
 
     // cancelling picker(if it is already selected) on opening eye-dropper
     toolbox.nodePicker.stop({ canceled: true });
@@ -347,9 +343,9 @@ class SwatchColorPickerTooltip extends SwatchBasedEditorTooltip {
   }
 
   get focusableElements() {
-    return getFocusableElements(this.tooltip.container).filter(
-      el => !!el.offsetParent
-    );
+    return lazy
+      .getFocusableElements(this.tooltip.container)
+      .filter(el => !!el.offsetParent);
   }
 
   destroy() {

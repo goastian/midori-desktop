@@ -23,12 +23,12 @@ add_task(async function () {
   info(
     `Add a first log breakpoint with no argument, which will log "display name", i.e. firstCall`
   );
-  await altClickElement(dbg, "gutter", 7);
+  await altClickElement(dbg, "gutterElement", 7);
   await waitForBreakpoint(dbg, "script-switching-01.js", 7);
 
-  info("Add another log breakpoint with static arguments");
+  info("Add another log breakpoint with multiple arguments");
   await dbg.actions.addBreakpoint(createLocation({ line: 8, source }), {
-    logValue: "'a', 'b', 'c'",
+    logValue: "'a', 'b', 'c', firstCall",
   });
 
   invokeInTab("firstCall");
@@ -39,8 +39,8 @@ add_task(async function () {
   await hasConsoleMessage(dbg, "a b c");
 
   const { link, value } = await findConsoleMessage(dbg, "a b c");
-  is(link, "script-switching-01.js:8:2", "logs should have the relevant link");
-  is(value, "a b c", "logs should have multiple values");
+  is(link, "script-switching-01.js:8:3", "logs should have the relevant link");
+  is(value, "a b c \nfunction firstCall()", "logs should have multiple values");
   await removeBreakpoint(dbg, source.id, 7);
   await removeBreakpoint(dbg, source.id, 8);
 
@@ -59,7 +59,7 @@ add_task(async function () {
   await waitForPaused(dbg);
   // We aren't pausing on secondCall's debugger statement,
   // called by the condition, but only on the breakpoint we set on firstCall, line 8
-  assertPausedAtSourceAndLine(dbg, source.id, 8);
+  await assertPausedAtSourceAndLine(dbg, source.id, 8);
 
   // The log point is visible, even if it had a debugger statement in it.
   await hasConsoleMessage(dbg, "second call 44");
@@ -80,7 +80,7 @@ add_task(async function () {
   await waitForPaused(dbg);
   // Exceptions in conditional breakpoint would not trigger a pause,
   // So we end up pausing on the debugger statement in the other script.
-  assertPausedAtSourceAndLine(
+  await assertPausedAtSourceAndLine(
     dbg,
     findSource(dbg, "script-switching-02.js").id,
     6

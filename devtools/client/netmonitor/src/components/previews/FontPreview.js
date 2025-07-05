@@ -8,8 +8,8 @@ const {
 } = require("resource://devtools/client/framework/devtools.js");
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   L10N,
 } = require("resource://devtools/client/netmonitor/src/utils/l10n.js");
@@ -19,7 +19,9 @@ const {
   img,
 } = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
 
-const { getColor } = require("resource://devtools/client/shared/theme.js");
+const {
+  getCssVariableColor,
+} = require("resource://devtools/client/shared/theme.js");
 
 const FONT_NAME = L10N.getStr("netmonitor.response.name");
 const FONT_MIME_TYPE = L10N.getStr("netmonitor.response.mime");
@@ -90,7 +92,7 @@ class FontPreview extends Component {
       includePreviews: true,
       includeVariations: false,
       previewText: FONT_PREVIEW_TEXT,
-      previewFillStyle: getColor("body-color"),
+      previewFillStyle: getCssVariableColor("--theme-body-color", toolbox.win),
     });
 
     const fontFace = pageFontFaces.find(

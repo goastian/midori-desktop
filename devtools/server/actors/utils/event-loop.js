@@ -89,8 +89,7 @@ class EventLoop {
     // - exiting this EventLoop unblocks its "enter" method and moves lastNestRequestor to the next requestor (if any)
     // - we go back to the first step, and attempt to exit the new lastNestRequestor if it is resolved, etc...
     if (xpcInspector.eventLoopNestLevel > 0) {
-      const { resolved } = xpcInspector.lastNestRequestor;
-      if (resolved) {
+      if (xpcInspector.lastNestRequestor.resolved) {
         xpcInspector.exitNestedEventLoop();
       }
     }
@@ -132,7 +131,7 @@ class EventLoop {
    * Retrieve the list of all DOM Windows debugged by the current thread actor.
    */
   getAllWindowDebuggees() {
-    return this._thread.dbg
+    const rawGlobals = this._thread.dbg
       .getDebuggees()
       .filter(debuggee => {
         // Select only debuggee that relates to windows
@@ -142,76 +141,96 @@ class EventLoop {
       .map(debuggee => {
         // Retrieve the JS reference for these windows
         return debuggee.unsafeDereference();
-      })
-
-      .filter(window => {
-        // Ignore document which have already been nuked,
-        // so navigated to another location and removed from memory completely.
-        if (Cu.isDeadWrapper(window)) {
-          return false;
-        }
-        // Also ignore document which are closed, as trying to access window.parent or top would throw NS_ERROR_NOT_INITIALIZED
-        if (window.closed) {
-          return false;
-        }
-        // Ignore remote iframes, which will be debugged by another thread actor,
-        // running in the remote process
-        if (Cu.isRemoteProxy(window)) {
-          return false;
-        }
-        // Accept "top remote iframe document":
-        // document of iframe whose immediate parent is in another process.
-        if (Cu.isRemoteProxy(window.parent) && !Cu.isRemoteProxy(window)) {
-          return true;
-        }
-
-        // If EFT is enabled, accept any same process document (top-level or iframe).
-        if (this.thread.getParent().ignoreSubFrames) {
-          return true;
-        }
-
-        try {
-          // Ignore iframes running in the same process as their parent document,
-          // as they will be paused automatically when pausing their owner top level document
-          return window.top === window;
-        } catch (e) {
-          // Warn if this is throwing for an unknown reason, but suppress the
-          // exception regardless so that we can enter the nested event loop.
-          if (!/not initialized/.test(e)) {
-            console.warn(`Exception in getAllWindowDebuggees: ${e}`);
-          }
-          return false;
-        }
       });
+
+    // When pausing from a content script, also ensure pausing the related document
+    const { innerWindowId } = this._thread.targetActor;
+    if (innerWindowId) {
+      const windowGlobal = WindowGlobalChild.getByInnerWindowId(innerWindowId);
+      if (windowGlobal?.browsingContext?.window) {
+        rawGlobals.push(windowGlobal.browsingContext.window);
+      }
+    }
+
+    return rawGlobals.filter(window => {
+      // Ignore document which have already been nuked,
+      // so navigated to another location and removed from memory completely.
+      if (Cu.isDeadWrapper(window)) {
+        return false;
+      }
+      // Also ignore document which are closed, as trying to access window.parent or top would throw NS_ERROR_NOT_INITIALIZED
+      if (window.closed) {
+        return false;
+      }
+      // Ignore remote iframes, which will be debugged by another thread actor,
+      // running in the remote process
+      if (Cu.isRemoteProxy(window)) {
+        return false;
+      }
+      // Accept "top remote iframe document":
+      // document of iframe whose immediate parent is in another process.
+      if (Cu.isRemoteProxy(window.parent) && !Cu.isRemoteProxy(window)) {
+        return true;
+      }
+
+      // If EFT is enabled, accept any same process document (top-level or iframe).
+      if (this.thread.getParent().ignoreSubFrames) {
+        return true;
+      }
+
+      try {
+        // Ignore iframes running in the same process as their parent document,
+        // as they will be paused automatically when pausing their owner top level document
+        return window.top === window;
+      } catch (e) {
+        // Warn if this is throwing for an unknown reason, but suppress the
+        // exception regardless so that we can enter the nested event loop.
+        if (!/not initialized/.test(e)) {
+          console.warn(`Exception in getAllWindowDebuggees: ${e}`);
+        }
+        return false;
+      }
+    });
   }
 
   /**
    * Prepare to enter a nested event loop by disabling debuggee events.
    */
   preEnter() {
-    const docShells = [];
+    const preEnterData = [];
     // Disable events in all open windows.
     for (const window of this.getAllWindowDebuggees()) {
-      const { windowUtils } = window;
+      const { windowUtils, document } = window;
+      const wasPaused = !!document?.pausedByDevTools;
+      if (document) {
+        document.pausedByDevTools = true;
+      }
       windowUtils.suppressEventHandling(true);
       windowUtils.suspendTimeouts();
-      docShells.push(window.docShell);
+      preEnterData.push({
+        docShell: window.docShell,
+        wasPaused,
+      });
     }
-    return docShells;
+    return preEnterData;
   }
 
   /**
    * Prepare to exit a nested event loop by enabling debuggee events.
    */
-  postExit(pausedDocShells) {
+  postExit(preEnterData) {
     // Enable events in all window paused in preEnter
-    for (const docShell of pausedDocShells) {
+    for (const { docShell, wasPaused } of preEnterData) {
       // Do not try to resume documents which are in destruction
       // as resume methods would throw
       if (docShell.isBeingDestroyed()) {
         continue;
       }
-      const { windowUtils } = docShell.domWindow;
+      const window = docShell.domWindow;
+      const { windowUtils, document } = window;
+      if (document) {
+        document.pausedByDevTools = wasPaused;
+      }
       windowUtils.resumeTimeouts();
       windowUtils.suppressEventHandling(false);
     }

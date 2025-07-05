@@ -75,9 +75,11 @@ class ParentProcessStorage {
         watcherActor.browserElement;
       await this._spawnActor(browsingContext.id, innerWindowId);
     } else if (watcherActor.sessionContext.type == "webextension") {
-      const { addonBrowsingContextID, addonInnerWindowId } =
-        watcherActor.sessionContext;
-      await this._spawnActor(addonBrowsingContextID, addonInnerWindowId);
+      // As the top level actor may change over time for the web extension,
+      // we don't have a good browsingContextID/innerWindowId to reference.
+      // Passing a `browsingContext` set to -1 will be interpreted by the frontend as a resource
+      // bound to the current top level target and will be automatically assigned to it.
+      await this._spawnActor(-1, null);
     } else if (watcherActor.sessionContext.type == "all") {
       // Note that there should be only one such target in the browser toolbox.
       // The Parent Process Target Actor.
@@ -147,7 +149,7 @@ class ParentProcessStorage {
 
     // We have to manage the actor manually, because ResourceCommand doesn't
     // use the protocol.js specification.
-    // resource-available-form is typed as "json"
+    // resources-available-array is typed as "json"
     // So that we have to manually handle stuff that would normally be
     // automagically done by procotol.js
     // 1) Manage the actor in order to have an actorID on it
@@ -155,10 +157,9 @@ class ParentProcessStorage {
     // 2) Convert to JSON "form"
     const storage = this.actor.form();
 
-    // All resources should have a resourceType, resourceId and resourceKey
+    // All resources should have a resourceId and resourceKey
     // attributes, so available/updated/destroyed callbacks work properly.
-    storage.resourceType = this.storageType;
-    storage.resourceId = `${this.storageType}-${innerWindowId}`;
+    storage.resourceId = `${this.storageKey}-${innerWindowId}`;
     storage.resourceKey = this.storageKey;
     // NOTE: the resource command needs this attribute
     storage.browsingContextID = browsingContextID;
@@ -203,6 +204,13 @@ class ParentProcessStorage {
    * @param {Boolean} isBfCacheNavigation
    */
   async _onNewWindowGlobal(windowGlobal, isBfCacheNavigation) {
+    // We instantiate only one instance of parent process storage actors per toolbox
+    // when debugging addons as they don't really have any top level target
+    // which cause to switch to a brand new context and require to hook on that new context.
+    if (this.watcherActor.sessionContext.type == "webextension") {
+      return;
+    }
+
     // Only process WindowGlobals which are related to the debugged scope.
     if (
       !isWindowGlobalPartOfContext(
@@ -391,7 +399,23 @@ class StorageActorMock extends EventEmitter {
     const principal =
       hostBrowsingContext.currentWindowGlobal.documentStoragePrincipal;
 
-    return { document: { effectiveStoragePrincipal: principal } };
+    return {
+      document: { effectiveStoragePrincipal: principal },
+    };
+  }
+
+  /**
+   * Get the browsing contexts matching the given host.
+   *
+   * @param {String} host: The host for which we want the browsing contexts
+   * @returns Array<BrowsingContext>
+   */
+  getBrowsingContextsFromHost(host) {
+    return this.watcherActor
+      .getAllBrowsingContexts({ acceptSameProcessIframes: true })
+      .filter(
+        bc => this.getHostName(bc.currentWindowGlobal.documentURI) === host
+      );
   }
 
   get parentActor() {

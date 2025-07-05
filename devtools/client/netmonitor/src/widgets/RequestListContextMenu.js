@@ -54,6 +54,24 @@ loader.lazyRequireGetter(
   "resource://devtools/client/netmonitor/src/har/har-menu-utils.js",
   true
 );
+loader.lazyRequireGetter(
+  this,
+  ["setNetworkOverride", "removeNetworkOverride"],
+  "resource://devtools/client/framework/actions/index.js",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "getOverriddenUrl",
+  "resource://devtools/client/netmonitor/src/selectors/index.js",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "openRequestInTab",
+  "resource://devtools/client/netmonitor/src/utils/firefox/open-request-in-tab.js",
+  true
+);
 
 const { OS } = Services.appinfo;
 
@@ -284,7 +302,6 @@ class RequestListContextMenu {
       sendCustomRequest,
       sendHTTPCustomRequest,
       openStatistics,
-      openRequestInTab,
       openRequestBlockingAndAddUrl,
       openRequestBlockingAndDisableUrls,
       removeBlockedUrl,
@@ -304,6 +321,10 @@ class RequestListContextMenu {
       url,
     } = clickedRequest;
 
+    const toolbox = this.props.connector.getToolbox();
+    const isOverridden = !!getOverriddenUrl(toolbox.store.getState(), url);
+    const isLocalTab = toolbox.commands.descriptorFront.isLocalTab;
+
     const copySubMenu = this.createCopySubMenu(clickedRequest, requests);
     const newEditAndResendPref = Services.prefs.getBoolPref(
       "devtools.netmonitor.features.newEditAndResend"
@@ -313,8 +334,15 @@ class RequestListContextMenu {
       {
         label: L10N.getStr("netmonitor.context.copyValue"),
         accesskey: L10N.getStr("netmonitor.context.copyValue.accesskey"),
-        visible: !!clickedRequest,
+        visible: true,
         submenu: copySubMenu,
+      },
+      {
+        id: "request-list-context-save-as-har",
+        label: L10N.getStr("netmonitor.context.saveAsHar"),
+        accesskey: L10N.getStr("netmonitor.context.saveAsHar.accesskey"),
+        visible: !!clickedRequest,
+        click: () => HarMenuUtils.saveAsHar(clickedRequest, connector),
       },
       {
         id: "request-list-context-save-all-as-har",
@@ -328,7 +356,6 @@ class RequestListContextMenu {
         label: L10N.getStr("netmonitor.context.saveResponseAs"),
         accesskey: L10N.getStr("netmonitor.context.saveResponseAs.accesskey"),
         visible: !!(
-          clickedRequest &&
           (responseContentAvailable || responseContent) &&
           mimeType &&
           // Websockets and server-sent events don't have a real 'response' for us to save
@@ -345,7 +372,7 @@ class RequestListContextMenu {
         id: "request-list-context-resend-only",
         label: L10N.getStr("netmonitor.context.resend.label"),
         accesskey: L10N.getStr("netmonitor.context.resend.accesskey"),
-        visible: !!(clickedRequest && !isCustom),
+        visible: !isCustom,
         click: () => {
           if (!newEditAndResendPref) {
             cloneRequest(id);
@@ -360,7 +387,7 @@ class RequestListContextMenu {
         id: "request-list-context-edit-resend",
         label: L10N.getStr("netmonitor.context.editAndResend"),
         accesskey: L10N.getStr("netmonitor.context.editAndResend.accesskey"),
-        visible: !!(clickedRequest && !isCustom),
+        visible: !isCustom,
         click: () => {
           this.fetchRequestHeaders(id).then(() => {
             if (!newEditAndResendPref) {
@@ -373,6 +400,7 @@ class RequestListContextMenu {
           });
         },
       },
+      // Request blocking
       {
         id: "request-list-context-block-url",
         label: L10N.getStr("netmonitor.context.blockURL"),
@@ -401,6 +429,32 @@ class RequestListContextMenu {
           }
         },
       },
+      // Request overrides
+      {
+        id: "request-list-context-set-override",
+        label: L10N.getStr("netmonitor.context.setOverride"),
+        accesskey: L10N.getStr("netmonitor.context.setOverride.accesskey"),
+        visible:
+          // Network overrides are disabled for remote debugging (bug 1881441).
+          isLocalTab &&
+          !isOverridden &&
+          (responseContentAvailable || responseContent),
+        click: async () => {
+          const content = await this.getResponseContent(id, responseContent);
+          toolbox.store.dispatch(
+            setNetworkOverride(toolbox.commands, url, content, window)
+          );
+        },
+      },
+      {
+        id: "request-list-context-remove-override",
+        label: L10N.getStr("netmonitor.context.removeOverride"),
+        accesskey: L10N.getStr("netmonitor.context.removeOverride.accesskey"),
+        // Network overrides are disabled for remote debugging (bug 1881441).
+        visible: isLocalTab && isOverridden,
+        click: () =>
+          toolbox.store.dispatch(removeNetworkOverride(toolbox.commands, url)),
+      },
       {
         type: "separator",
         visible: copySubMenu.slice(15, 16).some(subMenu => subMenu.visible),
@@ -410,7 +464,8 @@ class RequestListContextMenu {
         label: L10N.getStr("netmonitor.context.newTab"),
         accesskey: L10N.getStr("netmonitor.context.newTab.accesskey"),
         visible: !!clickedRequest,
-        click: () => openRequestInTab(id, url, requestHeaders, requestPostData),
+        click: () =>
+          this.openRequestInTab(id, url, requestHeaders, requestPostData),
       },
       {
         id: "request-list-context-open-in-debugger",
@@ -458,8 +513,31 @@ class RequestListContextMenu {
     ];
   }
 
-  open(event, clickedRequest, requests, blockedUrls) {
-    const menu = this.createMenu(clickedRequest, requests, blockedUrls);
+  /**
+   * Opens selected item in a new tab.
+   */
+  async openRequestInTab(id, url, requestHeaders, requestPostData) {
+    requestHeaders =
+      requestHeaders ||
+      (await this.props.connector.requestData(id, "requestHeaders"));
+
+    requestPostData =
+      requestPostData ||
+      (await this.props.connector.requestData(id, "requestPostData"));
+
+    openRequestInTab(url, requestHeaders, requestPostData);
+  }
+
+  open(event, clickedRequest, displayedRequests, blockedUrls) {
+    const enabledBlockedUrls = blockedUrls
+      .map(({ enabled, url }) => (enabled ? url : null))
+      .filter(Boolean);
+
+    const menu = this.createMenu(
+      clickedRequest,
+      displayedRequests,
+      enabledBlockedUrls
+    );
 
     showMenu(menu, {
       screenX: event.screenX,
@@ -755,16 +833,12 @@ class RequestListContextMenu {
     copyString(formDataURI(mimeType, encoding, text));
   }
 
-  /**
-   * Save response as.
-   */
-  async saveResponseAs(id, url, responseContent) {
+  async getResponseContent(id, responseContent) {
     responseContent =
       responseContent ||
       (await this.props.connector.requestData(id, "responseContent"));
 
     const { encoding, text } = responseContent.content;
-    const fileName = getUrlBaseName(url);
     let data;
     if (encoding === "base64") {
       const decoded = atob(text);
@@ -775,7 +849,16 @@ class RequestListContextMenu {
     } else {
       data = new TextEncoder().encode(text);
     }
-    saveAs(window, data, fileName);
+    return data;
+  }
+
+  /**
+   * Save response as.
+   */
+  async saveResponseAs(id, url, responseContent) {
+    const fileName = getUrlBaseName(url);
+    const content = await this.getResponseContent(id, responseContent);
+    saveAs(window, content, fileName);
   }
 
   /**

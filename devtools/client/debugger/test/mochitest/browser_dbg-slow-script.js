@@ -38,11 +38,9 @@ add_task(async function openDebuggerFirst() {
   info("Waiting for the debugger to be paused");
   await waitForPaused(dbg);
   const source = findSource(dbg, "doc-slow-script.html");
-  assertPausedAtSourceAndLine(dbg, source.id, 14);
+  await assertPausedAtSourceAndLine(dbg, source.id, 14);
 
-  info("Close toolbox and tab");
-  await dbg.toolbox.closeToolbox();
-  await removeTab(gBrowser.selectedTab);
+  await closeTabAndToolbox();
 });
 
 add_task(async function openDebuggerFromDialog() {
@@ -93,9 +91,7 @@ add_task(async function openDebuggerFromDialog() {
   info("Waiting for the debugger to be paused");
   await waitForPaused(dbg);
   const source = findSource(dbg, "doc-slow-script.html");
-  assertPausedAtSourceAndLine(dbg, source.id, 14);
+  await assertPausedAtSourceAndLine(dbg, source.id, 14);
 
-  info("Close toolbox and tab");
-  await dbg.toolbox.closeToolbox();
-  await removeTab(gBrowser.selectedTab);
+  await closeTabAndToolbox();
 });

@@ -529,18 +529,18 @@ CssRuleView.prototype = {
         }
         break;
 
-      // Toggle the "active" class on swatches next to flex and inline-flex CSS properties
+      // Toggle the "aria-pressed" attribute on swatches next to flex and inline-flex CSS properties
       // when the FlexboxHighlighter is shown/hidden for the currently selected node.
       case this.inspector.highlighters.TYPES.FLEXBOX:
         {
           const query = ".js-toggle-flexbox-highlighter";
           for (const node of this.styleDocument.querySelectorAll(query)) {
-            node.classList.toggle("active", eventName == "highlighter-shown");
+            node.setAttribute("aria-pressed", eventName == "highlighter-shown");
           }
         }
         break;
 
-      // Toggle the "active" class on swatches next to grid CSS properties
+      // Toggle the "aria-pressed" class on swatches next to grid CSS properties
       // when the GridHighlighter is shown/hidden for the currently selected node.
       case this.inspector.highlighters.TYPES.GRID:
         {
@@ -550,7 +550,10 @@ CssRuleView.prototype = {
             // not currently selected. The Rules view shows `display: grid` declarations
             // only for the selected node. Avoid mistakenly marking them as "active".
             if (data.nodeFront === this.inspector.selection.nodeFront) {
-              node.classList.toggle("active", eventName == "highlighter-shown");
+              node.setAttribute(
+                "aria-pressed",
+                eventName == "highlighter-shown"
+              );
             }
 
             // When the max limit of grid highlighters is reached (default 3),
@@ -589,6 +592,12 @@ CssRuleView.prototype = {
       "click",
       this._onToggleDarkColorSchemeSimulation
     );
+    const { rfpCSSColorScheme } = this.inspector.walker;
+    if (rfpCSSColorScheme) {
+      this.colorSchemeLightSimulationButton.setAttribute("disabled", true);
+      this.colorSchemeDarkSimulationButton.setAttribute("disabled", true);
+      console.warn("Color scheme simulation is disabled in RFP mode.");
+    }
   },
 
   /**
@@ -706,6 +715,9 @@ CssRuleView.prototype = {
     const elementStyle = this._elementStyle;
     const element = elementStyle.element;
     const pseudoClasses = element.pseudoClassLocks;
+
+    // Clear the search input so the new rule is visible
+    this._onClearSearch();
 
     this._focusNextUserAddedRule = true;
     this.pageStyle.addNewRule(element, pseudoClasses);
@@ -1399,12 +1411,11 @@ CssRuleView.prototype = {
   _createEditors() {
     // Run through the current list of rules, attaching
     // their editors in order.  Create editors if needed.
-    let lastInheritedSource = "";
-    let lastKeyframes = null;
-    let seenPseudoElement = false;
+    let lastInherited = null;
+    let lastinheritedSectionLabel = "";
     let seenNormalElement = false;
     let seenSearchTerm = false;
-    let container = null;
+    const containers = new Map();
 
     if (!this._elementStyle.rules) {
       return Promise.resolve();
@@ -1431,8 +1442,14 @@ CssRuleView.prototype = {
         }
       }
 
+      const isNonInheritedPseudo = !!rule.pseudoElement && !rule.inherited;
+
       // Only print header for this element if there are pseudo elements
-      if (seenPseudoElement && !seenNormalElement && !rule.pseudoElement) {
+      if (
+        containers.has(PSEUDO_ELEMENTS_CONTAINER_ID) &&
+        !seenNormalElement &&
+        !rule.pseudoElement
+      ) {
         seenNormalElement = true;
         const div = this.styleDocument.createElementNS(HTML_NS, "div");
         div.className = RULE_VIEW_HEADER_CLASSNAME;
@@ -1441,8 +1458,20 @@ CssRuleView.prototype = {
         this.element.appendChild(div);
       }
 
-      const inheritedSource = rule.inherited;
-      if (inheritedSource && inheritedSource !== lastInheritedSource) {
+      const { inherited, inheritedSectionLabel } = rule;
+      // We need to check both `inherited` (a NodeFront) and `inheritedSectionLabel` (string),
+      // as element-backed pseudo element rules (e.g. `::details-content`) can have the same
+      // `inherited` property as a regular rule (e.g. on `<details>`), but the element is
+      // to be considered as a child of the binding element.
+      // e.g. we want to have
+      // This element
+      // Inherited by details::details-content
+      // Inherited by details
+      if (
+        inherited &&
+        (inherited !== lastInherited ||
+          inheritedSectionLabel !== lastinheritedSectionLabel)
+      ) {
         const div = this.styleDocument.createElementNS(HTML_NS, "div");
         div.classList.add(
           RULE_VIEW_HEADER_CLASSNAME,
@@ -1450,31 +1479,46 @@ CssRuleView.prototype = {
         );
         div.setAttribute("role", "heading");
         div.setAttribute("aria-level", "3");
-        div.textContent = rule.inheritedSource;
-        lastInheritedSource = inheritedSource;
+        div.textContent = rule.inheritedSectionLabel;
+        lastInherited = inherited;
+        lastinheritedSectionLabel = inheritedSectionLabel;
         this.element.appendChild(div);
       }
 
-      if (!seenPseudoElement && rule.pseudoElement) {
-        seenPseudoElement = true;
-        container = this.createExpandableContainer(
-          this.pseudoElementLabel,
-          PSEUDO_ELEMENTS_CONTAINER_ID,
-          true
-        );
-      }
-
       const keyframes = rule.keyframes;
-      if (keyframes && keyframes !== lastKeyframes) {
-        lastKeyframes = keyframes;
-        container = this.createExpandableContainer(
-          rule.keyframesName,
-          `keyframes-container-${keyframes.name}`
-        );
+
+      let containerKey = null;
+
+      // Don't display inherited pseudo element rules (e.g. ::details-content) inside
+      // the pseudo element container
+      if (isNonInheritedPseudo) {
+        containerKey = PSEUDO_ELEMENTS_CONTAINER_ID;
+        if (!containers.has(containerKey)) {
+          containers.set(
+            containerKey,
+            this.createExpandableContainer(
+              this.pseudoElementLabel,
+              containerKey,
+              true
+            )
+          );
+        }
+      } else if (keyframes) {
+        containerKey = keyframes;
+        if (!containers.has(containerKey)) {
+          containers.set(
+            containerKey,
+            this.createExpandableContainer(
+              rule.keyframesName,
+              `keyframes-container-${keyframes.name}`
+            )
+          );
+        }
       }
 
       rule.editor.element.setAttribute("role", "article");
-      if (container && (rule.pseudoElement || keyframes)) {
+      const container = containers.get(containerKey);
+      if (container) {
         container.appendChild(rule.editor.element);
       } else {
         this.element.appendChild(rule.editor.element);
@@ -1484,7 +1528,7 @@ CssRuleView.prototype = {
       if (this._focusNextUserAddedRule && rule.domRule.userAdded) {
         this._focusNextUserAddedRule = null;
         rule.editor.selectorText.click();
-        this.emitForTests("new-rule-added");
+        this.emitForTests("new-rule-added", rule);
       }
     }
 

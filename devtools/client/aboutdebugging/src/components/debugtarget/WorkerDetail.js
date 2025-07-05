@@ -7,9 +7,9 @@
 const {
   createFactory,
   PureComponent,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const FluentReact = require("resource://devtools/client/shared/vendor/fluent-react.js");
 const Localized = createFactory(FluentReact.Localized);
@@ -99,10 +99,28 @@ class WorkerDetail extends PureComponent {
     );
   }
 
-  render() {
-    const { fetch, pushServiceEndpoint, scope } = this.props.target.details;
+  renderOrigin() {
+    const { origin } = this.props.target.details;
 
-    const isEmptyList = !pushServiceEndpoint && !fetch && !scope && !status;
+    return Localized(
+      {
+        id: "about-debugging-worker-origin",
+        attrs: { label: true },
+      },
+      FieldPair({
+        slug: "origin",
+        label: "Origin",
+        value: origin,
+      })
+    );
+  }
+
+  render() {
+    const { fetch, pushServiceEndpoint, scope, origin } =
+      this.props.target.details;
+
+    const isEmptyList =
+      !pushServiceEndpoint && !fetch && !scope && !origin && !status;
 
     return dom.dl(
       {
@@ -112,7 +130,8 @@ class WorkerDetail extends PureComponent {
       },
       pushServiceEndpoint ? this.renderPushService() : null,
       fetch ? this.renderFetch() : null,
-      scope ? this.renderScope() : null
+      scope ? this.renderScope() : null,
+      origin ? this.renderOrigin() : null
     );
   }
 }

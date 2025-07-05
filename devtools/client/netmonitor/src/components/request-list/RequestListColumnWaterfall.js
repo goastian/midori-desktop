@@ -6,15 +6,9 @@
 
 const {
   Component,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
-const {
-  connect,
-} = require("resource://devtools/client/shared/redux/visibility-handler-connect.js");
-const {
-  getWaterfallScale,
-} = require("resource://devtools/client/netmonitor/src/selectors/index.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 
 const {
   L10N,
@@ -35,18 +29,18 @@ const UPDATED_WATERFALL_ITEM_PROPS = ["eventTimings", "totalTime"];
 const UPDATED_WATERFALL_PROPS = [
   "item",
   "firstRequestStartedMs",
-  "scale",
+  "waterfallScale",
   "isVisible",
 ];
 
-class RequestListColumnWaterfall extends Component {
+module.exports = class RequestListColumnWaterfall extends Component {
   static get propTypes() {
     return {
       connector: PropTypes.object.isRequired,
       firstRequestStartedMs: PropTypes.number.isRequired,
       item: PropTypes.object.isRequired,
       onWaterfallMouseDown: PropTypes.func.isRequired,
-      scale: PropTypes.number,
+      waterfallScale: PropTypes.number,
       isVisible: PropTypes.bool.isRequired,
     };
   }
@@ -63,7 +57,7 @@ class RequestListColumnWaterfall extends Component {
 
   // FIXME: https://bugzilla.mozilla.org/show_bug.cgi?id=1774507
   UNSAFE_componentWillReceiveProps(nextProps) {
-    if (nextProps.isVisible && nextProps.item.totalTime) {
+    if (nextProps.isVisible && typeof nextProps.item.totalTime === "number") {
       const { connector, item } = nextProps;
       fetchNetworkUpdatePacket(connector.requestData, item, ["eventTimings"]);
     }
@@ -109,12 +103,13 @@ class RequestListColumnWaterfall extends Component {
       );
     }
 
-    return tooltip.join(L10N.getStr("netmonitor.waterfall.tooltip.separator"));
+    const lf = new Intl.ListFormat(undefined, { type: "unit" });
+    return lf.format(tooltip);
   }
 
   timingBoxes() {
     const {
-      scale,
+      waterfallScale,
       item: { eventTimings, totalTime },
     } = this.props;
     const boxes = [];
@@ -132,7 +127,10 @@ class RequestListColumnWaterfall extends Component {
                 key,
                 className: `requests-list-timings-box ${key}`,
                 style: {
-                  width: Math.max(eventTimings.timings[key] * scale, minPixel),
+                  width: Math.max(
+                    eventTimings.timings[key] * waterfallScale,
+                    minPixel
+                  ),
                 },
               })
             );
@@ -145,7 +143,7 @@ class RequestListColumnWaterfall extends Component {
           div({
             className: "requests-list-timings-box filler",
             key: "filler",
-            style: { width: Math.max(totalTime * scale, minPixel) },
+            style: { width: Math.max(totalTime * waterfallScale, minPixel) },
           })
         );
       }
@@ -179,21 +177,21 @@ class RequestListColumnWaterfall extends Component {
     const {
       firstRequestStartedMs,
       item: { startedMs },
-      scale,
+      waterfallScale,
       onWaterfallMouseDown,
     } = this.props;
 
     return dom.td(
       {
         className: "requests-list-column requests-list-waterfall",
-        onMouseOver: this.handeMouseOver,
+        onMouseOver: this.handleMouseOver,
       },
       div(
         {
           className: "requests-list-timings",
           style: {
             paddingInlineStart: `${
-              (startedMs - firstRequestStartedMs) * scale
+              (startedMs - firstRequestStartedMs) * waterfallScale
             }px`,
           },
           onMouseDown: onWaterfallMouseDown,
@@ -202,8 +200,4 @@ class RequestListColumnWaterfall extends Component {
       )
     );
   }
-}
-
-module.exports = connect(state => ({
-  scale: getWaterfallScale(state),
-}))(RequestListColumnWaterfall);
+};

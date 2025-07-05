@@ -18,7 +18,7 @@
  */
 declare namespace MockedExports {
   /**
-   * This interface teaches ChromeUtils.import how to find modules.
+   * This interface teaches ChromeUtils.importESModule how to find modules.
    */
   interface KnownModules {
     Services: typeof import("Services");
@@ -26,6 +26,9 @@ declare namespace MockedExports {
     "resource:///modules/CustomizableUI.sys.mjs": typeof import("resource:///modules/CustomizableUI.sys.mjs");
     "resource:///modules/CustomizableWidgets.sys.mjs": typeof import("resource:///modules/CustomizableWidgets.sys.mjs");
     "resource://devtools/shared/loader/Loader.sys.mjs": typeof import("resource://devtools/shared/loader/Loader.sys.mjs");
+    "resource://devtools/shared/performance-new/errors.sys.mjs": typeof import("resource://devtools/shared/performance-new/errors.sys.mjs");
+    "resource://devtools/shared/performance-new/prefs-presets.sys.mjs": typeof import("resource://devtools/shared/performance-new/prefs-presets.sys.mjs");
+    "resource://devtools/shared/performance-new/recording-utils.sys.mjs": typeof import("resource://devtools/shared/performance-new/recording-utils.sys.mjs");
     "resource://devtools/client/performance-new/shared/background.sys.mjs": typeof import("resource://devtools/client/performance-new/shared/background.sys.mjs");
     "resource://devtools/client/performance-new/shared/symbolication.sys.mjs": typeof import("resource://devtools/client/performance-new/shared/symbolication.sys.mjs");
     "resource://devtools/shared/loader/browser-loader.sys.mjs": any;
@@ -33,6 +36,7 @@ declare namespace MockedExports {
     "resource://devtools/client/performance-new/shared/typescript-lazy-load.sys.mjs": typeof import("resource://devtools/client/performance-new/shared/typescript-lazy-load.sys.mjs");
     "resource://devtools/client/performance-new/popup/logic.sys.mjs": typeof import("resource://devtools/client/performance-new/popup/logic.sys.mjs");
     "resource:///modules/PanelMultiView.sys.mjs": typeof import("resource:///modules/PanelMultiView.sys.mjs");
+    "resource://gre/modules/PlacesUtils.sys.mjs": typeof import("resource://gre/modules/PlacesUtils.sys.mjs");
   }
 
   interface ChromeUtils {
@@ -40,16 +44,14 @@ declare namespace MockedExports {
      * This function reads the KnownModules and resolves which import to use.
      * If you are getting the TS2345 error:
      *
-     *  Argument of type '"resource:///.../file.jsm"' is not assignable to parameter
-     *  of type
+     *  Argument of type '"resource:///.../file.sys.mjs"' is not assignable to
+     *  parameter of type
      *
      * Then add the file path to the KnownModules above.
      */
-    import: <S extends keyof KnownModules>(module: S) => KnownModules[S];
     importESModule: <S extends keyof KnownModules>(
       module: S
     ) => KnownModules[S];
-    defineModuleGetter: (target: any, variable: string, path: string) => void;
     defineESModuleGetters: (target: any, mappings: any) => void;
   }
 
@@ -68,6 +70,7 @@ declare namespace MockedExports {
     selectedBrowser?: ChromeBrowser;
     messageManager: MessageManager;
     ownerDocument?: ChromeDocument;
+    tabs: BrowserTab[];
   }
 
   // This is a tab in a browser, defined in
@@ -85,6 +88,7 @@ declare namespace MockedExports {
   // This is linked to BrowserTab.
   interface ChromeBrowser {
     browsingContext?: BrowsingContext;
+    browserId: number;
   }
 
   interface BrowsingContext {
@@ -226,6 +230,26 @@ declare namespace MockedExports {
     principal: PrincipalStub;
   }
 
+  interface FaviconData {
+    uri: nsIURI;
+    rawData: number[];
+    mimeType: string;
+    width: number;
+  }
+
+  const PlaceUtilsSYSMJS: {
+    PlacesUtils: {
+      favicons: {
+        getFaviconForPage: (
+          pageUrl: nsIURI,
+          preferredWidth?: number
+        ) => Promise<FaviconData>;
+        // TS-TODO: Add the rest.
+      };
+      toURI: (uri: string | URL | nsIURI) => nsIURI;
+    };
+  };
+
   // TS-TODO
   const CustomizableUISYSMJS: any;
   const CustomizableWidgetsSYSMJS: any;
@@ -242,7 +266,11 @@ declare namespace MockedExports {
   class nsIFilePicker {}
 
   interface FilePicker {
-    init: (browsingContext: BrowsingContext, title: string, mode: number) => void;
+    init: (
+      browsingContext: BrowsingContext,
+      title: string,
+      mode: number
+    ) => void;
     open: (callback: (rv: number) => unknown) => void;
     // The following are enum values.
     modeGetFolder: number;
@@ -263,16 +291,6 @@ declare namespace MockedExports {
   }
 
   interface Cu {
-    /**
-     * This function reads the KnownModules and resolves which import to use.
-     * If you are getting the TS2345 error:
-     *
-     *  Argument of type '"resource:///.../file.jsm"' is not assignable to parameter
-     *  of type
-     *
-     * Then add the file path to the KnownModules above.
-     */
-    import: <S extends keyof KnownModules>(module: S) => KnownModules[S];
     exportFunction: (fn: Function, scope: object, options?: object) => void;
     cloneInto: (value: any, scope: object, options?: object) => void;
     isInAutomation: boolean;
@@ -296,9 +314,14 @@ interface PathUtilsInterface {
   isAbsolute: (path: string) => boolean;
 }
 
-declare module "resource://devtools/client/shared/vendor/react.js" {
+declare module "resource://devtools/client/shared/vendor/react.mjs" {
   import * as React from "react";
   export = React;
+}
+
+declare module "resource://devtools/client/shared/vendor/react-dom.mjs" {
+  import * as ReactDOM from "react-dom";
+  export = ReactDOM;
 }
 
 declare module "resource://devtools/client/shared/vendor/react-dom-factories.js" {
@@ -356,6 +379,10 @@ declare module "resource:///modules/PanelMultiView.sys.mjs" {
 
 declare module "resource://devtools/shared/loader/Loader.sys.mjs" {
   export = MockedExports.LoaderESM;
+}
+
+declare module "resource://gre/modules/PlacesUtils.sys.mjs" {
+  export = MockedExports.PlaceUtilsSYSMJS;
 }
 
 declare var ChromeUtils: MockedExports.ChromeUtils;
@@ -475,3 +502,12 @@ declare type nsIPrefBranch = MockedExports.nsIPrefBranch;
 interface Function {
   isInstance(obj: any): boolean;
 }
+
+// We're declaring these interfaces only to be able to use them in perf.d.ts,
+// for documentation reason. Indeed we use them in places that are not
+// type-checked.
+declare interface nsIInputStream {}
+declare interface nsIAsyncInputStream extends nsIInputStream {}
+declare interface nsIBinaryInputStream extends nsIInputStream {}
+declare interface nsIOutputStream {}
+declare interface nsIAsyncOutputStream extends nsIOutputStream {}

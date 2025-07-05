@@ -26,12 +26,14 @@ export function selectFrame(frame) {
     });
 
     // It's important that we wait for selectLocation to finish because
-    // we rely on the source being loaded and symbols fetched below.
+    // we rely on the source being loaded.
     await dispatch(selectLocation(frame.location));
     validateSelectedFrame(getState(), frame);
 
     await dispatch(evaluateExpressions(frame));
+    validateSelectedFrame(getState(), frame);
 
-    await dispatch(fetchScopes(frame));
+    await dispatch(fetchScopes());
+    validateSelectedFrame(getState(), frame);
   };
 }

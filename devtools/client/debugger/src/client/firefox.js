@@ -4,15 +4,23 @@
 
 import { setupCommands, clientCommands } from "./firefox/commands";
 import { setupCreate, createPause } from "./firefox/create";
-import { features } from "../utils/prefs";
+import { prefs, features } from "../utils/prefs";
 
 import { recordEvent } from "../utils/telemetry";
 import sourceQueue from "../utils/source-queue";
+const {
+  TRACER_LOG_METHODS,
+} = require("resource://devtools/shared/specs/tracer.js");
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
+);
+const { PrefObserver } = require("resource://devtools/client/shared/prefs.js");
 
 let actions;
 let commands;
 let targetCommand;
 let resourceCommand;
+let prefObserver;
 
 export async function onConnect(_commands, _resourceCommand, _actions, store) {
   actions = _actions;
@@ -58,8 +66,15 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
   };
   await commands.threadConfigurationCommand.updateConfiguration(options);
 
+  // Depending on the content script preference we should or should not observe
+  // CONTENT_SCRIPT targets.
+  const targetTypes = prefs.showContentScripts
+    ? targetCommand.ALL_TYPES
+    : targetCommand.ALL_TYPES.filter(
+        type => type != targetCommand.TYPES.CONTENT_SCRIPT
+      );
   await targetCommand.watchTargets({
-    types: targetCommand.ALL_TYPES,
+    types: targetTypes,
     onAvailable: onTargetAvailable,
     onDestroyed: onTargetDestroyed,
   });
@@ -72,10 +87,6 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
   await resourceCommand.watchResources([resourceCommand.TYPES.THREAD_STATE], {
     onAvailable: onThreadStateAvailable,
   });
-  await resourceCommand.watchResources([resourceCommand.TYPES.JSTRACER_STATE], {
-    onAvailable: onTracingStateAvailable,
-  });
-
   await resourceCommand.watchResources([resourceCommand.TYPES.ERROR_MESSAGE], {
     onAvailable: actions.addExceptionFromResources,
   });
@@ -84,6 +95,56 @@ export async function onConnect(_commands, _resourceCommand, _actions, store) {
     // we only care about future events for DOCUMENT_EVENT
     ignoreExistingResources: true,
   });
+  await resourceCommand.watchResources([resourceCommand.TYPES.JSTRACER_STATE], {
+    onAvailable: onTracingStateAvailable,
+  });
+  await resourceCommand.watchResources([resourceCommand.TYPES.JSTRACER_TRACE], {
+    onAvailable: actions.addTraces,
+  });
+
+  // Also register a toggle listener, in addition to JSTRACER_TRACE in order
+  // to be able to clear the tracer data on tracing start, that, even if the
+  // tracer is waiting for next interaction/load.
+  commands.tracerCommand.on("toggle", onTracingToggled);
+
+  if (!commands.client.isLocalClient) {
+    const localPlatformVersion = AppConstants.MOZ_APP_VERSION;
+    const remotePlatformVersion = await getRemotePlatformVersion();
+    actions.setLocalAndRemoteRuntimeVersion(
+      localPlatformVersion,
+      remotePlatformVersion
+    );
+  }
+
+  prefObserver = new PrefObserver("devtools.debugger.show-content-scripts");
+  prefObserver.on(
+    "devtools.debugger.show-content-scripts",
+    onToggleContentScripts
+  );
+}
+
+async function onToggleContentScripts() {
+  if (!prefs.showContentScripts) {
+    await targetCommand.watchTargets({
+      types: [targetCommand.TYPES.CONTENT_SCRIPT],
+      onAvailable: onTargetAvailable,
+      onDestroyed: onTargetDestroyed,
+    });
+  } else {
+    // unwatchTarget won't call onTargetDestroyed for the previously registered targets
+    // so, manually destroy all existing content script targets
+    const existingTargets = targetCommand.getAllTargets([
+      targetCommand.TYPES.CONTENT_SCRIPT,
+    ]);
+    for (const targetFront of existingTargets) {
+      actions.removeTarget(targetFront);
+    }
+    targetCommand.unwatchTargets({
+      types: [targetCommand.TYPES.CONTENT_SCRIPT],
+      onAvailable: onTargetAvailable,
+      onDestroyed: onTargetDestroyed,
+    });
+  }
 }
 
 export function onDisconnect() {
@@ -107,7 +168,15 @@ export function onDisconnect() {
   resourceCommand.unwatchResources([resourceCommand.TYPES.DOCUMENT_EVENT], {
     onAvailable: onDocumentEventAvailable,
   });
+  resourceCommand.unwatchResources([resourceCommand.TYPES.JSTRACER_STATE], {
+    onAvailable: onTracingStateAvailable,
+  });
+  resourceCommand.unwatchResources([resourceCommand.TYPES.JSTRACER_TRACE], {
+    onAvailable: actions.addTraces,
+  });
+  commands.tracerCommand.off("toggle", onTracingToggled);
   sourceQueue.clear();
+  prefObserver.destroy();
 }
 
 async function onTargetAvailable({ targetFront }) {
@@ -141,7 +210,9 @@ async function onTargetAvailable({ targetFront }) {
 
   // Initialize the event breakpoints on the thread up front so that
   // they are active once attached.
-  actions.addEventListenerBreakpoints([]).catch(e => console.error(e));
+  actions
+    .addEventListenerBreakpoints("breakpoint", [])
+    .catch(e => console.error(e));
 
   await actions.addTarget(targetFront);
 }
@@ -175,15 +246,38 @@ async function onTracingStateAvailable(resources) {
     if (resource.targetFront.isDestroyed()) {
       continue;
     }
+    // Ignore if the tracer is logging to any other output
+    if (resource.logMethod != TRACER_LOG_METHODS.DEBUGGER_SIDEBAR) {
+      continue;
+    }
+    // For now, only consider the top level target
+    if (!resource.targetFront.isTopLevel) {
+      continue;
+    }
     const threadFront = await resource.targetFront.getFront("thread");
-    await actions.tracingToggled(threadFront.actor, resource.enabled);
+    await actions.tracingToggled(
+      threadFront.actor,
+      resource.enabled,
+      resource.traceValues
+    );
   }
+}
+
+async function onTracingToggled() {
+  const { tracerCommand } = commands;
+  if (!tracerCommand.isTracingEnabled) {
+    return;
+  }
+  // We only notify about global enabling of the tracer in order to clear data
+  actions.clearTracerData();
 }
 
 function onDocumentEventAvailable(events) {
   for (const event of events) {
     // Only consider top level document, and ignore remote iframes top document
-    if (!event.targetFront.isTopLevel) continue;
+    if (!event.targetFront.isTopLevel) {
+      continue;
+    }
     // The browser toolbox debugger doesn't support the iframe dropdown.
     // you will always see all the sources of all targets of your debugging context.
     //
@@ -201,6 +295,12 @@ function onDocumentEventAvailable(events) {
       actions.navigated();
     }
   }
+}
+
+async function getRemotePlatformVersion() {
+  const deviceFront = await commands.client.mainRoot.getFront("device");
+  const description = await deviceFront.getDescription();
+  return description.platformversion;
 }
 
 export { clientCommands };

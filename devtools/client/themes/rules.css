@@ -4,11 +4,10 @@
 
 /* CSS Variables specific to this panel that aren't defined by the themes */
 :root {
-  --rule-highlight-background-color: var(--theme-highlight-yellow);
-  --rule-highlight-propertyname: var(--blue-60);
-  --rule-highlight-propertyvalue: var(--magenta-70);
-  --rule-highlight-unmatched-unused-color: var(--grey-55);
-  --rule-header-background-color: var(--theme-toolbar-background);
+  --rule-highlight-propertyname: light-dark(var(--blue-60), var(--theme-highlight-blue));
+  --rule-highlight-propertyvalue: light-dark(var(--magenta-70), var(--theme-highlight-red));
+  --rule-highlight-unmatched-unused-color: light-dark(var(--grey-55), var(--grey-40));
+  --rule-header-background-color: light-dark(var(--theme-toolbar-background), #222225);
   --rule-computed-margin-inline-start: 35px;
   --rule-enableproperty-size: 12px;
   --rule-enableproperty-margin-inline-start: 3px;
@@ -20,14 +19,12 @@
     --rule-enableproperty-margin-inline-start: 0px;
     --rule-enableproperty-margin-inline-end: 10px;
   }
-}
 
-:root.theme-dark {
-  --rule-highlight-background-color: #521C76;
-  --rule-highlight-propertyname: var(--theme-highlight-blue);
-  --rule-highlight-propertyvalue: var(--theme-highlight-red);
-  --rule-highlight-unmatched-unused-color: var(--grey-40);
-  --rule-header-background-color: #222225;
+  &[forced-colors-active] {
+    --rule-highlight-propertyname: var(--theme-contrast-color);
+    --rule-highlight-propertyvalue: var(--theme-contrast-color);
+    --rule-highlight-unmatched-unused-color: var(--theme-contrast-color);
+  }
 }
 
 /* Rule View Tabpanel */
@@ -210,7 +207,7 @@
   .ruleview-used,
   .ruleview-invalid-at-computed-value-time-warning,
 ),
-.ruleview-overridden .ruleview-grid {
+.ruleview-overridden .inspector-grid {
   display: none;
 }
 
@@ -233,6 +230,12 @@
   user-select: none;
   margin-bottom: 2px;
   margin-left: 1ch;
+
+  /* Because of the overflow hidden, the outline that would be set on the child link
+     would not be visible, so we need to set it here */
+  &:focus-within:has(a:focus-visible) {
+    outline: var(--theme-focus-outline);
+  }
 }
 
 .ruleview-rule-source-label {
@@ -243,7 +246,22 @@
   /* Create an LTR embed to avoid special characters being shifted to the start due to the
      parent node direction: rtl; */
   direction: ltr;
-  unicode-bidi: embed
+  unicode-bidi: embed;
+
+  /* We don't always have a link (e.g. for inline style, it's a simple span), and in such
+     case, we shouldn't set the color the same as link color */
+  &:is(a) {
+    color: var(--theme-internal-link-color);
+
+    /* The outline is set on ruleview-rule-source */
+    &:focus-visible {
+      outline: none;
+    }
+
+    &:visited {
+      color: var(--theme-internal-link-color);
+    }
+  }
 }
 
 .ruleview-rule-source.disabled > .ruleview-rule-source-label,
@@ -275,23 +293,32 @@
   /* Reset padding set on ruleview-header since we're going to put it on the button instead */
   padding: 0;
 
-   &:hover {
-    background-color: var(--theme-accordion-header-hover);
-  }
-
   & button[aria-expanded] {
     display: flex;
+    align-items: center;
     /* Space between arrow and label */
     gap: 2px;
     width: 100%;
     padding: var(--ruleview-header-padding);
+
+    background-color: var(--theme-accordion-header-background);
+    color: var(--theme-accordion-header-color);
+
     /* Reset button-specific styles */
-    background-color: transparent;
     border: none;
     text-align: start;
     /* Apply same font-size as set on ruleview-header */
     font-size: 1em;
     outline-offset: -2px;
+
+    &:hover {
+      background-color: var(--theme-accordion-header-hover-background);
+      color: var(--theme-accordion-header-hover-color);
+
+      :root[forced-colors-active] & .theme-twisty {
+        color: currentColor;
+      }
+    }
 
     &[aria-expanded="true"] .theme-twisty {
       rotate: 90deg;
@@ -325,9 +352,13 @@
   background: var(--theme-tab-toolbar-background);
 }
 
-.ruleview-rule.unmatched,
-.ruleview-rule[unmatched=true] {
-  opacity: 0.5;
+:root[forced-colors-active] .ruleview-rule:is(
+  .unmatched,
+  [unmatched=true]
+) {
+  /* Set an inactive color in High Contrast Mode as we don't have the
+     distinct background that is set in regular mode */
+  color: var(--theme-text-color-inactive);
 }
 
 .ruleview-rule.uneditable :focus,
@@ -345,8 +376,8 @@
   visibility: hidden;
 }
 
-.ruleview-rule.uneditable .ruleview-swatch,
-.ruleview-rule[uneditable=true] .ruleview-swatch {
+.ruleview-rule.uneditable .inspector-swatch,
+.ruleview-rule[uneditable=true] .inspector-swatch {
   cursor: default;
 }
 
@@ -495,8 +526,8 @@
 }
 
 .ruleview-invalid-at-computed-value-time-warning {
-    background-image: url(resource://devtools-shared-images/error-small.svg);
-    fill: var(--theme-highlight-red);
+    background-image: var(--invalid-at-computed-value-time-icon);
+    fill: var(--invalid-at-computed-value-time-fill-color);
 }
 
 
@@ -530,9 +561,13 @@
 
 .ruleview-propertycontainer .ruleview-expander {
   margin-left: -6px;
+  border: none;
+  background-color: transparent;
+  /* Prevent line break when copy/pasting an entire rule */
+  user-select: auto;
 }
 
-.ruleview-propertycontainer .ruleview-expander:dir(rtl):not([open]) {
+.ruleview-propertycontainer .ruleview-expander:dir(rtl)[aria-expanded="false"] {
   /* for preventing .theme-twisty's wrong direction in rtl; Bug 1296648 */
   transform: rotate(-90deg);
 }
@@ -601,127 +636,19 @@
   margin-left: 0;
 }
 
-/* All swatches */
-
-.ruleview-flex,
-.ruleview-grid,
-.ruleview-shapeswatch,
-.ruleview-swatch {
-  cursor: pointer;
-  width: 1em;
-  height: 1em;
-  vertical-align: middle;
-
-  /* align the swatch with its value */
-  margin-top: -1px;
-  margin-inline-end: 5px;
-  display: inline-block;
-  position: relative;
-}
-
-/* Icon swatches not using the .ruleview-swatch class (flex, grid, shape) */
-
-.ruleview-flex,
-.ruleview-grid,
-.ruleview-shapeswatch {
-  -moz-context-properties: stroke;
-  stroke: var(--theme-icon-color);
-}
-
-.ruleview-flex.active,
-.ruleview-grid.active,
-.ruleview-shapeswatch.active {
-  stroke: var(--theme-icon-checked-color);
-}
-
-.ruleview-flex {
-  background-image: url("chrome://devtools/skin/images/flexbox-swatch.svg");
-  background-size: 13px 11px;
-  width: 13px;
-  height: 11px;
-}
-
-.ruleview-grid {
-  background-image: url("chrome://devtools/skin/images/grid.svg");
-}
-
-.ruleview-grid[disabled] {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.ruleview-shapeswatch {
-  background-image: url("chrome://devtools/skin/images/shape-swatch.svg");
-  background-size: 110%;
-  width: 1.45em;
-  height: 1.45em;
-}
-
-.ruleview-shape-point.active,
-.ruleview-shapeswatch.active + .ruleview-shape > .ruleview-shape-point:hover {
-  background-color: var(--rule-highlight-background-color);
-}
-
-/* Round swatches using the .ruleview-swatch class (color, bezier, filter and angle) */
-
-.ruleview-swatch {
-  background-size: 1em;
-  border-radius: 50%;
-}
-
-.ruleview-colorswatch::before {
-  content: '';
-  background-color: #eee;
-  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc),
-                    linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc);
-  background-size: 12px 12px;
-  background-position: 0 0, 6px 6px;
-  position: absolute;
-  border-radius: 50%;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: -1;
-}
-
-.ruleview-swatch.ruleview-colorswatch {
-  border: none;
-  padding: 0;
-  /* Adjust outline so it doesn't conflate with the color swatch, which could have a similar background
-     color as the outline */
-  outline-offset: 2px;
-}
-
-.ruleview-bezierswatch {
-  background-image: url("chrome://devtools/skin/images/cubic-bezier-swatch.svg");
-}
-
-.ruleview-filterswatch {
-  background-image: url("chrome://devtools/skin/images/filter-swatch.svg");
-}
-
-.ruleview-angleswatch {
-  background-image: url("chrome://devtools/skin/images/angle-swatch.svg");
-}
-
-.ruleview-lineareasingswatch {
-  background-image: url("chrome://devtools/skin/images/linear-easing-swatch.svg");
-}
-
 .ruleview-overridden {
-  text-decoration: line-through solid var(--theme-text-color-alt);
+  text-decoration: line-through solid var(--theme-text-color-inactive);
 }
 
 /**
  * Hide swatches (tool icons) from properties that are overwritten by higher specificity * rules.
- * .ruleview-swatch is a base class for many tool swatches (shapes, color, bezier curves)
- * .ruleview-flex and .ruleview-grid are custom
+ * .inspector-swatch is a base class for many tool swatches (shapes, color, bezier curves)
+ * .inspector-flex and .inspector-grid are custom
  */
-.ruleview-overridden .ruleview-flex,
-.ruleview-overridden .ruleview-grid,
-.ruleview-overridden .ruleview-shapeswatch,
-.ruleview-overridden .ruleview-swatch {
+.ruleview-overridden .inspector-flex,
+.ruleview-overridden .inspector-grid,
+.ruleview-overridden .inspector-shapeswatch,
+.ruleview-overridden .inspector-swatch {
   display: none;
 }
 
@@ -748,6 +675,17 @@
   /* When the text of the property wraps, we want the wrapping lines to have an indent so
      they don't go under the checkbox */
   text-indent: var(--rule-computed-margin-inline-start) hanging;
+
+  :root[forced-colors-active] & {
+    /* We opt-out of forced-colors because we want the left border to be actually transparent
+       in High Contrast Mode when the declaration isn't new/updated, and green when it is */
+    forced-color-adjust: none;
+    /* But we opt-in forced colors on direct child so we have expected High Contrast colors
+       for the children */
+    & > * {
+      forced-color-adjust: auto;
+    }
+  }
 }
 
 .ruleview-propertycontainer  > * {
@@ -768,9 +706,9 @@
    * So here we'll use a bottom box-shadow (not a border to avoid impacting the layout)
    * which will match the style we have in Debugger for search results.
    */
-  background-color: var(--rule-highlight-background-color);
+  background-color: var(--inspector-highlight-background-color);
   /* Put the box-shadow inside the element so it's still visible when sibling elements are highlighted  */
-  box-shadow: inset 0px -1px 0px 0px var(--theme-contrast-border);
+  box-shadow: inset 0 -1px 0 0 var(--theme-contrast-border);
 
 
   /* property name and value and unmatched/inactive colors need to be adjusted
@@ -784,20 +722,29 @@
   }
 
   &.ruleview-selector.unmatched,
-  & .ruleview-unmatched-variable,
+  & .inspector-unmatched,
   .ruleview-property:is(.unused, .ruleview-overridden) & :is(.ruleview-propertyname, .ruleview-propertyvalue) {
     color: var(--rule-highlight-unmatched-unused-color);
   }
-}
 
-.ruleview-namecontainer > .ruleview-propertyname,
-.ruleview-propertyvaluecontainer > .ruleview-propertyvalue {
-  border-bottom: 1px dashed transparent;
+  /* In High Contrast Mode, we need to specifiy an additional color for elements which
+     don't have specific highlighted colors (selectors, semi colons, stylesheet location, ...) */
+  :root[forced-colors-active] & {
+    color: var(--theme-contrast-color);
+    a, .theme-twisty {
+      color: var(--theme-contrast-color);
+    }
+
+    /* the overridden class is set on a parent element of the ruleview-highlight one */
+    .ruleview-overridden:has(&) {
+      text-decoration-color: var(--theme-contrast-color);
+    }
+  }
 }
 
 .ruleview-namecontainer:hover > .ruleview-propertyname,
 .ruleview-propertyvaluecontainer:hover > .ruleview-propertyvalue {
-  border-bottom-color: hsl(0,0%,50%);
+  text-decoration: 1px underline dashed hsl(0,0%,50%);
 }
 
 /* ancestor rules info element (parent at-rules, parent of nested rules, …) */
@@ -827,6 +774,7 @@
 .ruleview-rule-ancestor-data  [role="listitem"] :is(button,[role="button"]).open-inspector {
   /* There's a space character after the button, so add a 1ch margin-inline-start to be consistent */
   margin-inline: 1ch 0;
+  user-select: auto;
 }
 
 .ruleview-selectors-container,
@@ -835,23 +783,23 @@
   cursor: text;
 }
 
-.ruleview-variable {
-  color: var(--theme-highlight-blue);
+.ruleview-selector-separator {
+  color: var(--theme-text-color-alt);
 }
 
-.ruleview-selector-separator,
+.ruleview-rule:is(.unmatched, [unmatched=true]) .ruleview-selector,
 .ruleview-selector.unmatched,
-.ruleview-unmatched-variable,
 .ruleview-property:is(.unused, .ruleview-overridden) :is(.ruleview-propertyname,.ruleview-propertyvalue) {
-  color: var(--theme-text-color-alt);
+  color: var(--theme-text-color-inactive);
 }
 
 /* We use a dimmer color for those unmatching element, but we can't convey state change
     only with colors, so let's add a line-through line */
 :is(
   .ruleview-selector.unmatched,
-  .ruleview-unmatched-variable,
-  .ruleview-invalid-at-computed-value-time
+  .inspector-unmatched,
+  .ruleview-invalid-at-computed-value-time,
+  .ruleview-rule:is(.unmatched, [unmatched=true]) .ruleview-selector,
 ):not(
   /* don't show the strike through when the element is hovered so it's more legible */
   :hover

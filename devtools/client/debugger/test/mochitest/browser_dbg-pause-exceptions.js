@@ -30,12 +30,15 @@ add_task(async function () {
   await togglePauseOnExceptions(dbg, true, true);
   uncaughtException();
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 2);
+  await assertPausedAtSourceAndLine(dbg, source.id, 2);
 
   const whyPaused = await waitFor(
     () => dbg.win.document.querySelector(".why-paused")?.innerText
   );
-  is(whyPaused, `Paused on exception\nunreachable`);
+  is(
+    whyPaused,
+    `Paused on exception\nuncaughtException - exceptions.js:2:2\nunreachable`
+  );
 
   await resume(dbg);
 
@@ -43,18 +46,18 @@ add_task(async function () {
   await togglePauseOnExceptions(dbg, true, true);
   uncaughtException();
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 2);
+  await assertPausedAtSourceAndLine(dbg, source.id, 2);
   await resume(dbg);
 
   info("3. Test pausing on a caught Error");
   caughtException();
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 7);
+  await assertPausedAtSourceAndLine(dbg, source.id, 7);
 
   info("3.b Test pausing in the catch statement");
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 9);
+  await assertPausedAtSourceAndLine(dbg, source.id, 9);
   await resume(dbg);
 
   info("4. Test skipping a caught error");
@@ -63,7 +66,7 @@ add_task(async function () {
 
   info("4.b Test pausing in the catch statement");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 9);
+  await assertPausedAtSourceAndLine(dbg, source.id, 9);
   await resume(dbg);
 
   await togglePauseOnExceptions(dbg, true, true);
@@ -71,46 +74,46 @@ add_task(async function () {
   info("5. Only pause once when throwing deep in the stack");
   invokeInTab("deepError");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 16);
+  await assertPausedAtSourceAndLine(dbg, source.id, 16);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 22);
+  await assertPausedAtSourceAndLine(dbg, source.id, 22);
   await resume(dbg);
 
   info("6. Only pause once on an exception when pausing in a finally block");
   invokeInTab("deepErrorFinally");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 34);
+  await assertPausedAtSourceAndLine(dbg, source.id, 34);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 31);
+  await assertPausedAtSourceAndLine(dbg, source.id, 31);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 40);
+  await assertPausedAtSourceAndLine(dbg, source.id, 40);
   await resume(dbg);
 
   info("7. Only pause once on an exception when it is rethrown from a catch");
   invokeInTab("deepErrorCatch");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 53);
+  await assertPausedAtSourceAndLine(dbg, source.id, 53);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 49);
+  await assertPausedAtSourceAndLine(dbg, source.id, 49);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 59);
+  await assertPausedAtSourceAndLine(dbg, source.id, 59);
   await resume(dbg);
 
   info("8. Pause on each exception thrown while unwinding");
   invokeInTab("deepErrorThrowDifferent");
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 71);
+  await assertPausedAtSourceAndLine(dbg, source.id, 71);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 68);
+  await assertPausedAtSourceAndLine(dbg, source.id, 68);
   await resume(dbg);
   await waitForPaused(dbg);
-  assertPausedAtSourceAndLine(dbg, source.id, 77);
+  await assertPausedAtSourceAndLine(dbg, source.id, 77);
   await resume(dbg);
 
   info("9. Pause in throwing new Function argument");
@@ -125,9 +128,40 @@ add_task(async function () {
     null,
     "This new source looks like the new function one as it has no url"
   );
-  assertPausedAtSourceAndLine(dbg, newFunctionSource.id, 1, 0);
+  await assertPausedAtSourceAndLine(dbg, newFunctionSource.id, 1, 0);
   assertTextContentOnLine(dbg, 1, "function anonymous(f=doesntExists()");
   await resume(dbg);
+});
+
+add_task(async function testSettingAppliedOnStartup() {
+  let dbg = await initDebugger("doc-exceptions.html", "exceptions.js");
+
+  await togglePauseOnExceptions(dbg, true, true);
+
+  await dbg.toolbox.closeToolbox();
+
+  // Do not use `initDebugger` as it resets all settings
+  const toolbox = await openNewTabAndToolbox(
+    EXAMPLE_URL + "doc-exceptions.html",
+    "jsdebugger"
+  );
+  dbg = createDebuggerContext(toolbox);
+
+  await waitForSource(dbg, "exceptions.js");
+
+  const pauseOnCaughtExceptionCheckbox = findElementWithSelector(
+    dbg,
+    ".breakpoints-exceptions-caught input"
+  );
+  ok(pauseOnCaughtExceptionCheckbox.checked, "The settings is visualy enabled");
+
+  uncaughtException();
+  await waitForPaused(dbg);
+  await assertPausedAtSourceAndLine(
+    dbg,
+    findSource(dbg, "exceptions.js").id,
+    2
+  );
 });
 
 function uncaughtException() {

@@ -6,9 +6,9 @@
 const {
   Component,
   createFactory,
-} = require("resource://devtools/client/shared/vendor/react.js");
+} = require("resource://devtools/client/shared/vendor/react.mjs");
 const dom = require("resource://devtools/client/shared/vendor/react-dom-factories.js");
-const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.js");
+const PropTypes = require("resource://devtools/client/shared/vendor/react-prop-types.mjs");
 const {
   L10N,
 } = require("resource://devtools/client/netmonitor/src/utils/l10n.js");
@@ -59,8 +59,9 @@ const SearchBox = createFactory(
 );
 
 loader.lazyGetter(this, "MODE", function () {
-  return require("resource://devtools/client/shared/components/reps/index.js")
-    .MODE;
+  return ChromeUtils.importESModule(
+    "resource://devtools/client/shared/components/reps/index.mjs"
+  ).MODE;
 });
 
 const { div, input, label, span, h2 } = dom;
@@ -86,6 +87,8 @@ class ResponsePanel extends Component {
       targetSearchResult: PropTypes.object,
       connector: PropTypes.object.isRequired,
       showMessagesView: PropTypes.bool,
+      defaultRawResponse: PropTypes.bool,
+      setDefaultRawResponse: PropTypes.func,
     };
   }
 
@@ -94,7 +97,8 @@ class ResponsePanel extends Component {
 
     this.state = {
       filterText: "",
-      rawResponsePayloadDisplayed: !!props.targetSearchResult,
+      rawResponsePayloadDisplayed:
+        !!props.targetSearchResult || !!props.defaultRawResponse,
     };
 
     this.toggleRawResponsePayload = this.toggleRawResponsePayload.bind(this);
@@ -109,6 +113,7 @@ class ResponsePanel extends Component {
     const { request, connector } = this.props;
     fetchNetworkUpdatePacket(connector.requestData, request, [
       "responseContent",
+      "responseHeaders",
     ]);
   }
 
@@ -117,6 +122,7 @@ class ResponsePanel extends Component {
     const { request, connector } = nextProps;
     fetchNetworkUpdatePacket(connector.requestData, request, [
       "responseContent",
+      "responseHeaders",
     ]);
 
     // If the response contains XSSI stripped chars default to raw view
@@ -268,7 +274,7 @@ class ResponsePanel extends Component {
    */
   renderJsonHtmlAndSource() {
     const { request, targetSearchResult } = this.props;
-    const { responseContent } = request;
+    const { responseContent, responseHeaders, url } = request;
     let { encoding, mimeType, text } = responseContent.content;
     const { filterText, rawResponsePayloadDisplayed } = this.state;
 
@@ -319,7 +325,7 @@ class ResponsePanel extends Component {
       // Display HTML
       responsePayloadLabel = HTML_RESPONSE;
       component = HtmlPreview;
-      componentProps = { responseContent };
+      componentProps = { responseContent, responseHeaders, url };
       hasFormattedDisplay = true;
     }
     if (!hasFormattedDisplay || rawResponsePayloadDisplayed) {
@@ -341,13 +347,12 @@ class ResponsePanel extends Component {
     };
   }
 
-  renderRawResponsePayloadBtn(key, checked, onChange) {
+  renderRawResponsePayloadBtn(key, checked) {
     return [
       label(
         {
           key: `${key}RawResponsePayloadBtn`,
           className: "raw-data-toggle",
-          htmlFor: `raw-${key}-checkbox`,
           onClick: event => {
             // stop the header click event
             event.stopPropagation();
@@ -360,7 +365,12 @@ class ResponsePanel extends Component {
             id: `raw-${key}-checkbox`,
             checked,
             className: "devtools-checkbox-toggle",
-            onChange,
+            onChange: event => {
+              if (this.props.setDefaultRawResponse) {
+                this.props.setDefaultRawResponse(event.target.checked);
+              }
+              this.toggleRawResponsePayload();
+            },
             type: "checkbox",
           })
         )
@@ -468,7 +478,7 @@ class ResponsePanel extends Component {
             type: "filter",
             onChange: filter => this.setState({ filterText: filter }),
             placeholder: JSON_FILTER_TEXT,
-            value: filterText,
+            initialValue: filterText,
           })
         ),
       div({ tabIndex: "0" }, CORSBlockedReasonDetails),
@@ -483,8 +493,7 @@ class ResponsePanel extends Component {
         hasFormattedDisplay &&
           this.renderRawResponsePayloadBtn(
             "response",
-            rawResponsePayloadDisplayed,
-            this.toggleRawResponsePayload
+            rawResponsePayloadDisplayed
           ),
       ]),
       xssiStrippedCharsInfoBox,

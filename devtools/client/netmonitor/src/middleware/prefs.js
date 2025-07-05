@@ -10,8 +10,10 @@ const {
   TOGGLE_COLUMN,
   TOGGLE_REQUEST_FILTER_TYPE,
   ENABLE_PERSISTENT_LOGS,
+  SET_REQUEST_FILTER_TEXT,
   DISABLE_BROWSER_CACHE,
   SET_COLUMNS_WIDTH,
+  SET_DEFAULT_RAW_RESPONSE,
   WS_TOGGLE_COLUMN,
   WS_RESET_COLUMNS,
 } = require("resource://devtools/client/netmonitor/src/constants.js");
@@ -37,6 +39,12 @@ function prefsMiddleware(store) {
           JSON.stringify(filters)
         );
         break;
+      case SET_REQUEST_FILTER_TEXT:
+        Services.prefs.setCharPref(
+          "devtools.netmonitor.requestfilter",
+          store.getState().filters.requestFilterText
+        );
+        break;
       case ENABLE_PERSISTENT_LOGS:
         const enabled = store.getState().ui.persistentLogsEnabled;
         Services.prefs.setBoolPref("devtools.netmonitor.persistlog", enabled);
@@ -56,6 +64,12 @@ function prefsMiddleware(store) {
         break;
       case SET_COLUMNS_WIDTH:
         persistColumnsData(store.getState());
+        break;
+      case SET_DEFAULT_RAW_RESPONSE:
+        Services.prefs.setBoolPref(
+          "devtools.netmonitor.ui.default-raw-response",
+          store.getState().ui.defaultRawResponse
+        );
         break;
       case WS_TOGGLE_COLUMN:
       case WS_RESET_COLUMNS:

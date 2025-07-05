@@ -43,7 +43,9 @@ support-files = [
   "doc_imported_named_layer.css",
   "doc_imported_no_layer.css",
   "doc_inactive_css_xul.xhtml",
+  "doc_layer_edit.css",
   "head.js",
+  "ostrich-regular.ttf",
   "sjs_imported_stylesheet_edit.sjs",
   "square_svg.sjs",
   "!/devtools/client/inspector/test/head.js",
@@ -53,17 +55,17 @@ support-files = [
   "!/devtools/client/shared/test/highlighter-test-actor.js",
   "!/devtools/client/webconsole/test/browser/shared-head.js",
 ]
+prefs = [
+  # This pref has to be set for all tests since calls to InspectorUtils.getCSSPseudoElementNames
+  # is cached and the cache is populated by other tests before the one that is checking ::details-content
+  "layout.css.details-content.enabled=true",
+]
 
 ["browser_rules_css-compatibility-add-rename-rule.js"]
-skip-if = [
-  "os == 'linux'", #bug 1657807
-  "os == 'win'", #bug 1657807
-]
 
 ["browser_rules_css-compatibility-check-add-fix.js"]
 
 ["browser_rules_css-compatibility-learn-more-link.js"]
-skip-if = ["a11y_checks"] # Bugs 1858041 and 1849028 for intermittent a11y_checks results
 
 ["browser_rules_css-compatibility-toggle-rules.js"]
 
@@ -75,7 +77,6 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_rules_filtereditor-commit-on-ENTER.js"]
 
 ["browser_rules_filtereditor-revert-on-ESC.js"]
-skip-if = ["os == 'win' && debug"] # bug 963492: win.
 
 ["browser_rules_flexbox-highlighter-on-mutation.js"]
 
@@ -124,12 +125,8 @@ skip-if = ["os == 'win' && debug"] # bug 963492: win.
 ["browser_rules_grid-toggle_05.js"]
 
 ["browser_rules_gridline-names-are-shown-correctly.js"]
-skip-if = ["os == 'linux'"] # focusEditableField times out consistently on linux.
 
 ["browser_rules_gridline-names-autocomplete.js"]
-skip-if = [
-  "os == 'mac' && !debug", # Bug 1675592; high frequency with/out fission
-]
 
 ["browser_rules_guessIndentation.js"]
 
@@ -140,10 +137,6 @@ skip-if = [
 ["browser_rules_highlight-used-fonts.js"]
 
 ["browser_rules_imported_stylesheet_edit.js"]
-skip-if = [
-  "http3", # Bug 1829298
-  "http2",
-]
 
 ["browser_rules_inactive_css_display-justify.js"]
 
@@ -160,6 +153,8 @@ skip-if = [
 ["browser_rules_inactive_css_xul.js"]
 
 ["browser_rules_inherited-custom-properties.js"]
+
+["browser_rules_inherited-element-backed-pseudo-elements.js"]
 
 ["browser_rules_inherited-properties_01.js"]
 
@@ -193,6 +188,8 @@ skip-if = [
 
 ["browser_rules_layer.js"]
 
+["browser_rules_light_dark.js"]
+
 ["browser_rules_lineNumbers.js"]
 
 ["browser_rules_linear-easing-swatch.js"]
@@ -219,12 +216,10 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_rules_mark_overridden_layers.js"]
 
 ["browser_rules_mathml-element.js"]
-disabled = "bug 1231085 # This should be rewritten now that MathMLElement.style is available."
 
 ["browser_rules_media-queries.js"]
 
 ["browser_rules_media-queries_reload.js"]
-skip-if = ["ccov && os == 'win'"] # Bug 1516686
 
 ["browser_rules_multiple-properties-duplicates.js"]
 
@@ -246,19 +241,9 @@ skip-if = ["ccov && os == 'win'"] # Bug 1516686
 
 ["browser_rules_original-source-link.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
-skip-if = [
-  "ccov", #Bug 1432176
-  "http3", # Bug 1829298
-  "http2",
-]
 
 ["browser_rules_original-source-link2.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
-skip-if = [
-  "ccov", # Bug 1432176
-  "http3", # Bug 1829298
-  "http2",
-]
 
 ["browser_rules_preview-tooltips-sizes.js"]
 
@@ -286,7 +271,6 @@ skip-if = [
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_registered-custom-properties.js"]
-skip-if = ["!fission"]
 
 ["browser_rules_search-filter-computed-list_01.js"]
 
@@ -349,11 +333,13 @@ skip-if = ["!fission"]
 ["browser_rules_selector_highlight.js"]
 
 ["browser_rules_selector_warnings.js"]
+skip-if = [
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1945519, perma failing on windows.
+]
 
 ["browser_rules_shadowdom_slot_rules.js"]
 
 ["browser_rules_shapes-toggle_01.js"]
-skip-if = ["a11y_checks"] # Bugs 1849028 and 1858041 for causing intermittent a11y_checks results
 
 ["browser_rules_shapes-toggle_02.js"]
 
@@ -364,13 +350,10 @@ skip-if = ["a11y_checks"] # Bugs 1849028 and 1858041 for causing intermittent a1
 ["browser_rules_shapes-toggle_05.js"]
 
 ["browser_rules_shapes-toggle_06.js"]
-skip-if = ["a11y_checks"] # Bug 1858041 and 1849028 intermittent a11y_checks results (fails on Try, passes on Autoland)
 
 ["browser_rules_shapes-toggle_07.js"]
-fail-if = ["a11y_checks"] # bug 1687723 ruleview-shapeswatch is not accessible
 
 ["browser_rules_shapes-toggle_basic-shapes-default.js"]
-skip-if = ["a11y_checks"] # Bug 1858037 to investigate intermittent a11y_checks results (fails on Autoland, passes on Try)
 
 ["browser_rules_shorthand-overridden-lists.js"]
 
@@ -398,4 +381,3 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_rules_user-agent-styles.js"]
 
 ["browser_rules_user-property-reset.js"]
-skip-if = ["os == 'win' && debug"] # bug 1758768, frequent leaks on win debug

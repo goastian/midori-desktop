@@ -17,7 +17,6 @@ support-files = [
   "codemirror/vimemacs.html",
   "codemirror/mode/javascript/test.js",
   "css_statemachine_testcases.css",
-  "css_statemachine_tests.json",
   "css_autocompletion_tests.json",
   "head.js",
   "head.xhtml",
@@ -54,6 +53,8 @@ support-files = [
 
 ["browser_editor_disableSearchAddon.js"]
 
+["browser_editor_find.js"]
+
 ["browser_editor_find_again.js"]
 
 ["browser_editor_goto_line.js"]
@@ -67,4 +68,3 @@ support-files = [
 ["browser_editor_prefs.js"]
 
 ["browser_vimemacs.js"]
-skip-if = ["os == 'linux' && debug"] # bug 981707

@@ -42,7 +42,21 @@ add_task(async function testEnableNetworkMonitoringInBrowserConsole() {
     ".message.network"
   );
   await fetch(TEST_IMAGE + "?id=1");
-  await onMessageLogged;
+  const { node } = await onMessageLogged;
+
+  info("Try to expand network details");
+  node.querySelector(".url").click();
+  await waitFor(
+    () => node.querySelector(".network-info"),
+    "Wait for .network-info to be rendered"
+  );
+
+  info("Try to collapse network details");
+  node.querySelector(".url").click();
+  await waitFor(
+    () => !node.querySelector(".network-info"),
+    "Wait for .network-info to be hidden"
+  );
 
   info("Turn off network monitoring");
   await toggleNetworkMonitoringConsoleSetting(hud, false);
@@ -103,14 +117,8 @@ add_task(async function testEnableNetworkMonitoringInBrowserConsole() {
  */
 async function checkNoMessageExists(hud, msg, selector) {
   info(`Checking that "${msg}" was not logged`);
-  let messages;
-  try {
-    messages = await waitFor(async () => {
-      const msgs = await findMessagesVirtualized({ hud, text: msg, selector });
-      return msgs.length ? msgs : null;
-    });
-    ok(!messages.length, `"${msg}" was logged once`);
-  } catch (e) {
-    ok(true, `Message "${msg}" wasn't logged\n`);
-  }
+  await waitForTimeout(async () => {
+    const msgs = await findMessagesVirtualized({ hud, text: msg, selector });
+    return msgs.length ? msgs : null;
+  });
 }

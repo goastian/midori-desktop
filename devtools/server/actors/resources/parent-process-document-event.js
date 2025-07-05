@@ -4,9 +4,6 @@
 
 "use strict";
 
-const {
-  TYPES: { DOCUMENT_EVENT },
-} = require("resource://devtools/server/actors/resources/index.js");
 const isEveryFrameTargetEnabled = Services.prefs.getBoolPref(
   "devtools.every-frame-target.enabled",
   false
@@ -87,7 +84,7 @@ class ParentProcessDocumentEventWatcher {
     // Only delay the target-destroyed event if the target is for BrowsingContext for which we will emit will-navigate
     const isTracked = this.webProgresses.find(
       webProgress =>
-        webProgress.browsingContext.currentWindowGlobal.innerWindowId ==
+        webProgress.browsingContext.currentWindowGlobal?.innerWindowId ==
         innerWindowId
     );
     if (isTracked) {
@@ -117,16 +114,23 @@ class ParentProcessDocumentEventWatcher {
         return;
       }
 
-      // Only emit will-navigate for top-level targets.
+      // Never emit will-navigate for content browsing contexts in the Browser Toolbox.
+      // They might verify `browsingContext.top == browsingContext` because of the chrome/content
+      // boundary, but they do not represent a top-level target for this DevTools session.
       if (
         this.watcherActor.sessionContext.type == "all" &&
         browsingContext.isContent
       ) {
-        // Never emit will-navigate for content browsing contexts in the Browser Toolbox.
-        // They might verify `browsingContext.top == browsingContext` because of the chrome/content
-        // boundary, but they do not represent a top-level target for this DevTools session.
         return;
       }
+      // Also ignore will-navigate for Web Extensions as we shouldn't clear things up when
+      // any of its WindowGlobal starts navigating away. Instead things should be cleared when
+      // we destroy the targets.
+      if (this.watcherActor.sessionContext.type == "webextension") {
+        return;
+      }
+
+      // Only emit will-navigate for top-level targets.
       const isTopLevel = browsingContext.top == browsingContext;
       if (!isTopLevel) {
         return;
@@ -138,7 +142,6 @@ class ParentProcessDocumentEventWatcher {
         {
           browsingContextID: browsingContext.id,
           innerWindowId,
-          resourceType: DOCUMENT_EVENT,
           name: "will-navigate",
           time: Date.now() - WILL_NAVIGATE_TIME_SHIFT,
           isFrameSwitching: false,

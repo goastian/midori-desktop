@@ -64,7 +64,8 @@ The overall hierarchy of actors looks like this:
        |  one for each popup, ...
        |
        |  The other targets actors are:
-       |    * worker targets
+       |    * worker targets (for regular workers, as well as shared and service workers)
+       |    * web extension content script targets
        |    * process targets (only used in the Browser Toolbox to debug the browser itself made of many processes)
        |
        \ -- Target-scoped actors:
@@ -145,7 +146,7 @@ which is scoped to the debuggable context of the descriptor.
 This actor is about observing things.
 It will notify you about:
 * target actors via target-available-form and target-destroyed-form,
-* resources via resource-available-form, resource-updated-form and resource-destroyed-form.
+* resources via resources-available-array, resources-updated-array and resources-destroyed-array.
 
 ## Resources
 

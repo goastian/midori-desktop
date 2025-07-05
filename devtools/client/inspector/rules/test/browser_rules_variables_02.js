@@ -30,7 +30,7 @@ async function testBasic(inspector, view) {
     view,
     "#a",
     "font-size"
-  ).valueSpan.querySelector(".ruleview-unmatched-variable");
+  ).valueSpan.querySelector(".inspector-unmatched");
   const setVarParent = unsetVar.nextElementSibling;
   const setVar = getVarFromParent(setVarParent);
   is(
@@ -55,7 +55,7 @@ async function testBasic(inspector, view) {
   );
   is(
     setVar.dataset.variable,
-    "--var-defined-font-size = 60px",
+    "60px",
     "--bg's dataset.variable is not set correctly"
   );
 }
@@ -71,7 +71,7 @@ async function testNestedCssFunctions(inspector, view) {
     view,
     "#b",
     "color"
-  ).valueSpan.querySelector(".ruleview-unmatched-variable");
+  ).valueSpan.querySelector(".inspector-unmatched");
   const unsetVar = getVarFromParent(unsetVarParent);
   const setVar = unsetVarParent.previousElementSibling;
   is(
@@ -86,7 +86,7 @@ async function testNestedCssFunctions(inspector, view) {
   );
   is(
     unsetVar.dataset.variable,
-    "--var-defined-r-2 = 0",
+    "0",
     "--var-defined-r-2's dataset.variable is not set correctly"
   );
   is(
@@ -96,7 +96,7 @@ async function testNestedCssFunctions(inspector, view) {
   );
   is(
     setVar.dataset.variable,
-    "--var-defined-r-1 = 255",
+    "255",
     "--var-defined-r-1's dataset.variable is not set correctly"
   );
 }
@@ -113,7 +113,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
     view,
     "#c",
     "border"
-  ).valueSpan.querySelector(".ruleview-unmatched-variable");
+  ).valueSpan.querySelector(".inspector-unmatched");
   const setVarMParent = unsetVarL.nextElementSibling;
 
   // var(x) is the next sibling of the parent of M
@@ -153,7 +153,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
   );
   is(
     setVarM.dataset.variable,
-    "--var-border-px = 10px",
+    "10px",
     "--var-border-px's dataset.variable is not set correctly"
   );
 
@@ -164,7 +164,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
   );
   is(
     setVarX.dataset.variable,
-    "--var-border-style = solid",
+    "solid",
     "var-border-style's dataset.variable is not set correctly"
   );
 
@@ -175,7 +175,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
   );
   is(
     setVarR.dataset.variable,
-    "--var-border-r = 255",
+    "255",
     "--var-defined-r's dataset.variable is not set correctly"
   );
 
@@ -186,7 +186,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
   );
   is(
     setVarG.dataset.variable,
-    "--var-border-g = 0",
+    "0",
     "--var-defined-g's dataset.variable is not set correctly"
   );
 
@@ -197,7 +197,7 @@ async function testBorderShorthandAndInheritance(inspector, view) {
   );
   is(
     setVarB.dataset.variable,
-    "--var-border-b = 0",
+    "0",
     "--var-defined-b's dataset.variable is not set correctly"
   );
 }
@@ -213,7 +213,7 @@ async function testSingleLevelVariable(inspector, view) {
     view,
     "#d",
     "font-size"
-  ).valueSpan.querySelector(".ruleview-unmatched-variable");
+  ).valueSpan.querySelector(".inspector-unmatched");
 
   is(
     unsetVar.textContent,
@@ -238,7 +238,7 @@ async function testDoubleLevelVariable(inspector, view) {
     view,
     "#e",
     "color"
-  ).valueSpan.querySelectorAll(".ruleview-unmatched-variable");
+  ).valueSpan.querySelectorAll(".inspector-unmatched");
 
   is(allUnsetVars.length, 2, "The number of unset variables is mismatched.");
 
@@ -279,7 +279,7 @@ async function testTripleLevelVariable(inspector, view) {
     view,
     "#f",
     "border-style"
-  ).valueSpan.querySelectorAll(".ruleview-unmatched-variable");
+  ).valueSpan.querySelectorAll(".inspector-unmatched");
 
   is(allUnsetVars.length, 3, "The number of unset variables is mismatched.");
 

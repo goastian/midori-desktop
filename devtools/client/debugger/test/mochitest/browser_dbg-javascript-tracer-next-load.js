@@ -9,10 +9,6 @@
 add_task(async function testTracingOnNextLoad() {
   await pushPref("devtools.debugger.features.javascript-tracing", true);
 
-  await pushPref(
-    "devtools.debugger.features.javascript-tracing-log-method",
-    "console"
-  );
   // Cover tracing function argument values
   const jsCode = `function foo() {}; function bar() {}; foo(); dump("plop\\n")`;
   const dbg = await initDebuggerWithAbsoluteURL(
@@ -20,23 +16,19 @@ add_task(async function testTracingOnNextLoad() {
       encodeURIComponent(`<script>${jsCode}</script><body></body>`)
   );
 
-  const traceButton = findElement(dbg, "trace");
+  // This test covers the Web Console, whereas it is no longer the default output
+  await toggleJsTracerMenuItem(dbg, "#jstracer-menu-item-console");
 
-  await openContextMenuInDebugger(dbg, "trace");
-  let toggled = waitForDispatch(
-    dbg.store,
-    "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_LOAD"
-  );
-  selectContextMenuItem(dbg, `#debugger-trace-menu-item-next-load`);
-  await toggled;
-  ok(true, "Toggled the trace on next load");
-
-  await clickElement(dbg, "trace");
+  let traceButton = dbg.toolbox.doc.getElementById("command-button-jstracer");
 
   ok(
     !traceButton.classList.contains("pending"),
     "Before toggling the trace button, it has no particular state"
   );
+
+  await toggleJsTracerMenuItem(dbg, "#jstracer-menu-item-next-load");
+
+  await toggleJsTracer(dbg.toolbox);
 
   info(
     "Wait for the split console to be automatically displayed when toggling this setting"
@@ -77,14 +69,11 @@ add_task(async function testTracingOnNextLoad() {
   // Reload the page to trigger the tracer
   await reload(dbg);
 
-  let topLevelThreadActorID =
-    dbg.toolbox.commands.targetCommand.targetFront.threadFront.actorID;
   info("Wait for tracing to be enabled after page reload");
-  await waitForState(dbg, () => {
-    return dbg.selectors.getIsThreadCurrentlyTracing(topLevelThreadActorID);
-  });
-  ok(
-    traceButton.classList.contains("active"),
+  await hasConsoleMessage(dbg, "Started tracing to Web Console");
+  is(
+    traceButton.getAttribute("aria-pressed"),
+    "true",
     "The tracer button is now active after reload"
   );
 
@@ -100,27 +89,18 @@ add_task(async function testTracingOnNextLoad() {
     "The code ran before the reload isn't logged"
   );
 
-  await clickElement(dbg, "trace");
+  info("Toggle OFF the tracing");
+  await toggleJsTracer(dbg.toolbox);
 
-  topLevelThreadActorID =
-    dbg.toolbox.commands.targetCommand.targetFront.threadFront.actorID;
-  info("Wait for tracing to be disabled");
-  await waitForState(dbg, () => {
-    return dbg.selectors.getIsThreadCurrentlyTracing(topLevelThreadActorID);
-  });
   await waitFor(() => {
     return !traceButton.classList.contains("active");
   }, "The tracer button is no longer active after stop request");
 
   info("Toggle the setting back off");
-  await openContextMenuInDebugger(dbg, "trace");
-  toggled = waitForDispatch(
-    dbg.store,
-    "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_LOAD"
-  );
-  selectContextMenuItem(dbg, `#debugger-trace-menu-item-next-load`);
-  await toggled;
+  await toggleJsTracerMenuItem(dbg, "#jstracer-menu-item-next-load");
+
   await waitFor(() => {
+    traceButton = dbg.toolbox.doc.getElementById("command-button-jstracer");
     return !traceButton.classList.contains("pending");
   }, "The tracer button is no longer pending after toggling the setting");
 

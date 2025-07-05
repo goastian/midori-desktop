@@ -10,6 +10,10 @@ function clickHandler() {
 document.getElementById("click-target").onclick = clickTargetClicked;
 function clickTargetClicked() {
   console.log("clicked");
+  requestAF(function rafCallback() {});
+}
+function requestAF(cb) {
+  requestAnimationFrame(cb);
 }
 
 document.getElementById("xhr-button").onmousedown = xhrHandler;
@@ -96,4 +100,22 @@ function onToggle(event) {
 document.getElementById("focus-text").addEventListener("textInput", onTextInput);
 function onTextInput() {
   console.log("textInput");
+}
+
+document.getElementById("pointer-target").addEventListener("pointerrawupdate", onPointerRawUpdate);
+function onPointerRawUpdate() {
+  console.log("pointerrawupdate");
+}
+
+const closewatcher = new CloseWatcher();
+function closeWatcherRequestClose() {
+  closewatcher.requestClose();
+}
+closewatcher.addEventListener("cancel", onCancel);
+function onCancel(event) {
+  console.log("cancel", event);
+}
+closewatcher.addEventListener("close", onClose);
+function onClose(event) {
+  console.log("close", event);
 }
