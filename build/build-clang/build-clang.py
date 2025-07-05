@@ -24,7 +24,9 @@ import zstandard
 
 SUPPORTED_TARGETS = {
     "x86_64-unknown-linux-gnu": ("Linux", "x86_64"),
+    "aarch64-unknown-linux-gnu": ("Linux", "aarch64"),
     "x86_64-pc-windows-msvc": ("Windows", "AMD64"),
+    "aarch64-pc-windows-msvc": ("Windows", "ARM64"),
     "x86_64-apple-darwin": ("Darwin", "x86_64"),
     "aarch64-apple-darwin": ("Darwin", "arm64"),
 }
@@ -132,7 +134,7 @@ def updated_env(env):
 
 def build_tar_package(name, base, directory):
     name = os.path.realpath(name)
-    print("tarring {} from {}/{}".format(name, base, directory), file=sys.stderr)
+    print(f"tarring {name} from {base}/{directory}", file=sys.stderr)
     assert name.endswith(".tar.zst")
 
     cctx = zstandard.ZstdCompressor()
@@ -179,7 +181,16 @@ def is_windows(target):
 
 
 def is_cross_compile(target):
-    return SUPPORTED_TARGETS[target] != (platform.system(), platform.machine())
+    target_system, target_machine = SUPPORTED_TARGETS[target]
+    system, machine = (platform.system(), platform.machine())
+    if system != target_system:
+        return True
+    # Don't consider x86 mac on arm64 mac a cross-compile so that we
+    # can build x86 mac clang on arm64 mac via Rosetta, as if they
+    # were building on x86.
+    if system == "Darwin" and machine == "arm64":
+        return False
+    return machine != target_machine
 
 
 def build_one_stage(
@@ -188,6 +199,7 @@ def build_one_stage(
     asm,
     ar,
     ranlib,
+    libtool,
     ldflags,
     src_dir,
     stage_dir,
@@ -198,6 +210,7 @@ def build_one_stage(
     targets,
     is_final_stage=False,
     profile=None,
+    bolt=False,
 ):
     if not os.path.exists(stage_dir):
         os.mkdir(stage_dir)
@@ -209,8 +222,17 @@ def build_one_stage(
     def slashify_path(path):
         return path.replace("\\", "/")
 
-    def cmake_base_args(cc, cxx, asm, ar, ranlib, ldflags, inst_dir):
-        machine_targets = targets if is_final_stage and targets else "X86"
+    def cmake_base_args(cc, cxx, asm, ar, ranlib, libtool, ldflags, inst_dir):
+        if is_final_stage and targets:
+            machine_targets = targets
+        elif target.startswith("aarch64-"):
+            machine_targets = "AArch64"
+        else:
+            machine_targets = "X86"
+
+        # see llvm-project/clang/cmake/caches/BOLT.cmake
+        if bolt:
+            ldflags.append("-Wl,--emit-relocs,-znow")
 
         cmake_args = [
             "-GNinja",
@@ -231,7 +253,15 @@ def build_one_stage(
             "-DLLVM_ENABLE_BINDINGS=OFF",
             "-DLLVM_ENABLE_CURL=OFF",
             "-DLLVM_INCLUDE_TESTS=OFF",
+            "-DLLVM_HOST_TRIPLE=%s" % target,
+            "-DCMAKE_C_COMPILER_TARGET=%s" % target,
+            "-DCMAKE_CXX_COMPILER_TARGET=%s" % target,
+            "-DCMAKE_ASM_COMPILER_TARGET=%s" % target,
         ]
+        if is_cross_compile(target):
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=%s" % SUPPORTED_TARGETS[target][0],
+            ]
         if is_llvm_toolchain(cc[0], cxx[0]):
             cmake_args += ["-DLLVM_ENABLE_LLD=ON"]
         elif is_windows(target) and is_cross_compile(target):
@@ -249,6 +279,11 @@ def build_one_stage(
         else:
             cmake_args.append("-DLLVM_TOOL_LLI_BUILD=OFF")
 
+        if bolt:
+            projects.append("bolt")
+            cmake_args.append("-DCLANG_BOLT=INSTRUMENT")
+            cmake_args.append("-DCLANG_INCLUDE_TESTS=ON")
+
         cmake_args.append("-DLLVM_ENABLE_PROJECTS=%s" % ";".join(projects))
 
         if is_final_stage:
@@ -263,6 +298,13 @@ def build_one_stage(
                 # checks.
                 cmake_args += ["-DCAN_TARGET_i386=1"]
             cmake_args += ["-DLLVM_ENABLE_TERMINFO=OFF"]
+            libxml2 = os.path.join(os.environ.get("MOZ_FETCHES_DIR", ""), "libxml2")
+            if os.path.exists(libxml2):
+                cmake_args += [
+                    "-DLIBXML2_DEFINITIONS=-DLIBXML_STATIC",
+                    f"-DLIBXML2_INCLUDE_DIR={libxml2}/include/libxml2",
+                    f"-DLIBXML2_LIBRARIES={libxml2}/lib/libxml2.a",
+                ]
         if is_windows(target):
             cmake_args.insert(-1, "-DLLVM_EXPORT_SYMBOLS_FOR_PLUGINS=ON")
             cmake_args.insert(-1, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded")
@@ -286,24 +328,21 @@ def build_one_stage(
             cmake_args += ["-DLLVM_LINK_LLVM_DYLIB=ON"]
         if ranlib is not None:
             cmake_args += ["-DCMAKE_RANLIB=%s" % slashify_path(ranlib)]
-        if is_darwin(target) and is_cross_compile(target):
+        if libtool is not None:
+            cmake_args += ["-DCMAKE_LIBTOOL=%s" % slashify_path(libtool)]
+        if is_darwin(target):
             arch = "arm64" if target.startswith("aarch64") else "x86_64"
             cmake_args += [
-                "-DCMAKE_SYSTEM_NAME=Darwin",
                 "-DCMAKE_SYSTEM_VERSION=%s" % os.environ["MACOSX_DEPLOYMENT_TARGET"],
-                "-DCMAKE_OSX_SYSROOT=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
-                "-DCMAKE_FIND_ROOT_PATH=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
+                "-DCMAKE_OSX_SYSROOT=%s" % slashify_path(os.getenv("OSX_SYSROOT")),
+                "-DCMAKE_FIND_ROOT_PATH=%s" % slashify_path(os.getenv("OSX_SYSROOT")),
                 "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
                 "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
                 "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
                 "-DCMAKE_MACOSX_RPATH=ON",
                 "-DCMAKE_OSX_ARCHITECTURES=%s" % arch,
                 "-DDARWIN_osx_ARCHS=%s" % arch,
-                "-DDARWIN_osx_SYSROOT=%s" % slashify_path(os.getenv("CROSS_SYSROOT")),
-                "-DLLVM_DEFAULT_TARGET_TRIPLE=%s" % target,
-                "-DCMAKE_C_COMPILER_TARGET=%s" % target,
-                "-DCMAKE_CXX_COMPILER_TARGET=%s" % target,
-                "-DCMAKE_ASM_COMPILER_TARGET=%s" % target,
+                "-DDARWIN_osx_SYSROOT=%s" % slashify_path(os.getenv("OSX_SYSROOT")),
             ]
             if arch == "arm64":
                 cmake_args += [
@@ -335,7 +374,7 @@ def build_one_stage(
         return cmake_args
 
     cmake_args = []
-    cmake_args += cmake_base_args(cc, cxx, asm, ar, ranlib, ldflags, inst_dir)
+    cmake_args += cmake_base_args(cc, cxx, asm, ar, ranlib, libtool, ldflags, inst_dir)
     cmake_args += [src_dir]
     build_package(build_dir, cmake_args)
 
@@ -358,7 +397,11 @@ def get_tool(config, key):
     if key in config:
         f = config[key].format(**os.environ)
         if os.path.isabs(f):
-            if not os.path.exists(f):
+            path, f = os.path.split(f)
+            # Searches for .exes on windows too, even if the extension is
+            # not given. which(absolute_path) doesn't do that until python 3.12.
+            f = which(f, path=path)
+            if not f:
                 raise ValueError("%s must point to an existing path" % key)
             return f
 
@@ -531,18 +574,16 @@ def main():
             elif value is None:
                 if key in config:
                     del config[key]
-            elif type(old_value) != type(value):
+            elif type(old_value) is not type(value):
                 raise Exception(
-                    "{} is overriding `{}` with a value of the wrong type".format(
-                        c.name, key
-                    )
+                    f"{c.name} is overriding `{key}` with a value of the wrong type"
                 )
             elif isinstance(old_value, list):
                 for v in value:
                     if v not in old_value:
                         old_value.append(v)
             elif isinstance(old_value, dict):
-                raise Exception("{} is setting `{}` to a dict?".format(c.name, key))
+                raise Exception(f"{c.name} is setting `{key}` to a dict?")
             else:
                 config[key] = value
 
@@ -563,6 +604,9 @@ def main():
         pgo = config["pgo"]
         if pgo not in (True, False):
             raise ValueError("Only boolean values are accepted for pgo.")
+    bolt = config.get("bolt", False)
+    if bolt not in (True, False):
+        raise ValueError("Only boolean values are accepted for bolt.")
     build_type = "Release"
     if "build_type" in config:
         build_type = config["build_type"]
@@ -624,6 +668,9 @@ def main():
         exe_ext = ".exe"
         cc_name = "clang-cl"
         cxx_name = "clang-cl"
+
+        # Used by llvm/lib/DebugInfo/PDB
+        os.environ["VSCMD_ARG_TGT_ARCH"] = SUPPORTED_TARGETS[target][1].lower()
     else:
         exe_ext = ""
         cc_name = "clang"
@@ -636,6 +683,7 @@ def main():
     # knows how to find it when they are installed alongside each others.
     ar = get_tool(config, "lib" if is_windows(target) else "ar")
     ranlib = None if is_windows(target) else get_tool(config, "ranlib")
+    libtool = get_tool(config, "libtool") if is_darwin(target) else None
 
     if not os.path.exists(source_dir):
         os.makedirs(source_dir)
@@ -729,6 +777,7 @@ def main():
             [asm] + extra_asmflags,
             ar,
             ranlib,
+            libtool,
             extra_ldflags,
             llvm_source_dir,
             stage1_dir,
@@ -748,12 +797,19 @@ def main():
             cc = stage1_inst_dir + "/bin/%s%s" % (cc_name, exe_ext)
             cxx = stage1_inst_dir + "/bin/%s%s" % (cxx_name, exe_ext)
             asm = stage1_inst_dir + "/bin/%s%s" % (cc_name, exe_ext)
+        name_compression = []
+        if is_windows(target) and is_cross_compile(target) and pgo:
+            # native llvm-profdata.exe on Windows can't read profile data
+            # if name compression is enabled (which cross-compiling enables
+            # by default)
+            name_compression = ["-mllvm", "--enable-name-compression=false"]
         build_one_stage(
-            [cc] + extra_cflags2,
-            [cxx] + extra_cxxflags2,
+            [cc] + extra_cflags2 + name_compression,
+            [cxx] + extra_cxxflags2 + name_compression,
             [asm] + extra_asmflags,
             ar,
             ranlib,
+            libtool,
             extra_ldflags,
             llvm_source_dir,
             stage2_dir,
@@ -762,12 +818,16 @@ def main():
             assertions,
             target,
             targets,
-            is_final_stage=(stages == 2),
+            is_final_stage=(stages == 2 and not pgo),
             profile="gen" if pgo else None,
         )
 
     if stages >= 3 and skip_stages < 3:
         stage3_dir = build_dir + "/stage3"
+        if pgo:
+            profiles_dir = build_dir + "/profiles"
+            mkdir_p(profiles_dir)
+            os.environ["LLVM_PROFILE_FILE"] = profiles_dir + "/%m.profraw"
         stage3_inst_dir = stage3_dir + "/" + package_name
         final_stage_dir = stage3_dir
         if skip_stages < 2:
@@ -780,6 +840,7 @@ def main():
             [asm] + extra_asmflags,
             ar,
             ranlib,
+            libtool,
             extra_ldflags,
             llvm_source_dir,
             stage3_dir,
@@ -788,14 +849,16 @@ def main():
             assertions,
             target,
             targets,
-            (stages == 3),
+            is_final_stage=(stages == 3 and not pgo),
         )
         if pgo:
-            llvm_profdata = stage2_inst_dir + "/bin/llvm-profdata%s" % exe_ext
+            del os.environ["LLVM_PROFILE_FILE"]
+            if skip_stages < 1:
+                llvm_profdata = stage1_inst_dir + "/bin/llvm-profdata%s" % exe_ext
+            else:
+                llvm_profdata = get_tool(config, "llvm-profdata")
             merge_cmd = [llvm_profdata, "merge", "-o", "merged.profdata"]
-            profraw_files = glob.glob(
-                os.path.join(stage2_dir, "build", "profiles", "*.profraw")
-            )
+            profraw_files = glob.glob(os.path.join(profiles_dir, "*.profraw"))
             run_in(stage3_dir, merge_cmd + profraw_files)
             if stages == 3:
                 mkdir_p(upload_dir)
@@ -822,6 +885,7 @@ def main():
             [asm] + extra_asmflags,
             ar,
             ranlib,
+            libtool,
             extra_ldflags,
             llvm_source_dir,
             stage4_dir,
@@ -830,8 +894,9 @@ def main():
             assertions,
             target,
             targets,
-            (stages == 4),
+            is_final_stage=(stages == 4),
             profile=profile,
+            bolt=bolt,
         )
 
     if build_clang_tidy:

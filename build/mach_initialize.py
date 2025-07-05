@@ -72,12 +72,11 @@ CATEGORIES = {
 }
 
 
-def _activate_python_environment(topsrcdir, get_state_dir):
+def _activate_python_environment(topsrcdir, get_state_dir, quiet):
     from mach.site import MachSiteManager
 
     mach_environment = MachSiteManager.from_environment(
-        topsrcdir,
-        get_state_dir,
+        topsrcdir, get_state_dir, quiet=quiet
     )
     mach_environment.activate()
 
@@ -136,11 +135,13 @@ def initialize(topsrcdir, args=()):
 
     # We need the "mach" module to access the logic to parse virtualenv
     # requirements. Since that depends on "packaging", we add it to the path too.
+    # We need filelock for solving a virtualenv race condition
     sys.path[0:0] = [
         os.path.join(topsrcdir, module)
         for module in (
             os.path.join("python", "mach"),
             os.path.join("third_party", "python", "packaging"),
+            os.path.join("third_party", "python", "filelock"),
         )
     ]
 
@@ -150,9 +151,20 @@ def initialize(topsrcdir, args=()):
 
     check_for_spaces(topsrcdir)
 
+    # See bug 1874208:
+    # Status messages from site.py break usages of `./mach environment`.
+    # We pass `quiet` only for it to work around this, so that all other
+    # commands can still write status messages.
+    if args and (args[0] == "environment" or "--quiet" in args):
+        quiet = True
+    else:
+        quiet = False
+
     # normpath state_dir to normalize msys-style slashes.
     _activate_python_environment(
-        topsrcdir, lambda: os.path.normpath(get_state_dir(True, topsrcdir=topsrcdir))
+        topsrcdir,
+        lambda: os.path.normpath(get_state_dir(True, topsrcdir=topsrcdir)),
+        quiet=quiet,
     )
     _maybe_activate_mozillabuild_environment()
 
@@ -339,6 +351,7 @@ def initialize(topsrcdir, args=()):
             lambda: os.path.normpath(get_state_dir(True, topsrcdir=topsrcdir)),
             site_name,
             get_virtualenv_base_dir(topsrcdir),
+            quiet=quiet,
         )
 
         command_site_manager.activate()
@@ -417,9 +430,13 @@ def _finalize_telemetry_glean(telemetry, is_bootstrap, success):
         get_vscode_running,
     )
 
+    moz_automation = any(e in os.environ for e in ("MOZ_AUTOMATION", "TASK_ID"))
+
     mach_metrics = telemetry.metrics(MACH_METRICS_PATH)
     mach_metrics.mach.duration.stop()
     mach_metrics.mach.success.set(success)
+    mach_metrics.mach.moz_automation.set(moz_automation)
+
     system_metrics = mach_metrics.mach.system
     cpu_brand = get_cpu_brand()
     if cpu_brand:
@@ -459,9 +476,7 @@ def _create_state_dir():
     if state_dir:
         if not os.path.exists(state_dir):
             print(
-                "Creating global state directory from environment variable: {}".format(
-                    state_dir
-                )
+                f"Creating global state directory from environment variable: {state_dir}"
             )
     else:
         state_dir = os.path.expanduser("~/.mozbuild")
@@ -469,7 +484,7 @@ def _create_state_dir():
             if not os.environ.get("MOZ_AUTOMATION"):
                 print(STATE_DIR_FIRST_RUN.format(state_dir))
 
-            print("Creating default state directory: {}".format(state_dir))
+            print(f"Creating default state directory: {state_dir}")
 
     os.makedirs(state_dir, mode=0o770, exist_ok=True)
     return state_dir

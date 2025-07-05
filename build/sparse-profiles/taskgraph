@@ -31,7 +31,19 @@ path:taskcluster/
 # them all in.
 path:testing/config/tooltool-manifests/
 path:testing/mozharness/
+
+# for ESLint toolchains
+path:package.json
+path:package-lock.json
 path:tools/lint/
+
+# for other node toolchain packaging
+path:browser/extensions/newtab/package.json
+path:browser/extensions/newtab/package-lock.json
+path:browser/components/aboutwelcome/package.json
+path:browser/components/aboutwelcome/package-lock.json
+path:browser/components/asrouter/package.json
+path:browser/components/asrouter/package-lock.json
 
 # for new-style try pushes
 path:try_task_config.json
@@ -58,8 +70,10 @@ path:testing/web-platform/mozilla/tests/
 glob:testing/web-platform/*.py
 
 # For scheduling android-gradle-dependencies.
+path:gradle/
 path:mobile/android/config/
 glob:**/*.gradle
+glob:**/gradle.properties
 
 # for action-task building
 path:.taskcluster.yml
@@ -102,6 +116,4 @@ path:mobile/android/focus-android/gradle/wrapper/gradle-wrapper.properties
 path:mobile/android/fenix/gradle/wrapper/gradle-wrapper.properties
 path:mobile/android/android-components/plugins/dependencies/src/main/java/DependenciesPlugin.kt
 path:mobile/android/android-components/plugins/dependencies/src/main/java/ApplicationServices.kt
-path:mobile/android/focus-android/plugins/focusdependencies/src/main/java/FocusDependenciesPlugin.kt
-path:mobile/android/fenix/plugins/fenixdependencies/src/main/java/FenixDependenciesPlugin.kt
 path:mobile/android/version.txt

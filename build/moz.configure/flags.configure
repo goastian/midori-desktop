@@ -4,6 +4,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# The following flags are explicitly passed to C++ compiler invocations from rust
+# even when only passing base flags. If you add more similarly important flags,
+# please consider whether they should be handled the same way.
+# See config/makefiles/rust.mk.
 # We support C++14, but we don't want to enable the sized deallocation
 # facilities in C++14 yet.
 check_and_add_flag("-fno-sized-deallocation", compiler=cxx_compiler)
@@ -12,21 +16,152 @@ check_and_add_flag("-fno-sized-deallocation", compiler=cxx_compiler)
 check_and_add_flag("-fno-aligned-new", compiler=cxx_compiler)
 
 
+# Detect static linkage of libstdc++
+# ==============================================================
+@depends(
+    cxx_compiler,
+    extra_toolchain_flags,
+    linker_ldflags,
+    llvm_objdump,
+    when=target_has_linux_kernel,
+)
+@checking("whether we're trying to statically link with libstdc++")
+@imports("os")
+@imports("re")
+@imports(_from="mozbuild.shellutil", _import="split", _as="shell_split")
+def link_libstdcxx_statically(
+    cxx_compiler,
+    extra_toolchain_flags,
+    linker_ldflags,
+    llvm_objdump,
+):
+    with create_temporary_file(suffix=".out") as bin_path:
+        # This test is quite conservative: it assumes dynamic linkage if the
+        # compilation step fails or if the binary format is not supported. But
+        # it still detects basic issues.
+
+        # FIXME: At some point we should make these dependencies explicit.
+        # See #1903233.
+        env_flags = []
+        if "CXXFLAGS" in os.environ:
+            env_flags.extend(shell_split(os.environ["CXXFLAGS"]))
+        if "LDFLAGS" in os.environ:
+            env_flags.extend(shell_split(os.environ["LDFLAGS"]))
+
+        if (
+            try_invoke_compiler(
+                None,
+                [cxx_compiler.compiler]
+                + env_flags
+                + cxx_compiler.flags
+                + linker_ldflags,
+                cxx_compiler.language,
+                """
+                    #include <iostream>
+                    int main() { std::cout << 1;}
+                """,
+                ["-o", bin_path] + (extra_toolchain_flags or []),
+                wrapper=cxx_compiler.wrapper,
+                onerror=lambda: None,
+            )
+            is not None
+        ):
+            objdump_command = [llvm_objdump, "--private-headers", bin_path]
+            result, stdout, stderr = get_cmd_output(*objdump_command)
+            # This is very conservative :-).
+            return (
+                result == 0
+                and not stderr
+                and not re.search("NEEDED.*lib(std)?c\\+\\+", stdout)
+            )
+
+
+@depends(when=link_libstdcxx_statically)
+def check_libstdcxx_linkage():
+    die("Firefox does not support linking statically with libstdc++")
+
+
+check_and_add_flag(
+    "-mieee",
+    when=target_has_linux_kernel & depends(target.cpu)(lambda cpu: cpu == "Alpha"),
+)
+
+# Identical Code Folding
+option(
+    "--enable-icf",
+    help="{Enable|Disable} Identical Code Folding",
+    default=~developer_options,
+)
+enable_icf = depends("--enable-icf")(lambda v: bool(v))
+
+
 with only_when(building_with_gnu_compatible_cc):
-    with only_when(~developer_options):
+    with only_when(~developer_options | enable_icf):
         add_flag("-ffunction-sections")
         add_flag("-fdata-sections")
     add_flag("-fno-math-errno")
     add_flag("-fno-exceptions", compiler=cxx_compiler)
 
+add_flag("-D_HAS_EXCEPTIONS=0", when=target_is_windows)
 
-# Please keep these last in this file.
-add_old_configure_assignment("_COMPILATION_CFLAGS", compilation_flags.cflags)
-add_old_configure_assignment("_COMPILATION_CXXFLAGS", compilation_flags.cxxflags)
-add_old_configure_assignment("_COMPILATION_HOST_CFLAGS", compilation_flags.host_cflags)
-add_old_configure_assignment(
-    "_COMPILATION_HOST_CXXFLAGS", compilation_flags.host_cxxflags
+# We only use -faddrsig with clang on android, and all version of clang we
+# support have it.
+add_addrsig_flag = depends(c_compiler, when=target_is_android)(
+    lambda c: c.type == "clang"
 )
+
+
+@depends(
+    c_compiler,
+    extra_toolchain_flags,
+    linker_ldflags,
+    llvm_objdump,
+    add_addrsig_flag,
+    when=building_with_gnu_compatible_cc & gcc_use_gnu_ld & enable_icf,
+)
+@checking("whether the linker supports Identical Code Folding")
+@imports("os")
+def linker_supports_icf(
+    c_compiler, extra_toolchain_flags, linker_ldflags, llvm_objdump, add_addrsig_flag
+):
+    with create_temporary_file(suffix=".out") as bin_path:
+        if (
+            try_invoke_compiler(
+                None,
+                [c_compiler.compiler] + c_compiler.flags + linker_ldflags,
+                c_compiler.language,
+                """
+                                 int foo() {return 42;}
+                                 int bar() {return 42;}
+                                 int main() {return 0;}
+                                 """,
+                ["-o", bin_path, "-Wl,--icf=safe", "-ffunction-sections"]
+                + (["-faddrsig"] if add_addrsig_flag else [])
+                + (extra_toolchain_flags or []),
+                wrapper=c_compiler.wrapper,
+                onerror=lambda: None,
+            )
+            is not None
+        ):
+            objdump_command = [llvm_objdump, "-t", bin_path]
+            result = check_cmd_output(*objdump_command, onerror=lambda: None)
+            if result is not None:
+                sym_addr = {
+                    line[5]: line[0]
+                    for line in [line.split() for line in result.splitlines()]
+                    if len(line) >= 6
+                }
+                foo_addr = sym_addr.get("foo")
+                bar_addr = sym_addr.get("bar")
+                return foo_addr == bar_addr and foo_addr is not None
+
+
+@depends(compilation_flags, linker_flags, add_addrsig_flag, when=linker_supports_icf)
+def add_icf_flags(compilation_flags, linker_flags, add_addrsig_flag):
+    if add_addrsig_flag:
+        compilation_flags.cflags.append("-faddrsig")
+        compilation_flags.cxxflags.append("-faddrsig")
+    linker_flags.ldflags.append("-Wl,--icf=safe")
 
 
 option(
@@ -209,14 +344,106 @@ check_and_add_linker_flag("-Wl,-z,nocopyreloc", when=building_with_gnu_compatibl
 
 check_and_add_linker_optimize_flag("-Wl,-dead_strip", when=target_is_darwin & ~dtrace)
 
+check_and_add_asm_flag(
+    "-fPIC", when=building_with_gnu_compatible_cc & ~target_is_windows
+)
+check_and_add_flag("-fPIC", when=building_with_gnu_compatible_cc & ~target_is_windows)
+set_define("PIC", True, when=target_is_netbsd)
+
+# DSO flags manipulations
 have_linker_support_ignore_unresolved = try_link(
     flags=["-Wl,--ignore-unresolved-symbol,environ"],
     check_msg="for --ignore-unresolved-symbol option to the linker",
-    when=building_with_gnu_compatible_cc & gcc_use_gnu_ld,
+    when=building_with_gnu_compatible_cc
+    & gcc_use_gnu_ld
+    & depends(target)(lambda t: t.os in ("DragonFly", "FreeBSD", "NetBSD", "OpenBSD")),
 )
-add_old_configure_assignment(
-    "HAVE_LINKER_SUPPORT_IGNORE_UNRESOLVED", have_linker_support_ignore_unresolved
+
+
+@depends(
+    dso_flags,
+    gcc_use_gnu_ld,
+    target,
+    asan | msan | any_ubsan | tsan | enable_fuzzing_interfaces,
+    have_linker_support_ignore_unresolved,
+    when=building_with_gnu_compatible_cc,
 )
+@imports(_from="os", _import="environ")
+def add_gnu_specific_dso_flags(
+    dso_flags,
+    use_gnu_ld,
+    target,
+    use_sanitizer_runtime,
+    have_linker_support_ignore_unresolved,
+):
+    ldopts = []
+    if target.kernel != "Darwin":
+        ldopts.append("-shared")
+
+    if use_gnu_ld:
+        # Some tools like ASan use a runtime library that is only
+        # linked against executables, so we must allow undefined
+        # symbols for shared objects in some cases.
+        if not use_sanitizer_runtime:
+            if target.os != "WINNT":
+                # Don't allow undefined symbols in libraries
+                ldopts.append("-Wl,-z,defs")
+
+            # BSDs need `environ' exposed for posix_spawn (bug 753046)
+            if target.os in ("DragonFly", "FreeBSD", "NetBSD", "OpenBSD"):
+                if have_linker_support_ignore_unresolved:
+                    ldopts.append("-Wl,--ignore-unresolved-symbol,environ")
+                else:
+                    ldopts.append("-Wl,--warn-unresolved-symbols")
+
+                if librunpath := environ.get("LIBRUNPATH"):
+                    if target.os == "NetBSD":
+                        ldopts.insert(0, f"-Wl,-R{librunpath}")
+                    elif target.os == "OpenBSD":
+                        ldopts.insert(0, f"-R{librunpath}")
+
+    dso_flags.ldopts.extend(ldopts)
+
+
+@depends(dso_flags, target, when=~building_with_gnu_compatible_cc)
+def add_non_gnu_dso_flags(dso_flags, target):
+    ldopts = ["-SUBSYSTEM:WINDOWS,{}".format(win32_subsystem_version())]
+    if target.cpu == "x86":
+        ldopts.append("-MACHINE:X86")
+    if target.cpu == "x86_64":
+        ldopts.append("-MACHINE:X64")
+    if target.cpu == "aarch64":
+        ldopts.append("-MACHINE:ARM64")
+
+    dso_flags.ldopts.extend(ldopts)
+
+
+@depends(libfuzzer_flags, when=enable_fuzzing)
+def sancov(libfuzzer_flags):
+    for flag in libfuzzer_flags.use_flags:
+        if "-fsanitize-coverage" in flag or "-fsanitize=fuzzer" in flag:
+            return True
+    return False
+
+
+@depends(target, build_environment)
+@imports(_from="os", _import="environ")
+def moz_fix_link_paths(target, build_env):
+    dist = build_env.dist
+    flags = [f"-Wl,-rpath-link,{dist}/bin"]
+    if target.kernel == "Darwin":
+        return []
+    if target.kernel == "WINNT":
+        return []
+    if target.kernel == "SunOS":
+        return [f"-L{dist}/bin"]
+    if target.os == "WASI":
+        return []
+
+    return flags
+
+
+set_config("MOZ_FIX_LINK_PATHS", moz_fix_link_paths)
 
 
 @depends("--enable-address-sanitizer", building_with_gnu_compatible_cc)
@@ -238,19 +465,13 @@ check_and_add_linker_flag("-Wl,-Bsymbolic", when=check_Bsymbolic)
 @checking("what kind of list files are supported by the linker")
 @imports("os")
 @imports(_from="__builtin__", _import="open")
-@imports(_from="tempfile", _import="mkstemp")
 def expand_libs_list_style(c_compiler, link, linker_flags, extra_flags):
-    objfd, objname = mkstemp(prefix="conftest.", suffix=".o")
-    os.close(objfd)
+    with create_temporary_file(suffix=".o") as objname, create_temporary_file(
+        suffix=".list"
+    ) as listname, create_temporary_file(suffix=".out") as outname:
+        with open(listname, "w") as fd:
+            fd.write(objname)
 
-    listfd, listname = mkstemp(prefix="conftest.", suffix=".list")
-    os.write(listfd, objname.encode())
-    os.close(listfd)
-
-    outfd, outname = mkstemp(prefix="conftest.", suffix=".out")
-    os.close(outfd)
-
-    try:
         cflags = c_compiler.flags
 
         if (
@@ -291,19 +512,221 @@ def expand_libs_list_style(c_compiler, link, linker_flags, extra_flags):
                 return kind
         die("Couldn't find one that works")
 
-    finally:
-        os.remove(objname)
-        os.remove(listname)
-        os.remove(outname)
-
 
 set_config("EXPAND_LIBS_LIST_STYLE", expand_libs_list_style)
 
-# Please keep these last in this file.
-add_old_configure_assignment("_COMPILATION_ASFLAGS", asm_flags.asflags)
-add_old_configure_assignment("_COMPILATION_HOST_ASFLAGS", asm_flags.host_asflags)
-add_old_configure_assignment("_COMPILATION_LDFLAGS", linker_flags.ldflags)
-add_old_configure_assignment(
-    "_COMPILATION_OPTIMIZE_LDFLAGS", linker_optimize_flags.ldflags
+
+# MOZ_PROGRAM_LDFLAGS
+# ---------------------------------
+@depends(building_with_gnu_compatible_cc, target)
+def moz_program_ldflags(building_with_gnu_compatible_cc, target):
+    if building_with_gnu_compatible_cc and target.kernel not in ("Darwin", "WASI"):
+        return ["-pie"]
+
+
+set_config("MOZ_PROGRAM_LDFLAGS", moz_program_ldflags)
+
+
+@depends(host, when=depends(c_compiler)(lambda c: c.type == "clang-cl"))
+def moz_debug_ldflags(host):
+    flags = ["-DEBUG"]
+    if host.kernel != "WINNT":
+        # %_PDB% is a special signal to emit only the PDB basename. This
+        # avoids problems in Windows tools that don't like forward-slashes.
+        flags.append("-PDBALTPATH:%_PDB%")
+    return flags
+
+
+set_config("MOZ_DEBUG_LDFLAGS", moz_debug_ldflags)
+
+
+# Objective-C/ Objective-C++ flags.
+# ---------------------------------
+@depends(compilation_flags, toolkit)
+def add_cmflags(compilation_flags, toolkit):
+    cmflags = ["-x", "objective-c", "-fobjc-exceptions"]
+    cmmflags = ["-x", "objective-c++", "-fobjc-exceptions"]
+
+    compilation_flags.cmflags.extend(cmflags)
+    compilation_flags.cmmflags.extend(cmmflags)
+    if toolkit == "uikit":
+        uiflags = ["-fobjc-abi-version=2", "-fobjc-legacy-dispatch"]
+        compilation_flags.cmflags.extend(uiflags)
+        compilation_flags.cmmflags.extend(uiflags)
+
+
+set_config("OS_COMPILE_CMFLAGS", compilation_flags.cmflags)
+set_config("OS_COMPILE_CMMFLAGS", compilation_flags.cmmflags)
+
+
+# Final flags settings
+# ---------------------------------
+@depends(host_c_compiler)
+def host_optimize_flags(compiler):
+    if compiler.type == "clang-cl":
+        return ["-O2"]
+    else:
+        return ["-O3"]
+
+
+set_config("HOST_OPTIMIZE_FLAGS", host_optimize_flags)
+
+
+@depends("HOST_CPPFLAGS", host, host_c_compiler)
+@imports(_from="mozbuild.shellutil", _import="split")
+def host_cppflags(base_cppflags, host, compiler):
+    flags = []
+    if host.kernel == "WINNT":
+        if compiler.type != "clang-cl":
+            flags += ["-mwindows"]
+        flags += ["-DXP_WIN", "-DWIN32", "-D_WIN32", "-D_CRT_SECURE_NO_WARNINGS"]
+        if host.cpu == "x86_64":
+            flags += ["-D_AMD64_"]
+    elif host.kernel == "Darwin":
+        flags += ["-DXP_UNIX", "-DXP_MACOSX"]
+    else:
+        flags += ["-DXP_UNIX"]
+    if base_cppflags:
+        flags += split(base_cppflags[0])
+    return flags
+
+
+@depends("HOST_CFLAGS", compilation_flags)
+@imports(_from="mozbuild.shellutil", _import="split")
+def host_cflags(base_cflags, compilation_flags):
+    flags = list(compilation_flags.host_cflags)
+    if base_cflags:
+        flags += split(base_cflags[0])
+    return flags
+
+
+@depends("HOST_CXXFLAGS", compilation_flags)
+@imports(_from="mozbuild.shellutil", _import="split")
+def host_cxxflags(base_cxxflags, compilation_flags):
+    flags = list(compilation_flags.host_cxxflags)
+    if base_cxxflags:
+        flags += split(base_cxxflags[0])
+    return flags
+
+
+@depends("HOST_LDFLAGS", linker_flags, host_linker_ldflags, host, host_c_compiler)
+@imports(_from="mozbuild.shellutil", _import="split")
+def host_ldflags(env_ldflags, linker_flags, host_linker_ldflags, host, compiler):
+    flags = []
+    if env_ldflags:
+        flags += split(env_ldflags[0])
+    flags += host_linker_ldflags
+    if host.kernel == "WINNT" and compiler.type == "clang-cl":
+        if host.cpu == "x86":
+            flags += ["-MACHINE:X86"]
+        elif host.cpu == "x86_64":
+            flags += ["-MACHINE:X64"]
+    flags += linker_flags.host_ldflags
+    return flags
+
+
+@depends("CPPFLAGS")
+@imports(_from="mozbuild.shellutil", _import="split")
+def os_cppflags(env_cppflags):
+    flags = []
+    if env_cppflags:
+        flags = split(env_cppflags[0])
+    return flags
+
+
+@depends("CFLAGS", compilation_flags, android_flags, all_arm_flags)
+@imports(_from="mozbuild.shellutil", _import="split")
+def os_cflags(env_cflags, compilation_flags, android_flags, all_arm_flags):
+    flags = []
+    if android_flags:
+        flags.extend(android_flags.cflags)
+    if all_arm_flags:
+        flags.extend(all_arm_flags)
+    flags.extend(compilation_flags.cflags)
+    if env_cflags:
+        flags.extend(split(env_cflags[0]))
+    return flags
+
+
+@depends("CXXFLAGS", compilation_flags, android_flags, all_arm_flags)
+@imports(_from="mozbuild.shellutil", _import="split")
+def os_cxxflags(env_cxxflags, compilation_flags, android_flags, all_arm_flags):
+    flags = []
+    if android_flags:
+        flags.extend(android_flags.cxxflags)
+    if all_arm_flags:
+        flags.extend(all_arm_flags)
+    flags.extend(compilation_flags.cxxflags)
+    if env_cxxflags:
+        flags.extend(split(env_cxxflags[0]))
+    return flags
+
+
+@depends(
+    "ASFLAGS",
+    asm_flags,
+    android_flags,
+    all_arm_flags,
+    defines_cpp_flags,
+    c_compiler,
+    build_project,
 )
-add_old_configure_assignment("_COMPILATION_HOST_LDFLAGS", linker_flags.host_ldflags)
+@imports(_from="mozbuild.shellutil", _import="split")
+def os_asflags(
+    env_asflags,
+    asm_flags,
+    android_flags,
+    all_arm_flags,
+    defines_cpp_flags,
+    c_compiler,
+    build_project,
+):
+    flags = []
+    if android_flags:
+        flags.extend(android_flags.asflags)
+        flags.append("-DANDROID")
+    if all_arm_flags:
+        flags.extend(all_arm_flags)
+    flags.extend(asm_flags.asflags)
+    if build_project != "js" and c_compiler.type != "clang-cl":
+        flags.extend(defines_cpp_flags)
+    if env_asflags:
+        flags.extend(split(env_asflags[0]))
+    return flags
+
+
+# VS2012+ defaults to -arch:SSE2. We want to target nothing more recent, so set
+# that explicitly here unless another target arch has already been set.
+@template
+def add_sse2_flag_if_needed(flags):
+    @depends(
+        flags,
+        when=~building_with_gnu_compatible_cc
+        & depends(target.cpu)(lambda cpu: cpu == "x86"),
+    )
+    def add_sse2_flag(flags):
+        is_arch_flag = lambda flag: flag.lower().startswith(("-arch:", "/arch:"))
+        if not any(is_arch_flag(flag) for flag in flags):
+            flags.append("-arch:SSE2")
+
+
+add_sse2_flag_if_needed(os_cflags)
+add_sse2_flag_if_needed(os_cxxflags)
+
+
+@depends(compilation_flags, when=depends(target.os)(lambda os: os == "WASI"))
+def add_thread_model_single(compilation_flags):
+    compilation_flags.cxxflags.extend(["-mthread-model", "single"])
+
+
+# Please keep these last in this file.
+set_config("HOST_CPPFLAGS", host_cppflags)
+set_config("HOST_CFLAGS", host_cflags)
+set_config("HOST_CXXFLAGS", host_cxxflags)
+set_config("HOST_LDFLAGS", host_ldflags)
+set_config("OS_CPPFLAGS", os_cppflags)
+set_config("OS_CFLAGS", os_cflags)
+set_config("OS_CXXFLAGS", os_cxxflags)
+set_config("ASFLAGS", os_asflags)
+set_config("DSO_LDOPTS", dso_flags.ldopts)
+set_config("LIBS", depends("LIBS")(lambda x: x))

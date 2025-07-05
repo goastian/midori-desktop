@@ -7,14 +7,12 @@ if [ -d "$MOZ_FETCHES_DIR/clang" ]; then
 
     export MOZ_COPY_PDBS=1
     export LLVM_SYMBOLIZER="$MOZ_FETCHES_DIR/llvm-symbolizer/bin/llvm-symbolizer.exe"
-    export MOZ_CLANG_RT_ASAN_LIB_PATH="${CLANG_LIB_DIR}/clang_rt.asan_dynamic-x86_64.dll"
 fi
 
 # Enable ASan specific code and build workarounds
 ac_add_options --enable-address-sanitizer
 
 # Mandatory options required for ASan builds
-ac_add_options --enable-debug-symbols
 ac_add_options --disable-jemalloc
 ac_add_options --disable-crashreporter
 ac_add_options --disable-profiling

@@ -7,18 +7,18 @@
 option(
     env="MOZ_FETCHES_DIR",
     nargs=1,
-    when="MOZ_AUTOMATION",
+    when=moz_automation,
     help="Directory containing fetched artifacts",
 )
 
 
-@depends("MOZ_FETCHES_DIR", when="MOZ_AUTOMATION")
+@depends("MOZ_FETCHES_DIR", when=moz_automation)
 def moz_fetches_dir(value):
     if value:
         return value[0]
 
 
-@depends(vcs_checkout_type, milestone.is_nightly, "MOZ_AUTOMATION")
+@depends(vcs_checkout_type, milestone.is_nightly, moz_automation)
 def bootstrap_default(vcs_checkout_type, is_nightly, automation):
     if automation:
         return False
@@ -75,6 +75,7 @@ def original_path():
 def bootstrap_toolchain_tasks(host):
     prefix = {
         ("x86_64", "GNU", "Linux"): "linux64",
+        ("aarch64", "GNU", "Linux"): "linux64-aarch64",
         ("x86_64", "OSX", "Darwin"): "macosx64",
         ("aarch64", "OSX", "Darwin"): "macosx64-aarch64",
         ("x86_64", "WINNT", "WINNT"): "win64",
@@ -222,6 +223,7 @@ def bootstrap_path(path, **kwargs):
                 ]
                 if not task["extract"]:
                     command.append("--no-unpack")
+
             elif command:
                 # For private local toolchains, run the associated command.
                 command = (
@@ -286,7 +288,9 @@ def bootstrap_path(path, **kwargs):
                     return None
             except Exception as e:
                 log.error("%s", e)
-                die("If you can't fix the above, retry with --disable-bootstrap.")
+                die(
+                    "If you can't fix the above, retry with --enable-bootstrap=no-update."
+                )
         if enable_bootstrap or enable_bootstrap.origin == "default":
             # We re-test whether the path exists because it may have been created by
             # try_bootstrap. Automation will not have gone through the bootstrap

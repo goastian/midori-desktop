@@ -15,6 +15,7 @@ SOURCES += [
     "TestDanglingOnTemporary.cpp",
     "TestExplicitOperatorBool.cpp",
     "TestGlobalClass.cpp",
+    "TestGlobalVariableInitialization.cpp",
     "TestHeapClass.cpp",
     "TestInheritTypeAnnotationsFromTemplateArgs.cpp",
     "TestJSHandleRootedTypedef.cpp",
@@ -73,9 +74,10 @@ NoVisibilityFlags()
 # Build without any warning flags, and with clang verify flag for a
 # syntax-only build (no codegen), without a limit on the number of errors.
 COMPILE_FLAGS["OS_CXXFLAGS"] = [
-    f for f in COMPILE_FLAGS.get("OS_CXXFLAGS", []) if not f.startswith("-W")
+    f for f in COMPILE_FLAGS["OS_CXXFLAGS"] if not f.startswith("-W")
 ] + [
     "-fsyntax-only",
+    "-Wno-unused-command-line-argument",
     "-Xclang",
     "-verify",
     "-ferror-limit=0",
@@ -85,14 +87,13 @@ COMPILE_FLAGS["OS_CXXFLAGS"] = [
     "-Wno-invalid-offsetof",
 ]
 COMPILE_FLAGS["OS_CFLAGS"] = [
-    f for f in COMPILE_FLAGS.get("OS_CFLAGS", []) if not f.startswith("-W")
+    f for f in COMPILE_FLAGS["OS_CFLAGS"] if not f.startswith("-W")
 ] + [
     "-fsyntax-only",
+    "-Wno-unused-command-line-argument",
     "-Xclang",
     "-verify",
     "-ferror-limit=0",
-    "-Xclang",
-    "-std=c11",
     "-Wno-invalid-noreturn",
 ]
 

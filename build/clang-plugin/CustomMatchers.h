@@ -18,6 +18,31 @@ namespace ast_matchers {
 
 /// This matcher will match any function declaration that is declared as a heap
 /// allocator.
+AST_MATCHER(VarDecl, hasMozGlobalType) {
+  if(auto * TD = Node.getType().getTypePtr()->getAsTagDecl()) {
+    if(hasCustomAttribute<moz_global_class>(TD))
+      return true;
+  }
+  return false;
+}
+
+/// Match any variable declared with the MOZ_RUNINIT qualifier.
+AST_MATCHER(VarDecl, isMozGlobal) {
+  return hasCustomAttribute<moz_global_var>(&Node);
+}
+
+/// Match any variable declared with the MOZ_GLOBINIT qualifier.
+AST_MATCHER(VarDecl, isMozGenerated) {
+  return hasCustomAttribute<moz_generated>(&Node);
+}
+
+/// Match any variable declared with the constinit qualifier.
+AST_MATCHER(VarDecl, hasConstInitAttr) {
+  return Node.hasAttr<ConstInitAttr>();
+}
+
+/// This matcher will match any function declaration that is declared as a heap
+/// allocator.
 AST_MATCHER(FunctionDecl, heapAllocator) {
   return hasCustomAttribute<moz_heap_allocator>(&Node);
 }
@@ -69,6 +94,17 @@ AST_MATCHER(DeclaratorDecl, isNotSpiderMonkey) {
   return Path.find("js") == std::string::npos &&
          Path.find("xpc") == std::string::npos &&
          Path.find("XPC") == std::string::npos;
+}
+
+/// This matcher will match any declaration with an initializer that's
+/// considered as constant by the compiler.
+AST_MATCHER(VarDecl, hasConstantInitializer) {
+  if(Node.hasInit())
+    return Node.getInit()->isConstantInitializer(
+                  Finder->getASTContext(),
+                  Node.getType()->isReferenceType());
+  else
+    return Node.getType().isTrivialType(Finder->getASTContext());
 }
 
 /// This matcher will match temporary expressions.
@@ -155,7 +191,7 @@ AST_MATCHER(CallExpr, isInWhitelistForFopenUsage) {
   StringRef FileName =
       getFilename(Finder->getASTContext().getSourceManager(), Loc);
 
-  return llvm::sys::path::rbegin(FileName)->equals(Whitelist);
+  return *llvm::sys::path::rbegin(FileName) == Whitelist;
 }
 
 /// This matcher will match a list of files.  These files contain
@@ -167,7 +203,7 @@ AST_MATCHER(BinaryOperator, isInWhitelistForNaNExpr) {
   StringRef FileName =
       getFilename(Finder->getASTContext().getSourceManager(), Loc);
   for (auto itr = std::begin(whitelist); itr != std::end(whitelist); itr++) {
-    if (llvm::sys::path::rbegin(FileName)->equals(*itr)) {
+    if (*llvm::sys::path::rbegin(FileName) == *itr) {
       return true;
     }
   }
@@ -210,7 +246,7 @@ AST_MATCHER(CallExpr, isInAllowlistForThreads) {
       auto it1 = rbegin(FileName), it2 = rbegin(thread_file),
            end1 = rend(FileName), end2 = rend(thread_file);
       for (; it2 != end2; ++it1, ++it2) {
-        if (it1 == end1 || !it1->equals(*it2)) {
+        if (it1 == end1 || *it1 != *it2) {
           return false;
         }
       }
@@ -227,7 +263,7 @@ AST_MATCHER(CallExpr, isInAllowlistForThreads) {
   if (nameArg) {
     const StringRef name = nameArg->getString();
     for (auto thread_name : allow_thread_names) {
-      if (name.equals(thread_name)) {
+      if (name == thread_name) {
         return true;
       }
     }

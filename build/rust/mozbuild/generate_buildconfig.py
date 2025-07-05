@@ -92,16 +92,24 @@ def generate(output):
                     }}
                 }}
 
-                /// The path to the windows-rs crate, for use in build scripts
-                pub const WINDOWS_RS_DIR: &str = {escape_rust_string(windows_rs_dir)};
-
+                /// Macro used to re-export windows-rs's public items
+                #[macro_export]
+                macro_rules! windows_rs_lib {{
+                    () => {{
+                        #[path = {escape_rust_string(windows_rs_dir + "/src/lib.rs")}]
+                        mod lib;
+                        pub use lib::*;
+                    }}
+                }}
                 """
             )
         )
 
     # Write out some useful strings from the buildconfig.
     output.write(generate_string("MOZ_MACBUNDLE_ID"))
+    output.write(generate_string("MOZ_APP_BASENAME"))
     output.write(generate_string("MOZ_APP_NAME"))
+    output.write(generate_string("MOZ_APP_VENDOR"))
 
     # Write out some useful booleans from the buildconfig.
     output.write(generate_bool("MOZ_FOLD_LIBS"))
@@ -114,6 +122,10 @@ def generate(output):
 
     # Used by toolkit/crashreporter/client
     output.write(generate_bool("MOZ_CRASHREPORTER_MOCK"))
-    output.write(generate_string_array("CC_BASE_FLAGS"))
+    output.write(generate_string_array("BINDGEN_SYSTEM_FLAGS"))
     output.write(generate_string_array("MOZ_GTK3_CFLAGS"))
     output.write(generate_string_array("MOZ_GTK3_LIBS"))
+    output.write(generate_string_array("NSPR_CFLAGS"))
+    output.write(generate_string_array("NSS_CFLAGS"))
+    output.write(generate_string_array("MOZ_PIXMAN_CFLAGS"))
+    output.write(generate_string_array("MOZ_ICU_CFLAGS"))

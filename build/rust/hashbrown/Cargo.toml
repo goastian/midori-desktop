@@ -1,19 +1,24 @@
 [package]
 name = "hashbrown"
-version = "0.13.999"
+version = "0.14.999"
 edition = "2021"
 
 [lib]
 path = "lib.rs"
 
 [features]
-# N.B., not using `hashbrown/default` because it includes `hashbrown/allocator-api2`, which we want
-# to avoid.
-default = ["ahash", "inline-more"]
-ahash = ["hashbrown/ahash"]
+default = ["hashbrown/default"]
+allocator-api2 = ["hashbrown/allocator-api2"]
+ahash = [
+    # No direct equivalent in 0.15.*.  However, the `ahash` feature made it so `DefaultHashBuilder`
+    # was a real struct that implemented `BuildHasher`, `Default`, etc.
+    # Enable 0.15.* `default-hasher` feature, which does the same.
+    "hashbrown/default-hasher"
+]
 inline-more = ["hashbrown/inline-more"]
-raw = ["hashbrown/raw"]
+raw = ["hashbrown/raw-entry"]
+serde = ["hashbrown/serde"]
 
 [dependencies.hashbrown]
-version = "0.14.3"
+version = "0.15.2"
 default-features = false

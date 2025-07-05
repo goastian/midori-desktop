@@ -119,7 +119,7 @@ src:*/modules/zlib/src/*
 # Our LZ4 implementation uses overflows. By listing it here we might
 # miss some unintended overflows in that implementation, but we can't
 # check for it right now.
-src:*/mfbt/lz4/*
+src:*/mozglue/static/lz4/*
 
 # Apparently this overflows a lot, because it contains some allocators
 # that keep overflowing, not sure why. Disabling by function didn't seem
@@ -184,10 +184,6 @@ fun:*Frame*FindNext*
 # Code in netwerk/base/nsStandardURL.cpp,
 # these methods return signed but the subtraction is first performed unsigned
 fun:*nsStandardURL*ReplaceSegment*
-
-# Code in netwerk/protocol/http/nsHttpChannel.cpp
-# same as previous with the previous entry.
-fun:*nsHttpChannel*ReportNetVSCacheTelemetry*
 
 # Code in layout/tables/nsCellMap.cpp
 # again subtraction then cast to signed.

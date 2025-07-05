@@ -51,7 +51,6 @@ def js_without_nspr(build_nspr, system_nspr, js_standalone):
         return not build_nspr and not system_nspr
 
 
-set_config("JS_WITHOUT_NSPR", True, when=js_without_nspr)
 set_define("JS_WITHOUT_NSPR", True, when=js_without_nspr)
 
 
@@ -113,6 +112,9 @@ def nspr_config(build_env, c_compiler, fold_libs):
     )
 
 
+# Avoid using obsolete NSPR features
+set_define("NO_NSPR_10_SUPPORT", True)
+
 set_config("NSPR_CFLAGS", nspr_config.cflags, when=nspr_config)
 set_config("NSPR_LIBS", nspr_config.libs, when=nspr_config)
 
@@ -120,6 +122,3 @@ set_config("NSPR_INCLUDE_DIR", nspr_config.include_dir, when=nspr_config)
 set_config("NSPR_LIB_DIR", nspr_config.lib_dir, when=nspr_config)
 set_config("NSPR_INCLUDE_DIR", nspr_pkg.include_dir, when=nspr_pkg)
 set_config("NSPR_LIB_DIR", nspr_pkg.lib_dir, when=nspr_pkg)
-
-add_old_configure_assignment("NSPR_LIBS", nspr_config.libs, when=nspr_config)
-add_old_configure_assignment("NSPR_LIBS", nspr_pkg.libs, when=nspr_pkg)

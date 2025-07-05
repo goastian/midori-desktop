@@ -71,7 +71,7 @@ if __name__ == "__main__":
         try:
             binary = build.get_binary_path(where="staged-package")
         except BinaryNotFoundException as e:
-            print("{}\n\n{}\n".format(e, e.help()))
+            print(f"{e}\n\n{e.help()}\n")
             sys.exit(1)
     binary = os.path.normpath(os.path.abspath(binary))
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     with TemporaryDirectory() as profilePath:
         # TODO: refactor this into mozprofile
         profile_data_dir = os.path.join(build.topsrcdir, "testing", "profiles")
-        with open(os.path.join(profile_data_dir, "profiles.json"), "r") as fh:
+        with open(os.path.join(profile_data_dir, "profiles.json")) as fh:
             base_profiles = json.load(fh)["profileserver"]
 
         prefpaths = [
@@ -138,18 +138,12 @@ if __name__ == "__main__":
         env["MOZ_CRASHREPORTER_NO_REPORT"] = "1"
         env["MOZ_CRASHREPORTER_SHUTDOWN"] = "1"
         env["XPCOM_DEBUG_BREAK"] = "warn"
-        # We disable sandboxing to make writing profiling data actually work
-        # Bug 1553850 considers fixing this.
-        env["MOZ_DISABLE_CONTENT_SANDBOX"] = "1"
-        env["MOZ_DISABLE_RDD_SANDBOX"] = "1"
-        env["MOZ_DISABLE_SOCKET_PROCESS_SANDBOX"] = "1"
-        env["MOZ_DISABLE_GPU_SANDBOX"] = "1"
-        env["MOZ_DISABLE_GMP_SANDBOX"] = "1"
-        env["MOZ_DISABLE_NPAPI_SANDBOX"] = "1"
-        env["MOZ_DISABLE_VR_SANDBOX"] = "1"
 
         # Ensure different pids write to different files
-        env["LLVM_PROFILE_FILE"] = "default_%p_random_%m.profraw"
+        # Use absolute path to ensure that Sandbox computes the correct permissions
+        env["LLVM_PROFILE_FILE"] = os.path.join(
+            os.getcwd(), "default_%p_random_%m.profraw"
+        )
 
         # Write to an output file if we're running in automation
         process_args = {"universal_newlines": True}
@@ -212,6 +206,21 @@ if __name__ == "__main__":
                     print(f.read())
             get_crashreports(profilePath, name="Profiling run")
             sys.exit(ret)
+
+        if "UPLOAD_PATH" in env:
+            should_err = False
+            print("Verify log for LLVM Profile Error")
+            for n in range(1, 2):
+                log = os.path.join(env["UPLOAD_PATH"], f"profile-run-{n}.log")
+                with open(log) as f:
+                    for line in f.readlines():
+                        if "LLVM Profile Error" in line:
+                            print(f"Error [{log}]: '{line.strip()}'")
+                            should_err = True
+
+            if should_err:
+                print("Found some LLVM Profile Error in logs, see above.")
+                sys.exit(1)
 
         # Try to move the crash reports to the artifacts even if Firefox appears
         # to exit successfully, in case there's a crash that doesn't set the

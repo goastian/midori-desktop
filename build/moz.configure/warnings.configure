@@ -7,7 +7,7 @@
 option(
     "--enable-warnings-as-errors",
     env="MOZ_ENABLE_WARNINGS_AS_ERRORS",
-    default=depends("MOZ_AUTOMATION")(lambda x: bool(x)),
+    default=moz_automation,
     help="{Enable|Disable} treating warnings as errors",
 )
 
@@ -310,6 +310,10 @@ check_and_add_warning("-Wno-vla-cxx-extension", cxx_compiler)
 
 # Avoid requiring complicated logic for extra warning flags in moz.build files.
 check_and_add_warning("-Wno-unknown-warning-option")
+
+# clang 21 warns about charN_t conversions, and we have a lot that need a careful
+# audit rather than plainly adding static_casts.
+check_and_add_warning("-Wno-character-conversion")
 
 set_config("WARNINGS_CFLAGS", warnings_flags.cflags)
 set_config("WARNINGS_CXXFLAGS", warnings_flags.cxxflags)

@@ -1,6 +1,6 @@
 [package]
 name = "base64"
-version = "0.13.999"
+version = "0.21.999"
 edition = "2018"
 license = "MPL-2.0"
 
@@ -8,4 +8,4 @@ license = "MPL-2.0"
 path = "lib.rs"
 
 [dependencies.base64]
-version = "0.21.0"
+version = "0.22.1"

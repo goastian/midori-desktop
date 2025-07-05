@@ -8,8 +8,8 @@ option(
     "--with-windows-version",
     nargs=1,
     default="603",
-    help="Windows SDK version to target. Win 8.1 (603) is currently"
-    "the minimum supported version.",
+    help="Windows SDK version to target. Win 8.1 (603) is currently "
+    "the minimum supported version",
 )
 
 
@@ -441,6 +441,7 @@ def sdk_bin_path(valid_windows_sdk_dir, valid_ucrt_sdk_dir, host):
     vc_host = {
         "x86": "x86",
         "x86_64": "x64",
+        "aarch64": "arm64",
     }.get(host.cpu)
 
     # From version 10.0.15063.0 onwards the bin path contains the version number.
@@ -478,7 +479,6 @@ host_link = check_prog(
     paths=clang_search_path,
 )
 
-add_old_configure_assignment("LINKER", link)
 
 option(
     "--with-redist",
@@ -488,7 +488,7 @@ option(
 )
 
 
-@depends("--with-redist", "MOZ_AUTOMATION", c_compiler, vc_path, target)
+@depends("--with-redist", moz_automation, c_compiler, vc_path, target)
 @imports("os")
 def win32_redist_dir(redist, automation, c_compiler, vc_path, target):
     if len(redist):
@@ -525,3 +525,124 @@ def win32_redist_dir(redist, automation, c_compiler, vc_path, target):
 
 
 set_config("WIN32_REDIST_DIR", win32_redist_dir)
+
+
+@template
+def check_w32API_version():
+    # minimum version of toolkit libs used by mozilla
+    W32API_VERSION = Version("3.14")
+    # Check w32api version
+    try_compile(
+        includes=["w32api.h"],
+        check_msg=f"for w32api version >= {W32API_VERSION}",
+        body=f"""
+        #if (__W32API_MAJOR_VERSION < {W32API_VERSION.major}) || \
+            (__W32API_MAJOR_VERSION == {W32API_VERSION.major} && \
+             __W32API_MINOR_VERSION < {W32API_VERSION.minor})
+            #error "test failed."
+        #endif
+        """,
+        onerror=lambda: die(f"w32api version {W32API_VERSION} or higher required."),
+        when=target_is_windows & building_with_gnu_compatible_cc,
+    )
+
+
+@depends(target)
+def cpu_arch_macro_definition(target):
+    if target.cpu == "x86":
+        return "_X86_"
+    elif target.cpu == "x86_64":
+        return "_AMD64_"
+    elif target.cpu == "aarch64":
+        return "_ARM64_"
+    else:
+        return "_CPU_ARCH_NOT_DEFINED"
+
+
+set_define(cpu_arch_macro_definition, True)
+
+
+check_w32API_version()
+
+
+# -Zc:sizedDealloc- disables C++14 global sized deallocation (see bug 1160146)
+add_flag(
+    "-Zc:sizedDealloc-", compiler=cxx_compiler, when=~building_with_gnu_compatible_cc
+)
+
+
+set_define("_USE_MATH_DEFINES", True)  # Otherwise Windows' math.h doesn't #define M_PI.
+
+WINVER = dependable("0A00")
+set_define("WINVER", depends(WINVER)(lambda WINVER: f"0x{WINVER}"))
+set_define("_WIN32_WINNT", depends(WINVER)(lambda WINVER: f"0x{WINVER}"))
+set_define("_WIN32_IE", "0x0A00")
+
+with only_when(depends(c_compiler)(lambda c: c.type == "clang-cl")):
+    set_config("MSVC_C_RUNTIME_DLL", "vcruntime140.dll")
+    set_config(
+        "MSVC_C_RUNTIME_1_DLL",
+        "vcruntime140_1.dll",
+        when=depends(target)(lambda target: target.cpu != "x86"),
+    )
+    set_config("MSVC_CXX_RUNTIME_DLL", "msvcp140.dll")
+
+    # Disable warnings about using MSVC-specific secure CRT functions.
+    set_define("_CRT_SECURE_NO_WARNINGS", True)
+    set_define("_CRT_NONSTDC_NO_WARNINGS", True)
+
+    set_define("HAVE_SEH_EXCEPTIONS", True)
+    set_define("HAVE_IO_H", True)
+
+    def win32_subsystem_version():
+        return "10.0"
+
+    set_config(
+        "WIN32_CONSOLE_EXE_LDFLAGS",
+        "-SUBSYSTEM:CONSOLE,{}".format(win32_subsystem_version()),
+    )
+    set_config(
+        "WIN32_GUI_EXE_LDFLAGS",
+        "-SUBSYSTEM:WINDOWS,{}".format(win32_subsystem_version()),
+    )
+
+    add_flag("-Gy")
+    add_flag("-Zc:inline")
+
+    # VS2013+ supports -Gw for better linker optimizations.
+    # http://blogs.msdn.com/b/vcblog/archive/2013/09/11/introducing-gw-compiler-switch.aspx
+    # Disabled on ASan because it causes false-positive ODR violations.
+    add_flag("-Gw", when=~asan)
+
+    # String tail merging doesn't play nice with ASan's ODR checker.
+    add_linker_flag("-opt:nolldtailmerge", when=asan)
+
+    # Silence VS2017 15.5+ TR1 deprecation warnings hit by older gtest versions
+    add_flag("-D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING", compiler=cxx_compiler)
+
+    with only_when(depends(target.cpu)(lambda cpu: cpu == "x86")):
+        add_linker_flag("-LARGEADDRESSAWARE")
+        add_linker_flag("-SAFESEH")
+
+
+set_define("WIN32_LEAN_AND_MEAN", True)
+
+# See http://support.microsoft.com/kb/143208 to use STL
+set_define("NOMINMAX", True)
+
+
+with only_when(target_is_windows & depends(c_compiler)(lambda c: c.type != "clang-cl")):
+    # strsafe.h on mingw uses macros for function deprecation that pollutes namespace
+    # causing problems with local implementations with the same name.
+    set_define("STRSAFE_NO_DEPRECATE", True)
+
+    set_config("WIN32_CONSOLE_EXE_LDFLAGS", "-mconsole")
+    set_config("WIN32_GUI_EXE_LDFLAGS", "-mwindows")
+
+    # Silence problematic clang warnings
+    add_flag("-Wno-incompatible-ms-struct", compiler=cxx_compiler)
+    add_linker_flag("-Wl,--no-insert-timestamp")
+
+    with only_when(depends(target.cpu)(lambda cpu: cpu == "x86")):
+        add_flag("-mstackrealign")
+        add_linker_flag("-Wl,--large-address-aware")
