@@ -95,11 +95,16 @@ interface nsIPrincipal : nsISupports
     boolean equalsURI(in nsIURI aOtherURI);
 
     /**
-     * Returns a hash value for the principal.
+     * Returns a hash value for the principal. Guaranteed to be equal
+     * for two principals which are Equals(...).
+     *
+     * Implemented in BasePrincipal.cpp.
      *
      * May be called from any thread.
      */
-    [notxpcom, nostdcall] readonly attribute unsigned long hashValue;
+    %{C++
+    uint32_t GetHashValue() const;
+    %}
 
     /**
      * The principal URI to which this principal pertains.  This is
@@ -175,11 +180,12 @@ interface nsIPrincipal : nsISupports
      * If the load is allowed this function does nothing. If the load is not
      * allowed the function throws NS_ERROR_DOM_BAD_URI.
      *
+     * May be called from any thread.
+     *
      * NOTE: Other policies might override this, such as the Access-Control
      *       specification.
      * NOTE: The 'domain' attribute has no effect on the behaviour of this
      *       function.
-     * NOTE: Main-Thread Only.
      *
      *
      * @param uri    The URI about to be loaded.
@@ -418,14 +424,6 @@ interface nsIPrincipal : nsISupports
     [infallible]
     boolean isSameOrigin(in nsIURI otherURI);
 
-    /*
-     * Checks if the Principal is allowed to load the Provided file:// URI
-     * using NS_RelaxStrictFileOriginPolicy
-     *
-     * May be called from any thread.
-     */
-    boolean allowsRelaxStrictFileOriginPolicy(in nsIURI aURI);
-
 
     /*
      * Generates a Cache-Key for the Cors-Preflight Cache
@@ -585,6 +583,14 @@ interface nsIPrincipal : nsISupports
      * May be called from any thread.
      */
     [infallible] readonly attribute unsigned long privateBrowsingId;
+
+    /**
+     * Retuns true if it is in private browsing based on privateBrowsingId
+     * being non-zero.
+     *
+     * May be called from any thread.
+     */
+    [infallible] readonly attribute boolean isInPrivateBrowsing;
 
     /**
      * Returns true iff this is a null principal (corresponding to an

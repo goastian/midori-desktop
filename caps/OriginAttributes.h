@@ -81,6 +81,11 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
            mFirstPartyDomain == aOther.mFirstPartyDomain;
   }
 
+  [[nodiscard]] inline bool IsPrivateBrowsing() const {
+    return mPrivateBrowsingId !=
+           nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID;
+  }
+
   // Serializes/Deserializes non-default values into the suffix format, i.e.
   // |^key1=value1&key2=value2|. If there are no non-default attributes, this
   // returns an empty string.
@@ -136,6 +141,11 @@ class OriginAttributes : public dom::OriginAttributesDictionary {
                                 nsAString& outScheme, nsAString& outBaseDomain,
                                 int32_t& outPort,
                                 bool& outForeignByAncestorContext);
+
+  // Parse a partitionKey and extract the site from it. Returns false if the
+  // partitionKey cannot be parsed because the format is invalid.
+  static bool ExtractSiteFromPartitionKey(const nsAString& aPartitionKey,
+                                          nsAString& aOutSite);
 };
 
 class OriginAttributesPattern : public dom::OriginAttributesPatternDictionary {

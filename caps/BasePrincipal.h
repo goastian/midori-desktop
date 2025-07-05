@@ -165,6 +165,7 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetIsOnion(bool* aIsOnion) override;
   NS_IMETHOD GetUserContextId(uint32_t* aUserContextId) final;
   NS_IMETHOD GetPrivateBrowsingId(uint32_t* aPrivateBrowsingId) final;
+  NS_IMETHOD GetIsInPrivateBrowsing(bool* aIsInPrivateBrowsing) final;
   NS_IMETHOD GetSiteOrigin(nsACString& aSiteOrigin) final;
   NS_IMETHOD GetSiteOriginNoSuffix(nsACString& aSiteOrigin) override;
   NS_IMETHOD IsThirdPartyURI(nsIURI* uri, bool* aRes) override;
@@ -181,8 +182,6 @@ class BasePrincipal : public nsJSPrincipals {
                                         bool* aOutAllowed) override;
   NS_IMETHOD GetAsciiHost(nsACString& aAsciiHost) override;
   NS_IMETHOD GetLocalStorageQuotaKey(nsACString& aRes) override;
-  NS_IMETHOD AllowsRelaxStrictFileOriginPolicy(nsIURI* aURI,
-                                               bool* aRes) override;
   NS_IMETHOD CreateReferrerInfo(mozilla::dom::ReferrerPolicy aReferrerPolicy,
                                 nsIReferrerInfo** _retval) override;
   NS_IMETHOD GetIsScriptAllowedByPolicy(
@@ -362,7 +361,7 @@ class BasePrincipal : public nsJSPrincipals {
  protected:
   template <size_t EnumValue>
   static inline constexpr const Span<const char>& JSONEnumKeyString() {
-    static_assert(EnumValue < ArrayLength(JSONEnumKeyStrings));
+    static_assert(EnumValue < std::size(JSONEnumKeyStrings));
     return JSONEnumKeyStrings[EnumValue];
   }
   template <size_t EnumValue>

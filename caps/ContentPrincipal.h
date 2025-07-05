@@ -22,7 +22,6 @@ class JSONWriter;
 class ContentPrincipal final : public BasePrincipal {
  public:
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
-  uint32_t GetHashValue() override;
   NS_IMETHOD GetURI(nsIURI** aURI) override;
   NS_IMETHOD GetDomain(nsIURI** aDomain) override;
   NS_IMETHOD SetDomain(nsIURI* aDomain) override;
@@ -86,11 +85,7 @@ class ContentPrincipal final : public BasePrincipal {
 
 }  // namespace mozilla
 
-#define NS_PRINCIPAL_CID                             \
-  {                                                  \
-    0x653e0e4d, 0x3ee4, 0x45fa, {                    \
-      0xb2, 0x72, 0x97, 0xc2, 0x0b, 0xc0, 0x1e, 0xb8 \
-    }                                                \
-  }
+#define NS_PRINCIPAL_CID \
+  {0x653e0e4d, 0x3ee4, 0x45fa, {0xb2, 0x72, 0x97, 0xc2, 0x0b, 0xc0, 0x1e, 0xb8}}
 
 #endif  // mozilla_ContentPrincipal_h

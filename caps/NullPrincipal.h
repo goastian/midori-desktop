@@ -22,12 +22,8 @@
 class nsIDocShell;
 class nsIURI;
 
-#define NS_NULLPRINCIPAL_CID                         \
-  {                                                  \
-    0xbd066e5f, 0x146f, 0x4472, {                    \
-      0x83, 0x31, 0x7b, 0xfd, 0x05, 0xb1, 0xed, 0x90 \
-    }                                                \
-  }
+#define NS_NULLPRINCIPAL_CID \
+  {0xbd066e5f, 0x146f, 0x4472, {0x83, 0x31, 0x7b, 0xfd, 0x05, 0xb1, 0xed, 0x90}}
 
 #define NS_NULLPRINCIPAL_SCHEME "moz-nullprincipal"
 
@@ -40,7 +36,6 @@ class NullPrincipal final : public BasePrincipal {
   static PrincipalKind Kind() { return eNullPrincipal; }
 
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
-  uint32_t GetHashValue() override;
   NS_IMETHOD GetURI(nsIURI** aURI) override;
   NS_IMETHOD GetIsOriginPotentiallyTrustworthy(bool* aResult) override;
   NS_IMETHOD GetDomain(nsIURI** aDomain) override;
