@@ -1,0 +1,221 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+* License, v. 2.0. If a copy of the MPL was not distributed with this
+* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+@import url("chrome://global/skin/in-content/common.css");
+
+html {
+  height: 100%;
+}
+
+.category .category-name {
+  pointer-events: none;
+}
+
+.category {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+body {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.main-content {
+  flex: 1;
+}
+
+.tab {
+  padding: 0.5em 0;
+}
+
+.fieldset-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fieldset-container fieldset {
+  flex: 1 1 48%;
+  box-sizing: border-box;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+button {
+  min-width: 10px;
+  padding: 2px;
+  background: none;
+}
+
+button:hover {
+  background-color: var(--in-content-hover-background);
+  cursor: pointer;
+}
+
+caption {
+  caption-side: top;
+  padding: 10px;
+  font-weight: bold;
+}
+
+table {
+  border-collapse: collapse;
+  font-family: sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+th,
+td {
+  border: 1px solid var(--in-content-border-color);
+  padding: 8px 10px;
+}
+td {
+  text-align: center;
+}
+
+tr:nth-child(even) td {
+  background-color: var(--table-row-background-color);
+}
+
+tr:nth-child(odd) td {
+  background-color: var(--table-row-background-color-alternate);
+}
+textarea {
+  width: 100%;
+  height: calc(1.2em * 20);
+  box-sizing: border-box;
+ }
+
+legend {
+  font-size: 1.5em;
+  font-weight: bold;
+  padding: 5px;
+}
+.form-container {
+  margin: auto;
+  padding-right: 10px;
+}
+
+.form-container div {
+  margin-bottom: 15px;
+}
+
+.form-container label {
+  display: inline-block;
+  font-weight: bold;
+}
+
+.form-container input[type="text"],
+.form-container select,
+.form-container textarea {
+  width: 100%;
+  padding: 8px;
+  margin-left: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.form-container textarea {
+  height: 200px;
+  resize: vertical;
+}
+
+.form-container input[type="button"] {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.form-container input[type="button"]:hover {
+  background-color: #45a049;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  max-width: 300px;
+  background-color: black;
+  color: #fff;
+  text-align: center;
+  border-radius: 5px;
+  padding: 5px 10px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+  opacity: 1;
+}
+
+.tooltip .tooltiptext::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: black transparent transparent transparent;
+}
+
+.progress-bar-container {
+  margin-bottom: 10px;
+}
+
+.progress-bar {
+  width: 100%;
+  background-color: #f3f3f3;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 20px;
+  background-color: #4caf50;
+  text-align: center;
+  color: white;
+  padding-left: 5px;
+  line-height: 20px;
+  border-radius: 5px;
+}
+
+
+#modelFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#modelFiles table {
+  flex: 1 1 calc(33.333% - 10px);
+  box-sizing: border-box;
+}
+
+#modelFiles table caption {
+  caption-side: bottom;
+  text-align: center;
+  font-weight: bold;
+  margin-top: 1px;
+}

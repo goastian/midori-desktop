@@ -1,0 +1,93 @@
+From: Michael Froman <mfroman@mozilla.com>
+Date: Tue, 7 Jun 2022 22:34:00 -0500
+Subject: Bug 1772400 - pt2 - Rollup of various patches to
+ third_party/libwebrtc/third_party r?ng!
+
+Several of these patches have been unindented to match the original content
+of the files to make merging easier in the fast-foward work.
+
+127ace4d8887 - Bug 1654112 - Tweak upstream gn files for Firefox build.
+65562b1a98a3 - Bug 1654112 - minimize abseil-cpp build and usage in libwebrtc.
+58f47eacaf10 - Bug 1654112 - deconflate the target and host architectures in libwebrtc build files
+
+Differential Revision: https://phabricator.services.mozilla.com/D148809
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/29bb1b6d7fc465aad44e15837e7b731bc40bc98a
+---
+ abseil-cpp/BUILD.gn | 24 +++++++++++++++++++++---
+ abseil-cpp/absl.gni |  1 +
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/abseil-cpp/BUILD.gn b/abseil-cpp/BUILD.gn
+index b1ada6e828c..2ac91cd9f07 100644
+--- a/abseil-cpp/BUILD.gn
++++ b/abseil-cpp/BUILD.gn
+@@ -26,7 +26,7 @@ component("absl") {
+     public_configs = [ ":absl_component_build" ]
+ 
+     if (is_win && is_clang) {
+-      if (current_cpu == "x64") {
++      if (target_cpu == "x64") {
+         if (is_debug) {
+           sources = [ "symbols_x64_dbg.def" ]
+         } else {
+@@ -37,14 +37,14 @@ component("absl") {
+           }
+         }
+       }
+-      if (current_cpu == "x86") {
++      if (target_cpu == "x86") {
+         if (is_debug) {
+           sources = [ "symbols_x86_dbg.def" ]
+         } else {
+           sources = [ "symbols_x86_rel.def" ]
+         }
+       }
+-      if (current_cpu == "arm64") {
++      if (target_cpu == "arm64") {
+         if (is_debug) {
+           sources = [ "symbols_arm64_dbg.def" ]
+         } else {
+@@ -56,6 +56,7 @@ component("absl") {
+ }
+ 
+ group("absl_component_deps") {
++  if (false) {
+   public_deps = [
+     "//third_party/abseil-cpp/absl/algorithm",
+     "//third_party/abseil-cpp/absl/algorithm:container",
+@@ -121,6 +122,23 @@ group("absl_component_deps") {
+     # alternative to inject abort hook. See notes in `base/logging.cc`.
+     "//third_party/abseil-cpp/absl/base:raw_logging_internal",
+   ]
++  } else {
++  public_deps = [
++    "//abseil-cpp/absl/algorithm:container",
++    "//abseil-cpp/absl/base:nullability",
++    "//abseil-cpp/absl/cleanup",
++    "//abseil-cpp/absl/container:inlined_vector",
++    "//abseil-cpp/absl/functional:any_invocable",
++    "//abseil-cpp/absl/functional:bind_front",
++    "//abseil-cpp/absl/strings",
++    "//abseil-cpp/absl/strings:str_format",
++    "//abseil-cpp/absl/strings:string_view",
++    "//abseil-cpp/absl/types:optional",
++    "//abseil-cpp/absl/types:span",
++    "//abseil-cpp/absl/types:variant",
++    "//abseil-cpp/absl/utility",
++  ]
++  }
+ 
+   if (is_component_build) {
+     public_deps += [ ":absl_full_deps" ]
+diff --git a/abseil-cpp/absl.gni b/abseil-cpp/absl.gni
+index 48e1ce78384..b19ac75675a 100644
+--- a/abseil-cpp/absl.gni
++++ b/abseil-cpp/absl.gni
+@@ -21,6 +21,7 @@ import("//build_overrides/build.gni")
+ 
+ declare_args() {
+   absl_build_tests = build_with_chromium
++  moz_webrtc_build = true
+ }
+ 
+ template("absl_source_set") {

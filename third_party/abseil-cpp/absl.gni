@@ -1,0 +1,167 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file contains the definition of the template absl_source_set which
+# should be the only type of target needed in abseil's BUILD.gn files.
+# This template will correctly set "configs" and "public_configs" in order
+# to correctly compile abseil in Chromium.
+#
+# Usage:
+# Most of the times its usage will be similar to the example below but all
+# the arguments avilable in source_set are also available for absl_source_set.
+#
+#  absl_source_set("foo") {
+#    sources = [ "foo.cc" ]
+#    public = [ "foo.h" ]
+#    deps = [ ":bar" ]
+#  }
+
+import("//build_overrides/build.gni")
+
+declare_args() {
+  absl_build_tests = build_with_chromium
+  moz_webrtc_build = true
+}
+
+template("absl_source_set") {
+  source_set(target_name) {
+    if (defined(invoker.testonly) && invoker.testonly && !absl_build_tests) {
+      not_needed(invoker, "*")
+    } else {
+      forward_variables_from(invoker, "*")
+      configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+      configs += [
+        "//chromium/build/config/compiler:no_chromium_code",
+        "//chromium/build/config/compiler:prevent_unsafe_narrowing",
+        "//abseil-cpp:absl_default_cflags_cc",
+        "//abseil-cpp:absl_define_config",
+      ]
+
+      if (!defined(defines)) {
+        defines = []
+      }
+      if (is_component_build) {
+        defines += [ "ABSL_BUILD_DLL" ]
+        if (!is_win && current_os != "aix") {
+          configs -= [ "//chromium/build/config/gcc:symbol_visibility_hidden" ]
+          configs += [ "//chromium/build/config/gcc:symbol_visibility_default" ]
+        }
+      }
+
+      if (!defined(public_configs)) {
+        public_configs = []
+      }
+      public_configs += [ "//abseil-cpp:absl_include_config" ]
+
+      if (!defined(visibility)) {
+        # Within Chromium builds, restrict direct visibility of Abseil sources, so
+        # users must depend on //third_party/abseil-cpp:absl. This prevents use of
+        # banned targets like absl/types:any. A few targets require exceptions.
+        if (build_with_chromium) {
+          visibility = [
+            # Abseil itself.
+            "//third_party/abseil-cpp/*",
+
+            # GTest.  It unconditionally #includes any.h if pretty-print support
+            # for absl types is enabled.
+            "//third_party/googletest/*",
+          ]
+
+          if (!is_component_build) {
+            visibility += [
+              # Not used by Chromium directly.
+              "//chromecast/internal/*",
+              "//libassistant/*",
+            ]
+          }
+        } else {
+          visibility = [ "*" ]
+        }
+      }
+      visibility += [ "//abseil-cpp/*" ]
+
+      # Now that abseil-cpp lives under Mozilla's third_party instead
+      # of under libwebrtc's third_party and is built as a stand-alone
+      # library, we need to "re-root" the dependency paths.  We can
+      # modify the dependencies here to avoid modifying most, if not
+      # all, of the BUILD.gn files.
+      if (defined(deps)) {
+        modified_deps = []
+        foreach (dep, deps) {
+          newdep = string_replace(dep, "//third_party/abseil-cpp/", "//")
+          newdep = string_replace(newdep, "//build", "//chromium/build")
+          modified_deps += [ newdep ]
+        }
+        deps = []
+        deps = modified_deps
+      }
+
+      # Same for public_deps
+      if (defined(public_deps)) {
+        modified_deps = []
+        foreach (dep, public_deps) {
+          newdep = string_replace(dep, "//third_party/abseil-cpp/", "//")
+          modified_deps += [ newdep ]
+        }
+        public_deps = []
+        public_deps = modified_deps
+      }
+
+      # Same for visibility
+      if (defined(visibility)) {
+        modified_deps = []
+        foreach (dep, visibility) {
+          newdep = string_replace(dep, "//third_party/abseil-cpp/", "//")
+          modified_deps += [ newdep ]
+        }
+        visibility = []
+        visibility = modified_deps
+      }
+    }
+  }
+}
+
+template("absl_test") {
+  source_set(target_name) {
+    if (!absl_build_tests) {
+      not_needed(invoker, "*")
+    } else {
+      forward_variables_from(invoker, "*")
+      testonly = true
+      configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+      configs += [
+        "//chromium/build/config/compiler:no_chromium_code",
+        "//abseil-cpp:absl_default_cflags_cc",
+        "//abseil-cpp:absl_define_config",
+        "//abseil-cpp:absl_test_config",
+      ]
+
+      if (!defined(public_configs)) {
+        public_configs = []
+      }
+      public_configs += [ "//abseil-cpp:absl_include_config" ]
+
+      visibility = [ "//third_party/abseil-cpp/:*" ]
+      deps += [
+        "//third_party/googletest:gmock",
+        "//third_party/googletest:gtest",
+      ]
+    }
+
+    # Now that abseil-cpp lives under Mozilla's third_party instead
+    # of under libwebrtc's third_party and is built as a stand-alone
+    # library, we need to "re-root" the dependency paths.  We can
+    # modify the dependencies here to avoid modifying most, if not
+    # all, of the BUILD.gn files.
+    if (defined(deps)) {
+      modified_deps = []
+      foreach (dep, deps) {
+        newdep = string_replace(dep, "//third_party/abseil-cpp/", "//")
+        modified_deps += [ newdep ]
+      }
+      deps = []
+      deps = modified_deps
+    }
+  }
+}
