@@ -1,0 +1,405 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@namespace url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
+
+menupopup,
+panel {
+  --menu-icon-opacity: 1;
+  --menu-arrow-size: 1em;
+  --menuitem-border-radius: 3px;
+  --menuitem-margin: 0px;
+  --menuitem-padding: 0.5em 1em;
+
+  @media (-moz-platform: linux) {
+    --menuitem-padding: .25em .5em;
+  }
+  @media (-moz-platform: macos) {
+    --menuitem-padding: 3px 9px;
+  }
+
+  @media (-moz-platform: windows) {
+    --menu-arrow-size: max(1em, 16px);
+
+    @media (prefers-color-scheme: light) {
+      --menu-icon-opacity: 0.7;
+    }
+  }
+}
+
+menupopup {
+  font: menu;
+
+  /* Also apply the padding in the inline axis for menus */
+  --panel-padding: var(--panel-padding-block);
+
+  @media (-moz-windows-mica-popups) {
+    appearance: auto;
+    -moz-default-appearance: menupopup;
+    /* The mica backdrop takes care of our shadow, border, and border-radius */
+    --panel-border-color: transparent;
+    --panel-shadow-margin: 0px;
+    --panel-border-radius: 0px;
+  }
+
+  @media (-moz-platform: macos) {
+    /* stylelint-disable-next-line font-family-no-missing-generic-family-keyword */
+    font: -moz-pull-down-menu;
+  }
+
+  > menu > menupopup {
+    /* Vertically align nested menupopups: the shadow plus the top padding plus top border */
+    margin-top: calc(-1 * (var(--panel-shadow-margin) + var(--panel-padding-block) + 1px));
+  }
+}
+
+/* Rules for popups associated with menulists */
+menulist > menupopup {
+  min-width: 0;
+  font: inherit;
+
+  @media (-moz-platform: macos) {
+    color: FieldText;
+
+    &:not([position]) {
+      margin-inline-start: -13px;
+      margin-top: -1px;
+    }
+  }
+
+  > menuitem,
+  > menucaption,
+  > menu {
+    max-width: none;
+
+    @media (-moz-platform: windows) {
+      > label {
+        padding-block: 0;
+      }
+    }
+  }
+
+  @media (-moz-platform: windows) {
+    > menuitem[_moz-menuactive][disabled="true"] {
+      color: GrayText;
+    }
+  }
+}
+
+/* Menu separator */
+
+menuseparator {
+  /* Using padding instead of margin to increase the hit area, as some
+     separators (e.g. in bookmarks menus) can be dragged or have a context
+     menu. */
+  padding-block: 4px;
+
+  @media (-moz-platform: macos) {
+    padding-block: 5px;
+    margin-inline: 9px;
+  }
+
+  @media (-moz-platform: windows) {
+    /* The side padding should align with the start of the menu item text. */
+    padding-inline: 1em;
+  }
+
+  &::before {
+    border-top: 1px solid var(--panel-separator-color);
+    content: "";
+    display: block;
+    flex: 1;
+  }
+}
+
+/* Scroll buttons */
+
+/* Hide arrow buttons when there's nothing to scroll in that direction */
+.menupopup-arrowscrollbox[scrolledtostart]::part(scrollbutton-up),
+.menupopup-arrowscrollbox[scrolledtoend]::part(scrollbutton-down) {
+  display: none;
+}
+
+.menupopup-arrowscrollbox::part(scrollbox) {
+  /* This makes the padding / margin trick below work */
+  overflow-clip-box-block: content-box;
+}
+
+/* Prevent the scrolled contents of the menupopup from jumping vertically when
+ * the arrow buttons appear / disappear, by positioning ::part(scrollbox) in
+ * such a way that its edges are at the same position as the edges of
+ * arrowscrollbox regardless of scroll button visibility.
+ */
+.menupopup-arrowscrollbox:not([scrolledtostart])::part(scrollbox) {
+  /* scrollbutton-up is visible; shift our top edge up by its height. */
+  margin-top: -16px;
+  padding-top: 16px;
+}
+
+.menupopup-arrowscrollbox:not([scrolledtoend])::part(scrollbox) {
+  /* scrollbutton-down is visible; shift our bottom edge down by its height. */
+  margin-bottom: -16px;
+  padding-bottom: 16px;
+}
+
+menubar {
+  font: menu;
+}
+
+menubar > menu {
+  @media (-moz-platform: linux) {
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+    padding: .25em .5em;
+    padding-bottom: 1px;
+    border-bottom: 3px solid transparent;
+
+    &[open] {
+      border-bottom-color: AccentColor;
+    }
+  }
+
+  @media (-moz-platform: macos) {
+    padding-block: 2px;
+    padding-inline: 7px 5px;
+    margin: 1px 0;
+
+    &[_moz-menuactive] {
+      color: inherit;
+      background-color: transparent;
+    }
+
+    &[open] {
+      color: -moz-menuhovertext;
+      background-color: -moz-menuhover;
+    }
+  }
+  @media (-moz-platform: windows) {
+    padding: 1px 6px 2px;
+
+    &:-moz-window-inactive {
+      color: ThreeDShadow;
+    }
+
+    &:not([disabled="true"]) {
+      color: inherit;
+    }
+    &[_moz-menuactive]:not([disabled="true"]) {
+      color: -moz-menubarhovertext;
+
+      *|*:root[lwtheme] & {
+        /* FIXME: This feels out of place, maybe we can just use the lwtheme
+         * rules everywhere? */
+        background-color: SelectedItem;
+        color: SelectedItemText;
+        text-shadow: none;
+      }
+    }
+  }
+
+  > .menu-icon {
+    display: none;
+  }
+
+  > .menu-text {
+    margin: 0;
+  }
+}
+
+menu,
+menuitem,
+menucaption {
+  border-radius: var(--menuitem-border-radius);
+  padding: var(--menuitem-padding);
+  margin: var(--menuitem-margin);
+  align-items: center;
+  flex-shrink: 0;
+  list-style-image: none;
+  max-width: 42em;
+}
+
+menu,
+menuitem {
+  &:where([disabled="true"]) {
+    color: var(--text-color-disabled);
+    text-shadow: none;
+  }
+
+  &:where([_moz-menuactive]:not([disabled="true"])) {
+    color: -moz-menuhovertext;
+    background-color: -moz-menuhover;
+  }
+
+  &:where([_moz-menuactive][disabled="true"]) {
+    background-color: -moz-menuhoverdisabled;
+  }
+}
+
+menuitem:is([default="true"], .spell-suggestion),
+menucaption {
+  font-weight: bold;
+}
+
+.menu-icon,
+.menu-text,
+.menu-highlightable-text,
+.menu-accel {
+  pointer-events: none;
+}
+
+/* ..... menu arrow box ..... */
+
+menupopup > menu::after {
+  content: "";
+  display: block;
+  width: var(--menu-arrow-size);
+  height: var(--menu-arrow-size);
+  background-image: url("chrome://global/skin/icons/arrow-right.svg");
+  background-size: var(--menu-arrow-size);
+
+  -moz-context-properties: fill, fill-opacity;
+  fill: currentColor;
+  fill-opacity: var(--menu-icon-opacity);
+
+  margin-inline: 1em 0;
+  @media (-moz-platform: linux) {
+    margin-inline: .5em 0;
+  }
+  @media (-moz-platform: macos) {
+    margin-inline: 22px -3px;
+  }
+}
+
+menupopup > menu:-moz-locale-dir(rtl)::after {
+  background-image: url("chrome://global/skin/icons/arrow-left.svg");
+}
+
+.menu-text,
+.menu-accel {
+  margin: 0;
+  @media (-moz-platform: windows) {
+    padding: 1px 0;
+  }
+  @media (-moz-platform: linux) {
+    margin-inline: 0 2px;
+  }
+}
+
+/* Accel text */
+
+.menu-accel {
+  margin-inline: 0.74em 0.35em;
+  @media (-moz-platform: macos) {
+    margin-inline: 25px 0;
+  }
+  @media (-moz-platform: linux) {
+    /* Matches the margin-inline-end on iconic-left */
+    margin-inline: 0.5em 0;
+  }
+
+  @media not (prefers-contrast) {
+    menuitem:not([disabled]) > & {
+      color: var(--text-color-disabled);
+    }
+  }
+
+  :is(menu, menuitem):not([acceltext]) > & {
+    display: none;
+  }
+}
+
+menuitem:not([highlightable]) > .menu-highlightable-text,
+menuitem[highlightable] > .menu-text {
+  display: none;
+}
+
+.menu-highlightable-text,
+.menu-text {
+  flex: 1;
+}
+
+.menu-icon {
+  width: 16px;
+  height: 16px;
+
+  @media (-moz-platform: linux) {
+    /* Matches inline menuitem padding */
+    margin-inline-end: .5em;
+  }
+  @media (-moz-platform: windows) {
+    margin-top: 2px;
+    margin-inline-end: 8px;
+  }
+  @media (-moz-platform: macos) {
+    margin-block: -2px;
+    margin-inline-end: 6px;
+  }
+  /* Empty icons shouldn't take up any space */
+  menuitem:not(.menuitem-iconic, [image]) > &,
+  menu:not(.menu-iconic) > & {
+    display: none;
+  }
+}
+
+/* checkbox / radio rendering */
+
+/* On linux, we use regular checkboxes and radio buttons */
+@media (-moz-platform: linux) {
+  menuitem:is([type="checkbox"], [checked="true"]) .menu-icon {
+    appearance: auto;
+    -moz-default-appearance: checkbox;
+  }
+
+  menuitem[type="radio"] .menu-icon {
+    appearance: auto;
+    -moz-default-appearance: radio;
+  }
+}
+
+/* On windows we use a checkmark */
+@media (-moz-platform: windows) {
+  /* We need to do something to override the default style for selected
+     checkboxes and radio buttons because the native drawing we use on other
+     Windows versions looks pretty bad with the Win10 styles, so for now we'll
+     insert a generic checkmark icon for both types. */
+  menuitem[checked="true"] > .menu-icon {
+    -moz-context-properties: fill, fill-opacity;
+    fill: currentColor;
+    fill-opacity: var(--menu-icon-opacity);
+    list-style-image: url("chrome://global/skin/icons/menu-check.svg");
+  }
+}
+
+menupopup[needsgutter] {
+  @media (-moz-platform: linux) or (-moz-platform: windows) {
+    > :is(menu, menuitem) > .menu-icon {
+      display: revert;
+    }
+  }
+
+  @media (-moz-platform: macos) {
+    /* although only menuitems may be checked, apply this to
+       menus and menucaptions as well to maintain alignment */
+    > menu,
+    > menuitem,
+    > menucaption {
+      padding-inline-start: 0;
+
+      &::before {
+        content: '\2713'; /* a checkmark */
+        display: inline-block;
+        vertical-align: middle;
+        line-height: 0;
+        visibility: hidden;
+        padding-inline: 4px;
+        font-weight: bold;
+      }
+    }
+
+    > menuitem:is([checked="true"], [selected="true"])::before {
+      visibility: inherit;
+    }
+  }
+}

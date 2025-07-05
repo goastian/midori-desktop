@@ -1,0 +1,23 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+[scriptable, uuid(a2568d74-be41-46a5-abfc-6dbab0b80f95)]
+interface nsIMLUtils : nsISupports {
+
+  readonly attribute unsigned long long totalPhysicalMemory;
+  readonly attribute unsigned long long availablePhysicalMemory;
+
+  /**
+   * Computes the optimal concurrency level for ML workloads on the CPU.
+   *
+   * See the implementation for details.
+   *
+   * Returns:
+   * - An integer representing the recommended concurrency level.
+   */
+  octet getOptimalCPUConcurrency();
+
+};

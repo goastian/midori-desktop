@@ -1,0 +1,57 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+.delete-login-button-container {
+  display: flex;
+  justify-content: end;
+  height: 0;
+}
+
+/* Add spacing between fieldset legend text and fields */
+login-origin-field, login-password-field {
+  margin-block-start: var(--space-medium);
+}
+
+origin-warning, password-warning {
+  display: none;
+}
+
+origin-warning.invalid-input, password-warning.invalid-input {
+  display: block;
+}
+
+.field-container {
+  position: relative;
+}
+
+.remove-login-card {
+  display: flex;
+  flex-direction: column;
+
+  > moz-button-group {
+    margin-block-start: var(--space-xxlarge);
+  }
+}
+
+.remove-card-back {
+  display: flex;
+  align-items: center;
+
+  > p {
+    margin-block: 0;
+    margin-inline: var(--space-xsmall);
+  }
+}
+
+.remove-card-text {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-medium);
+  row-gap: var(--space-small);
+
+  > h3,
+  > p {
+    margin-block: 0;
+  }
+}

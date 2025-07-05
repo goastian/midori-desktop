@@ -1,0 +1,177 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Toolkit :: Password Manager'
+
+contextual_manager:
+  toolbar_action:
+    type: event
+    description: >
+      Client interacts with any object within CM toolbar, or any action
+      associated with the toolbar is initiated from an "empty state".
+      Possible triggers include:
+        "empty_state_card": When there are no records stored and user is presented
+                            options for a user to take
+        "toolbar": When the user selects an option from the CPM toolbar
+      Possible option names include:
+        "add_new": Add a new record
+        "import_browser": Import records from another browser
+        "import_file": Import records from a file
+        "export": Export records to a file
+        "remove_all": Remove all records
+        "preferences": Takes user to about:preferences
+        "help": Takes user to a SUMO page
+        "list_state_all": Display all records
+        "list_state_alerts": Display only alerts
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    notification_emails:
+      - passwords-dev@mozilla.org
+      - issozi@mozilla.com
+      - tthorne@mozilla.com
+    expires: never
+    extra_keys:
+      trigger:
+        description: >
+          Which UI surface triggered the action
+        type: string
+      option_name:
+        description: >
+          The action selected from the toolbar
+        type: string
+
+  records_update:
+    type: event
+    description: >
+      Client modifies, adds, or removes CM record. Captures changes committed to
+      a client's password management records.
+      Possible change types:
+        "add": Single record is created
+        "edit": Single record is edited
+        "remove": Single record is removed
+        "remove_all": All records are removed
+        "import": Records were changed by importing from another dataset
+                  (such as a file, browser)
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    notification_emails:
+      - passwords-dev@mozilla.org
+      - issozi@mozilla.com
+      - tthorne@mozilla.com
+    expires: never
+    extra_keys:
+      change_type:
+        description: >
+          The type of change the client made to records
+        type: string
+
+  records_interaction:
+    type: event
+    description: >
+      Client interacts with existing CM tile
+      Possible interaction types include:
+        "url_navigate": When the origin field is clicked
+        "copy_username": When the username field is clicked
+        "copy_password": When the password field is clicked
+        "view_password": When the reveal password button is clicked
+        "hide_password": When the hide password button is clicked
+        "edit": When the edit button is clicked
+        "view_alert": When the "View alert" button is clicked
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    notification_emails:
+      - passwords-dev@mozilla.org
+      - issozi@mozilla.com
+      - tthorne@mozilla.com
+    expires: never
+    extra_keys:
+      interaction_type:
+        description: >
+          The type of user interaction with the CM record tile
+        type: string
+
+  notification_shown:
+    type: event
+    description: >
+      Notification is dislayed to client.
+      Possible notification details include:
+        "import_success": Logins were successfully imported
+        "import_error": There was an error importing logins
+        "export_passwords_success": Logins were successfully exported
+        "add_login_success": A login was successfully added manually
+        "update_login_success": A login was succesfully updated manually
+        "delete_login_success": Logins were successfully deleted
+        "discard_changes": Exited the login form while updating
+        "login_already_exists_warning": A login was not created because it already exists
+        "breached_origin_warning": A login has a breached origin alert
+        "vulnerable_password_warning": A login has a vulnerable password alert
+        "no_username_warning": A login has a no username alert
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    notification_emails:
+      - passwords-dev@mozilla.org
+      - issozi@mozilla.com
+      - tthorne@mozilla.com
+    expires: never
+    extra_keys:
+      notification_detail:
+        description: >
+          The type of notification that is displayed to the client.
+        type: string
+
+  notification_interaction:
+    type: event
+    description: >
+      Client interacts with displayed notification
+      Possible notification details include:
+        "import_success": Logins were successfully imported
+        "import_error": There was an error importing logins
+        "export_passwords_success": Logins were successfully exported
+        "add_login_success": A login was successfully added manually
+        "update_login_success": A login was succesfully updated manually
+        "delete_login_success": Logins were successfully deleted
+        "discard_changes": Exited the login form while updating
+        "login_already_exists_warning": A login was not created because it already exists
+        "breached_origin_warning": A login has a breached origin alert
+        "vulnerable_password_warning": A login has a vulnerable password alert
+        "no_username_warning": A login has a no username alert
+      Possible action types include:
+        "change_record": Change a record field
+        "open_link": Open a link
+        "import": Import records after a failed attempt
+        "confirm_discard_changes": Continue exiting the login form while updating
+        "nav_record": Navigate to a newly created or existing record
+        "dismiss": Close a notification
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947634
+    notification_emails:
+      - passwords-dev@mozilla.org
+      - issozi@mozilla.com
+      - tthorne@mozilla.com
+    expires: never
+    extra_keys:
+      notification_detail:
+        description: >
+          The type of notification that is displayed to the client
+        type: string
+      action_type:
+        description: >
+          The type of action that the client interactd with
+        type: string

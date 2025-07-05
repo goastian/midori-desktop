@@ -1,0 +1,253 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src chrome:; object-src 'none'; connect-src https://api.profiler.firefox.com"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title data-l10n-id="about-logging-title"></title>
+    <link
+      rel="stylesheet"
+      href="chrome://global/content/aboutLogging/aboutLogging.css"
+    />
+    <script
+      type="module"
+      src="chrome://global/content/aboutLogging/aboutLogging.mjs"
+    ></script>
+    <link rel="localization" href="toolkit/about/aboutLogging.ftl" />
+    <link rel="localization" href="toolkit/branding/brandings.ftl" />
+  </head>
+
+  <body id="body">
+    <main class="main-content">
+      <div class="about-logging-title-bar">
+        <h1 id="title" data-l10n-id="about-logging-page-title"></h1>
+        <div id="toast-copied" data-l10n-id="about-logging-url-copied"></div>
+        <moz-button
+          iconsrc="chrome://global/skin/icons/more.svg"
+          aria-expanded="false"
+          aria-haspopup="menu"
+          type="default"
+          size="default"
+          id="open-menu-button"
+          data-l10n-id="about-logging-menu"
+        ></moz-button>
+        <panel-list>
+          <panel-item
+            id="copy-as-url"
+            data-l10n-id="about-logging-copy-as-url"
+            action="copy"
+          ></panel-item>
+        </panel-list>
+      </div>
+      <section>
+        <div hidden id="error" class="page-subsection info-box">
+          <div class="info-box-label" data-l10n-id="about-logging-error"></div>
+          <div id="error-description"></div>
+          <div data-l10n-id="about-logging-configuration-url-ignored"></div>
+        </div>
+        <div
+          hidden
+          id="some-elements-unavailable"
+          class="page-subsection info-box"
+        >
+          <div class="info-box-label" data-l10n-id="about-logging-info"></div>
+          <div data-l10n-id="about-logging-some-elements-disabled"></div>
+        </div>
+      </section>
+      <div class="button-row">
+        <button
+          id="toggle-logging-button"
+          data-l10n-id="about-logging-start-logging"
+        ></button>
+      </div>
+      <form id="upload-question-form" hidden>
+        <p data-l10n-id="about-logging-upload-question"></p>
+        <div class="button-row flex-and-wrap">
+          <button
+            type="button"
+            id="save-button"
+            data-l10n-id="about-logging-save-button"
+          ></button>
+          <button
+            type="button"
+            id="upload-button"
+            data-l10n-id="about-logging-upload-button"
+          ></button>
+          <div
+            id="saved-message"
+            data-l10n-id="about-logging-saved"
+            data-l10n-args='{"path": ""}'
+            hidden
+          ></div>
+          <label id="uploading-progress-container" hidden>
+            <span
+              id="uploading-progress-text"
+              data-l10n-id="about-logging-uploading-progress"
+              data-l10n-args='{"percent": ""}'
+            >
+            </span>
+            <progress id="uploading-progress-element"></progress>
+          </label>
+          <div id="uploaded-message-container" class="flex-and-wrap" hidden>
+            <div
+              id="uploaded-message-text"
+              data-l10n-id="about-logging-uploaded"
+              data-l10n-args='{"url": ""}'
+            >
+              <a
+                id="uploaded-message-url"
+                target="_blank"
+                data-l10n-name="uploaded-message-url"
+              ></a>
+            </div>
+            <button
+              type="button"
+              id="uploaded-url-share-button"
+              class="button-with-icon"
+              data-l10n-id="about-logging-share-uploaded-url"
+            >
+              <img
+                data-l10n-name="share-image"
+                src="chrome://global/skin/icons/open-in-new.svg"
+                role="presentation"
+              />
+            </button>
+          </div>
+        </div>
+        <div id="save-upload-error" hidden></div>
+      </form>
+      <section id="log-module-selection">
+        <h2 data-l10n-id="about-logging-log-modules-selection"></h2>
+        <div class="page-subsection">
+          <label
+            for="current-log-modules"
+            data-l10n-id="about-logging-currently-enabled-log-modules"
+          ></label>
+          <div id="current-log-modules"></div>
+          <div
+            id="no-log-modules"
+            data-l10n-id="about-logging-no-log-modules"
+          ></div>
+        </div>
+        <form id="log-modules-form" class="page-subsection">
+          <label
+            for="log-modules"
+            data-l10n-id="about-logging-new-log-modules"
+          ></label>
+          <input type="text" name="log-modules" id="log-modules" value="" />
+          <div class="button-row">
+            <button
+              type="submit"
+              id="set-log-modules-button"
+              data-l10n-id="about-logging-set-log-modules"
+            ></button>
+          </div>
+        </form>
+        <div id="preset-selector-section" class="page-subsection">
+          <label
+            for="logging-preset-dropdown"
+            data-l10n-id="about-logging-logging-preset-selector-text"
+          ></label>
+          <select
+            name="logging-preset-dropdown"
+            id="logging-preset-dropdown"
+          ></select>
+          <div id="logging-preset-description"></div>
+        </div>
+      </section>
+      <section id="logging-output">
+        <div>
+          <span
+            hidden
+            id="buttons-disabled"
+            data-l10n-id="about-logging-buttons-disabled"
+          ></span>
+        </div>
+        <h2 data-l10n-id="about-logging-logging-output-selection"></h2>
+        <div id="logging-output-profiler" class="form-entry">
+          <input
+            type="radio"
+            id="radio-logging-profiler"
+            name="logging-output"
+            value="profiler"
+            checked
+          />
+          <label
+            for="radio-logging-profiler"
+            data-l10n-id="about-logging-logging-to-profiler"
+          ></label>
+        </div>
+        <div id="profiler-configuration" class="form-entry">
+          <input type="checkbox" id="with-profiler-stacks-checkbox" /><label
+            for="with-profiler-stacks-checkbox"
+            data-l10n-id="about-logging-with-profiler-stacks-checkbox"
+          ></label>
+        </div>
+        <div id="logging-output-file" class="form-entry">
+          <input
+            type="radio"
+            id="radio-logging-file"
+            name="logging-output"
+            value="file"
+          />
+          <label
+            for="radio-logging-file"
+            data-l10n-id="about-logging-logging-to-file"
+          ></label>
+          <div>
+            <span
+              hidden
+              id="buttons-disabled"
+              data-l10n-id="about-logging-buttons-disabled"
+            ></span>
+          </div>
+        </div>
+        <form id="log-file-configuration" class="page-subsection">
+          <div>
+            <span data-l10n-id="about-logging-current-log-file"></span>
+            <span id="current-log-file"></span>
+            <span
+              id="no-log-file"
+              data-l10n-id="about-logging-no-log-file"
+            ></span>
+          </div>
+          <div>
+            <label
+              for="log-file"
+              data-l10n-id="about-logging-new-log-file"
+            ></label>
+            <input type="text" name="log-file" id="log-file" />
+            <div class="button-row">
+              <button
+                type="button"
+                id="open-log-file-button"
+                data-l10n-id="about-logging-open-log-file-dir"
+              ></button>
+              <button
+                type="submit"
+                id="set-log-file-button"
+                data-l10n-id="about-logging-set-log-file"
+              ></button>
+            </div>
+          </div>
+        </form>
+        <div class="page-subsection">
+          <p id="log-tutorial" data-l10n-id="about-logging-log-tutorial">
+            <a
+              data-l10n-name="logging"
+              href="https://firefox-source-docs.mozilla.org/networking/http/logging.html"
+            ></a>
+          </p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

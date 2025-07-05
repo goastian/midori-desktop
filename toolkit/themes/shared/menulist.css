@@ -1,0 +1,119 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:host([native]) {
+  appearance: auto;
+  -moz-default-appearance: menulist;
+  text-shadow: none;
+  @media (-moz-platform: linux) {
+    font: menu;
+  }
+  @media (-moz-platform: linux) or (-moz-platform: windows) {
+    margin: 2px 4px;
+    color: ButtonText;
+    padding: 2px 3px;
+    border: 1px solid ThreeDLightShadow;
+
+    dropmarker {
+      align-self: stretch;
+    }
+  }
+  @media (-moz-platform: macos) {
+    margin: 5px 2px 3px;
+    min-height: 20px;
+    color: -moz-DialogText;
+
+    #label-box {
+      margin-bottom: 1px;
+    }
+
+    label {
+      margin: 1px 3px;
+    }
+
+    dropmarker {
+      display: none;
+    }
+  }
+}
+
+@media (-moz-platform: linux) or (-moz-platform: windows) {
+  :host([native]:where(:hover)) {
+    color: -moz-buttonhovertext;
+  }
+  :host([native]:where(:hover:active, [open="true"])) {
+    color: -moz-buttonactivetext;
+  }
+}
+
+:host([native][disabled="true"]) {
+  color: GrayText;
+}
+
+:host(:not([native])) {
+  appearance: none;
+  background-color: var(--button-background-color);
+  color: var(--button-text-color);
+  border-radius: 4px;
+  padding-block: 4px;
+  padding-inline: 12px 8px;
+  margin: 5px 2px 3px;
+}
+
+:host(:not([native])[size="medium"]) {
+  padding-block: 6px;
+  padding-inline: 16px 10px;
+}
+
+:host(:not([native])[size="large"]) {
+  padding-block: 8px;
+  padding-inline: 16px 12px;
+}
+
+:host(:not([native]):hover) {
+  background-color: var(--button-background-color-hover);
+}
+
+:host(:not([native]):hover:active) {
+  background-color: var(--button-background-color-active);
+}
+
+:host(:not([native]):focus-visible) {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+}
+
+#label-box {
+  min-width: 0;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+
+  :host(:not([native])) & {
+    font-weight: 600;
+  }
+}
+
+dropmarker {
+  pointer-events: none;
+  flex: 0;
+  align-self: center;
+
+  :host(:not([native])) & {
+    display: flex;
+    appearance: none;
+    content: url(chrome://global/skin/icons/arrow-down-12.svg);
+    -moz-context-properties: fill;
+    fill: currentColor;
+  }
+}
+
+:host(:not([highlightable])) #highlightable-label,
+:host([highlightable]) #label {
+  display: none;
+}
+
+label {
+  margin: 0 3px;
+}

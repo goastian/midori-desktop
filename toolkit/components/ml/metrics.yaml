@@ -1,0 +1,368 @@
+# This Source Code Form is subject to the terms of the Mozilla Public↩
+# License, v. 2.0. If a copy of the MPL was not distributed with this↩
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.↩
+
+# Adding a new metric? We have docs for that!↩
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html↩
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Core :: Machine Learning'
+
+
+firefox.ai.runtime:
+  engine_creation_success:
+    type: labeled_timing_distribution
+    time_unit: millisecond
+    description: >
+      An inference engine was created
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891685
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D238583
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    labels:
+      - autofill-ml
+      - pdfjs
+      - ml-suggest-intent
+      - ml-suggest-ner
+      - about-inference
+      - webextension
+      - wllamapreview
+      - default-engine
+      - smart-tab-embedding-engine
+      - smart-tab-topic-engine
+
+  engine_creation_failure:
+    type: event
+    description: >
+      An inference engine has failed to create
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891685
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D238583
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    extra_keys:
+      modelId:
+        type: string
+        description: model id
+      featureId:
+        description: feature id
+        type: string
+      taskName:
+        description: taskName id
+        type: string
+      engineId:
+        description: engine id
+        type: string
+      error:
+        description: error class
+        type: string
+
+  run_inference_failure:
+    type: event
+    description: >
+      An inference run has failed
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891685
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D238583
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    extra_keys:
+      modelId:
+        type: string
+        description: model id
+      featureId:
+        description: feature id
+        type: string
+      engineId:
+        description: Engine id
+        type: string
+
+  run_inference_success:
+    type: labeled_timing_distribution
+    time_unit: millisecond
+    description: >
+      An inference engine was created
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891685
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D238583
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    labels:
+      - autofill-ml
+      - pdfjs
+      - ml-suggest-intent
+      - ml-suggest-ner
+      - about-inference
+      - webextension
+      - wllamapreview
+      - default-engine
+      - smart-tab-embedding-engine
+      - smart-tab-topic-engine
+
+  model_download:
+    type: event
+    description: >
+      A model is downloaded
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891685
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D238583
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    extra_keys:
+      modelDownloadId:
+        description: used to identify models files downloaded together in the pipeline
+        type: string
+      featureId:
+        description: feature id
+        type: string
+      engineId:
+        type: string
+        description: model id
+      modelId:
+        type: string
+        description: model id
+      step:
+        description: start / cancel / error / complete
+        type: string
+      duration:
+        description: how long it took to reach the step from start
+        type: quantity
+      when:
+        description: when the event was recorded
+        type: quantity
+      modelRevision:
+        description: model revision
+        type: string
+      error:
+        description: error class
+        type: string
+
+  model_deletion:
+    type: event
+    description: >
+      A model is deleted
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966301
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249218
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+    expires: never
+    extra_keys:
+      deletedBy:
+        type: string
+        description: the name of the feature that deleted the model
+      modelId:
+        type: string
+        description: model id
+      modelRevision:
+        description: model revision
+        type: string
+      error:
+        description: error class
+        type: string
+
+model_management:
+  remove_initiated:
+    type: event
+    description: |
+      Recorded when the user clicks on Remove from the three dots next to
+      a model item or the remove button from the model details page
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      extension_ids:
+        description: Ids of the extensions that use this model
+        type: string
+      feature_ids:
+        description: Ids of the engines that are linked to a feature
+        type: string
+      source:
+        description: The location from which the link was clicked e.g., details, list
+        type: string
+      size:
+        description: The size of the model in bytes
+        type: quantity
+      last_used:
+        description: hourse since the model was used
+        type: quantity
+      last_install:
+        description: hourse since the model was installed
+        type: quantity
+      model:
+        description: The id of the model
+        type: string
+      version:
+        description: version of the current model
+        type: string
+    expires: never
+
+  remove_confirmation:
+    type: event
+    description: |
+      Recorded when the user interacts with the
+      panel to confirm removal of model
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      extension_ids:
+        description: Ids of the extensions that use this model
+        type: string
+      feature_ids:
+        description: Ids of the engines that are linked to a feature
+        type: string
+      model:
+        description: The id of the model
+        type: string
+      version:
+        description: version of the current model
+        type: string
+      action:
+        description: The action that was taken by the user, remove or cancel
+        type: string
+    expires: never
+
+  list_item_manage:
+    type: event
+    description: |
+      Recorded when the user clicks on Manage from the three
+      dots next to a model item
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      extension_ids:
+        description: Ids of the extensions that use this model
+        type: string
+      feature_ids:
+        description: Ids of the engines that are linked to a feature
+        type: string
+      model:
+        description: The id of the model
+        type: string
+      version:
+        description: version of the current model
+        type: string
+    expires: never
+
+  model_card_link:
+    type: event
+    description: |
+      Recorded when the user clicks the model card link in the model details
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      extension_ids:
+        description: Ids of the extensions that use this model
+        type: string
+      feature_ids:
+        description: Ids of the engines that are linked to a feature
+        type: string
+      model:
+        description: The id of the model
+        type: string
+      version:
+        description: version of the current model
+        type: string
+    expires: never
+
+  list_view:
+    type: event
+    description: |
+      Recorded when the user views the model management section in Add-ons Manager
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      models:
+        description: Number of models in the list
+        type: quantity
+    expires: never
+
+  details_view:
+    type: event
+    description: |
+      Recorded when the user views the screen with model details in the model management section in Add-ons Manager
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947256
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249462
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tziade@mozilla.com
+      - ngrato@mozilla.com
+    extra_keys:
+      extension_ids:
+        description: Ids of the extensions that use this model
+        type: string
+      feature_ids:
+        description: Ids of the engines that are linked to a feature
+        type: string
+      model:
+        description: The id of the model
+        type: string
+      version:
+        description: version of the current model
+        type: string
+    expires: never

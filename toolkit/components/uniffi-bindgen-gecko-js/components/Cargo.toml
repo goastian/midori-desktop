@@ -1,0 +1,29 @@
+[package]
+edition = "2015"
+name = "gkrust-uniffi-components"
+version = "0.1.0"
+authors = ["The Mozilla Project Developers"]
+license = "MPL-2.0"
+description = "UniFFI-enabled Rust components for libxul"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+path = "lib.rs"
+test = false
+doctest = false
+bench = false
+doc = false
+harness = false
+
+[dependencies]
+uniffi = { workspace = true }
+context_id = "0.1"
+tabs = "0.1"
+search = "0.1"
+suggest = "0.1"
+relevancy = "0.1"
+webext-storage = "0.1"
+
+[features]
+# Should we depend on xpcom crates?
+xpcom = []

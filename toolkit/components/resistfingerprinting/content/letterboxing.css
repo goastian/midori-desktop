@@ -1,0 +1,33 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * This selector and the stylesheet URL should be kept in sync in
+ * RFPHelper.sys.mjs (LETTERBOX_CSS_SELECTOR and LETTERBOX_CSS_URL,
+ * respectively), where --letterboxing-width & --letterboxing-height are
+ * actually set.
+ */
+.letterboxing {
+  --letterboxing-bgcolor: var(--tabpanel-background-color);
+
+  .browserContainer {
+    /*
+     * From Firefox 115 on, .browserContainer layout is flex / column,
+     * and without this trick the .browserStack's resize observer
+     * doesn't get notified on horizontal shrinking.
+     */
+    overflow: hidden;
+    background: var(--letterboxing-bgcolor);
+  }
+
+  .browserContainer:not(.responsive-mode) > .browserStack:not(.exclude-letterboxing) > browser {
+    width: var(--letterboxing-width) !important;
+    height: var(--letterboxing-height) !important;
+  }
+}
+
+:root:not([inDOMFullscreen]) .letterboxing.letterboxing-ready .browserContainer:not(.responsive-mode)
+  > .browserStack:not(.exclude-letterboxing) {
+  place-content: start center;
+}

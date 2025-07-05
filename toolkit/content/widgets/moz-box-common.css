@@ -1,0 +1,109 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@layer box-common {
+  :host {
+    --box-border-width: var(--border-width);
+    --box-border-color: var(--border-color);
+    --box-border: var(--box-border-width) solid var(--box-border-color);
+    --box-border-width-end: var(--box-border-width);
+    --box-border-radius: var(--border-radius-medium);
+    --box-border-radius-inner: calc(var(--box-border-radius) - var(--border-width));
+    --box-padding: var(--space-large);
+    --box-icon-size: var(--icon-size-default);
+
+    border: var(--box-border);
+    border-block-end: var(--box-border-width-end) solid var(--box-border-color);
+    border-start-start-radius: var(--box-border-radius-start, var(--box-border-radius));
+    border-start-end-radius: var(--box-border-radius-start, var(--box-border-radius));
+    border-end-start-radius: var(--box-border-radius-end, var(--box-border-radius));
+    border-end-end-radius: var(--box-border-radius-end, var(--box-border-radius));
+    display: block;
+  }
+
+  .text-content {
+    display: grid;
+    place-items: center start;
+    gap: var(--space-xxsmall) var(--space-small);
+    grid-template-columns: var(--box-icon-size) 1fr;
+    grid-template-areas:
+      "label label";
+
+    &.has-icon {
+      grid-template-areas:
+        "icon label";
+    }
+
+    &.has-description {
+      grid-template-areas:
+        "label label"
+        "description description";
+    }
+
+    &.has-icon.has-description {
+      grid-template-areas:
+        "icon label"
+        "description description";
+    }
+  }
+
+  .label {
+    grid-area: label;
+  }
+
+  .icon {
+    grid-area: icon;
+    width: var(--box-icon-size);
+    height: var(--box-icon-size);
+    -moz-context-properties: fill;
+    fill: var(--icon-color);
+  }
+
+  .description {
+    grid-area: description;
+  }
+}
+
+.button {
+  align-items: center;
+  justify-content: space-between;
+  font-size: inherit;
+  appearance: none;
+  background-color: var(--button-background-color-ghost);
+  color: var(--button-text-color-ghost);
+  display: flex;
+  padding: var(--box-padding);
+  text-align: start;
+  border: none;
+  border-start-start-radius: var(--box-border-radius-start, var(--box-border-radius-inner));
+  border-start-end-radius: var(--box-border-radius-start, var(--box-border-radius-inner));
+  border-end-start-radius: var(--box-border-radius-end, var(--box-border-radius-inner));
+  border-end-end-radius: var(--box-border-radius-end, var(--box-border-radius-inner));
+
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  &:hover {
+    background-color: var(--button-background-color-ghost-hover);
+    color: var(--button-text-color-ghost-hover);
+  }
+
+  &:hover:active:not(:disabled) {
+    background-color: var(--button-background-color-ghost-active);
+    color: var(--button-text-color-ghost-active);
+  }
+
+  &:disabled {
+    background-color: var(--button-background-color-ghost-disabled);
+    color: var(--button-text-color-ghost-disabled);
+    opacity: var(--button-opacity-disabled);
+  }
+}
+
+.nav-icon:dir(rtl) {
+  scale: -1 1;
+}

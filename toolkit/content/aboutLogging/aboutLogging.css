@@ -1,0 +1,130 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@import url("chrome://global/skin/in-content/common.css");
+
+[hidden] {
+  /* This page uses the hidden attribute a lot, so let's make sure we don't
+   * override it by mistake. */
+  display: none !important;
+}
+
+.about-logging-title-bar {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+#copy-as-url::part(button) {
+  background-image: url("chrome://global/skin/icons/edit-copy.svg");
+}
+
+#toast-copied {
+  visibility: hidden;
+  background-color: var(--background-color-success);
+  color: var(--text-color);
+  text-align: center;
+  border-radius: var(--border-radius-small);
+  padding: var(--space-medium);
+  opacity: 0;
+  transition: opacity 0.5s, visibility 0.5s;
+  margin-left: auto;
+  &.show {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+/** Content area **/
+.main-content {
+  width: min(90%, 1024px);
+  margin: auto;
+}
+
+.page-subsection {
+  margin-bottom: 2em;
+}
+
+.form-entry {
+  /* Center the labels with their checkboxes */
+  display: flex;
+  align-items: center;
+  margin: 0.3em 0;
+}
+
+:disabled + label {
+  opacity: 0.5;
+}
+
+#current-log-modules,
+#no-log-modules {
+  font-family: monospace;
+  margin-bottom: 1em;
+  word-break: break-word;
+}
+
+#current-log-file,
+#no-log-file {
+  font-family: monospace;
+}
+
+#profiler-configuration,
+#log-file-configuration {
+  /* 16px is the size of the radio button, 6px is its margin
+   * Then it's properly aligned with the text above. */
+  padding-inline-start: calc(16px + 6px);
+}
+
+label {
+  line-height: 1.8em;
+}
+
+input[type=text] {
+  box-sizing: border-box;
+  width: 100%;
+  font-family: monospace;
+
+  /* This cancels the default margin applied to all inputs in common-shared.css. */
+  margin-inline: 0 !important;
+}
+
+.flex-and-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5em;
+}
+
+.button-row > button:first-of-type {
+  /* This cancels the default margin applied to all buttons in common-shared.css. */
+  margin-inline-start: 0;
+}
+
+.info-box {
+  padding: 1em;
+  border-radius: 4px;
+}
+
+.info-box-label {
+  font-weight: 600;
+}
+
+#error {
+  background-color: rgba(240, 40, 40, 0.5);
+  border: 1px solid rgba(240, 40, 40, 0.6);
+}
+
+#some-elements-unavailable {
+  background-color: var(--in-content-box-info-background);
+  border-color: var(--in-content-box-border-color);
+}
+
+.button-with-icon {
+  display: flex;
+  gap: .5em;
+
+  /* Make sure that the icon changes color in dark mode. */
+  -moz-context-properties: fill;
+  fill: currentColor;
+}

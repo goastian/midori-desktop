@@ -1,0 +1,289 @@
+diff --git a/package.json b/package.json
+index b5c3e86..16b9b0e 100644
+--- a/package.json
++++ b/package.json
+@@ -26,7 +26,9 @@
+     "format:check": "prettier --check .",
+     "typegen": "tsc --build",
+     "dev": "webpack serve --no-client-overlay",
+-    "build": "webpack && npm run typegen",
++    "build:dev": "webpack --mode development",
++    "build:prod": "webpack --mode production",
++    "build": "npm run build:prod && npm run typegen",
+     "test": "node --experimental-vm-modules --expose-gc node_modules/jest/bin/jest.js --verbose",
+     "readme": "python ./docs/scripts/build_readme.py",
+     "docs-api": "node ./docs/scripts/generate.js",
+diff --git a/src/backends/onnx.js b/src/backends/onnx.js
+index a64f9d1..4557f20 100644
+--- a/src/backends/onnx.js
++++ b/src/backends/onnx.js
+@@ -20,7 +20,7 @@ import { env, apis } from '../env.js';
+ 
+ // NOTE: Import order matters here. We need to import `onnxruntime-node` before `onnxruntime-web`.
+ // In either case, we select the default export if it exists, otherwise we use the named export.
+-import * as ONNX_NODE from 'onnxruntime-node';
++const ONNX_NODE = null;
+ import * as ONNX_WEB from 'onnxruntime-web';
+ 
+ export { Tensor } from 'onnxruntime-common';
+@@ -59,7 +59,8 @@ const ORT_SYMBOL = Symbol.for('onnxruntime');
+ if (ORT_SYMBOL in globalThis) {
+     // If the JS runtime exposes their own ONNX runtime, use it
+     ONNX = globalThis[ORT_SYMBOL];
+-
++    supportedDevices.push(...ONNX.supportedDevices);
++    defaultDevices = ONNX.defaultDevices;
+ } else if (apis.IS_NODE_ENV) {
+     ONNX = ONNX_NODE.default ?? ONNX_NODE;
+ 
+diff --git a/src/utils/tensor.js b/src/utils/tensor.js
+index 357aba9..85c6d46 100644
+--- a/src/utils/tensor.js
++++ b/src/utils/tensor.js
+@@ -89,9 +89,13 @@ export class Tensor {
+             this.ort_tensor = /** @type {ONNXTensor} */ (args[0]);
+         } else {
+             // Create new tensor
+-            this.ort_tensor = new ONNXTensor(
++            const sym = Symbol.for("onnxruntime");
++            const ctor = sym in globalThis
++              ? globalThis.Tensor
++              : ONNXTensor;
++
++            this.ort_tensor = new ctor(
+                 /** @type {DataType} */(args[0]),
+-                // @ts-expect-error ts(2769) Type 'number' is not assignable to type 'bigint'.
+                 /** @type {Exclude<import('./maths.js').AnyTypedArray, Uint8ClampedArray>} */(args[1]),
+                 args[2],
+             );
+diff --git a/webpack.config.js b/webpack.config.js
+index 09611f1..742da97 100644
+--- a/webpack.config.js
++++ b/webpack.config.js
+@@ -14,10 +14,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
+ class PostBuildPlugin {
+ 
+   apply(compiler) {
+-    compiler.hooks.done.tap('PostBuildPlugin', () => {
+-      const dist = path.join(__dirname, 'dist');
+-      const ORT_JSEP_FILE = 'ort-wasm-simd-threaded.jsep.mjs';
+-      const ORT_BUNDLE_FILE = 'ort.bundle.min.mjs';
++    compiler.hooks.done.tap("PostBuildPlugin", () => {
++      const dist = path.join(__dirname, "dist");
++      const ORT_JSEP_FILE = "ort-wasm-simd-threaded.jsep.mjs";
++      const isProd = compiler.options.mode === "production";
++      const ORT_BUNDLE_FILE = isProd ? "ort.webgpu.mjs" : "ort.webgpu-dev.mjs"; // Dynamic filename
+ 
+       // 1. Remove unnecessary files
+       {
+@@ -36,155 +37,62 @@ class PostBuildPlugin {
+ }
+ 
+ /**
+- * Helper function to create webpack configurations.
+- * @param {Object} options Options for creating a webpack target.
+- * @param {string} options.name Name of output file.
+- * @param {string} options.suffix Suffix of output file.
+- * @param {string} options.type Type of library.
+- * @param {string} options.ignoreModules The list of modules to ignore.
+- * @param {string} options.externalModules The list of modules to set as external.
+- * @param {Object[]} options.plugins List of plugins to use.
+- * @returns {import('webpack').Configuration} One webpack target.
++ * Generate Webpack configuration dynamically based on the environment.
+  */
+-function buildConfig({
+-  name = "",
+-  suffix = ".js",
+-  type = "module", // 'module' | 'commonjs'
+-  ignoreModules = [],
+-  externalModules = [],
+-  plugins = [],
+-} = {}) {
+-  const outputModule = type === "module";
+-
+-  const alias = Object.fromEntries(
+-    ignoreModules.map((module) => [module, false]),
+-  );
+-
+-  /** @type {import('webpack').Configuration} */
+-  const config = {
+-    mode: "development",
+-    devtool: "source-map",
+-    entry: {
+-      [`transformers${name}`]: "./src/transformers.js",
+-      [`transformers${name}.min`]: "./src/transformers.js",
+-    },
+-    output: {
+-      filename: `[name]${suffix}`,
+-      path: path.join(__dirname, "dist"),
+-      library: {
+-        type,
+-      },
+-      assetModuleFilename: "[name][ext]",
+-      chunkFormat: false,
+-    },
+-    optimization: {
+-      minimize: true,
+-      minimizer: [
+-        new TerserPlugin({
+-          test: new RegExp(`\\.min\\${suffix}$`),
+-
+-          // Do not bundle with comments.
+-          // See https://webpack.js.org/plugins/terser-webpack-plugin/#remove-comments for more information.
+-          terserOptions: {
+-            output: {
+-              comments: false,
+-            },
+-          },
+-          extractComments: false,
+-        }),
+-      ],
++export default (env, argv) => {
++  const isProd = argv.mode === "production";
++ 
++  return {
++    mode: isProd ? "production" : "development",
++    devtool: false, // No source maps for smaller file size
++     entry: {
++      transformers: "./src/transformers.js",
++     },
++     output: {
++      filename: isProd ? "transformers.min.js" : "transformers.dev.js", // Different filenames
++       path: path.join(__dirname, "dist"),
++       library: {
++        type: "module",
++       },
++       assetModuleFilename: "[name][ext]",
++       chunkFormat: false,
++     },
++     optimization: {
++      minimize: isProd,
++      minimizer: isProd
++        ? [
++            new TerserPlugin({
++              test: /\.js$/,
++              terserOptions: {
++                output: {
++                  comments: false,
++                },
++              },
++              extractComments: false,
++            }),
++          ]
++        : [],
++     },
++     experiments: {
++      outputModule: true,
++     },
++    resolve: {
++      alias: {
++        "onnxruntime-web": false,
++       },
++     },
++    externals: {
++      "onnxruntime-web": isProd
++        ? "chrome://global/content/ml/ort.webgpu.mjs"
++        : "chrome://global/content/ml/ort.webgpu-dev.mjs",
+     },
+-    experiments: {
+-      outputModule,
++    module: {
++       parser: {
++         javascript: {
++           importMeta: false,
++         },
++       },
+     },
+-    resolve: { alias },
+-
+-    externals: externalModules,
+-
+-    // Development server
+-    devServer: {
+-      static: {
+-        directory: __dirname,
+-      },
+-      port: 8080,
+-    },
+-    plugins,
++    plugins: [new PostBuildPlugin()],
+   };
+-
+-  if (outputModule) {
+-    config.module = {
+-      parser: {
+-        javascript: {
+-          importMeta: false,
+-        },
+-      },
+-    };
+-  } else {
+-    config.externalsType = "commonjs";
+-  }
+-
+-  return config;
+-}
+-
+-// Do not bundle onnxruntime-web when packaging for Node.js.
+-// Instead, we use the native library (onnxruntime-node).
+-const NODE_IGNORE_MODULES = ["onnxruntime-web"];
+-
+-// Do not bundle the following modules with webpack (mark as external)
+-// NOTE: This is necessary for both type="module" and type="commonjs",
+-// and will be ignored when building for web (only used for node/deno)
+-const NODE_EXTERNAL_MODULES = [
+-  "onnxruntime-common",
+-  "onnxruntime-node",
+-  "sharp",
+-  "fs",
+-  "path",
+-  "url",
+-];
+-
+-// Do not bundle onnxruntime-node when packaging for the web.
+-const WEB_IGNORE_MODULES = ["onnxruntime-node"];
+-
+-// Do not bundle the following modules with webpack (mark as external)
+-const WEB_EXTERNAL_MODULES = [
+-  "onnxruntime-common",
+-  "onnxruntime-web",
+-];
+-
+-// Web-only build
+-const WEB_BUILD = buildConfig({
+-  name: ".web",
+-  type: "module",
+-  ignoreModules: WEB_IGNORE_MODULES,
+-  externalModules: WEB_EXTERNAL_MODULES,
+-});
+-
+-// Web-only build, bundled with onnxruntime-web
+-const BUNDLE_BUILD = buildConfig({
+-  type: "module",
+-  plugins: [new PostBuildPlugin()],
+-});
+-
+-// Node-compatible builds
+-const NODE_BUILDS = [
+-  buildConfig({
+-    name: ".node",
+-    suffix: ".mjs",
+-    type: "module",
+-    ignoreModules: NODE_IGNORE_MODULES,
+-    externalModules: NODE_EXTERNAL_MODULES,
+-  }),
+-  buildConfig({
+-    name: ".node",
+-    suffix: ".cjs",
+-    type: "commonjs",
+-    ignoreModules: NODE_IGNORE_MODULES,
+-    externalModules: NODE_EXTERNAL_MODULES,
+-  }),
+-];
+-
+-// When running with `webpack serve`, only build the web target.
+-const BUILDS = process.env.WEBPACK_SERVE
+-  ? [BUNDLE_BUILD]
+-  : [BUNDLE_BUILD, WEB_BUILD, ...NODE_BUILDS];
+-export default BUILDS;
++};

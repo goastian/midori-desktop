@@ -1,0 +1,40 @@
+<html>
+<body>
+
+<div id="content">
+  <div
+    id="testDiv"
+    contenteditable="true"
+    onpaste="handlePaste(event)"></div>
+    <input id="testInput" type="text" onpaste="handlePaste(event)">
+  <label for="pasteAllowed">Paste allowed?</label><input id="pasteAllowed" type="checkbox">
+</div>
+<script class="testbody" type="application/javascript">
+function is(a, b, msg) {
+  if (!Object.is(a, b)) {
+    throw new Error(`FAIL: expected ${b} got ${a} - ${msg}`);
+  }
+}
+
+function checkPasteHelper(event) {
+  let pasteAllowed = document.getElementById("pasteAllowed").checked;
+  is(event.clipboardData.getData('text/plain'), pasteAllowed ? "Original text" : "",  "getData(text/plain) got wrong value");
+  is(event.clipboardData.types.length, pasteAllowed ? 1 : 0, "Correct number of types");
+}
+
+function handlePaste(e) {
+  let result = null;
+  try {
+    result = checkPasteHelper(e);
+  } catch (e) {
+    result = e.toString();
+  }
+
+  document.dispatchEvent(new CustomEvent('testresult', {
+    detail: { result }
+  }));
+}
+</script>
+
+</body>
+</html>
