@@ -6,21 +6,6 @@
  * Tests how trending and recent searches work together.
  */
 
-const CONFIG_DEFAULT = [
-  {
-    webExtension: { id: "basic@search.mozilla.org" },
-    urls: {
-      trending: {
-        fullPath:
-          "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
-        query: "",
-      },
-    },
-    appliesTo: [{ included: { everywhere: true } }],
-    default: "yes",
-  },
-];
-
 const CONFIG_V2 = [
   {
     recordType: "engine",
@@ -98,10 +83,7 @@ add_setup(async () => {
   });
 
   await UrlbarTestUtils.formHistory.clear();
-  await SearchTestUtils.setupTestEngines(
-    "search-engines",
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG_DEFAULT
-  );
+  await SearchTestUtils.updateRemoteSettingsConfig(CONFIG_V2);
 
   registerCleanupFunction(async () => {
     await UrlbarTestUtils.formHistory.clear();

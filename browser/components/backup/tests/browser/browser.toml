@@ -4,5 +4,18 @@ prefs = [
   "browser.backup.preferences.ui.enabled=true",
   "browser.backup.scheduled.enabled=false",
 ]
+support-files = [
+  "head.js",
+]
+
+["browser_password_validation_inputs.js"]
 
 ["browser_settings.js"]
+
+["browser_settings_enable_backup_encryption.js"]
+
+["browser_settings_restore_from_backup.js"]
+
+["browser_settings_turn_off_scheduled_backups.js"]
+
+["browser_settings_turn_on_scheduled_backups.js"]

@@ -30,7 +30,7 @@ add_setup(async function () {
   });
 });
 
-add_tasks_with_rust(async function basic() {
+add_task(async function basic() {
   await BrowserTestUtils.withNewTab("about:blank", async () => {
     const suggestion = REMOTE_SETTINGS_DATA[0].attachment[0];
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
@@ -48,10 +48,7 @@ add_tasks_with_rust(async function basic() {
       UrlbarProviderQuickSuggest.name,
       "The result should be from the expected provider"
     );
-    Assert.equal(
-      result.payload.provider,
-      UrlbarPrefs.get("quickSuggestRustEnabled") ? "Mdn" : "MDNSuggestions"
-    );
+    Assert.equal(result.payload.provider, "Mdn");
 
     const onLoad = BrowserTestUtils.browserLoaded(
       gBrowser.selectedBrowser,
@@ -67,7 +64,7 @@ add_tasks_with_rust(async function basic() {
 });
 
 // Tests the row/group label.
-add_tasks_with_rust(async function rowLabel() {
+add_task(async function rowLabel() {
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: REMOTE_SETTINGS_DATA[0].attachment[0].keywords[0],
@@ -81,7 +78,7 @@ add_tasks_with_rust(async function rowLabel() {
   await UrlbarTestUtils.promisePopupClose(window);
 });
 
-add_tasks_with_rust(async function disable() {
+add_task(async function disable() {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.mdn.featureGate", false]],
   });
@@ -100,14 +97,14 @@ add_tasks_with_rust(async function disable() {
 });
 
 // Tests the "Not interested" result menu dismissal command.
-add_tasks_with_rust(async function resultMenu_notInterested() {
-  await doDismissTest("not_interested");
+add_task(async function resultMenu_notInterested() {
+  let result = await doDismissTest("not_interested");
 
   Assert.equal(UrlbarPrefs.get("suggest.mdn"), false);
-  const exists = await QuickSuggest.blockedSuggestions.has(
-    REMOTE_SETTINGS_DATA[0].attachment[0].url
+  Assert.ok(
+    !(await QuickSuggest.isResultDismissed(result)),
+    "The result should not be dismissed"
   );
-  Assert.ok(!exists);
 
   // Re-enable suggestions and wait until MDNSuggestions syncs them from
   // remote settings again.
@@ -116,20 +113,20 @@ add_tasks_with_rust(async function resultMenu_notInterested() {
 });
 
 // Tests the "Not relevant" result menu dismissal command.
-add_tasks_with_rust(async function resultMenu_notRelevant() {
-  await doDismissTest("not_relevant");
+add_task(async function resultMenu_notRelevant() {
+  let result = await doDismissTest("not_relevant");
 
   Assert.equal(UrlbarPrefs.get("suggest.mdn"), true);
-  const exists = await QuickSuggest.blockedSuggestions.has(
-    REMOTE_SETTINGS_DATA[0].attachment[0].url
+  Assert.ok(
+    await QuickSuggest.isResultDismissed(result),
+    "The result should be dismissed"
   );
-  Assert.ok(exists);
 
-  await QuickSuggest.blockedSuggestions.clear();
+  await QuickSuggest.clearDismissedSuggestions();
 });
 
 // Tests the "Manage" result menu.
-add_tasks_with_rust(async function resultMenu_manage() {
+add_task(async function resultMenu_manage() {
   await doManageTest({ input: "array", index: 1 });
 });
 
@@ -162,12 +159,19 @@ async function doDismissTest(command) {
     "The result should be a MDN result"
   );
 
+  let { result } = details;
+
   // Click the command.
+  let dismissalPromise = TestUtils.topicObserved(
+    "quicksuggest-dismissals-changed"
+  );
   await UrlbarTestUtils.openResultMenuAndClickItem(
     window,
     ["[data-l10n-id=firefox-suggest-command-dont-show-mdn]", command],
     { resultIndex, openByMouse: true }
   );
+  info("Awaiting dismissal promise");
+  await dismissalPromise;
 
   // The row should be a tip now.
   Assert.ok(gURLBar.view.isOpen, "The view should remain open after dismissal");
@@ -237,4 +241,6 @@ async function doDismissTest(command) {
   }
 
   await UrlbarTestUtils.promisePopupClose(window);
+
+  return result;
 }

@@ -7,6 +7,14 @@ const { ASRouter } = ChromeUtils.importESModule(
   "resource:///modules/asrouter/ASRouter.sys.mjs"
 );
 
+ChromeUtils.defineLazyGetter(this, "SearchTestUtils", () => {
+  const { SearchTestUtils: module } = ChromeUtils.importESModule(
+    "resource://testing-common/SearchTestUtils.sys.mjs"
+  );
+  module.init(this);
+  return module;
+});
+
 const mockIdleService = {
   _observers: new Set(),
   _fireObservers(state) {
@@ -39,6 +47,21 @@ add_setup(async function () {
   if (inChaosMode && AppConstants.platform === "macosx") {
     requestLongerTimeout(2);
   }
+
+  // Installing this search extension prevents errors that
+  // are generated from contacting the outside world
+  // when completing searches during tests
+  await SearchTestUtils.installSearchExtension(
+    {
+      search_url:
+        "https://example.com/browser/browser/components/search/test/browser/test.html",
+      search_url_get_params: "s={searchTerms}&abc=ff",
+      suggest_url:
+        "https://example.com/browser/browser/components/search/test/browser/searchSuggestionEngine.sjs",
+      suggest_url_get_params: "query={searchTerms}",
+    },
+    { setAsDefault: true }
+  );
 
   registerCleanupFunction(() => {
     const trigger = ASRouterTriggerListeners.get("openURL");
@@ -168,6 +191,27 @@ add_task(async function test_nthTabClosed() {
 
   handlerStub.resetHistory();
   tabClosedTrigger.uninit();
+
+  Assert.ok(handlerStub.notCalled, "Not called after uninit");
+});
+
+add_task(async function test_nthTabOpened() {
+  const handlerStub = sinon.stub();
+  const tabOpenedTrigger = ASRouterTriggerListeners.get("nthTabOpened");
+  tabOpenedTrigger.uninit();
+  tabOpenedTrigger.init(handlerStub);
+
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+
+  await BrowserTestUtils.openNewForegroundTab(win);
+  Assert.ok(handlerStub.calledOnce, "Called once after first tab opened");
+
+  await BrowserTestUtils.openNewForegroundTab(win);
+  Assert.ok(handlerStub.calledTwice, "Called twice after second tab opened");
+
+  BrowserTestUtils.closeWindow(win);
+  handlerStub.resetHistory();
+  tabOpenedTrigger.uninit();
 
   Assert.ok(handlerStub.notCalled, "Not called after uninit");
 });
@@ -427,4 +471,195 @@ add_task(async function test_pageActionInUrlbarTrigger() {
   sandbox.restore();
 
   PictureInPicture.updateUrlbarToggle(gBrowser.selectedBrowser);
+});
+
+add_task(async function test_onSearchIncrement() {
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+  Services.prefs.setIntPref("browser.search.totalSearches", 0);
+
+  const onLoaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  let SEARCH_TERM = "test search term";
+  gURLBar.value = SEARCH_TERM;
+  gURLBar.focus();
+  EventUtils.synthesizeKey("KEY_Enter");
+  await onLoaded;
+
+  const totalSearches = Services.prefs.getIntPref(
+    "browser.search.totalSearches",
+    0
+  );
+  Assert.equal(totalSearches, 1, "Total searches has incremented by 1");
+
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_onSearchIncrement_cap() {
+  const cap = 100;
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+  Services.prefs.setIntPref("browser.search.totalSearches", cap);
+
+  const onLoaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  let SEARCH_TERM = "test search term";
+  gURLBar.value = SEARCH_TERM;
+  gURLBar.focus();
+  EventUtils.synthesizeKey("KEY_Enter");
+  await onLoaded;
+
+  const totalSearches = Services.prefs.getIntPref(
+    "browser.search.totalSearches",
+    0
+  );
+  Assert.equal(
+    totalSearches,
+    cap,
+    `Total searches has not incremented past ${cap}`
+  );
+
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_onSearchTrigger() {
+  const sandbox = sinon.createSandbox();
+
+  const receivedTrigger = new Promise(resolve => {
+    sandbox
+      .stub(ASRouter, "sendTriggerMessage")
+      .callsFake(({ id, context }) => {
+        if (
+          id === "onSearch" &&
+          context.isSuggestion === false &&
+          context.isOneOff === false &&
+          context.searchSource === "urlbar"
+        ) {
+          resolve(true);
+        }
+      });
+  });
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+  const onLoaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  let SEARCH_TERM = "test search term";
+  gURLBar.value = SEARCH_TERM;
+  gURLBar.focus();
+  EventUtils.synthesizeKey("KEY_Enter");
+  await onLoaded;
+
+  let onSearch = await receivedTrigger;
+
+  ok(onSearch, "onSearch trigger sent");
+
+  sandbox.restore();
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_elementClicked_trigger() {
+  const handlerStub = sinon.stub();
+  const xulElButtonId = "PanelUI-menu-button";
+
+  const buttonClickTrigger = ASRouterTriggerListeners.get("elementClicked");
+  buttonClickTrigger.uninit();
+  buttonClickTrigger.init(handlerStub, ["testButtonId", xulElButtonId]);
+
+  // Test button click event
+  const button = document.createElement("button");
+  button.id = "testButtonId";
+  // Button text content is required to prevent test failures
+  button.textContent = "Test Button";
+  document.documentElement.appendChild(button);
+
+  await TestUtils.waitForTick();
+  const clickEvent = new PointerEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+  });
+  button.dispatchEvent(clickEvent);
+
+  Assert.ok(handlerStub.calledOnce, "handler called once for click event");
+  Assert.deepEqual(
+    handlerStub.firstCall.args[1].param,
+    { type: "testButtonId" },
+    "handler called with correct param type for click event"
+  );
+
+  // Test space keypress event
+  handlerStub.resetHistory();
+  const spaceKeypressEvent = new KeyboardEvent("keypress", {
+    bubbles: true,
+    cancelable: true,
+    key: " ",
+    charCode: 32,
+  });
+  button.dispatchEvent(spaceKeypressEvent);
+
+  Assert.ok(
+    handlerStub.calledOnce,
+    "handler called once for space keypress event"
+  );
+  Assert.deepEqual(
+    handlerStub.firstCall.args[1].param,
+    { type: "testButtonId" },
+    "handler called with correct param type for space keypress event"
+  );
+
+  // Test Enter keypress event
+  handlerStub.resetHistory();
+  const enterKeypressEvent = new KeyboardEvent("keypress", {
+    bubbles: true,
+    cancelable: true,
+    key: "Enter",
+    charCode: 13,
+  });
+  button.dispatchEvent(enterKeypressEvent);
+
+  Assert.ok(
+    handlerStub.calledOnce,
+    "handler called once for enter keypress event"
+  );
+  Assert.deepEqual(
+    handlerStub.firstCall.args[1].param,
+    { type: "testButtonId" },
+    "handler called with correct param type for enter keypress event"
+  );
+
+  // Test a non-space && non-enter keypress event
+  handlerStub.resetHistory();
+  const tabKeypressEvent = new KeyboardEvent("keypress", {
+    bubbles: true,
+    cancelable: true,
+    key: "Tab",
+    charCode: 9,
+  });
+  button.dispatchEvent(tabKeypressEvent);
+
+  Assert.ok(handlerStub.notCalled, "handler not called for tab keypress event");
+
+  // Test a space keypress event on a xul element
+  handlerStub.resetHistory();
+  const xulElement = document.getElementById(xulElButtonId);
+  xulElement.dispatchEvent(spaceKeypressEvent);
+
+  Assert.ok(
+    handlerStub.calledOnce,
+    "handler called once for space keypress event"
+  );
+  Assert.deepEqual(
+    handlerStub.firstCall.args[1].param,
+    { type: xulElButtonId },
+    "handler called with correct param type for space keypress event on xul element"
+  );
+
+  // Test a click event on a xul element
+  handlerStub.resetHistory();
+  xulElement.dispatchEvent(clickEvent);
+
+  Assert.ok(handlerStub.calledOnce, "handler called once for click event");
+  Assert.deepEqual(
+    handlerStub.firstCall.args[1].param,
+    { type: xulElButtonId },
+    "handler called with correct param type for click keypress event on xul element"
+  );
+
+  buttonClickTrigger.uninit();
+  document.documentElement.removeChild(button);
 });

@@ -25,11 +25,11 @@
 #include <wchar.h>
 #include <windows.h>
 
-#define APP_REG_NAME_BASE L"Midori-"
+#define APP_REG_NAME_BASE L"Firefox-"
 
 static bool IsWindowsLogonConnected() {
   WCHAR userName[UNLEN + 1];
-  DWORD size = mozilla::ArrayLength(userName);
+  DWORD size = std::size(userName);
   if (!GetUserNameW(userName, &size)) {
     return false;
   }

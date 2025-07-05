@@ -5,14 +5,12 @@
 /* import-globals-from /toolkit/content/preferencesBindings.js */
 
 document
-  .getElementById("ColorsDialog")
-  .addEventListener("dialoghelp", window.top.openPrefsHelp);
+  .getElementById("key_close")
+  .addEventListener("command", event => Preferences.close(event));
 
 Preferences.addAll([
-  { id: "browser.display.document_color_use", type: "int" },
   { id: "browser.anchor_color", type: "string" },
   { id: "browser.visited_color", type: "string" },
   { id: "browser.display.foreground_color", type: "string" },
   { id: "browser.display.background_color", type: "string" },
-  { id: "browser.display.use_system_colors", type: "bool" },
 ]);

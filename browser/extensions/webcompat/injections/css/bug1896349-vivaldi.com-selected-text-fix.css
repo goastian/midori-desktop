@@ -7,7 +7,7 @@
  * Bug #1896349 - https://bugzilla.mozilla.org/show_bug.cgi?id=1896349
  * WebCompat issue #136863 - https://webcompat.com/issues/136863
  */
- ::selection {
-    color: HighlightText;
-    background-color: Highlight;
-  }
+::selection {
+  color: HighlightText;
+  background-color: Highlight;
+}

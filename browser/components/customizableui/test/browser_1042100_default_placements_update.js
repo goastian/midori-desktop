@@ -33,7 +33,7 @@ function test() {
   let CustomizableUIInternal = CustomizableUI.getTestOnlyInternalProp(
     "CustomizableUIInternal"
   );
-  CustomizableUIInternal._updateForNewVersion();
+  CustomizableUIInternal.updateForNewVersion();
   is(gFuturePlacements.size, 0, "No change to future placements initially.");
 
   let currentVersion = CustomizableUI.getTestOnlyInternalProp("kVersion");
@@ -87,7 +87,7 @@ function test() {
   }
 
   // Then call the re-init routine so we re-add the builtin widgets
-  CustomizableUIInternal._updateForNewVersion();
+  CustomizableUIInternal.updateForNewVersion();
   is(gFuturePlacements.size, 1, "Should have 1 more future placement");
   let haveNavbarPlacements = gFuturePlacements.has(CustomizableUI.AREA_NAVBAR);
   ok(haveNavbarPlacements, "Should have placements for nav-bar");
@@ -135,8 +135,8 @@ function test() {
     },
   });
   Services.prefs.setIntPref("browser.proton.toolbar.version", 0);
-  CustomizableUIInternal._updateForNewVersion();
-  CustomizableUIInternal._updateForNewProtonVersion();
+  CustomizableUIInternal.updateForNewVersion();
+  CustomizableUIInternal.updateForNewProtonVersion();
   {
     let navbarPlacements = getSavedStatePlacements("nav-bar");
     let springs = navbarPlacements.filter(id => id.includes("spring"));
@@ -148,6 +148,7 @@ function test() {
         "back-button",
         "forward-button",
         "stop-reload-button",
+        "vertical-spacer",
         "urlbar-container",
         "downloads-button",
         "fxa-toolbar-menu-button",
@@ -163,6 +164,7 @@ function test() {
 
   // Finally, test the downloads and fxa avatar button migrations work.
   let oldNavbarPlacements = [
+    "vertical-spacer",
     "urlbar-container",
     "customizableui-special-spring3",
     "search-container",
@@ -174,7 +176,7 @@ function test() {
       "widget-overflow-fixed-list": ["downloads-button"],
     },
   });
-  CustomizableUIInternal._updateForNewVersion();
+  CustomizableUIInternal.updateForNewVersion();
   Assert.deepEqual(
     getSavedStatePlacements("nav-bar"),
     oldNavbarPlacements.concat([
@@ -196,7 +198,7 @@ function test() {
       "nav-bar": ["downloads-button"].concat(oldNavbarPlacements),
     },
   });
-  CustomizableUIInternal._updateForNewVersion();
+  CustomizableUIInternal.updateForNewVersion();
   Assert.deepEqual(
     getSavedStatePlacements("nav-bar"),
     oldNavbarPlacements.concat([
@@ -208,6 +210,7 @@ function test() {
   );
 
   oldNavbarPlacements = [
+    "vertical-spacer",
     "urlbar-container",
     "customizableui-special-spring3",
     "search-container",
@@ -219,8 +222,9 @@ function test() {
       "nav-bar": Array.from(oldNavbarPlacements),
     },
   });
-  CustomizableUIInternal._updateForNewVersion();
+  CustomizableUIInternal.updateForNewVersion();
   let expectedNavbarPlacements = [
+    "vertical-spacer",
     "urlbar-container",
     "customizableui-special-spring3",
     "search-container",

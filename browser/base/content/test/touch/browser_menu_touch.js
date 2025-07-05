@@ -13,9 +13,8 @@ async function openAndCheckMenu(menu, target) {
   await popupshown;
 
   is(menu.state, "open", `Menu panel (${menu.id}) is open.`);
-  is(
-    menu.getAttribute("touchmode"),
-    "true",
+  ok(
+    menu.hasAttribute("touchmode"),
     `Menu panel (${menu.id}) is in touchmode.`
   );
 
@@ -47,9 +46,8 @@ async function openAndCheckLazyMenu(id, target) {
   menu = ev.target;
 
   is(menu.state, "open", `Menu panel (${menu.id}) is open.`);
-  is(
-    menu.getAttribute("touchmode"),
-    "true",
+  ok(
+    menu.hasAttribute("touchmode"),
     `Menu panel (${menu.id}) is in touchmode.`
   );
 
@@ -83,11 +81,7 @@ async function openAndCheckCustomizationUIMenu(target) {
     is(menu.state, "open", `Menu for ${target.id} is open`);
   }
 
-  is(
-    menu.getAttribute("touchmode"),
-    "true",
-    `Menu for ${target.id} is in touchmode.`
-  );
+  ok(menu.hasAttribute("touchmode"), `Menu for ${target.id} is in touchmode.`);
 
   menu.hidePopup();
 
@@ -186,13 +180,6 @@ add_task(async function test_overflow_panel_touch() {
 
 // Test the list all tabs menu.
 add_task(async function test_list_all_tabs_touch() {
-  // Force the menu button to be shown.
-  let tabs = document.getElementById("tabbrowser-tabs");
-  if (!tabs.hasAttribute("overflow")) {
-    tabs.setAttribute("overflow", true);
-    registerCleanupFunction(() => tabs.removeAttribute("overflow"));
-  }
-
   let target = document.getElementById("alltabs-button");
   await openAndCheckCustomizationUIMenu(target);
 });

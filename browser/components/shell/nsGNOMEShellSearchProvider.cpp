@@ -8,7 +8,6 @@
 #include "nsGNOMEShellSearchProvider.h"
 
 #include "nsToolkitCompsCID.h"
-#include "nsIFaviconService.h"
 #include "base/message_loop.h"  // for MessageLoop
 #include "base/task.h"          // for NewRunnableMethod, etc
 #include "mozilla/gfx/2D.h"
@@ -20,9 +19,11 @@
 #include "nsServiceManagerUtils.h"
 #include "mozilla/GUniquePtr.h"
 #include "mozilla/UniquePtrExtensions.h"
-
+#include "nsImportModule.h"
+#include "nsIOpenTabsProvider.h"
 #include "imgIContainer.h"
 #include "imgITools.h"
+#include "mozilla/places/nsFaviconService.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -61,27 +62,6 @@ static const char* introspect_template =
     "</interface>\n"
     "</node>\n";
 
-class AsyncFaviconDataReady final : public nsIFaviconDataCallback {
- public:
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSIFAVICONDATACALLBACK
-
-  AsyncFaviconDataReady(RefPtr<nsGNOMEShellHistorySearchResult> aSearchResult,
-                        int aIconIndex, int aTimeStamp)
-      : mSearchResult(std::move(aSearchResult)),
-        mIconIndex(aIconIndex),
-        mTimeStamp(aTimeStamp){};
-
- private:
-  ~AsyncFaviconDataReady() {}
-
-  RefPtr<nsGNOMEShellHistorySearchResult> mSearchResult;
-  int mIconIndex;
-  int mTimeStamp;
-};
-
-NS_IMPL_ISUPPORTS(AsyncFaviconDataReady, nsIFaviconDataCallback)
-
 // Inspired by SurfaceToPackedBGRA
 static UniquePtr<uint8_t[]> SurfaceToPackedRGBA(DataSourceSurface* aSurface) {
   IntSize size = aSurface->GetSize();
@@ -115,22 +95,35 @@ static UniquePtr<uint8_t[]> SurfaceToPackedRGBA(DataSourceSurface* aSurface) {
   return imageBuffer;
 }
 
-NS_IMETHODIMP
-AsyncFaviconDataReady::OnComplete(nsIURI* aFaviconURI, uint32_t aDataLen,
-                                  const uint8_t* aData,
-                                  const nsACString& aMimeType,
-                                  uint16_t aWidth) {
+static nsresult UpdateHistoryIcon(
+    const places::FaviconPromise::ResolveOrRejectValue& aPromiseResult,
+    const RefPtr<nsGNOMEShellHistorySearchResult>& aSearchResult,
+    int aIconIndex, int aTimeStamp) {
   // This is a callback from some previous search so we don't want it
-  if (mTimeStamp != mSearchResult->GetTimeStamp() || !aData || !aDataLen) {
+  if (aTimeStamp != aSearchResult->GetTimeStamp()) {
     return NS_ERROR_FAILURE;
   }
+
+  nsCOMPtr<nsIFavicon> favicon =
+      aPromiseResult.IsResolve() ? aPromiseResult.ResolveValue() : nullptr;
+  if (!favicon) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Get favicon content.
+  nsTArray<uint8_t> rawData;
+  nsresult rv = favicon->GetRawData(rawData);
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsAutoCString mimeType;
+  rv = favicon->GetMimeType(mimeType);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Decode the image from the format it was returned to us in (probably PNG)
   nsCOMPtr<imgIContainer> container;
   nsCOMPtr<imgITools> imgtool = do_CreateInstance("@mozilla.org/image/tools;1");
-  nsresult rv = imgtool->DecodeImageFromBuffer(
-      reinterpret_cast<const char*>(aData), aDataLen, aMimeType,
-      getter_AddRefs(container));
+  rv = imgtool->DecodeImageFromBuffer(
+      reinterpret_cast<const char*>(rawData.Elements()), rawData.Length(),
+      mimeType, getter_AddRefs(container));
   NS_ENSURE_SUCCESS(rv, rv);
 
   RefPtr<SourceSurface> surface = container->GetFrame(
@@ -148,9 +141,9 @@ AsyncFaviconDataReady::OnComplete(nsIURI* aFaviconURI, uint32_t aDataLen,
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  mSearchResult->SetHistoryIcon(mTimeStamp, std::move(data),
+  aSearchResult->SetHistoryIcon(aTimeStamp, std::move(data),
                                 surface->GetSize().width,
-                                surface->GetSize().height, mIconIndex);
+                                surface->GetSize().height, aIconIndex);
   return NS_OK;
 }
 
@@ -411,16 +404,18 @@ nsresult nsGNOMEShellHistoryService::QueryHistory(
   return NS_OK;
 }
 
-static void DBusGetIDKeyForURI(int aIndex, nsAutoCString& aUri,
+static void DBusGetIDKeyForURI(int aIndex, bool aIsOpen, nsAutoCString& aUri,
                                nsAutoCString& aIDKey) {
-  // Compose ID as NN:URL where NN is index to our current history
-  // result container.
-  aIDKey = nsPrintfCString("%.2d:%s", aIndex, aUri.get());
+  // Compose ID as NN:S:URL where NN is index to our current history
+  // result container and S is the state, which can be 'o'pen or 'h'istory
+  aIDKey =
+      nsPrintfCString("%.2d:%c:%s", aIndex, aIsOpen ? 'o' : 'h', aUri.get());
 }
 
 // Send (as) rearch result reply
 void nsGNOMEShellHistorySearchResult::HandleSearchResultReply() {
   MOZ_ASSERT(mReply);
+  MOZ_ASSERT(mHistResultContainer);
 
   GVariantBuilder b;
   g_variant_builder_init(&b, G_VARIANT_TYPE("as"));
@@ -429,8 +424,7 @@ void nsGNOMEShellHistorySearchResult::HandleSearchResultReply() {
   nsresult rv = mHistResultContainer->GetChildCount(&childCount);
   if (NS_SUCCEEDED(rv) && childCount > 0) {
     // Obtain the favicon service and get the favicon for the specified page
-    nsCOMPtr<nsIFaviconService> favIconSvc(
-        do_GetService("@mozilla.org/browser/favicon-service;1"));
+    auto* favIconSvc = nsFaviconService::GetFaviconService();
     nsCOMPtr<nsIIOService> ios(do_GetService(NS_IOSERVICE_CONTRACTID));
 
     if (childCount > MAX_SEARCH_RESULTS_NUM) {
@@ -450,14 +444,25 @@ void nsGNOMEShellHistorySearchResult::HandleSearchResultReply() {
       nsAutoCString uri;
       child->GetUri(uri);
 
+      RefPtr<nsGNOMEShellHistorySearchResult> self = this;
       nsCOMPtr<nsIURI> iconIri;
       ios->NewURI(uri, nullptr, nullptr, getter_AddRefs(iconIri));
-      nsCOMPtr<nsIFaviconDataCallback> callback =
-          new AsyncFaviconDataReady(this, i, mTimeStamp);
-      favIconSvc->GetFaviconDataForPage(iconIri, callback, 0);
+      favIconSvc->AsyncGetFaviconForPage(iconIri)->Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          [self, iconIndex = i, timeStamp = mTimeStamp](
+              const places::FaviconPromise::ResolveOrRejectValue& aResult) {
+            UpdateHistoryIcon(aResult, self, iconIndex, timeStamp);
+          });
 
+      bool isOpen = false;
+      for (const auto& openuri : mOpenTabs) {
+        if (openuri.Equals(uri)) {
+          isOpen = true;
+          break;
+        }
+      }
       nsAutoCString idKey;
-      DBusGetIDKeyForURI(i, uri, idKey);
+      DBusGetIDKeyForURI(i, isOpen, uri, idKey);
 
       g_variant_builder_add(&b, "s", idKey.get());
     }
@@ -477,10 +482,34 @@ void nsGNOMEShellHistorySearchResult::ReceiveSearchResultContainer(
   // Propagate search results to nsGNOMEShellSearchProvider.
   // SetSearchResult() checks this is up-to-date search (our time stamp matches
   // latest requested search timestamp).
-  if (mSearchProvider->SetSearchResult(this)) {
-    mHistResultContainer = aHistResultContainer;
-    HandleSearchResultReply();
+  if (!mSearchProvider->SetSearchResult(this)) {
+    return;
   }
+
+  mHistResultContainer = aHistResultContainer;
+
+  // Getting the currently open tabs to mark them accordingly
+  nsresult rv;
+  nsCOMPtr<nsIOpenTabsProvider> provider =
+      do_ImportESModule("resource:///modules/OpenTabsProvider.sys.mjs", &rv);
+  if (NS_FAILED(rv)) {
+    // Don't fail, just log an error message
+    NS_WARNING("Failed to determine currently open tabs. Using history only.");
+  }
+
+  nsTArray<nsCString> openTabs;
+  if (provider) {
+    rv = provider->GetOpenTabs(openTabs);
+    if (NS_FAILED(rv)) {
+      // Don't fail, just log an error message
+      NS_WARNING(
+          "Failed to determine currently open tabs. Using history only.");
+    }
+  }
+  // In case of error, we just clear out mOpenTabs with an empty new array
+  mOpenTabs = std::move(openTabs);
+
+  HandleSearchResultReply();
 }
 
 void nsGNOMEShellHistorySearchResult::SetHistoryIcon(int aTimeStamp,

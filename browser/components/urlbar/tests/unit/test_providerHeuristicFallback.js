@@ -353,6 +353,34 @@ add_task(async function () {
     ],
   });
 
+  info("Forced search through search mode, keyword.enabled = false");
+  query = "bacon";
+  context = createContext(query, {
+    isPrivate: false,
+    searchMode: {
+      engineName: SUGGESTIONS_ENGINE_NAME,
+      isGeneralPurposeEngine: false,
+    },
+  });
+  await check_results({
+    context,
+    matches: [
+      makeSearchResult(context, {
+        engineName: SUGGESTIONS_ENGINE_NAME,
+        heuristic: true,
+        query: "bacon",
+      }),
+    ],
+  });
+
+  info("Non-search restriction token and invalid URL, keyword.enabled = false");
+  query = "bacon *";
+  context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [],
+  });
+
   Services.prefs.setBoolPref("keyword.enabled", true);
   info("visit two word query, keyword.enabled = true");
   query = "bacon lovers";
@@ -424,6 +452,9 @@ add_task(async function () {
         engineName: SUGGESTIONS_ENGINE_NAME,
         heuristic: true,
       }),
+      makeCalculatorResult(context, {
+        value: (123 / 12).toString(),
+      }),
     ],
   });
 
@@ -436,6 +467,9 @@ add_task(async function () {
       makeSearchResult(context, {
         engineName: SUGGESTIONS_ENGINE_NAME,
         heuristic: true,
+      }),
+      makeCalculatorResult(context, {
+        value: (123.12 / 12.1).toString(),
       }),
     ],
   });

@@ -2,9 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-.container {
-  padding-inline: var(--space-small);
-  font-size: 15px;
+.sidebar-panel {
+  font: menu;
+
+  > * + * {
+    margin-top: var(--space-xlarge);
+  }
+
+  > sidebar-panel-header + * {
+    margin-top: var(--space-medium);
+  }
+}
+
+.medium-top-margin {
+  margin-block-start: var(--space-medium);
 }
 
 .customize-header {
@@ -16,32 +27,7 @@
   color: currentColor;
 
   .customize-close-button::part(button) {
-    background-image: url("chrome://global/skin/icons/close-12.svg");
-  }
-}
-
-.customize-firefox-tools {
-  .inputs {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-medium);
-  }
-
-  .input-wrapper {
-    display: flex;
-    align-items: center;
-    gap: var(--space-small);
-
-    > input {
-      margin-inline-start: 0;
-    }
-
-    > label {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-small);
-      font-size: 0.9em;
-    }
+    background-image: url("resource://content-accessible/close-12.svg");
   }
 }
 
@@ -52,17 +38,73 @@
   height: var(--icon-size-default);
 }
 
-.customize-extensions {
-  .extensions {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-medium);
+.extensions {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-small);
+  padding-inline: var(--space-medium);
+  background-color: var(--sidebar-box-background);
+  color: var(--sidebar-box-color);
+  border: var(--sidebar-box-border);
+  border-radius: var(--border-radius-medium);
+}
+
+.extension-item {
+  display: flex;
+  gap: var(--space-small);
+  padding-block: var(--space-medium);
+  box-sizing: border-box;
+
+  &:not(:last-of-type){
+    border-bottom: 0.5px solid var(--panel-separator-color);
+  }
+}
+
+.customize-extensions-heading {
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+}
+
+moz-fieldset {
+  display: block;
+
+  &::part(inputs) {
+    background-color: var(--sidebar-box-background);
+    color: var(--sidebar-box-color);
+    border: var(--sidebar-box-border);
+    border-radius: var(--border-radius-medium);
+    gap: 0;
+    padding-inline: var(--space-medium);
+  }
+}
+
+moz-checkbox {
+  padding-block: var(--space-medium);
+
+  &:not(:last-of-type) {
+    border-bottom: 0.5px solid var(--panel-separator-color);
   }
 
-  .extension-item {
-    display: flex;
-    gap: var(--space-medium);
-    align-items: center;
-    font-size: 0.9em;
+  > moz-checkbox:last-of-type {
+    padding-block: 0;
   }
+
+  &[disabled]::part(label) {
+    opacity: 0.5;
+  }
+}
+
+.no-label::part(label) {
+  display: none;
+}
+
+#manage-settings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+  padding-inline-start: var(--space-medium);
+}
+
+.customize-group:not(.no-end-margin) {
+  margin-block-end: var(--space-xlarge);
 }

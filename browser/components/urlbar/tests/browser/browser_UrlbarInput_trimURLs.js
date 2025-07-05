@@ -45,6 +45,7 @@ function testValues(trimmedProtocol, notTrimmedProtocol) {
 add_task(async function () {
   const PREF_TRIM_URLS = "browser.urlbar.trimURLs";
   const PREF_TRIM_HTTPS = "browser.urlbar.trimHttps";
+  const PREF_SCOTCHBONNET = "browser.urlbar.scotchBonnet.enableOverride";
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
@@ -52,10 +53,12 @@ add_task(async function () {
     BrowserTestUtils.removeTab(tab);
     Services.prefs.clearUserPref(PREF_TRIM_URLS);
     Services.prefs.clearUserPref(PREF_TRIM_HTTPS);
+    Services.prefs.clearUserPref(PREF_SCOTCHBONNET);
     gURLBar.setURI();
   });
 
   Services.prefs.setBoolPref(PREF_TRIM_HTTPS, false);
+  Services.prefs.setBoolPref(PREF_SCOTCHBONNET, false);
 
   // Avoid search service sync init warnings due to URIFixup, when running the
   // test alone.
@@ -117,8 +120,30 @@ add_task(async function () {
   await testCopy("example.com", "http://example.com/");
 
   gURLBar.setPageProxyState("invalid");
-  gURLBar.valueIsTyped = true;
+  // After input only the visible text is copied.
+  UrlbarTestUtils.fireInputEvent(window);
   await testCopy("example.com", "example.com");
+});
+
+add_task(async function test_slow_loading_page_copy() {
+  for (let protocol of ["http://", "https://"]) {
+    let url =
+      getRootDirectory(gTestPath).replace(
+        "chrome://mochitests/content",
+        protocol + "example.com"
+      ) + "slow_loading_page.sjs";
+    let loaded = false;
+    let promise = BrowserTestUtils.openNewForegroundTab(gBrowser, url).finally(
+      () => {
+        loaded = true;
+      }
+    );
+    await testCopy(BrowserUIUtils.trimURL(url), url);
+    // The page should not have finished loading yet.
+    Assert.ok(!loaded, "Page should still be loading");
+    let tab = await promise;
+    BrowserTestUtils.removeTab(tab);
+  }
 });
 
 function testVal(originalValue, targetValue) {

@@ -5,8 +5,17 @@
 const { UrlbarSearchUtils } = ChromeUtils.importESModule(
   "resource:///modules/UrlbarSearchUtils.sys.mjs"
 );
+const { updateAppInfo } = ChromeUtils.importESModule(
+  "resource://testing-common/AppInfo.sys.mjs"
+);
 
 let baconEngineExtension;
+
+add_setup(async function () {
+  updateAppInfo({
+    name: "firefox",
+  });
+});
 
 add_task(async function () {
   await UrlbarSearchUtils.init();
@@ -61,15 +70,18 @@ add_task(async function hide_search_engine_nomatch() {
 });
 
 add_task(async function onlyEnabled_option_nomatch() {
-  let engine = await Services.search.getDefault();
-  let domain = engine.searchUrlDomain;
+  let defaultEngine = await Services.search.getDefault();
+  let domain = defaultEngine.searchUrlDomain;
   let token = domain.substr(0, 1);
-  engine.hideOneOffButton = true;
+  defaultEngine.hideOneOffButton = true;
+
   let matchedEngines = await UrlbarSearchUtils.enginesForDomainPrefix(token);
-  Assert.equal(matchedEngines.length, 0);
-  engine.hideOneOffButton = false;
+  Assert.notEqual(matchedEngines[0], defaultEngine);
+
+  defaultEngine.hideOneOffButton = false;
   matchedEngines = await UrlbarSearchUtils.enginesForDomainPrefix(token);
   Assert.equal(matchedEngines[0].searchUrlDomain, domain);
+  Assert.equal(matchedEngines[0], defaultEngine);
 });
 
 add_task(async function add_search_engine_match() {
@@ -89,7 +101,6 @@ add_task(async function add_search_engine_match() {
     await UrlbarSearchUtils.enginesForDomainPrefix("bacon")
   )[0];
   Assert.ok(matchedEngine);
-  Assert.equal(matchedEngine.searchForm, "https://www.bacon.moz");
   Assert.equal(matchedEngine.name, "bacon");
   Assert.equal(await matchedEngine.getIconURL(), null);
   info("also type part of the public suffix");
@@ -97,7 +108,6 @@ add_task(async function add_search_engine_match() {
     await UrlbarSearchUtils.enginesForDomainPrefix("bacon.m")
   )[0];
   Assert.ok(matchedEngine);
-  Assert.equal(matchedEngine.searchForm, "https://www.bacon.moz");
   Assert.equal(matchedEngine.name, "bacon");
   Assert.equal(await matchedEngine.getIconURL(), null);
 });
@@ -117,9 +127,7 @@ add_task(async function match_multiple_search_engines() {
     2,
     "enginesForDomainPrefix returned two engines."
   );
-  Assert.equal(matchedEngines[0].searchForm, "https://www.bacon.moz");
   Assert.equal(matchedEngines[0].name, "bacon");
-  Assert.equal(matchedEngines[1].searchForm, "https://www.baseball.moz");
   Assert.equal(matchedEngines[1].name, "baseball");
 });
 
@@ -284,103 +292,6 @@ add_task(async function test_get_root_domain_from_engine() {
   await extension.unload();
 });
 
-// Tests getSearchTermIfDefaultSerpUri() by using a variety of
-// input strings and nsIURI's.
-// Should not throw an error if the consumer passes an input
-// that when accessed, could cause an error.
-add_task(async function get_search_term_if_default_serp_uri() {
-  let testCases = [
-    {
-      url: null,
-      skipUriTest: true,
-    },
-    {
-      url: "",
-      skipUriTest: true,
-    },
-    {
-      url: "about:blank",
-    },
-    {
-      url: "about:home",
-    },
-    {
-      url: "about:newtab",
-    },
-    {
-      url: "not://a/supported/protocol",
-    },
-    {
-      url: "view-source:http://www.example.com/",
-    },
-    {
-      // Not a default engine.
-      url: "http://mochi.test:8888/?q=chocolate&pc=sample_code",
-    },
-    {
-      // Not the correct protocol.
-      url: "http://example.com/?q=chocolate&pc=sample_code",
-    },
-    {
-      // Not the same query param values.
-      url: "https://example.com/?q=chocolate&pc=sample_code2",
-    },
-    {
-      // Not the same query param values.
-      url: "https://example.com/?q=chocolate&pc=sample_code&pc2=sample_code_2",
-    },
-    {
-      url: "https://example.com/?q=chocolate&pc=sample_code",
-      expectedString: "chocolate",
-    },
-    {
-      url: "https://example.com/?q=chocolate+cakes&pc=sample_code",
-      expectedString: "chocolate cakes",
-    },
-  ];
-
-  // Create a specific engine so that the tests are matched
-  // exactly against the query params used.
-  let extension = await SearchTestUtils.installSearchExtension(
-    {
-      name: "TestEngine",
-      search_url: "https://example.com/",
-      search_url_get_params: "?q={searchTerms}&pc=sample_code",
-    },
-    { skipUnload: true }
-  );
-  let engine = Services.search.getEngineByName("TestEngine");
-  let originalDefaultEngine = Services.search.defaultEngine;
-  Services.search.defaultEngine = engine;
-
-  for (let testCase of testCases) {
-    let expectedString = testCase.expectedString ?? "";
-    Assert.equal(
-      UrlbarSearchUtils.getSearchTermIfDefaultSerpUri(testCase.url),
-      expectedString,
-      `Should return ${
-        expectedString == "" ? "an empty string" : "a matching search string"
-      }`
-    );
-    // Convert the string into a nsIURI and then
-    // try the test case with it.
-    if (!testCase.skipUriTest) {
-      Assert.equal(
-        UrlbarSearchUtils.getSearchTermIfDefaultSerpUri(
-          Services.io.newURI(testCase.url)
-        ),
-        expectedString,
-        `Should return ${
-          expectedString == "" ? "an empty string" : "a matching search string"
-        }`
-      );
-    }
-  }
-
-  Services.search.defaultEngine = originalDefaultEngine;
-  await extension.unload();
-});
-
 add_task(async function matchAllDomainLevels() {
   let baseHostname = "matchalldomainlevels";
   Assert.equal(
@@ -424,19 +335,10 @@ add_task(async function matchAllDomainLevels() {
     let engines = await UrlbarSearchUtils.enginesForDomainPrefix(searchString, {
       matchAllDomainLevels: true,
     });
-    let engineData = engines.map(e => ({
-      name: e.name,
-      searchForm: e.searchForm,
-    }));
-    info("Matching engines: " + JSON.stringify(engineData));
-
-    Assert.equal(
-      engines.length,
-      expectedDomains.length,
-      "Expected number of matching engines"
-    );
+    // Domain names are saved in engine names.
+    let actualDomains = engines.map(e => e.name);
     Assert.deepEqual(
-      engineData.map(d => d.name),
+      actualDomains,
       expectedDomains,
       "Expected matching engine names/domains in the expected order"
     );

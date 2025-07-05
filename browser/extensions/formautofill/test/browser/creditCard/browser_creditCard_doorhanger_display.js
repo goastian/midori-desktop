@@ -1,4 +1,11 @@
+/* Any copyright is dedicated to the Public Domain.
+http://creativecommons.org/publicdomain/zero/1.0/ */
+
 "use strict";
+
+const { FormAutofill } = ChromeUtils.importESModule(
+  "resource://autofill/FormAutofill.sys.mjs"
+);
 
 add_task(async function test_save_doorhanger_shown_no_profile() {
   await BrowserTestUtils.withNewTab(
@@ -103,6 +110,10 @@ add_task(async function test_doorhanger_not_shown_when_autofill_untouched() {
     return;
   }
 
+  await Services.fog.testFlushAllChildren();
+  Services.fog.testResetFOG();
+  Services.telemetry.clearEvents();
+
   await setStorage(TEST_CREDIT_CARD_1);
   let creditCards = await getCreditCards();
   is(creditCards.length, 1, "1 credit card in storage");
@@ -138,6 +149,17 @@ add_task(async function test_doorhanger_not_shown_when_autofill_untouched() {
   is(creditCards.length, 1, "Still 1 credit card");
   is(creditCards[0].timesUsed, 1, "timesUsed field set to 1");
   await removeAllRecords();
+
+  await Services.fog.testFlushAllChildren();
+  let testEvents = Glean.creditcard.osKeystoreDecrypt.testGetValue();
+  is(testEvents.length, 1, "Event was recorded");
+  is(testEvents[0].extra.trigger, "autofill", "Trigger was correct");
+  is(
+    testEvents[0].extra.isDecryptSuccess,
+    "true",
+    "Decryption was recorded as success"
+  );
+  is(testEvents[0].extra.errorResult, "0", "Result was no error");
 });
 
 add_task(async function test_doorhanger_not_shown_when_fill_duplicate() {
@@ -208,6 +230,11 @@ add_task(
           TEST_CREDIT_CARD_1["cc-number"]
         );
 
+        /* eslint-disable mozilla/no-arbitrary-setTimeout */
+        await new Promise(resolve => {
+          setTimeout(resolve, FormAutofill.fillOnDynamicFormChangeTimeout);
+        });
+
         await focusUpdateSubmitForm(browser, {
           focusSelector: "#cc-name",
           newValues: {
@@ -268,6 +295,11 @@ add_task(
           "#cc-number",
           TEST_CREDIT_CARD_1["cc-number"]
         );
+
+        /* eslint-disable mozilla/no-arbitrary-setTimeout */
+        await new Promise(resolve => {
+          setTimeout(resolve, FormAutofill.fillOnDynamicFormChangeTimeout);
+        });
 
         await focusUpdateSubmitForm(browser, {
           focusSelector: "#cc-name",

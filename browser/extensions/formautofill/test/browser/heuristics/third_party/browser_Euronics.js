@@ -1,4 +1,4 @@
-/* global runHeuristicsTest */
+/* global add_heuristic_tests */
 
 "use strict";
 
@@ -13,30 +13,9 @@ add_heuristic_tests(
           },
           fields: [
             { fieldName: "cc-number" },
-            //{ fieldName: "cc-cvc" },
+            { fieldName: "cc-csc", reason: "regex-heuristic" },
             { fieldName: "cc-exp-month" },
             { fieldName: "cc-exp-year" },
-            { fieldName: "cc-number", reason: "regex-heuristic" }, // invisible
-            { fieldName: "cc-number", reason: "regex-heuristic" }, // invisible
-          ],
-        },
-        {
-          invalid: true,
-          default: {
-            reason: "regex-heuristic",
-          },
-          fields: [
-            { fieldName: "cc-number" },
-          ],
-        },
-        {
-          invalid: true,
-          default: {
-            reason: "regex-heuristic",
-          },
-          fields: [
-            { fieldName: "cc-number" },
-            { fieldName: "cc-type" },
           ],
         },
         {

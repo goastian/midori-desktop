@@ -129,6 +129,7 @@ export class RemoteSettingsServer {
 
     for (let record of records) {
       let copy = { ...record };
+
       if (!copy.hasOwnProperty("id")) {
         copy.id = String(this.#nextRecordId++);
       }
@@ -170,7 +171,7 @@ export class RemoteSettingsServer {
 
     this.#lastModified++;
 
-    for (let [recordsKey, records] of this.#records.entries()) {
+    for (let records of this.#records.values()) {
       for (let record of records) {
         if (
           !filter ||
@@ -180,12 +181,14 @@ export class RemoteSettingsServer {
               record[filterKey] == filterValue
           )
         ) {
-          if (record.attachment) {
-            let attachmentKey = `${recordsKey}/${record.attachment.filename}`;
-            this.#attachments.delete(attachmentKey);
-          }
           record.deleted = true;
           record.last_modified = this.#lastModified;
+
+          // If the record has an attachment, leave it. Sometimes the following
+          // sequence can happen: A test requests records, we send them,
+          // something else deletes the records, and then the test requests
+          // their attachments. The JS RS client throws an error in that case
+          // since the attachment hashes don't match the hashes in the records.
         }
       }
     }
@@ -312,7 +315,13 @@ export class RemoteSettingsServer {
             ? lazy.HTTP_404
             : {
                 body: {
-                  metadata: null,
+                  metadata: {
+                    bucket,
+                    signature: {
+                      signature: "",
+                      x5u: "",
+                    },
+                  },
                   timestamp: this.#lastModified,
                   changes: records,
                 },
@@ -487,12 +496,14 @@ export class RemoteSettingsServer {
    */
   async #addAttachment({ bucket, collection, record }) {
     let { attachment } = record;
-    let filename = record.id;
 
-    this.#attachments.set(
-      this.#attachmentsKey(bucket, collection, filename),
-      attachment
-    );
+    let mimetype =
+      record.attachmentMimetype ?? "application/json; charset=UTF-8";
+    if (!mimetype.startsWith("application/json")) {
+      throw new Error(
+        "Mimetype not handled, please add code for it! " + mimetype
+      );
+    }
 
     let encoder = new TextEncoder();
     let bytes = encoder.encode(JSON.stringify(attachment));
@@ -502,15 +513,23 @@ export class RemoteSettingsServer {
     let toHex = b => b.toString(16).padStart(2, "0");
     let hash = Array.from(hashBytes, toHex).join("");
 
+    let filename = record.id;
+    this.#attachments.set(
+      this.#attachmentsKey(bucket, collection, filename),
+      attachment
+    );
+
     // Replace `record.attachment` with appropriate metadata in order to conform
     // with the remote settings API.
     record.attachment = {
       hash,
       filename,
-      mimetype: "application/json; charset=UTF-8",
+      mimetype,
       size: bytes.length,
       location: `attachments/${bucket}/${collection}/${filename}`,
     };
+
+    delete record.attachmentMimetype;
   }
 
   #attachmentsKey(bucket, collection, filename) {

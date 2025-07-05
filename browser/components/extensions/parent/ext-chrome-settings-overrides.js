@@ -136,9 +136,8 @@ async function handleHomepageUrl(extension, homepageUrl) {
   // eslint-disable-next-line mozilla/balanced-listeners
   extension.on("add-permissions", async (ignoreEvent, permissions) => {
     if (permissions.permissions.includes("internal:privateBrowsingAllowed")) {
-      let item = await ExtensionPreferencesManager.getSetting(
-        "homepage_override"
-      );
+      let item =
+        await ExtensionPreferencesManager.getSetting("homepage_override");
       if (item && item.id == extension.id) {
         Services.prefs.setBoolPref(HOMEPAGE_PRIVATE_ALLOWED, true);
       }
@@ -147,9 +146,8 @@ async function handleHomepageUrl(extension, homepageUrl) {
   // eslint-disable-next-line mozilla/balanced-listeners
   extension.on("remove-permissions", async (ignoreEvent, permissions) => {
     if (permissions.permissions.includes("internal:privateBrowsingAllowed")) {
-      let item = await ExtensionPreferencesManager.getSetting(
-        "homepage_override"
-      );
+      let item =
+        await ExtensionPreferencesManager.getSetting("homepage_override");
       if (item && item.id == extension.id) {
         Services.prefs.setBoolPref(HOMEPAGE_PRIVATE_ALLOWED, false);
       }
@@ -269,15 +267,10 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
       const ignoreHomePageUrl = await HomePage.shouldIgnore(homepageUrl);
 
       if (ignoreHomePageUrl) {
-        Services.telemetry.recordEvent(
-          "homepage",
-          "preference",
-          "ignore",
-          "set_blocked_extension",
-          {
-            webExtensionId: extension.id,
-          }
-        );
+        Glean.homepage.preferenceIgnore.record({
+          value: "set_blocked_extension",
+          webExtensionId: extension.id,
+        });
       } else {
         await handleHomepageUrl(extension, homepageUrl);
       }

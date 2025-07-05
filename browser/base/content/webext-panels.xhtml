@@ -5,6 +5,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+<?csp default-src chrome:; img-src chrome: data:; ?>
+
 <window id="webextpanels-window"
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
@@ -23,22 +25,19 @@
       rel="stylesheet"
       href="chrome://browser/content/usercontext/usercontext.css"
     />
+    <html:link rel="stylesheet" href="chrome://browser/content/webext-panels.css"/>
 
     <html:link rel="localization" href="toolkit/branding/brandings.ftl"/>
     <html:link rel="localization" href="toolkit/global/textActions.ftl"/>
     <html:link rel="localization" href="browser/browserContext.ftl"/>
     <html:link rel="localization" href="browser/translations.ftl"/>
+    <html:link rel="localization" href="browser/sidebar.ftl"/>
   </linkset>
 
+  <!-- nsContextMenu.initNavigationItems expects these elements -->
   <commandset id="mainCommandset">
-    <command id="Browser:Back"
-             oncommand="getPanelBrowser().webNavigation.goBack();"
-             disabled="true"/>
-    <command id="Browser:Forward"
-             oncommand="getPanelBrowser().webNavigation.goForward();"
-             disabled="true"/>
-    <command id="Browser:Stop" oncommand="PanelBrowserStop();"/>
-    <command id="Browser:Reload" oncommand="PanelBrowserReload();"/>
+    <command id="Browser:Stop" disabled="true" />
+    <command id="Browser:Reload" disabled="true" />
   </commandset>
 
   <popupset id="mainPopupSet">
@@ -53,15 +52,10 @@
            norolluponanchor="true" />
 
     <menupopup id="contentAreaContextMenu"
-               onpopupshowing="if (event.target != this)
-                                 return true;
-                               gContextMenu = new nsContextMenu(this, event.shiftKey);
-                               return gContextMenu.shouldDisplay;"
-               onpopuphiding="if (event.target != this)
-                                return;
-                              gContextMenu.hiding(this);
-                              gContextMenu = null;">
+# read by macOS cocoa code to enable the "services" menu here:
+             showservicesmenu="true">
 #include browser-context.inc
     </menupopup>
   </popupset>
+  <html:sidebar-panel-header id="sidebar-panel-header"/>
 </window>

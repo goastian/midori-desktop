@@ -25,6 +25,7 @@ async function test_copy_values(testValues, trimHttps) {
 
   await SpecialPowers.pushPrefEnv({
     set: [
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
       ["browser.urlbar.trimURLs", true],
       ["browser.urlbar.trimHttps", trimHttps],
       // avoid prompting about phishing
@@ -51,9 +52,10 @@ async function test_copy_values(testValues, trimHttps) {
       );
     } else if (testCase.setURL) {
       gURLBar.value = testCase.setURL;
+      // After input only the visible text is copied.
+      UrlbarTestUtils.fireInputEvent(window);
     }
     if (testCase.setURL || testCase.loadURL) {
-      gURLBar.valueIsTyped = !!testCase.setURL;
       is(
         gURLBar.value,
         testCase.expectedURL,
@@ -616,7 +618,7 @@ function testCopy(copyVal, targetValue) {
 
   if (copyVal) {
     let offsets = [];
-    while (true) {
+    for (;;) {
       let startBracket = copyVal.indexOf("<");
       let endBracket = copyVal.indexOf(">");
       if (startBracket == -1 && endBracket == -1) {

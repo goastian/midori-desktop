@@ -9,13 +9,21 @@
  * a test of the ping's submission upon startup.)
  */
 
+// Can fail in TV mode.
+requestLongerTimeout(2);
+
 ChromeUtils.defineESModuleGetters(this, {
-  CATEGORIZATION_SETTINGS: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  CATEGORIZATION_SETTINGS:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
+  DomainToCategoriesStore:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SERPCategorizationRecorder: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  SearchSERPTelemetry:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
+  SERPCategorizationRecorder:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   TELEMETRY_CATEGORIZATION_KEY:
-    "resource:///modules/SearchSERPTelemetry.sys.mjs",
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
 });
 
 const TEST_PROVIDER_INFO = [
@@ -65,11 +73,6 @@ const TEST_PROVIDER_INFO = [
 
 const client = RemoteSettings(TELEMETRY_CATEGORIZATION_KEY);
 const db = client.db;
-
-function sleep(ms) {
-  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 add_setup(async function () {
   SearchSERPTelemetry.overrideSearchTelemetryForTests(TEST_PROVIDER_INFO);
@@ -186,6 +189,8 @@ add_task(async function test_quick_activity_to_inactivity_alternation() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
   await promise;
 
+  BrowserTestUtils.removeTab(tab);
+
   let activityDetectedPromise = TestUtils.topicObserved(
     "user-interaction-active"
   );
@@ -206,12 +211,11 @@ add_task(async function test_quick_activity_to_inactivity_alternation() {
     submitted,
     "Ping should not be submitted after a quick alternation from activity to inactivity."
   );
-
-  BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function test_submit_after_activity_then_inactivity() {
   resetTelemetry();
+
   let oldActivityLimit = Services.prefs.getIntPref(
     "telemetry.fog.test.activity_limit"
   );
@@ -223,6 +227,12 @@ add_task(async function test_submit_after_activity_then_inactivity() {
     "Should not have recorded any metrics yet."
   );
 
+  let url = getSERPUrl("searchTelemetryDomainCategorizationReporting.html");
+  info("Load a sample SERP with organic and sponsored results.");
+  let promise = waitForPageWithCategorizedDomains();
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  await promise;
+
   let submitted = false;
   GleanPings.serpCategorization.testBeforeNextSubmit(reason => {
     submitted = true;
@@ -233,11 +243,7 @@ add_task(async function test_submit_after_activity_then_inactivity() {
     );
   });
 
-  let url = getSERPUrl("searchTelemetryDomainCategorizationReporting.html");
-  info("Load a sample SERP with organic and sponsored results.");
-  let promise = waitForPageWithCategorizedDomains();
-  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
-  await promise;
+  BrowserTestUtils.removeTab(tab);
 
   let activityDetectedPromise = TestUtils.topicObserved(
     "user-interaction-active"
@@ -260,7 +266,6 @@ add_task(async function test_submit_after_activity_then_inactivity() {
     "Ping should be submitted after 2+ seconds of activity, followed by inactivity."
   );
 
-  BrowserTestUtils.removeTab(tab);
   Services.prefs.setIntPref(
     "telemetry.fog.test.activity_limit",
     oldActivityLimit
@@ -302,4 +307,37 @@ add_task(async function test_no_observers_added_if_pref_is_off() {
 
   await SpecialPowers.popPrefEnv();
   await waitForDomainToCategoriesInit();
+});
+
+add_task(async function test_count_incremented_if_store_is_not_created() {
+  resetTelemetry();
+
+  // Clear the existing domain-to-categories map.
+  await SERPDomainToCategoriesMap.uninit({ deleteMap: true });
+
+  let sandbox = sinon.createSandbox();
+  sandbox
+    .stub(DomainToCategoriesStore.prototype, "insertFileContents")
+    .throws(new Error());
+  // Initializing should fail and cause the component to un-initialize.
+  let promise = waitForDomainToCategoriesUninit();
+  await SERPDomainToCategoriesMap.init();
+  await promise;
+  info("Store for the domain-to-categories map not created successfully.");
+
+  let url = getSERPUrl("searchTelemetryDomainCategorizationReporting.html");
+  info("Load a SERP with organic and sponsored results.");
+  promise = waitForPageWithCategorizedDomains();
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  await promise;
+
+  Assert.equal(
+    Glean.serp.categorizationNoMapFound.testGetValue(),
+    1,
+    "Counter should be incremented when there is an issue creating the store for the domain-to-categories map."
+  );
+
+  sandbox.restore();
+  await SERPDomainToCategoriesMap.init();
+  await BrowserTestUtils.removeTab(tab);
 });

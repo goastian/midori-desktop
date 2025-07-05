@@ -11,18 +11,52 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "Should the message be global (persisted across tabs) or local (disappear when switching to a different tab).",
-          "enum": ["global", "tab"]
+          "description": "Specifies where the message should appear and persist: 'global' (persists across tabs in the current window), 'tab' (only visible in the current tab), or 'universal' (visible across all tabs and windows, current and future).",
+          "enum": ["global", "tab", "universal"]
         },
         "text": {
-          "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText",
-          "description": "The text show in the notification box."
+          "description": "Either a single localizableText, or an array of raw strings and/or localizableText objects. localizableText can contain an optional href property for the text to be rendered as a link.",
+          "oneOf": [
+            { "$ref": "#/$defs/plainText" },
+            {
+              "allOf": [
+                {
+                  "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText"
+                },
+                { "not": { "required": ["href"] } }
+              ]
+            },
+            { "$ref": "#/$defs/localizableTextWithHref" },
+            { "$ref": "#/$defs/rawTextWithHref" },
+            {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  { "$ref": "#/$defs/plainText" },
+                  {
+                    "allOf": [
+                      {
+                        "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText"
+                      },
+                      { "not": { "required": ["href"] } }
+                    ]
+                  },
+                  { "$ref": "#/$defs/localizableTextWithHref" },
+                  { "$ref": "#/$defs/rawTextWithHref" }
+                ]
+              }
+            }
+          ]
         },
         "priority": {
           "description": "Infobar priority level https://searchfox.org/mozilla-central/rev/3aef835f6cb12e607154d56d68726767172571e4/toolkit/content/widgets/notificationbox.js#387",
           "type": "number",
           "minumum": 0,
           "exclusiveMaximum": 10
+        },
+        "dismissable": {
+          "description": "Should the infobar include an X dismiss button, defaults to true",
+          "type": "boolean"
         },
         "buttons": {
           "type": "array",
@@ -44,6 +78,10 @@
               "action": {
                 "type": "object",
                 "properties": {
+                  "dismiss": {
+                    "type": "boolean",
+                    "description": "Should the infobar be dismissed when the action is dispatched, defaults to true"
+                  },
                   "type": {
                     "type": "string",
                     "description": "Action dispatched by the button."
@@ -84,6 +122,30 @@
       "description": "Target for links or buttons",
       "type": "string",
       "format": "uri"
+    },
+    "localizableTextWithHref": {
+      "description": "Everything a localizableText allows, plus a required href",
+      "allOf": [
+        { "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText" },
+        {
+          "type": "object",
+          "properties": {
+            "href": { "$ref": "#/$defs/linkUrl" }
+          },
+          "required": ["href"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "rawTextWithHref": {
+      "description": "A literal text chunk that must include href",
+      "type": "object",
+      "properties": {
+        "raw": { "type": "string" },
+        "href": { "$ref": "#/$defs/linkUrl" }
+      },
+      "required": ["raw", "href"],
+      "additionalProperties": false
     }
   }
 }

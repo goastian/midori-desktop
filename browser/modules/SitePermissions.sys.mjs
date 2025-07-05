@@ -769,9 +769,17 @@ export var SitePermissions = {
       }
     }
 
-    if (result.state == defaultState) {
-      // If there's no persistent permission saved, check if we have something
-      // set temporarily.
+    if (
+      result.state == defaultState ||
+      result.state == SitePermissions.PROMPT
+    ) {
+      // If there's no persistent permission saved, or if the persistent permission
+      // saved is merely PROMPT (aka "Always Ask" when persisted for camera and
+      // microphone), then check if we have something set temporarily.
+      //
+      // This way, a temporary ALLOW or BLOCK trumps a persisted PROMPT. While
+      // having overlap would be a bug (because any ALLOW or BLOCK user action should
+      // really clear PROMPT), this order seems safer than the other way around.
       let value = TemporaryPermissions.get(browser, permissionID);
 
       if (value) {
@@ -1241,9 +1249,6 @@ let gPermissions = {
       labelID: "open-protocol-handler",
       exactHostMatch: true,
       states: [SitePermissions.UNKNOWN, SitePermissions.ALLOW],
-      get disabled() {
-        return !SitePermissions.openProtoPermissionEnabled;
-      },
     },
 
     xr: {
@@ -1316,12 +1321,5 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "resistFingerprinting",
   "privacy.resistFingerprinting",
   false,
-  SitePermissions.invalidatePermissionList.bind(SitePermissions)
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  SitePermissions,
-  "openProtoPermissionEnabled",
-  "security.external_protocol_requires_permission",
-  true,
   SitePermissions.invalidatePermissionList.bind(SitePermissions)
 );

@@ -8,6 +8,7 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
+  CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
   DownloadPaths: "resource://gre/modules/DownloadPaths.sys.mjs",
   ExtensionControlledPopup:
     "resource:///modules/ExtensionControlledPopup.sys.mjs",
@@ -30,13 +31,15 @@ const TAB_ID_NONE = -1;
 ChromeUtils.defineLazyGetter(this, "tabHidePopup", () => {
   return new ExtensionControlledPopup({
     confirmedType: TAB_HIDE_CONFIRMED_TYPE,
-    anchorId: "alltabs-button",
     popupnotificationId: "extension-tab-hide-notification",
     descriptionId: "extension-tab-hide-notification-description",
     descriptionMessageId: "tabHideControlled.message",
     getLocalizedDescription: (doc, message, addonDetails) => {
       let image = doc.createXULElement("image");
-      image.setAttribute("class", "extension-controlled-icon alltabs-icon");
+      image.classList.add("extension-controlled-icon", "alltabs-icon");
+      if (!doc.getElementById("alltabs-button")?.closest("#TabsToolbar")) {
+        image.classList.add("alltabs-icon-generic");
+      }
       return BrowserUIUtils.getLocalizedFragment(
         doc,
         message,
@@ -157,9 +160,11 @@ const allProperties = new Set([
   "autoDiscardable",
   "discarded",
   "favIconUrl",
+  "groupId",
   "hidden",
   "isArticle",
   "mutedInfo",
+  "openerTabId",
   "pinned",
   "sharingState",
   "status",
@@ -256,13 +261,21 @@ this.tabs = class extends ExtensionAPIPersistent {
     }),
     onMoved({ fire }) {
       let { tabManager } = this.extension;
+      /**
+       * @param {CustomEvent} event
+       */
       let moveListener = event => {
         let nativeTab = event.originalTarget;
-        if (tabManager.canAccessTab(nativeTab)) {
+        let { previousTabState, currentTabState } = event.detail;
+        let fromIndex = previousTabState.tabIndex;
+        let toIndex = currentTabState.tabIndex;
+        // TabMove also fires if its tab group changes; we should only fire
+        // event if the position actually moved.
+        if (fromIndex !== toIndex && tabManager.canAccessTab(nativeTab)) {
           fire.async(tabTracker.getId(nativeTab), {
             windowId: windowTracker.getId(nativeTab.ownerGlobal),
-            fromIndex: event.detail,
-            toIndex: nativeTab._tPos,
+            fromIndex,
+            toIndex,
           });
         }
       };
@@ -406,6 +419,8 @@ this.tabs = class extends ExtensionAPIPersistent {
           return;
         }
         let needed = [];
+        let updatedTab = event.originalTarget;
+
         if (event.type == "TabAttrModified") {
           let changed = event.detail.changed;
           if (
@@ -457,20 +472,35 @@ this.tabs = class extends ExtensionAPIPersistent {
           needed.push("discarded");
         } else if (event.type == "TabBrowserDiscarded") {
           needed.push("discarded");
+        } else if (event.type === "TabGrouped") {
+          needed.push("groupId");
+          // tab grouping events are fired on the group,
+          // not the tab itself.
+          updatedTab = event.detail;
+        } else if (event.type === "TabUngrouped") {
+          // tab grouping events are fired on the group,
+          // not the tab itself.
+          updatedTab = event.detail;
+          if (updatedTab.group) {
+            // If there is still a group, that means that the group changed,
+            // so TabGrouped will also fire. Ignore to avoid duplicate events.
+            return;
+          }
+          needed.push("groupId");
         } else if (event.type == "TabShow") {
           needed.push("hidden");
         } else if (event.type == "TabHide") {
           needed.push("hidden");
         }
 
-        let tab = tabManager.getWrapper(event.originalTarget);
+        let tab = tabManager.getWrapper(updatedTab);
 
         let changeInfo = {};
         for (let prop of needed) {
           changeInfo[prop] = tab[prop];
         }
 
-        fireForTab(tab, changeInfo, event.originalTarget);
+        fireForTab(tab, changeInfo, updatedTab);
       };
 
       let statusListener = ({ browser, status, url }) => {
@@ -503,6 +533,11 @@ this.tabs = class extends ExtensionAPIPersistent {
         }
       };
 
+      let openerTabIdChangeListener = (_, { nativeTab, openerTabId }) => {
+        let tab = tabManager.getWrapper(nativeTab);
+        fireForTab(tab, { openerTabId }, nativeTab);
+      };
+
       let listeners = new Map();
       if (filter.properties.has("status") || filter.properties.has("url")) {
         listeners.set("status", statusListener);
@@ -518,6 +553,10 @@ this.tabs = class extends ExtensionAPIPersistent {
         listeners.set("TabBrowserInserted", listener);
         listeners.set("TabBrowserDiscarded", listener);
       }
+      if (filter.properties.has("groupId")) {
+        listeners.set("TabGrouped", listener);
+        listeners.set("TabUngrouped", listener);
+      }
       if (filter.properties.has("hidden")) {
         listeners.set("TabShow", listener);
         listeners.set("TabHide", listener);
@@ -531,6 +570,10 @@ this.tabs = class extends ExtensionAPIPersistent {
         tabTracker.on("tab-isarticle", isArticleChangeListener);
       }
 
+      if (filter.properties.has("openerTabId")) {
+        tabTracker.on("tab-openerTabId", openerTabIdChangeListener);
+      }
+
       return {
         unregister() {
           for (let [name, listener] of listeners) {
@@ -539,6 +582,10 @@ this.tabs = class extends ExtensionAPIPersistent {
 
           if (filter.properties.has("isArticle")) {
             tabTracker.off("tab-isarticle", isArticleChangeListener);
+          }
+
+          if (filter.properties.has("openerTabId")) {
+            tabTracker.off("tab-openerTabId", openerTabIdChangeListener);
           }
         },
         convert(_fire, _context) {
@@ -765,12 +812,12 @@ this.tabs = class extends ExtensionAPIPersistent {
               }
             }
 
-            // Simple properties
-            const properties = ["index", "pinned"];
-            for (let prop of properties) {
-              if (createProperties[prop] != null) {
-                options[prop] = createProperties[prop];
-              }
+            if (createProperties.index != null) {
+              options.tabIndex = createProperties.index;
+            }
+
+            if (createProperties.pinned != null) {
+              options.pinned = createProperties.pinned;
             }
 
             let active =
@@ -939,14 +986,7 @@ this.tabs = class extends ExtensionAPIPersistent {
             }
           }
           if (updateProperties.openerTabId !== null) {
-            let opener = tabTracker.getTab(updateProperties.openerTabId);
-            if (opener.ownerDocument !== nativeTab.ownerDocument) {
-              return Promise.reject({
-                message:
-                  "Opener tab must be in the same window as the tab being updated",
-              });
-            }
-            tabTracker.setOpener(nativeTab, opener);
+            tabTracker.setOpener(nativeTab, updateProperties.openerTabId);
           }
           if (updateProperties.successorTabId !== null) {
             let successor = null;
@@ -1143,7 +1183,7 @@ this.tabs = class extends ExtensionAPIPersistent {
             // the current set of pinned tabs. Unpinned tabs, likewise, can only
             // be moved to a position after the current set of pinned tabs.
             // Attempts to move a tab to an illegal position are ignored.
-            let numPinned = gBrowser._numPinnedTabs;
+            let numPinned = gBrowser.pinnedTabCount;
             let ok = nativeTab.pinned
               ? insertionPoint <= numPinned
               : insertionPoint >= numPinned;
@@ -1153,11 +1193,13 @@ this.tabs = class extends ExtensionAPIPersistent {
 
             if (isSameWindow) {
               // If the window we are moving is the same, just move the tab.
-              gBrowser.moveTabTo(nativeTab, insertionPoint);
+              gBrowser.moveTabTo(nativeTab, { tabIndex: insertionPoint });
             } else {
               // If the window we are moving the tab in is different, then move the tab
               // to the new window.
-              nativeTab = gBrowser.adoptTab(nativeTab, insertionPoint, false);
+              nativeTab = gBrowser.adoptTab(nativeTab, {
+                tabIndex: insertionPoint,
+              });
             }
             lastInsertionMap.set(window, nativeTab._tPos);
             tabsMoved.push(nativeTab);
@@ -1167,7 +1209,7 @@ this.tabs = class extends ExtensionAPIPersistent {
         },
 
         duplicate(tabId, duplicateProperties) {
-          const { active, index } = duplicateProperties || {};
+          const { active, index: tabIndex } = duplicateProperties || {};
           const inBackground = active === undefined ? false : !active;
 
           // Schema requires tab id.
@@ -1176,7 +1218,7 @@ this.tabs = class extends ExtensionAPIPersistent {
           let gBrowser = nativeTab.ownerGlobal.gBrowser;
           let newTab = gBrowser.duplicateTab(nativeTab, true, {
             inBackground,
-            index,
+            tabIndex,
           });
 
           tabListener.blockTabUntilRestored(newTab);
@@ -1599,6 +1641,17 @@ this.tabs = class extends ExtensionAPIPersistent {
           }
           if (hidden.length) {
             let win = Services.wm.getMostRecentWindow("navigator:browser");
+
+            // Before showing the hidden tabs warning,
+            // move alltabs-button to somewhere visible if it isn't already.
+            if (!CustomizableUI.widgetIsLikelyVisible("alltabs-button", win)) {
+              CustomizableUI.addWidgetToArea(
+                "alltabs-button",
+                CustomizableUI.verticalTabsEnabled
+                  ? CustomizableUI.AREA_NAVBAR
+                  : CustomizableUI.AREA_TABSTRIP
+              );
+            }
             tabHidePopup.open(win, extension.id);
           }
           return hidden;
@@ -1631,12 +1684,119 @@ this.tabs = class extends ExtensionAPIPersistent {
 
         goForward(tabId) {
           let nativeTab = getTabOrActive(tabId);
-          nativeTab.linkedBrowser.goForward();
+          nativeTab.linkedBrowser.goForward(false);
         },
 
         goBack(tabId) {
           let nativeTab = getTabOrActive(tabId);
-          nativeTab.linkedBrowser.goBack();
+          nativeTab.linkedBrowser.goBack(false);
+        },
+
+        group(options) {
+          let nativeTabs = getNativeTabsFromIDArray(options.tabIds);
+          let window = windowTracker.getWindow(
+            options.createProperties?.windowId ?? Window.WINDOW_ID_CURRENT,
+            context
+          );
+          const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+          for (const nativeTab of nativeTabs) {
+            if (
+              PrivateBrowsingUtils.isWindowPrivate(nativeTab.ownerGlobal) !==
+              windowIsPrivate
+            ) {
+              if (windowIsPrivate) {
+                throw new ExtensionError(
+                  "Cannot move non-private tabs to private window"
+                );
+              }
+              throw new ExtensionError(
+                "Cannot move private tabs to non-private window"
+              );
+            }
+          }
+          function unpinTabsBeforeGrouping() {
+            for (const nativeTab of nativeTabs) {
+              nativeTab.ownerGlobal.gBrowser.unpinTab(nativeTab);
+            }
+          }
+          let group;
+          if (options.groupId == null) {
+            // By default, tabs are appended after all other tabs in the
+            // window. But if we are grouping tabs within a window, ideally the
+            // tabs should just be grouped without moving positions.
+            // TODO bug 1939214: when addTabGroup inserts tabs at the front as
+            // needed (instead of always appending), simplify this logic.
+            const tabInWin = nativeTabs.find(t => t.ownerGlobal === window);
+            let insertBefore = tabInWin;
+            if (tabInWin?.group) {
+              if (tabInWin.group.tabs[0] === tabInWin) {
+                // When tabInWin is at the front of a tab group, insert before
+                // the tab group (instead of after it).
+                insertBefore = tabInWin.group;
+              } else {
+                insertBefore = insertBefore.group.nextElementSibling;
+              }
+            }
+            unpinTabsBeforeGrouping();
+            group = window.gBrowser.addTabGroup(nativeTabs, { insertBefore });
+            // Note: group is never null, because the only condition for which
+            // it could be null is when all tabs are pinned, and we are already
+            // explicitly unpinning them before moving.
+          } else {
+            group = window.gBrowser.getTabGroupById(
+              getInternalTabGroupIdForExtTabGroupId(options.groupId)
+            );
+            if (!group) {
+              throw new ExtensionError(`No group with id: ${options.groupId}`);
+            }
+            unpinTabsBeforeGrouping();
+            // When moving tabs within the same window, try to maintain their
+            // relative positions.
+            const tabsBefore = [];
+            const tabsAfter = [];
+            const firstTabInGroup = group.tabs[0];
+            for (const nativeTab of nativeTabs) {
+              if (
+                nativeTab.ownerGlobal === window &&
+                nativeTab._tPos < firstTabInGroup._tPos
+              ) {
+                tabsBefore.push(nativeTab);
+              } else {
+                tabsAfter.push(nativeTab);
+              }
+            }
+            if (tabsBefore.length) {
+              window.gBrowser.moveTabsBefore(tabsBefore, firstTabInGroup);
+            }
+            if (tabsAfter.length) {
+              group.addTabs(tabsAfter);
+            }
+          }
+          return getExtTabGroupIdForInternalTabGroupId(group.id);
+        },
+
+        ungroup(tabIds) {
+          const nativeTabs = getNativeTabsFromIDArray(tabIds);
+          // Ungroup tabs while trying to preserve the relative order of tabs
+          // within the tab strip as much as possible. This is not always
+          // possible, e.g. when a tab group is only partially ungrouped.
+          const ungroupOrder = new DefaultMap(() => []);
+          for (const nativeTab of nativeTabs) {
+            if (nativeTab.group) {
+              ungroupOrder.get(nativeTab.group).push(nativeTab);
+            }
+          }
+          for (const [group, tabs] of ungroupOrder) {
+            // Preserve original order of ungrouped tabs.
+            tabs.sort((a, b) => a._tPos - b._tPos);
+            if (tabs[0] === tabs[0].group.tabs[0]) {
+              // The tab is the front of the tab group, so insert before
+              // current tab group to preserve order.
+              tabs[0].ownerGlobal.gBrowser.moveTabsBefore(tabs, group);
+            } else {
+              tabs[0].ownerGlobal.gBrowser.moveTabsAfter(tabs, group);
+            }
+          }
         },
       },
     };

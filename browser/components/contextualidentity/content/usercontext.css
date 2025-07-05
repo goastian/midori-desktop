@@ -43,8 +43,8 @@
 }
 
 .identity-color-toolbar {
-  --identity-tab-color: var(--toolbar-field-color);
-  --identity-icon-color: var(--toolbar-field-color);
+  --identity-tab-color: currentColor;
+  --identity-icon-color: currentColor;
 }
 
 .identity-icon-fence {
@@ -123,6 +123,13 @@
   height: 2px;
   border-radius: 2px;
   margin: -3px 2px 0;
+
+  #vertical-pinned-tabs-container &,
+  #tabbrowser-tabs[orient="vertical"] & {
+    height: auto;
+    width: 2px;
+    margin: 3px 0;
+  }
 }
 
 .userContext-icon,

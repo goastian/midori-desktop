@@ -13,13 +13,11 @@ prefs = [
   # The form autofill framescript is only used in certain locales if this
   # pref is set to 'detect', which is the default value on non-Nightly.
   "extensions.formautofill.addresses.available='on'",
-  "browser.urlbar.disableExtendForTests=true",
   # For perfomance tests do not enable the remote control cue, which gets set
   # when Marionette is enabled, but users normally don't see.
   "browser.chrome.disableRemoteControlCueForTests=true",
-  # The Screenshots extension is disabled by default in Mochitests. We re-enable
-  # it here, since it's a more realistic configuration.
-  "extensions.screenshots.disabled=false",
+  # Need to keep the revamped sidebar off until Bug 1905212 is done
+  "sidebar.revamp=false",
 ]
 support-files = ["head.js"]
 
@@ -33,24 +31,31 @@ skip-if = [
 
 ["browser_hidden_browser_vsync.js"]
 
+["browser_hiddenwindow_existence.js"]
+
+["browser_opaque_region.js"]
+
 ["browser_panel_vsync.js"]
 support-files = ["!/browser/components/downloads/test/browser/head.js"]
 
 ["browser_preferences_usage.js"]
 https_first_disabled = true
+run-if = ["debug"]
 skip-if = [
-  "!debug",
   "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",  # platform migration
   "socketprocess_networking",
 ]
 
 ["browser_startup.js"]
+# This test should be treated more like a test suite than like an individual test.
+# If a specific failure needs to be disabled, there are exception lists inside
+# the test that can be adjusted.
 
 ["browser_startup_content.js"]
 support-files = ["file_empty.html"]
 
 ["browser_startup_content_subframe.js"]
-skip-if = ["!fission"]
+run-if = ["fission"]
 support-files = [
   "file_empty.html",
   "StartupContentSubframe.sys.mjs",
@@ -61,9 +66,9 @@ run-if = [
   "debug",
   "nightly_build", # Requires StartupRecorder.sys.mjs, which isn't shipped everywhere by default
 ]
-
-["browser_startup_hiddenwindow.js"]
-skip-if = ["os == 'mac'"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1889278
+]
 
 ["browser_tabclose.js"]
 skip-if = [
@@ -80,8 +85,9 @@ skip-if = [
 ["browser_tabopen.js"]
 skip-if = [
   "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1594274
-  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt", # Bug 1705492
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1705492
   "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1705492
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && opt", # Bug 1870476
 ]
 
 ["browser_tabopen_squeeze.js"]
@@ -98,14 +104,8 @@ skip-if = ["os == 'win'"] #Bug 1455054
 ["browser_toolbariconcolor_restyles.js"]
 
 ["browser_urlbar_keyed_search.js"]
-skip-if = ["win11_2009 && bits == 32"] # # Disabled on Win32 because of intermittent OOM failures (bug 1448241)
 
 ["browser_urlbar_search.js"]
-skip-if = [
-  "os == 'linux' && (debug || ccov)", # Disabled on Linux debug and ccov due to intermittent timeouts. Bug 1414126.
-  "os == 'win' && (debug || ccov)", # Disabled on Windows debug and ccov due to intermittent timeouts. bug 1426611.
-  "win11_2009 && bits == 32",
-]
 
 ["browser_vsync_accessibility.js"]
 

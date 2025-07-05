@@ -4,7 +4,7 @@
 
 "use strict";
 
-/* global ExtensionCommon, ExtensionAPI, Services, XPCOMUtils, ExtensionUtils */
+/* global ExtensionCommon, ExtensionAPI, Glean, Services, XPCOMUtils, ExtensionUtils */
 
 const { AddonManager } = ChromeUtils.importESModule(
   "resource://gre/modules/AddonManager.sys.mjs"
@@ -12,10 +12,16 @@ const { AddonManager } = ChromeUtils.importESModule(
 const { WebRequest } = ChromeUtils.importESModule(
   "resource://gre/modules/WebRequest.sys.mjs"
 );
+var { ExtensionParent } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionParent.sys.mjs"
+);
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  AddonSearchEngine: "resource://gre/modules/AddonSearchEngine.sys.mjs",
+  AddonSearchEngine:
+    "moz-src:///toolkit/components/search/AddonSearchEngine.sys.mjs",
+  AppProvidedSearchEngine:
+    "moz-src:///toolkit/components/search/AppProvidedSearchEngine.sys.mjs",
 });
 
 // eslint-disable-next-line mozilla/reject-importGlobalProperties
@@ -45,47 +51,58 @@ this.addonsSearchDetection = class extends ExtensionAPI {
           const patterns = {};
 
           try {
+            // Delaying accessing Services.search if we didn't get to first paint yet
+            // to avoid triggering search internals from loading too soon during the
+            // application startup.
+            if (
+              !Cu.isESModuleLoaded(
+                "resource://gre/modules/SearchService.sys.mjs"
+              )
+            ) {
+              await ExtensionParent.browserPaintedPromise;
+            }
+            // Return earlier if the extension or the application is shutting down.
+            if (extension.hasShutdown || Services.startup.shuttingDown) {
+              return patterns;
+            }
             await Services.search.promiseInitialized;
-            const visibleEngines = await Services.search.getEngines();
+            const engines = await Services.search.getEngines();
 
-            visibleEngines.forEach(engine => {
-              if (!(engine instanceof lazy.AddonSearchEngine)) {
-                return;
-              }
-              const { _extensionID, _urls } = engine.wrappedJSObject;
-
-              if (!_extensionID) {
-                // OpenSearch engines don't have an extension ID.
-                return;
+            for (let engine of engines) {
+              if (
+                !(engine instanceof lazy.AddonSearchEngine) &&
+                !(engine instanceof lazy.AppProvidedSearchEngine)
+              ) {
+                continue;
               }
 
-              _urls
-                // We only want to collect "search URLs" (and not "suggestion"
-                // ones for instance). See `URL_TYPE` in `SearchUtils.sys.mjs`.
-                .filter(({ type }) => type === "text/html")
-                .forEach(({ template }) => {
-                  // If this is changed, double check the code in the background
-                  // script because `webRequestCancelledHandler` splits patterns
-                  // on `*` to retrieve URL prefixes.
-                  const pattern = template.split("?")[0] + "*";
+              // The search term isn't used, but avoids a warning of an empty
+              // term.
+              let submission = engine.getSubmission("searchTerm");
+              if (submission) {
+                // If this is changed, double check the code in the background
+                // script because `getAddonIdsForUrl` truncates the last
+                // character.
+                const pattern =
+                  submission.uri.prePath + submission.uri.filePath + "*";
 
-                  // Multiple search engines could register URL templates that
-                  // would become the same URL pattern as defined above so we
-                  // store a list of extension IDs per URL pattern.
-                  if (!patterns[pattern]) {
-                    patterns[pattern] = [];
-                  }
+                // Multiple search engines could register URL templates that
+                // would become the same URL pattern as defined above so we
+                // store a list of extension IDs per URL pattern.
+                if (!patterns[pattern]) {
+                  patterns[pattern] = [];
+                }
 
-                  // We exclude built-in search engines because we don't need
-                  // to report them.
-                  if (
-                    !patterns[pattern].includes(_extensionID) &&
-                    !_extensionID.endsWith("@search.mozilla.org")
-                  ) {
-                    patterns[pattern].push(_extensionID);
-                  }
-                });
-            });
+                // We don't store ids for application provided search engines
+                // because we don't need to report them. However, we do ensure
+                // the pattern is recorded (above), so that we check for
+                // redirects against those.
+                const _extensionID = engine.wrappedJSObject._extensionID;
+                if (_extensionID && !patterns[pattern].includes(_extensionID)) {
+                  patterns[pattern].push(_extensionID);
+                }
+              }
+            }
           } catch (err) {
             console.error(err);
           }
@@ -101,14 +118,22 @@ this.addonsSearchDetection = class extends ExtensionAPI {
         },
 
         // `getPublicSuffix()` returns the public suffix/Effective TLD Service
-        // of the given URL.
-        // See: https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Reference/Interface/nsIEffectiveTLDService
+        // of the given URL. See: `nsIEffectiveTLDService` interface in tree.
         async getPublicSuffix(url) {
           try {
             return Services.eTLD.getBaseDomain(Services.io.newURI(url));
           } catch (err) {
             console.error(err);
             return null;
+          }
+        },
+
+        // Report a redirect via Glean and Telemetry.
+        report(maybeServerSideRedirect, extra) {
+          if (maybeServerSideRedirect) {
+            Glean.addonsSearchDetection.etldChangeOther.record(extra);
+          } else {
+            Glean.addonsSearchDetection.etldChangeWebrequest.record(extra);
           }
         },
 
@@ -203,6 +228,8 @@ this.addonsSearchDetection = class extends ExtensionAPI {
               fire.sync({ addonId, firstUrl, lastUrl });
             };
 
+            const remoteTab = context.xulBrowser.frameLoader.remoteTab;
+
             const listener = ({ requestId, url, originUrl }) => {
               // We exclude requests not originating from the location bar,
               // bookmarks and other "system-ish" requests.
@@ -218,20 +245,47 @@ this.addonsSearchDetection = class extends ExtensionAPI {
                 const wrapper = ChannelWrapper.getRegisteredChannel(
                   requestId,
                   context.extension.policy,
-                  context.xulBrowser.frameLoader.remoteTab
+                  remoteTab
                 );
 
                 wrapper.addEventListener("stop", stopListener);
               }
             };
 
+            const ensureRegisterChannel = data => {
+              // onRedirected depends on ChannelWrapper.getRegisteredChannel,
+              // which in turn depends on registerTraceableChannel to have been
+              // called. When a blocking webRequest listener is present, the
+              // parent/ext-webRequest.js implementation already calls that.
+              //
+              // A downside to a blocking webRequest listener is that it delays
+              // the network request until a roundtrip to the listener in the
+              // extension process has happened. Since we don't need to handle
+              // the onBeforeRequest event, avoid the overhead by handling the
+              // event and registration here, in the parent process.
+              data.registerTraceableChannel(extension.policy, remoteTab);
+            };
+
+            const parsedFilter = {
+              types: ["main_frame"],
+              urls: ExtensionUtils.parseMatchPatterns(filter.urls),
+            };
+
+            WebRequest.onBeforeRequest.addListener(
+              ensureRegisterChannel,
+              parsedFilter,
+              // blocking is needed to unlock data.registerTraceableChannel.
+              ["blocking"],
+              {
+                addonId: extension.id,
+                policy: extension.policy,
+                blockingAllowed: true,
+              }
+            );
+
             WebRequest.onBeforeRedirect.addListener(
               listener,
-              // filter
-              {
-                types: ["main_frame"],
-                urls: ExtensionUtils.parseMatchPatterns(filter.urls),
-              },
+              parsedFilter,
               // info
               [],
               // listener details
@@ -243,6 +297,7 @@ this.addonsSearchDetection = class extends ExtensionAPI {
             );
 
             return () => {
+              WebRequest.onBeforeRequest.removeListener(ensureRegisterChannel);
               WebRequest.onBeforeRedirect.removeListener(listener);
             };
           },

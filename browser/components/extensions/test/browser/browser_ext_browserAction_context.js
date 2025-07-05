@@ -2,6 +2,11 @@
 /* vim: set sts=2 sw=2 et tw=80: */
 "use strict";
 
+// Prevent intermittent TV job failure hit due to the entire test file
+// taking longer than the default per-testfile timeout on macOS builds
+// while running in chaos mode.
+requestLongerTimeout(2);
+
 async function runTests(options) {
   async function background(getTests) {
     let manifest = browser.runtime.getManifest();
@@ -29,9 +34,8 @@ async function runTests(options) {
         "expected value from getBadge"
       );
 
-      let badgeBackgroundColor = await browser[action].getBadgeBackgroundColor(
-        details
-      );
+      let badgeBackgroundColor =
+        await browser[action].getBadgeBackgroundColor(details);
       browser.test.assertEq(
         String(expecting.badgeBackgroundColor),
         String(badgeBackgroundColor),
@@ -153,7 +157,7 @@ async function runTests(options) {
     }
 
     let node = document.getElementById(browserActionId);
-    let button = node.firstElementChild;
+    let button = node.querySelector(".unified-extensions-item-action-button");
 
     ok(button, "button exists");
 
@@ -574,7 +578,8 @@ add_task(async function testBadgeColorPersistence() {
 
   function getBadgeForWindow(win) {
     const widget = getBrowserActionWidget(extension).forWindow(win).node;
-    return widget.firstElementChild.badgeLabel;
+    return widget.querySelector(".unified-extensions-item-action-button")
+      .badgeLabel;
   }
 
   let badge = getBadgeForWindow(window);

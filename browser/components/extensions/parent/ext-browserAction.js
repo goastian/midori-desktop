@@ -254,7 +254,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
           "unified-extensions-item-open-menu"
         );
         // Allow the users to quickly move between extension items using
-        // the arrow keys, see: `PanelMultiView._isNavigableWithTabOnly()`.
+        // the arrow keys, see: `PanelMultiView.#isNavigableWithTabOnly()`.
         menuButton.setAttribute("data-navigable-with-tab-only", true);
 
         menuButton.setAttribute("data-extensionid", extension.id);
@@ -267,7 +267,17 @@ this.browserAction = class extends ExtensionAPIPersistent {
         );
         node.setAttribute("view-button-id", viewId);
         node.setAttribute("data-extensionid", extension.id);
-        node.append(button, menuButton);
+
+        let rowWrapper = document.createXULElement("box");
+        rowWrapper.classList.add("unified-extensions-item-row-wrapper");
+        rowWrapper.append(button, menuButton);
+
+        let messagebarWrapper = document.createElement(
+          "unified-extensions-item-messagebar-wrapper"
+        );
+        messagebarWrapper.extensionId = extension.id;
+
+        node.append(rowWrapper, messagebarWrapper);
         node.viewButton = button;
 
         return node;
@@ -479,12 +489,19 @@ this.browserAction = class extends ExtensionAPIPersistent {
     // immediately triggers a popuphidden event)
     window.focus();
 
-    if (widgetForWindow.node.firstElementChild.open) {
+    const toolbarButton = widgetForWindow.node.querySelector(
+      ".unified-extensions-item-action-button"
+    );
+
+    if (toolbarButton.open) {
       return;
     }
 
     if (this.widget.areaType == CustomizableUI.TYPE_PANEL) {
-      await window.gUnifiedExtensions.togglePanel();
+      await window.gUnifiedExtensions.openPanel(
+        null,
+        "extension_browser_action_popup"
+      );
     }
 
     // This should already have been checked by callers, but acts as an
@@ -501,7 +518,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
         openPopupWithoutUserInteraction,
       },
     });
-    widgetForWindow.node.firstElementChild.dispatchEvent(event);
+    toolbarButton.dispatchEvent(event);
   }
 
   /**
@@ -712,11 +729,16 @@ this.browserAction = class extends ExtensionAPIPersistent {
     const action =
       this.extension.manifestVersion < 3 ? "onBrowserAction" : "onAction";
 
-    global.actionContextMenu({
-      extension: this.extension,
-      [action]: true,
-      menu,
-    });
+    if (
+      this.extension.hasPermission("contextMenus") ||
+      this.extension.hasPermission("menus")
+    ) {
+      global.actionContextMenu({
+        extension: this.extension,
+        [action]: true,
+        menu,
+      });
+    }
   }
 
   /**
@@ -868,6 +890,17 @@ this.browserAction = class extends ExtensionAPIPersistent {
 
       let style = this.iconData.get(tabData.icon);
       button.setAttribute("style", style);
+
+      // Refresh the unified extensions panel item messagebar
+      // (e.g. in response to blocklistState changes).
+      const messagebarWrapper = node.querySelector(
+        "unified-extensions-item-messagebar-wrapper"
+      );
+      // NOTE: if the refresh() method isn't found, that's because the
+      // custom element has not been loaded yet.  When the custom element
+      // is loaded and registered, connectedCallback() will call refresh()
+      // internally.
+      messagebarWrapper.refresh?.();
     };
     if (sync) {
       callback();

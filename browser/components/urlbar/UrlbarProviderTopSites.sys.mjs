@@ -18,18 +18,14 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  TopSites: "resource:///modules/TopSites.sys.mjs",
-  TOP_SITES_DEFAULT_ROWS: "resource://activity-stream/common/Reducers.sys.mjs",
-  TOP_SITES_MAX_SITES_PER_ROW:
-    "resource://activity-stream/common/Reducers.sys.mjs",
+  TopSites: "resource:///modules/topsites/TopSites.sys.mjs",
+  TOP_SITES_DEFAULT_ROWS: "resource:///modules/topsites/constants.mjs",
+  TOP_SITES_MAX_SITES_PER_ROW: "resource:///modules/topsites/constants.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderOpenTabs: "resource:///modules/UrlbarProviderOpenTabs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
 });
-
-// The scalar category of TopSites impression for Contextual Services
-const SCALAR_CATEGORY_TOPSITES = "contextual.services.topsites.impression";
 
 // These prefs must be true for the provider to return results. They are assumed
 // to be booleans. We check `system.topsites` because if it is disabled we would
@@ -86,9 +82,7 @@ class ProviderTopSites extends UrlbarProvider {
   }
 
   /**
-   * The type of the provider.
-   *
-   * @returns {UrlbarUtils.PROVIDER_TYPE}
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.PROFILE;
@@ -100,9 +94,8 @@ class ProviderTopSites extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive(queryContext) {
+  async isActive(queryContext) {
     return (
       !queryContext.restrictSource &&
       !queryContext.searchString &&
@@ -161,7 +154,7 @@ class ProviderTopSites extends UrlbarProvider {
     }
 
     // This is done here, rather than in the global scope, because
-    // TOP_SITES_DEFAULT_ROWS causes the import of Reducers.sys.mjs, and we want to
+    // TOP_SITES_DEFAULT_ROWS causes import of topsites constants.mjs, and we want to
     // do that only when actually querying for Top Sites.
     if (this.topSitesRows === undefined) {
       XPCOMUtils.defineLazyPreferenceGetter(
@@ -181,7 +174,6 @@ class ProviderTopSites extends UrlbarProvider {
     );
     sites = sites.slice(0, numTopSites);
 
-    let index = 1;
     sites = sites.map(link => {
       let site = {
         type: link.searchTopSite ? "search" : "url",
@@ -206,10 +198,8 @@ class ProviderTopSites extends UrlbarProvider {
           sponsoredTileId: sponsored_tile_id,
           sponsoredImpressionUrl: sponsored_impression_url,
           sponsoredClickUrl: sponsored_click_url,
-          position: index,
         };
       }
-      index++;
       return site;
     });
 
@@ -318,10 +308,7 @@ class ProviderTopSites extends UrlbarProvider {
 
           if (!engine && site.url) {
             // Look up the engine by its domain.
-            let host;
-            try {
-              host = new URL(site.url).hostname;
-            } catch (err) {}
+            let host = URL.parse(site.url)?.hostname;
             if (host) {
               engine = (
                 await lazy.UrlbarSearchUtils.enginesForDomainPrefix(host)
@@ -371,11 +358,7 @@ class ProviderTopSites extends UrlbarProvider {
 
     providerVisibleResults.forEach(({ index, result }) => {
       if (result?.payload.isSponsored) {
-        Services.telemetry.keyedScalarAdd(
-          SCALAR_CATEGORY_TOPSITES,
-          `urlbar_${index}`,
-          1
-        );
+        Glean.contextualServicesTopsites.impression[`urlbar_${index}`].add(1);
       }
     });
   }

@@ -34,6 +34,10 @@ add_setup(async function setup() {
 
   registerCleanupFunction(() => {
     ActionsProviderQuickActions.removeAction("testaction");
+    let notification = window.gNotificationBox.getNotificationWithValue(
+      "install-search-engine"
+    );
+    notification?.close();
   });
 });
 
@@ -46,7 +50,7 @@ add_task(async function test_quickaction() {
 
   Assert.equal(
     UrlbarTestUtils.getResultCount(window),
-    1,
+    2,
     "We matched the action"
   );
 
@@ -57,6 +61,10 @@ add_task(async function test_quickaction() {
 });
 
 add_task(async function test_switchtab() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.secondaryActions.switchToTab", true]],
+  });
+
   let win = await BrowserTestUtils.openNewBrowserWindow();
   await loadURI(win.gBrowser, "https://example.com/");
 
@@ -98,6 +106,41 @@ add_task(async function test_switchtab() {
   );
 
   BrowserTestUtils.closeWindow(win);
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_switchtab_with_userContextId() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.secondaryActions.switchToTab", true]],
+  });
+  let url = "https://example.com";
+  let tab = BrowserTestUtils.addTab(gBrowser, url, { userContextId: 1 });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+
+  info("Start query");
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "exa",
+  });
+
+  info("Check the button style");
+  let button = document.querySelector(
+    ".urlbarView-actions-container .urlbarView-action-btn.urlbarView-userContext"
+  );
+  await BrowserTestUtils.waitForCondition(() => button.textContent.length);
+
+  Assert.ok(button, "Action button with userContext is in the result");
+  Assert.ok(button.textContent.includes("personal"), "Label is correct");
+  Assert.ok(
+    button.classList.contains("identity-color-blue"),
+    "Style is correct"
+  );
+
+  info("Switch the tab");
+  EventUtils.synthesizeMouseAtCenter(button, {});
+  await BrowserTestUtils.waitForCondition(() => gBrowser.selectedTab == tab);
+  Assert.ok(true, "Expected tab is selected");
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function test_sitesearch() {
@@ -123,9 +166,8 @@ add_task(async function test_sitesearch() {
     false,
     expectedUrl
   );
-  gURLBar.value = query;
-  UrlbarTestUtils.fireInputEvent(window);
   EventUtils.synthesizeKey("KEY_Tab");
+  EventUtils.sendString("rch");
   EventUtils.synthesizeKey("KEY_Enter");
   await onLoad;
 
@@ -134,4 +176,112 @@ add_task(async function test_sitesearch() {
     expectedUrl,
     "Selecting the contextual search result opens the search URL"
   );
+});
+
+add_task(async function enter_action_search_mode() {
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "> ",
+  });
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarUtils.RESULT_SOURCE.ACTIONS,
+    entry: "typed",
+    restrictType: "symbol",
+  });
+  let { result } = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
+  Assert.equal(
+    result.providerName,
+    "UrlbarProviderActionsSearchMode",
+    "Actions are shown"
+  );
+
+  let pageLoaded = BrowserTestUtils.browserLoaded(window);
+  EventUtils.synthesizeKey("pref", {}, window);
+  EventUtils.synthesizeKey("KEY_Tab");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await pageLoaded;
+
+  Assert.equal(
+    window.gBrowser.selectedBrowser.currentURI.spec,
+    "about:preferences",
+    "Opened settings page"
+  );
+
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
+add_task(async function test_opensearch() {
+  const TEST_DATA = [
+    {
+      query: "word",
+      expectedUrl: "http://mochi.test:8888/?terms=word",
+    },
+    {
+      query: "word1 word2",
+      expectedUrl: "http://mochi.test:8888/?terms=word1+word2",
+    },
+    {
+      query: "https://example.com/",
+      expectedUrl: "http://mochi.test:8888/?terms=https%3A%2F%2Fexample.com%2F",
+    },
+  ];
+  for (let { query, expectedUrl } of TEST_DATA) {
+    let url = getRootDirectory(gTestPath) + "add_search_engine_one.html";
+    await BrowserTestUtils.withNewTab(url, async () => {
+      await UrlbarTestUtils.promiseAutocompleteResultPopup({
+        window,
+        value: query,
+      });
+      let { result } = await UrlbarTestUtils.getRowAt(window, 1);
+      Assert.equal(result.providerName, "UrlbarProviderGlobalActions");
+
+      let onLoad = BrowserTestUtils.browserLoaded(
+        gBrowser.selectedBrowser,
+        false,
+        expectedUrl
+      );
+      EventUtils.synthesizeKey("KEY_Tab");
+      EventUtils.synthesizeKey("KEY_Enter");
+      await onLoad;
+      Assert.ok(true, "Action for open search works expectedly");
+    });
+  }
+});
+
+add_task(async function test_quickaction() {
+  let MAX_ACTIONS = 3;
+  UrlbarPrefs.set("secondaryActions.maxActionsShown", MAX_ACTIONS);
+
+  let addAction = name =>
+    ActionsProviderQuickActions.addAction(name, {
+      commands: [name],
+      label: "quickactions-downloads2",
+    });
+
+  addAction("matching1");
+  addAction("matching2");
+  addAction("matching3");
+  addAction("matching4");
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "matching",
+  });
+
+  Assert.equal(
+    window.document.querySelectorAll(".urlbarView-action-btn").length,
+    MAX_ACTIONS,
+    `Only ${MAX_ACTIONS} are displayed`
+  );
+
+  await UrlbarTestUtils.promisePopupClose(window, () => {
+    EventUtils.synthesizeKey("KEY_Escape", {}, window);
+    EventUtils.synthesizeKey("KEY_Escape", {}, window);
+  });
+
+  ActionsProviderQuickActions.removeAction("matching1");
+  ActionsProviderQuickActions.removeAction("matching2");
+  ActionsProviderQuickActions.removeAction("matching3");
+  ActionsProviderQuickActions.removeAction("matching4");
+  UrlbarPrefs.clear("secondaryActions.maxActionsShown");
 });

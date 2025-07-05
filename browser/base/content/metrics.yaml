@@ -10,83 +10,511 @@ $schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
 $tags:
   - 'Firefox :: General'
 
-privacy.sanitize:
-  dialog_open:
+security.ui.protectionspopup:
+  open_protections_popup:
     type: event
     description: >
-      Dispatched when one of the sanitize dialogs opens
-    bugs:
-      - https://bugzilla.mozilla.org/1856417
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1856417#c4
-    notification_emails:
-      - hsohaney@mozilla.com
-      - pbz@mozilla.com
-    expires: 130
+      How many times the protections panel was opened.
     extra_keys:
-      context:
+      openingReason:
         description: >
-          string representing which context the dialog was opened in,
-          one of ["browser", "clearSiteData", "clearHistory"]
+          string representing how the protections panel was opened,
+          one of ["shieldButtonClicked", "embedPlaceholderButton", "toastButtonClicked"]
         type: string
-  clear:
-    type: event
-    description: >
-      Dispatched when the dialog is accepted (to clear)
-    bugs:
-      - https://bugzilla.mozilla.org/1856417
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1856417#c4
-    notification_emails:
-      - hsohaney@mozilla.com
-      - pbz@mozilla.com
-    expires: 130
-    extra_keys:
-      context:
+      smartblockEmbedTogglesShown:
         description: >
-          string representing which context the dialog was opened in,
-          one of ["browser", "clearSiteData", "clearHistory"]
-        type: string
-      history_form_data_downloads:
-        description: true if history, form data and downloads is selected to be cleared
+          boolean representing if smartblock toggles were shown to the user
         type: boolean
-      cookies_and_storage:
-        description: true if cookies and storage is selected to be cleared
-        type: boolean
-      cache:
-        description: true if cache is selected to be cleared
-        type: boolean
-      site_settings:
-        description: true if site settings is selected to be cleared
-        type: boolean
-  clearing_time_span_selected:
+    bugs: &security_ui_protectionspopup_open_bugs
+      - https://bugzil.la/1560327
+      - https://bugzil.la/1607488
+      - https://bugzil.la/1643428
+      - https://bugzil.la/1678201
+      - https://bugzil.la/1739287
+      - https://bugzil.la/1787249
+      - https://bugzil.la/1920735
+    data_reviews: &security_ui_protectionspopup_open_data_reviews
+      - https://bugzil.la/1560327
+      - https://bugzil.la/1607488
+      - https://bugzil.la/1643428
+      - https://bugzil.la/1678201
+      - https://bugzil.la/1739287
+      - https://bugzil.la/1787249
+      - https://bugzil.la/1920735
+    notification_emails: &security_ui_protectionspopup_open_emails
+      - emz@mozilla.com
+      - seceng-telemetry@mozilla.com
+    expires: never
+
+  close_protections_popup:
     type: event
     description: >
-      The time span range selected to sanitize
-    bugs:
-      - https://bugzilla.mozilla.org/1856417
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1856417#c4
-    notification_emails:
-      - hsohaney@mozilla.com
-      - pbz@mozilla.com
-    expires: 130
+      Triggered when the protections panel is closed. Records how the panel was opened and if
+      the SmartBlock section had any interactions
     extra_keys:
-      time_span:
-        description: The timespan that was selected corresponding to one of Sanitizer.TIMESPAN_*'s value
+      openingReason:
+        description: >
+          string representing how the protections panel was opened,
+          one of ["shieldButtonClicked", "embedPlaceholderButton", "toastButtonClicked"]
+        type: string
+      smartblockToggleClicked:
+        description: >
+          boolean representing if the user interacted with the toggle anytime before it was closed
+        type: boolean
+    bugs:
+      - https://bugzil.la/1920735
+      - https://bugzil.la/1958162
+    data_reviews:
+      - https://bugzil.la/1920735
+    notification_emails:
+      - wwen@mozilla.com
+      - emz@mozilla.com
+    expires:
+      146
+
+  open_protectionspopup_cfr:
+    type: event
+    description: >
+      How many times the protections panel was opened.
+    bugs: *security_ui_protectionspopup_open_bugs
+    data_reviews: *security_ui_protectionspopup_open_data_reviews
+    notification_emails: *security_ui_protectionspopup_open_emails
+    expires: never
+    extra_keys: &security_ui_protectionspopup_open_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+      message:
+        description: >
+          For protectionspopup_cfr, the message ID.
 
         type: string
-  load_time:
-    type: timing_distribution
-    time_unit: millisecond
+
+  click_etp_toggle_on:
+    type: event
     description: >
-      How much time was spent to open the dialog, including loading data sizes
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#etp_toggle_on.
+    bugs: &security_ui_protectionspopup_click_bugs
+      - https://bugzil.la/1560327
+      - https://bugzil.la/1602015
+      - https://bugzil.la/1607488
+      - https://bugzil.la/1643428
+      - https://bugzil.la/1678201
+      - https://bugzil.la/1739287
+      - https://bugzil.la/1787249
+      - https://bugzil.la/1798669
+    data_reviews: &security_ui_protectionspopup_click_data_reviews
+      - https://bugzil.la/1560327
+      - https://bugzil.la/1602015
+      - https://bugzil.la/1607488
+      - https://bugzil.la/1643428
+      - https://bugzil.la/1678201
+      - https://bugzil.la/1739287
+      - https://bugzil.la/1787249
+      - https://bugzil.la/1798669
+    notification_emails: &security_ui_protectionspopup_click_emails
+      - emz@mozilla.com
+      - tihuang@mozilla.com
+      - seceng-telemetry@mozilla.com
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_EtpToggleOn
+
+  click_etp_toggle_off:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#etp_toggle_off.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_EtpToggleOff
+
+  click_social:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#social.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Social
+
+  click_cookies:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#cookies.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Cookies
+
+  click_trackers:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#trackers.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Trackers
+
+  click_fingerprinters:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#fingerprinters.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Fingerprinters
+
+  click_cryptominers:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#cryptominers.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Cryptominers
+
+  click_subview_settings:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#subview_settings.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: SecurityUiProtectionspopup_Click_SubviewSettings
+
+  click_settings:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#settings.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_Settings
+
+  click_full_report:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#full_report.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_FullReport
+
+  click_milestone_message:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#milestone_message.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_MilestoneMessage
+
+  click_cookieb_toggle_on:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#cookieb_toggle_on.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_CookiebToggleOn
+
+  click_cookieb_toggle_off:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#cookieb_toggle_off.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    telemetry_mirror: SecurityUiProtectionspopup_Click_CookiebToggleOff
+
+  click_protectionspopup_cfr:
+    type: event
+    description: >
+      User interaction by click events in the protections panel.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.ui.protectionspopup.click#protectionspopup_cfr.
+    bugs: *security_ui_protectionspopup_click_bugs
+    data_reviews: *security_ui_protectionspopup_click_data_reviews
+    notification_emails: *security_ui_protectionspopup_click_emails
+    expires: never
+    extra_keys: *security_ui_protectionspopup_open_extra
+    telemetry_mirror: SecurityUiProtectionspopup_Click_ProtectionspopupCfr
+
+  click_smartblockembeds_toggle:
+    type: event
+    description: >
+      Triggered when SmartBlock embed toggles are clicked by the user
+    extra_keys:
+      isBlock:
+        description: >
+          boolean representing if this was a block or an unblock
+        type: boolean
+      openingReason:
+        description: >
+          string representing how the protections panel was opened,
+          one of ["shieldButtonClicked", "embedPlaceholderButton", "toastButtonClicked"]
+        type: string
     bugs:
-      - https://bugzilla.mozilla.org/1856417
+      - https://bugzil.la/1920735
+      - https://bugzil.la/1958162
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1856417#c4
+      - https://bugzil.la/1920735
     notification_emails:
-      - hsohaney@mozilla.com
-      - pbz@mozilla.com
+      - wwen@mozilla.com
+      - emz@mozilla.com
     expires:
-      130
+      146
+
+  smartblockembeds_shown:
+    type: counter
+    description: >
+      How many times the SmartBlock placeholders are shown on the page
+    bugs:
+      - https://bugzil.la/1920735
+      - https://bugzil.la/1958162
+    data_reviews:
+      - https://bugzil.la/1920735
+    notification_emails:
+      - wwen@mozilla.com
+      - emz@mozilla.com
+    expires:
+      146
+
+browser.engagement:
+  bookmarks_toolbar_bookmark_added:
+    type: counter
+    description: >
+      The count of bookmarks added to the bookmarks toolbar. This counts
+      bookmarks created on the bookmarks toolbar and bookmarks moved to
+      the bookmarks toolbar.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.bookmarks_toolbar_bookmark_added.
+    bugs:
+      - https://bugzil.la/1665391
+    data_reviews:
+      - https://bugzil.la/1665391
+    notification_emails:
+      - rtestard@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_BOOKMARKS_TOOLBAR_BOOKMARK_ADDED
+
+  bookmarks_toolbar_bookmark_opened:
+    type: counter
+    description: >
+      The count of bookmarks opened from the Bookmarks Toolbar. This
+      counts bookmarks opened on the toolbar and bookmarks opened from the
+      'symlinked' Other Bookmarks folder on the Bookmarks Toolbar. It does
+      not count Bookmarks Toolbar bookmarks opened via the Library,
+      Bookmarks Menu, or other UI since the goal is to measure
+      interactions that pass through the toolbar.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.bookmarks_toolbar_bookmark_opened.
+    bugs:
+      - https://bugzil.la/1665391
+    data_reviews:
+      - https://bugzil.la/1665391
+    notification_emails:
+      - rtestard@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_BOOKMARKS_TOOLBAR_BOOKMARK_OPENED
+
+  total_top_visits:
+    type: labeled_counter
+    description: >
+      Count the number of times a new top page was starting to load
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram FX_TOTAL_TOP_VISITS.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_TOTAL_TOP_VISITS
+
+networking:
+  captive_portal_banner_displayed:
+    type: counter
+    description: >
+      Number of times the captive portal banner was displayed in this
+      session.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar networking.captive_portal_banner_displayed.
+    bugs:
+      - https://bugzil.la/1868145
+    data_reviews:
+      - https://bugzil.la/1868145
+    notification_emails:
+      - necko@mozilla.com
+    expires: never
+    telemetry_mirror: NETWORKING_CAPTIVE_PORTAL_BANNER_DISPLAYED
+
+  captive_portal_banner_display_time:
+    type: labeled_counter
+    description: >
+      Number of seconds the captive portal banner was displayed for, keyed
+      by close reason:
+        "success" - the portal login was completed
+        "abort"   - the portal login was aborted (e.g. loss of network)
+        "dismiss" - the user dismissed the banner
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar networking.captive_portal_banner_display_time.
+    bugs:
+      - https://bugzil.la/1868145
+    data_reviews:
+      - https://bugzil.la/1868145
+    notification_emails:
+      - necko@mozilla.com
+    expires: never
+    labels:
+      - success
+      - abort
+      - dismiss
+    telemetry_mirror: NETWORKING_CAPTIVE_PORTAL_BANNER_DISPLAY_TIME
+
+browser.timings:
+  tab_click:
+    type: timing_distribution
+    description: >
+      Firefox: Time in ms spent on switching tabs in response to a tab click
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_CLICK_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_CLICK_MS
+
+  new_window:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken to open a new browser window (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_NEW_WINDOW_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_NEW_WINDOW_MS
+
+  page_load:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken to load a page (ms). This includes all static
+      contents, no dynamic content. Page reloads and loading of about: pages are
+      not included.
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram FX_PAGE_LOAD_MS_2.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1504247
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1504247
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+      - product-metrics-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_PAGE_LOAD_MS_2
+
+  page_reload_normal:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken to reload a page (ms) when using the
+      LOAD_RELOAD_NORMAL flag
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram FX_PAGE_RELOAD_NORMAL_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    notification_emails:
+      - sefeng@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
+      - product-metrics-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_PAGE_RELOAD_NORMAL_MS
+
+  page_reload_skip_cache:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken to reload a page (ms) when caches are skipped
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram FX_PAGE_RELOAD_SKIP_CACHE_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1549519
+    notification_emails:
+      - sefeng@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
+      - product-metrics-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_PAGE_RELOAD_SKIP_CACHE_MS

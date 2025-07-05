@@ -13,7 +13,7 @@ const { CredentialsAndSecurityBackupResource } = ChromeUtils.importESModule(
 add_task(async function test_measure() {
   Services.fog.testResetFOG();
 
-  const EXPECTED_CREDENTIALS_KILOBYTES_SIZE = 413;
+  const EXPECTED_CREDENTIALS_KILOBYTES_SIZE = 403;
   const EXPECTED_SECURITY_KILOBYTES_SIZE = 231;
 
   // Create resource files in temporary directory
@@ -29,7 +29,6 @@ add_task(async function test_measure() {
     { path: "logins-backup.json", sizeInKB: 1 },
     { path: "autofill-profiles.json", sizeInKB: 1 },
     { path: "credentialstate.sqlite", sizeInKB: 100 },
-    { path: "signedInUser.json", sizeInKB: 5 },
     // Set up security files
     { path: "cert9.db", sizeInKB: 230 },
     { path: "pkcs11.txt", sizeInKB: 1 },
@@ -99,7 +98,6 @@ add_task(async function test_backup() {
     { path: "logins.json", sizeInKB: 1 },
     { path: "logins-backup.json", sizeInKB: 1 },
     { path: "autofill-profiles.json", sizeInKB: 1 },
-    { path: "signedInUser.json", sizeInKB: 5 },
     { path: "pkcs11.txt", sizeInKB: 1 },
   ];
   await createTestFiles(sourcePath, simpleCopyFiles);
@@ -186,14 +184,43 @@ add_task(async function test_recover() {
   const files = [
     { path: "logins.json" },
     { path: "logins-backup.json" },
-    { path: "autofill-profiles.json" },
     { path: "credentialstate.sqlite" },
-    { path: "signedInUser.json" },
     { path: "cert9.db" },
     { path: "key4.db" },
     { path: "pkcs11.txt" },
   ];
   await createTestFiles(recoveryPath, files);
+
+  const ENCRYPTED_CARD_FOR_BACKUP = "ThisIsAnEncryptedCard";
+  const PLAINTEXT_CARD = "ThisIsAPlaintextCard";
+
+  let plaintextBytes = new Uint8Array(PLAINTEXT_CARD.length);
+  for (let i = 0; i < PLAINTEXT_CARD.length; i++) {
+    plaintextBytes[i] = PLAINTEXT_CARD.charCodeAt(i);
+  }
+
+  const ENCRYPTED_CARD_AFTER_RECOVERY = "ThisIsAnEncryptedCardAfterRecovery";
+
+  // Now construct a facimile of an autofill-profiles.json file. We need to
+  // test the ability to decrypt credit card numbers within it via the
+  // nativeOSKeyStore using the BackupService.RECOVERY_OSKEYSTORE_LABEL, and
+  // re-encrypt them using the existing OSKeyStore.
+  let autofillObject = {
+    someOtherField: "test-123",
+    creditCards: [
+      { "cc-number-encrypted": ENCRYPTED_CARD_FOR_BACKUP, "cc-expiry": "1234" },
+    ],
+  };
+  const AUTOFILL_PROFILES_FILENAME = "autofill-profiles.json";
+  await IOUtils.writeJSON(
+    PathUtils.join(recoveryPath, AUTOFILL_PROFILES_FILENAME),
+    autofillObject
+  );
+
+  // Now we'll prepare the native OSKeyStore to accept a single call to
+  // asyncDecryptBytes, and then a single call to asyncEncryptBytes.
+  gFakeOSKeyStore.asyncDecryptBytes.resolves(plaintextBytes);
+  gFakeOSKeyStore.asyncEncryptBytes.resolves(ENCRYPTED_CARD_AFTER_RECOVERY);
 
   // The backup method is expected to have returned a null ManifestEntry
   let postRecoveryEntry = await credentialsAndSecurityBackupResource.recover(
@@ -201,6 +228,7 @@ add_task(async function test_recover() {
     recoveryPath,
     destProfilePath
   );
+
   Assert.equal(
     postRecoveryEntry,
     null,
@@ -210,6 +238,31 @@ add_task(async function test_recover() {
 
   await assertFilesExist(destProfilePath, files);
 
+  const RECOVERED_AUTOFILL_FILE_PATH = PathUtils.join(
+    destProfilePath,
+    AUTOFILL_PROFILES_FILENAME
+  );
+  Assert.ok(
+    await IOUtils.exists(RECOVERED_AUTOFILL_FILE_PATH),
+    `${AUTOFILL_PROFILES_FILENAME} file was copied`
+  );
+
+  let recoveredAutofillObject = await IOUtils.readJSON(
+    RECOVERED_AUTOFILL_FILE_PATH
+  );
+  let expectedAutofillObject = Object.assign({}, autofillObject);
+  autofillObject.creditCards[0]["cc-number-encrypted"] =
+    ENCRYPTED_CARD_AFTER_RECOVERY;
+
+  Assert.deepEqual(
+    recoveredAutofillObject,
+    expectedAutofillObject,
+    `${AUTOFILL_PROFILES_FILENAME} contained the expected data structure.`
+  );
+
   await maybeRemovePath(recoveryPath);
   await maybeRemovePath(destProfilePath);
+
+  gFakeOSKeyStore.asyncDecryptBytes.resetHistory();
+  gFakeOSKeyStore.asyncEncryptBytes.resetHistory();
 });

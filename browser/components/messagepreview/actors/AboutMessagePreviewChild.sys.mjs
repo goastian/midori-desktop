@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
 export class AboutMessagePreviewChild extends JSWindowActorChild {
   handleEvent(event) {
     console.log(`Received page event ${event.type}`);
@@ -15,7 +13,12 @@ export class AboutMessagePreviewChild extends JSWindowActorChild {
 
   exportFunctions() {
     if (this.contentWindow) {
-      for (const name of ["MPShowMessage", "MPIsEnabled", "MPShouldShowHint"]) {
+      for (const name of [
+        "MPShowMessage",
+        "MPIsEnabled",
+        "MPShouldShowHint",
+        "MPToggleLights",
+      ]) {
         Cu.exportFunction(this[name].bind(this), this.contentWindow, {
           defineAs: name,
         });
@@ -37,6 +40,16 @@ export class AboutMessagePreviewChild extends JSWindowActorChild {
   }
 
   /**
+   * Check the browser theme and switch it.
+   */
+  MPToggleLights() {
+    const isDark = this.contentWindow.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+    this.sendAsyncMessage(`MessagePreview:CHANGE_THEME`, { isDark });
+  }
+
+  /**
    * Route a message to the parent process to be displayed with the relevant
    * messaging surface.
    *
@@ -47,12 +60,11 @@ export class AboutMessagePreviewChild extends JSWindowActorChild {
   }
 
   /**
-   * Check if a hint should be shown about how to enable Message Preview. The
-   * hint is only displayed in local/unofficial builds.
+   * Check if a hint should be shown about how to enable Message Preview.
    *
    * @returns {boolean}
    */
   MPShouldShowHint() {
-    return !this.MPIsEnabled() && !AppConstants.MOZILLA_OFFICIAL;
+    return !this.MPIsEnabled();
   }
 }

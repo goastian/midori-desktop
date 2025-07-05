@@ -10,7 +10,6 @@
 "use strict";
 
 const ENTRY_SCALAR_PREFIX = "urlbar.searchmode.";
-const PICKED_SCALAR_PREFIX = "urlbar.picked.searchmode.";
 const ENGINE_ALIAS = "alias";
 const TEST_QUERY = "test";
 let engineName;
@@ -32,18 +31,14 @@ XPCOMUtils.defineLazyServiceGetter(
 );
 
 /**
- * Asserts that search mode telemetry was recorded correctly. Checks both the
- * urlbar.searchmode.* and urlbar.searchmode_picked.* probes.
+ * Asserts that search mode telemetry was recorded correctly.
  *
  * @param {string} entry
  *   A search mode entry point.
  * @param {string} engineOrSource
  *   An engine name or a search mode source.
- * @param {number} [resultIndex]
- *   The index of the result picked while in search mode. Only pass this
- *   parameter if a result is picked.
  */
-function assertSearchModeScalars(entry, engineOrSource, resultIndex = -1) {
+function assertSearchModeScalars(entry, engineOrSource) {
   // Check if the urlbar.searchmode.entry scalar contains the expected value.
   const scalars = TelemetryTestUtils.getProcessScalars("parent", true, false);
   TelemetryTestUtils.assertKeyedScalar(
@@ -68,15 +63,6 @@ function assertSearchModeScalars(entry, engineOrSource, resultIndex = -1) {
     }
   }
 
-  if (resultIndex >= 0) {
-    TelemetryTestUtils.assertKeyedScalar(
-      scalars,
-      PICKED_SCALAR_PREFIX + entry,
-      resultIndex,
-      1
-    );
-  }
-
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
 }
@@ -87,6 +73,7 @@ add_setup(async function () {
       // Disable tab-to-search onboarding results for general tests. They are
       // enabled in tests that specifically address onboarding.
       ["browser.urlbar.tabToSearch.onboard.interactionsLeft", 0],
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
     ],
   });
 
@@ -94,6 +81,7 @@ add_setup(async function () {
   // for this test.
   let suggestionEngine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "urlbarTelemetrySearchSuggestions.xml",
+    faviconURL: "https://www.example.com/favicon.ico",
     setAsDefault: true,
   });
   suggestionEngine.alias = ENGINE_ALIAS;
@@ -124,7 +112,6 @@ add_setup(async function () {
   registerCleanupFunction(async function () {
     Services.telemetry.canRecordExtended = oldCanRecord;
     await PlacesUtils.history.clear();
-    Services.telemetry.setEventRecordingEnabled("navigation", false);
   });
 });
 
@@ -351,6 +338,89 @@ add_task(async function test_typed() {
   assertSearchModeScalars("typed", "other", 0);
 
   BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_typed_restrict_symbol() {
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+
+  // Enter search mode by typing a restrict symbol.
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "* ",
+  });
+
+  await UrlbarTestUtils.promiseSearchComplete(window);
+
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
+    entry: "typed",
+    restrictType: "symbol",
+  });
+
+  assertSearchModeScalars("typed", "bookmarks_symbol");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function test_typed_restrict_keyword() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.searchRestrictKeywords.featureGate", true]],
+  });
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+
+  // Enter search mode by typing a restrict keyword @bookmarks.
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "@bookmarks ",
+  });
+
+  await UrlbarTestUtils.promiseSearchComplete(window);
+
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
+    entry: "typed",
+    restrictType: "keyword",
+  });
+
+  assertSearchModeScalars("typed", "bookmarks_keyword");
+  BrowserTestUtils.removeTab(tab);
+
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_keywordoffer_restrict_keyword() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.searchRestrictKeywords.featureGate", true]],
+  });
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+
+  // Enter search mode by typing the partial keyword and then picking the result.
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "@book",
+  });
+  let restrictResult = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
+
+  Assert.equal(
+    restrictResult.result.payload.l10nRestrictKeywords[0],
+    "bookmarks",
+    "The first result should be restrict bookmarks result with the correct keyword."
+  );
+
+  // Pick the keyword offer result.
+  let searchPromise = UrlbarTestUtils.promiseSearchComplete(window);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await searchPromise;
+
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
+    entry: "keywordoffer",
+    restrictType: "keyword",
+  });
+
+  assertSearchModeScalars("keywordoffer", "bookmarks_keyword");
+  BrowserTestUtils.removeTab(tab);
+
+  await SpecialPowers.popPrefEnv();
 });
 
 // Enters search mode by calling the same function called by the Search
@@ -588,5 +658,39 @@ add_task(async function test_tabtosearch_onboard() {
 
   BrowserTestUtils.removeTab(tab);
   await PlacesUtils.history.clear();
+  await SpecialPowers.popPrefEnv();
+});
+
+// Enters search mode by unified search button.
+add_task(async function test_unified_search_button() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", true]],
+  });
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+
+  info("Show search mode switcher");
+  let popup = await UrlbarTestUtils.openSearchModeSwitcher(window);
+
+  info("Press on the search engine we added for test and enter search mode");
+  let popupHidden = UrlbarTestUtils.searchModeSwitcherPopupClosed(window);
+  popup.querySelector("menuitem:not([disabled])").click();
+  await popupHidden;
+  await UrlbarTestUtils.assertSearchMode(window, {
+    engineName,
+    entry: "searchbutton",
+  });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: TEST_QUERY,
+  });
+
+  let loadPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await loadPromise;
+  assertSearchModeScalars("searchbutton", "other", 0);
+
+  BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
 });

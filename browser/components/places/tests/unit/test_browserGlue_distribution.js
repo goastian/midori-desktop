@@ -2,15 +2,13 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Tests that nsBrowserGlue correctly imports bookmarks from distribution.ini.
+ * Tests that distribution correctly imports bookmarks from distribution.ini.
  */
 
 const PREF_BMPROCESSED = "distribution.516444.bookmarksProcessed";
 const PREF_DISTRIBUTION_ID = "distribution.id";
 
-const TOPICDATA_DISTRIBUTION_CUSTOMIZATION = "force-distribution-customization";
 const TOPIC_CUSTOMIZATION_COMPLETE = "distribution-customization-complete";
-const TOPIC_BROWSERGLUE_TEST = "browser-glue-test";
 
 function run_test() {
   // Set special pref to load distribution.ini from the profile folder.
@@ -47,14 +45,13 @@ registerCleanupFunction(function () {
 });
 
 add_task(async function () {
-  let { DistributionCustomizer } = ChromeUtils.importESModule(
+  let { DistributionManagement } = ChromeUtils.importESModule(
     "resource:///modules/distribution.sys.mjs"
   );
-  let distribution = new DistributionCustomizer();
 
-  let glue = Cc["@mozilla.org/browser/browserglue;1"].getService(
-    Ci.nsIObserver
-  );
+  // Ensure browser glue is running so it notices places initializing.
+  Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver);
+
   // Initialize Places through the History Service and check that a new
   // database has been created.
   Assert.equal(
@@ -62,11 +59,7 @@ add_task(async function () {
     PlacesUtils.history.DATABASE_STATUS_CREATE
   );
   // Force distribution.
-  glue.observe(
-    null,
-    TOPIC_BROWSERGLUE_TEST,
-    TOPICDATA_DISTRIBUTION_CUSTOMIZATION
-  );
+  DistributionManagement.applyCustomizations();
 
   // Test will continue on customization complete notification.
   await promiseTopicObserved(TOPIC_CUSTOMIZATION_COMPLETE);
@@ -78,7 +71,7 @@ add_task(async function () {
   });
   Assert.equal(menuItem.title, "Menu Link Before");
   Assert.ok(
-    menuItem.guid.startsWith(distribution.BOOKMARK_GUID_PREFIX),
+    menuItem.guid.startsWith(DistributionManagement.BOOKMARK_GUID_PREFIX),
     "Guid of this bookmark has expected prefix"
   );
 
@@ -89,17 +82,8 @@ add_task(async function () {
   Assert.equal(menuItem.title, "Menu Link After");
 
   // Check no favicon exists for this bookmark
-  await Assert.rejects(
-    waitForResolvedPromise(
-      () => {
-        return PlacesUtils.promiseFaviconData(menuItem.url.href);
-      },
-      "Favicon not found",
-      10
-    ),
-    /Favicon\snot\sfound/,
-    "Favicon not found"
-  );
+  let favicon = await PlacesUtils.favicons.getFaviconForPage(menuItem.url.URI);
+  Assert.equal(favicon, null, "Favicon should not be found");
 
   // Check the custom bookmarks exist on toolbar.
   let toolbarItem = await PlacesUtils.bookmarks.fetch({
@@ -109,29 +93,20 @@ add_task(async function () {
   Assert.equal(toolbarItem.title, "Toolbar Link Before");
 
   // Check the custom favicon exist for this bookmark
-  let faviconItem = await waitForResolvedPromise(
-    () => {
-      return PlacesUtils.promiseFaviconData(toolbarItem.url.href);
-    },
-    "Favicon not found",
-    10
-  );
-  Assert.equal(faviconItem.uri.spec, "https://example.org/favicon.png");
-  Assert.greater(faviconItem.dataLen, 0);
-  Assert.equal(faviconItem.mimeType, "image/png");
-
-  let base64Icon =
-    "data:image/png;base64," +
-    base64EncodeString(String.fromCharCode.apply(String, faviconItem.data));
-  Assert.equal(base64Icon, SMALLPNG_DATA_URI.spec);
+  favicon = await PlacesUtils.favicons.getFaviconForPage(toolbarItem.url.URI);
+  Assert.ok(favicon, "Favicon should be found");
+  Assert.equal(favicon.uri.spec, "https://example.org/favicon.png");
+  Assert.greater(favicon.rawData.length, 0);
+  Assert.equal(favicon.mimeType, "image/png");
+  Assert.equal(favicon.dataURI.spec, SMALLPNG_DATA_URI.spec);
 
   toolbarItem = await PlacesUtils.bookmarks.fetch({
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-    index: 1 + DEFAULT_BOOKMARKS_ON_TOOLBAR,
+    index: 1,
   });
   Assert.equal(toolbarItem.title, "Toolbar Folder After");
   Assert.ok(
-    toolbarItem.guid.startsWith(distribution.FOLDER_GUID_PREFIX),
+    toolbarItem.guid.startsWith(DistributionManagement.FOLDER_GUID_PREFIX),
     "Guid of this folder has expected prefix"
   );
 

@@ -3,11 +3,6 @@
 
 "use strict";
 
-// This test tends to trigger a race in the fullscreen time telemetry,
-// where the fullscreen enter and fullscreen exit events (which use the
-// same histogram ID) overlap. That causes TelemetryStopwatch to log an
-// error.
-SimpleTest.ignoreAllUncaughtExceptions(true);
 const { PromiseTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PromiseTestUtils.sys.mjs"
 );
@@ -63,7 +58,7 @@ add_task(async function test_fullscreen_closes_permissionui_prompt() {
     "popuphidden"
   );
 
-  await changeFullscreen(browser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(browser, true);
 
   await popupHidden;
 
@@ -73,7 +68,7 @@ add_task(async function test_fullscreen_closes_permissionui_prompt() {
     "Expect permission request to be cancelled"
   );
 
-  await changeFullscreen(browser, false);
+  await DOMFullscreenTestUtils.changeFullscreen(browser, false);
 
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
@@ -110,7 +105,7 @@ add_task(async function test_fullscreen_closes_webrtc_permission_prompt() {
     window.PopupNotifications.panel,
     "popuphidden"
   );
-  await changeFullscreen(browser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(browser, true);
 
   await popupHidden;
 
@@ -120,7 +115,7 @@ add_task(async function test_fullscreen_closes_webrtc_permission_prompt() {
     "Expect webrtc permission request to be cancelled"
   );
 
-  await changeFullscreen(browser, false);
+  await DOMFullscreenTestUtils.changeFullscreen(browser, false);
 
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
@@ -140,13 +135,16 @@ add_task(async function test_permission_prompt_closes_fullscreen() {
   );
   let browser = tab.linkedBrowser;
   info("Entering DOM full-screen");
-  await changeFullscreen(browser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(browser, true);
 
   let popupShown = BrowserTestUtils.waitForEvent(
     window.PopupNotifications.panel,
     "popupshown"
   );
-  let fullScreenExit = waitForFullScreenState(browser, false);
+  let fullScreenExit = DOMFullscreenTestUtils.waitForFullScreenState(
+    browser,
+    false
+  );
 
   info("Requesting notification permission");
   requestNotificationPermission(browser).catch(() => {});
@@ -189,13 +187,16 @@ add_task(
     );
     let browser = tab.linkedBrowser;
     info("Entering DOM full-screen");
-    await changeFullscreen(browser, true);
+    await DOMFullscreenTestUtils.changeFullscreen(browser, true);
 
     let popupShown = BrowserTestUtils.waitForPopupEvent(
       window.PopupNotifications.panel,
       "shown"
     );
-    let fullScreenExit = waitForFullScreenState(browser, false);
+    let fullScreenExit = DOMFullscreenTestUtils.waitForFullScreenState(
+      browser,
+      false
+    );
 
     info("Requesting notification permission");
     requestNotificationPermission(browser).catch(() => {});

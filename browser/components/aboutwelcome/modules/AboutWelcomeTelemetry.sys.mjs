@@ -83,7 +83,7 @@ export class AboutWelcomeTelemetry {
    *                there is a case where spotlight may use this, too)
    *                containing a nested structure of data for reporting as
    *                telemetry, as documented in
-   * https://firefox-source-docs.mozilla.org/browser/components/newtab/docs/v2-system-addon/data_events.html
+   * https://firefox-source-docs.mozilla.org/browser/extensions/newtab/docs/v2-system-addon/data_events.html
    *                Does not have all of its data (`_createPing` will augment
    *                with ids and attribution if available).
    */
@@ -118,21 +118,10 @@ export class AboutWelcomeTelemetry {
     lazy.log.debug(`Submitting Glean ping for ${JSON.stringify(ping)}`);
     // event.event_context is an object, but it may have been stringified.
     let event_context = ping?.event_context;
-    let shopping_callout_impression =
-      ping?.message_id?.startsWith("FAKESPOT_CALLOUT") &&
-      ping?.event === "IMPRESSION";
 
     if (typeof event_context === "string") {
       try {
         event_context = JSON.parse(event_context);
-        // This code is for directing Shopping component based clicks into
-        // the Glean Events ping.
-        if (
-          event_context?.page === "about:shoppingsidebar" ||
-          shopping_callout_impression
-        ) {
-          this.handleShoppingPings(ping, event_context);
-        }
       } catch (e) {
         // The Empty JSON strings and non-objects often provided by the
         // existing telemetry we need to send failing to parse do not fit in
@@ -230,47 +219,5 @@ export class AboutWelcomeTelemetry {
     return s.toString().replace(/_([a-z])/gi, (_str, group) => {
       return group.toUpperCase();
     });
-  }
-
-  handleShoppingPings(ping, event_context) {
-    const message_id = ping?.message_id;
-    // This function helps direct a shopping ping to the correct Glean event.
-    if (message_id.startsWith("FAKESPOT_OPTIN_DEFAULT")) {
-      // Onboarding page message IDs are generated, but can reliably be
-      // assumed to start in this manner.
-      switch (ping?.event) {
-        case "CLICK_BUTTON":
-          switch (event_context?.source) {
-            case "privacy_policy":
-              Glean.shopping.surfaceShowPrivacyPolicyClicked.record();
-              break;
-            case "terms_of_use":
-              Glean.shopping.surfaceShowTermsClicked.record();
-              break;
-            case "primary_button":
-              // corresponds to 'Analyze Reviews'
-              Glean.shopping.surfaceOptInClicked.record();
-              break;
-            case "additional_button":
-              // corresponds to "Not Now"
-              Glean.shopping.surfaceNotNowClicked.record();
-              break;
-            case "learn_more":
-              Glean.shopping.surfaceLearnMoreClicked.record();
-              break;
-          }
-          break;
-        case "IMPRESSION":
-          Glean.shopping.surfaceOnboardingDisplayed.record({
-            configuration: ping?.message_id,
-          });
-          break;
-      }
-    }
-    if (message_id.startsWith("FAKESPOT_CALLOUT")) {
-      Glean.shopping.addressBarFeatureCalloutDisplayed.record({
-        configuration: message_id,
-      });
-    }
   }
 }

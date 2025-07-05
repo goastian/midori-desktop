@@ -6,9 +6,11 @@
 ChromeUtils.defineESModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  TELEMETRY_SETTINGS_KEY: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  TELEMETRY_SETTINGS_KEY:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   JsonSchema: "resource://gre/modules/JsonSchema.sys.mjs",
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
+  SearchEngineSelector:
+    "moz-src:///toolkit/components/search/SearchEngineSelector.sys.mjs",
 });
 
 /**

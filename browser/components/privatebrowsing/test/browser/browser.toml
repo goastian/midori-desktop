@@ -36,7 +36,7 @@ tags = "trackingprotection"
 skip-if = [
   "os == 'mac'",
   "os == 'linux'",
-  "os == 'win' && msix", # We don't support pinning in MSIX builds
+  "os == 'win' && msix", # We don't support private pinning in MSIX builds
 ]
 
 ["browser_privatebrowsing_about_default_promo.js"]
@@ -64,7 +64,7 @@ skip-if = [
 ["browser_privatebrowsing_cleanup.js"]
 
 ["browser_privatebrowsing_concurrent.js"]
-skip-if = ["release_or_beta"]
+run-if = ["!release_or_beta"]
 
 ["browser_privatebrowsing_context_and_chromeFlags.js"]
 
@@ -96,6 +96,8 @@ skip-if = ["verify"]
 ["browser_privatebrowsing_nonbrowser.js"]
 
 ["browser_privatebrowsing_opendir.js"]
+
+["browser_privatebrowsing_permissions.js"]
 
 ["browser_privatebrowsing_placesTitleNoUpdate.js"]
 

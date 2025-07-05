@@ -3,15 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
+  classMap,
   html,
   ifDefined,
+  nothing,
   repeat,
   when,
 } from "chrome://global/content/vendor/lit.all.mjs";
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 
-// eslint-disable-next-line import/no-unassigned-import
-import "chrome://global/content/elements/moz-button.mjs";
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
+  ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
+  GenAI: "resource:///modules/GenAI.sys.mjs",
+});
+
+const TOOLS_OVERFLOW_LIMIT = 5;
 
 /**
  * Sidebar with expanded and collapsed states that provides entry points
@@ -20,7 +28,7 @@ import "chrome://global/content/elements/moz-button.mjs";
 export default class SidebarMain extends MozLitElement {
   static properties = {
     bottomActions: { type: Array },
-    expanded: { type: Boolean },
+    expanded: { type: Boolean, reflect: true },
     selectedView: { type: String },
     sidebarItems: { type: Array },
     open: { type: Boolean },
@@ -33,6 +41,13 @@ export default class SidebarMain extends MozLitElement {
     customizeButton: ".bottom-actions > moz-button[view=viewCustomizeSidebar]",
   };
 
+  get fluentStrings() {
+    if (!this._fluentStrings) {
+      this._fluentStrings = new Localization(["browser/sidebar.ftl"], true);
+    }
+    return this._fluentStrings;
+  }
+
   constructor() {
     super();
     this.bottomActions = [];
@@ -40,7 +55,31 @@ export default class SidebarMain extends MozLitElement {
     this.open = window.SidebarController.isOpen;
     this.contextMenuTarget = null;
     this.expanded = false;
+    this.clickCounts = {
+      genai: 0,
+      totalToolsMinusGenai: 0,
+    };
   }
+
+  tooltips = {
+    viewHistorySidebar: {
+      shortcutId: "key_gotoHistory",
+      openl10nId: "sidebar-menu-open-history-tooltip",
+      close10nId: "sidebar-menu-close-history-tooltip",
+    },
+    viewBookmarksSidebar: {
+      shortcutId: "viewBookmarksSidebarKb",
+      openl10nId: "sidebar-menu-open-bookmarks-tooltip",
+      close10nId: "sidebar-menu-close-bookmarks-tooltip",
+    },
+    viewGenaiChatSidebar: {
+      shortcutId: "viewGenaiChatSidebarKb",
+      openl10nId: "sidebar-menu-open-ai-chatbot-tooltip-generic",
+      close10nId: "sidebar-menu-close-ai-chatbot-tooltip-generic",
+      openProviderl10nId: "sidebar-menu-open-ai-chatbot-provider-tooltip",
+      closeProviderl10nId: "sidebar-menu-close-ai-chatbot-provider-tooltip",
+    },
+  };
 
   connectedCallback() {
     super.connectedCallback();
@@ -55,6 +94,15 @@ export default class SidebarMain extends MozLitElement {
     );
     this._reportExtensionMenuItem = document.getElementById(
       "sidebar-context-menu-report-extension"
+    );
+    this._hideSidebarMenuItem = document.getElementById(
+      "sidebar-context-menu-hide-sidebar"
+    );
+    this._enableVerticalTabsMenuItem = document.getElementById(
+      "sidebar-context-menu-enable-vertical-tabs"
+    );
+    this._customizeSidebarMenuItem = document.getElementById(
+      "sidebar-context-menu-customize-sidebar"
     );
 
     this._sidebarBox.addEventListener("sidebar-show", this);
@@ -85,10 +133,72 @@ export default class SidebarMain extends MozLitElement {
 
   onSidebarPopupShowing(event) {
     // Store the context menu target which holds the id required for managing sidebar items
-    this.contextMenuTarget =
-      event.explicitOriginalTarget.flattenedTreeParentNode;
-    if (!this.contextMenuTarget.getAttribute("extensionId")) {
-      event.preventDefault();
+    let targetHost = event.explicitOriginalTarget.getRootNode().host;
+    let toolbarContextMenuTarget =
+      event.explicitOriginalTarget.flattenedTreeParentNode
+        .flattenedTreeParentNode;
+    let isToolbarTarget = false;
+    if (["moz-button", "sidebar-main"].includes(targetHost?.localName)) {
+      this.contextMenuTarget = targetHost;
+    } else if (
+      document
+        .getElementById("vertical-tabs")
+        .contains(toolbarContextMenuTarget)
+    ) {
+      this.contextMenuTarget = toolbarContextMenuTarget;
+      isToolbarTarget = true;
+    }
+    if (
+      this.contextMenuTarget?.localName === "sidebar-main" &&
+      !window.SidebarController.sidebarVerticalTabsEnabled
+    ) {
+      this.updateSidebarContextMenuItems();
+      return;
+    }
+    if (
+      this.contextMenuTarget?.getAttribute("extensionId") ||
+      this.contextMenuTarget?.className.includes("tab") ||
+      isToolbarTarget
+    ) {
+      this.updateExtensionContextMenuItems();
+      return;
+    }
+    event.preventDefault();
+  }
+
+  updateSidebarContextMenuItems() {
+    this._manageExtensionMenuItem.hidden = true;
+    this._removeExtensionMenuItem.hidden = true;
+    this._reportExtensionMenuItem.hidden = true;
+    this._customizeSidebarMenuItem.hidden = false;
+    this._enableVerticalTabsMenuItem.hidden = false;
+    this._hideSidebarMenuItem.hidden = false;
+  }
+
+  async updateExtensionContextMenuItems() {
+    this._customizeSidebarMenuItem.hidden = true;
+    this._enableVerticalTabsMenuItem.hidden = true;
+    this._hideSidebarMenuItem.hidden = true;
+    this._manageExtensionMenuItem.hidden = false;
+    this._removeExtensionMenuItem.hidden = false;
+    this._reportExtensionMenuItem.hidden = false;
+    const extensionId = this.contextMenuTarget.getAttribute("extensionId");
+    if (!extensionId) {
+      return;
+    }
+    const addon = await window.AddonManager?.getAddonByID(extensionId);
+    if (!addon) {
+      // Disable all context menus items if the addon doesn't
+      // exist anymore from the AddonManager perspective.
+      this._manageExtensionMenuItem.disabled = true;
+      this._removeExtensionMenuItem.disabled = true;
+      this._reportExtensionMenuItem.disabled = true;
+    } else {
+      this._manageExtensionMenuItem.disabled = false;
+      this._removeExtensionMenuItem.disabled = !(
+        addon.permissions & AddonManager.PERM_CAN_UNINSTALL
+      );
+      this._reportExtensionMenuItem.disabled = !window.gAddonAbuseReportEnabled;
     }
   }
 
@@ -162,10 +272,32 @@ export default class SidebarMain extends MozLitElement {
           case "sidebar-context-menu-remove-extension":
             await this.removeExtension();
             break;
+          case "sidebar-context-menu-hide-sidebar":
+            if (
+              window.SidebarController._animationEnabled &&
+              !window.gReduceMotion
+            ) {
+              window.SidebarController._animateSidebarMain();
+            }
+            window.SidebarController.hide({ dismissPanel: false });
+            window.SidebarController._state.updateVisibility(false);
+            break;
+          case "sidebar-context-menu-enable-vertical-tabs":
+            await window.SidebarController.toggleVerticalTabs();
+            break;
+          case "sidebar-context-menu-customize-sidebar":
+            await window.SidebarController.show("viewCustomizeSidebar");
+            break;
         }
         break;
       case "contextmenu":
-        this.onSidebarPopupShowing(e);
+        if (
+          !["tabs-newtab-button", "vertical-tabs-newtab-button"].includes(
+            e.target.id
+          )
+        ) {
+          this.onSidebarPopupShowing(e);
+        }
         break;
       case "popuphidden":
         this.contextMenuTarget = null;
@@ -185,30 +317,123 @@ export default class SidebarMain extends MozLitElement {
     }
   }
 
-  showView(view) {
+  async checkShouldShowCalloutSurveys(view) {
+    if (view == "viewGenaiChatSidebar") {
+      this.clickCounts.genai++;
+    } else {
+      this.clickCounts.totalToolsMinusGenai++;
+    }
+
+    await lazy.ASRouter.waitForInitialized;
+    lazy.ASRouter.sendTriggerMessage({
+      browser: window.gBrowser.selectedBrowser,
+      id: "sidebarToolOpened",
+      context: {
+        view,
+        clickCounts: this.clickCounts,
+      },
+    });
+  }
+
+  async showView(view) {
+    const { currentID, toolsAndExtensions } = window.SidebarController;
+    let isToolOpening =
+      (!currentID || (currentID && currentID !== view)) &&
+      toolsAndExtensions.has(view);
+    window.SidebarController.recordIconClick(view, this.expanded);
     window.SidebarController.toggle(view);
+    if (view === "viewCustomizeSidebar") {
+      Glean.sidebarCustomize.iconClick.record();
+    }
+    if (isToolOpening) {
+      await this.checkShouldShowCalloutSurveys(view);
+    }
+  }
+
+  isToolsOverflowing() {
+    if (
+      !this.expanded ||
+      !window.SidebarController.sidebarVerticalTabsEnabled
+    ) {
+      return false;
+    }
+    let enabledToolsAndExtensionsCount = 0;
+    for (const tool of window.SidebarController.toolsAndExtensions.values()) {
+      if (!tool.disabled) {
+        enabledToolsAndExtensionsCount++;
+      }
+    }
+    // Add 1 to enabledToolsAndExtensionsCount to account for 'Customize sidebar'
+    return enabledToolsAndExtensionsCount + 1 > TOOLS_OVERFLOW_LIMIT;
   }
 
   entrypointTemplate(action) {
-    if (action.disabled) {
+    let providerInfo;
+    if (action.view === "viewGenaiChatSidebar") {
+      providerInfo = lazy.GenAI.currentChatProviderInfo;
+      action.iconUrl = providerInfo.iconUrl;
+      // Sets the tooltip text for the action based on the chatbot provider's name.
+      // This tooltip text is also used to set the action label
+      action.tooltiptext = providerInfo.name;
+    }
+
+    if (action.disabled || action.hidden) {
       return null;
     }
     const isActiveView = this.open && action.view === this.selectedView;
-    const l10nId = action.l10nId?.concat(this.expanded ? "-label" : "-item");
-    const title = this.expanded ? "" : action.tooltiptext;
+    let actionLabel = "";
+    if (action.tooltiptext) {
+      actionLabel = action.tooltiptext;
+    } else if (action.l10nId) {
+      const messages = this.fluentStrings.formatMessagesSync([action.l10nId]);
+      const attributes = messages?.[0]?.attributes;
+      actionLabel = attributes?.find(attr => attr.name === "label")?.value;
+    }
+
+    let tooltip = actionLabel;
+    const tooltipInfo = this.tooltips[action.view];
+    if (tooltipInfo) {
+      const { shortcutId, openl10nId, close10nId } = tooltipInfo;
+      let l10nId = isActiveView ? close10nId : openl10nId;
+      let tooltipData = {};
+
+      if (action.view === "viewGenaiChatSidebar") {
+        const provider = providerInfo?.name;
+
+        if (provider) {
+          tooltipData.provider = provider;
+          l10nId = isActiveView
+            ? tooltipInfo.closeProviderl10nId
+            : tooltipInfo.openProviderl10nId;
+        }
+      }
+
+      if (shortcutId) {
+        const shortcut = lazy.ShortcutUtils.prettifyShortcut(
+          document.getElementById(shortcutId)
+        );
+        tooltipData.shortcut = shortcut;
+      }
+
+      tooltip = this.fluentStrings.formatValueSync(l10nId, tooltipData);
+    }
+
+    let toolsOverflowing = this.isToolsOverflowing();
     return html`<moz-button
-      class=${this.expanded ? "expanded-button" : ""}
+      class=${classMap({
+        "expanded-button": this.expanded,
+        "tools-overflow": toolsOverflowing,
+      })}
       type=${isActiveView ? "icon" : "icon ghost"}
-      aria-pressed="${isActiveView}"
+      aria-pressed=${isActiveView}
       view=${action.view}
-      @click=${() => this.showView(action.view)}
-      title=${ifDefined(title)}
-      data-l10n-id=${ifDefined(l10nId)}
+      @click=${async () => await this.showView(action.view)}
+      title=${tooltip}
       .iconSrc=${action.iconUrl}
       ?extension=${action.view?.includes("-sidebar-action")}
       extensionId=${ifDefined(action.extensionId)}
     >
-      ${when(this.expanded, () => action.tooltiptext)}
+      ${this.expanded && !toolsOverflowing ? actionLabel : nothing}
     </moz-button>`;
   }
 
@@ -216,26 +441,51 @@ export default class SidebarMain extends MozLitElement {
     return html`
       <link
         rel="stylesheet"
+        href="chrome://browser/content/sidebar/sidebar.css"
+      />
+      <link
+        rel="stylesheet"
         href="chrome://browser/content/sidebar/sidebar-main.css"
       />
       <div class="wrapper">
+        <slot name="tabstrip"></slot>
         <button-group
           class="tools-and-extensions actions-list"
-          orientation="vertical"
+          orientation=${this.isToolsOverflowing() ? "horizontal" : "vertical"}
         >
-          ${repeat(
-            this.getToolsAndExtensions().values(),
-            action => action.view,
-            action => this.entrypointTemplate(action)
+          ${when(!this.isToolsOverflowing(), () =>
+            repeat(
+              this.getToolsAndExtensions().values(),
+              action => action.view,
+              action => this.entrypointTemplate(action)
+            )
+          )}
+          ${when(window.SidebarController.sidebarVerticalTabsEnabled, () =>
+            repeat(
+              this.bottomActions,
+              action => action.view,
+              action => this.entrypointTemplate(action)
+            )
+          )}
+          ${when(this.isToolsOverflowing(), () =>
+            repeat(
+              this.getToolsAndExtensions().values(),
+              action => action.view,
+              action => this.entrypointTemplate(action)
+            )
           )}
         </button-group>
-        <div class="bottom-actions actions-list">
-          ${repeat(
-            this.bottomActions,
-            action => action.view,
-            action => this.entrypointTemplate(action)
-          )}
-        </div>
+        ${when(
+          !window.SidebarController.sidebarVerticalTabsEnabled,
+          () =>
+            html` <div class="bottom-actions actions-list">
+              ${repeat(
+                this.bottomActions,
+                action => action.view,
+                action => this.entrypointTemplate(action)
+              )}
+            </div>`
+        )}
       </div>
     `;
   }

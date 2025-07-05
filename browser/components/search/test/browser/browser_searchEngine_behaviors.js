@@ -22,26 +22,15 @@ const SEARCH_ENGINE_DETAILS = [
   },
   {
     alias: "b",
-    baseURL: SearchUtils.newSearchConfigEnabled
-      ? `https://www.bing.com/search?pc=${
-          SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
-        }&{code}q=foo`
-      : `https://www.bing.com/search?{code}pc=${
-          SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
-        }&q=foo`,
-    codes: SearchUtils.newSearchConfigEnabled
-      ? {
-          context: "form=MOZLBR&",
-          keyword: "form=MOZLBR&",
-          newTab: "form=MOZLBR&",
-          submission: "form=MOZLBR&",
-        }
-      : {
-          context: "form=MOZCON&",
-          keyword: "form=MOZLBR&",
-          newTab: "form=MOZTSB&",
-          submission: "form=MOZSBR&",
-        },
+    baseURL: `https://www.bing.com/search?pc=${
+      SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "MOZR" : "MOZI"
+    }&{code}q=foo`,
+    codes: {
+      context: "form=MOZLBR&",
+      keyword: "form=MOZLBR&",
+      newTab: "form=MOZLBR&",
+      submission: "form=MOZLBR&",
+    },
     name: "Bing",
   },
   {
@@ -143,7 +132,7 @@ async function testSearchEngine(engineDetails) {
     base.replace("{code}", engineDetails.codes.submission),
     "Check search URL for 'foo'"
   );
-  let sb = BrowserSearch.searchBar;
+  let sb = document.getElementById("searchbar");
 
   let engineTests = [
     {
@@ -152,11 +141,11 @@ async function testSearchEngine(engineDetails) {
       run() {
         // Simulate a contextmenu search
         // FIXME: This is a bit "low-level"...
-        BrowserSearch._loadSearch(
+        SearchUIUtils._loadSearch(
+          window,
           "foo",
           false,
           false,
-          "contextmenu",
           Services.scriptSecurityManager.getSystemPrincipal()
         );
       },

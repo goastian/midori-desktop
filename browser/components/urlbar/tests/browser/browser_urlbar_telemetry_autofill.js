@@ -23,6 +23,8 @@ function assertSearchTelemetryEmpty(search_hist) {
     [],
     "SEARCH_COUNTS is empty"
   );
+  let sapEvent = Glean.sap.counts.testGetValue();
+  Assert.equal(sapEvent, null, "Should not have recorded any SAP events");
 
   // Also check events.
   let events = Services.telemetry.snapshotEvents(
@@ -42,23 +44,10 @@ function assertSearchTelemetryEmpty(search_hist) {
 function snapshotHistograms() {
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
+  Services.fog.testResetFOG();
   return {
-    resultMethodHist: TelemetryTestUtils.getAndClearHistogram(
-      "FX_URLBAR_SELECTED_RESULT_METHOD"
-    ),
     search_hist: TelemetryTestUtils.getAndClearKeyedHistogram("SEARCH_COUNTS"),
   };
-}
-
-function assertTelemetryResults(histograms, type, index, method) {
-  TelemetryTestUtils.assertHistogram(histograms.resultMethodHist, method, 1);
-
-  TelemetryTestUtils.assertKeyedScalar(
-    TelemetryTestUtils.getProcessScalars("parent", true, true),
-    `urlbar.picked.${type}`,
-    index,
-    1
-  );
 }
 
 /**
@@ -190,7 +179,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "ex",
       autofilled: "example.com/",
-      expected: "autofill_origin",
     },
     {
       useAdaptiveHistory: true,
@@ -198,7 +186,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "exa",
       autofilled: "example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: true,
@@ -206,7 +193,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "exam",
       autofilled: "example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: true,
@@ -214,7 +200,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.com",
       autofilled: "example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: true,
@@ -222,7 +207,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.com/",
       autofilled: "example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: true,
@@ -230,7 +214,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.com/test",
       autofilled: "example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: true,
@@ -238,7 +221,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.org",
       autofilled: "example.org/",
-      expected: "autofill_origin",
     },
     {
       useAdaptiveHistory: true,
@@ -246,7 +228,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.com/test/",
       autofilled: "example.com/test/",
-      expected: "autofill_url",
     },
     {
       useAdaptiveHistory: true,
@@ -256,7 +237,6 @@ add_task(async function history() {
       ],
       userInput: "http://example.com/test",
       autofilled: "http://example.com/test",
-      expected: "autofill_adaptive",
     },
     {
       useAdaptiveHistory: false,
@@ -264,7 +244,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example",
       autofilled: "example.com/",
-      expected: "autofill_origin",
     },
     {
       useAdaptiveHistory: false,
@@ -272,7 +251,6 @@ add_task(async function history() {
       inputHistory: [{ uri: "http://example.com/test", input: "exa" }],
       userInput: "example.com/te",
       autofilled: "example.com/test",
-      expected: "autofill_url",
     },
   ];
 
@@ -282,7 +260,6 @@ add_task(async function history() {
     inputHistory,
     userInput,
     autofilled,
-    expected,
   } of testData) {
     const histograms = snapshotHistograms();
 
@@ -297,12 +274,6 @@ add_task(async function history() {
     await triggerAutofillAndPickResult(userInput, autofilled);
 
     assertSearchTelemetryEmpty(histograms.search_hist);
-    assertTelemetryResults(
-      histograms,
-      expected,
-      0,
-      UrlbarTestUtils.SELECTED_RESULT_METHODS.enter
-    );
 
     UrlbarPrefs.clear("autoFill.adaptiveHistory.enabled");
     await PlacesTestUtils.clearInputHistory();
@@ -316,12 +287,6 @@ add_task(async function about() {
   await triggerAutofillAndPickResult("about:abou", "about:about");
 
   assertSearchTelemetryEmpty(histograms.search_hist);
-  assertTelemetryResults(
-    histograms,
-    "autofill_about",
-    0,
-    UrlbarTestUtils.SELECTED_RESULT_METHODS.enter
-  );
 
   await PlacesUtils.history.clear();
 });
@@ -337,199 +302,9 @@ add_task(async function other() {
   await triggerAutofillAndPickResult(searchString, autofilledValue);
 
   assertSearchTelemetryEmpty(histograms.search_hist);
-  assertTelemetryResults(
-    histograms,
-    "autofill_other",
-    0,
-    UrlbarTestUtils.SELECTED_RESULT_METHODS.enter
-  );
 
   await PlacesUtils.history.clear();
   UrlbarProvidersManager.unregisterProvider(provider);
-});
-
-// Checks impression telemetry.
-add_task(async function impression() {
-  const testData = [
-    {
-      description: "Adaptive history autofill and pick it",
-      useAdaptiveHistory: true,
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      inputHistory: [{ uri: "http://example.com/first", input: "exa" }],
-      userInput: "exa",
-      autofilled: "example.com/first",
-      expected: "autofill_adaptive",
-    },
-    {
-      description: "Adaptive history autofill but pick another result",
-      useAdaptiveHistory: true,
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      inputHistory: [{ uri: "http://example.com/first", input: "exa" }],
-      userInput: "exa",
-      urlToSelect: "http://example.com/second",
-      autofilled: "example.com/first",
-      expected: "autofill_adaptive",
-    },
-    {
-      description: "Adaptive history autofill but not pick any result",
-      unpickResult: true,
-      useAdaptiveHistory: true,
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      inputHistory: [{ uri: "http://example.com/first", input: "exa" }],
-      userInput: "exa",
-      autofilled: "example.com/first",
-    },
-    {
-      description: "Origin autofill and pick it",
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "exa",
-      autofilled: "example.com/",
-      expected: "autofill_origin",
-    },
-    {
-      description: "Origin autofill but pick another result",
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "exa",
-      urlToSelect: "http://example.com/second",
-      autofilled: "example.com/",
-      expected: "autofill_origin",
-    },
-    {
-      description: "Origin autofill but not pick any result",
-      unpickResult: true,
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "exa",
-      autofilled: "example.com/",
-    },
-    {
-      description: "URL autofill and pick it",
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "example.com/",
-      autofilled: "example.com/",
-      expected: "autofill_url",
-    },
-    {
-      description: "URL autofill but pick another result",
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "example.com/",
-      urlToSelect: "http://example.com/second",
-      autofilled: "example.com/",
-      expected: "autofill_url",
-    },
-    {
-      description: "URL autofill but not pick any result",
-      unpickResult: true,
-      visitHistory: ["http://example.com/first", "http://example.com/second"],
-      userInput: "example.com/",
-      autofilled: "example.com/",
-    },
-    {
-      description: "about page autofill and pick it",
-      userInput: "about:a",
-      autofilled: "about:about",
-      expected: "autofill_about",
-    },
-    {
-      description: "about page autofill but pick another result",
-      userInput: "about:a",
-      urlToSelect: "about:addons",
-      autofilled: "about:about",
-      expected: "autofill_about",
-    },
-    {
-      description: "about page autofill but not pick any result",
-      unpickResult: true,
-      userInput: "about:a",
-      autofilled: "about:about",
-    },
-    {
-      description: "Other provider's autofill and pick it",
-      useOtherProvider: true,
-      userInput: "example",
-      autofilled: "example.com/",
-      expected: "autofill_other",
-    },
-    {
-      description: "Other provider's autofill but not pick any result",
-      unpickResult: true,
-      useOtherProvider: true,
-      userInput: "example",
-      autofilled: "example.com/",
-    },
-  ];
-
-  for (const {
-    description,
-    useAdaptiveHistory = false,
-    useOtherProvider = false,
-    unpickResult = false,
-    visitHistory,
-    inputHistory,
-    userInput,
-    select,
-    autofilled,
-    expected,
-  } of testData) {
-    info(description);
-
-    UrlbarPrefs.set("autoFill.adaptiveHistory.enabled", useAdaptiveHistory);
-    let otherProvider;
-    if (useOtherProvider) {
-      otherProvider = createOtherAutofillProvider(userInput, autofilled);
-      UrlbarProvidersManager.registerProvider(otherProvider);
-    }
-
-    if (visitHistory) {
-      await PlacesTestUtils.addVisits(visitHistory);
-    }
-    if (inputHistory) {
-      for (const { uri, input } of inputHistory) {
-        await UrlbarUtils.addToInputHistory(uri, input);
-      }
-    }
-    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
-    await triggerAutofillAndPickResult(
-      userInput,
-      autofilled,
-      unpickResult,
-      select
-    );
-
-    const scalars = TelemetryTestUtils.getProcessScalars("parent", false, true);
-    if (unpickResult) {
-      TelemetryTestUtils.assertScalarUnset(
-        scalars,
-        "urlbar.impression.autofill_adaptive"
-      );
-      TelemetryTestUtils.assertScalarUnset(
-        scalars,
-        "urlbar.impression.autofill_origin"
-      );
-      TelemetryTestUtils.assertScalarUnset(
-        scalars,
-        "urlbar.impression.autofill_url"
-      );
-      TelemetryTestUtils.assertScalarUnset(
-        scalars,
-        "urlbar.impression.autofill_about"
-      );
-    } else {
-      TelemetryTestUtils.assertScalar(
-        scalars,
-        `urlbar.impression.${expected}`,
-        1
-      );
-    }
-
-    UrlbarPrefs.clear("autoFill.adaptiveHistory.enabled");
-
-    if (otherProvider) {
-      UrlbarProvidersManager.unregisterProvider(otherProvider);
-    }
-
-    await PlacesTestUtils.clearInputHistory();
-    await PlacesUtils.history.clear();
-  }
 });
 
 // Checks autofill deletion telemetry.

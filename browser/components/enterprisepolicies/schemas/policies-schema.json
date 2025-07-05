@@ -262,14 +262,63 @@
         "IsPerUser": {
           "type": "boolean"
         },
+        "MaxConnectionsCount": {
+          "type": "number"
+        },
         "ShowBlockedResult": {
           "type": "boolean"
         },
         "DefaultResult": {
           "type": "number"
         },
+        "TimeoutResult": {
+          "type": "number"
+        },
         "BypassForSameTabOperations": {
           "type": "boolean"
+        },
+        "InterceptionPoints": {
+          "type": "object",
+          "properties": {
+            "Clipboard": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "PlainTextOnly": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "DragAndDrop": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                },
+                "PlainTextOnly": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "FileUpload": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "Print": {
+              "type": "object",
+              "properties": {
+                "Enabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -416,6 +465,15 @@
           "type": "boolean"
         },
         "TLS_RSA_WITH_3DES_EDE_CBC_SHA": {
+          "type": "boolean"
+        },
+        "TLS_CHACHA20_POLY1305_SHA256": {
+          "type": "boolean"
+        },
+        "TLS_AES_128_GCM_SHA256": {
+          "type": "boolean"
+        },
+        "TLS_AES_256_GCM_SHA384": {
           "type": "boolean"
         }
       }
@@ -741,7 +799,13 @@
         "Pocket": {
           "type": "boolean"
         },
+        "Stories": {
+          "type": "boolean"
+        },
         "SponsoredPocket": {
+          "type": "boolean"
+        },
+        "SponsoredStories": {
           "type": "boolean"
         },
         "Snippets": {
@@ -1351,8 +1415,6 @@
     },
 
     "SearchEngines": {
-      "enterprise_only": true,
-
       "type": "object",
       "properties": {
         "Add": {
@@ -1440,6 +1502,10 @@
       "type": "boolean"
     },
 
+    "SkipTermsOfUse": {
+      "type": "boolean"
+    },
+
     "SSLVersionMax": {
       "type": "string",
       "enum": ["tls1", "tls1.1", "tls1.2", "tls1.3"]
@@ -1493,6 +1559,9 @@
           "type": "boolean"
         },
         "MoreFromMozilla": {
+          "type": "boolean"
+        },
+        "FirefoxLabs": {
           "type": "boolean"
         },
         "Locked": {

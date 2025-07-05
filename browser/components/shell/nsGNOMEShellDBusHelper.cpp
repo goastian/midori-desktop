@@ -13,6 +13,8 @@
 #include "nsPrintfCString.h"
 #include "mozilla/XREAppData.h"
 #include "nsAppRunner.h"
+#include "nsImportModule.h"
+#include "nsIOpenTabsProvider.h"
 
 #define DBUS_BUS_NAME_TEMPLATE "org.mozilla.%s.SearchProvider"
 #define DBUS_OBJECT_PATH_TEMPLATE "/org/mozilla/%s/SearchProvider"
@@ -65,10 +67,21 @@ static bool GetGnomeSearchTitle(const char* aSearchedTerm,
 }
 
 int DBusGetIndexFromIDKey(const char* aIDKey) {
-  // ID is NN:URL where NN is index to our current history
+  // ID is NN:S:URL where NN is index to our current history
   // result container.
   char tmp[] = {aIDKey[0], aIDKey[1], '\0'};
   return atoi(tmp);
+}
+
+char DBusGetStateFromIDKey(const char* aIDKey) {
+  // ID is NN:S:URL where NN is index to our current history
+  // result container, and S is the state, which can be 'o'pen or 'h'istory
+  if (std::strlen(aIDKey) > 3) {
+    return aIDKey[3];
+  }
+  // Should never happen, but just to avoid any possible segfault, we
+  // default to state 'history'.
+  return 'h';
 }
 
 static void ConcatArray(nsACString& aOutputStr, const char** aStringArray) {
@@ -151,6 +164,7 @@ static already_AddRefed<GVariant> DBusAppendResultID(
       aSearchResult->GetSearchResultContainer();
 
   int index = DBusGetIndexFromIDKey(aID);
+  char state = DBusGetStateFromIDKey(aID);
   nsCOMPtr<nsINavHistoryResultNode> child;
   container->GetChild(index, getter_AddRefs(child));
   nsAutoCString title;
@@ -162,6 +176,12 @@ static already_AddRefed<GVariant> DBusAppendResultID(
     if (NS_FAILED(child->GetUri(title)) || title.IsEmpty()) {
       return nullptr;
     }
+  }
+
+  // Check if the URI state is "open tab". If so, mark it with an asterisk to
+  // indicate this to the user.
+  if (state == 'o') {
+    title = "(*) "_ns + title;
   }
 
   GVariantBuilder b;
@@ -254,17 +274,18 @@ void DBusHandleResultMetas(
 static void ActivateResultID(
     RefPtr<nsGNOMEShellHistorySearchResult> aSearchResult,
     const char* aResultID, uint32_t aTimeStamp) {
-  char* commandLine = nullptr;
-  int tmp;
+  mozilla::UniquePtr<char[]> commandLine;
+  int len;
 
   if (strncmp(aResultID, KEYWORD_SEARCH_STRING, KEYWORD_SEARCH_STRING_LEN) ==
       0) {
     const char* urlList[3] = {"unused", "--search",
                               aSearchResult->GetSearchTerm().get()};
-    commandLine = ConstructCommandLine(std::size(urlList), (char**)urlList,
-                                       nullptr, &tmp);
+    commandLine =
+        ConstructCommandLine(std::size(urlList), urlList, nullptr, &len);
   } else {
     int keyIndex = atoi(aResultID);
+    char state = DBusGetStateFromIDKey(aResultID);
     nsCOMPtr<nsINavHistoryResultNode> child;
     aSearchResult->GetSearchResultContainer()->GetChild(keyIndex,
                                                         getter_AddRefs(child));
@@ -278,14 +299,30 @@ static void ActivateResultID(
       return;
     }
 
+    // If the state of the URI is 'o'pen, we send it along to JS and let
+    // it switch the tab accordingly
+    if (state == 'o') {
+      // If we can't successfully switch to an open tab, use the existing
+      // 'open in a new tab'-mechanism as a fallback.
+      nsresult rv;
+      nsCOMPtr<nsIOpenTabsProvider> provider = do_ImportESModule(
+          "resource:///modules/OpenTabsProvider.sys.mjs", &rv);
+      if (NS_SUCCEEDED(rv)) {
+        rv = provider->SwitchToOpenTab(uri);
+        if (NS_SUCCEEDED(rv)) {
+          return;
+        }
+      }
+    }
+
     const char* urlList[2] = {"unused", uri.get()};
-    commandLine = ConstructCommandLine(std::size(urlList), (char**)urlList,
-                                       nullptr, &tmp);
+    commandLine =
+        ConstructCommandLine(std::size(urlList), urlList, nullptr, &len);
   }
 
   if (commandLine) {
-    aSearchResult->HandleCommandLine(commandLine, aTimeStamp);
-    free(commandLine);
+    aSearchResult->HandleCommandLine(mozilla::Span(commandLine.get(), len),
+                                     aTimeStamp);
   }
 }
 
@@ -305,7 +342,8 @@ static void DBusLaunchWithAllResults(
 
   // Allocate space for all found results, "unused", "--search" and
   // potential search request.
-  char** urlList = (char**)moz_xmalloc(sizeof(char*) * (childCount + 3));
+  const char** urlList =
+      (const char**)moz_xmalloc(sizeof(char*) * (childCount + 3));
   int urlListElements = 0;
 
   urlList[urlListElements++] = strdup("unused");
@@ -333,16 +371,16 @@ static void DBusLaunchWithAllResults(
     urlList[urlListElements++] = strdup(aSearchResult->GetSearchTerm().get());
   }
 
-  int tmp;
-  char* commandLine =
-      ConstructCommandLine(urlListElements, urlList, nullptr, &tmp);
+  int len;
+  mozilla::UniquePtr<char[]> commandLine =
+      ConstructCommandLine(urlListElements, urlList, nullptr, &len);
   if (commandLine) {
-    aSearchResult->HandleCommandLine(commandLine, aTimeStamp);
-    free(commandLine);
+    aSearchResult->HandleCommandLine(mozilla::Span(commandLine.get(), len),
+                                     aTimeStamp);
   }
 
   for (int i = 0; i < urlListElements; i++) {
-    free(urlList[i]);
+    free((void*)urlList[i]);
   }
   free(urlList);
 }

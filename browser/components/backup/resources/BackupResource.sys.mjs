@@ -8,7 +8,23 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
+  BackupError: "resource:///modules/backup/BackupError.mjs",
+  ERRORS: "chrome://browser/content/backup/backup-constants.mjs",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "isBrowsingHistoryEnabled",
+  "places.history.enabled",
+  true
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "isSanitizeOnShutdownEnabled",
+  "privacy.sanitize.sanitizeOnShutdown",
+  false
+);
 
 // Convert from bytes to kilobytes (not kibibytes).
 export const BYTES_IN_KB = 1000;
@@ -39,7 +55,10 @@ export class BackupResource {
    * @type {string}
    */
   static get key() {
-    throw new Error("BackupResource::key needs to be overridden.");
+    throw new lazy.BackupError(
+      "BackupResource::key needs to be overridden.",
+      lazy.ERRORS.INTERNAL_ERROR
+    );
   }
 
   /**
@@ -52,8 +71,9 @@ export class BackupResource {
    * @type {boolean}
    */
   static get requiresEncryption() {
-    throw new Error(
-      "BackupResource::requiresEncryption needs to be overridden."
+    throw new lazy.BackupError(
+      "BackupResource::requiresEncryption needs to be overridden.",
+      lazy.ERRORS.INTERNAL_ERROR
     );
   }
 
@@ -123,9 +143,8 @@ export class BackupResource {
 
     let size = 0;
     for (const childFilePath of children) {
-      let { size: childSize, type: childType } = await IOUtils.stat(
-        childFilePath
-      );
+      let { size: childSize, type: childType } =
+        await IOUtils.stat(childFilePath);
 
       if (shouldExclude(childFilePath, childType, directoryPath)) {
         continue;
@@ -219,6 +238,20 @@ export class BackupResource {
     }
   }
 
+  /**
+   * Returns true if the browser is configured in such a way that backing up
+   * things related to browsing history is allowed. Otherwise, returns false.
+   *
+   * @returns {boolean}
+   */
+  static canBackupHistory() {
+    return (
+      !lazy.PrivateBrowsingUtils.permanentPrivateBrowsing &&
+      !lazy.isSanitizeOnShutdownEnabled &&
+      lazy.isBrowsingHistoryEnabled
+    );
+  }
+
   constructor() {}
 
   /**
@@ -230,7 +263,10 @@ export class BackupResource {
    */
   // eslint-disable-next-line no-unused-vars
   async measure(profilePath) {
-    throw new Error("BackupResource::measure needs to be overridden.");
+    throw new lazy.BackupError(
+      "BackupResource::measure needs to be overridden.",
+      lazy.ERRORS.INTERNAL_ERROR
+    );
   }
 
   /**
@@ -250,12 +286,19 @@ export class BackupResource {
    *   (for example, it's being run from a BackgroundTask on a user profile that
    *   just shut down, or during test), then this is a string set to that user
    *   profile path.
+   * @param {boolean} [isEncrypting=false]
+   *   True if the backup is being encrypted. A BackupResource may not require
+   *   encryption, but might still choose to behave differently when encrypting,
+   *   so this flag can be used to support that kind of behaviour.
    *
    * @returns {Promise<object|null>}
    */
   // eslint-disable-next-line no-unused-vars
-  async backup(stagingPath, profilePath = null) {
-    throw new Error("BackupResource::backup must be overridden");
+  async backup(stagingPath, profilePath = null, isEncrypting = false) {
+    throw new lazy.BackupError(
+      "BackupResource::backup must be overridden",
+      lazy.ERRORS.INTERNAL_ERROR
+    );
   }
 
   /**
@@ -288,7 +331,10 @@ export class BackupResource {
    */
   // eslint-disable-next-line no-unused-vars
   async recover(manifestEntry, recoveryPath, destProfilePath) {
-    throw new Error("BackupResource::recover must be overridden");
+    throw new lazy.BackupError(
+      "BackupResource::recover must be overridden",
+      lazy.ERRORS.INTERNAL_ERROR
+    );
   }
 
   /**

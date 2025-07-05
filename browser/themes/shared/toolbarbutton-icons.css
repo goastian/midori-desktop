@@ -2,38 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-:root {
-  --toolbarbutton-icon-fill-attention: AccentColor;
-  --toolbarbutton-icon-fill-attention-text: AccentColorText;
-  --warning-icon-bgcolor: light-dark(#FFA436, #FFBD4F);
-  &[lwtheme] {
-    --toolbarbutton-icon-fill-attention: var(--lwt-toolbarbutton-icon-fill-attention, light-dark(rgb(0, 97, 224), rgb(0, 221, 255)));
-    /* FIXME(emilio): This could have poor contrast on some themes, maybe use
-     * contrast-color() once that's available, or compute a new variable in
-     * LightWeightThemeConsumer */
-    --toolbarbutton-icon-fill-attention-text: var(--toolbar-field-background-color);
-  }
-}
-
 .toolbarbutton-animatable-box,
 .toolbarbutton-1 {
   color: inherit;
   -moz-context-properties: fill, fill-opacity;
   fill: var(--toolbarbutton-icon-fill);
-}
-
-.toolbarbutton-animatable-box {
-  display: block;
-  position: absolute;
-  overflow: hidden;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-fill-mode: forwards;
-  animation-iteration-count: 1;
-  list-style-image: none;
 }
 
 #back-button:-moz-locale-dir(rtl) > .toolbarbutton-icon,
@@ -55,128 +28,6 @@
 
 #forward-button {
   list-style-image: url("chrome://browser/skin/forward.svg");
-}
-
-/* The animations for the reload-button and stop-button are disabled
-   outside of the nav-bar due to bug 1382894. */
-:is(#reload-button, #stop-button) > .toolbarbutton-animatable-box {
-  display: none;
-}
-#nav-bar-customization-target > #stop-reload-button > :is(#reload-button, #stop-button) > .toolbarbutton-animatable-box {
-  display: block;
-}
-
-#stop-reload-button[animate] > #reload-button > .toolbarbutton-icon,
-#stop-reload-button[animate] > #reload-button[displaystop] + #stop-button > .toolbarbutton-icon {
-  fill: transparent;
-}
-
-@keyframes stop-to-reload {
-  /* pause on the first frame (step 0) for 6 frames of time */
-  from {
-    /* 0 */
-    transform: translateX(0);
-  }
-  /* resume at 7/35 and animate across the next 14 frames */
-  17.14% {
-    animation-timing-function: steps(14);
-    transform: translateX(calc(0  * -20px));
-  }
-  /* pause on the last frame for the remainder of the duration */
-  54.29% {
-    transform: translateX(calc(14 * -20px));
-  }
-  to {
-    /* end state for animation: */
-    transform: translateX(calc(var(--anim-frames) * -20px));
-  }
-}
-
-@keyframes reload-to-stop {
-  /* pause on the first frame (step 0) for 6 frames of time */
-  from {
-    /* 0 */
-    transform: translateX(0);
-    animation-timing-function: steps(12);
-  }
-  /* pause at 13/15 for 3 frames */
-  86.67% {
-    transform: translateX(calc(var(--anim-frames) * -20px));
-  }
-  to {
-    /* end state for animation: */
-    transform: translateX(calc(var(--anim-frames) * -20px));
-  }
-}
-
-#stop-reload-button[animate] > #reload-button,
-#stop-reload-button[animate] > #stop-button {
-  position: relative;
-}
-
-#reload-button > .toolbarbutton-animatable-box,
-#stop-button > .toolbarbutton-animatable-box {
-  top: calc(50% - 10px); /* Vertically center the 20px tall animatable image */
-  width: 20px; /* Width of each frame within the SVG sprite */
-  height: 20px; /* Height of each frame within the SVG sprite */
-}
-
-#stop-reload-button[animate] > #reload-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  background-image: url("chrome://browser/skin/stop-to-reload.svg");
-  /*
-    transition from stop icon to reload icon
-    pause at frame 0 for 6 ticks,
-    pause at frame 15 for 16 ticks
-    total 35 steps*/
-  --anim-frames: 14;
-  --anim-steps: calc(var(--anim-frames) + 21); /* Add steps for doing the pause at the start and end */
-  width: calc(20px * (var(--anim-frames) + 1));
-  height: 20px;
-
-  /* initial state for animation */
-  transform: translateX(0);
-}
-
-#stop-reload-button[animate] > #reload-button:not([displaystop]) > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-name: stop-to-reload;
-}
-
-#reload-button:not([displaystop]) > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-duration: calc(var(--anim-steps) * 16.667ms);
-}
-
-#stop-reload-button[animate] > #reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  background-image: url("chrome://browser/skin/reload-to-stop.svg");
-  /*
-    transition from reload icon to stop icon
-    pause at end for 3 frames of time
-    pause at ...
-    total 15 steps*/
-  --anim-frames: 12;
-  --anim-steps: calc(var(--anim-frames) + 3); /* Add steps for doing the pause at the start and end */
-  width: calc(20px * (var(--anim-frames) + 1));
-  height: 20px;
-
-  /* initial state for animation */
-  transform: translateX(0);
-}
-
-#stop-reload-button[animate] > #reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-name: reload-to-stop;
-  animation-duration: calc(var(--anim-steps) * 16.667ms);
-}
-
-#reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  animation-timing-function: steps(15);
-  animation-duration: 0.25s;
-}
-
-#reload-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  transform: translateX(-700px);
-}
-
-#reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
-  transform: translateX(-300px);
 }
 
 #reload-button {
@@ -234,10 +85,6 @@
 
 #new-tab-button {
   list-style-image: url("chrome://browser/skin/new-tab.svg");
-}
-
-#new-identity-button {
-  list-style-image: url("chrome://browser/skin/new_identity.svg");
 }
 
 #privatebrowsing-button {
@@ -332,10 +179,6 @@
 
 #reset-pbm-toolbar-button {
   list-style-image: url("chrome://browser/skin/flame.svg");
-
-  :root:not([privatebrowsingmode]) & {
-    display: none;
-  }
 }
 
 #email-link-button {
@@ -347,12 +190,56 @@
 }
 
 #sidebar-button {
-  list-style-image: url("chrome://browser/skin/sidebars-right.svg");
-}
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("sidebar.revamp") {
+    list-style-image: url("chrome://browser/skin/sidebars-right.svg");
 
-#sidebar-button:-moz-locale-dir(ltr):not([positionend]),
-#sidebar-button:-moz-locale-dir(rtl)[positionend] {
-  list-style-image: url("chrome://browser/skin/sidebars.svg");
+    &:-moz-locale-dir(ltr):not([positionend]),
+    &:-moz-locale-dir(rtl)[positionend] {
+      list-style-image: url("chrome://browser/skin/sidebars.svg");
+    }
+  }
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media -moz-pref("sidebar.revamp") {
+    list-style-image: url("chrome://browser/skin/sidebar-collapsed-right.svg");
+
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media -moz-pref("sidebar.verticalTabs") {
+      &:hover {
+        list-style-image: url("chrome://browser/skin/sidebar-expanded-right.svg");
+      }
+    }
+
+    &[expanded] {
+      list-style-image: url("chrome://browser/skin/sidebar-expanded-right.svg");
+
+      &:hover {
+        list-style-image: url("chrome://browser/skin/sidebar-collapsed-right.svg");
+      }
+    }
+
+    &:-moz-locale-dir(ltr):not([positionend]),
+    &:-moz-locale-dir(rtl)[positionend] {
+      list-style-image: url("chrome://browser/skin/sidebar-collapsed.svg");
+
+      /* stylelint-disable-next-line media-query-no-invalid */
+      @media -moz-pref("sidebar.verticalTabs") {
+        &:hover {
+          list-style-image: url("chrome://browser/skin/sidebar-expanded.svg");
+        }
+      }
+
+      &[expanded] {
+        list-style-image: url("chrome://browser/skin/sidebar-expanded.svg");
+
+        /* stylelint-disable max-nesting-depth */
+        &:hover {
+          list-style-image: url("chrome://browser/skin/sidebar-collapsed.svg");
+        }
+      }
+    }
+  }
 }
 
 #panic-button {
@@ -378,44 +265,44 @@
   fill: var(--pocket-icon-fill);
 }
 
-/* ----- BOOKMARK BUTTONS ----- */
+/* Bookmark toolbar buttons and menu items */
 
 .bookmark-item {
   list-style-image: url("chrome://global/skin/icons/defaultFavicon.svg");
   -moz-context-properties: fill;
   fill: currentColor;
+
+  &:is(toolbarbutton) {
+    -moz-context-properties: fill, fill-opacity;
+    fill: var(--toolbarbutton-icon-fill);
+  }
+
+  &[container] {
+    list-style-image: url("chrome://global/skin/icons/folder.svg");
+  }
+
+  &[query] {
+    list-style-image: url("chrome://browser/skin/places/folder-smart.svg");
+  }
+
+  &[tagContainer] {
+    list-style-image: url("chrome://browser/skin/places/tag.svg");
+  }
+
+  &[dayContainer] {
+    list-style-image: url("chrome://browser/skin/history.svg");
+  }
+
+  &[hostContainer] {
+    list-style-image: url("chrome://global/skin/icons/folder.svg");
+  }
 }
 
-toolbarbutton.bookmark-item {
-  -moz-context-properties: fill, fill-opacity;
-  fill: var(--toolbarbutton-icon-fill);
-}
-
-.bookmark-item[container] {
-  list-style-image: url("chrome://global/skin/icons/folder.svg");
-}
-
-.bookmark-item[container][query] {
-  list-style-image: url("chrome://browser/skin/places/folder-smart.svg");
-}
-
-.bookmark-item[query][tagContainer] {
-  list-style-image: url("chrome://browser/skin/places/tag.svg");
-}
-
-.bookmark-item[query][dayContainer] {
-  list-style-image: url("chrome://browser/skin/history.svg");
-}
-
-.bookmark-item[query][hostContainer] {
-  list-style-image: url("chrome://global/skin/icons/folder.svg");
-}
-
-#ion-button {
-  list-style-image: url("chrome://browser/skin/ion.svg");
-
-  toolbar[customizing] & {
-    display: none;
+/* Apply crisp rendering for favicons at exactly 2x resolution */
+@media (resolution: 2x) {
+  :is(.bookmark-item, .menuitem-with-favicon) > .menu-icon,
+  .bookmark-item > .toolbarbutton-icon {
+    image-rendering: -moz-crisp-edges;
   }
 }
 
@@ -431,8 +318,12 @@ toolbarbutton.bookmark-item {
   list-style-image: url("chrome://browser/skin/firefox-view.svg");
 }
 
-#content-analysis-indicator {
+.content-analysis-indicator {
   -moz-context-properties: fill, stroke;
   stroke: var(--toolbarbutton-icon-fill);
   list-style-image: url("chrome://global/skin/icons/content-analysis.svg");
+}
+
+#fxms-bmb-button {
+  list-style-image: url("chrome://branding/content/about-logo.png");
 }

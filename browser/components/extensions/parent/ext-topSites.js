@@ -9,8 +9,8 @@
 ChromeUtils.defineESModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
-  getSearchProvider: "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
-  shortURL: "resource://activity-stream/lib/ShortURL.sys.mjs",
+  getSearchProvider:
+    "moz-src:///toolkit/components/search/SearchShortcuts.sys.mjs",
 });
 
 const SHORTCUTS_PREF =
@@ -75,7 +75,9 @@ this.topSites = class extends ExtensionAPI {
             // with a proper label and url. But certain non-pinned links may
             // also be promoted to search shortcuts; here we convert them.
             links = links.map(link => {
-              let searchProvider = getSearchProvider(shortURL(link));
+              let searchProvider = getSearchProvider(
+                NewTabUtils.shortURL(link)
+              );
               if (searchProvider) {
                 link.searchTopSite = true;
                 link.label = searchProvider.keyword;

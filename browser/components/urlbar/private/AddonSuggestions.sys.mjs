@@ -2,14 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { BaseFeature } from "resource:///modules/urlbar/private/BaseFeature.sys.mjs";
+import { SuggestProvider } from "resource:///modules/urlbar/private/SuggestFeature.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
-  SuggestionsMap: "resource:///modules/urlbar/private/SuggestBackendJs.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
@@ -30,77 +29,25 @@ const RESULT_MENU_COMMAND = {
 /**
  * A feature that supports Addon suggestions.
  */
-export class AddonSuggestions extends BaseFeature {
-  get shouldEnable() {
-    return (
-      lazy.UrlbarPrefs.get("addonsFeatureGate") &&
-      lazy.UrlbarPrefs.get("suggest.addons") &&
-      lazy.UrlbarPrefs.get("suggest.quicksuggest.nonsponsored")
-    );
+export class AddonSuggestions extends SuggestProvider {
+  get enablingPreferences() {
+    return [
+      "addonsFeatureGate",
+      "suggest.addons",
+      "suggest.quicksuggest.nonsponsored",
+    ];
   }
 
-  get enablingPreferences() {
-    return ["suggest.addons", "suggest.quicksuggest.nonsponsored"];
+  get primaryUserControlledPreference() {
+    return "suggest.addons";
   }
 
   get merinoProvider() {
     return "amo";
   }
 
-  get rustSuggestionTypes() {
-    return ["Amo"];
-  }
-
-  enable(enabled) {
-    if (enabled) {
-      lazy.QuickSuggest.jsBackend.register(this);
-    } else {
-      lazy.QuickSuggest.jsBackend.unregister(this);
-      this.#suggestionsMap?.clear();
-    }
-  }
-
-  queryRemoteSettings(searchString) {
-    const suggestions = this.#suggestionsMap?.get(searchString);
-    if (!suggestions) {
-      return [];
-    }
-
-    return suggestions.map(suggestion => ({
-      icon: suggestion.icon,
-      url: suggestion.url,
-      title: suggestion.title,
-      description: suggestion.description,
-      guid: suggestion.guid,
-      score: suggestion.score,
-    }));
-  }
-
-  async onRemoteSettingsSync(rs) {
-    const records = await rs.get({ filters: { type: "amo-suggestions" } });
-    if (!this.isEnabled) {
-      return;
-    }
-
-    const suggestionsMap = new lazy.SuggestionsMap();
-
-    for (const record of records) {
-      const { buffer } = await rs.attachments.download(record);
-      if (!this.isEnabled) {
-        return;
-      }
-
-      const results = JSON.parse(new TextDecoder("utf-8").decode(buffer));
-      await suggestionsMap.add(results, {
-        mapKeyword:
-          lazy.SuggestionsMap.MAP_KEYWORD_PREFIXES_STARTING_AT_FIRST_WORD,
-      });
-      if (!this.isEnabled) {
-        return;
-      }
-    }
-
-    this.#suggestionsMap = suggestionsMap;
+  get rustSuggestionType() {
+    return "Amo";
   }
 
   async makeResult(queryContext, suggestion, searchString) {
@@ -185,7 +132,7 @@ export class AddonSuggestions extends BaseFeature {
       commands.push({
         name: RESULT_MENU_COMMAND.SHOW_LESS_FREQUENTLY,
         l10n: {
-          id: "firefox-suggest-command-show-less-frequently",
+          id: "urlbar-result-menu-show-less-frequently",
         },
       });
     }
@@ -222,32 +169,33 @@ export class AddonSuggestions extends BaseFeature {
     return commands;
   }
 
-  handleCommand(view, result, selType) {
-    switch (selType) {
+  onEngagement(queryContext, controller, details, _searchString) {
+    let { result } = details;
+    switch (details.selType) {
       case RESULT_MENU_COMMAND.MANAGE:
         // "manage" is handled by UrlbarInput, no need to do anything here.
         break;
       // selType == "dismiss" when the user presses the dismiss key shortcut.
       case "dismiss":
       case RESULT_MENU_COMMAND.NOT_RELEVANT:
-        lazy.QuickSuggest.blockedSuggestions.add(result.payload.originalUrl);
+        lazy.QuickSuggest.dismissResult(result);
         result.acknowledgeDismissalL10n = {
           id: "firefox-suggest-dismissal-acknowledgment-one",
         };
-        view.controller.removeResult(result);
+        controller.removeResult(result);
         break;
       case RESULT_MENU_COMMAND.NOT_INTERESTED:
         lazy.UrlbarPrefs.set("suggest.addons", false);
         result.acknowledgeDismissalL10n = {
           id: "firefox-suggest-dismissal-acknowledgment-all",
         };
-        view.controller.removeResult(result);
+        controller.removeResult(result);
         break;
       case RESULT_MENU_COMMAND.SHOW_LESS_FREQUENTLY:
-        view.acknowledgeFeedback(result);
+        controller.view.acknowledgeFeedback(result);
         this.incrementShowLessFrequentlyCount();
         if (!this.canShowLessFrequently) {
-          view.invalidateResultMenuCommands();
+          controller.view.invalidateResultMenuCommands();
         }
         break;
     }
@@ -270,10 +218,8 @@ export class AddonSuggestions extends BaseFeature {
   get canShowLessFrequently() {
     const cap =
       lazy.UrlbarPrefs.get("addonsShowLessFrequentlyCap") ||
-      lazy.QuickSuggest.backend.config?.showLessFrequentlyCap ||
+      lazy.QuickSuggest.config.showLessFrequentlyCap ||
       0;
     return !cap || this.showLessFrequentlyCount < cap;
   }
-
-  #suggestionsMap = null;
 }

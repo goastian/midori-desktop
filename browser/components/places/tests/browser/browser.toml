@@ -11,13 +11,19 @@ support-files = [
   "sidebarpanels_click_test_page.html",
   "keyword_form.html",
 ]
+prefs = [
+  "sidebar.revamp=false",
+]
 
 ["browser_addBookmarkForFrame.js"]
 
 ["browser_autoshow_bookmarks_toolbar.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1829323
+]
 
 ["browser_bookmarkMenu_hiddenWindow.js"]
-skip-if = ["os != 'mac'"] # Mac-only functionality
+run-if = ["os == 'mac'"] # Mac-only functionality
 
 ["browser_bookmarkProperties_addFolderDefaultButton.js"]
 
@@ -40,6 +46,9 @@ skip-if = ["os != 'mac'"] # Mac-only functionality
 ["browser_bookmarkProperties_readOnlyRoot.js"]
 
 ["browser_bookmarkProperties_remember_folders.js"]
+skip-if = [
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && debug", # Bug 1869782
+]
 
 ["browser_bookmarkProperties_speculativeConnection.js"]
 
@@ -55,6 +64,7 @@ https_first_disabled = true
 ["browser_bookmark_context_menu_contents.js"]
 
 ["browser_bookmark_copy_folder_tree.js"]
+tags = "os_integration"
 
 ["browser_bookmark_current_tabs.js"]
 
@@ -79,8 +89,13 @@ support-files = ["bookmarklet_windowOpen_dummy.html"]
 ["browser_bookmarksProperties.js"]
 
 ["browser_bookmarks_change_title.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1961550
 
 ["browser_bookmarks_change_url.js"]
+
+["browser_bookmarks_checkDefaultBookmarks.js"]
+
+["browser_bookmarks_close_panel.js"]
 
 ["browser_bookmarks_sidebar_search.js"]
 support-files = ["pageopeningwindow.html"]
@@ -102,6 +117,8 @@ support-files = ["favicon-normal16.png"]
 
 ["browser_click_bookmarks_on_toolbar.js"]
 https_first_disabled = true
+
+["browser_closePanelview.js"]
 
 ["browser_controller_onDrop.js"]
 
@@ -134,6 +151,8 @@ skip-if = ["verify && debug && os == 'win'"]
 ["browser_import_button.js"]
 
 ["browser_library_bookmark_clear_visits.js"]
+
+["browser_library_bookmark_move.js"]
 
 ["browser_library_bookmark_pages.js"]
 
@@ -184,6 +203,8 @@ skip-if = ["verify && debug && os == 'win'"]
 ["browser_library_warnOnOpen.js"]
 
 ["browser_markPageAsFollowedLink.js"]
+
+["browser_mobile_root_on_bookmark_menus.js"]
 
 ["browser_panelview_bookmarks_delete.js"]
 

@@ -2,74 +2,125 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Tests that registering an exposureResults pref and triggering a match causes
+// the exposure event to be recorded on the UrlbarResults.
+
 ChromeUtils.defineESModuleGetters(this, {
   UrlbarProviderQuickSuggest:
     "resource:///modules/UrlbarProviderQuickSuggest.sys.mjs",
 });
 
-// Tests that registering an exposureResults pref and triggering a match causes
-// the exposure event to be recorded on the UrlbarResults.
-const REMOTE_SETTINGS_RESULTS = [
-  QuickSuggestTestUtils.ampRemoteSettings({
-    keywords: ["test"],
-  }),
-  QuickSuggestTestUtils.wikipediaRemoteSettings({
-    keywords: ["non_sponsored"],
-  }),
-];
-
-const EXPECTED_REMOTE_SETTINGS_URLBAR_RESULT = makeAmpResult({
-  keyword: "test",
-});
-
-const EXPECTED_NON_SPONSORED_REMOTE_SETTINGS_RESULT = makeWikipediaResult({
-  keyword: "non_sponsored",
-});
-
-add_setup(async function test_setup() {
-  // FOG needs a profile directory to put its data in.
-  do_get_profile();
-
-  // FOG needs to be initialized in order for data to flow.
-  Services.fog.initializeFOG();
-
-  // Set up the remote settings client with the test data.
+add_setup(async function setup() {
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
     remoteSettingsRecords: [
       {
-        type: "data",
-        attachment: REMOTE_SETTINGS_RESULTS,
+        collection: QuickSuggestTestUtils.RS_COLLECTION.AMP,
+        type: QuickSuggestTestUtils.RS_TYPE.AMP,
+        attachment: [
+          QuickSuggestTestUtils.ampRemoteSettings({
+            keywords: ["amp", "amp and wikipedia"],
+          }),
+        ],
+      },
+      {
+        collection: QuickSuggestTestUtils.RS_COLLECTION.OTHER,
+        type: QuickSuggestTestUtils.RS_TYPE.WIKIPEDIA,
+        attachment: [
+          QuickSuggestTestUtils.wikipediaRemoteSettings({
+            keywords: ["wikipedia", "amp and wikipedia"],
+          }),
+        ],
       },
     ],
     prefs: [
       ["suggest.quicksuggest.nonsponsored", true],
       ["suggest.quicksuggest.sponsored", true],
+      ["quicksuggest.ampTopPickCharThreshold", 0],
     ],
   });
 });
 
-add_task(async function testExposureCheck() {
+add_task(async function oneExposureResult_shown_matched() {
   UrlbarPrefs.set("exposureResults", suggestResultType("adm_sponsored"));
   UrlbarPrefs.set("showExposureResults", true);
 
-  let context = createContext("test", {
+  let context = createContext("amp", {
     providers: [UrlbarProviderQuickSuggest.name],
     isPrivate: false,
   });
 
   await check_results({
     context,
-    matches: [EXPECTED_REMOTE_SETTINGS_URLBAR_RESULT],
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.SHOWN,
+      },
+    ],
   });
-
-  Assert.equal(
-    context.results[0].exposureResultType,
-    suggestResultType("adm_sponsored")
-  );
-  Assert.equal(context.results[0].exposureResultHidden, false);
 });
 
-add_task(async function testExposureCheckMultiple() {
+add_task(async function oneExposureResult_shown_notMatched() {
+  UrlbarPrefs.set("exposureResults", suggestResultType("adm_sponsored"));
+  UrlbarPrefs.set("showExposureResults", true);
+
+  let context = createContext("wikipedia", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.wikipediaResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.NONE,
+      },
+    ],
+  });
+});
+
+add_task(async function oneExposureResult_hidden_matched() {
+  UrlbarPrefs.set("exposureResults", suggestResultType("adm_sponsored"));
+  UrlbarPrefs.set("showExposureResults", false);
+
+  let context = createContext("amp", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN,
+      },
+    ],
+  });
+});
+
+add_task(async function oneExposureResult_hidden_notMatched() {
+  UrlbarPrefs.set("exposureResults", suggestResultType("adm_sponsored"));
+  UrlbarPrefs.set("showExposureResults", false);
+
+  let context = createContext("wikipedia", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.wikipediaResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.NONE,
+      },
+    ],
+  });
+});
+
+add_task(async function manyExposureResults_shown_oneMatched_1() {
   UrlbarPrefs.set(
     "exposureResults",
     [
@@ -79,186 +130,158 @@ add_task(async function testExposureCheckMultiple() {
   );
   UrlbarPrefs.set("showExposureResults", true);
 
-  let context = createContext("test", {
+  let context = createContext("amp", {
     providers: [UrlbarProviderQuickSuggest.name],
     isPrivate: false,
   });
-
   await check_results({
     context,
-    matches: [EXPECTED_REMOTE_SETTINGS_URLBAR_RESULT],
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.SHOWN,
+      },
+    ],
   });
-
-  Assert.equal(
-    context.results[0].exposureResultType,
-    suggestResultType("adm_sponsored")
-  );
-  Assert.equal(context.results[0].exposureResultHidden, false);
-
-  context = createContext("non_sponsored", {
-    providers: [UrlbarProviderQuickSuggest.name],
-    isPrivate: false,
-  });
-
-  await check_results({
-    context,
-    matches: [EXPECTED_NON_SPONSORED_REMOTE_SETTINGS_RESULT],
-  });
-
-  Assert.equal(
-    context.results[0].exposureResultType,
-    suggestResultType("adm_nonsponsored")
-  );
-  Assert.equal(context.results[0].exposureResultHidden, false);
 });
 
-add_task(async function exposureDisplayFiltering() {
-  UrlbarPrefs.set("exposureResults", suggestResultType("adm_sponsored"));
-  UrlbarPrefs.set("showExposureResults", false);
+add_task(async function manyExposureResults_shown_oneMatched_2() {
+  UrlbarPrefs.set(
+    "exposureResults",
+    [
+      suggestResultType("adm_sponsored"),
+      suggestResultType("adm_nonsponsored"),
+    ].join(",")
+  );
+  UrlbarPrefs.set("showExposureResults", true);
 
-  let context = createContext("test", {
+  let context = createContext("wikipedia", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.wikipediaResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.SHOWN,
+      },
+    ],
+  });
+});
+
+add_task(async function manyExposureResults_shown_manyMatched() {
+  UrlbarPrefs.set(
+    "exposureResults",
+    [
+      suggestResultType("adm_sponsored"),
+      suggestResultType("adm_nonsponsored"),
+    ].join(",")
+  );
+  UrlbarPrefs.set("showExposureResults", true);
+
+  let keyword = "amp and wikipedia";
+  let context = createContext(keyword, {
     providers: [UrlbarProviderQuickSuggest.name],
     isPrivate: false,
   });
 
+  // Only one result should be added since exposures are shown and at most one
+  // Suggest result should be shown.
   await check_results({
     context,
-    matches: [EXPECTED_REMOTE_SETTINGS_URLBAR_RESULT],
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult({ keyword }),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.SHOWN,
+      },
+    ],
+  });
+});
+
+add_task(async function manyExposureResults_hidden_oneMatched_1() {
+  UrlbarPrefs.set(
+    "exposureResults",
+    [
+      suggestResultType("adm_sponsored"),
+      suggestResultType("adm_nonsponsored"),
+    ].join(",")
+  );
+  UrlbarPrefs.set("showExposureResults", false);
+
+  let context = createContext("amp", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN,
+      },
+    ],
+  });
+});
+
+add_task(async function manyExposureResults_hidden_oneMatched_2() {
+  UrlbarPrefs.set(
+    "exposureResults",
+    [
+      suggestResultType("adm_sponsored"),
+      suggestResultType("adm_nonsponsored"),
+    ].join(",")
+  );
+  UrlbarPrefs.set("showExposureResults", false);
+
+  let context = createContext("wikipedia", {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
+  });
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.wikipediaResult(),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN,
+      },
+    ],
+  });
+});
+
+add_task(async function manyExposureResults_hidden_manyMatched() {
+  UrlbarPrefs.set(
+    "exposureResults",
+    [
+      suggestResultType("adm_sponsored"),
+      suggestResultType("adm_nonsponsored"),
+    ].join(",")
+  );
+  UrlbarPrefs.set("showExposureResults", false);
+
+  let keyword = "amp and wikipedia";
+  let context = createContext(keyword, {
+    providers: [UrlbarProviderQuickSuggest.name],
+    isPrivate: false,
   });
 
-  Assert.equal(
-    context.results[0].exposureResultType,
-    suggestResultType("adm_sponsored")
-  );
-  Assert.equal(context.results[0].exposureResultHidden, true);
+  // Both results should be added since exposures are hidden and there's no
+  // limit on the number of hidden-exposure Suggest results.
+  await check_results({
+    context,
+    matches: [
+      {
+        ...QuickSuggestTestUtils.ampResult({ keyword }),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN,
+      },
+      {
+        ...QuickSuggestTestUtils.wikipediaResult({ keyword }),
+        exposureTelemetry: UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN,
+      },
+    ],
+  });
 });
 
 function suggestResultType(typeWithoutSource) {
-  let source = UrlbarPrefs.get("quickSuggestRustEnabled") ? "rust" : "rs";
-  return `${source}_${typeWithoutSource}`;
-}
-
-// Copied from quicksuggest/unit/head.js
-function makeAmpResult({
-  source,
-  provider,
-  keyword = "amp",
-  title = "Amp Suggestion",
-  url = "http://example.com/amp",
-  originalUrl = "http://example.com/amp",
-  icon = null,
-  iconBlob = new Blob([new Uint8Array([])]),
-  impressionUrl = "http://example.com/amp-impression",
-  clickUrl = "http://example.com/amp-click",
-  blockId = 1,
-  advertiser = "Amp",
-  iabCategory = "22 - Shopping",
-  suggestedIndex = -1,
-  isSuggestedIndexRelativeToGroup = true,
-  requestId = undefined,
-} = {}) {
-  let result = {
-    suggestedIndex,
-    isSuggestedIndexRelativeToGroup,
-    type: UrlbarUtils.RESULT_TYPE.URL,
-    source: UrlbarUtils.RESULT_SOURCE.SEARCH,
-    heuristic: false,
-    payload: {
-      title,
-      url,
-      originalUrl,
-      requestId,
-      displayUrl: url.replace(/^https:\/\//, ""),
-      isSponsored: true,
-      qsSuggestion: keyword,
-      sponsoredImpressionUrl: impressionUrl,
-      sponsoredClickUrl: clickUrl,
-      sponsoredBlockId: blockId,
-      sponsoredAdvertiser: advertiser,
-      sponsoredIabCategory: iabCategory,
-      isBlockable: true,
-      blockL10n: {
-        id: "urlbar-result-menu-dismiss-firefox-suggest",
-      },
-      isManageable: true,
-      telemetryType: "adm_sponsored",
-      descriptionL10n: { id: "urlbar-result-action-sponsored" },
-    },
-  };
-
-  if (UrlbarPrefs.get("quickSuggestRustEnabled")) {
-    result.payload.source = source || "rust";
-    result.payload.provider = provider || "Amp";
-    if (result.payload.source == "rust") {
-      result.payload.iconBlob = iconBlob;
-    } else {
-      result.payload.icon = icon;
-    }
-  } else {
-    result.payload.source = source || "remote-settings";
-    result.payload.provider = provider || "AdmWikipedia";
-    result.payload.icon = icon;
-  }
-
-  return result;
-}
-
-// Copied from quicksuggest/unit/head.js
-function makeWikipediaResult({
-  source,
-  provider,
-  keyword = "wikipedia",
-  title = "Wikipedia Suggestion",
-  url = "http://example.com/wikipedia",
-  originalUrl = "http://example.com/wikipedia",
-  icon = null,
-  iconBlob = new Blob([new Uint8Array([])]),
-  impressionUrl = "http://example.com/wikipedia-impression",
-  clickUrl = "http://example.com/wikipedia-click",
-  blockId = 1,
-  advertiser = "Wikipedia",
-  iabCategory = "5 - Education",
-  suggestedIndex = -1,
-  isSuggestedIndexRelativeToGroup = true,
-}) {
-  let result = {
-    suggestedIndex,
-    isSuggestedIndexRelativeToGroup,
-    type: UrlbarUtils.RESULT_TYPE.URL,
-    source: UrlbarUtils.RESULT_SOURCE.SEARCH,
-    heuristic: false,
-    payload: {
-      title,
-      url,
-      originalUrl,
-      displayUrl: url.replace(/^https:\/\//, ""),
-      isSponsored: false,
-      qsSuggestion: keyword,
-      sponsoredAdvertiser: "Wikipedia",
-      sponsoredIabCategory: "5 - Education",
-      isBlockable: true,
-      blockL10n: {
-        id: "urlbar-result-menu-dismiss-firefox-suggest",
-      },
-      isManageable: true,
-      telemetryType: "adm_nonsponsored",
-    },
-  };
-
-  if (UrlbarPrefs.get("quickSuggestRustEnabled")) {
-    result.payload.source = source || "rust";
-    result.payload.provider = provider || "Wikipedia";
-    result.payload.iconBlob = iconBlob;
-  } else {
-    result.payload.source = source || "remote-settings";
-    result.payload.provider = provider || "AdmWikipedia";
-    result.payload.icon = icon;
-    result.payload.sponsoredImpressionUrl = impressionUrl;
-    result.payload.sponsoredClickUrl = clickUrl;
-    result.payload.sponsoredBlockId = blockId;
-    result.payload.sponsoredAdvertiser = advertiser;
-    result.payload.sponsoredIabCategory = iabCategory;
-  }
-
-  return result;
+  return `rust_${typeWithoutSource}`;
 }

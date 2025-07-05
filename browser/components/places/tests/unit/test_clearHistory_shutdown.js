@@ -34,13 +34,12 @@ ChromeUtils.defineESModuleGetters(this, {
 var timeInMicroseconds = Date.now() * 1000;
 
 add_task(async function test_execute() {
-  info("Initialize browserglue before Places");
-
-  // Avoid default bookmarks import.
-  let glue = Cc["@mozilla.org/browser/browserglue;1"].getService(
-    Ci.nsIObserver
+  info("Avoiding full places initialization importing default bookmarks.");
+  let { PlacesBrowserStartup } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs"
   );
-  glue.observe(null, "initial-migration-will-import-default-bookmarks", null);
+  PlacesBrowserStartup.willImportDefaultBookmarks();
+
   Sanitizer.onStartup();
 
   Services.prefs.setBoolPref(Sanitizer.PREF_SHUTDOWN_BRANCH + "cache", true);
@@ -55,7 +54,7 @@ add_task(async function test_execute() {
     true
   );
   Services.prefs.setBoolPref(Sanitizer.PREF_SHUTDOWN_BRANCH + "cookies", true);
-  Services.prefs.setBoolPref(Sanitizer.PREF_SHUTDOWN_BRANCH + "formData", true);
+  Services.prefs.setBoolPref(Sanitizer.PREF_SHUTDOWN_BRANCH + "formdata", true);
   Services.prefs.setBoolPref(Sanitizer.PREF_SHUTDOWN_BRANCH + "sessions", true);
   Services.prefs.setBoolPref(
     Sanitizer.PREF_SHUTDOWN_BRANCH + "siteSettings",

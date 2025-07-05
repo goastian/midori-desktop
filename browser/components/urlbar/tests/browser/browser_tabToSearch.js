@@ -25,6 +25,7 @@ add_setup(async function () {
       // Disable onboarding results for general tests. They are enabled in tests
       // that specifically address onboarding.
       ["browser.urlbar.tabToSearch.onboard.interactionsLeft", 0],
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
     ],
   });
 
@@ -284,7 +285,7 @@ add_task(async function tab_key_race() {
       get type() {
         return UrlbarUtils.PROVIDER_TYPE.PROFILE;
       }
-      isActive(_context) {
+      async isActive(_context) {
         executeSoon(resolve);
         return false;
       }

@@ -3,7 +3,6 @@ support-files = [
   "../../../../../services/settings/dumps/main/search-config-v2.json",
 ]
 prefs = ["browser.search.log=true"]
-skip-if = ["os == 'android'"] # bug 1730213
 firefox-appdir = "browser"
 
 ["test_domain_to_categories_store.js"]
@@ -11,8 +10,12 @@ support-files = ["corruptDB.sqlite"]
 
 ["test_search_telemetry_categorization_logic.js"]
 
+["test_search_telemetry_categorization_region.js"]
+
 ["test_search_telemetry_categorization_sync.js"]
 prefs = ["browser.search.serpEventTelemetryCategorization.enabled=true"]
+
+["test_search_telemetry_categorization_sync_could_modify_store.js"]
 
 ["test_search_telemetry_compare_urls.js"]
 

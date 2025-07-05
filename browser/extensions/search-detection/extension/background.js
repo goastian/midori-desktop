@@ -6,13 +6,7 @@
 
 /* global browser */
 
-const TELEMETRY_CATEGORY = "addonsSearchDetection";
-// methods
-const TELEMETRY_METHOD_ETLD_CHANGE = "etld_change";
-// objects
-const TELEMETRY_OBJECT_WEBREQUEST = "webrequest";
-const TELEMETRY_OBJECT_OTHER = "other";
-// values
+// Telemetry values
 const TELEMETRY_VALUE_EXTENSION = "extension";
 const TELEMETRY_VALUE_SERVER = "server";
 
@@ -21,15 +15,6 @@ class AddonsSearchDetection {
     // The key is an URL pattern to monitor and its corresponding value is a
     // list of add-on IDs.
     this.matchPatterns = {};
-
-    browser.telemetry.registerEvents(TELEMETRY_CATEGORY, {
-      [TELEMETRY_METHOD_ETLD_CHANGE]: {
-        methods: [TELEMETRY_METHOD_ETLD_CHANGE],
-        objects: [TELEMETRY_OBJECT_WEBREQUEST, TELEMETRY_OBJECT_OTHER],
-        extra_keys: ["addonId", "addonVersion", "from", "to"],
-        record_on_release: true,
-      },
-    });
 
     this.onRedirectedListener = this.onRedirectedListener.bind(this);
   }
@@ -62,12 +47,6 @@ class AddonsSearchDetection {
         this.onRedirectedListener
       );
     }
-    // If there is already a listener, remove it so that we can re-add one
-    // after. This is because we're using the same listener with different URL
-    // patterns (when the list of search engines changes).
-    if (browser.webRequest.onBeforeRequest.hasListener(this.noOpListener)) {
-      browser.webRequest.onBeforeRequest.removeListener(this.noOpListener);
-    }
 
     // Retrieve the list of URL patterns to monitor with our listener.
     //
@@ -80,21 +59,10 @@ class AddonsSearchDetection {
       return;
     }
 
-    browser.webRequest.onBeforeRequest.addListener(
-      this.noOpListener,
-      { types: ["main_frame"], urls: patterns },
-      ["blocking"]
-    );
-
     browser.addonsSearchDetection.onRedirected.addListener(
       this.onRedirectedListener,
       { urls: patterns }
     );
-  }
-
-  // This listener is required to force the registration of traceable channels.
-  noOpListener() {
-    // Do nothing.
   }
 
   async onRedirectedListener({ addonId, firstUrl, lastUrl }) {
@@ -133,26 +101,19 @@ class AddonsSearchDetection {
       return;
     }
 
-    const telemetryObject = maybeServerSideRedirect
-      ? TELEMETRY_OBJECT_OTHER
-      : TELEMETRY_OBJECT_WEBREQUEST;
-    const telemetryValue = maybeServerSideRedirect
-      ? TELEMETRY_VALUE_SERVER
-      : TELEMETRY_VALUE_EXTENSION;
-
     for (const id of addonIds) {
-      const addonVersion = await browser.addonsSearchDetection.getAddonVersion(
-        id
-      );
-      const extra = { addonId: id, addonVersion, from, to };
-
-      browser.telemetry.recordEvent(
-        TELEMETRY_CATEGORY,
-        TELEMETRY_METHOD_ETLD_CHANGE,
-        telemetryObject,
-        telemetryValue,
-        extra
-      );
+      const addonVersion =
+        await browser.addonsSearchDetection.getAddonVersion(id);
+      const extra = {
+        addonId: id,
+        addonVersion,
+        from,
+        to,
+        value: maybeServerSideRedirect
+          ? TELEMETRY_VALUE_SERVER
+          : TELEMETRY_VALUE_EXTENSION,
+      };
+      browser.addonsSearchDetection.report(maybeServerSideRedirect, extra);
     }
   }
 

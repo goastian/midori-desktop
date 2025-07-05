@@ -49,25 +49,32 @@ initPopupListener();
 add_task(async function history_only_menu_checking() {
   await setupFormHistory();
 
-  await setInput("#tel", "");
+  await setInput("#tel", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
   checkMenuEntries(["+1234567890"], false);
 });
 
-// Display history search result if less than 3 inputs are covered by all saved
+// Test to ensure the abandoned heuristic is no longer applied:
+// Do not display history search result if less than 3 inputs are covered by all saved
 // fields in the storage.
 add_task(async function all_saved_fields_less_than_threshold() {
+  const email = "test@test.com";
   await addAddress({
-    email: "test@test.com",
+    email,
   });
 
-  await setInput("#email", "");
+  await setInput("#email", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
-  checkMenuEntries(["foo@mozilla.com"], false);
+  checkMenuEntriesComment([
+    makeAddressComment({
+      primary: email,
+      secondary: "United States",
+      status: "Also autofills address"
+    })], 2);
 
   await cleanUpAddresses();
 });
@@ -76,7 +83,7 @@ add_task(async function all_saved_fields_less_than_threshold() {
 add_task(async function check_menu_when_both_existed() {
   await setupAddressStorage();
 
-  await setInput("#organization", "");
+  await setInput("#organization", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -88,7 +95,7 @@ add_task(async function check_menu_when_both_existed() {
     })
   ), 2);
 
-  await setInput("#street-address", "");
+  await setInput("#street-address", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -100,7 +107,7 @@ add_task(async function check_menu_when_both_existed() {
     })
   ), 2);
 
-  await setInput("#tel", "");
+  await setInput("#tel", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -112,7 +119,7 @@ add_task(async function check_menu_when_both_existed() {
     })
   ), 2);
 
-  await setInput("#address-line1", "");
+  await setInput("#address-line1", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -127,7 +134,7 @@ add_task(async function check_menu_when_both_existed() {
 
 // Display history search result if no matched data in addresses.
 add_task(async function check_fallback_for_mismatched_field() {
-  await setInput("#email", "");
+  await setInput("#email", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -140,7 +147,7 @@ add_task(async function check_search_result_for_pref_off() {
     set: [["extensions.formautofill.addresses.enabled", false]],
   });
 
-  await setInput("#tel", "");
+  await setInput("#tel", "", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -151,7 +158,7 @@ add_task(async function check_search_result_for_pref_off() {
 
 // Autofill the address from dropdown menu.
 add_task(async function check_fields_after_form_autofill() {
-  const focusedInput = await setInput("#organization", "Moz");
+  const focusedInput = await setInput("#organization", "Moz", true);
   await notExpectPopup();
   synthesizeKey("KEY_ArrowDown");
   await expectPopup();
@@ -168,14 +175,18 @@ add_task(async function check_fields_after_form_autofill() {
   is(focusedInput.value, "Mozilla", "Filled field shouldn't be reverted by ESC key");
 });
 
-// Fallback to history search after autofill address.
+// Test to ensure the abandoned heuristic is no longer applied:
+// Do not fallback to history search after autofill address.
 add_task(async function check_fallback_after_form_autofill() {
   await setInput("#tel", "", true);
   await triggerPopupAndHoverItem("#tel", 0);
-  checkMenuEntries(["+1234567890"], false);
-  await triggerAutofillAndCheckProfile({
-    tel: "+1234567890",
-  });
+  checkMenuEntriesComment(MOCK_STORAGE.map(address =>
+    makeAddressComment({
+      primary: address.tel,
+      secondary: FormAutofillUtils.toOneLineAddress(address["street-address"]),
+      status: "Also autofills address, organization"
+    })
+  ), 2);
 });
 
 // Resume form autofill once all the autofilled fileds are changed.

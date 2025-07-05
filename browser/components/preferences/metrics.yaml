@@ -51,3 +51,363 @@ privacy.ui.fpp.click:
         description: The value of the clicked menu item of the menulist.
         type: string
     telemetry_mirror: PrivacyUiFpp_Click_Menu
+
+network.proxy.settings:
+  proxy_type_preference:
+    type: event
+    description: >
+      This metric tracks what proxy types users are choosing in the Network Settings dialog
+      at the bottom of about:preferences#general.
+      It gets recorded when pressing OK in the dialog box.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1909436
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1909436
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - necko@mozilla.com
+      - omansfeld@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          Type of proxy that is selected (DIRECT, MANUAL, PAC, WPAD, SYSTEM, OTHER).
+        type: string
+
+security.doh.settings:
+  mode_changed_button:
+    type: event
+    description: >
+      User changed the TRR mode in about:preferences#privacy settings
+      Value is id of the clicked button.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.doh.settings.mode_changed#button.
+    bugs:
+      - https://bugzil.la/1829905
+    data_reviews:
+      - https://bugzil.la/1829905
+    notification_emails:
+      - vgosu@mozilla.com
+      - necko@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: SecurityDohSettings_ModeChanged_Button
+
+  provider_choice_value:
+    type: event
+    description: >
+      User changed their DoH provider. Recorded value is URL of one of the
+      existing providers or "custom".
+      This event was generated to correspond to the Legacy Telemetry event
+      security.doh.settings.provider_choice#value.
+    bugs:
+      - https://bugzil.la/1829905
+    data_reviews:
+      - https://bugzil.la/1829905
+    notification_emails:
+      - vgosu@mozilla.com
+      - necko@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: SecurityDohSettings_ProviderChoice_Value
+
+intl.ui.browser_language:
+  manage_main:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.manage#main.
+    bugs: &intl_ui_browserLanguage_manage_bugs
+      - https://bugzil.la/1486507
+      - https://bugzil.la/1553311
+      - https://bugzil.la/1607501
+      - https://bugzil.la/1672571
+      - https://bugzil.la/1739288
+      - https://bugzil.la/1796396
+      - https://bugzil.la/1861299
+      - https://bugzil.la/1911321
+      - https://bugzil.la/1928262
+    data_reviews: &intl_ui_browserLanguage_manage_data_reviews
+      - https://bugzil.la/1486507
+      - https://bugzil.la/1553311
+      - https://bugzil.la/1607501
+      - https://bugzil.la/1672571
+      - https://bugzil.la/1739288
+      - https://bugzil.la/1796396
+      - https://bugzil.la/1861299
+      - https://bugzil.la/1911321
+      - https://bugzil.la/1928262
+    notification_emails: &intl_ui_browserLanguage_manage_emails
+      - earo@mozilla.com
+      - flod@mozilla.com
+      - mstriemer@mozilla.com
+    expires: 148
+    extra_keys: &intl_ui_browserLanguage_manage_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: IntlUiBrowserlanguage_Manage_Main
+
+  search_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.search#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Search_Dialog
+
+  search_main:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.search#main.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Search_Main
+
+  add_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.add#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+      installId:
+        description: >
+          The id for an install.
+        type: string
+    telemetry_mirror: IntlUiBrowserlanguage_Add_Dialog
+
+  remove_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.remove#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Remove_Dialog
+
+  reorder_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.reorder#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Reorder_Dialog
+
+  reorder_main:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.reorder#main.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    telemetry_mirror: IntlUiBrowserlanguage_Reorder_Main
+
+  apply_main:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.apply#main.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    telemetry_mirror: IntlUiBrowserlanguage_Apply_Main
+
+  accept_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.accept#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Accept_Dialog
+
+  cancel_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.cancel#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_Cancel_Dialog
+
+  set_fallback_dialog:
+    type: event
+    description: >
+      User interactions for the browser language within about-preferences
+      in the main pane and in the browser language dialog. Each dialog
+      event (on the dialog object, and the manage and search methods of
+      the main object) has a value which is a monotonically increasing
+      number that links it with other events related to the same dialog
+      instance.
+      This event was generated to correspond to the Legacy Telemetry event
+      intl.ui.browserLanguage.set_fallback#dialog.
+    bugs: *intl_ui_browserLanguage_manage_bugs
+    data_reviews: *intl_ui_browserLanguage_manage_data_reviews
+    notification_emails: *intl_ui_browserLanguage_manage_emails
+    expires: 148
+    extra_keys: *intl_ui_browserLanguage_manage_extra
+    telemetry_mirror: IntlUiBrowserlanguage_SetFallback_Dialog
+
+aboutpreferences:
+  show_initial:
+    type: event
+    description: >
+      This is recorded when a pane is shown direclty. This happens
+      with or without a hash in the URL. The "general" pane loads
+      without such a hash, when the pane is loaded via the "main"
+      entrypoints in the menu system or with shortcuts.
+      This event was generated to correspond to the Legacy Telemetry event
+      aboutpreferences.show#initial.
+    bugs: &aboutpreferences_show_bugs
+      - https://bugzil.la/1738187
+    data_reviews: &aboutpreferences_show_data_reviews
+      - https://bugzil.la/1738187
+    notification_emails: &aboutpreferences_show_emails
+      - pdahiya@mozilla.com
+      - gijs@mozilla.com
+    expires: never
+    extra_keys: &aboutpreferences_show_extra
+      value:
+        description: >
+          identifier of pane shown.
+        type: string
+    telemetry_mirror: Aboutpreferences_Show_Initial
+    no_lint:
+      - COMMON_PREFIX
+
+  show_click:
+    type: event
+    description: >
+      This is recorded when a pane is shown when user clicks category
+      name inside about:preferences.
+      This event was generated to correspond to the Legacy Telemetry event
+      aboutpreferences.show#click.
+    bugs: *aboutpreferences_show_bugs
+    data_reviews: *aboutpreferences_show_data_reviews
+    notification_emails: *aboutpreferences_show_emails
+    expires: never
+    extra_keys: *aboutpreferences_show_extra
+    telemetry_mirror: Aboutpreferences_Show_Click
+    no_lint:
+      - COMMON_PREFIX
+
+  show_hash:
+    type: event
+    description: >
+      This is recorded when a pane is shown via a hash change in url.
+      This event was generated to correspond to the Legacy Telemetry event
+      aboutpreferences.show#hash.
+    bugs: *aboutpreferences_show_bugs
+    data_reviews: *aboutpreferences_show_data_reviews
+    notification_emails: *aboutpreferences_show_emails
+    expires: never
+    extra_keys: *aboutpreferences_show_extra
+    telemetry_mirror: Aboutpreferences_Show_Hash
+    no_lint:
+      - COMMON_PREFIX

@@ -33,6 +33,12 @@
       },
     ],
     [
+      "--newtab-background-card",
+      {
+        lwtProperty: "ntp_card_background",
+      },
+    ],
+    [
       "--newtab-text-primary-color",
       {
         lwtProperty: "ntp_text",
@@ -114,11 +120,10 @@
       {
         lwtProperty: "sidebar_highlight",
         processColor(rgbaChannels, element) {
+          element.toggleAttribute("lwt-sidebar-highlight", !!rgbaChannels);
           if (!rgbaChannels) {
-            element.removeAttribute("lwt-sidebar-highlight");
             return null;
           }
-          element.setAttribute("lwt-sidebar-highlight", "true");
 
           const { r, g, b, a } = rgbaChannels;
           return `rgba(${r}, ${g}, ${b}, ${a})`;

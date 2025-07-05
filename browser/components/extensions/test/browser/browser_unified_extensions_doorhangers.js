@@ -5,7 +5,12 @@
 
 loadTestSubscript("head_unified_extensions.js");
 
-const verifyPermissionsPrompt = async expectedAnchorID => {
+ChromeUtils.defineESModuleGetters(this, {
+  ExtensionControlledPopup:
+    "resource:///modules/ExtensionControlledPopup.sys.mjs",
+});
+
+const verifyPermissionsPrompt = async expectAlwaysShown => {
   const ext = ExtensionTestUtils.loadExtension({
     useAddonManager: "temporary",
 
@@ -61,6 +66,7 @@ const verifyPermissionsPrompt = async expectedAnchorID => {
   });
 
   await BrowserTestUtils.withNewTab({ gBrowser }, async () => {
+    resetExtensionsButtonTelemetry();
     const defaultSearchPopupPromise = promisePopupNotificationShown(
       "addon-webext-defaultsearch"
     );
@@ -78,6 +84,11 @@ const verifyPermissionsPrompt = async expectedAnchorID => {
       "addons-notification-icon",
       "expected the right anchor ID for the defaultsearch popup"
     );
+    if (expectAlwaysShown) {
+      assertExtensionsButtonVisible();
+    } else {
+      assertExtensionsButtonHidden();
+    }
     // Accept to override the search.
     panel.button.click();
     await TestUtils.topicObserved("webextension-defaultsearch-prompt-response");
@@ -100,17 +111,85 @@ const verifyPermissionsPrompt = async expectedAnchorID => {
       // the button), not on the unified extensions button itself.
       notification.anchorElement.id ||
         notification.anchorElement.parentElement.id,
-      expectedAnchorID,
+      "unified-extensions-button",
       "expected the right anchor ID"
     );
+    assertExtensionsButtonVisible();
+    if (expectAlwaysShown) {
+      assertExtensionsButtonTelemetry({ extension_permission_prompt: 0 });
+    } else {
+      assertExtensionsButtonTelemetry({ extension_permission_prompt: 1 });
+      resetExtensionsButtonTelemetry();
+    }
 
     panel.button.click();
     await ext.awaitMessage("ok");
 
     await ext.unload();
+    // No more counters beyond the ones explicitly checked.
+    assertExtensionsButtonTelemetry({});
   });
 };
 
 add_task(async function test_permissions_prompt() {
-  await verifyPermissionsPrompt("unified-extensions-button");
+  await verifyPermissionsPrompt(/* expectAlwaysShown */ true);
+});
+
+// This test confirms that the Extensions Button becomes temporarily visible
+// when a permission prompt needs to be anchored to it.
+add_task(async function test_permissions_prompt_when_button_is_hidden() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.unifiedExtensions.button.always_visible", false]],
+  });
+
+  assertExtensionsButtonHidden();
+
+  await verifyPermissionsPrompt(/* expectAlwaysShown */ false);
+
+  info("After install is done, Extensions button should be hidden again");
+  assertExtensionsButtonHidden();
+
+  await SpecialPowers.popPrefEnv();
+});
+
+// This test confirms that the Extensions Button becomes temporarily visible
+// when an ExtensionControlledPopup notification wants to anchor to it.
+add_task(async function test_homepage_doorhanger() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["extensions.unifiedExtensions.button.always_visible", false]],
+  });
+  resetExtensionsButtonTelemetry();
+
+  const extension = ExtensionTestUtils.loadExtension({
+    manifest: { chrome_settings_overrides: { homepage: "exthome.html" } },
+    files: { "exthome.html": "<h1>Extension-defined homepage</h1>" },
+    useAddonManager: "temporary",
+  });
+  await extension.startup();
+
+  let panel = ExtensionControlledPopup._getAndMaybeCreatePanel(document);
+  let popupShown = promisePopupShown(panel);
+  BrowserCommands.home();
+
+  info("Waiting for 'Your homepage has changed' doorhanger to appear");
+  await popupShown;
+  assertExtensionsButtonVisible();
+  assertExtensionsButtonTelemetry({ extension_controlled_setting: 1 });
+
+  let popupnotification = document.getElementById(
+    "extension-homepage-notification"
+  );
+
+  // Now close doorhanger and verify that the button is hidden again.
+  let popupHidden = promisePopupHidden(panel);
+  popupnotification.button.click();
+  await popupHidden;
+
+  assertExtensionsButtonHidden();
+  // Still the same count as before.
+  assertExtensionsButtonTelemetry({ extension_controlled_setting: 1 });
+
+  await extension.unload();
+
+  await SpecialPowers.popPrefEnv();
 });

@@ -11,6 +11,10 @@
 
 "use strict";
 
+ChromeUtils.defineESModuleGetters(this, {
+  SearchUIUtils: "moz-src:///browser/components/search/SearchUIUtils.sys.mjs",
+});
+
 const TEST_PROVIDER_INFO = [
   {
     telemetryId: "example",
@@ -33,7 +37,7 @@ const TEST_PROVIDER_INFO = [
 /**
  * Returns the index of the first search suggestion in the urlbar results.
  *
- * @returns {number} An index, or -1 if there are no search suggestions.
+ * @returns {Promise<number>} An index, or -1 if there are no search suggestions.
  */
 async function getFirstSuggestionIndex() {
   const matchCount = UrlbarTestUtils.getResultCount(window);
@@ -76,6 +80,7 @@ add_setup(async function () {
       suggest_url:
         "https://example.org/browser/browser/components/search/test/browser/searchSuggestionEngine.sjs",
       suggest_url_get_params: "query={searchTerms}",
+      name: "Example",
     },
     { setAsDefault: true }
   );
@@ -199,6 +204,77 @@ add_task(async function test_source_urlbar() {
   );
 });
 
+add_task(async function test_source_urlbar_newtab() {
+  let tab;
+  await track_ad_click(
+    "urlbar",
+    "urlbar",
+    async () => {
+      // Load a page because alt doesn't open new tabs on about:newtab.
+      BrowserTestUtils.startLoadingURIString(
+        gBrowser.selectedBrowser,
+        "https://example.com"
+      );
+      await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
+
+      await UrlbarTestUtils.promiseAutocompleteResultPopup({
+        window,
+        value: "searchSuggestion",
+      });
+      let idx = await getFirstSuggestionIndex();
+      Assert.greaterOrEqual(idx, 0, "there should be a first suggestion");
+      while (idx--) {
+        EventUtils.sendKey("down");
+      }
+
+      let newTabPromise = BrowserTestUtils.waitForNewTab(gBrowser);
+      EventUtils.synthesizeKey("VK_RETURN", { altKey: true });
+      tab = await newTabPromise;
+      return tab;
+    },
+    async () => {
+      BrowserTestUtils.removeTab(tab);
+    }
+  );
+});
+
+add_task(async function test_source_urlbar_oneoffs_newtab() {
+  // Enable legacy one off buttons.
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
+  let tab;
+  await track_ad_click(
+    "urlbar",
+    "urlbar",
+    async () => {
+      await UrlbarTestUtils.promiseAutocompleteResultPopup({
+        window,
+        value: "searchSuggestion",
+      });
+
+      let oneOffs =
+        UrlbarTestUtils.getOneOffSearchButtons(window).getSelectableButtons(
+          true
+        );
+
+      let engines = await Services.search.getEngines();
+      let index = engines.findIndex(e => e.name == "Example");
+      let newTabPromise = BrowserTestUtils.waitForNewTab(gBrowser);
+      EventUtils.synthesizeMouseAtCenter(oneOffs[index], {
+        accelKey: true,
+        shiftKey: true,
+      });
+      tab = await newTabPromise;
+      return tab;
+    },
+    async () => {
+      BrowserTestUtils.removeTab(tab);
+    }
+  );
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function test_source_urlbar_handoff() {
   let tab;
   await track_ad_click(
@@ -294,7 +370,7 @@ add_task(async function test_source_searchbar() {
     async () => {
       tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
-      let sb = BrowserSearch.searchBar;
+      let sb = document.getElementById("searchbar");
       // Write the search query in the searchbar.
       sb.focus();
       sb.value = "searchSuggestion";
@@ -320,6 +396,38 @@ add_task(async function test_source_searchbar() {
   );
 });
 
+add_task(async function test_source_searchbar_newtab() {
+  let tab;
+  await track_ad_click(
+    "searchbar",
+    "searchbar",
+    async () => {
+      let sb = document.getElementById("searchbar");
+      // Write the search query in the searchbar.
+      sb.focus();
+      sb.value = "searchSuggestion";
+      sb.textbox.controller.startSearch("searchSuggestion");
+      // Wait for the popup to show.
+      await BrowserTestUtils.waitForEvent(sb.textbox.popup, "popupshown");
+      // And then for the search to complete.
+      await BrowserTestUtils.waitForCondition(
+        () =>
+          sb.textbox.controller.searchStatus >=
+          Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH,
+        "The search in the searchbar must complete."
+      );
+
+      let newTabPromise = BrowserTestUtils.waitForNewTab(gBrowser);
+      EventUtils.synthesizeKey("VK_RETURN", { altKey: true });
+      tab = await newTabPromise;
+      return tab;
+    },
+    async () => {
+      BrowserTestUtils.removeTab(tab);
+    }
+  );
+});
+
 add_task(async function test_source_system() {
   let tab;
   await track_ad_click(
@@ -332,7 +440,8 @@ add_task(async function test_source_system() {
 
       // This is not quite the same as calling from the commandline, but close
       // enough for this test.
-      BrowserSearch.loadSearchFromCommandLine(
+      SearchUIUtils.loadSearchFromCommandLine(
+        window,
         "searchSuggestion",
         false,
         Services.scriptSecurityManager.getSystemPrincipal(),

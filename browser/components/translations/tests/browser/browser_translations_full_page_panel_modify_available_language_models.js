@@ -23,10 +23,12 @@ add_task(
       "The button is available."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     ok(
       !fromMenuList.querySelector('[value="ja"]'),
@@ -45,11 +47,13 @@ add_task(
     info("Publishing Japanese as a source language in Remote Settings.");
     await modifyRemoteSettingsRecords(remoteClients.translationModels.client, {
       recordsToCreate: recordsForJaEn,
-      expectedCreatedRecordsCount: FILES_PER_LANGUAGE_PAIR,
+      expectedCreatedRecordsCount: RECORDS_PER_LANGUAGE_PAIR_SHARED_VOCAB,
     });
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     ok(
       fromMenuList.querySelector('[value="ja"]'),
@@ -65,11 +69,13 @@ add_task(
     info("Removing Japanese as a source language from Remote Settings.");
     await modifyRemoteSettingsRecords(remoteClients.translationModels.client, {
       recordsToDelete: recordsForJaEn,
-      expectedDeletedRecordsCount: FILES_PER_LANGUAGE_PAIR,
+      expectedDeletedRecordsCount: RECORDS_PER_LANGUAGE_PAIR_SHARED_VOCAB,
     });
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     ok(
       !fromMenuList.querySelector('[value="ja"]'),
@@ -85,11 +91,13 @@ add_task(
     info("Publishing Japanese as a target language in Remote Settings.");
     await modifyRemoteSettingsRecords(remoteClients.translationModels.client, {
       recordsToCreate: recordsForEnJa,
-      expectedCreatedRecordsCount: FILES_PER_LANGUAGE_PAIR,
+      expectedCreatedRecordsCount: RECORDS_PER_LANGUAGE_PAIR_SHARED_VOCAB,
     });
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     ok(
       !fromMenuList.querySelector('[value="ja"]'),
@@ -105,11 +113,13 @@ add_task(
     info("Republishing Japanese as a source language in Remote Settings.");
     await modifyRemoteSettingsRecords(remoteClients.translationModels.client, {
       recordsToCreate: recordsForJaEn,
-      expectedCreatedRecordsCount: FILES_PER_LANGUAGE_PAIR,
+      expectedCreatedRecordsCount: RECORDS_PER_LANGUAGE_PAIR_SHARED_VOCAB,
     });
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     ok(
       fromMenuList.querySelector('[value="ja"]'),
@@ -120,13 +130,17 @@ add_task(
       "The FullPageTranslationsPanel still has an item for Japanese in the to-menu-list."
     );
 
-    await FullPageTranslationsTestUtils.changeSelectedToLanguage("ja");
+    await FullPageTranslationsTestUtils.changeSelectedToLanguage({
+      langTag: "ja",
+    });
     await FullPageTranslationsTestUtils.clickTranslateButton();
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "ja",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "ja",
+        runInPage,
+      }
     );
 
     await cleanup();

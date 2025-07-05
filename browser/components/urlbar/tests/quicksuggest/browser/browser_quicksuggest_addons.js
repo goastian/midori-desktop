@@ -28,7 +28,6 @@ const TEST_MERINO_SUGGESTIONS = [
         guid: "first@addon",
       },
     },
-    is_top_pick: true,
   },
   {
     provider: "amo",
@@ -43,8 +42,6 @@ const TEST_MERINO_SUGGESTIONS = [
         guid: "second@addon",
       },
     },
-    is_sponsored: true,
-    is_top_pick: false,
   },
   {
     provider: "amo",
@@ -59,7 +56,6 @@ const TEST_MERINO_SUGGESTIONS = [
         guid: "third@addon",
       },
     },
-    is_top_pick: false,
   },
   {
     provider: "amo",
@@ -137,31 +133,6 @@ add_task(async function basic() {
 
     await PlacesUtils.history.clear();
   }
-});
-
-add_task(async function disable() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.addons.featureGate", false]],
-  });
-
-  // Restore AdmWikipedia suggestions.
-  MerinoTestUtils.server.reset();
-  // Add one Addon suggestion that is higher score than AdmWikipedia.
-  MerinoTestUtils.server.response.body.suggestions.push(
-    Object.assign({}, TEST_MERINO_SUGGESTIONS[0], { score: 2 })
-  );
-
-  await UrlbarTestUtils.promiseAutocompleteResultPopup({
-    window,
-    value: "only match the Merino suggestion",
-  });
-  Assert.equal(UrlbarTestUtils.getResultCount(window), 2);
-
-  const { result } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
-  Assert.equal(result.payload.telemetryType, "adm_sponsored");
-
-  MerinoTestUtils.server.response.body.suggestions = TEST_MERINO_SUGGESTIONS;
-  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function resultMenu_showLessFrequently() {
@@ -338,11 +309,16 @@ async function doDismissTest(command, allDismissed) {
   Assert.ok(UrlbarPrefs.get("suggest.addons"));
 
   // Click the command.
+  let dismissalPromise = TestUtils.topicObserved(
+    "quicksuggest-dismissals-changed"
+  );
   await UrlbarTestUtils.openResultMenuAndClickItem(
     window,
     ["[data-l10n-id=firefox-suggest-command-dont-show-this]", command],
     { resultIndex: EXPECTED_RESULT_INDEX, openByMouse: true }
   );
+  info("Awaiting dismissal promise");
+  await dismissalPromise;
 
   Assert.equal(
     UrlbarPrefs.get("suggest.addons"),
@@ -350,11 +326,9 @@ async function doDismissTest(command, allDismissed) {
     "suggest.addons should be true iff all suggestions weren't dismissed"
   );
   Assert.equal(
-    await QuickSuggest.blockedSuggestions.has(
-      details.result.payload.originalUrl
-    ),
+    await QuickSuggest.isResultDismissed(details.result),
     !allDismissed,
-    "Suggestion URL should be blocked iff all suggestions weren't dismissed"
+    "Result should be dismissed iff all suggestions weren't dismissed"
   );
 
   // The row should be a tip now.
@@ -423,7 +397,7 @@ async function doDismissTest(command, allDismissed) {
   await UrlbarTestUtils.promisePopupClose(window);
 
   UrlbarPrefs.clear("suggest.addons");
-  await QuickSuggest.blockedSuggestions.clear();
+  await QuickSuggest.clearDismissedSuggestions();
 }
 
 function makeExpectedUrl(originalUrl) {

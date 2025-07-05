@@ -329,6 +329,35 @@ add_task(async function test_show_hide_pageAction() {
   });
 });
 
+add_task(async function test_show_hide_pageAction_v3() {
+  await testShowHideEvent({
+    manifest_version: 3,
+    id: "page-action@mochitest",
+    menuCreateParams: {
+      id: "page_action_item",
+      title: "pageAction item",
+      contexts: ["page_action"],
+    },
+    expectedShownEvent: {
+      contexts: ["page_action", "all"],
+      viewType: undefined,
+      editable: false,
+    },
+    expectedShownEventWithPermissions: {
+      contexts: ["page_action", "all"],
+      viewType: undefined,
+      editable: false,
+      pageUrl: PAGE,
+    },
+    async doOpenMenu(extension) {
+      await openActionContextMenu(extension, "page");
+    },
+    async doCloseMenu() {
+      await closeActionContextMenu(null, "page");
+    },
+  });
+});
+
 add_task(async function test_show_hide_browserAction() {
   await testShowHideEvent({
     menuCreateParams: {
@@ -509,28 +538,10 @@ add_task(async function test_show_hide_tab() {
   });
 });
 
-// Checks that right-clicking on a tab in the tabs panel (the one that appears
-// when there are many tabs, or when browser.tabs.tabmanager.enabled = true)
+// Checks that right-clicking on a tab in the all-tabs panel
 // results in an event that is associated with the expected tab.
 add_task(async function test_show_hide_tab_via_tab_panel() {
   gTabsPanel.init();
-  const tabContainer = document.getElementById("tabbrowser-tabs");
-  let shouldAddOverflow = !tabContainer.hasAttribute("overflow");
-  const revertTabContainerAttribute = () => {
-    if (shouldAddOverflow) {
-      // Revert attribute if it was changed.
-      tabContainer.removeAttribute("overflow");
-      // The function is going to be called twice, but let's run the logic once.
-      shouldAddOverflow = false;
-    }
-  };
-  if (shouldAddOverflow) {
-    // Ensure the visibility of the "all tabs menu" button (#alltabs-button).
-    tabContainer.setAttribute("overflow", "true");
-    // Register cleanup function in case the test fails before we reach the end.
-    registerCleanupFunction(revertTabContainerAttribute);
-  }
-
   const allTabsView = document.getElementById("allTabsMenu-allTabsView");
 
   await testShowHideTabMenu({
@@ -570,8 +581,6 @@ add_task(async function test_show_hide_tab_via_tab_panel() {
       await allTabsPopupHiddenPromise;
     },
   });
-
-  revertTabContainerAttribute();
 });
 
 add_task(async function test_show_hide_tools_menu() {

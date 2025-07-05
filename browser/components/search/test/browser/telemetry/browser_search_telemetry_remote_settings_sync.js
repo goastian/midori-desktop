@@ -12,14 +12,16 @@
 requestLongerTimeout(5);
 
 ChromeUtils.defineESModuleGetters(this, {
-  ADLINK_CHECK_TIMEOUT_MS: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  ADLINK_CHECK_TIMEOUT_MS:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  SEARCH_TELEMETRY_SHARED: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchSERPCategorization: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  SEARCH_TELEMETRY_SHARED:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   SearchSERPDomainToCategoriesMap:
-    "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
-  TELEMETRY_SETTINGS_KEY: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
+  TELEMETRY_SETTINGS_KEY:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
 });
 
 const TEST_PROVIDER_INFO = [

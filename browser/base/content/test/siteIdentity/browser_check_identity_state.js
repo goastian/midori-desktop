@@ -8,6 +8,19 @@ const DUMMY = "browser/browser/base/content/test/siteIdentity/dummy_page.html";
 const INSECURE_TEXT_PREF = "security.insecure_connection_text.enabled";
 const HTTPS_FIRST_PBM_PREF = "dom.security.https_first_pbm";
 
+const NOT_SECURE_LABEL = Services.prefs.getBoolPref(
+  "security.insecure_connection_text.enabled",
+  true
+)
+  ? "notSecure notSecureText"
+  : "notSecure";
+const NOT_SECURE_LABEL_PBMODE = Services.prefs.getBoolPref(
+  "security.insecure_connection_text.pbmode.enabled",
+  true
+)
+  ? "notSecure notSecureText"
+  : "notSecure";
+
 function loadNewTab(url) {
   return BrowserTestUtils.openNewForegroundTab(gBrowser, url, true);
 }
@@ -66,7 +79,6 @@ add_task(async function chromeUITest() {
     "compat",
     "config",
     "downloads",
-    "ion",
     "license",
     "logins",
     "loginsimportreport",
@@ -77,7 +89,6 @@ add_task(async function chromeUITest() {
     "profiles",
     "profiling",
     "protections",
-    "rights",
     "sessionrestore",
     "studies",
     "support",
@@ -106,6 +117,7 @@ add_task(async function chromeUITest() {
     "about:url-classifier",
     "about:webrtc",
     "about:welcome",
+    "about:rights",
     // eslint-disable-next-line @microsoft/sdl/no-insecure-url
     "http://example.com/" + DUMMY,
   ];
@@ -133,13 +145,13 @@ add_task(async function test_webpage() {
 
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   let newTab = await loadNewTab("http://example.com/" + DUMMY);
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
 
   gBrowser.selectedTab = oldTab;
   is(getIdentityMode(), "localResource", "Identity should be localResource");
 
   gBrowser.selectedTab = newTab;
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
 
   gBrowser.removeTab(newTab);
   gBrowser.removeTab(oldTab);
@@ -286,7 +298,7 @@ add_task(async function test_insecure() {
 
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   let newTab = await loadNewTab("http://example.com/" + DUMMY);
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
   is(
     document.getElementById("identity-icon").getAttribute("tooltiptext"),
     gNavigatorBundle.getString("identity.notSecure.tooltip"),
@@ -297,7 +309,7 @@ add_task(async function test_insecure() {
   is(getIdentityMode(), "localResource", "Identity should be localResource");
 
   gBrowser.selectedTab = newTab;
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
   is(
     document.getElementById("identity-icon").getAttribute("tooltiptext"),
     gNavigatorBundle.getString("identity.notSecure.tooltip"),
@@ -666,13 +678,13 @@ add_task(async function test_data_uri() {
   let dataURI = "data:text/html,hi";
 
   let newTab = await loadNewTab(dataURI);
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
 
   gBrowser.selectedTab = oldTab;
   is(getIdentityMode(), "localResource", "Identity should be localResource");
 
   gBrowser.selectedTab = newTab;
-  is(getIdentityMode(), "notSecure", "Identity should be not secure");
+  is(getIdentityMode(), NOT_SECURE_LABEL, "Identity should be not secure");
 
   gBrowser.removeTab(newTab);
   gBrowser.removeTab(oldTab);
@@ -694,7 +706,11 @@ add_task(async function test_pb_mode() {
     "http://example.com/" + DUMMY
   );
 
-  is(getIdentityMode(privateWin), "notSecure", "Identity should be not secure");
+  is(
+    getIdentityMode(privateWin),
+    NOT_SECURE_LABEL_PBMODE,
+    "Identity should be not secure"
+  );
 
   privateWin.gBrowser.selectedTab = oldTab;
   is(
@@ -704,17 +720,12 @@ add_task(async function test_pb_mode() {
   );
 
   privateWin.gBrowser.selectedTab = newTab;
-  is(getIdentityMode(privateWin), "notSecure", "Identity should be not secure");
+  is(
+    getIdentityMode(privateWin),
+    NOT_SECURE_LABEL_PBMODE,
+    "Identity should be not secure"
+  );
   await BrowserTestUtils.closeWindow(privateWin);
 
   await SpecialPowers.popPrefEnv();
-});
-
-add_setup(() => {
-  SpecialPowers.pushPrefEnv({
-    set: [
-      ["security.insecure_connection_text.enabled", false],
-      ["security.insecure_connection_text.pbmode.enabled", false],
-    ],
-  });
 });

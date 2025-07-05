@@ -2,116 +2,110 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<toolbox id="navigator-toolbox">
+<toolbox id="navigator-toolbox" class="browser-toolbox-background">
+  <script src="chrome://browser/content/navigator-toolbox.js" />
 
-  <vbox id="titlebar">
-    <!-- Menu -->
-    <toolbar type="menubar" id="toolbar-menubar"
-             class="browser-toolbar chromeclass-menubar titlebar-color"
-             customizable="true"
-             mode="icons"
-             context="toolbar-context-menu">
-      <toolbaritem id="menubar-items" align="center">
+  <!-- Menu -->
+  <toolbar type="menubar" id="toolbar-menubar"
+           class="browser-toolbar chromeclass-menubar browser-titlebar"
+           customizable="true"
+           mode="icons"
+           context="toolbar-context-menu">
+    <toolbaritem id="menubar-items" align="center">
 # The entire main menubar is placed into browser-menubar.inc, so that it can be
 # shared with other top level windows in macWindow.inc.xhtml.
 #include browser-menubar.inc
-      </toolbaritem>
-      <spacer flex="1" skipintoolbarset="true" style="order: 1000;"/>
+    </toolbaritem>
+    <spacer flex="1" skipintoolbarset="true" style="order: 1000;"/>
 #include titlebar-items.inc.xhtml
-    </toolbar>
+  </toolbar>
 
-    <toolbar id="TabsToolbar"
-             class="browser-toolbar titlebar-color"
-             fullscreentoolbar="true"
-             customizable="true"
-             customizationtarget="TabsToolbar-customization-target"
-             mode="icons"
-             data-l10n-id="tabs-toolbar"
-             context="toolbar-context-menu"
-             flex="1">
+  <toolbar id="TabsToolbar"
+           class="browser-toolbar browser-titlebar"
+           fullscreentoolbar="true"
+           customizable="true"
+           customizationtarget="TabsToolbar-customization-target"
+           mode="icons"
+           data-l10n-id="tabs-toolbar"
+           context="toolbar-context-menu"
+           flex="1">
 
-      <hbox class="titlebar-spacer" type="pre-tabs"/>
+    <hbox class="titlebar-spacer" type="pre-tabs"/>
 
-      <hbox flex="1" align="end" class="toolbar-items">
-        <toolbartabstop/>
-        <hbox id="TabsToolbar-customization-target" flex="1">
-          <toolbarbutton id="firefox-view-button"
-                         class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         data-l10n-id="toolbar-button-firefox-view-2"
-                         role="button"
-                         aria-pressed="false"
-                         oncommand="FirefoxViewHandler.openTab();"
-                         onmousedown="FirefoxViewHandler.openToolbarMouseEvent(event);"
-                         cui-areatype="toolbar"
-                         removable="true"/>
+    <hbox flex="1" align="end" class="toolbar-items">
+      <toolbartabstop/>
+      <hbox id="TabsToolbar-customization-target" flex="1">
+        <toolbarbutton id="firefox-view-button"
+                       class="toolbarbutton-1 chromeclass-toolbar-additional"
+                       data-l10n-id="toolbar-button-firefox-view-2"
+                       role="button"
+                       aria-pressed="false"
+                       cui-areatype="toolbar"
+                       removable="true"/>
 
-          <tabs id="tabbrowser-tabs"
-                is="tabbrowser-tabs"
-                aria-multiselectable="true"
-                setfocus="false"
-                tooltip="tabbrowser-tab-tooltip"
-                stopwatchid="FX_TAB_CLICK_MS">
-            <hbox class="tab-drop-indicator" hidden="true"/>
+        <tabs id="tabbrowser-tabs"
+              is="tabbrowser-tabs"
+              aria-multiselectable="true"
+              setfocus="false"
+              tooltip="tabbrowser-tab-tooltip"
+              orient="horizontal"
+              stopwatchid="tabClick">
+          <hbox class="tab-drop-indicator" hidden="true"/>
 # If the name (tabbrowser-arrowscrollbox) or structure of this changes
 # significantly, there is an optimization in
 # DisplayPortUtils::MaybeCreateDisplayPortInFirstScrollFrameEncountered based
 # the current structure that we may want to revisit.
-            <arrowscrollbox id="tabbrowser-arrowscrollbox" orient="horizontal" flex="1" style="min-width: 1px;" clicktoscroll="true" scrolledtostart="true" scrolledtoend="true">
-              <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="" fadein=""/>
-              <hbox id="tabbrowser-arrowscrollbox-periphery">
-                <toolbartabstop/>
-                <toolbarbutton id="tabs-newtab-button"
-                               class="toolbarbutton-1"
-                               command="cmd_newNavigatorTab"
-                               onclick="gBrowser.handleNewTabMiddleClick(this, event);"
-                               tooltip="dynamic-shortcut-tooltip"/>
-                <spacer class="closing-tabs-spacer" style="width: 0;"/>
-              </hbox>
-            </arrowscrollbox>
-            <html:span id="tabbrowser-tab-a11y-desc" hidden="true"/>
-          </tabs>
+          <arrowscrollbox id="vertical-pinned-tabs-container" orient="vertical" tabindex="-1"></arrowscrollbox>
+          <splitter orient="vertical" id="vertical-pinned-tabs-splitter" resizebefore="sibling" resizeafter="none" hidden="true"/>
+          <arrowscrollbox id="tabbrowser-arrowscrollbox" orient="horizontal" flex="1" clicktoscroll="" scrolledtostart="" scrolledtoend="">
+            <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="" fadein=""/>
+            <hbox id="tabbrowser-arrowscrollbox-periphery">
+              <toolbartabstop/>
+              <toolbarbutton id="tabs-newtab-button"
+                             class="toolbarbutton-1"
+                             command="cmd_newNavigatorTab"
+                             tooltip="dynamic-shortcut-tooltip"
+                             data-l10n-id="tabs-toolbar-new-tab"/>
+              <spacer class="closing-tabs-spacer" style="width: 0;"/>
+            </hbox>
+          </arrowscrollbox>
+          <toolbarbutton id="vertical-tabs-newtab-button"
+                              class="toolbarbutton-1"
+                              command="cmd_newNavigatorTab"
+                              tooltip="dynamic-shortcut-tooltip"
+                              data-l10n-id="tabs-toolbar-new-tab"/>
+          <html:span id="tabbrowser-tab-a11y-desc" hidden="true"/>
+        </tabs>
 
-          <toolbarbutton id="new-tab-button"
-                         class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         data-l10n-id="tabs-toolbar-new-tab"
-                         command="cmd_newNavigatorTab"
-                         onclick="gBrowser.handleNewTabMiddleClick(this, event);"
-                         tooltip="dynamic-shortcut-tooltip"
-                         ondrop="newTabButtonObserver.onDrop(event)"
-                         ondragover="newTabButtonObserver.onDragOver(event)"
-                         ondragenter="newTabButtonObserver.onDragOver(event)"
-                         cui-areatype="toolbar"
-                         removable="true"/>
+        <toolbarbutton id="new-tab-button"
+                       class="toolbarbutton-1 chromeclass-toolbar-additional"
+                       data-l10n-id="tabs-toolbar-new-tab"
+                       command="cmd_newNavigatorTab"
+                       tooltip="dynamic-shortcut-tooltip"
+                       cui-areatype="toolbar"
+                       removable="true"/>
 
-          <toolbarbutton id="alltabs-button"
-                         class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button"
-                         delegatesanchor="true"
-                         badged="true"
-                         onkeypress="gTabsPanel.showAllTabsPanel(event, 'alltabs-button');"
-                         onmousedown="gTabsPanel.showAllTabsPanel(event, 'alltabs-button');"
-                         data-l10n-id="tabs-toolbar-list-all-tabs"
-                         removable="false"/>
-        </hbox>
+        <toolbarbutton id="alltabs-button"
+                       class="toolbarbutton-1 chromeclass-toolbar-additional tabs-alltabs-button"
+                       delegatesanchor="true"
+                       badged="true"
+                       data-l10n-id="tabs-toolbar-list-all-tabs"
+                       closemenu="none"
+                       removable="true"/>
       </hbox>
+    </hbox>
 
-      <hbox class="titlebar-spacer" type="post-tabs"/>
+    <hbox class="titlebar-spacer" type="post-tabs"/>
 
-      <hbox id="private-browsing-indicator-with-label">
-        <image class="private-browsing-indicator-icon"/>
-        <label data-l10n-id="private-browsing-indicator-label"></label>
-      </hbox>
-      <toolbarbutton id="content-analysis-indicator"
-                     oncommand="ContentAnalysis.showPanel(this, PanelUI);"
-                     class="toolbarbutton-1 content-analysis-indicator-icon"/>
+#include private-browsing-indicator.inc.xhtml
+    <toolbarbutton class="content-analysis-indicator toolbarbutton-1 content-analysis-indicator-icon"/>
 
 #include titlebar-items.inc.xhtml
 
-    </toolbar>
-
-  </vbox>
+  </toolbar>
 
   <toolbar id="nav-bar"
-           class="browser-toolbar"
+           class="browser-toolbar chromeclass-location"
            data-l10n-id="navbar-accessible"
            fullscreentoolbar="true" mode="icons" customizable="true"
            customizationtarget="nav-bar-customization-target"
@@ -123,6 +117,7 @@
            addon-webext-overflowtarget="overflowed-extensions-list"
            context="toolbar-context-menu">
 
+    <hbox class="titlebar-spacer" type="pre-tabs"/>
     <toolbartabstop/>
 
     <hbox id="nav-bar-customization-target" flex="1">
@@ -131,7 +126,6 @@
                      removable="false" overflows="false"
                      keepbroadcastattributeswhencustomizing="true"
                      command="Browser:BackOrBackDuplicate"
-                     onclick="checkForMiddleClick(this, event);"
                      tooltip="back-button-tooltip"
                      context="backForwardMenu"/>
       <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
@@ -139,7 +133,6 @@
                      removable="false" overflows="false"
                      keepbroadcastattributeswhencustomizing="true"
                      command="Browser:ForwardOrForwardDuplicate"
-                     onclick="checkForMiddleClick(this, event);"
                      tooltip="forward-button-tooltip"
                      context="backForwardMenu"/>
       <toolbaritem id="stop-reload-button" class="chromeclass-toolbar-additional"
@@ -148,7 +141,6 @@
         <toolbarbutton id="reload-button" class="toolbarbutton-1"
                        data-l10n-id="toolbar-button-reload"
                        command="Browser:ReloadOrDuplicate"
-                       onclick="checkForMiddleClick(this, event);"
                        tooltip="dynamic-shortcut-tooltip">
           <box class="toolbarbutton-animatable-box">
             <image class="toolbarbutton-animatable-image"/>
@@ -164,14 +156,21 @@
         </toolbarbutton>
       </toolbaritem>
       <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>
+      <toolbarspring cui-areatype="toolbar"
+                   class="chromeclass-toolbar-additional titlebar-spacer"
+                   id="vertical-spacer"
+                   removable="false"
+                   overflows="false"/>
       <toolbaritem id="urlbar-container"
                    removable="false"
-                   class="chromeclass-location" overflows="false">
+                   overflows="false">
         <toolbartabstop/>
-        <hbox id="urlbar" flex="1"
-              context=""
+        <html:div id="urlbar"
+              popover="manual"
               focused="true"
-              pageproxystate="invalid">
+              pageproxystate="invalid"
+              unifiedsearchbutton-available=""
+          >
           <hbox id="urlbar-background"/>
           <hbox class="urlbar-input-container"
                 flex="1"
@@ -181,15 +180,33 @@
                  collapsed="true">
                 <image id="remote-control-icon"/>
             </box>
-            <box class="chromeclass-toolbar-additional urlbar-search-button"/>
+            <box id="urlbar-search-button"
+                 class="chromeclass-toolbar-additional"/>
+            <toolbarbutton id="urlbar-searchmode-switcher"
+                            data-action="openpopup"
+                            align="center"
+                            role="button"
+                            aria-haspopup="menu"
+                            aria-expanded="false"
+                            tooltip="dynamic-shortcut-tooltip"
+                            class="chromeclass-toolbar-additional">
+              <image id="searchmode-switcher-icon" />
+              <image id="searchmode-switcher-dropmarker"
+                      data-l10n-id="urlbar-searchmode-dropmarker"
+                      class="toolbarbutton-icon toolbarbutton-combined-buttons-dropmarker" />
+            </toolbarbutton>
+            <box id="searchmode-switcher-chicklet">
+              <label id="searchmode-switcher-title" />
+              <toolbarbutton id="searchmode-switcher-close"
+                              data-action="exitsearchmode"
+                              role="button"
+                              data-l10n-id="urlbar-searchmode-exit-button"
+                              class="toolbarbutton-icon close-button" />
+            </box>
             <!-- Use onclick instead of normal popup= syntax since the popup
                  code fires onmousedown, and hence eats our favicon drag events. -->
             <box id="tracking-protection-icon-container" align="center"
                  role="button"
-                 onclick="gProtectionsHandler.handleProtectionsButtonEvent(event);"
-                 onkeypress="gProtectionsHandler.handleProtectionsButtonEvent(event);"
-                 onmouseover="gProtectionsHandler.onTrackingProtectionIconHoveredOrFocused();"
-                 onfocus="gProtectionsHandler.onTrackingProtectionIconHoveredOrFocused();"
                  tooltip="tracking-protection-icon-tooltip">
               <box id="tracking-protection-icon-box">
                 <image id="tracking-protection-icon"/>
@@ -200,15 +217,12 @@
             </box>
             <box id="identity-box"
                  class="identity-box"
-                 pageproxystate="invalid"
-                 ondragstart="gIdentityHandler.onDragStart(event);">
+                 pageproxystate="invalid">
               <box id="identity-icon-box"
                    role="button"
                    align="center"
                    data-l10n-id="urlbar-identity-button"
-                   class="identity-box-button"
-                   onclick="gIdentityHandler.handleIdentityButtonEvent(event); PageProxyClickHandler(event);"
-                   onkeypress="gIdentityHandler.handleIdentityButtonEvent(event);">
+                   class="identity-box-button">
                 <image id="identity-icon"/>
                 <label id="identity-icon-label" crop="center" flex="1"/>
               </box>
@@ -216,9 +230,7 @@
                    data-l10n-id="urlbar-permissions-granted"
                    role="button"
                    align="center"
-                   class="identity-box-button"
-                   onclick="gPermissionPanel.handleIdentityButtonEvent(event); PageProxyClickHandler(event);"
-                   onkeypress="gPermissionPanel.handleIdentityButtonEvent(event);">
+                   class="identity-box-button">
                 <image id="permissions-granted-icon"/>
                 <box style="pointer-events: none;">
                     <image class="sharing-icon" id="webrtc-sharing-icon"/>
@@ -309,16 +321,16 @@
             <html:div id="urlbar-search-mode-indicator">
               <html:span id="urlbar-search-mode-indicator-title"/>
               <html:div id="urlbar-search-mode-indicator-close"
-                     class="close-button"
-                     role="button"
-                     aria-labelledby="urlbar-search-mode-indicator-close urlbar-search-mode-indicator-title"
-                     data-l10n-id="urlbar-search-mode-indicator-close"/>
+                        class="close-button"
+                        role="button"
+                        aria-labelledby="urlbar-search-mode-indicator-close urlbar-search-mode-indicator-title"
+                        data-l10n-id="urlbar-search-mode-indicator-close"/>
             </html:div>
             <moz-input-box tooltip="aHTMLTooltip"
-                           class="urlbar-input-box"
-                           flex="1"
-                           role="combobox"
-                           aria-owns="urlbar-results">
+                            class="urlbar-input-box"
+                            flex="1"
+                            role="combobox"
+                            aria-owns="urlbar-results">
               <html:input id="urlbar-scheme"
                           required="required"/>
               <html:input id="urlbar-input"
@@ -330,10 +342,15 @@
                           data-l10n-id="urlbar-placeholder"
                           data-l10n-attrs="placeholder"/>
             </moz-input-box>
-            <image class="urlbar-icon urlbar-go-button"
+            <hbox id="urlbar-revert-button-container">
+              <toolbartabstop/>
+              <image class="urlbar-icon urlbar-revert-button"
+                     role="button"
+                     data-l10n-id="urlbar-revert-button"/>
+            </hbox>
+            <image id="urlbar-go-button"
+                   class="urlbar-icon urlbar-go-button"
                    role="button"
-                   keyNav="false"
-                   onclick="gURLBar.handleCommand(event);"
                    data-l10n-id="urlbar-go-button"/>
             <hbox id="page-action-buttons" context="pageActionContextMenu" align="center">
               <toolbartabstop/>
@@ -356,62 +373,52 @@
                     role="button"
                     data-l10n-id="reader-view-enter-button"
                     hidden="true"
-                    tooltip="dynamic-shortcut-tooltip"
-                    onclick="AboutReaderParent.buttonClick(event);">
+                    tooltip="dynamic-shortcut-tooltip">
                 <image id="reader-mode-button-icon"
                        class="urlbar-icon"/>
               </hbox>
               <hbox id="picture-in-picture-button"
                     class="urlbar-page-action"
                     role="button"
-                    hidden="true"
-                    onclick="PictureInPicture.toggleUrlbar(event)">
+                    hidden="true">
                 <image id="picture-in-picture-button-icon"
                        class="urlbar-icon"/>
+              </hbox>
+              <hbox id="taskbar-tabs-button"
+                    class="urlbar-page-action"
+                    role="button"
+                    data-l10n-id="taskbar-tab-urlbar-button-open"
+                    hidden="true">
+                <image class="urlbar-icon"/>
               </hbox>
               <hbox id="translations-button"
                     class="urlbar-page-action"
                     role="button"
                     data-l10n-id="urlbar-translations-button2"
-                    hidden="true"
-                    onclick="FullPageTranslationsPanel.open(event);"
-                    onkeypress="FullPageTranslationsPanel.open(event);">
+                    hidden="true">
                 <image class="urlbar-icon" id="translations-button-icon" />
                 <image class="urlbar-icon" id="translations-button-circle-arrows" />
                 <html:span id="translations-button-locale" aria-hidden="true" />
               </hbox>
-              <hbox id="shopping-sidebar-button"
-                  class="urlbar-page-action"
-                  role="button"
-                  data-l10n-id="shopping-sidebar-open-button2"
-                  hidden="true"
-                  onclick="ShoppingSidebarParent.urlbarButtonClick(event);">
-                <image id="shopping-sidebar-button-icon"
-                       class="urlbar-icon"/>
-              </hbox>
               <toolbarbutton id="urlbar-zoom-button"
-                     onclick="FullZoom.resetFromURLBar(event);"
                      tooltip="dynamic-shortcut-tooltip"
                      hidden="true"/>
               <hbox id="pageActionButton"
                     class="urlbar-page-action"
                     role="button"
-                    data-l10n-id="urlbar-page-action-button"
-                    onmousedown="BrowserPageActions.mainButtonClicked(event);"
-                    onkeypress="BrowserPageActions.mainButtonClicked(event);">
+                    data-l10n-id="urlbar-page-action-button">
                 <image class="urlbar-icon"/>
               </hbox>
               <hbox id="star-button-box"
                     hidden="true"
                     role="button"
-                    class="urlbar-page-action"
-                    onclick="BrowserPageActions.doCommandForAction(PageActions.actionForID('bookmark'), event, this);">
+                    class="urlbar-page-action">
                 <image id="star-button"
                        class="urlbar-icon"/>
               </hbox>
             </hbox>
           </hbox>
-        </hbox>
+        </html:div>
         <toolbartabstop/>
       </toolbaritem>
 
@@ -422,11 +429,6 @@
                      delegatesanchor="true"
                      badged="true"
                      key="key_openDownloads"
-                     onmousedown="DownloadsIndicatorView.onCommand(event);"
-                     onkeypress="DownloadsIndicatorView.onCommand(event);"
-                     ondrop="DownloadsIndicatorView.onDrop(event);"
-                     ondragover="DownloadsIndicatorView.onDragOver(event);"
-                     ondragenter="DownloadsIndicatorView.onDragOver(event);"
                      data-l10n-id="navbar-downloads"
                      removable="true"
                      overflows="false"
@@ -451,16 +453,17 @@
       <toolbarbutton id="fxa-toolbar-menu-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                      badged="true"
                      delegatesanchor="true"
-                     onmousedown="gSync.toggleAccountPanel(this, event)"
-                     onkeypress="gSync.toggleAccountPanel(this, event)"
                      consumeanchor="fxa-toolbar-menu-button"
                      closemenu="none"
                      data-l10n-id="toolbar-button-account"
                      cui-areatype="toolbar"
                      removable="true">
-                     <vbox>
-                      <image id="fxa-avatar-image"/>
-                     </vbox>
+                    <hbox align="center">
+                      <div class="avatar-container">
+                        <image id="fxa-avatar-image"/>
+                      </div>
+                      <label id="fxa-avatar-label" hidden="true"/>
+                  </hbox>
       </toolbarbutton>
 
       <toolbarbutton id="unified-extensions-button"
@@ -468,8 +471,6 @@
                      delegatesanchor="true"
                      data-l10n-id="unified-extensions-button"
                      hidden="true"
-                     onkeypress="gUnifiedExtensions.togglePanel(event)"
-                     onmousedown="gUnifiedExtensions.togglePanel(event)"
                      overflows="false"
                      removable="false"/>
     </hbox>
@@ -486,14 +487,6 @@
 
     <toolbaritem id="PanelUI-button"
                  removable="false">
-      <toolbarbutton id="ion-button"
-                     class="toolbarbutton-1"
-                     delegatesanchor="true"
-                     hidden="true"
-                     badged="true"
-                     tooltiptext="Ion"
-                     onmousedown="switchToTabHavingURI('about:ion', true);"
-                     onkeypress="switchToTabHavingURI('about:ion', true);"/>
       <toolbarbutton id="PanelUI-menu-button"
                      class="toolbarbutton-1"
                      delegatesanchor="true"
@@ -501,6 +494,10 @@
                      consumeanchor="PanelUI-button"
                      data-l10n-id="appmenu-menu-button-closed2"/>
     </toolbaritem>
+    <hbox class="titlebar-spacer" type="post-tabs"/>
+#include private-browsing-indicator.inc.xhtml
+    <toolbarbutton class="content-analysis-indicator toolbarbutton-1 content-analysis-indicator-icon"/>
+#include titlebar-items.inc.xhtml
   </toolbar>
 
   <toolbar id="PersonalToolbar"
@@ -514,9 +511,7 @@
 
     <hbox id="personal-toolbar-empty" skipintoolbarset="true" removable="false" hidden="true" role="alert">
       <description id="personal-toolbar-empty-description"
-                   data-l10n-id="bookmarks-toolbar-empty-message"
-                   onclick="BookmarkingUI.openLibraryIfLinkClicked(event);"
-                   onkeydown="BookmarkingUI.openLibraryIfLinkClicked(event);">
+                   data-l10n-id="bookmarks-toolbar-empty-message">
         <html:a data-l10n-name="manage-bookmarks" class="text-link" tabindex="0" role="link"/>
       </description>
     </hbox>
@@ -532,14 +527,10 @@
                      class="toolbarbutton-1"
                      delegatesanchor="true"
                      flex="1"
-                     data-l10n-id="bookmarks-toolbar-placeholder-button"
-                     oncommand="PlacesToolbarHelper.onPlaceholderCommand();"/>
+                     data-l10n-id="bookmarks-toolbar-placeholder-button"/>
       <hbox flex="1"
             id="PlacesToolbar"
             context="placesContext"
-            onmouseup="BookmarksEventHandler.onMouseUp(event);"
-            onclick="BookmarksEventHandler.onClick(event, this._placesView);"
-            oncommand="BookmarksEventHandler.onCommand(event);"
             tooltip="bhTooltip"
             popupsinherittooltip="true">
         <hbox id="PlacesToolbarDropIndicatorHolder" align="center" collapsed="true">
@@ -560,40 +551,30 @@
                       placespopup="true"
                       class="toolbar-menupopup"
                       tooltip="bhTooltip" popupsinherittooltip="true"
-                      context="placesContext"
-                      onpopupshowing="document.getElementById('PlacesToolbar')
-                                              ._placesView._onChevronPopupShowing(event);"/>
+                      context="placesContext"/>
         </toolbarbutton>
       </hbox>
     </toolbaritem>
   </toolbar>
-
-  <html:template id="tab-notification-deck-template">
-    <html:named-deck id="tab-notification-deck"></html:named-deck>
-  </html:template>
-
-
+  <toolbar id="notifications-toolbar" class="browser-toolbar" nowindowdrag="">
+    <!-- NOTE: This gets instantiated in-place -->
+    <html:template id="tab-notification-deck-template">
+      <html:named-deck id="tab-notification-deck"></html:named-deck>
+    </html:template>
+  </toolbar>
   <html:template id="BrowserToolbarPalette">
     <toolbarbutton id="import-button"
                    class="toolbarbutton-1 chromeclass-toolbar-additional"
-                   oncommand="MigrationUtils.showMigrationWizard(window, { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.BOOKMARKS_TOOLBAR });"
                    data-l10n-id="browser-import-button2"/>
 
     <toolbarbutton id="new-window-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                    data-l10n-id="appmenuitem-new-window"
                    command="cmd_newNavigator"
-                   tooltip="dynamic-shortcut-tooltip"
-                   ondrop="newWindowButtonObserver.onDrop(event)"
-                   ondragover="newWindowButtonObserver.onDragOver(event)"
-                   ondragenter="newWindowButtonObserver.onDragOver(event)"/>
-
-
-    <toolbarbutton id="new-identity-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                    data-l10n-id="toolbar-new-identity"/>
-
+                   tooltip="dynamic-shortcut-tooltip"/>
 
     <toolbarbutton id="fullscreen-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                    observes="View:FullScreen"
+                   command="View:FullScreen"
                    type="checkbox"
                    data-l10n-id="appmenuitem-fullscreen"
                    tooltip="dynamic-shortcut-tooltip"/>
@@ -603,12 +584,7 @@
                    delegatesanchor="true"
                    type="menu"
                    data-l10n-id="bookmarks-menu-button"
-                   tooltip="dynamic-shortcut-tooltip"
-                   ondragenter="PlacesMenuDNDHandler.onDragEnter(event);"
-                   ondragover="PlacesMenuDNDHandler.onDragOver(event);"
-                   ondragleave="PlacesMenuDNDHandler.onDragLeave(event);"
-                   ondrop="PlacesMenuDNDHandler.onDrop(event);"
-                   oncommand="BookmarkingUI.onCommand(event);">
+                   tooltip="dynamic-shortcut-tooltip">
       <menupopup id="BMB_bookmarksPopup"
                  is="places-popup-arrow"
                  class="toolbar-menupopup animatable-menupopup"
@@ -616,21 +592,13 @@
                  context="placesContext"
                  openInTabs="children"
                  side="top"
-                 onmouseup="BookmarksEventHandler.onMouseUp(event);"
-                 oncommand="BookmarksEventHandler.onCommand(event);"
-                 onclick="BookmarksEventHandler.onClick(event, this.parentNode._placesView);"
-                 onpopupshowing="BookmarkingUI.onPopupShowing(event);
-                                 if (!this.parentNode._placesView)
-                                   new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.menuGuid}`);"
                  tooltip="bhTooltip" popupsinherittooltip="true">
         <menuitem id="BMB_viewBookmarksSidebar"
                   data-l10n-id="bookmarks-tools-sidebar-visibility"
                   data-l10n-args='{ "isVisible": false }'
-                  oncommand="SidebarController.toggle('viewBookmarksSidebar');"
                   key="viewBookmarksSidebarKb"/>
         <menuitem id="BMB_searchBookmarks"
-                  data-l10n-id="bookmarks-search"
-                  oncommand="PlacesCommandHook.searchBookmarks();"/>
+                  data-l10n-id="bookmarks-search"/>
         <!-- NB: temporary solution for bug 985024, this should go away soon. -->
         <menuitem id="BMB_bookmarksShowAllTop"
                   data-l10n-id="bookmarks-manage-bookmarks"
@@ -644,13 +612,10 @@
           <menupopup id="BMB_bookmarksToolbarPopup"
                      is="places-popup"
                      placespopup="true"
-                     context="placesContext"
-                     onpopupshowing="if (!this.parentNode._placesView)
-                                       new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.toolbarGuid}`);">
+                     context="placesContext">
             <menuitem id="BMB_viewBookmarksToolbar"
                       data-l10n-id="bookmarks-tools-toolbar-visibility-menuitem"
-                      data-l10n-args='{ "isVisible": false }'
-                      oncommand="BookmarkingUI.toggleBookmarksToolbar('bookmarks-widget');"/>
+                      data-l10n-args='{ "isVisible": false }'/>
             <menuseparator/>
             <!-- Bookmarks toolbar items -->
           </menupopup>
@@ -662,9 +627,7 @@
           <menupopup id="BMB_unsortedBookmarksPopup"
                      is="places-popup"
                      placespopup="true"
-                     context="placesContext"
-                     onpopupshowing="if (!this.parentNode._placesView)
-                                       new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.unfiledGuid}`);"/>
+                     context="placesContext"/>
         </menu>
         <menu id="BMB_mobileBookmarks"
               class="menu-iconic bookmark-item subviewbutton"
@@ -674,9 +637,7 @@
           <menupopup id="BMB_mobileBookmarksPopup"
                      is="places-popup"
                      placespopup="true"
-                     context="placesContext"
-                     onpopupshowing="if (!this.parentNode._placesView)
-                                       new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.mobileGuid}`);"/>
+                     context="placesContext"/>
         </menu>
 
         <menuseparator/>
@@ -705,18 +666,12 @@
     <toolbarbutton id="home-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                    removable="true"
                    data-l10n-id="navbar-home"
-                   ondragover="homeButtonObserver.onDragOver(event)"
-                   ondragenter="homeButtonObserver.onDragOver(event)"
-                   ondrop="homeButtonObserver.onDrop(event)"
                    key="goHome"
-                   onclick="BrowserCommands.home(event);"
                    cui-areatype="toolbar"/>
 
     <toolbarbutton id="library-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                    removable="true"
                    delegatesanchor="true"
-                   onmousedown="PanelUI.showSubView('appMenu-libraryView', this, event);"
-                   onkeypress="PanelUI.showSubView('appMenu-libraryView', this, event);"
                    closemenu="none"
                    cui-areatype="toolbar"
                    data-l10n-id="navbar-library"/>

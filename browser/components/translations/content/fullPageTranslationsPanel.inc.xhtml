@@ -8,10 +8,7 @@
        type="arrow"
        role="alertdialog"
        noautofocus="true"
-       orient="vertical"
-       onclick="FullPageTranslationsPanel.handlePanelButtonEvent(event)"
-       onpopupshown="FullPageTranslationsPanel.handlePanelPopupShownEvent(event)"
-       onpopuphidden="FullPageTranslationsPanel.handlePanelPopupHiddenEvent(event)">
+       orient="vertical">
   <panelmultiview id="full-page-translations-panel-multiview"
                   mainViewId="full-page-translations-panel-view-default">
     <panelview id="full-page-translations-panel-view-default"
@@ -30,8 +27,7 @@
         <toolbarbutton id="translations-panel-settings"
                        class="panel-info-button translations-panel-settings-gear-icon"
                        data-l10n-id="translations-panel-settings-button"
-                       closemenu="none"
-                       oncommand="FullPageTranslationsPanel.openSettingsPopup(this)"/>
+                       closemenu="none"/>
       </hbox>
 
       <vbox class="translations-panel-content">
@@ -40,8 +36,7 @@
           <html:a id="full-page-translations-panel-intro-learn-more-link"
                   is="moz-support-link"
                   data-l10n-id="translations-panel-learn-more-link"
-                  support-page="website-translation"
-                  onclick="FullPageTranslationsPanel.onLearnMoreLink()" />
+                  support-page="website-translation" />
         </html:div>
         <vbox id="full-page-translations-panel-lang-selection">
           <label data-l10n-id="translations-panel-from-label" id="full-page-translations-panel-from-label"></label>
@@ -49,8 +44,7 @@
                     flex="1"
                     value="detect"
                     size="large"
-                    aria-labelledby="full-page-translations-panel-from-label"
-                    oncommand="FullPageTranslationsPanel.onChangeFromLanguage(event)">
+                    aria-labelledby="full-page-translations-panel-from-label">
             <menupopup id="full-page-translations-panel-from-menupopup"
                       class="translations-panel-language-menupopup-from">
               <menuitem data-l10n-id="translations-panel-choose-language" value=""></menuitem>
@@ -63,8 +57,7 @@
                     flex="1"
                     value="detect"
                     size="large"
-                    aria-labelledby="full-page-translations-panel-to-label"
-                    oncommand="FullPageTranslationsPanel.onChangeToLanguage(event)">
+                    aria-labelledby="full-page-translations-panel-to-label">
             <menupopup id="full-page-translations-panel-to-menupopup"
                       class="translations-panel-language-menupopup-to">
               <menuitem data-l10n-id="translations-panel-choose-language" value=""></menuitem>
@@ -88,17 +81,14 @@
       <html:moz-button-group class="panel-footer translations-panel-footer translations-panel-button-group">
         <button id="full-page-translations-panel-restore-button"
                 class="footer-button"
-                oncommand="FullPageTranslationsPanel.onRestore(event);"
                 data-l10n-id="translations-panel-restore-button">
         </button>
         <button id="full-page-translations-panel-cancel"
                 class="footer-button"
-                oncommand="FullPageTranslationsPanel.onCancel(event);"
                 data-l10n-id="translations-panel-translate-cancel">
         </button>
         <button id="full-page-translations-panel-translate"
                 class="footer-button"
-                oncommand="FullPageTranslationsPanel.onTranslate(event);"
                 data-l10n-id="translations-panel-translate-button"
                 default="true">
         </button>
@@ -123,20 +113,17 @@
           <html:a id="full-page-translations-panel-unsupported-learn-more-link"
                   is="moz-support-link"
                   data-l10n-id="translations-panel-learn-more-link"
-                  support-page="website-translation"
-                  onclick="FullPageTranslationsPanel.onLearnMoreLink()" />
+                  support-page="website-translation" />
         </html:div>
       </vbox>
 
       <html:moz-button-group class="panel-footer translations-panel-footer">
         <button id="full-page-translations-panel-change-source-language"
                 class="footer-button"
-                oncommand="FullPageTranslationsPanel.onChangeSourceLanguage(event);"
                 data-l10n-id="translations-panel-error-change-button">
         </button>
         <button id="full-page-translations-panel-dismiss-error"
                 class="footer-button"
-                oncommand="FullPageTranslationsPanel.onCancel(event);"
                 data-l10n-id="translations-panel-error-dismiss-button"
                 default="true">
         </button>

@@ -6,26 +6,30 @@
 const { AddonTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
 );
-
+const { SearchTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/SearchTestUtils.sys.mjs"
+);
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
 
-AddonTestUtils.initMochitest(this);
+SearchTestUtils.init(this);
 
 const TELEMETRY_EVENTS_FILTERS = {
   category: "addonsSearchDetection",
   method: "etld_change",
 };
 
-// The search-detection built-in add-on registers dynamic events.
-const TELEMETRY_TEST_UTILS_OPTIONS = { clear: true, process: "dynamic" };
+// The search-detection built-in add-on records events in the parent process.
+const TELEMETRY_TEST_UTILS_OPTIONS = { clear: true, process: "parent" };
 
 async function testClientSideRedirect({
   background,
   permissions,
   telemetryExpected = false,
+  redirectingAppProvidedEngine = false,
 }) {
+  Services.fog.testResetFOG();
   Services.telemetry.clearEvents();
 
   // Load an extension that does a client-side redirect. We expect this
@@ -51,7 +55,9 @@ async function testClientSideRedirect({
   await BrowserTestUtils.withNewTab(
     {
       gBrowser,
-      url: "https://example.com/search?q=babar",
+      url: redirectingAppProvidedEngine
+        ? "https://example.org/default?q=babar"
+        : "https://example.com/search?q=babar",
     },
     () => {}
   );
@@ -67,7 +73,9 @@ async function testClientSideRedirect({
             extra: {
               addonId,
               addonVersion,
-              from: "example.com",
+              from: redirectingAppProvidedEngine
+                ? "example.org"
+                : "example.com",
               to: "mochi.test",
             },
           },
@@ -76,43 +84,48 @@ async function testClientSideRedirect({
     TELEMETRY_EVENTS_FILTERS,
     TELEMETRY_TEST_UTILS_OPTIONS
   );
+
+  let events = Glean.addonsSearchDetection.etldChangeWebrequest.testGetValue();
+  if (!telemetryExpected) {
+    Assert.equal(null, events);
+  } else {
+    Assert.equal(1, events.length);
+    Assert.equal("extension", events[0].extra.value);
+    Assert.equal(addonId, events[0].extra.addonId);
+    Assert.equal(addonVersion, events[0].extra.addonVersion);
+    Assert.equal(
+      redirectingAppProvidedEngine ? "example.org" : "example.com",
+      events[0].extra.from
+    );
+    Assert.equal("mochi.test", events[0].extra.to);
+  }
 }
 
 add_setup(async function () {
   const searchEngineName = "test search engine";
 
-  let searchEngine;
-
-  // This cleanup function has to be registered before the one registered
-  // internally by loadExtension, otherwise it is going to trigger a test
-  // failure (because it will be called too late).
-  registerCleanupFunction(async () => {
-    await searchEngine.unload();
-    ok(
-      !Services.search.getEngineByName(searchEngineName),
-      "test search engine unregistered"
-    );
-  });
-
-  searchEngine = ExtensionTestUtils.loadExtension({
-    manifest: {
-      chrome_settings_overrides: {
-        search_provider: {
-          name: searchEngineName,
-          keyword: "test",
-          search_url: "https://example.com/?q={searchTerms}",
+  await SearchTestUtils.updateRemoteSettingsConfig([
+    {
+      identifier: "default",
+      base: {
+        urls: {
+          search: {
+            base: "https://example.org/default",
+            searchTermParamName: "q",
+          },
         },
       },
     },
-    // NOTE: the search extension needs to be installed through the
-    // AddonManager to be correctly unregistered when it is uninstalled.
-    useAddonManager: "temporary",
+  ]);
+
+  await SearchTestUtils.installSearchExtension({
+    name: searchEngineName,
+    keyword: "test",
+    search_url: "https://example.com/?q={searchTerms}",
   });
 
-  await searchEngine.startup();
-  await AddonTestUtils.waitForSearchProviderStartup(searchEngine);
-  ok(
-    Services.search.getEngineByName(searchEngineName),
+  Assert.ok(
+    !!Services.search.getEngineByName(searchEngineName),
     "test search engine registered"
   );
 });
@@ -133,6 +146,27 @@ add_task(function test_onBeforeRequest() {
       browser.test.sendMessage("ready");
     },
     permissions: ["webRequest", "webRequestBlocking", "*://example.com/*"],
+    telemetryExpected: true,
+  });
+});
+
+add_task(function test_onBeforeRequest_appProvidedEngine() {
+  return testClientSideRedirect({
+    background() {
+      browser.webRequest.onBeforeRequest.addListener(
+        () => {
+          return {
+            redirectUrl: "http://mochi.test:8888/",
+          };
+        },
+        { urls: ["*://example.org/*"] },
+        ["blocking"]
+      );
+
+      browser.test.sendMessage("ready");
+    },
+    permissions: ["webRequest", "webRequestBlocking", "*://example.org/*"],
+    redirectingAppProvidedEngine: true,
     telemetryExpected: true,
   });
 });
@@ -176,6 +210,27 @@ add_task(function test_onHeadersReceived() {
       browser.test.sendMessage("ready");
     },
     permissions: ["webRequest", "webRequestBlocking", "*://example.com/*"],
+    telemetryExpected: true,
+  });
+});
+
+add_task(function test_onHeadersReceived_appProvidedEngine() {
+  return testClientSideRedirect({
+    background() {
+      browser.webRequest.onHeadersReceived.addListener(
+        () => {
+          return {
+            redirectUrl: "http://mochi.test:8888/",
+          };
+        },
+        { urls: ["*://example.org/*"], types: ["main_frame"] },
+        ["blocking"]
+      );
+
+      browser.test.sendMessage("ready");
+    },
+    permissions: ["webRequest", "webRequestBlocking", "*://example.org/*"],
+    redirectingAppProvidedEngine: true,
     telemetryExpected: true,
   });
 });

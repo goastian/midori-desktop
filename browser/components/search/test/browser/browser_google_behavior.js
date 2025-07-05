@@ -120,11 +120,11 @@ async function testSearchEngine(engineDetails) {
       run() {
         // Simulate a contextmenu search
         // FIXME: This is a bit "low-level"...
-        BrowserSearch._loadSearch(
+        SearchUIUtils._loadSearch(
+          window,
           "foo",
           false,
           false,
-          "contextmenu",
           Services.scriptSecurityManager.getSystemPrincipal()
         );
       },
@@ -154,13 +154,13 @@ async function testSearchEngine(engineDetails) {
         await gCUITestUtils.addSearchBar();
       },
       run() {
-        let sb = BrowserSearch.searchBar;
+        let sb = document.getElementById("searchbar");
         sb.focus();
         sb.value = "foo";
         EventUtils.synthesizeKey("KEY_Enter");
       },
       postTest() {
-        BrowserSearch.searchBar.value = "";
+        document.getElementById("searchbar").value = "";
         gCUITestUtils.removeSearchBar();
       },
     },
@@ -193,7 +193,7 @@ async function testSearchEngine(engineDetails) {
     if (test.preTest) {
       await test.preTest(tab);
     }
-    
+
     let googleUrl = "https://www.google.com/search?client=" + test.code;
     if (SearchUtils.MODIFIED_APP_CHANNEL == "esr") {
       googleUrl += "&channel=entpr";

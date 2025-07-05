@@ -10,19 +10,12 @@ const IDLE_TIMEOUT_SECONDS = 5 * 60;
 
 // Prefs
 const PREF_TASKBAR_BRANCH = "browser.taskbar.lists.";
-const PREF_TASKBAR_LEGACY_BACKEND = "legacyBackend";
 const PREF_TASKBAR_ENABLED = "enabled";
 const PREF_TASKBAR_ITEMCOUNT = "maxListItemCount";
 const PREF_TASKBAR_FREQUENT = "frequent.enabled";
 const PREF_TASKBAR_RECENT = "recent.enabled";
 const PREF_TASKBAR_TASKS = "tasks.enabled";
 const PREF_TASKBAR_REFRESH = "refreshInSeconds";
-
-// Hash keys for pendingStatements.
-const LIST_TYPE = {
-  FREQUENT: 0,
-  RECENT: 1,
-};
 
 /**
  * Exports
@@ -42,6 +35,15 @@ ChromeUtils.defineLazyGetter(lazy, "_stringBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/taskbar.properties"
   );
+});
+
+ChromeUtils.defineLazyGetter(lazy, "logConsole", function () {
+  return console.createInstance({
+    prefix: "WindowsJumpLists",
+    maxLogLevel: Services.prefs.getBoolPref("browser.taskbar.log", false)
+      ? "Debug"
+      : "Warn",
+  });
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -137,7 +139,6 @@ var Builder = class {
   constructor(builder) {
     this._builder = builder;
     this._tasks = null;
-    this._pendingStatements = {};
     this._shuttingDown = false;
     // These are ultimately controlled by prefs, so we disable
     // everything until is read from there
@@ -242,30 +243,29 @@ var Builder = class {
           }
         );
 
-        customDescriptions = rows.map(row => {
+        for (let row of rows) {
           let uri = Services.io.newURI(row.getResultByName("url"));
           let iconPath = "";
           try {
-            iconPath = this._builder.obtainAndCacheFavicon(uri);
+            iconPath = await this._builder.obtainAndCacheFaviconAsync(uri);
           } catch (e) {
-            // obtainAndCacheFavicon may throw NS_ERROR_NOT_AVAILABLE if the
-            // icon doesn't yet exist on the disk, but has been requested.
-            // That's not fatal, so we'll just let it pass. Any other errors,
-            // however, we'll abort on.
-            if (e.result != Cr.NS_ERROR_NOT_AVAILABLE) {
-              throw e;
-            }
+            // obtainAndCacheFaviconAsync may throw NS_ERROR_NOT_AVAILABLE if
+            // the icon doesn't yet exist on the disk, but has been requested.
+            // It might also throw an exception if there was a problem fetching
+            // the favicon from the database and writing it to the disk. Either
+            // case is non-fatal, so we ignore them here.
+            lazy.logConsole.warn("Failed to fetch favicon for ", uri.spec, e);
           }
 
-          return {
+          customDescriptions.push({
             title: row.getResultByName("title"),
             description: row.getResultByName("title"),
             path: selfPath,
             arguments: row.getResultByName("url"),
             fallbackIconIndex: 1,
             iconPath,
-          };
-        });
+          });
+        }
 
         customTitle = _getString("taskbar.frequent.label");
       }
@@ -284,286 +284,8 @@ var Builder = class {
     }
   }
 
-  /**
-   * Legacy list building
-   *
-   * @note Async builders must add their mozIStoragePendingStatement to
-   *       _pendingStatements object, using a different LIST_TYPE entry for
-   *       each statement. Once finished they must remove it and call
-   *       commitBuild().  When there will be no more _pendingStatements,
-   *       commitBuild() will commit for real.
-   */
-
-  _hasPendingStatements() {
-    return !!Object.keys(this._pendingStatements).length;
-  }
-
-  async buildListLegacy() {
-    if (!(this._builder instanceof Ci.nsILegacyJumpListBuilder)) {
-      console.error(
-        "Expected nsILegacyJumpListBuilder. The builder is of the wrong type."
-      );
-      return;
-    }
-
-    if (
-      (this._showFrequent || this._showRecent) &&
-      this._hasPendingStatements()
-    ) {
-      // We were requested to update the list while another update was in
-      // progress, this could happen at shutdown, idle or privatebrowsing.
-      // Abort the current list building.
-      for (let listType in this._pendingStatements) {
-        this._pendingStatements[listType].cancel();
-        delete this._pendingStatements[listType];
-      }
-      this._builder.abortListBuild();
-    }
-
-    // anything to build?
-    if (!this._showFrequent && !this._showRecent && !this._showTasks) {
-      // don't leave the last list hanging on the taskbar.
-      this._deleteActiveJumpList();
-      return;
-    }
-
-    await this._startBuild();
-
-    if (this._showTasks) {
-      this._buildTasks();
-    }
-
-    // Space for frequent items takes priority over recent.
-    if (this._showFrequent) {
-      this._buildFrequent();
-    }
-
-    if (this._showRecent) {
-      this._buildRecent();
-    }
-
-    this._commitBuild();
-  }
-
-  /**
-   * Taskbar api wrappers
-   */
-
-  async _startBuild() {
-    this._builder.abortListBuild();
-    let URIsToRemove = await this._builder.initListBuild();
-    if (URIsToRemove.length) {
-      // Prior to building, delete removed items from history.
-      this._clearHistory(URIsToRemove);
-    }
-  }
-
-  _commitBuild() {
-    if (
-      (this._showFrequent || this._showRecent) &&
-      this._hasPendingStatements()
-    ) {
-      return;
-    }
-
-    this._builder.commitListBuild(succeed => {
-      if (!succeed) {
-        this._builder.abortListBuild();
-      }
-    });
-  }
-
-  _buildTasks() {
-    var items = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
-    this._tasks.forEach(function (task) {
-      if (
-        (this._shuttingDown && !task.close) ||
-        (!this._shuttingDown && !task.open)
-      ) {
-        return;
-      }
-      var item = this._getHandlerAppItem(
-        task.title,
-        task.description,
-        task.args,
-        task.iconIndex,
-        null
-      );
-      items.appendElement(item);
-    }, this);
-
-    if (items.length) {
-      this._builder.addListToBuild(
-        this._builder.JUMPLIST_CATEGORY_TASKS,
-        items
-      );
-    }
-  }
-
-  _buildCustom(title, items) {
-    if (items.length) {
-      this._builder.addListToBuild(
-        this._builder.JUMPLIST_CATEGORY_CUSTOMLIST,
-        items,
-        title
-      );
-    }
-  }
-
-  _buildFrequent() {
-    // Windows supports default frequent and recent lists,
-    // but those depend on internal windows visit tracking
-    // which we don't populate. So we build our own custom
-    // frequent and recent lists using our nav history data.
-
-    var items = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
-    // track frequent items so that we don't add them to
-    // the recent list.
-    this._frequentHashList = [];
-
-    this._pendingStatements[LIST_TYPE.FREQUENT] = this._getHistoryResults(
-      Ci.nsINavHistoryQueryOptions.SORT_BY_VISITCOUNT_DESCENDING,
-      this._maxItemCount,
-      function (aResult) {
-        if (!aResult) {
-          delete this._pendingStatements[LIST_TYPE.FREQUENT];
-          // The are no more results, build the list.
-          this._buildCustom(_getString("taskbar.frequent.label"), items);
-          this._commitBuild();
-          return;
-        }
-
-        let title = aResult.title || aResult.uri;
-        let faviconPageUri = Services.io.newURI(aResult.uri);
-        let shortcut = this._getHandlerAppItem(
-          title,
-          title,
-          aResult.uri,
-          1,
-          faviconPageUri
-        );
-        items.appendElement(shortcut);
-        this._frequentHashList.push(aResult.uri);
-      },
-      this
-    );
-  }
-
-  _buildRecent() {
-    var items = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
-    // Frequent items will be skipped, so we select a double amount of
-    // entries and stop fetching results at _maxItemCount.
-    var count = 0;
-
-    this._pendingStatements[LIST_TYPE.RECENT] = this._getHistoryResults(
-      Ci.nsINavHistoryQueryOptions.SORT_BY_DATE_DESCENDING,
-      this._maxItemCount * 2,
-      function (aResult) {
-        if (!aResult) {
-          // The are no more results, build the list.
-          this._buildCustom(_getString("taskbar.recent.label"), items);
-          delete this._pendingStatements[LIST_TYPE.RECENT];
-          this._commitBuild();
-          return;
-        }
-
-        if (count >= this._maxItemCount) {
-          return;
-        }
-
-        // Do not add items to recent that have already been added to frequent.
-        if (
-          this._frequentHashList &&
-          this._frequentHashList.includes(aResult.uri)
-        ) {
-          return;
-        }
-
-        let title = aResult.title || aResult.uri;
-        let faviconPageUri = Services.io.newURI(aResult.uri);
-        let shortcut = this._getHandlerAppItem(
-          title,
-          title,
-          aResult.uri,
-          1,
-          faviconPageUri
-        );
-        items.appendElement(shortcut);
-        count++;
-      },
-      this
-    );
-  }
-
   _deleteActiveJumpList() {
-    if (this._builder instanceof Ci.nsIJumpListBuilder) {
-      this._builder.clearJumpList();
-    } else {
-      this._builder.deleteActiveList();
-    }
-  }
-
-  /**
-   * Jump list item creation helpers
-   */
-
-  _getHandlerAppItem(name, description, args, iconIndex, faviconPageUri) {
-    var file = Services.dirsvc.get("XREExeF", Ci.nsIFile);
-
-    var handlerApp = Cc[
-      "@mozilla.org/uriloader/local-handler-app;1"
-    ].createInstance(Ci.nsILocalHandlerApp);
-    handlerApp.executable = file;
-    // handlers default to the leaf name if a name is not specified
-    if (name && name.length) {
-      handlerApp.name = name;
-    }
-    handlerApp.detailedDescription = description;
-    handlerApp.appendParameter(args);
-
-    var item = Cc[
-      "@mozilla.org/windows-legacyjumplistshortcut;1"
-    ].createInstance(Ci.nsILegacyJumpListShortcut);
-    item.app = handlerApp;
-    item.iconIndex = iconIndex;
-    item.faviconPageUri = faviconPageUri;
-    return item;
-  }
-
-  /**
-   * Nav history helpers
-   */
-
-  _getHistoryResults(aSortingMode, aLimit, aCallback, aScope) {
-    var options = lazy.PlacesUtils.history.getNewQueryOptions();
-    options.maxResults = aLimit;
-    options.sortingMode = aSortingMode;
-    var query = lazy.PlacesUtils.history.getNewQuery();
-
-    // Return the pending statement to the caller, to allow cancelation.
-    return lazy.PlacesUtils.history.asyncExecuteLegacyQuery(query, options, {
-      handleResult(aResultSet) {
-        for (let row; (row = aResultSet.getNextRow()); ) {
-          try {
-            aCallback.call(aScope, {
-              uri: row.getResultByIndex(1),
-              title: row.getResultByIndex(2),
-            });
-          } catch (e) {}
-        }
-      },
-      handleError(aError) {
-        console.error(
-          "Async execution error (",
-          aError.result,
-          "): ",
-          aError.message
-        );
-      },
-      handleCompletion() {
-        aCallback.call(aScope, null);
-      },
-    });
+    this._builder.clearJumpList();
   }
 
   /**
@@ -584,14 +306,7 @@ var Builder = class {
    */
   _clearHistory(uriSpecsToRemove) {
     let URIsToRemove = uriSpecsToRemove
-      .map(spec => {
-        try {
-          // in case we get a bad uri
-          return Services.io.newURI(spec);
-        } catch (e) {
-          return null;
-        }
-      })
+      .map(spec => URL.parse(spec)?.URI)
       .filter(uri => !!uri);
 
     if (URIsToRemove.length) {
@@ -607,21 +322,19 @@ export var WinTaskbarJumpList = {
   _builder: null,
   _pbBuilder: null,
   _builtPb: false,
+  // Is showing jump lists currently blocked, such as when waiting for the user
+  // to interact with the preonboarding modal?
+  _blocked: false,
   _shuttingDown: false,
-  _useLegacyBackend: true,
 
   /**
    * Startup, shutdown, and update
    */
 
   startup: async function WTBJL_startup() {
-    // We do a one-time startup read of the backend pref here because
-    // we don't want to consider any bugs that occur if the pref is flipped
-    // at runtime. We want the pref flip to only take effect on a restart.
-    this._useLegacyBackend = lazy._prefs.getBoolPref(
-      PREF_TASKBAR_LEGACY_BACKEND
-    );
-
+    if (!lazy._taskbarService.available) {
+      return;
+    }
     // exit if initting the taskbar failed for some reason.
     if (!(await this._initTaskbar())) {
       return;
@@ -642,11 +355,15 @@ export var WinTaskbarJumpList = {
 
     // jump list refresh timer
     this._updateTimer();
+
+    if (this._blocked) {
+      this._builder._deleteActiveJumpList();
+    }
   },
 
   update: function WTBJL_update() {
-    // are we disabled via prefs? don't do anything!
-    if (!this._enabled) {
+    // are we disabled via prefs or currently blocked? don't do anything!
+    if (!this._enabled || this._blocked) {
       return;
     }
 
@@ -654,26 +371,14 @@ export var WinTaskbarJumpList = {
       return;
     }
 
-    if (this._useLegacyBackend) {
-      // we only need to do this once, but we do it here
-      // to avoid main thread io on startup
-      if (!this._builtPb) {
-        this._pbBuilder.buildListLegacy();
-        this._builtPb = true;
-      }
+    this._builder.buildList();
 
-      // do what we came here to do, update the taskbar jumplist
-      this._builder.buildListLegacy();
-    } else {
-      this._builder.buildList();
-
-      // We only ever need to do this once because the private browsing window
-      // jumplist only ever shows the static task list, which never changes,
-      // so it doesn't need to be updated over time.
-      if (!this._builtPb) {
-        this._pbBuilder.buildList();
-        this._builtPb = true;
-      }
+    // We only ever need to do this once because the private browsing window
+    // jumplist only ever shows the static task list, which never changes,
+    // so it doesn't need to be updated over time.
+    if (!this._builtPb) {
+      this._pbBuilder.buildList();
+      this._builtPb = true;
     }
   },
 
@@ -711,30 +416,17 @@ export var WinTaskbarJumpList = {
     let builder;
     let pbBuilder;
 
-    if (this._useLegacyBackend) {
-      builder = lazy._taskbarService.createLegacyJumpListBuilder(false);
-      pbBuilder = lazy._taskbarService.createLegacyJumpListBuilder(true);
-      if (
-        !builder ||
-        !builder.available ||
-        !pbBuilder ||
-        !pbBuilder.available
-      ) {
-        return false;
-      }
-    } else {
-      builder = lazy._taskbarService.createJumpListBuilder(false);
-      pbBuilder = lazy._taskbarService.createJumpListBuilder(true);
-      if (!builder || !pbBuilder) {
-        return false;
-      }
-      let [builderAvailable, pbBuilderAvailable] = await Promise.all([
-        builder.isAvailable(),
-        pbBuilder.isAvailable(),
-      ]);
-      if (!builderAvailable || !pbBuilderAvailable) {
-        return false;
-      }
+    builder = lazy._taskbarService.createJumpListBuilder(false);
+    pbBuilder = lazy._taskbarService.createJumpListBuilder(true);
+    if (!builder || !pbBuilder) {
+      return false;
+    }
+    let [builderAvailable, pbBuilderAvailable] = await Promise.all([
+      builder.isAvailable(),
+      pbBuilder.isAvailable(),
+    ]);
+    if (!builderAvailable || !pbBuilderAvailable) {
+      return false;
     }
 
     this._builder = new Builder(builder);
@@ -815,6 +507,23 @@ export var WinTaskbarJumpList = {
 
   name: "WinTaskbarJumpList",
 
+  blockJumpList: async function WTBJL_clearJumpList(unblockPromise) {
+    this._blocked = true;
+    if (unblockPromise) {
+      try {
+        await unblockPromise;
+      } catch (e) {
+        console.error("Unblock promise error, reinstating jump list: ", e);
+      }
+    }
+    this._unblockJumpList();
+  },
+
+  _unblockJumpList: function WTBJL_updateJumpList() {
+    this._blocked = false;
+    this.update();
+  },
+
   notify: function WTBJL_notify() {
     // Add idle observer on the first notification so it doesn't hit startup.
     this._updateIdleObserver();
@@ -827,7 +536,7 @@ export var WinTaskbarJumpList = {
     switch (aTopic) {
       case "nsPref:changed":
         if (this._enabled && !lazy._prefs.getBoolPref(PREF_TASKBAR_ENABLED)) {
-          this._deleteActiveJumpList();
+          this._builder._deleteActiveJumpList();
         }
         this._refreshPrefs();
         this._updateTimer();

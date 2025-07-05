@@ -112,24 +112,18 @@ export class ContextMenuChild extends JSWindowActorChild {
                   media.requestFullscreen();
                 }
                 break;
-              case "pictureinpicture":
-                if (!media.isCloningElementVisually) {
-                  Services.telemetry.keyedScalarAdd(
-                    "pictureinpicture.opened_method",
-                    "contextmenu",
-                    1
-                  );
-                }
+              case "pictureinpicture": {
                 let event = new this.contentWindow.CustomEvent(
                   "MozTogglePictureInPicture",
                   {
                     bubbles: true,
-                    detail: { reason: "contextMenu" },
+                    detail: { reason: "ContextMenu" },
                   },
                   this.contentWindow
                 );
                 media.dispatchEvent(event);
                 break;
+              }
             }
           }
         );
@@ -226,6 +220,37 @@ export class ContextMenuChild extends JSWindowActorChild {
         return Promise.resolve({ spec, title, postData, charset });
       }
 
+      case "ContextMenu:SearchFieldEngineData": {
+        let node = lazy.ContentDOMReference.resolve(
+          message.data.targetIdentifier
+        );
+        let charset = node.ownerDocument.characterSet;
+        let formBaseURI = Services.io.newURI(node.form.baseURI, charset);
+        let method = node.form.method.toUpperCase();
+
+        let formData = new FormData(node.form);
+        formData.set(node.name, "{searchTerms}");
+
+        let url = Services.io.newURI(
+          node.form.getAttribute("action"),
+          charset,
+          formBaseURI
+        ).spec;
+
+        if (
+          !node.name ||
+          (method != "POST" && method != "GET") ||
+          node.form.enctype != "application/x-www-form-urlencoded" ||
+          formData.values().some(v => typeof v != "string")
+        ) {
+          // This should never happen since these conditions are checked in
+          // `isTargetASearchEngineField`.
+          return Promise.reject("Cannot create search engine from this form.");
+        }
+
+        return Promise.resolve({ url, formData, charset, method });
+      }
+
       case "ContextMenu:SaveVideoFrameAsImage": {
         let video = lazy.ContentDOMReference.resolve(
           message.data.targetIdentifier
@@ -266,8 +291,10 @@ export class ContextMenuChild extends JSWindowActorChild {
             let ctx = canvas.getContext("2d");
             ctx.drawImage(target, 0, 0);
             let dataURL = canvas.toDataURL();
-            let url = new URL(target.ownerDocument.location.href).pathname;
-            let imageName = url.substr(url.lastIndexOf("/") + 1);
+            let url = target.ownerDocument.location;
+            let imageName = url.pathname.substr(
+              url.pathname.lastIndexOf("/") + 1
+            );
             return Promise.resolve({ failed: false, dataURL, imageName });
           } catch (e) {
             console.error(e);
@@ -279,6 +306,37 @@ export class ContextMenuChild extends JSWindowActorChild {
           dataURL: null,
           imageName: null,
         });
+      }
+
+      case "ContextMenu:GetTextDirective": {
+        if (this.contentWindow?.getSelection().rangeCount) {
+          const textDirectives = [];
+          for (
+            let rangeIndex = 0;
+            rangeIndex < this.contentWindow.getSelection().rangeCount;
+            rangeIndex++
+          ) {
+            textDirectives.push(
+              this.contentWindow.document?.fragmentDirective.createTextDirective(
+                this.contentWindow.getSelection().getRangeAt(rangeIndex)
+              )
+            );
+          }
+          return Promise.all(textDirectives).then(directives => {
+            const validDirectives = directives.filter(d => d);
+            const textFragment = validDirectives.join("&");
+            if (textFragment) {
+              let url = URL.parse(this.contentWindow.location);
+              url.hash += `:~:${textFragment}`;
+              return url.href;
+            }
+            return null;
+          });
+        }
+        return null;
+      }
+      case "ContextMenu:RemoveAllTextFragments": {
+        this.contentWindow?.document?.fragmentDirective.removeAllTextDirectives();
       }
     }
 
@@ -316,7 +374,7 @@ export class ContextMenuChild extends JSWindowActorChild {
     if (href) {
       // Handle SVG links:
       if (typeof href == "object" && href.animVal) {
-        return this._makeURLAbsolute(this.context.link.baseURI, href.animVal);
+        return new URL(href.animVal, this.context.link.baseURI).href;
       }
 
       return href;
@@ -332,7 +390,7 @@ export class ContextMenuChild extends JSWindowActorChild {
       throw new Error("Empty href");
     }
 
-    return this._makeURLAbsolute(this.context.link.baseURI, href);
+    return new URL(href, this.context.link.baseURI).href;
   }
 
   _getLinkURI() {
@@ -443,10 +501,6 @@ export class ContextMenuChild extends JSWindowActorChild {
     return urls[0];
   }
 
-  _makeURLAbsolute(aBase, aUrl) {
-    return Services.io.newURI(aUrl, null, Services.io.newURI(aBase)).spec;
-  }
-
   _isProprietaryDRM() {
     return (
       this.context.target.isEncrypted &&
@@ -457,7 +511,7 @@ export class ContextMenuChild extends JSWindowActorChild {
 
   _isMediaURLReusable(aURL) {
     if (aURL.startsWith("blob:")) {
-      return URL.isValidObjectURL(aURL);
+      return URL.isBoundToBlob(aURL);
     }
 
     return true;
@@ -865,6 +919,9 @@ export class ContextMenuChild extends JSWindowActorChild {
     context.onTextInput = false;
     context.onVideo = false;
     context.inPDFEditor = false;
+    context.hasTextFragments =
+      !!this.contentWindow?.document?.fragmentDirective?.getTextDirectiveRanges()
+        .length;
 
     // Remember the node and its owner document that was clicked
     // This may be modifed before sending to nsContextMenu
@@ -950,7 +1007,6 @@ export class ContextMenuChild extends JSWindowActorChild {
           ? undefined
           : context.target.title || context.target.alt,
       };
-      const { SVGAnimatedLength } = context.target.ownerGlobal;
       if (SVGAnimatedLength.isInstance(context.imageInfo.height)) {
         context.imageInfo.height = context.imageInfo.height.animVal.value;
       }
@@ -1006,10 +1062,10 @@ export class ContextMenuChild extends JSWindowActorChild {
       const descURL = context.target.getAttribute("longdesc");
 
       if (descURL) {
-        context.imageDescURL = this._makeURLAbsolute(
-          context.target.ownerDocument.body.baseURI,
-          descURL
-        );
+        context.imageDescURL = new URL(
+          descURL,
+          context.target.ownerDocument.body.baseURI
+        ).href;
       }
     } else if (
       this.contentWindow.HTMLCanvasElement.isInstance(context.target)
@@ -1081,6 +1137,7 @@ export class ContextMenuChild extends JSWindowActorChild {
       }
 
       context.onKeywordField = editFlags & lazy.SpellCheckHelper.KEYWORD;
+      context.onSearchField = editFlags & lazy.SpellCheckHelper.SEARCHENGINE;
     } else if (this.contentWindow.HTMLHtmlElement.isInstance(context.target)) {
       const bodyElt = context.target.ownerDocument.body;
 
@@ -1096,10 +1153,7 @@ export class ContextMenuChild extends JSWindowActorChild {
 
         if (computedURL) {
           context.hasBGImage = true;
-          context.bgImageURL = this._makeURLAbsolute(
-            bodyElt.baseURI,
-            computedURL
-          );
+          context.bgImageURL = new URL(computedURL, bodyElt.baseURI).href;
         }
       }
     }
@@ -1185,7 +1239,7 @@ export class ContextMenuChild extends JSWindowActorChild {
 
           if (bgImgUrl) {
             context.hasBGImage = true;
-            context.bgImageURL = this._makeURLAbsolute(elem.baseURI, bgImgUrl);
+            context.bgImageURL = new URL(bgImgUrl, elem.baseURI).href;
           }
         }
       }

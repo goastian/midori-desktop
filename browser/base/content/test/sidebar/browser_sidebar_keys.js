@@ -45,6 +45,10 @@ add_task(async function test_sidebar_in_customize_mode() {
     });
   }
 
+  if (Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    Services.prefs.setBoolPref("sidebar.verticalTabs", true);
+  }
+
   let widgetIcon = CustomizableUI.getWidget("sidebar-button")
     .forWindow(window)
     .node?.querySelector(".toolbarbutton-icon");
@@ -58,11 +62,13 @@ add_task(async function test_sidebar_in_customize_mode() {
   SidebarController.show("viewBookmarksSidebar");
   await promiseShown;
 
-  Assert.greater(
-    getBGAlpha(),
-    0,
-    "Sidebar widget background should appear checked"
-  );
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    Assert.greater(
+      getBGAlpha(),
+      0,
+      "Sidebar widget background should appear checked"
+    );
+  }
 
   // Enter customize mode. This should disable the toggle and make the sidebar
   // toggle widget appear unchecked.
@@ -92,17 +98,25 @@ add_task(async function test_sidebar_in_customize_mode() {
   gCustomizeMode.exit();
   await afterCustomizationPromise;
 
-  Assert.greater(
-    getBGAlpha(),
-    0,
-    "Sidebar widget background should appear checked again"
-  );
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    Assert.greater(
+      getBGAlpha(),
+      0,
+      "Sidebar widget background should appear checked again"
+    );
+  }
 
   await SidebarController.toggle();
   ok(!SidebarController.isOpen, "Sidebar is closed");
-  Assert.equal(
-    getBGAlpha(),
-    0,
-    "Sidebar widget background should appear unchecked"
-  );
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    Assert.equal(
+      getBGAlpha(),
+      0,
+      "Sidebar widget background should appear unchecked"
+    );
+  }
+
+  if (Services.prefs.getBoolPref("sidebar.verticalTabs", false)) {
+    Services.prefs.clearUserPref("sidebar.verticalTabs");
+  }
 });

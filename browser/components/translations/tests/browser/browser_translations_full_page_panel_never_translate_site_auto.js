@@ -24,7 +24,9 @@ add_task(
     );
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
 
@@ -48,13 +50,16 @@ add_task(
       { checked: false }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
     });
     await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
@@ -77,31 +82,32 @@ add_task(
       { checked: true }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await navigate("Reload the page", { url: SPANISH_PAGE_URL });
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await navigate(
       "Navigate to a Spanish page with the same content principal",
       { url: SPANISH_PAGE_URL_2 }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await navigate(
       "Navigate to a Spanish page with a different content principal",
       {
         url: SPANISH_PAGE_URL_DOT_ORG,
-        downloadHandler: resolveDownloads,
       }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await cleanup();

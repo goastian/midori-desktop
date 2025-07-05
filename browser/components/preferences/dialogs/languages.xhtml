@@ -4,6 +4,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<?csp default-src chrome:; style-src chrome: 'unsafe-inline'; ?>
+
 <window
   type="child"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -11,13 +13,8 @@
   data-l10n-id="webpage-languages-window2"
   data-l10n-attrs="title, style"
   persist="lastSelected"
-  onload="gLanguagesDialog.onLoad();"
 >
-  <dialog
-    id="LanguagesDialog"
-    buttons="accept,cancel,help"
-    helpTopic="prefs-languages"
-  >
+  <dialog id="LanguagesDialog" buttons="accept,cancel">
     <linkset>
       <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
       <html:link
@@ -34,9 +31,9 @@
 
     <keyset>
       <key
+        id="key_close"
         data-l10n-id="languages-close-key"
         modifiers="accel"
-        oncommand="Preferences.close(event)"
       />
     </keyset>
 
@@ -54,16 +51,11 @@
       preference="privacy.spoof_english"
     />
     <box class="languages-grid">
-      <richlistbox
-        id="activeLanguages"
-        seltype="multiple"
-        onselect="gLanguagesDialog.onLanguageSelect();"
-      />
+      <richlistbox id="activeLanguages" seltype="multiple" />
       <vbox>
         <button
           id="up"
           class="up"
-          oncommand="gLanguagesDialog.moveUp();"
           disabled="true"
           data-l10n-id="languages-customize-moveup"
           preference="pref.browser.language.disable_button.up"
@@ -71,14 +63,12 @@
         <button
           id="down"
           class="down"
-          oncommand="gLanguagesDialog.moveDown();"
           disabled="true"
           data-l10n-id="languages-customize-movedown"
           preference="pref.browser.language.disable_button.down"
         />
         <button
           id="remove"
-          oncommand="gLanguagesDialog.removeLanguage();"
           disabled="true"
           data-l10n-id="languages-customize-remove"
           preference="pref.browser.language.disable_button.remove"
@@ -88,7 +78,6 @@
       <vbox>
         <menulist
           id="availableLanguages"
-          oncommand="gLanguagesDialog.onAvailableLanguageSelect();"
           data-l10n-id="languages-customize-select-language"
           data-l10n-attrs="placeholder"
           aria-labelledby="availableLanguagesPopup"
@@ -99,7 +88,6 @@
       <button
         id="addButton"
         class="add-web-language"
-        oncommand="gLanguagesDialog.addLanguage();"
         disabled="true"
         data-l10n-id="languages-customize-add"
       />

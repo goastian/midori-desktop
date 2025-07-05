@@ -18,7 +18,7 @@ add_task(async function test() {
 
   // Hide the original tab.
   gBrowser.selectedTab = testTab;
-  gBrowser.showOnlyTheseTabs([testTab]);
+  BrowserTestUtils.showOnlyTheseTabs(gBrowser, [testTab]);
   is(gBrowser.visibleTabs.length, 1, "now there is only one visible tab");
 
   // Check the context menu with one tab.
@@ -78,7 +78,7 @@ add_task(async function test() {
 
   // Show all tabs
   let allTabs = Array.from(gBrowser.tabs);
-  gBrowser.showOnlyTheseTabs(allTabs);
+  BrowserTestUtils.showOnlyTheseTabs(gBrowser, allTabs);
 
   // Check the context menu now
   updateTabContextMenu(testTab);
@@ -105,6 +105,50 @@ add_task(async function test() {
   ok(
     !document.getElementById("context_closeTabsToTheEnd").disabled,
     "Close Tabs To The End is enabled on unpinned tab when followed by another"
+  );
+
+  // flip the pref to move the tabstrip into the sidebar
+  await SpecialPowers.pushPrefEnv({ set: [["sidebar.verticalTabs", true]] });
+
+  // Check the context menu now
+  updateTabContextMenu(testTab);
+  is(
+    document.getElementById("context_openANewTab").dataset.l10nId,
+    "tab-context-new-tab-open-vertical",
+    "Has correct new tab string for vertical tabs"
+  );
+  is(
+    document.getElementById("context_closeTabsToTheEnd").dataset.l10nId,
+    "close-tabs-to-the-end-vertical",
+    "Close multiple tabs has correct close tabs at end string for vertial tabs"
+  );
+
+  is(
+    document.getElementById("context_closeTabsToTheStart").dataset.l10nId,
+    "close-tabs-to-the-start-vertical",
+    "Close multiple tabs has correct close tabs at start string for vertial tabs"
+  );
+
+  // flip the pref to move the tabstrip back horizontally
+  await SpecialPowers.pushPrefEnv({ set: [["sidebar.verticalTabs", false]] });
+
+  // Check context menu item strings has been reset horizontal tabs
+  updateTabContextMenu(testTab);
+
+  is(
+    document.getElementById("context_openANewTab").dataset.l10nId,
+    "tab-context-new-tab-open",
+    "Has correct new tab string for horizontal tabs"
+  );
+  is(
+    document.getElementById("context_closeTabsToTheStart").dataset.l10nId,
+    "close-tabs-to-the-start",
+    "Close multiple tabs has correct close tabs at start string for horizontal tabs"
+  );
+  is(
+    document.getElementById("context_closeTabsToTheEnd").dataset.l10nId,
+    "close-tabs-to-the-end",
+    "Close multiple tabs has correct close tabs at end string for horizontal tabs"
   );
 
   gBrowser.removeTab(testTab);

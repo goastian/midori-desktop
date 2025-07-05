@@ -8,6 +8,9 @@
 */
 
 add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
   await PlacesTestUtils.addVisits(["https://example.com/"]);
@@ -47,7 +50,10 @@ async function moveTabIntoNewWindowAndBack(url = "about:blank") {
     tab.linkedBrowser,
     "SwapDocShells"
   );
-  gBrowser.adoptTab(newWindow.gBrowser.selectedTab, 1, true);
+  gBrowser.adoptTab(newWindow.gBrowser.selectedTab, {
+    tabIndex: 1,
+    selectTab: true,
+  });
   await swapDocShellPromise;
   Assert.equal(
     gURLBar.value,

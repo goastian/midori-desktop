@@ -167,10 +167,12 @@
         <button class="fxaccounts-enable-button" data-l10n-id="fxaccounts-sign-in-sync-button"></button>
       </div>
       <div class="logged-in-view">
-        <button class="fxaccounts-avatar-button ghost-button" data-l10n-id="fxaccounts-avatar-button">
-          <span class="fxaccount-email"></span>
-          <span class="fxaccount-avatar"></span>
-        </button>
+        <a class="fxaccount-manage-link" target="_blank" rel="noreferrer">
+          <button class="fxaccounts-avatar-button ghost-button" data-l10n-id="fxaccounts-avatar-button">
+            <span class="fxaccount-email"></span>
+            <span class="fxaccount-avatar"></span>
+          </button>
+        </a>
       </div>
     </template>
 
@@ -249,9 +251,6 @@
             <a data-l10n-name="passwords-help-link" class="intro-help-link" target="_blank" rel="noreferrer"></a>
           </li>
         </ul>
-        <p class="description intro-import-text no-file-import" hidden data-l10n-id="about-logins-intro-browser-only-import">
-          <a data-l10n-name="import-link" href="#"></a>
-        </p>
         <p class="description intro-import-text file-import" hidden data-l10n-id="about-logins-intro-import3">
           <a data-l10n-name="import-browser-link" href="#"></a>
           <a data-l10n-name="import-file-link" href="#"></a>
@@ -306,7 +305,7 @@
                         dir="auto"
                         readonly/>
                   <a class="origin-input" dir="auto" target="_blank" rel="noreferrer" name="origin" href=""></a>
-                  <origin-warning></origin-warning>
+                  <origin-warning l10nId="about-logins-origin-tooltip2"></origin-warning>
                 </label>
               </div>
               <div class="detail-grid">

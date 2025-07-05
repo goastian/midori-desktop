@@ -7,8 +7,10 @@
  */
 
 ChromeUtils.defineESModuleGetters(this, {
-  CATEGORIZATION_SETTINGS: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  DomainToCategoriesStore: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  CATEGORIZATION_SETTINGS:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
+  DomainToCategoriesStore:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
   Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
 });
@@ -124,7 +126,7 @@ add_task(async function init_insert_uninit() {
   Assert.equal(store.empty, true, "Store should be empty.");
 
   info("Try inserting after init.");
-  await store.insertFileContents(fileContents, 1);
+  await store.insertFileContents(fileContents, 1, false);
 
   result = await store.getCategories("foo");
   Assert.deepEqual(result, [0, 1], "foo should have a matching result.");
@@ -138,13 +140,47 @@ add_task(async function init_insert_uninit() {
   Assert.deepEqual(result, [], "foo should be removed from store.");
   Assert.equal(store.empty, true, "Store should be empty.");
   Assert.equal(await store.getVersion(), 0, "Version should be reset.");
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
+
+  await cleanup();
+});
+
+add_task(async function init_insert_uninit_default() {
+  await store.init();
+  let result = await store.getCategories("foo");
+  Assert.deepEqual(result, [], "foo should not have a result.");
+  Assert.equal(
+    await store.getVersion(),
+    0,
+    "Version number should not be set."
+  );
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
+  Assert.equal(store.empty, true, "Store should be empty.");
+
+  info("Try inserting after init.");
+  await store.insertFileContents(fileContents, 1, true);
+
+  result = await store.getCategories("foo");
+  Assert.deepEqual(result, [0, 1], "foo should have a matching result.");
+  Assert.equal(await store.getVersion(), 1, "Version number should be set.");
+  Assert.equal(await store.isDefault(), true, "Should be default.");
+  Assert.equal(store.empty, false, "Store should not be empty.");
+
+  info("Un-init store.");
+  await store.uninit();
+
+  result = await store.getCategories("foo");
+  Assert.deepEqual(result, [], "foo should be removed from store.");
+  Assert.equal(store.empty, true, "Store should be empty.");
+  Assert.equal(await store.getVersion(), 0, "Version should be reset.");
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
 
   await cleanup();
 });
 
 add_task(async function insert_and_re_init() {
   await store.init();
-  await store.insertFileContents(fileContents, 20240202);
+  await store.insertFileContents(fileContents, 20240202, false);
 
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [0, 1], "foo should have a matching result.");
@@ -153,6 +189,7 @@ add_task(async function insert_and_re_init() {
     20240202,
     "Version number should be set."
   );
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, false, "Is store empty.");
 
   info("Simulate a restart.");
@@ -170,6 +207,7 @@ add_task(async function insert_and_re_init() {
     20240202,
     "Version number should still be in the store."
   );
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, false, "Is store empty.");
 
   await cleanup();
@@ -189,12 +227,13 @@ add_task(async function insert_multiple_times() {
 
   for (let i = 0; i < 3; ++i) {
     info("Try inserting after init.");
-    await store.insertFileContents(fileContents, 1);
+    await store.insertFileContents(fileContents, 1, false);
 
     result = await store.getCategories("foo");
     Assert.deepEqual(result, [0, 1], "foo should have a matching result.");
     Assert.equal(store.empty, false, "Is store empty.");
     Assert.equal(await store.getVersion(), 1, "Version number is set.");
+    Assert.equal(await store.isDefault(), false, "Should not be default.");
 
     await store.dropData();
     result = await store.getCategories("foo");
@@ -221,11 +260,12 @@ add_task(async function init_with_corrupted_store() {
   await store.init();
 
   info("Try inserting after the corrupted store was replaced.");
-  await store.insertFileContents(fileContents, 1);
+  await store.insertFileContents(fileContents, 1, false);
 
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [0, 1], "foo should have a matching result.");
   Assert.equal(await store.getVersion(), 1, "Version number is set.");
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, false, "Is store empty.");
 
   await cleanup();
@@ -240,11 +280,12 @@ add_task(async function init_with_unfixable_store() {
 
   info("Try inserting content even if the connection is impossible to fix.");
   await store.dropData();
-  await store.insertFileContents(fileContents, 20240202);
+  await store.insertFileContents(fileContents, 20240202, false);
 
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [], "foo should not have a result.");
   Assert.equal(await store.getVersion(), 0, "Version should be reset.");
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, true, "Store should be empty.");
 
   sandbox.restore();
@@ -256,7 +297,7 @@ add_task(async function init_read_only_store() {
   await store.init();
 
   info("Insert contents into the store.");
-  await store.insertFileContents(fileContents, 20240202);
+  await store.insertFileContents(fileContents, 20240202, false);
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [], "foo should not have a result.");
   Assert.equal(
@@ -264,6 +305,7 @@ add_task(async function init_read_only_store() {
     0,
     "Version number should not be set."
   );
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, true, "Store should be empty.");
 
   await cleanup();
@@ -281,6 +323,7 @@ add_task(async function init_close_to_shutdown() {
     0,
     "Version number should not be set."
   );
+  Assert.equal(await store.isDefault(), false, "Should not be default.");
   Assert.equal(store.empty, true, "Store should be empty.");
 
   sandbox.restore();
@@ -302,11 +345,12 @@ add_task(async function insert_broken_file() {
 
   info("Try inserting one valid file and an invalid file.");
   let contents = [...fileContents, new ArrayBuffer(0).buffer];
-  await store.insertFileContents(contents, 20240202);
+  await store.insertFileContents(contents, 20240202, false);
 
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [], "foo should not have a result.");
   Assert.equal(await store.getVersion(), 0, "Version should remain unset.");
+  Assert.equal(await store.isDefault(), false, "Data should not be default.");
   Assert.equal(store.empty, true, "Store should remain empty.");
 
   await cleanup();
@@ -317,10 +361,11 @@ add_task(async function insert_into_read_only_store() {
   await store.init();
 
   await store.dropData();
-  await store.insertFileContents(fileContents, 20240202);
+  await store.insertFileContents(fileContents, 20240202, false);
   let result = await store.getCategories("foo");
   Assert.deepEqual(result, [], "foo should not have a result.");
   Assert.equal(await store.getVersion(), 0, "Version should remain unset.");
+  Assert.equal(await store.isDefault(), false, "Data should not be default.");
   Assert.equal(store.empty, true, "Store should remain empty.");
 
   await cleanup();
@@ -332,7 +377,7 @@ add_task(async function insert_into_read_only_store() {
 // be empty.
 add_task(async function restart_with_read_only_store() {
   await store.init();
-  await store.insertFileContents(fileContents, 20240202);
+  await store.insertFileContents(fileContents, 20240202, false);
 
   info("Check store has content.");
   let result = await store.getCategories("foo");
@@ -342,6 +387,7 @@ add_task(async function restart_with_read_only_store() {
     20240202,
     "Version number should be set."
   );
+  Assert.equal(await store.isDefault(), false, "Data should not be default.");
   Assert.equal(store.empty, false, "Store should not be empty.");
 
   await changeStoreToReadOnly();

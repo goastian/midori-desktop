@@ -9,10 +9,15 @@
 
 let gHeightChanges = 0;
 async function expectHeightChanges(tab, expectedNewHeightChanges, msg) {
+  // Await for a frame in the chrome so that the resize is sent to content.
+  await new Promise(r => window.requestAnimationFrame(r));
+  await new Promise(r => window.requestAnimationFrame(r));
+
   let contentObservedHeightChanges = await ContentTask.spawn(
     tab.linkedBrowser,
     null,
     async () => {
+      // Resize events happen before rAF.
       await new Promise(resolve => content.requestAnimationFrame(resolve));
       return content.document.body.innerText;
     }
@@ -26,6 +31,17 @@ async function expectHeightChanges(tab, expectedNewHeightChanges, msg) {
 }
 
 async function expectBmToolbarVisibilityChange(triggerFn, visible, msg) {
+  info("Adding a bookmark to the bookmarks toolbar.");
+  let addedBookmark = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+    title: "Test",
+    url: "https://example.com",
+  });
+
+  registerCleanupFunction(async () => {
+    await PlacesUtils.bookmarks.remove(addedBookmark);
+  });
+
   let collapsedState = BrowserTestUtils.waitForMutationCondition(
     BookmarkingUI.toolbar,
     { attributes: true, attributeFilter: ["collapsed"] },
@@ -106,18 +122,22 @@ add_task(async function () {
     "content area height changes when hiding the toolbar without the animation"
   );
 
+  let blankTab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "about:blank"
+  );
+  ok(
+    !tab.selected,
+    "height change watcher tab is in the background (not the selected tab)"
+  );
+
   info("Opening a new tab, making the previous tab non-selected");
   await expectBmToolbarVisibilityChange(
-    () => {
-      BrowserCommands.openTab();
-      ok(
-        !tab.selected,
-        "non-new tab is in the background (not the selected tab)"
-      );
-    },
+    () => BrowserCommands.openTab(),
     true,
     "bookmarks toolbar is visible for new tab after setting it to only show for new tabs"
   );
+
   await expectHeightChanges(
     tab,
     0,
@@ -126,4 +146,5 @@ add_task(async function () {
 
   gBrowser.removeCurrentTab();
   gBrowser.removeTab(tab);
+  gBrowser.removeTab(blankTab);
 });

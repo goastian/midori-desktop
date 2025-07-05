@@ -23,16 +23,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
 });
 
-// Constants to support an alternative frecency algorithm.
-const PAGES_USE_ALT_FRECENCY = Services.prefs.getBoolPref(
-  "places.frecency.pages.alternative.featureGate",
-  false
-);
-const PAGES_FRECENCY_FIELD = PAGES_USE_ALT_FRECENCY
-  ? "alt_frecency"
-  : "frecency";
-
-const SQL_ADAPTIVE_QUERY = `/* do not warn (bug 487789) */
+ChromeUtils.defineLazyGetter(lazy, "SQL_ADAPTIVE_QUERY", () => {
+  // Constants to support an alternative frecency algorithm.
+  const PAGES_USE_ALT_FRECENCY =
+    lazy.PlacesUtils.history.isAlternativeFrecencyEnabled;
+  const PAGES_FRECENCY_FIELD = PAGES_USE_ALT_FRECENCY
+    ? "alt_frecency"
+    : "frecency";
+  return `/* do not warn (bug 487789) */
    SELECT h.url,
           h.title,
           EXISTS(SELECT 1 FROM moz_bookmarks WHERE fk = h.id) AS bookmarked,
@@ -45,7 +43,8 @@ const SQL_ADAPTIVE_QUERY = `/* do not warn (bug 487789) */
             WHERE b.fk = h.id
           ) AS tags,
           t.open_count,
-          t.userContextId
+          t.userContextId,
+          h.last_visit_date
    FROM (
      SELECT ROUND(MAX(use_count) * (1 + (input = :search_string)), 1) AS rank,
             place_id
@@ -65,6 +64,7 @@ const SQL_ADAPTIVE_QUERY = `/* do not warn (bug 487789) */
                             NULL)
    ORDER BY rank DESC, ${PAGES_FRECENCY_FIELD} DESC
    LIMIT :maxResults`;
+});
 
 /**
  * Class used to create the provider.
@@ -80,9 +80,7 @@ class ProviderInputHistory extends UrlbarProvider {
   }
 
   /**
-   * The type of the provider, must be one of UrlbarUtils.PROVIDER_TYPE.
-   *
-   * @returns {UrlbarUtils.PROVIDER_TYPE}
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.PROFILE;
@@ -94,9 +92,8 @@ class ProviderInputHistory extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive(queryContext) {
+  async isActive(queryContext) {
     return (
       (lazy.UrlbarPrefs.get("suggest.history") ||
         lazy.UrlbarPrefs.get("suggest.bookmark") ||
@@ -137,6 +134,10 @@ class ProviderInputHistory extends UrlbarProvider {
         ? row.getResultByName("bookmark_title")
         : null;
       const tags = row.getResultByName("tags") || "";
+      let lastVisitPRTime = row.getResultByName("last_visit_date");
+      let lastVisit = lastVisitPRTime
+        ? lazy.PlacesUtils.toDate(lastVisitPRTime).getTime()
+        : undefined;
 
       let resultTitle = historyTitle;
       if (openPageCount > 0 && lazy.UrlbarPrefs.get("suggest.openpage")) {
@@ -144,22 +145,20 @@ class ProviderInputHistory extends UrlbarProvider {
           // Don't suggest switching to the current page.
           continue;
         }
+        let userContextId = row.getResultByName("userContextId") || 0;
         let payload = lazy.UrlbarResult.payloadAndSimpleHighlights(
           queryContext.tokens,
           {
             url: [url, UrlbarUtils.HIGHLIGHT.TYPED],
             title: [resultTitle, UrlbarUtils.HIGHLIGHT.TYPED],
             icon: UrlbarUtils.getIconForUrl(url),
-            userContextId: row.getResultByName("userContextId") || 0,
+            userContextId,
+            lastVisit,
           }
         );
-        if (
-          lazy.UrlbarPrefs.getScotchBonnetPref("secondaryActions.featureGate")
-        ) {
-          payload[0].action = {
-            key: "tabswitch",
-            l10nId: "urlbar-result-action-switch-tab",
-          };
+        if (lazy.UrlbarPrefs.get("secondaryActions.switchToTab")) {
+          payload[0].action =
+            UrlbarUtils.createTabSwitchSecondaryAction(userContextId);
         }
         let result = new lazy.UrlbarResult(
           UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
@@ -205,6 +204,7 @@ class ProviderInputHistory extends UrlbarProvider {
             ? Services.urlFormatter.formatURLPref("app.support.baseURL") +
               "awesome-bar-result-menu"
             : undefined,
+          lastVisit,
         })
       );
 
@@ -241,7 +241,7 @@ class ProviderInputHistory extends UrlbarProvider {
    */
   _getAdaptiveQuery(queryContext) {
     return [
-      SQL_ADAPTIVE_QUERY,
+      lazy.SQL_ADAPTIVE_QUERY,
       {
         parent: lazy.PlacesUtils.tagsFolderId,
         search_string: queryContext.lowerCaseSearchString,

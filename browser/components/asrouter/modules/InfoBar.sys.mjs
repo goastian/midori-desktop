@@ -2,12 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint-disable no-use-before-define */
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   RemoteL10n: "resource:///modules/asrouter/RemoteL10n.sys.mjs",
+  SpecialMessageActions:
+    "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
 });
+
+const TYPES = {
+  UNIVERSAL: "universal",
+  GLOBAL: "global",
+};
+
+const FTL_FILES = [
+  "browser/newtab/asrouter.ftl",
+  "browser/defaultBrowserNotification.ftl",
+  "preview/termsOfUse.ftl",
+];
 
 class InfoBarNotification {
   constructor(message, dispatch) {
@@ -29,7 +43,7 @@ class InfoBarNotification {
     let { gBrowser } = browser.ownerGlobal;
     let doc = gBrowser.ownerDocument;
     let notificationContainer;
-    if (content.type === "global") {
+    if ([TYPES.GLOBAL, TYPES.UNIVERSAL].includes(content.type)) {
       notificationContainer = browser.ownerGlobal.gNotificationBox;
     } else {
       notificationContainer = gBrowser.getNotificationBox(browser);
@@ -40,25 +54,79 @@ class InfoBarNotification {
     this.notification = await notificationContainer.appendNotification(
       this.message.id,
       {
-        label: this.formatMessageConfig(doc, content.text),
+        label: this.formatMessageConfig(doc, browser, content.text),
         image: content.icon || "chrome://branding/content/icon64.png",
         priority,
         eventCallback: this.infobarCallback,
       },
-      content.buttons.map(b => this.formatButtonConfig(b))
+      content.buttons.map(b => this.formatButtonConfig(b)),
+      false,
+      content.dismissable
     );
+    // If InfoBar is universal, only record an impression for the first
+    // instance.
+    if (
+      content.type !== TYPES.UNIVERSAL ||
+      !InfoBar._universalInfobars.length
+    ) {
+      this.addImpression();
+    }
 
-    this.addImpression();
+    if (content.type === TYPES.UNIVERSAL) {
+      InfoBar._universalInfobars.push({
+        box: browser.ownerGlobal.gNotificationBox,
+        notification: this.notification,
+      });
+    }
   }
 
-  formatMessageConfig(doc, content) {
-    let docFragment = doc.createDocumentFragment();
-    // notificationbox will only `appendChild` for documentFragments
-    docFragment.appendChild(
-      lazy.RemoteL10n.createElement(doc, "span", { content })
-    );
+  formatMessageConfig(doc, browser, content) {
+    const frag = doc.createDocumentFragment();
+    const parts = Array.isArray(content) ? content : [content];
+    for (const part of parts) {
+      let node;
+      if (typeof part === "string") {
+        node = doc.createTextNode(part);
+        // Handle embedded link
+      } else if (part.href) {
+        const a = doc.createElement("a");
+        a.href = part.href;
+        a.addEventListener("click", e => {
+          e.preventDefault();
+          lazy.SpecialMessageActions.handleAction(
+            { type: "OPEN_URL", data: { args: a.href, where: part.where } },
+            browser
+          );
+        });
 
-    return docFragment;
+        if (part.string_id) {
+          const l10n = lazy.RemoteL10n.createElement(doc, "span", {
+            content: {
+              string_id: part.string_id,
+              ...(part.args && { args: part.args }),
+            },
+          });
+          a.appendChild(l10n);
+        } else {
+          a.textContent = part.raw || "";
+        }
+        node = a;
+      } else if (part.string_id) {
+        node = lazy.RemoteL10n.createElement(doc, "span", {
+          content: {
+            string_id: part.string_id,
+            ...(part.args && { args: part.args }),
+          },
+        });
+      } else {
+        const text = part.raw !== null ? part.raw : String(part);
+        node = doc.createTextNode(text);
+      }
+
+      frag.appendChild(node);
+    }
+
+    return frag;
   }
 
   formatButtonConfig(button) {
@@ -80,7 +148,12 @@ class InfoBarNotification {
   }
 
   /**
-   * Called when one of the infobar buttons is clicked
+   * Callback fired when a button in the infobar is clicked.
+   *
+   * @param {Element} notificationBox - The `<notification-message>` element representing the infobar.
+   * @param {Object} btnDescription - An object describing the button, includes the label, the action with an optional dismiss property, and primary button styling.
+   * @param {Element} target - The <button> DOM element that was clicked.
+   * @returns {boolean} Returns `false` to dismiss the infobar or `true` to keep it open.
    */
   buttonCallback(notificationBox, btnDescription, target) {
     this.dispatchUserAction(
@@ -92,6 +165,14 @@ class InfoBarNotification {
       ? "CLICK_PRIMARY_BUTTON"
       : "CLICK_SECONDARY_BUTTON";
     this.sendUserEventTelemetry(eventName);
+
+    // Prevent dismissal if dismiss property is set to 'false'
+    if (btnDescription.action?.dismiss === false) {
+      return true;
+    }
+
+    // Default, dismisses the Infobar
+    return false;
   }
 
   dispatchUserAction(action, selectedBrowser) {
@@ -102,16 +183,36 @@ class InfoBarNotification {
    * Called when interacting with the toolbar (but not through the buttons)
    */
   infobarCallback(eventType) {
+    const wasUniversal =
+      InfoBar._activeInfobar?.message.content.type === TYPES.UNIVERSAL;
     if (eventType === "removed") {
       this.notification = null;
-      // eslint-disable-next-line no-use-before-define
       InfoBar._activeInfobar = null;
     } else if (this.notification) {
       this.sendUserEventTelemetry("DISMISSED");
       this.notification = null;
-      // eslint-disable-next-line no-use-before-define
       InfoBar._activeInfobar = null;
     }
+    // If one instance of universal infobar is removed, remove all instances and
+    // the new window observer
+    if (wasUniversal) {
+      this.removeUniversalInfobars();
+    }
+  }
+
+  removeUniversalInfobars() {
+    try {
+      Services.obs.removeObserver(InfoBar, "domwindowopened");
+    } catch (error) {
+      console.error(
+        "Error removing domwindowopened observer on InfoBar:",
+        error
+      );
+    }
+    InfoBar._universalInfobars.forEach(({ box, notification }) => {
+      box.removeNotification(notification);
+    });
+    InfoBar._universalInfobars = [];
   }
 
   sendUserEventTelemetry(event) {
@@ -128,29 +229,39 @@ class InfoBarNotification {
 
 export const InfoBar = {
   _activeInfobar: null,
+  _universalInfobars: [],
 
   maybeLoadCustomElement(win) {
     if (!win.customElements.get("remote-text")) {
       Services.scriptloader.loadSubScript(
-        "resource://activity-stream/data/custom-elements/paragraph.js",
+        "chrome://browser/content/asrouter/components/remote-text.js",
         win
       );
     }
   },
 
   maybeInsertFTL(win) {
-    win.MozXULElement.insertFTLIfNeeded("browser/newtab/asrouter.ftl");
-    win.MozXULElement.insertFTLIfNeeded(
-      "browser/defaultBrowserNotification.ftl"
-    );
+    FTL_FILES.forEach(path => win.MozXULElement.insertFTLIfNeeded(path));
   },
 
-  async showInfoBarMessage(browser, message, dispatch) {
+  async showNotificationAllWindows(notification) {
+    for (let win of Services.wm.getEnumerator(null)) {
+      this.maybeLoadCustomElement(win);
+      this.maybeInsertFTL(win);
+      const browser = win.gBrowser.selectedBrowser;
+      await notification.showNotification(browser);
+    }
+  },
+
+  async showInfoBarMessage(browser, message, dispatch, universalInNewWin) {
     // Prevent stacking multiple infobars
-    if (this._activeInfobar) {
+    if (this._activeInfobar && !universalInNewWin) {
       return null;
     }
 
+    // Check if this is the first instance of a universal infobar
+    const isFirstUniversal =
+      !universalInNewWin && message.content.type === TYPES.UNIVERSAL;
     const win = browser?.ownerGlobal;
 
     if (!win || lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
@@ -161,9 +272,50 @@ export const InfoBar = {
     this.maybeInsertFTL(win);
 
     let notification = new InfoBarNotification(message, dispatch);
-    await notification.showNotification(browser);
-    this._activeInfobar = true;
+    if (isFirstUniversal) {
+      await this.showNotificationAllWindows(notification);
+      Services.obs.addObserver(this, "domwindowopened");
+    } else {
+      await notification.showNotification(browser);
+    }
+    if (!universalInNewWin) {
+      this._activeInfobar = { message, dispatch };
+      // If the window closes before the user interacts with the active infobar,
+      // clear it
+      win.addEventListener(
+        "unload",
+        () => {
+          if (InfoBar._activeInfobar?.message === message) {
+            InfoBar._activeInfobar = null;
+          }
+        },
+        { once: true }
+      );
+    }
 
     return notification;
+  },
+
+  observe(aSubject, aTopic) {
+    const { message, dispatch } = this._activeInfobar;
+    if (
+      aTopic !== "domwindowopened" ||
+      message?.content.type !== TYPES.UNIVERSAL
+    ) {
+      return;
+    }
+    if (aSubject.document.readyState === "complete") {
+      let browser = aSubject.gBrowser.selectedBrowser;
+      this.showInfoBarMessage(browser, message, dispatch, true);
+    } else {
+      aSubject.addEventListener(
+        "load",
+        () => {
+          let browser = aSubject.gBrowser.selectedBrowser;
+          this.showInfoBarMessage(browser, message, dispatch, true);
+        },
+        { once: true }
+      );
+    }
   },
 };

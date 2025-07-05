@@ -173,18 +173,25 @@ main-context-menu-copy-email =
     .label = Copy Email Address
     .accesskey = l
 
-main-context-menu-copy-phone =
-    .label = Copy Phone Number
-    .accesskey = o
-
 main-context-menu-copy-link-simple =
     .label = Copy Link
     .accesskey = L
 
-# This command copies the link, removing additional
-# query parameters used to track users across sites.
-main-context-menu-strip-on-share-link =
-    .label = Copy Link Without Site Tracking
+##
+
+main-context-menu-copy-phone =
+    .label = Copy Phone Number
+    .accesskey = o
+
+main-context-menu-preview-link =
+    .label = Preview Link
+    .accesskey = r
+
+# "Copy Clean Link" means that Firefox will remove things from the link you
+# copied, like items that identify you for advertising purposes, and other items
+# sites add into URLs to help them deliver a certain browsing experience.
+main-context-menu-copy-clean-link =
+    .label = Copy Clean Link
     .accesskey = u
 
 ## Media (video/audio) controls
@@ -361,6 +368,10 @@ main-context-menu-manage-passwords =
 main-context-menu-keyword =
     .label = Add a Keyword for this Search…
     .accesskey = K
+
+main-context-menu-add-engine =
+    .label = Add Search Engine
+    .accesskey = S
 
 main-context-menu-link-send-to-device =
     .label = Send Link to Device

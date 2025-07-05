@@ -4,25 +4,34 @@
 ChromeUtils.defineESModuleGetters(this, {
   ADLINK_CHECK_TIMEOUT_MS:
     "resource:///actors/SearchSERPTelemetryChild.sys.mjs",
-  CATEGORIZATION_SETTINGS: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  BrowserSearchTelemetry:
+    "moz-src:///browser/components/search/BrowserSearchTelemetry.sys.mjs",
+  CATEGORIZATION_SETTINGS:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   CustomizableUITestUtils:
     "resource://testing-common/CustomizableUITestUtils.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  SEARCH_TELEMETRY_SHARED: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchSERPDomainToCategoriesMap:
-    "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
-  SearchSERPTelemetryUtils: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  SEARCH_TELEMETRY_SHARED:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
+  SearchSERPTelemetry:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
+  SearchSERPTelemetryUtils:
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
-  SERPCategorizationRecorder: "resource:///modules/SearchSERPTelemetry.sys.mjs",
+  SearchUITestUtils: "resource://testing-common/SearchUITestUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
+  SERPCategorizationRecorder:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
+  SERPDomainToCategoriesMap:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
   SPA_ADLINK_CHECK_TIMEOUT_MS:
-    "resource:///modules/SearchSERPTelemetry.sys.mjs",
+    "moz-src:///browser/components/search/SearchSERPTelemetry.sys.mjs",
   TELEMETRY_CATEGORIZATION_KEY:
-    "resource:///modules/SearchSERPTelemetry.sys.mjs",
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
+  VISIBILITY_THRESHOLD: "resource:///actors/SearchSERPTelemetryChild.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(this, "UrlbarTestUtils", () => {
@@ -60,9 +69,15 @@ const REGION = Region.home;
 let gCUITestUtils = new CustomizableUITestUtils(window);
 
 SearchTestUtils.init(this);
+SearchUITestUtils.init(this);
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sleep(ms) {
+  // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // sharedData messages are only passed to the child on idle. Therefore
 // we wait for a few idles to try and ensure the messages have been able
@@ -102,7 +117,7 @@ async function typeInSearchField(browser, text, fieldName) {
 
 async function searchInSearchbar(inputText, win = window) {
   await new Promise(r => waitForFocus(r, win));
-  let sb = win.BrowserSearch.searchBar;
+  let sb = win.document.getElementById("searchbar");
   // Write the search query in the searchbar.
   sb.focus();
   sb.value = inputText;
@@ -511,7 +526,15 @@ registerCleanupFunction(async () => {
   await PlacesUtils.history.clear();
 });
 
-async function mockRecordWithAttachment({ id, version, filename, mapping }) {
+async function mockRecordWithAttachment({
+  id,
+  version,
+  filename,
+  mapping,
+  includeRegions,
+  excludeRegions,
+  isDefault = true,
+}) {
   // Get the bytes of the file for the hash and size for attachment metadata.
   let buffer = new TextEncoder().encode(JSON.stringify(mapping)).buffer;
   let stream = Cc["@mozilla.org/io/arraybuffer-input-stream;1"].createInstance(
@@ -533,6 +556,9 @@ async function mockRecordWithAttachment({ id, version, filename, mapping }) {
   let record = {
     id,
     version,
+    includeRegions,
+    excludeRegions,
+    isDefault,
     attachment: {
       hash,
       location: `main-workspace/search-categorization/${filename}`,
@@ -591,6 +617,9 @@ async function insertRecordIntoCollection() {
     version: 1,
     filename: "domain_category_mappings.json",
     mapping: CONVERTED_ATTACHMENT_VALUES,
+    includeRegions: [],
+    excludeRegions: [],
+    isDefault: true,
   });
   await db.create(record);
   await client.attachments.cacheImpl.set(record.id, attachment);
@@ -694,4 +723,14 @@ async function initSinglePageAppTest() {
       SPA_ADLINK_CHECK_TIMEOUT_MS
     );
   });
+}
+
+async function resizeWindow(win, width, height) {
+  let promise = BrowserTestUtils.waitForEvent(win, "resize");
+  win.resizeTo(width, height);
+  await promise;
+
+  // Wait two frames in hopes resizing is done.
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
 }

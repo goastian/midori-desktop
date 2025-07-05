@@ -20,31 +20,6 @@ body {
   padding-inline-start: 1rem;
 }
 
-/** Categories **/
-
-.category {
-  cursor: pointer;
-  /* Center category names */
-  display: flex;
-  align-items: center;
-}
-
-.category .category-name {
-  pointer-events: none;
-}
-
-#category-active {
-  background-image: url("chrome://browser/content/policies/policies-active.svg");
-}
-
-#category-documentation {
-  background-image: url("chrome://browser/content/policies/policies-documentation.svg");
-}
-
-#category-errors {
-  background-image: url("chrome://browser/content/policies/policies-error.svg");
-}
-
 /** Content area **/
 
 .main-content {
@@ -94,7 +69,7 @@ td {
 .active-policies tr.odd:not(:hover),
 .errors tr:nth-child(odd):not(:hover),
 tbody:nth-child(4n + 1) {
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--table-row-background-color-alternate);
 }
 
 .arr_sep.odd:not(:last-child) td:not(:first-child) {
@@ -134,7 +109,7 @@ tbody:nth-child(4n + 1) {
 }
 
 .content-style {
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   color: var(--blue-50);
 }
 

@@ -22,6 +22,7 @@ const IFRAME_TEST_PAGE = TEST_ROOT + "iframe-test-page.html";
 const RESIZE_TEST_PAGE = TEST_ROOT + "test-page-resize.html";
 const SELECTION_TEST_PAGE = TEST_ROOT + "test-selectionAPI-page.html";
 const RTL_TEST_PAGE = TEST_ROOT + "rtl-test-page.html";
+const SHADOWROOT_TEST_PAGE = TEST_ROOT + "test-page-shadowRoot.html";
 
 const { MAX_CAPTURE_DIMENSION, MAX_CAPTURE_AREA } = ChromeUtils.importESModule(
   "resource:///modules/ScreenshotsUtils.sys.mjs"
@@ -494,11 +495,18 @@ class ScreenshotsHelper {
   }
 
   async resizeContentWindow(width, height) {
-    this.browser.ownerGlobal.resizeTo(width, height);
-    await TestUtils.waitForCondition(
-      () => window.outerHeight === height && window.outerWidth === width,
-      "Waiting for window to resize"
+    info(
+      `Resizing window to ${width}x${height} from ${innerWidth}x${innerHeight} (outer ${outerWidth}x${outerHeight})`
     );
+    let targetW = outerWidth - innerWidth + width;
+    let targetH = outerHeight - innerHeight + height;
+    window.resizeTo(targetW, targetH);
+    await TestUtils.waitForCondition(() => {
+      info(
+        `Current: ${innerWidth}x${innerHeight} (outer ${outerWidth}x${outerHeight})`
+      );
+      return outerHeight === targetH && outerWidth === targetW;
+    }, "Waiting for window to resize");
   }
 
   waitForContentMousePosition(left, top) {

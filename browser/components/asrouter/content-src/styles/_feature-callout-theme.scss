@@ -6,7 +6,7 @@
 // these values exactly, since they're drawn from other parts of the browser.
 
 @mixin light-theme {
-  --fc-background: var(--fc-background-light, #fff);
+  --fc-background: var(--fc-background-light, #FFF);
   --fc-color: var(--fc-color-light, rgb(21, 20, 26));
   --fc-border: var(--fc-border-light, #CFCFD8);
   --fc-accent-color: var(--fc-accent-color-light, rgb(0, 97, 224));
@@ -19,19 +19,23 @@
   --fc-button-background-active: var(--fc-button-background-active-light, #CFCFD8);
   --fc-button-color-active: var(--fc-button-color-active-light, rgb(21, 20, 26));
   --fc-button-border-active: var(--fc-button-border-active-light, transparent);
-  --fc-primary-button-background: var(--fc-primary-button-background-light, #0061e0);
+  --fc-primary-button-background: var(--fc-primary-button-background-light, #0061E0);
   --fc-primary-button-color: var(--fc-primary-button-color-light, rgb(251,251,254));
   --fc-primary-button-border: var(--fc-primary-button-border-light, transparent);
-  --fc-primary-button-background-hover: var(--fc-primary-button-background-hover-light, #0250bb);
+  --fc-primary-button-background-hover: var(--fc-primary-button-background-hover-light, #0250BB);
   --fc-primary-button-color-hover: var(--fc-primary-button-color-hover-light, rgb(251,251,254));
   --fc-primary-button-border-hover: var(--fc-primary-button-border-hover-light, transparent);
-  --fc-primary-button-background-active: var(--fc-primary-button-background-active-light, #053e94);
+  --fc-primary-button-background-active: var(--fc-primary-button-background-active-light, #053E94);
   --fc-primary-button-color-active: var(--fc-primary-button-color-active-light, rgb(251,251,254));
   --fc-primary-button-border-active: var(--fc-primary-button-border-active-light, transparent);
   --fc-step-color: color-mix(in srgb, currentColor 50%, transparent);
   --fc-link-color: var(--fc-link-color-light, #0061E0);
   --fc-link-color-hover: var(--fc-link-color-hover-light, #0250BB);
   --fc-link-color-active: var(--fc-link-color-active-light, #053E94);
+  --fc-icon-success-color: var(--fc-icon-success-color-light, #2AC3A2);
+  --fc-dismiss-button-bg: var(--fc-dismiss-button-bg-light, #FFF);
+  --fc-dismiss-button-bg-hover: var(--fc-dismiss-button-bg-hover-light, color-mix(in srgb, currentColor 14%, #FFF));
+  --fc-dismiss-button-bg-active: var(--fc-dismiss-button-bg-active-light, color-mix(in srgb, currentColor 14%, #FFF));
 }
 
 @mixin dark-theme {
@@ -60,6 +64,11 @@
   --fc-link-color: var(--fc-link-color-dark, #00DDFF);
   --fc-link-color-hover: var(--fc-link-color-hover-dark, #80EBFF);
   --fc-link-color-active: var(--fc-link-color-hover-active, #AAF2FF);
+  --fc-icon-success-color: var(--fc-icon-success-color-dark, #54FFBD);
+  --fc-dismiss-button-bg: var(--fc-dismiss-button-bg-dark, rgb(66, 65, 77));
+  --fc-dismiss-button-bg-hover: var(--fc-dismiss-button-bg-hover-dark, color-mix(in srgb, currentColor 14%, rgb(66, 65, 77)));
+  --fc-dismiss-button-bg-active: var(--fc-dismiss-button-bg-active-dark, color-mix(in srgb, currentColor 14%, rgb(66, 65, 77)));
+
 }
 
 @mixin hcm-theme {
@@ -89,4 +98,8 @@
   --fc-link-color: var(--fc-link-color-hcm, LinkText);
   --fc-link-color-hover: var(--fc-link-color-hover-hcm, LinkText);
   --fc-link-color-active: var(--fc-link-color-active-hcm, ActiveText);
+  --fc-icon-success-color: var(--fc-icon-success-color-hcm, LinkText);
+  --fc-dismiss-button-bg: var(--fc-dismiss-button-bg-hcm, -moz-dialog);
+  --fc-dismiss-button-bg-hover: var(--fc-dismiss-button-bg-hover-hcm, color-mix(in srgb, currentColor 14%, -moz-dialog));
+  --fc-dismiss-button-bg-active: var(--fc-dismiss-button-bg-active-hcm, color-mix(in srgb, currentColor 14%, -moz-dialog));
 }

@@ -9,6 +9,9 @@ const ALIAS = "@enginealias";
 let aliasEngine;
 
 add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
   // Run this in a new tab, to ensure all the locationchange notifications have
   // fired.
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
@@ -46,7 +49,7 @@ add_task(async function searchEngineAlias() {
     gURLBar.search("@example")
   );
   ok(gURLBar.hasAttribute("focused"), "url bar is focused");
-  UrlbarTestUtils.assertSearchMode(window, null);
+  await UrlbarTestUtils.assertSearchMode(window, null);
   await assertUrlbarValue("@example");
 
   assertOneOffButtonsVisible(false);

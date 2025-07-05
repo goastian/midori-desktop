@@ -14,8 +14,6 @@ def test(mod, path, entity=None):
         "devtools/shared",
         "devtools/startup",
         "browser",
-        "browser/extensions/formautofill",
-        "browser/extensions/report-site-issue",
         "extensions/spellcheck",
         "other-licenses/branding/firefox",
         "browser/branding/official",

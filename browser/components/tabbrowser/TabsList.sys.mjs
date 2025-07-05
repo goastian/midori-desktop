@@ -6,6 +6,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
+  TabMetrics: "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
 });
 
 const TAB_DROP_TYPE = "application/x-moz-tabbrowser-tab";
@@ -21,6 +22,9 @@ function setAttributes(element, attrs) {
 }
 
 class TabsListBase {
+  /** @type {boolean} */
+  #domRefreshPending = false;
+
   constructor({
     className,
     filterFn,
@@ -56,6 +60,14 @@ class TabsListBase {
         break;
       case "TabClose":
         this._tabClose(event.target);
+        break;
+      case "TabGroupCollapse":
+      case "TabGroupExpand":
+      case "TabGroupCreate":
+      case "TabGroupRemoved":
+      case "TabGrouped":
+      case "TabUngrouped":
+        this._refreshDOM();
         break;
       case "TabMove":
         this._moveTab(event.target);
@@ -101,16 +113,27 @@ class TabsListBase {
    * Populate the popup with menuitems and setup the listeners.
    */
   _populate() {
+    this._populateDOM();
+    this._setupListeners();
+  }
+
+  _populateDOM() {
     let fragment = this.doc.createDocumentFragment();
+    let currentGroupId;
 
     for (let tab of this.gBrowser.tabs) {
       if (this.filterFn(tab)) {
-        fragment.appendChild(this._createRow(tab));
+        if (tab.group && tab.group.id != currentGroupId) {
+          fragment.appendChild(this._createGroupRow(tab.group));
+          currentGroupId = tab.group.id;
+        }
+        if (!tab.group?.collapsed) {
+          fragment.appendChild(this._createRow(tab));
+        }
       }
     }
 
     this._addElement(fragment);
-    this._setupListeners();
   }
 
   _addElement(elementOrFragment) {
@@ -121,12 +144,36 @@ class TabsListBase {
    * Remove the menuitems from the DOM, cleanup internal state and listeners.
    */
   _cleanup() {
+    this._cleanupDOM();
+    this._cleanupListeners();
+    this._clearDropTarget();
+  }
+
+  _cleanupDOM() {
+    this.containerNode
+      .querySelectorAll(":scope .all-tabs-group-item")
+      .forEach(node => node.remove());
+
     for (let item of this.rows) {
       item.remove();
     }
     this.tabToElement = new Map();
-    this._cleanupListeners();
-    this._clearDropTarget();
+  }
+
+  _refreshDOM() {
+    if (!this.#domRefreshPending) {
+      this.#domRefreshPending = true;
+      this.containerNode.ownerGlobal.requestAnimationFrame(() => {
+        if (this.#domRefreshPending) {
+          this.#domRefreshPending = false;
+          if (this.listenersRegistered) {
+            // Only re-render the menu DOM if the menu is still open.
+            this._cleanupDOM();
+            this._populateDOM();
+          }
+        }
+      });
+    }
   }
 
   _setupListeners() {
@@ -136,6 +183,12 @@ class TabsListBase {
     this.gBrowser.tabContainer.addEventListener("TabClose", this);
     this.gBrowser.tabContainer.addEventListener("TabMove", this);
     this.gBrowser.tabContainer.addEventListener("TabPinned", this);
+    this.gBrowser.tabContainer.addEventListener("TabGroupCollapse", this);
+    this.gBrowser.tabContainer.addEventListener("TabGroupExpand", this);
+    this.gBrowser.tabContainer.addEventListener("TabGroupCreate", this);
+    this.gBrowser.tabContainer.addEventListener("TabGroupRemoved", this);
+    this.gBrowser.tabContainer.addEventListener("TabGrouped", this);
+    this.gBrowser.tabContainer.addEventListener("TabUngrouped", this);
 
     this.containerNode.addEventListener("click", this);
 
@@ -153,6 +206,12 @@ class TabsListBase {
     this.gBrowser.tabContainer.removeEventListener("TabClose", this);
     this.gBrowser.tabContainer.removeEventListener("TabMove", this);
     this.gBrowser.tabContainer.removeEventListener("TabPinned", this);
+    this.gBrowser.tabContainer.removeEventListener("TabGroupCollapse", this);
+    this.gBrowser.tabContainer.removeEventListener("TabGroupExpand", this);
+    this.gBrowser.tabContainer.removeEventListener("TabGroupCreate", this);
+    this.gBrowser.tabContainer.removeEventListener("TabGroupRemoved", this);
+    this.gBrowser.tabContainer.removeEventListener("TabGrouped", this);
+    this.gBrowser.tabContainer.removeEventListener("TabUngrouped", this);
 
     this.containerNode.removeEventListener("click", this);
 
@@ -182,6 +241,9 @@ class TabsListBase {
     }
   }
 
+  /**
+   * @param {MozTabbrowserTab} tab
+   */
   _moveTab(tab) {
     let item = this.tabToElement.get(tab);
     if (item) {
@@ -231,7 +293,10 @@ export class TabsPanel extends TabsListBase {
   constructor(opts) {
     super({
       ...opts,
-      containerNode: opts.containerNode || opts.view.firstElementChild,
+      containerNode:
+        opts.containerNode ||
+        opts.insertBefore?.parentNode ||
+        opts.view.firstElementChild,
     });
     this.view = opts.view;
     this.view.addEventListener(TABS_PANEL_EVENTS.show, this);
@@ -259,8 +324,18 @@ export class TabsPanel extends TabsListBase {
           break;
         }
         if (event.target.classList.contains("all-tabs-close-button")) {
-          this.gBrowser.removeTab(event.target.tab);
+          this.gBrowser.removeTab(
+            event.target.tab,
+            lazy.TabMetrics.userTriggeredContext(
+              lazy.TabMetrics.METRIC_SOURCE.TAB_OVERFLOW_MENU
+            )
+          );
           break;
+        }
+        if ("tabGroupId" in event.target.dataset) {
+          this.gBrowser
+            .getTabGroupById(event.target.dataset.tabGroupId)
+            ?.select();
         }
       // fall through
       default:
@@ -275,7 +350,10 @@ export class TabsPanel extends TabsListBase {
     // The loading throbber can't be set until the toolbarbutton is rendered,
     // so set the image attributes again now that the elements are in the DOM.
     for (let row of this.rows) {
-      this._setImageAttributes(row, row.tab);
+      // Ensure this isn't a group label
+      if (row.tab) {
+        this._setImageAttributes(row, row.tab);
+      }
     }
   }
 
@@ -324,6 +402,10 @@ export class TabsPanel extends TabsListBase {
       });
     }
 
+    if (tab.group) {
+      row.classList.add("grouped");
+    }
+
     row.appendChild(button);
 
     let muteButton = doc.createXULElement("toolbarbutton");
@@ -336,19 +418,76 @@ export class TabsPanel extends TabsListBase {
     muteButton.tab = tab;
     row.appendChild(muteButton);
 
-    let closeButton = doc.createXULElement("toolbarbutton");
-    closeButton.classList.add(
-      "all-tabs-close-button",
-      "all-tabs-secondary-button",
-      "subviewbutton"
-    );
-    closeButton.setAttribute("closemenu", "none");
-    doc.l10n.setAttributes(closeButton, "tabbrowser-manager-close-tab");
-    closeButton.tab = tab;
-    row.appendChild(closeButton);
+    if (!tab.pinned) {
+      let closeButton = doc.createXULElement("toolbarbutton");
+      closeButton.classList.add(
+        "all-tabs-close-button",
+        "all-tabs-secondary-button",
+        "subviewbutton"
+      );
+      closeButton.setAttribute("closemenu", "none");
+      doc.l10n.setAttributes(closeButton, "tabbrowser-manager-close-tab");
+      closeButton.tab = tab;
+      row.appendChild(closeButton);
+    }
 
     this._setRowAttributes(row, tab);
 
+    return row;
+  }
+
+  /**
+   * @param {MozTabbrowserTabGroup} group
+   * @returns {XULElement}
+   */
+  _createGroupRow(group) {
+    let { doc } = this;
+    let row = doc.createXULElement("toolbaritem");
+    row.setAttribute("class", "all-tabs-item all-tabs-group-item");
+    row.style.setProperty(
+      "--tab-group-color",
+      `var(--tab-group-color-${group.color})`
+    );
+    row.style.setProperty(
+      "--tab-group-color-invert",
+      `var(--tab-group-color-${group.color}-invert)`
+    );
+    row.style.setProperty(
+      "--tab-group-color-pale",
+      `var(--tab-group-color-${group.color}-pale)`
+    );
+    row.addEventListener("command", this);
+    let button = doc.createXULElement("toolbarbutton");
+    button.setAttribute("context", "open-tab-group-context-menu");
+    button.dataset.tabGroupId = group.id;
+    button.classList.add(
+      "all-tabs-button",
+      "all-tabs-group-button",
+      "subviewbutton",
+      "subviewbutton-iconic",
+      group.collapsed ? "tab-group-icon-collapsed" : "tab-group-icon"
+    );
+    button.setAttribute("flex", "1");
+    button.setAttribute("crop", "end");
+
+    let setName = tabGroupName => {
+      doc.l10n.setAttributes(
+        button,
+        "tabbrowser-manager-current-window-tab-group",
+        { tabGroupName }
+      );
+    };
+
+    if (group.label) {
+      setName(group.label);
+    } else {
+      doc.l10n
+        .formatValues([{ id: "tab-group-name-default" }])
+        .then(([msg]) => {
+          setName(msg);
+        });
+    }
+    row.appendChild(button);
     return row;
   }
 
@@ -464,7 +603,7 @@ export class TabsPanel extends TabsListBase {
     } else {
       pos = targetTab._tPos + this.dropTargetDirection + 1;
     }
-    this.gBrowser.moveTabTo(draggedTab, pos);
+    this.gBrowser.moveTabTo(draggedTab, { tabIndex: pos });
 
     this._clearDropTarget();
   }

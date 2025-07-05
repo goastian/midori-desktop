@@ -16,9 +16,9 @@ const { ForgetAboutSite } = ChromeUtils.importESModule(
 );
 
 const TEST_URIs = [
-  { title: "0", uri: "http://example.com" },
-  { title: "1", uri: "http://www.mozilla.org/test1" },
-  { title: "2", uri: "http://www.mozilla.org/test2" },
+  { title: "0", uri: "https://example.com" },
+  { title: "1", uri: "https://www.mozilla.org/test1" },
+  { title: "2", uri: "https://www.mozilla.org/test2" },
   { title: "3", uri: "https://192.168.200.1/login.html" },
 ];
 
@@ -115,39 +115,31 @@ async function testForgetAboutThisSite(
     return;
   }
 
-  // Resolves once the confirmation prompt has been closed.
-  let promptPromise;
+  // Resolves once the confirmation dialog has been closed.
+  let dialogPromise;
 
-  // Cancel prompt via esc key. We have to get the prompt closed promise
+  // Cancel dialog via esc key. We have to get the dialog closed promise
   // ourselves.
   if (cancelConfirmWithEsc) {
-    promptPromise = PromptTestUtils.waitForPrompt(organizer, {
-      modalType: Services.prompt.MODAL_TYPE_WINDOW,
-      promptType: "confirmEx",
-    }).then(dialog => {
-      let dialogWindow = dialog.ui.prompt;
-      let dialogClosedPromise = BrowserTestUtils.waitForEvent(
-        dialogWindow.opener,
-        "DOMModalDialogClosed"
-      );
-      EventUtils.synthesizeKey("KEY_Escape", undefined, dialogWindow);
-
+    dialogPromise = BrowserTestUtils.promiseAlertDialogOpen(
+      null,
+      "chrome://browser/content/places/clearDataForSite.xhtml"
+    ).then(dialog => {
+      let dialogClosedPromise = BrowserTestUtils.waitForEvent(dialog, "unload");
+      EventUtils.synthesizeKey("KEY_Escape", undefined, dialog);
       return dialogClosedPromise;
     });
   } else {
-    // Close prompt via buttons. PromptTestUtils supplies the closed promise.
-    promptPromise = PromptTestUtils.handleNextPrompt(
-      organizer,
-      { modalType: Services.prompt.MODAL_TYPE_WINDOW, promptType: "confirmEx" },
-      { buttonNumClick: shouldForget ? 0 : 1 }
+    dialogPromise = BrowserTestUtils.promiseAlertDialog(
+      shouldForget ? "accept" : "cancel",
+      "chrome://browser/content/places/clearDataForSite.xhtml"
     );
   }
 
-  // If we cancel the prompt, create stubs to check that none of the clear
+  // If we cancel the dialog, create stubs to check that none of the clear
   // methods are called.
   if (!shouldForget) {
     sinon.stub(ForgetAboutSite, "removeDataFromBaseDomain").resolves();
-    sinon.stub(ForgetAboutSite, "removeDataFromDomain").resolves();
   }
 
   let pageRemovedEventPromise;
@@ -159,8 +151,8 @@ async function testForgetAboutThisSite(
   // Execute the delete command.
   contextmenu.activateItem(forgetThisSite);
 
-  // Wait for prompt to be handled.
-  await promptPromise;
+  // Wait for dialog to be handled.
+  await dialogPromise;
 
   // If we expect to remove items, wait the page-removed event to fire. If we
   // don't wait, we may test the list before any items have been removed.
@@ -168,8 +160,7 @@ async function testForgetAboutThisSite(
 
   if (!shouldForget) {
     ok(
-      ForgetAboutSite.removeDataFromBaseDomain.notCalled &&
-        ForgetAboutSite.removeDataFromDomain.notCalled,
+      ForgetAboutSite.removeDataFromBaseDomain.notCalled,
       "Should not call ForgetAboutSite when the confirmation prompt is cancelled."
     );
     // Remove the stubs.
@@ -240,7 +231,7 @@ add_task(async function selectMultiple() {
   await testForgetAboutThisSite([0, 1]);
 });
 
-// This test makes sure that forgetting "http://www.mozilla.org/test2" also removes "http://www.mozilla.org/test1"
+// This test makes sure that forgetting "https://www.mozilla.org/test2" also removes "https://www.mozilla.org/test1"
 add_task(async function forgettingBasedomain() {
   await testForgetAboutThisSite([1], true, TEST_URIs.slice(1, 3));
 });

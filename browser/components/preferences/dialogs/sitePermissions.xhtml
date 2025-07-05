@@ -4,14 +4,14 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<?csp default-src chrome:; style-src chrome: 'unsafe-inline'; ?>
+
 <window
   id="SitePermissionsDialog"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   xmlns:html="http://www.w3.org/1999/xhtml"
   data-l10n-id="permissions-window2"
   data-l10n-attrs="title, style"
-  onload="gSitePermissionsManager.onLoad();"
-  onunload="gSitePermissionsManager.uninit();"
   persist="width height"
 >
   <dialog
@@ -45,9 +45,9 @@
 
     <keyset>
       <key
+        id="key_close"
         data-l10n-id="permissions-close-key"
         modifiers="accel"
-        oncommand="window.close();"
       />
     </keyset>
 
@@ -63,29 +63,18 @@
           flex="1"
           data-l10n-id="permissions-searchbox"
           data-l10n-attrs="placeholder"
-          oncommand="gSitePermissionsManager.buildPermissionsList();"
         />
       </hbox>
       <separator class="thin" />
       <listheader>
-        <treecol
-          id="siteCol"
-          data-l10n-id="permissions-site-name"
-          onclick="gSitePermissionsManager.buildPermissionsList(event.target)"
-        />
+        <treecol id="siteCol" data-l10n-id="permissions-site-name" />
         <treecol
           id="statusCol"
           data-l10n-id="permissions-status"
           data-isCurrentSortCol="true"
-          onclick="gSitePermissionsManager.buildPermissionsList(event.target);"
         />
       </listheader>
-      <richlistbox
-        id="permissionsBox"
-        selected="false"
-        onkeypress="gSitePermissionsManager.onPermissionKeyPress(event);"
-        onselect="gSitePermissionsManager.onPermissionSelect();"
-      />
+      <richlistbox id="permissionsBox" selected="false" />
     </vbox>
 
     <hbox class="actionButtons">
@@ -93,13 +82,8 @@
         id="removePermission"
         disabled="true"
         data-l10n-id="permissions-remove"
-        oncommand="gSitePermissionsManager.onPermissionDelete();"
       />
-      <button
-        id="removeAllPermissions"
-        data-l10n-id="permissions-remove-all"
-        oncommand="gSitePermissionsManager.onAllPermissionsDelete();"
-      />
+      <button id="removeAllPermissions" data-l10n-id="permissions-remove-all" />
     </hbox>
 
     <checkbox id="permissionsDisableCheckbox" />

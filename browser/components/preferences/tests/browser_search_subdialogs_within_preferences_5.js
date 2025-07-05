@@ -4,13 +4,6 @@
 
 requestLongerTimeout(2);
 
-// Enabling Searching functionatily. Will display search bar form this testcase forward.
-add_task(async function () {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.preferences.search", true]],
-  });
-});
-
 /**
  * Test for searching for the "Fonts" subdialog.
  */
@@ -30,7 +23,7 @@ add_task(async function () {
   await openPreferencesViaOpenPreferencesAPI("paneGeneral", {
     leaveOpen: true,
   });
-  await evaluateSearchResults("Link Colors", "colorsGroup");
+  await evaluateSearchResults("Link Colors", "contrastControlGroup");
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 

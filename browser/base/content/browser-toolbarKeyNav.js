@@ -406,7 +406,7 @@ ToolbarKeyboardNavigator = {
       return;
     }
     focus.dispatchEvent(
-      new MouseEvent("click", {
+      new PointerEvent("click", {
         bubbles: true,
         ctrlKey: aEvent.ctrlKey,
         altKey: aEvent.altKey,

@@ -1,4 +1,4 @@
 ;!@Install@!UTF-8!
-Title="Midori Browser"
+Title="Mozilla Firefox"
 RunProgram="setup-stub.exe"
 ;!@InstallEnd@!

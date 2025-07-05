@@ -9,7 +9,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
-  PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "relativeTimeFormat", () => {
@@ -62,52 +61,6 @@ export function getImageUrl(icon, targetURI) {
 }
 
 /**
- * This function doesn't just copy the link to the clipboard, it creates a
- * URL object on the clipboard, so when it's pasted into an application that
- * supports it, it displays the title as a link.
- */
-export function placeLinkOnClipboard(title, uri) {
-  let node = {
-    type: 0,
-    title,
-    uri,
-  };
-
-  // Copied from doCommand/placesCmd_copy in PlacesUIUtils.sys.mjs
-
-  // This is a little hacky, but there is a lot of code in Places that handles
-  // clipboard stuff, so it's easier to reuse.
-
-  // This order is _important_! It controls how this and other applications
-  // select data to be inserted based on type.
-  let contents = [
-    { type: lazy.PlacesUtils.TYPE_X_MOZ_URL, entries: [] },
-    { type: lazy.PlacesUtils.TYPE_HTML, entries: [] },
-    { type: lazy.PlacesUtils.TYPE_PLAINTEXT, entries: [] },
-  ];
-
-  contents.forEach(function (content) {
-    content.entries.push(lazy.PlacesUtils.wrapNode(node, content.type));
-  });
-
-  let xferable = Cc["@mozilla.org/widget/transferable;1"].createInstance(
-    Ci.nsITransferable
-  );
-  xferable.init(null);
-
-  function addData(type, data) {
-    xferable.addDataFlavor(type);
-    xferable.setTransferData(type, lazy.PlacesUtils.toISupportsString(data));
-  }
-
-  contents.forEach(function (content) {
-    addData(content.type, content.entries.join(lazy.PlacesUtils.endl));
-  });
-
-  Services.clipboard.setData(xferable, null, Ci.nsIClipboard.kGlobalClipboard);
-}
-
-/**
  * Get or create a logger, whose log-level is controlled by a pref
  *
  * @param {string} loggerName - Creating named loggers helps differentiate log messages from different
@@ -135,7 +88,7 @@ export function escapeHtmlEntities(text) {
     .replace(/'/g, "&#39;");
 }
 
-export function navigateToLink(e) {
+export function navigateToLink(e, url = e.originalTarget.url) {
   let currentWindow =
     e.target.ownerGlobal.browsingContext.embedderWindowGlobal.browsingContext
       .window;
@@ -148,6 +101,6 @@ export function navigateToLink(e) {
     if (where == "current") {
       where = "tab";
     }
-    currentWindow.openTrustedLinkIn(e.originalTarget.url, where);
+    currentWindow.openTrustedLinkIn(url, where);
   }
 }

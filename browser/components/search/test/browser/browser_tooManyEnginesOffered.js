@@ -3,6 +3,11 @@
 // This test makes sure that when a page offers many search engines,
 // a limited number of add-engine items will be shown in the searchbar.
 
+ChromeUtils.defineESModuleGetters(this, {
+  OpenSearchManager:
+    "moz-src:///browser/components/search/OpenSearchManager.sys.mjs",
+});
+
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
 
 add_setup(async function () {
@@ -15,25 +20,26 @@ add_setup(async function () {
 });
 
 add_task(async function test() {
-  let searchbar = BrowserSearch.searchBar;
+  let searchbar = document.getElementById("searchbar");
 
   let rootDir = getRootDirectory(gTestPath);
   let url = rootDir + "tooManyEnginesOffered.html";
-  await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
 
   // Open the search popup.
   let promise = promiseEvent(searchPopup, "popupshown");
+  let promise2 = promiseEvent(searchPopup.oneOffButtons, "rebuild");
   info("Opening search panel");
   searchbar.focus();
   // In TV we may try opening too early, when the searchbar is not ready yet.
   await TestUtils.waitForCondition(
-    () => BrowserSearch.searchBar.textbox.controller.input,
+    () => document.getElementById("searchbar").textbox.controller.input,
     "Wait for the searchbar controller to connect"
   );
   EventUtils.synthesizeKey("KEY_ArrowDown");
-  await promise;
+  await Promise.all([promise, promise2]);
 
-  const addEngineList = searchPopup.oneOffButtons._getAddEngines();
+  const addEngineList = OpenSearchManager.getEngines(tab.linkedBrowser);
   Assert.equal(
     addEngineList.length,
     6,

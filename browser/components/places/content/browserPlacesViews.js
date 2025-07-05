@@ -41,6 +41,10 @@ class PlacesViewBase {
   // The xul element that represents the root container.
   _rootElt = null;
 
+  get rootElement() {
+    return this._rootElt;
+  }
+
   // Set to true for views that are represented by native widgets (i.e.
   // the native mac menu).
   _nativeView = false;
@@ -726,16 +730,17 @@ class PlacesViewBase {
       // Add the "Open All in Tabs" menuitem.
       aPopup._endOptOpenAllInTabs = document.createXULElement("menuitem");
       aPopup._endOptOpenAllInTabs.className = "openintabs-menuitem";
-
-      aPopup._endOptOpenAllInTabs.setAttribute(
-        "oncommand",
-        "PlacesUIUtils.openMultipleLinksInTabs(this.parentNode._placesNode, event, " +
-          "PlacesUIUtils.getViewForNode(this));"
-      );
       aPopup._endOptOpenAllInTabs.setAttribute(
         "label",
         gNavigatorBundle.getString("menuOpenAllInTabs.label")
       );
+      aPopup._endOptOpenAllInTabs.addEventListener("command", event => {
+        PlacesUIUtils.openMultipleLinksInTabs(
+          event.currentTarget.parentNode._placesNode,
+          event,
+          PlacesUIUtils.getViewForNode(event.currentTarget)
+        );
+      });
       aPopup.appendChild(aPopup._endOptOpenAllInTabs);
     }
   }
@@ -821,7 +826,7 @@ class PlacesViewBase {
  */
 class PlacesToolbar extends PlacesViewBase {
   constructor(placesUrl, rootElt, viewElt) {
-    let startTime = Date.now();
+    let timerId = Glean.bookmarksToolbar.init.start();
     super(placesUrl, rootElt, viewElt);
     this._addEventListeners(this._dragRoot, this._cbEvents, false);
     this._addEventListeners(
@@ -847,9 +852,7 @@ class PlacesToolbar extends PlacesViewBase {
       );
     }
 
-    Services.telemetry
-      .getHistogramById("FX_BOOKMARKS_TOOLBAR_INIT_MS")
-      .add(Date.now() - startTime);
+    Glean.bookmarksToolbar.init.stopAndAccumulate(timerId);
   }
 
   // Called by PlacesViewBase so we can init properties that class
@@ -1533,7 +1536,7 @@ class PlacesToolbar extends PlacesViewBase {
    *   - folderElt: the folder to drop into, if applicable.
    */
   _getDropPoint(aEvent) {
-    if (!PlacesUtils.nodeIsFolder(this._resultNode)) {
+    if (!PlacesUtils.nodeIsFolderOrShortcut(this._resultNode)) {
       return null;
     }
 
@@ -1547,7 +1550,7 @@ class PlacesToolbar extends PlacesViewBase {
       let eltRect = elt.getBoundingClientRect();
       let eltIndex = Array.prototype.indexOf.call(this._rootElt.children, elt);
       if (
-        PlacesUtils.nodeIsFolder(elt._placesNode) &&
+        PlacesUtils.nodeIsFolderOrShortcut(elt._placesNode) &&
         !PlacesUIUtils.isFolderReadOnly(elt._placesNode)
       ) {
         // This is a folder.
@@ -1734,9 +1737,7 @@ class PlacesToolbar extends PlacesViewBase {
         this._allowPopupShowing = false;
       }
     }
-    if (target._placesNode?.uri) {
-      PlacesUIUtils.setupSpeculativeConnection(target._placesNode.uri, window);
-    }
+    PlacesUIUtils.maybeSpeculativeConnectOnMouseDown(aEvent);
   }
 
   _cleanupDragDetails() {
@@ -1918,7 +1919,7 @@ class PlacesToolbar extends PlacesViewBase {
       PlacesUIUtils.getViewForNode(popup) == this &&
       // UI performance: folder queries are cheap, keep the resultnode open
       // so we don't rebuild its contents whenever the popup is reopened.
-      !PlacesUtils.nodeIsFolder(placesNode)
+      !PlacesUtils.nodeIsFolderOrShortcut(placesNode)
     ) {
       placesNode.containerOpen = false;
     }
@@ -2045,7 +2046,7 @@ class PlacesMenu extends PlacesViewBase {
 
     // UI performance: folder queries are cheap, keep the resultnode open
     // so we don't rebuild its contents whenever the popup is reopened.
-    if (!PlacesUtils.nodeIsFolder(placesNode)) {
+    if (!PlacesUtils.nodeIsFolderOrShortcut(placesNode)) {
       placesNode.containerOpen = false;
     }
 
@@ -2059,10 +2060,7 @@ class PlacesMenu extends PlacesViewBase {
   // We don't have a facility for catch "mousedown" events on the native
   // Mac menus because Mac doesn't expose it
   _onMouseDown(aEvent) {
-    let target = aEvent.target;
-    if (target._placesNode?.uri) {
-      PlacesUIUtils.setupSpeculativeConnection(target._placesNode.uri, window);
-    }
+    PlacesUIUtils.maybeSpeculativeConnectOnMouseDown(aEvent);
   }
 }
 
@@ -2090,6 +2088,7 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
       "dragstart",
       "ViewHiding",
       "ViewShown",
+      "mousedown",
     ]);
   }
 
@@ -2118,6 +2117,9 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
         break;
       case "ViewShown":
         this._onViewShown(event);
+        break;
+      case "mousedown":
+        this._onMouseDown(event);
         break;
     }
   }
@@ -2148,6 +2150,39 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
         PlacesUIUtils.openInTabClosesMenu)
     ) {
       this.panelMultiView.closest("panel").hidePopup();
+    }
+  }
+
+  destroyContextMenu() {
+    super.destroyContextMenu();
+    this.maybeClosePanel(PlacesUIUtils.lastContextMenuCommand);
+  }
+
+  /**
+   * Closes the view depending on the command.
+   *
+   * This is necessary because PlacesPanelview's buttons are not
+   * XUL menuitems and are not affected by the closemenu attribute.
+   *
+   * @param {string} command the placesCommands command
+   */
+  maybeClosePanel(command) {
+    switch (command) {
+      // placesCmd_open:newcontainertab is not a placesCommand but it
+      // is set by PlacesUIUtils.openInContainerTab to close the panel.
+      case "placesCmd_open:newcontainertab":
+      case "placesCmd_open:tab":
+        if (
+          this._viewElt.id != "PanelUI-bookmarks" ||
+          PlacesUIUtils.openInTabClosesMenu
+        ) {
+          this.panelMultiView.closest("panel").hidePopup();
+        }
+        break;
+      case "placesCmd_createBookmark":
+      case "placesCmd_deleteDataHost":
+        this.panelMultiView.closest("panel").hidePopup();
+        break;
     }
   }
 
@@ -2258,7 +2293,7 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
       PlacesUIUtils.getViewForNode(panelview) == this &&
       // UI performance: folder queries are cheap, keep the resultnode open
       // so we don't rebuild its contents whenever the popup is reopened.
-      !PlacesUtils.nodeIsFolder(placesNode)
+      !PlacesUtils.nodeIsFolderOrShortcut(placesNode)
     ) {
       placesNode.containerOpen = false;
     }
@@ -2286,5 +2321,9 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
     if (!this.controllers.getControllerCount() && this._controller) {
       this.controllers.appendController(this._controller);
     }
+  }
+
+  _onMouseDown(aEvent) {
+    PlacesUIUtils.maybeSpeculativeConnectOnMouseDown(aEvent);
   }
 };

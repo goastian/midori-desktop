@@ -1,6 +1,6 @@
 "use strict";
 
-const { ExperimentFakes } = ChromeUtils.importESModule(
+const { NimbusTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 
@@ -28,28 +28,12 @@ const makeTestContent = (id, contentAdditions) => {
   };
 };
 
-async function openAboutWelcome(json) {
-  if (json) {
-    await setAboutWelcomeMultiStage(json);
-  }
-
-  let tab = await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    "about:welcome",
-    true
-  );
-  registerCleanupFunction(() => {
-    BrowserTestUtils.removeTab(tab);
-  });
-  return tab.linkedBrowser;
-}
-
 async function testAboutWelcomeLogoFor(logo = {}) {
   info(`Testing logo: ${JSON.stringify(logo)}`);
 
   let screens = [makeTestContent("TEST_LOGO_SELECTION_STEP", { logo })];
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: { enabled: true, screens },
   });
@@ -383,7 +367,7 @@ add_task(async function test_aboutwelcome_with_url_backdrop() {
   const TEST_BACKDROP_VALUE = `#212121 ${TEST_BACKDROP_URL} center/cover no-repeat fixed`;
   const TEST_URL_BACKDROP_CONTENT = makeTestContent("TEST_URL_BACKDROP_STEP");
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -399,7 +383,7 @@ add_task(async function test_aboutwelcome_with_url_backdrop() {
     // Expected selectors:
     [`div.outer-wrapper.onboardingContainer[style*='${TEST_BACKDROP_URL}']`]
   );
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
 });
 
@@ -412,7 +396,7 @@ add_task(async function test_aboutwelcome_with_color_backdrop() {
     "TEST_COLOR_NAME_BACKDROP_STEP"
   );
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -428,7 +412,7 @@ add_task(async function test_aboutwelcome_with_color_backdrop() {
     // Expected selectors:
     [`div.outer-wrapper.onboardingContainer[style*='${TEST_BACKDROP_COLOR}']`]
   );
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
 });
 
@@ -454,7 +438,7 @@ add_task(async function test_aboutwelcome_with_text_color_override() {
     );
   }
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -492,7 +476,7 @@ add_task(async function test_aboutwelcome_with_text_color_override() {
     }
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
   await SpecialPowers.popPrefEnv();
   browser.closeBrowser();
 });
@@ -524,7 +508,7 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     );
   }
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -551,7 +535,7 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     for (let [key, val] of Object.entries({
       // The filled "completed" element should have
       // `background-color: var(--in-content-primary-button-background);`
-      "background-color": "rgb(0, 97, 224)",
+      "background-color": "oklch(0.55 0.24 260)",
       // Base progress bar step styles.
       height: "6px",
       "margin-inline": "-1px",
@@ -569,7 +553,7 @@ add_task(async function test_aboutwelcome_with_progress_bar() {
     );
   });
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
 });
 
@@ -582,7 +566,7 @@ add_task(async function test_aboutwelcome_history_updates_disabled() {
   for (let i = 1; i < 3; i++) {
     screens.push(makeTestContent(`TEST_PUSH_STATE_STEP_${i}`));
   }
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -611,7 +595,7 @@ add_task(async function test_aboutwelcome_history_updates_disabled() {
     "No entries added to the session's history stack with history updates disabled"
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
 });
 
@@ -660,7 +644,7 @@ add_task(async function test_aboutwelcome_start_screen_configured() {
   for (let i = 1; i < 3; i++) {
     screens.push(makeTestContent(`TEST_START_STEP_${i}`));
   }
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       enabled: true,
@@ -718,7 +702,7 @@ add_task(async function test_aboutwelcome_start_screen_configured() {
     ok(false, "No telemetry sent");
   }
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
   sandbox.restore();
 });
@@ -729,7 +713,7 @@ add_task(async function test_aboutwelcome_start_screen_configured() {
 add_task(async function test_aboutwelcome_rdm_property() {
   let screens = [makeTestContent(`TEST_NO_RDM`, { no_rdm: true })];
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: { enabled: true, screens },
   });
@@ -743,7 +727,7 @@ add_task(async function test_aboutwelcome_rdm_property() {
     ["main.TEST_NO_RDM[no-rdm]"]
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
   browser.closeBrowser();
 });
 
@@ -759,7 +743,7 @@ add_task(async function test_aboutwelcome_reverse_dismiss() {
     }),
   ];
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: { enabled: true, screens },
   });
@@ -787,6 +771,187 @@ add_task(async function test_aboutwelcome_reverse_dismiss() {
   await BrowserTestUtils.browserLoaded(browser, false, "about:home");
   is(browser.currentURI.spec, "about:home", "about:home loaded");
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
+  browser.closeBrowser();
+});
+
+/**
+ * Test rendering a screen with that uses fullscreen mode
+ */
+add_task(async function test_aboutwelcome_fullscreen_property() {
+  let screens = [makeTestContent(`TEST_FULLSCREEN`, { fullscreen: true })];
+
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
+    featureId: "aboutwelcome",
+    value: { enabled: true, screens },
+  });
+
+  let browser = await openAboutWelcome();
+
+  await test_screen_content(
+    browser,
+    "render screen with 'fullscreen' attribute",
+    // Expected selectors:
+    ["main.TEST_FULLSCREEN[fullscreen]"]
+  );
+
+  await doExperimentCleanup();
+  browser.closeBrowser();
+});
+
+/**
+ * Test rendering a split screen with that uses narrow mode
+ */
+add_task(async function test_aboutwelcome_narrow_property() {
+  const logo = JSON.stringify([
+    makeTestContent("TEST_LOGO_STEP", {
+      logo: {
+        height: "chrome://branding/content/icon64.png",
+        imageURL: "50px",
+      },
+    }),
+  ]);
+  let screens = [
+    makeTestContent(`TEST_FULLSCREEN`, {
+      narrow: true,
+      position: "split",
+      logo,
+    }),
+  ];
+
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
+    featureId: "aboutwelcome",
+    value: { enabled: true, screens },
+  });
+
+  let browser = await openAboutWelcome();
+
+  await test_screen_content(
+    browser,
+    "render #multi-stage-message-root container with 'narrow' attribute",
+    // Expected selectors:
+    ["#multi-stage-message-root[narrow]"]
+  );
+
+  // Ensure elements get narrow styles
+  await test_element_styles(
+    browser,
+    ".section-main",
+    // Expected styles:
+    {
+      "margin-top": "0px",
+      width: "400px", // $split-section-width
+    }
+  );
+
+  await test_element_styles(
+    browser,
+    ".section-secondary",
+    // Expected styles:
+    {
+      height: "100px", // $small-secondary-section-height
+    }
+  );
+
+  await test_element_styles(
+    browser,
+    ".logo-container",
+    // Expected styles:
+    {
+      "text-align": "center",
+    }
+  );
+
+  await doExperimentCleanup();
+  browser.closeBrowser();
+});
+
+/**
+ * Test configurability of single select picker icons styles
+ */
+add_task(async function test_aboutwelcome_single_select_icon_styles() {
+  let screens = [
+    makeTestContent(`TEST_SINGLE_SELECT_ICONS`, {
+      tiles: {
+        type: "single-select",
+        selected: "horizontal",
+        action: {
+          picker: "<event>",
+        },
+        data: [
+          {
+            icon: {
+              background: `center / contain no-repeat url("chrome://activity-stream/content/data/content/assets/fox-doodle-waving.gif")`,
+              width: "150px",
+              height: "100px",
+              marginInline: "10px",
+              borderRadius: "5px",
+            },
+            id: "test1",
+            label: {
+              raw: "test1 label",
+            },
+            action: {
+              type: "SET_PREF",
+              data: {
+                pref: {
+                  name: "test1.pref",
+                  value: true,
+                },
+              },
+            },
+          },
+          {
+            defaultValue: true,
+            icon: {
+              background: `center / contain no-repeat url("chrome://activity-stream/content/data/content/assets/heart.webp")`,
+              width: "150px",
+              height: "100px",
+              marginInline: "10px",
+              borderRadius: "5px",
+            },
+            id: "test2",
+            label: {
+              raw: "test2 label",
+            },
+            action: {
+              type: "SET_PREF",
+              data: {
+                pref: {
+                  name: "test2.pref",
+                  value: false,
+                },
+              },
+            },
+          },
+        ],
+      },
+    }),
+  ];
+
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
+    featureId: "aboutwelcome",
+    value: { enabled: true, screens },
+  });
+
+  let browser = await openAboutWelcome();
+
+  await test_element_styles(
+    browser,
+    ".icon.test1",
+    // Expected styles:
+    {
+      "background-image":
+        'url("chrome://activity-stream/content/data/content/assets/fox-doodle-waving.gif")',
+      "background-repeat": "no-repeat",
+      "background-size": "contain",
+      width: "150px",
+      height: "100px",
+      "margin-inline": "10px",
+      "border-radius": "5px",
+    }
+  );
+
+  await doExperimentCleanup();
   browser.closeBrowser();
 });

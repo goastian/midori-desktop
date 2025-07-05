@@ -12,32 +12,23 @@ ChromeUtils.defineESModuleGetters(this, {
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
 });
 
-let defaultTestEngine, tab;
+let tab;
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
-
-  await SearchTestUtils.installSearchExtension(
-    {
-      name: "MozSearch",
-      search_url: "https://www.example.com/",
-      search_url_get_params: "q={searchTerms}",
-    },
-    { setAsDefault: true }
-  );
-  defaultTestEngine = Services.search.getEngineByName("MozSearch");
-
+  let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
+    cleanup();
   });
 });
 
 async function checkSearchString(searchString, isIpv6) {
   info("Search for term:", searchString);
   let [searchUrl] = UrlbarUtils.getSearchQueryUrl(
-    defaultTestEngine,
+    Services.search.defaultEngine,
     searchString
   );
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(
@@ -51,7 +42,10 @@ async function checkSearchString(searchString, isIpv6) {
   // decodeURI is necessary for matching square brackets in IPV6.
   let expectedUrl = isIpv6 ? decodeURI(searchUrl) : searchUrl;
 
-  if (UrlbarPrefs.get("trimHttps") && expectedUrl.startsWith("https://")) {
+  if (
+    UrlbarPrefs.getScotchBonnetPref("trimHttps") &&
+    expectedUrl.startsWith("https://")
+  ) {
     expectedUrl = expectedUrl.slice("https://".length);
   }
 
@@ -61,11 +55,8 @@ async function checkSearchString(searchString, isIpv6) {
     null,
     `There should not be a userTypedValue for ${searchString}`
   );
-  Assert.equal(
-    gBrowser.selectedBrowser.searchTerms,
-    "",
-    "searchTerms should be empty."
-  );
+  let state = window.gURLBar.getBrowserState(window.gBrowser.selectedBrowser);
+  Assert.equal(state.persist.searchTerms, "", "searchTerms should be empty.");
 }
 
 add_task(async function unsafe_search_strings() {

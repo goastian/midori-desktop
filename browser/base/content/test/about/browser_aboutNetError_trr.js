@@ -63,7 +63,7 @@ add_task(async function exceptionButtonTRROnly() {
     const actualDataL10nID = titleEl.getAttribute("data-l10n-id");
     is(
       actualDataL10nID,
-      "dns-not-found-trr-only-title2",
+      "dnsNotFound-title",
       "Correct error page title is set"
     );
 
@@ -89,7 +89,6 @@ add_task(async function TRROnlyExceptionButtonTelemetry() {
     ).content;
     return !events || !events.length;
   });
-  Services.telemetry.setEventRecordingEnabled("security.doh.neterror", true);
 
   let browser = await loadErrorPage();
 

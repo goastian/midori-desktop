@@ -12,6 +12,7 @@
 
 #include "mozilla/RefPtr.h"
 #include "mozilla/GRefPtr.h"
+#include "mozilla/Span.h"
 #include "nsINavHistoryService.h"
 #include "nsUnixRemoteServer.h"
 #include "nsString.h"
@@ -23,7 +24,7 @@ class nsGNOMEShellSearchProvider;
 
 class GnomeHistoryIcon {
  public:
-  GnomeHistoryIcon() : mTimeStamp(-1), mWidth(0), mHeight(0){};
+  GnomeHistoryIcon() : mTimeStamp(-1), mWidth(0), mHeight(0) {}
 
   // From which search is this icon
   void Set(int aTimeStamp, mozilla::UniquePtr<uint8_t[]> aData, int aWidth,
@@ -58,7 +59,7 @@ class nsGNOMEShellHistorySearchResult : public nsUnixRemoteServer {
                                   GDBusConnection* aConnection, int aTimeStamp)
       : mSearchProvider(aSearchProvider),
         mConnection(aConnection),
-        mTimeStamp(aTimeStamp){};
+        mTimeStamp(aTimeStamp) {}
 
   void SetReply(RefPtr<GDBusMethodInvocation> aReply) {
     mReply = std::move(aReply);
@@ -76,11 +77,11 @@ class nsGNOMEShellHistorySearchResult : public nsUnixRemoteServer {
   // when we have search results available.
   void ReceiveSearchResultContainer(
       nsCOMPtr<nsINavHistoryContainerResultNode> aHistResultContainer);
-
   nsCOMPtr<nsINavHistoryContainerResultNode> GetSearchResultContainer() {
     return mHistResultContainer;
   }
-  void HandleCommandLine(const char* aBuffer, uint32_t aTimestamp) {
+  void HandleCommandLine(mozilla::Span<const char> aBuffer,
+                         uint32_t aTimestamp) {
     nsUnixRemoteServer::HandleCommandLine(aBuffer, aTimestamp);
   }
 
@@ -96,6 +97,7 @@ class nsGNOMEShellHistorySearchResult : public nsUnixRemoteServer {
  private:
   nsGNOMEShellSearchProvider* mSearchProvider;
   nsCOMPtr<nsINavHistoryContainerResultNode> mHistResultContainer;
+  nsTArray<nsCString> mOpenTabs;
   nsAutoCString mSearchTerm;
   RefPtr<GDBusMethodInvocation> mReply;
   GDBusConnection* mConnection = nullptr;

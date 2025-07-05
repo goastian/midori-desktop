@@ -15,11 +15,12 @@ skip-if = [
   "os == 'linux' && os_version == '18.04' && tsan", # manifest runs too long
   "win11_2009 && asan", # manifest runs too long
 ]
+tags = "os_integration"
 
 ["browser_about_settings.js"]
 
 ["browser_advanced_update.js"]
-skip-if = ["!updater"]
+run-if = ["updater"]
 
 ["browser_application_xml_handle_internally.js"]
 
@@ -28,10 +29,7 @@ skip-if = ["!updater"]
 ["browser_basic_rebuild_fonts_test.js"]
 
 ["browser_browser_languages_subdialog.js"]
-skip-if = [
-  "tsan",
-  "!debug && os == 'win'", # Bug 1518370
-]
+skip-if = ["tsan"]
 
 ["browser_bug410900.js"]
 
@@ -44,9 +42,6 @@ skip-if = [
 ["browser_bug1020245_openPreferences_to_paneContent.js"]
 
 ["browser_bug1184989_prevent_scrolling_when_preferences_flipped.js"]
-skip-if = [
-  "os == 'mac'", # Bug 1664576
-]
 support-files = ["browser_bug1184989_prevent_scrolling_when_preferences_flipped.xhtml"]
 
 ["browser_bug1547020_lockedDownloadDir.js"]
@@ -75,12 +70,13 @@ skip-if = [
 ["browser_connection_system_wpad.js"]
 run-if = ["os == 'win'"]
 
+["browser_connection_telemetry.js"]
+
 ["browser_connection_valid_hostname.js"]
 
 ["browser_containers_name_input.js"]
 
 ["browser_contentblocking.js"]
-skip-if = ["socketprocess_networking"]
 
 ["browser_contentblocking_categories.js"]
 
@@ -94,9 +90,6 @@ skip-if = ["socketprocess_networking"]
 
 ["browser_dns_over_https_exceptions_subdialog.js"]
 
-["browser_engines.js"]
-fail-if = ["a11y_checks"] # Bug 1854636 clicked treechildren#engineChildren may not be focusable
-
 ["browser_ensure_prefs_bindings_initted.js"]
 
 ["browser_etp_exceptions_dialog.js"]
@@ -106,12 +99,10 @@ fail-if = ["a11y_checks"] # Bug 1854636 clicked treechildren#engineChildren may 
 ["browser_experimental_features_filter.js"]
 
 ["browser_experimental_features_hidden_when_not_public.js"]
-skip-if = [
-  "os == 'mac' && debug", # Bug 1723854
-  "os == 'linux' && os_version == '18.04' && debug", # Bug 1723854
-]
 
 ["browser_experimental_features_resetall.js"]
+
+["browser_experimental_features_studies_disabled.js"]
 
 ["browser_extension_controlled.js"]
 skip-if = [
@@ -140,7 +131,7 @@ https_first_disabled = true
 ["browser_ignore_invalid_capability.js"]
 
 ["browser_keyboardfocus.js"]
-skip-if = ["os != 'mac'"]
+run-if = ["os == 'mac'"]
 
 ["browser_languages_subdialog.js"]
 
@@ -183,6 +174,8 @@ skip-if = ["true"]
 
 ["browser_permissions_urlFieldHidden.js"]
 
+["browser_pip_settings.js"]
+
 ["browser_primaryPassword.js"]
 
 ["browser_privacy_cookieBannerHandling.js"]
@@ -203,6 +196,8 @@ skip-if = ["true"]
 
 ["browser_privacy_syncDataClearing_v2.js"]
 
+["browser_privacy_uploadEnabled.js"]
+
 ["browser_privacypane_2.js"]
 
 ["browser_privacypane_3.js"]
@@ -214,10 +209,6 @@ skip-if = ["true"]
 ["browser_searchChangedEngine.js"]
 
 ["browser_searchDefaultEngine.js"]
-support-files = [
-  "engine1/manifest.json",
-  "engine2/manifest.json",
-]
 
 ["browser_searchFindMoreLink.js"]
 
@@ -227,6 +218,9 @@ support-files = [
 support-files = ["!/gfx/layers/apz/test/mochitest/apz_test_native_event_utils.js"]
 
 ["browser_searchShowSuggestionsFirst.js"]
+
+["browser_search_engineList.js"]
+fail-if = ["a11y_checks"] # Bug 1854636 clicked treechildren#engineChildren may not be focusable
 
 ["browser_search_firefoxSuggest.js"]
 
@@ -255,7 +249,11 @@ skip-if = ["tsan"] # Bug 1678829
 
 ["browser_search_subdialogs_within_preferences_8.js"]
 
+["browser_search_subdialogs_within_preferences_9.js"]
+
 ["browser_search_subdialogs_within_preferences_site_data.js"]
+
+["browser_search_userEngineDialog.js"]
 
 ["browser_search_within_preferences_1.js"]
 
@@ -298,7 +296,7 @@ support-files = [
 ["browser_warning_permanent_private_browsing.js"]
 
 ["browser_windows_launch_on_login.js"]
-run-if = ["(os == 'win' && !msix)"]
+run-if = ["os == 'win' && !msix"]
 
 ["browser_windows_launch_on_login_msix.js"]
-run-if = ["(os == 'win' && msix)"]
+run-if = ["os == 'win' && msix"]

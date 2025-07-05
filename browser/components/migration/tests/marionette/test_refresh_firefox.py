@@ -306,7 +306,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
         """,
             script_args=(self._historyURL,),
         )
-        if type(historyResult) == str:
+        if type(historyResult) is str:
             self.fail(historyResult)
             return
 
@@ -322,7 +322,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
         """,
             script_args=(self._formHistoryFieldName,),
         )
-        if type(formFieldResults) == str:
+        if type(formFieldResults) is str:
             self.fail(formFieldResults)
             return
 
@@ -357,7 +357,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
           }).then(resolve);
         """,
         )
-        if type(formAutofillResults) == str:
+        if type(formAutofillResults) is str:
             self.fail(formAutofillResults)
             return
 
@@ -465,7 +465,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
           });
         """
         )
-        if type(result) != dict:
+        if type(result) is not dict:
             self.fail(result)
             return
         self.assertEqual(result["accountData"]["email"], "test@test.com")
@@ -492,6 +492,14 @@ class TestFirefoxRefresh(MarionetteTestCase):
         )
         self.assertFalse(result)
 
+    def checkRefreshPromptDisabled(self):
+        refreshPromptDisabled = self.runCode(
+            """
+          return Services.prefs.getStringPref("browser.disableResetPrompt", false);
+      """
+        )
+        self.assertTrue(refreshPromptDisabled)
+
     def checkProfile(self, has_migrated=False, expect_sync_user=True):
         self.checkPassword()
         self.checkBookmarkInMenu()
@@ -505,6 +513,7 @@ class TestFirefoxRefresh(MarionetteTestCase):
             self.checkBookmarkToolbarVisibility()
             self.checkSession()
             self.checkStartupMigrationStateCleared()
+            self.checkRefreshPromptDisabled()
 
     def createProfileData(self):
         self.savePassword()

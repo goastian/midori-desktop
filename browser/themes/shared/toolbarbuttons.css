@@ -9,8 +9,30 @@
   --toolbarbutton-outer-padding: 2px;
   --toolbarbutton-inner-padding: 8px;
 
-  --toolbarbutton-hover-background: var(--button-hover-bgcolor);
-  --toolbarbutton-active-background: var(--button-active-bgcolor);
+  --toolbarbutton-hover-background: color-mix(in srgb, currentColor 17%, transparent);
+  --toolbarbutton-active-background: color-mix(in srgb, currentColor 30%, transparent);
+  --toolbarbutton-outline-color: transparent;
+  --toolbarbutton-hover-outline-color: transparent;
+  --toolbarbutton-active-outline-color: transparent;
+  --toolbarbutton-selected-outline-color: var(--toolbarbutton-active-outline-color);
+  --toolbarbutton-outline: 1px solid var(--toolbarbutton-outline-color);
+  --toolbarbutton-outline-offset: -1px;
+
+  @media (prefers-contrast) {
+    --toolbarbutton-hover-outline-color: currentColor;
+    --toolbarbutton-active-outline-color: currentColor;
+  }
+
+  @media (forced-colors) {
+    --toolbarbutton-outline-color: ButtonText;
+    --toolbarbutton-hover-outline-color: SelectedItem;
+    --toolbarbutton-active-outline-color: ButtonText;
+    --toolbarbutton-selected-outline-color: SelectedItem;
+
+    &[lwtheme] {
+      --toolbarbutton-outline-color: currentColor;
+    }
+  }
 
   --toolbarseparator-color: color-mix(in srgb, currentColor 60%, transparent);
 
@@ -34,22 +56,7 @@
   --toolbarbutton-inner-padding: calc((var(--tab-min-height) - 16px) / 2);
 }
 
-/* ::::: primary toolbar buttons ::::: */
-
-toolbarpaletteitem {
-  -moz-window-dragging: no-drag;
-  justify-content: flex-start;
-
-  &[removable="false"] {
-    opacity: 0.5;
-  }
-
-  @media not (-moz-platform: macos) {
-    &:is([place="palette"], [place="panel"], [place="toolbar"]) {
-      -moz-user-focus: normal;
-    }
-  }
-}
+/* Primary toolbar buttons */
 
 .toolbarbutton-1 {
   :root:not([customizing]) &[disabled] {
@@ -62,13 +69,36 @@ toolbarpaletteitem {
     fill-opacity: var(--toolbarbutton-disabled-opacity);
   }
 
-  > .toolbarbutton-icon {
-    margin-inline-end: 0 !important;
-  }
-
   > .toolbarbutton-icon,
   > .toolbarbutton-badge-stack > .toolbarbutton-icon {
     width: 16px;
+  }
+}
+
+/* Taskbar Tab windows will hide all toolbar buttons that are not on the following list */
+
+:root[taskbartab] {
+  .chromeclass-toolbar-additional {
+    display: none;
+  }
+  #back-button,
+  #forward-button,
+  #stop-reload-button,
+  #customizableui-special-spring1,
+  #vertical-spacer,
+  #customizableui-special-spring2,
+  #downloads-button,
+  #unified-extensions-button,
+  #save-page-button,
+  #print-button,
+  #find-button,
+  #zoom-controls,
+  #edit-controls,
+  #characterencoding-button,
+  #email-link-button,
+  #screenshot-button,
+  #fullscreen-button {
+    display: revert;
   }
 }
 
@@ -77,6 +107,15 @@ toolbar .toolbarbutton-1 {
   margin: 0;
   padding: 0 var(--toolbarbutton-outer-padding);
   justify-content: center;
+
+  > .toolbarbutton-icon,
+  > .toolbarbutton-text,
+  > .toolbarbutton-badge-stack {
+    padding: var(--toolbarbutton-inner-padding);
+    border-radius: var(--toolbarbutton-border-radius);
+    outline: var(--toolbarbutton-outline);
+    outline-offset: var(--toolbarbutton-outline-offset);
+  }
 
   &:focus-visible {
     outline: none;
@@ -87,13 +126,6 @@ toolbar .toolbarbutton-1 {
       outline: var(--focus-outline);
       outline-offset: var(--focus-outline-inset);
     }
-  }
-
-  > .toolbarbutton-icon,
-  > .toolbarbutton-text,
-  > .toolbarbutton-badge-stack {
-    padding: var(--toolbarbutton-inner-padding);
-    border-radius: var(--toolbarbutton-border-radius);
   }
 
   > .toolbarbutton-icon {
@@ -122,10 +154,28 @@ toolbar .toolbarbutton-1 {
       color: inherit;
     }
 
-    &:is([open], [checked], :hover:active) > :is(.toolbarbutton-icon, .toolbarbutton-text, .toolbarbutton-badge-stack) {
+    &:is(:hover:active, [open], [checked]) > :is(.toolbarbutton-icon, .toolbarbutton-text, .toolbarbutton-badge-stack) {
       background-color: var(--toolbarbutton-active-background);
       color: inherit;
     }
+
+    &:not(:focus-visible) {
+      &:hover > :is(.toolbarbutton-icon, .toolbarbutton-text, .toolbarbutton-badge-stack) {
+        outline-color: var(--toolbarbutton-hover-outline-color);
+      }
+
+      &:hover:active > :is(.toolbarbutton-icon, .toolbarbutton-text, .toolbarbutton-badge-stack) {
+        outline-color: var(--toolbarbutton-active-outline-color);
+      }
+
+      &:is([open], [checked]) > :is(.toolbarbutton-icon, .toolbarbutton-text, .toolbarbutton-badge-stack) {
+        outline-color: var(--toolbarbutton-selected-outline-color);
+      }
+    }
+  }
+
+  &.avatar-button-background > .toolbarbutton-badge-stack {
+    border: 1px solid var(--border-color-card);
   }
 }
 
@@ -177,6 +227,24 @@ toolbar .toolbaritem-combined-buttons {
 toolbar[brighttext] .toolbaritem-combined-buttons > separator {
   opacity: .3;
 }
+
+/* Toolbar button animations */
+
+.toolbarbutton-animatable-box {
+  display: block;
+  position: absolute;
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+
+  > .toolbarbutton-animatable-image {
+    animation-fill-mode: forwards;
+    animation-iteration-count: 1;
+    list-style-image: none;
+  }
+}
+
+/* Navigation toolbar overflow button with animation */
 
 #nav-bar-overflow-button {
   list-style-image: url("chrome://global/skin/icons/chevron.svg");
@@ -235,7 +303,135 @@ toolbar[brighttext] .toolbaritem-combined-buttons > separator {
   }
 }
 
-/* ::::: bookmark buttons ::::: */
+/* Combined Stop and Reload button with animation */
+
+#reload-button:not([displaystop]) + #stop-button,
+#reload-button[displaystop] {
+  display: none;
+}
+
+/* The reload-button is only disabled temporarily when it becomes visible
+   to prevent users from accidentally clicking it. We don't however need
+   to show this disabled state, as the flicker that it generates is short
+   enough to be visible but not long enough to explain anything to users. */
+#reload-button[disabled]:not(:-moz-window-inactive) > .toolbarbutton-icon {
+  opacity: 1 !important;
+}
+
+@keyframes stop-to-reload {
+  /* pause on the first frame (step 0) for 6 frames of time */
+  from {
+    /* 0 */
+    transform: translateX(0);
+  }
+  /* resume at 7/35 and animate across the next 14 frames */
+  17.14% {
+    animation-timing-function: steps(14);
+    transform: translateX(calc(0  * -20px));
+  }
+  /* pause on the last frame for the remainder of the duration */
+  54.29% {
+    transform: translateX(calc(14 * -20px));
+  }
+  to {
+    /* end state for animation: */
+    transform: translateX(calc(var(--anim-frames) * -20px));
+  }
+}
+
+@keyframes reload-to-stop {
+  /* pause on the first frame (step 0) for 6 frames of time */
+  from {
+    /* 0 */
+    transform: translateX(0);
+    animation-timing-function: steps(12);
+  }
+  /* pause at 13/15 for 3 frames */
+  86.67% {
+    transform: translateX(calc(var(--anim-frames) * -20px));
+  }
+  to {
+    /* end state for animation: */
+    transform: translateX(calc(var(--anim-frames) * -20px));
+  }
+}
+
+:is(#reload-button, #stop-button) > .toolbarbutton-animatable-box {
+  top: calc(50% - 10px); /* Vertically center the 20px tall animatable image */
+  width: 20px; /* Width of each frame within the SVG sprite */
+  height: 20px; /* Height of each frame within the SVG sprite */
+
+  /* The animations for the reload-button and stop-button are disabled
+     outside of the nav-bar due to bug 1382894. */
+  :not(#nav-bar-customization-target) > #stop-reload-button > & {
+    display: none;
+  }
+}
+
+#stop-reload-button[animate] {
+  > #reload-button > .toolbarbutton-icon,
+  > #reload-button[displaystop] + #stop-button > .toolbarbutton-icon {
+    fill: transparent;
+  }
+
+  > #reload-button,
+  > #stop-button {
+    position: relative;
+  }
+
+  > #reload-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+    background-image: url("chrome://browser/skin/stop-to-reload.svg");
+    /* transition from stop icon to reload icon
+       pause at frame 0 for 6 ticks,
+       pause at frame 15 for 16 ticks
+       total 35 steps */
+    --anim-frames: 14;
+    --anim-steps: calc(var(--anim-frames) + 21); /* Add steps for doing the pause at the start and end */
+    width: calc(20px * (var(--anim-frames) + 1));
+    height: 20px;
+
+    /* initial state for animation */
+    transform: translateX(0);
+  }
+
+  > #reload-button:not([displaystop]) > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+    animation-name: stop-to-reload;
+  }
+
+  > #reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+    background-image: url("chrome://browser/skin/reload-to-stop.svg");
+    /* transition from reload icon to stop icon
+       pause at end for 3 frames of time
+       pause at ...
+       total 15 steps */
+    --anim-frames: 12;
+    --anim-steps: calc(var(--anim-frames) + 3); /* Add steps for doing the pause at the start and end */
+    width: calc(20px * (var(--anim-frames) + 1));
+    height: 20px;
+
+    /* initial state for animation */
+    transform: translateX(0);
+
+    animation-name: reload-to-stop;
+    animation-duration: calc(var(--anim-steps) * 16.667ms);
+  }
+}
+
+#reload-button:not([displaystop]) > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+  animation-duration: calc(var(--anim-steps) * 16.667ms);
+}
+
+#reload-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+  transform: translateX(-700px);
+}
+
+#reload-button[displaystop] + #stop-button > .toolbarbutton-animatable-box > .toolbarbutton-animatable-image {
+  animation-timing-function: steps(15);
+  animation-duration: 0.25s;
+  transform: translateX(-300px);
+}
+
+/* Bookmark buttons */
 
 #personal-toolbar-empty-description,
 toolbarbutton.bookmark-item:not(.subviewbutton) {
@@ -275,16 +471,20 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
   border-radius: var(--toolbarbutton-border-radius);
   max-width: 13em;
   appearance: none;
+  outline: var(--toolbarbutton-outline);
+  outline-offset: var(--toolbarbutton-outline-offset);
 
   &:not([disabled], [open]):hover {
     background-color: var(--toolbarbutton-hover-background);
     color: inherit;
+    outline-color: var(--toolbarbutton-hover-outline-color);
   }
 
   &:hover:active:not([disabled]),
   &[open="true"] {
     background-color: var(--toolbarbutton-active-background);
     color: inherit;
+    outline-color: var(--toolbarbutton-active-outline-color);
   }
 
   &:focus-visible {
@@ -304,6 +504,15 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
   #PlacesToolbarItems > & {
     margin-inline-end: 0;
   }
+}
+
+/* This rule applies to bookmark menu items too */
+.bookmark-item > label {
+  /* Ensure we use the direction of the bookmarks label instead of the
+     browser locale. */
+  unicode-bidi: plaintext;
+  /* Preserve whitespace in bookmark names. */
+  white-space: pre;
 }
 
 #personal-toolbar-empty-description {
@@ -355,6 +564,7 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
 #PlacesToolbarItems > .bookmark-item > .toolbarbutton-icon[label]:not([label=""]),
 #PersonalToolbar #import-button > .toolbarbutton-icon,
 #PersonalToolbar #aboutwelcome-button > .toolbarbutton-icon,
+#PersonalToolbar #fxms-bmb-button > .toolbarbutton-icon,
 #OtherBookmarks.bookmark-item[container] > .toolbarbutton-icon {
   margin-inline-end: 4px;
 }
@@ -388,6 +598,8 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   }
 }
 
+/* Toolbarbutton badge */
+
 .toolbarbutton-badge {
   /* The bookmarks toolbar is smaller than the other toolbars, so we
    * need to override the badge position to not be cut off. */
@@ -418,4 +630,33 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
     margin-inline-end: -6px !important;
     background: url(chrome://global/skin/icons/badge-blue.svg);
   }
+}
+
+/* Flexible spacer sizing */
+
+toolbarpaletteitem[place=toolbar][id^=wrapper-customizableui-special-spring],
+toolbarspring {
+  flex: 1;
+  min-width: 28px;
+  max-width: 112px;
+
+  #nav-bar &:not(#vertical-spacer) {
+    flex: 80 80;
+    /* Ensure flexible spacers don't shrink to nothing so they can be
+     * manipulated in customize mode. */
+    min-width: 10px;
+  }
+}
+
+#nav-bar:not([customizing]) toolbarspring:not(#vertical-spacer) {
+  /* Allow flexible spacers to shrink further outside of customize mode. */
+  min-width: 1px;
+}
+
+/* Keyboard navigation */
+
+toolbar[keyNav]:not([collapsed=true], [customizing]) toolbartabstop,
+#tabbrowser-tabs[orient="vertical"] #tabs-newtab-button,
+#vertical-tabs-newtab-button {
+  -moz-user-focus: normal;
 }

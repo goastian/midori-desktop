@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -8,7 +8,7 @@
   <head>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src resource: chrome:; img-src https://www.mozilla.org https://firefox-settings-attachments.cdn.mozilla.net blob: chrome:; style-src resource: chrome: 'unsafe-inline'; object-src 'none'"
+      content="default-src resource: chrome:; img-src https://www.mozilla.org https://firefox-settings-attachments.cdn.mozilla.net https://addons.mozilla.org blob: chrome:; style-src resource: chrome: 'unsafe-inline'; object-src 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <link
@@ -23,10 +23,15 @@
     <link rel="localization" href="browser/newtab/onboarding.ftl" />
     <link rel="localization" href="browser/spotlight.ftl" />
     <link rel="localization" href="browser/migrationWizard.ftl" />
+    <link rel="localization" href="browser/preonboarding.ftl" />
   </head>
-  <body role="dialog" aria-labelledby="title" aria-describedby="content">
-    <script src="resource://activity-stream/vendor/react.js"></script>
-    <script src="resource://activity-stream/vendor/react-dom.js"></script>
+  <body
+    role="dialog"
+    aria-labelledby="mainContentHeader"
+    aria-describedby="mainContentSubheader"
+  >
+    <script src="chrome://global/content/vendor/react.js"></script>
+    <script src="chrome://global/content/vendor/react-dom.js"></script>
     <script src="chrome://browser/content/spotlight.js"></script>
     <script src="chrome://global/content/elements/named-deck.js" async></script>
     <script src="chrome://global/content/elements/panel-list.js" async></script>

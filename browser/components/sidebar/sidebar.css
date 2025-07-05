@@ -3,25 +3,107 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 @import url("chrome://global/skin/global.css");
+@import url("chrome://browser/skin/browser-colors.css");
 
 :root {
-  background-color: var(--lwt-sidebar-background-color);
-  color: var(--lwt-sidebar-text-color);
+  --sidebar-box-border-color: light-dark(color-mix(in srgb, currentColor 10%, transparent), var(--border-color-deemphasized));
+  --sidebar-box-border-width: 0.5px;
+  --sidebar-box-border: var(--sidebar-box-border-width) solid var(--sidebar-box-border-color);
+  --sidebar-box-background: light-dark(rgba(0, 0, 0, .03), rgba(255, 255, 255, .05));
+  --sidebar-box-color: currentColor;
+  background-color: transparent;
+  color: var(--sidebar-text-color);
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100%;
 }
 
 moz-card {
+  --card-gap: var(--space-small);
+  --card-padding: 8px;
+  --card-heading-padding-inline: 12px;
+
   margin-block-start: var(--space-medium);
+  box-shadow: none;
+  background-color: var(--sidebar-box-background);
+  color: var(--sidebar-box-color);
+  border: var(--sidebar-box-border);
+  border-radius: var(--border-radius-medium);
+
+  &::part(summary) {
+    padding-block: var(--space-medium);
+  }
+
+  &::part(heading) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   &.phone::part(icon),
   &.mobile::part(icon) {
-    background-image: url('chrome://browser/skin/device-phone.svg');
+    background-image: url("chrome://browser/skin/device-phone.svg");
   }
 
   &.desktop::part(icon) {
-    background-image: url('chrome://browser/skin/device-desktop.svg');
+    background-image: url("chrome://browser/skin/device-desktop.svg");
   }
 
   &.tablet::part(icon) {
-    background-image: url('chrome://browser/skin/device-tablet.svg');
+    background-image: url("chrome://browser/skin/device-tablet.svg");
+  }
+}
+
+.sidebar-panel {
+  padding: var(--space-large);
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: var(--border-radius-medium);
+  width: 100%;
+}
+
+fxview-search-textbox {
+  &::part(input) {
+    background-color: var(--sidebar-box-background);
+    color: var(--sidebar-box-color);
+    border: var(--sidebar-box-border);
+    border-radius: var(--border-radius-medium);
+  }
+
+  &::part(container) {
+    width: 100%;
+    height: var(--size-item-large)
+  }
+}
+
+fxview-empty-state {
+  &::part(container) {
+    margin-block-start: var(--space-medium);
+    padding-block: 83px;
+    padding-inline: var(--space-medium);
+    background-color: var(--sidebar-box-background);
+    color: var(--sidebar-box-color);
+    border: var(--sidebar-box-border);
+    border-radius: var(--border-radius-medium);
+  }
+
+  &::part(header) {
+    font-size: var(--font-size-large);
+  }
+
+  &::part(image-container) {
+    min-width: auto;
+    width: 100%;
+    max-width: 250px;
+  }
+
+  /* these illustrations need a larger width otherwise they look too small */
+  &.synced-tabs::part(image-container) {
+    min-width: auto;
+    width: 100%;
+    max-width: 350px;
   }
 }

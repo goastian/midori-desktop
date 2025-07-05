@@ -91,6 +91,14 @@ function continueResponses() {
 }
 
 /**
+ * Fails this response and allows the future interruptible requests to complete.
+ */
+function failResponses() {
+  info("Interruptible response is failed and next ones allowed to continue.");
+  _gDeferResponses.reject();
+}
+
+/**
  * Creates a download, which could be interrupted in the middle of it's progress.
  */
 function promiseInterruptibleDownload(extension = ".txt") {
@@ -161,15 +169,29 @@ function promisePanelOpened() {
 
   return new Promise(resolve => {
     // Hook to wait until the panel is shown.
-    let originalOnPopupShown = DownloadsPanel.onPopupShown;
-    DownloadsPanel.onPopupShown = function () {
-      DownloadsPanel.onPopupShown = originalOnPopupShown;
+    let originalOnPopupShown = DownloadsPanel._onPopupShown;
+    DownloadsPanel._onPopupShown = function () {
+      DownloadsPanel._onPopupShown = originalOnPopupShown;
       originalOnPopupShown.apply(this, arguments);
 
       // Defer to the next tick of the event loop so that we don't continue
       // processing during the DOM event handler itself.
       setTimeout(resolve, 0);
     };
+  });
+}
+
+function promiseDownloadFinished(list) {
+  return new Promise(resolve => {
+    list.addView({
+      onDownloadChanged(download) {
+        download.launchWhenSucceeded = false;
+        if (download.succeeded || download.error) {
+          list.removeView(this);
+          resolve(download);
+        }
+      },
+    });
   });
 }
 
@@ -332,11 +354,18 @@ function startServer() {
 
       // Wait on the current deferred object, then finish the request.
       _gDeferResponses.promise
-        .then(function RIH_onSuccess() {
-          aResponse.write(TEST_DATA_SHORT);
-          aResponse.finish();
-          info("Interruptible request finished.");
-        })
+        .then(
+          () => {
+            aResponse.write(TEST_DATA_SHORT);
+            aResponse.finish();
+            info("Interruptible request finished.");
+          },
+          () => {
+            // Don't send data, so that it looks truncated.
+            aResponse.finish();
+            info("Interruptible request failed.");
+          }
+        )
         .catch(console.error);
     }
   );
@@ -447,4 +476,17 @@ async function simulateDropAndCheck(win, dropTarget, urls) {
   for (let url of urls) {
     ok(added.has(url), url + " is added to download");
   }
+}
+
+/**
+ * This is a temporary workaround for frequent intermittents.
+ * For some reason the download target size is not updated, even if the code
+ * is "apparently" already executing and awaiting for refresh().
+ * TODO(Bug 1814364): Figure out a proper fix for this.
+ */
+async function expectNonZeroDownloadTargetSize(downloadTarget) {
+  if (!downloadTarget.size) {
+    await downloadTarget.refresh();
+  }
+  return downloadTarget.size;
 }

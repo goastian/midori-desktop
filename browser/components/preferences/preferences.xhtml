@@ -12,7 +12,7 @@
 
 <head>
   <!-- @CSP: We should remove 'unsafe-inline' from style-src, see Bug 1579160 -->
-  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; img-src https: chrome: moz-icon: https: blob: data:; style-src chrome: data: 'unsafe-inline'; object-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src chrome:; img-src chrome: moz-icon: https: blob: data:; style-src chrome: data: 'unsafe-inline'; object-src 'none'" />
 
   <title data-l10n-id="settings-page-title"></title>
 
@@ -42,7 +42,7 @@
     href="chrome://browser/skin/preferences/containers.css"
   />
   <link rel="stylesheet" href="chrome://browser/skin/preferences/privacy.css" />
-  <link rel="stylesheet" href="chrome://floorp/skin/preferences/preferences-floorp.css" />
+  <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-group.css" />
 
   <link rel="localization" href="branding/brand.ftl"/>
   <link rel="localization" href="browser/browser.ftl"/>
@@ -51,11 +51,16 @@
   <link rel="localization" href="browser/preferences/moreFromMozilla.ftl"/>
   <link rel="localization" href="browser/preferences/preferences.ftl"/>
   <link rel="localization" href="toolkit/branding/brandings.ftl"/>
-  <link rel="localization" href="toolkit/featuregates/features.ftl"/>
+  <link rel="localization" href="toolkit/firefoxlabs/features.ftl"/>
+
+  <!-- Temporary until localization is done -->
+  <link rel="localization" href="preview/linkPreview.ftl"/>
+  <link rel="localization" href="preview/smartTabGroups.ftl"/>
 
   <!-- Links below are only used for search-l10n-ids into subdialogs -->
   <link rel="localization" href="browser/aboutDialog.ftl"/>
-  <link rel="localization" href="browser/preferences/addEngine.ftl"/>
+  <link rel="localization" href="browser/genai.ftl"/>
+  <link rel="localization" href="browser/search.ftl"/>
   <link rel="localization" href="browser/preferences/blocklists.ftl"/>
   <link rel="localization" href="browser/preferences/clearSiteData.ftl"/>
   <link rel="localization" href="browser/preferences/colors.ftl"/>
@@ -68,13 +73,12 @@
   <link rel="localization" href="browser/sanitize.ftl"/>
   <link rel="localization" href="browser/translations.ftl"/>
   <link rel="localization" href="preview/translations.ftl"/>
-  <link rel="localization" href="preview/genai.ftl"/>
   <link rel="localization" href="preview/enUS-searchFeatures.ftl"/>
   <link rel="localization" href="preview/backupSettings.ftl"/>
   <link rel="localization" href="security/certificates/certManager.ftl"/>
   <link rel="localization" href="security/certificates/deviceManager.ftl"/>
   <link rel="localization" href="toolkit/updates/history.ftl"/>
-  <link rel="localization" href="browser/floorp.ftl"/>
+  <link rel="localization" href="toolkit/global/profileSelection.ftl"/>
 
   <link rel="shortcut icon" href="chrome://global/skin/icons/settings.svg"/>
 
@@ -85,7 +89,8 @@
   <script src="chrome://browser/content/preferences/findInPage.js"/>
   <script src="chrome://browser/content/migration/migration-wizard.mjs" type="module"></script>
   <script type="module" src="chrome://browser/content/backup/backup-settings.mjs"></script>
-  <script type="module" src="chrome://nora/content/csk.js"></script>
+  <script type="module" src="chrome://browser/content/preferences/widgets/setting-group.mjs"></script>
+  <script type="module" src="chrome://browser/content/preferences/widgets/setting-control.mjs"></script>
 </head>
 
 <html:body xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -105,7 +110,6 @@
         <richlistitem id="category-general"
                       class="category"
                       value="paneGeneral"
-                      helpTopic="prefs-main"
                       data-l10n-id="category-general"
                       data-l10n-attrs="tooltiptext"
                       align="center">
@@ -113,65 +117,9 @@
           <label class="category-name" flex="1" data-l10n-id="pane-general-title"></label>
         </richlistitem>
 
-        <richlistitem id="category-design"
-                      class="category"
-                      value="paneDesign"
-                      helpTopic="prefs-design"
-                      data-l10n-id="category-design"
-                      data-l10n-attrs="tooltiptext"
-                      align="center">
-          <image class="category-icon"/>
-          <label class="category-name" flex="1" data-l10n-id="pane-design-title"></label>
-        </richlistitem>
-
-        <richlistitem id="category-BSB"
-                    class="category"
-                    value="paneBSB"
-                    helpTopic="prefs-BSB"
-                    data-l10n-id="category-BSB"
-                    data-l10n-attrs="tooltiptext"
-                    align="center">
-        <image class="category-icon"/>
-        <label class="category-name" flex="1" data-l10n-id="pane-BSB-title"></label>
-        </richlistitem>
-
-        <richlistitem id="category-workspaces"
-                    class="category"
-                    value="paneWorkspaces"
-                    helpTopic="prefs-worspaces"
-                    data-l10n-id="category-workspaces"
-                    data-l10n-attrs="tooltiptext"
-                    align="center">
-        <image class="category-icon"/>
-        <label class="category-name" flex="1" data-l10n-id="pane-workspaces-title"></label>
-        </richlistitem>
-
-        <richlistitem id="category-Downloads"
-                      class="category"
-                      value="paneDownloads"
-                      helpTopic="prefs-Downloads"
-                      data-l10n-id="category-downloads"
-                      data-l10n-attrs="tooltiptext"
-                      align="center">
-          <image class="category-icon"/>
-          <label class="category-name" flex="1" data-l10n-id="files-and-applications-title"></label>
-        </richlistitem>
-
-        <richlistitem id="category-ssb"
-                      class="category"
-                      value="paneSsb"
-                      helpTopic="prefs-ssb"
-                      data-l10n-id="category-ssb"
-                      data-l10n-attrs="tooltiptext"
-                      align="center">
-          <image class="category-icon"/>
-          <label class="category-name" flex="1" data-l10n-id="category-ssb-title"></label>
-        </richlistitem>
-
         <richlistitem id="category-home"
                       class="category"
                       value="paneHome"
-                      helpTopic="prefs-home"
                       data-l10n-id="category-home"
                       data-l10n-attrs="tooltiptext"
                       align="center">
@@ -182,7 +130,6 @@
         <richlistitem id="category-search"
                       class="category"
                       value="paneSearch"
-                      helpTopic="prefs-search"
                       data-l10n-id="category-search"
                       data-l10n-attrs="tooltiptext"
                       align="center">
@@ -193,7 +140,6 @@
         <richlistitem id="category-privacy"
                       class="category"
                       value="panePrivacy"
-                      helpTopic="prefs-privacy"
                       data-l10n-id="category-privacy"
                       data-l10n-attrs="tooltiptext"
                       align="center">
@@ -205,7 +151,6 @@
                       class="category"
                       hidden="true"
                       value="paneSync"
-                      helpTopic="prefs-weave"
                       data-l10n-id="category-sync3"
                       data-l10n-attrs="tooltiptext"
                       align="center">
@@ -213,29 +158,15 @@
           <label class="category-name" flex="1" data-l10n-id="pane-sync-title3"></label>
         </richlistitem>
 
-
-        <richlistitem id="category-lepton"
-                      class="category"
-                      value="paneLepton"
-                      helpTopic="prefs-lepton"
-                      style="display:none;"/>
-
-        <richlistitem id="category-userjs"
-                      class="category"
-                      value="paneUserjs"
-                      helpTopic="prefs-userjs"
-                      style="display:none;"/>
-
         <richlistitem id="category-experimental"
                       class="category"
                       hidden="true"
                       value="paneExperimental"
-                      helpTopic="prefs-experimental"
-                      data-l10n-id="category-experimental"
+                      data-l10n-id="settings-category-labs"
                       data-l10n-attrs="tooltiptext"
                       align="center">
           <image class="category-icon"/>
-          <label class="category-name" flex="1" data-l10n-id="pane-experimental-title"></label>
+          <label class="category-name" flex="1" data-l10n-id="settings-pane-labs-title"></label>
         </richlistitem>
         <richlistitem id="category-more-from-mozilla"
                       class="category"
@@ -258,30 +189,25 @@
             be added in this fashion. -->
         <richlistitem
                       class="category hidden-category"
-                      value="paneContainers"
-                      helpTopic="prefs-containers"/>
+                      value="paneContainers"/>
 
         <richlistitem
                       class="category hidden-category"
-                      value="paneTranslations"
-                      helpTopic="prefs-translations"/>
+                      value="paneTranslations"/>
 
       </richlistbox>
 
       <spacer flex="1"/>
 
       <vbox class="sidebar-footer-list">
-        <html:a id="ProfilesButton" class="sidebar-footer-link" href="about:profiles" target="_blank">
-          <image class="sidebar-footer-icon profiles-icon"/>
-          <label class="sidebar-footer-label" flex="1" data-l10n-id="profiles-button-label"></label>
-        </html:a>
-        <html:a id="addonsButton" class="sidebar-footer-link" href="about:addons" target="_blank" >
+        <html:a id="addonsButton" class="sidebar-footer-link" href="about:addons">
           <image class="sidebar-footer-icon addons-icon"/>
           <label class="sidebar-footer-label" flex="1" data-l10n-id="addons-button-label"></label>
         </html:a>
-        <html:a id="AblazehelpButton" class="sidebar-footer-link" href="https://support.ablaze.one" target="_blank">
+        <html:a id="helpButton" class="sidebar-footer-link" target="_blank"
+                is="moz-support-link" support-page="preferences">
           <image class="sidebar-footer-icon help-icon"/>
-          <label class="sidebar-footer-label" flex="1" data-l10n-id="floorp-help-button-label"></label>
+          <label class="sidebar-footer-label" flex="1" data-l10n-id="help-button-label"></label>
         </html:a>
       </vbox>
     </vbox>
@@ -306,7 +232,7 @@
               id="searchInput"
               data-l10n-id="search-input-box2"
               data-l10n-attrs="placeholder, style"
-              hidden="true"/>
+              />
           </hbox>
         </hbox>
         <vbox id="mainPrefPane">
@@ -315,17 +241,6 @@
 #include home.inc.xhtml
 #include search.inc.xhtml
 #include privacy.inc.xhtml
-
-#include ../../../floorp/browser/components/preferences/downloads.inc.xhtml
-#include ../../../floorp/browser/components/preferences/ssb.inc.xhtml
-#include ../../../floorp/browser/components/preferences/bsb.inc.xhtml
-#include ../../../floorp/browser/components/preferences/userjs.inc.xhtml
-#include ../../../floorp/browser/components/preferences/design.inc.xhtml
-#include ../../../floorp/browser/components/preferences/lepton.inc.xhtml
-#include ../../../floorp/browser/components/preferences/csk.inc.xhtml
-#include ../../../floorp/browser/components/preferences/workspaces.inc.xhtml
-
-
 #include containers.inc.xhtml
 #include translations.inc.xhtml
 #include sync.inc.xhtml

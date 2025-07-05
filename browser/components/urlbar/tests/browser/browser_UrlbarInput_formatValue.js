@@ -21,7 +21,7 @@ async function testVal(urlFormatString, clobberedURLString = null) {
   info("Setting the value property directly");
   gURLBar.value = str;
   gBrowser.selectedBrowser.focus();
-  UrlbarTestUtils.checkFormatting(window, urlFormatString, {
+  await UrlbarTestUtils.checkFormatting(window, urlFormatString, {
     clobberedURLString,
   });
 
@@ -33,13 +33,16 @@ async function testVal(urlFormatString, clobberedURLString = null) {
     "URL is not highlighted"
   );
   gBrowser.selectedBrowser.focus();
-  UrlbarTestUtils.checkFormatting(window, urlFormatString, {
+  await UrlbarTestUtils.checkFormatting(window, urlFormatString, {
     clobberedURLString,
     additionalMsg: "with input simulation",
   });
 }
 
 add_task(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
   const PREF_FORMATTING = "browser.urlbar.formatting.enabled";
   const PREF_TRIM_HTTPS = "browser.urlbar.trimHttps";
 
@@ -113,10 +116,6 @@ add_task(async function () {
 
   let IPs = [
     "192.168.1.1",
-    "[::]",
-    "[::1]",
-    "[1::]",
-    "[::]",
     "[::1]",
     "[1::]",
     "[1:2:3:4:5:6:7::]",
@@ -182,6 +181,9 @@ add_task(async function test_url_formatting_after_visiting_bookmarks() {
   EventUtils.sendKey("RETURN");
   await BrowserTestUtils.browserLoaded(gBrowser, false, null, true);
 
-  UrlbarTestUtils.checkFormatting(window, "<something.>example.com</test>");
+  await UrlbarTestUtils.checkFormatting(
+    window,
+    "<something.>example.com</test>"
+  );
   SpecialPowers.popPrefEnv();
 });

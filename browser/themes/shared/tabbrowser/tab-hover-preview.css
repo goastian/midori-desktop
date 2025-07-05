@@ -41,7 +41,6 @@
   @media (width < 640px) {
     display: none;
   }
-
   > canvas {
     display: block;
     width: 100%;

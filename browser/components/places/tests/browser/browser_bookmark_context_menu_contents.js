@@ -11,15 +11,15 @@ const SECOND_BOOKMARK_TITLE = "Second Bookmark Title";
 const bookmarksInfo = [
   {
     title: "firefox",
-    url: "http://example.com",
+    url: "https://example.com",
   },
   {
     title: "rules",
-    url: "http://example.com/2",
+    url: "https://example.com/2",
   },
   {
     title: "yo",
-    url: "http://example.com/2",
+    url: "https://example.com/2",
   },
 ];
 const TEST_URL = "about:mozilla";
@@ -98,10 +98,9 @@ let checkContextMenu = async (cbfunc, optionItems, doc = document) => {
       `Running checkContextMenu: ` + JSON.stringify({ loadBookmarksInNewTab })
     );
 
-    Services.prefs.setBoolPref(
-      "browser.tabs.loadBookmarksInTabs",
-      loadBookmarksInNewTab
-    );
+    await SpecialPowers.pushPrefEnv({
+      set: [["browser.tabs.loadBookmarksInTabs", loadBookmarksInNewTab]],
+    });
 
     // When `loadBookmarksInTabs` is true, the usual placesContext_open:newtab
     // item is hidden and placesContext_open is shown. The tasks in this test
@@ -146,7 +145,7 @@ let checkContextMenu = async (cbfunc, optionItems, doc = document) => {
     contextMenu.hidePopup();
   }
 
-  Services.prefs.clearUserPref("browser.tabs.loadBookmarksInTabs");
+  await SpecialPowers.popPrefEnv();
   await PlacesUtils.bookmarks.eraseEverything();
 };
 
@@ -685,7 +684,7 @@ add_task(async function test_sidebar_multiple_bookmarks_contextmenu_contents() {
     await checkContextMenu(
       async bookmark => {
         let bookmark2 = await PlacesUtils.bookmarks.insert({
-          url: "http://example.com/",
+          url: "https://example.com/",
           parentGuid: PlacesUtils.bookmarks.toolbarGuid,
         });
         tree.selectItems([bookmark.guid, bookmark2.guid]);
@@ -709,78 +708,82 @@ add_task(async function test_sidebar_multiple_bookmarks_contextmenu_contents() {
 });
 
 add_task(async function test_sidebar_multiple_links_contextmenu_contents() {
-  let optionItems = [
-    "placesContext_openLinks:tabs",
-    "placesContext_delete_history",
-    "placesContext_copy",
-    "placesContext_createBookmark",
-  ];
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    let optionItems = [
+      "placesContext_openLinks:tabs",
+      "placesContext_delete_history",
+      "placesContext_copy",
+      "placesContext_createBookmark",
+    ];
 
-  await withSidebarTree("history", async tree => {
-    await checkContextMenu(
-      async () => {
-        await PlacesTestUtils.addVisits([
-          "http://example-1.com/",
-          "http://example-2.com/",
-        ]);
-        // Sort by last visited.
-        tree.ownerDocument.getElementById("bylastvisited").doCommand();
-        tree.selectAll();
+    await withSidebarTree("history", async tree => {
+      await checkContextMenu(
+        async () => {
+          await PlacesTestUtils.addVisits([
+            "https://example-1.com/",
+            "https://example-2.com/",
+          ]);
+          // Sort by last visited.
+          tree.ownerDocument.getElementById("bylastvisited").doCommand();
+          tree.selectAll();
 
-        let contextMenu =
-          SidebarController.browser.contentDocument.getElementById(
-            "placesContext"
+          let contextMenu =
+            SidebarController.browser.contentDocument.getElementById(
+              "placesContext"
+            );
+          let popupShownPromise = BrowserTestUtils.waitForEvent(
+            contextMenu,
+            "popupshown"
           );
-        let popupShownPromise = BrowserTestUtils.waitForEvent(
-          contextMenu,
-          "popupshown"
-        );
-        synthesizeClickOnSelectedTreeCell(tree, { type: "contextmenu" });
-        await popupShownPromise;
-        return contextMenu;
-      },
-      optionItems,
-      SidebarController.browser.contentDocument
-    );
-  });
+          synthesizeClickOnSelectedTreeCell(tree, { type: "contextmenu" });
+          await popupShownPromise;
+          return contextMenu;
+        },
+        optionItems,
+        SidebarController.browser.contentDocument
+      );
+    });
+  }
 });
 
 add_task(async function test_sidebar_mixed_bookmarks_contextmenu_contents() {
-  let optionItems = [
-    "placesContext_delete",
-    "placesContext_cut",
-    "placesContext_copy",
-    "placesContext_paste_group",
-    "placesContext_new:bookmark",
-    "placesContext_new:folder",
-    "placesContext_new:separator",
-  ];
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    let optionItems = [
+      "placesContext_delete",
+      "placesContext_cut",
+      "placesContext_copy",
+      "placesContext_paste_group",
+      "placesContext_new:bookmark",
+      "placesContext_new:folder",
+      "placesContext_new:separator",
+    ];
 
-  await withSidebarTree("bookmarks", async tree => {
-    await checkContextMenu(
-      async bookmark => {
-        let folder = await PlacesUtils.bookmarks.insert({
-          type: PlacesUtils.bookmarks.TYPE_FOLDER,
-          parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-        });
-        tree.selectItems([bookmark.guid, folder.guid]);
+    await withSidebarTree("bookmarks", async tree => {
+      await checkContextMenu(
+        async bookmark => {
+          let folder = await PlacesUtils.bookmarks.insert({
+            type: PlacesUtils.bookmarks.TYPE_FOLDER,
+            parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+          });
+          tree.selectItems([bookmark.guid, folder.guid]);
 
-        let contextMenu =
-          SidebarController.browser.contentDocument.getElementById(
-            "placesContext"
+          let contextMenu =
+            SidebarController.browser.contentDocument.getElementById(
+              "placesContext"
+            );
+          let popupShownPromise = BrowserTestUtils.waitForEvent(
+            contextMenu,
+            "popupshown"
           );
-        let popupShownPromise = BrowserTestUtils.waitForEvent(
-          contextMenu,
-          "popupshown"
-        );
-        synthesizeClickOnSelectedTreeCell(tree, { type: "contextmenu" });
-        await popupShownPromise;
-        return contextMenu;
-      },
-      optionItems,
-      SidebarController.browser.contentDocument
-    );
-  });
+          synthesizeClickOnSelectedTreeCell(tree, { type: "contextmenu" });
+          await popupShownPromise;
+          return contextMenu;
+        },
+        optionItems,
+        SidebarController.browser.contentDocument
+      );
+    });
+  }
 });
 
 add_task(async function test_library_noselection_contextmenu_contents() {
@@ -813,4 +816,119 @@ add_task(async function test_library_noselection_contextmenu_contents() {
       right.ownerDocument
     );
   });
+});
+
+add_task(async function test_private_browsing_window() {
+  // Test the context menu when in a private browsing window.
+
+  let win = await BrowserTestUtils.openNewBrowserWindow({
+    private: true,
+  });
+
+  let optionItems = [
+    "placesContext_open:newtab",
+    // Hidden in private window "placesContext_open:newcontainertab"
+    // Hidden in private window "placesContext_open:newwindow"
+    "placesContext_open:newprivatewindow",
+    "placesContext_show_bookmark:info",
+    "placesContext_deleteBookmark",
+    "placesContext_cut",
+    "placesContext_copy",
+    "placesContext_paste_group",
+    "placesContext_new:bookmark",
+    "placesContext_new:folder",
+    "placesContext_new:separator",
+  ];
+
+  // Test toolbar.
+  await checkContextMenu(
+    async function () {
+      let toolbarBookmark = await PlacesUtils.bookmarks.insert({
+        parentGuid: PlacesUtils.bookmarks.toolbarGuid,
+        title: "Bookmark Title",
+        url: TEST_URL,
+      });
+
+      let toolbarNode = getToolbarNodeForItemGuid(toolbarBookmark.guid, win);
+
+      let contextMenu = win.document.getElementById("placesContext");
+      let popupShownPromise = BrowserTestUtils.waitForEvent(
+        contextMenu,
+        "popupshown"
+      );
+
+      EventUtils.synthesizeMouseAtCenter(
+        toolbarNode,
+        { button: 2, type: "contextmenu" },
+        win
+      );
+      await popupShownPromise;
+      return contextMenu;
+    },
+    [
+      ...optionItems,
+      "placesContext_showAllBookmarks",
+      "toggle_PersonalToolbar",
+      "show-other-bookmarks_PersonalToolbar",
+    ],
+    win.document
+  );
+
+  // Test side bar.
+  await withSidebarTree(
+    "bookmarks",
+    async tree => {
+      await checkContextMenu(
+        async bookmark => {
+          tree.selectItems([bookmark.guid]);
+
+          let contextMenu =
+            win.SidebarController.browser.contentDocument.getElementById(
+              "placesContext"
+            );
+          let popupShownPromise = BrowserTestUtils.waitForEvent(
+            contextMenu,
+            "popupshown"
+          );
+          synthesizeClickOnSelectedTreeCell(tree, { type: "contextmenu" }, win);
+          await popupShownPromise;
+          return contextMenu;
+        },
+        optionItems,
+        win.SidebarController.browser.contentDocument
+      );
+    },
+    win
+  );
+
+  // Test library window opened when using private browsing window.
+  optionItems.splice(
+    optionItems.indexOf("placesContext_show_bookmark:info"),
+    1
+  );
+  optionItems.splice(0, 0, "placesContext_open");
+
+  await withLibraryWindow(
+    "BookmarksToolbar",
+    async ({ right }) => {
+      await checkContextMenu(
+        async bookmark => {
+          let contextMenu = right.ownerDocument.getElementById("placesContext");
+          let popupShownPromise = BrowserTestUtils.waitForEvent(
+            contextMenu,
+            "popupshown"
+          );
+          right.selectItems([bookmark.guid]);
+          synthesizeClickOnSelectedTreeCell(right, { type: "contextmenu" });
+          await popupShownPromise;
+          return contextMenu;
+        },
+        optionItems,
+        right.ownerDocument
+      );
+    },
+    win
+  );
+
+  await BrowserTestUtils.closeWindow(win);
 });

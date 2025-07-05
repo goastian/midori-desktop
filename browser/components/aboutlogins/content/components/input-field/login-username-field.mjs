@@ -8,20 +8,30 @@ import { editableFieldTemplate, stylesTemplate } from "./input-field.mjs";
 class LoginUsernameField extends MozLitElement {
   static properties = {
     value: { type: String, reflect: true },
+    name: { type: String },
     readonly: { type: Boolean, reflect: true },
+    required: { type: Boolean, reflect: true },
   };
+
+  static queries = {
+    input: "input",
+  };
+
+  constructor() {
+    super();
+    this.value = "";
+  }
 
   render() {
     return html`
       ${stylesTemplate()}
-      <label
-        class="field-label"
-        data-l10n-id="login-item-username-label"
-      ></label>
       ${editableFieldTemplate({
         type: "text",
         value: this.value,
         disabled: this.readonly,
+        required: this.required,
+        labelL10nId: "login-item-username-label",
+        noteL10nId: "contextual-manager-passwords-username-tooltip",
       })}
     `;
   }

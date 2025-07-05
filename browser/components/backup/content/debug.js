@@ -127,7 +127,7 @@ let DebugUI = {
 
         let service = BackupService.get();
         try {
-          let newProfile = await service.recoverFromBackup(
+          let newProfile = await service.recoverFromSnapshotFolder(
             path,
             true /* shouldLaunch */
           );
@@ -136,6 +136,96 @@ let DebugUI = {
           lastRecoveryStatus.textContent(
             `Failed to recover: ${e.message} Check the console for the full exception.`
           );
+          throw e;
+        }
+        break;
+      }
+      case "extract-from-archive": {
+        let backupsDir = PathUtils.join(
+          PathUtils.profileDir,
+          BackupService.PROFILE_FOLDER_NAME
+        );
+        let fp = Cc["@mozilla.org/filepicker;1"].createInstance(
+          Ci.nsIFilePicker
+        );
+        fp.init(
+          window.browsingContext,
+          "Choose an archive file",
+          Ci.nsIFilePicker.modeOpen
+        );
+        fp.displayDirectory = await IOUtils.getDirectory(backupsDir);
+        let result = await new Promise(resolve => fp.open(resolve));
+        if (result == Ci.nsIFilePicker.returnCancel) {
+          break;
+        }
+
+        let extractionStatus = document.querySelector("#extraction-status");
+        extractionStatus.textContent = "Extracting...";
+
+        let path = fp.file.path;
+        let dest = PathUtils.join(PathUtils.parent(path), "extraction.zip");
+        let service = BackupService.get();
+        try {
+          let { isEncrypted } = await service.sampleArchive(path);
+          let recoveryCode = undefined;
+          if (isEncrypted) {
+            recoveryCode = prompt("Please provide the decryption password");
+          }
+          await service.extractCompressedSnapshotFromArchive(
+            path,
+            dest,
+            recoveryCode
+          );
+          extractionStatus.textContent = `Extracted ZIP file to ${dest}`;
+        } catch (e) {
+          extractionStatus.textContent = `Failed to extract: ${e.message} Check the console for the full exception.`;
+          throw e;
+        }
+        break;
+      }
+      case "recover-from-archive": {
+        let backupsDir = PathUtils.join(
+          PathUtils.profileDir,
+          BackupService.PROFILE_FOLDER_NAME
+        );
+        let fp = Cc["@mozilla.org/filepicker;1"].createInstance(
+          Ci.nsIFilePicker
+        );
+        fp.init(
+          window.browsingContext,
+          "Choose an archive file",
+          Ci.nsIFilePicker.modeOpen
+        );
+        fp.displayDirectory = await IOUtils.getDirectory(backupsDir);
+        fp.appendFilters(Ci.nsIFilePicker.filterHTML);
+
+        let result = await new Promise(resolve => fp.open(resolve));
+        if (result == Ci.nsIFilePicker.returnCancel) {
+          break;
+        }
+
+        let recoverFromArchiveStatus = document.querySelector(
+          "#recover-from-archive-status"
+        );
+        recoverFromArchiveStatus.textContent =
+          "Recovering from backup archive...";
+
+        let path = fp.file.path;
+        let service = BackupService.get();
+        try {
+          let { isEncrypted } = await service.sampleArchive(path);
+          let recoveryCode = undefined;
+          if (isEncrypted) {
+            recoveryCode = prompt("Please provide the decryption password");
+          }
+          let newProfile = await service.recoverFromBackupArchive(
+            path,
+            recoveryCode,
+            true /* shouldLaunch */
+          );
+          recoverFromArchiveStatus.textContent = `Created profile ${newProfile.name} at ${newProfile.rootDir.path}`;
+        } catch (e) {
+          recoverFromArchiveStatus.textContent = `Failed to recover: ${e.message} Check the console for the full exception.`;
           throw e;
         }
         break;

@@ -27,10 +27,12 @@ browser.jar:
     content/browser/firefoxview/opentabs-tab-list.css
     content/browser/firefoxview/opentabs-tab-list.mjs
     content/browser/firefoxview/opentabs-tab-row.css
+    content/browser/firefoxview/syncedtabs-tab-list.css
+    content/browser/firefoxview/syncedtabs-tab-list.mjs
     content/browser/firefoxview/recentlyclosed.mjs
     content/browser/firefoxview/viewpage.mjs
     content/browser/firefoxview/history-empty.svg (content/history-empty.svg)
-    content/browser/firefoxview/recentlyclosed-empty.svg (content/recentlyclosed-empty.svg)
+    content/browser/firefoxview/synced-tabs-empty.svg (content/synced-tabs-empty.svg)
     content/browser/firefoxview/synced-tabs-error.svg (content/synced-tabs-error.svg)
     content/browser/callout-tab-pickup.svg (content/callout-tab-pickup.svg)
     content/browser/callout-tab-pickup-dark.svg (content/callout-tab-pickup-dark.svg)

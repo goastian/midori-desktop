@@ -9,6 +9,9 @@ const ORIGINAL_CHUNK_RESULTS_DELAY =
   UrlbarProvidersManager.CHUNK_RESULTS_DELAY_MS;
 
 add_setup(async function setup() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
   let suggestionsEngine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "searchSuggestionEngine.xml",
   });
@@ -30,7 +33,6 @@ add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.suggest.quickactions", false],
-      ["browser.urlbar.trimHttps", false],
       [
         "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
         false,
@@ -40,34 +42,16 @@ add_setup(async function setup() {
 });
 
 add_task(async function test_url_type() {
-  const testCases = [
-    {
-      testURL: "https://example.com/123",
-      displayedURL: "https://example.com/123",
-      trimURLs: true,
-    },
-    {
-      testURL: "https://example.com/123",
-      displayedURL: "https://example.com/123",
-      trimURLs: false,
-    },
-    {
-      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-      testURL: "http://example.com/123",
-      displayedURL: "example.com/123",
-      trimURLs: true,
-    },
-    {
-      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-      testURL: "http://example.com/123",
-      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-      displayedURL: "http://example.com/123",
-      trimURLs: false,
-    },
-  ];
+  const testCases = [];
+  // eslint-disable-next-line @microsoft/sdl/no-insecure-url
+  for (let protocol of ["http://", "https://"]) {
+    for (let trimURLs of [true, false]) {
+      testCases.push({ testURL: protocol + "example.com/123", trimURLs });
+    }
+  }
 
-  for (const { testURL, displayedURL, trimURLs } of testCases) {
-    info("Setup: " + JSON.stringify({ testURL, displayedURL, trimURLs }));
+  for (const { testURL, trimURLs } of testCases) {
+    info("Setup: " + JSON.stringify({ testURL, trimURLs }));
     await SpecialPowers.pushPrefEnv({
       set: [["browser.urlbar.trimURLs", trimURLs]],
     });
@@ -89,7 +73,7 @@ add_task(async function test_url_type() {
 
     info("Select a visit suggestion");
     UrlbarTestUtils.setSelectedRowIndex(window, targetRowIndex);
-    Assert.equal(window.gURLBar.value, displayedURL);
+    Assert.equal(window.gURLBar.untrimmedValue, testURL);
 
     info("Change the delay time to avoid updating results");
     const DELAY = 10000;
@@ -382,6 +366,17 @@ add_task(async function test_heuristic() {
       ),
       loadingURL: "https://example.com/123",
       displayedValue: "https://example.com/123",
+    },
+    {
+      testResult: new UrlbarResult(
+        UrlbarUtils.RESULT_TYPE.URL,
+        UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        // eslint-disable-next-line @microsoft/sdl/no-insecure-url
+        { url: "http://example.com/123" }
+      ),
+      // eslint-disable-next-line @microsoft/sdl/no-insecure-url
+      loadingURL: "http://example.com/123",
+      displayedValue: "example.com/123",
     },
     {
       testResult: new UrlbarResult(

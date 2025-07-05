@@ -1,5 +1,5 @@
 import { AWScreenUtils } from "modules/AWScreenUtils.sys.mjs";
-import { GlobalOverrider } from "newtab/test/unit/utils";
+import { GlobalOverrider } from "asrouter/tests/unit/utils";
 import { ASRouter } from "asrouter/modules/ASRouter.sys.mjs";
 
 describe("AWScreenUtils", () => {
@@ -43,9 +43,8 @@ describe("AWScreenUtils", () => {
           result: false,
         },
       });
-      const result = await AWScreenUtils.evaluateScreenTargeting(
-        "test expression"
-      );
+      const result =
+        await AWScreenUtils.evaluateScreenTargeting("test expression");
       assert.calledOnce(evalStub);
       assert.equal(result, false);
     });
@@ -56,9 +55,8 @@ describe("AWScreenUtils", () => {
           result: false,
         },
       });
-      const result = await AWScreenUtils.evaluateScreenTargeting(
-        "test expression"
-      );
+      const result =
+        await AWScreenUtils.evaluateScreenTargeting("test expression");
       assert.calledOnce(evalStub);
       assert.equal(result, true);
     });
@@ -135,6 +133,21 @@ describe("AWScreenUtils", () => {
 
       assert.calledOnce(addScreenImpressionStub);
       assert.equal(addScreenImpressionStub.firstCall.args[0].id, testScreen.id);
+    });
+  });
+  describe("getUnhandledCampaignAction", () => {
+    it("Should call evaluateExpression", () => {
+      const evaluateExpressionStub = sandbox.stub(
+        ASRouter,
+        "evaluateExpression"
+      );
+      AWScreenUtils.getUnhandledCampaignAction();
+
+      assert.calledOnce(evaluateExpressionStub);
+      assert.equal(
+        evaluateExpressionStub.firstCall.args[0].expression,
+        "unhandledCampaignAction"
+      );
     });
   });
 });

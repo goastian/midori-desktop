@@ -43,10 +43,6 @@ var { Weave } = ChromeUtils.importESModule(
   "resource://services-sync/main.sys.mjs"
 );
 
-var { FirefoxRelayTelemetry } = ChromeUtils.importESModule(
-  "resource://gre/modules/FirefoxRelayTelemetry.mjs"
-);
-
 var { FxAccounts, getFxAccountsSingleton } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccounts.sys.mjs"
 );
@@ -89,7 +85,6 @@ ChromeUtils.defineESModuleGetters(this, {
     "resource://gre/modules/ExtensionPreferencesManager.sys.mjs",
   ExtensionSettingsStore:
     "resource://gre/modules/ExtensionSettingsStore.sys.mjs",
-  FeatureGate: "resource://featuregates/FeatureGate.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   FirefoxRelay: "resource://gre/modules/FirefoxRelay.sys.mjs",
   HomePage: "resource:///modules/HomePage.sys.mjs",
@@ -195,7 +190,6 @@ function init_all() {
   // Asks Preferences to queue an update of the attribute values of
   // the entire document.
   Preferences.queueUpdateOfAllElements();
-  Services.telemetry.setEventRecordingEnabled("aboutpreferences", true);
 
   register_module("paneGeneral", gMainPane);
   register_module("paneHome", gHomePane);
@@ -203,21 +197,14 @@ function init_all() {
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
 
-  register_module("paneDesign", gDesign);
-  register_module("paneLepton", gLeptonPane);
-  register_module("paneBSB", gBSBPane);
-  register_module("paneSsb", gSsbPane);
-  register_module("paneDownloads", gDownloads);
-  register_module("paneUserjs", gUserjsPane);
-  register_module("paneCsk", { init() {} });
-  register_module("paneWorkspaces", gWorkspacesPane);
-
   if (Services.prefs.getBoolPref("browser.translations.newSettingsUI.enable")) {
     register_module("paneTranslations", gTranslationsPane);
   }
   if (Services.prefs.getBoolPref("browser.preferences.experimental")) {
-    // Set hidden based on previous load's hidden value.
+    // Set hidden based on previous load's hidden value or if Nimbus is
+    // disabled.
     document.getElementById("category-experimental").hidden =
+      !ExperimentAPI.studiesEnabled ||
       Services.prefs.getBoolPref(
         "browser.preferences.experimental.hidden",
         false
@@ -284,12 +271,12 @@ function init_all() {
 }
 
 function onHashChange() {
-  gotoPref(null, "hash");
+  gotoPref(null, "Hash");
 }
 
 async function gotoPref(
   aCategory,
-  aShowReason = aCategory ? "click" : "initial"
+  aShowReason = aCategory ? "Click" : "Initial"
 ) {
   let categories = document.getElementById("categories");
   const kDefaultCategoryInternalName = "paneGeneral";
@@ -324,14 +311,18 @@ async function gotoPref(
   }
 
   let item;
+  let unknownCategory = false;
   if (category != "paneSearchResults") {
     // Hide second level headers in normal view
     for (let element of document.querySelectorAll(".search-header")) {
       element.hidden = true;
     }
 
-    item = categories.querySelector(".category[value=" + category + "]");
+    item = categories.querySelector(
+      ".category[value=" + CSS.escape(category) + "]"
+    );
     if (!item || item.hidden) {
+      unknownCategory = true;
       category = kDefaultCategoryInternalName;
       item = categories.querySelector(".category[value=" + category + "]");
     }
@@ -339,6 +330,7 @@ async function gotoPref(
 
   if (
     gLastCategory.category ||
+    unknownCategory ||
     category != kDefaultCategoryInternalName ||
     subcategory
   ) {
@@ -389,7 +381,7 @@ async function gotoPref(
 
   search(category, "data-category");
 
-  if (aShowReason != "initial") {
+  if (aShowReason != "Initial") {
     document.querySelector(".main-content").scrollTop = 0;
   }
 
@@ -403,12 +395,7 @@ async function gotoPref(
   }
 
   // Record which category is shown
-  Services.telemetry.recordEvent(
-    "aboutpreferences",
-    "show",
-    aShowReason,
-    category
-  );
+  Glean.aboutpreferences["show" + aShowReason].record({ value: category });
 
   document.dispatchEvent(
     new CustomEvent("paneshown", {
@@ -447,7 +434,7 @@ function search(aQuery, aAttribute) {
   }
 }
 
-async function spotlight(subcategory, category) {
+function spotlight(subcategory, category) {
   let highlightedElements = document.querySelectorAll(".spotlight");
   if (highlightedElements.length) {
     for (let element of highlightedElements) {
@@ -459,44 +446,17 @@ async function spotlight(subcategory, category) {
   }
 }
 
-async function scrollAndHighlight(subcategory) {
+function scrollAndHighlight(subcategory) {
   let element = document.querySelector(`[data-subcategory="${subcategory}"]`);
   if (!element) {
     return;
   }
-  let header = getClosestDisplayedHeader(element);
 
-  scrollContentTo(header);
-  element.classList.add("spotlight");
-}
-
-/**
- * If there is no visible second level header it will return first level header,
- * otherwise return second level header.
- * @returns {Element} - The closest displayed header.
- */
-function getClosestDisplayedHeader(element) {
-  let header = element.closest("groupbox");
-  let searchHeader = header.querySelector(".search-header");
-  if (
-    searchHeader &&
-    searchHeader.hidden &&
-    header.previousElementSibling.classList.contains("subcategory")
-  ) {
-    header = header.previousElementSibling;
-  }
-  return header;
-}
-
-function scrollContentTo(element) {
-  const STICKY_CONTAINER_HEIGHT =
-    document.querySelector(".sticky-container").clientHeight;
-  let mainContent = document.querySelector(".main-content");
-  let top = element.getBoundingClientRect().top - STICKY_CONTAINER_HEIGHT;
-  mainContent.scroll({
-    top,
+  element.scrollIntoView({
     behavior: "smooth",
+    block: "center",
   });
+  element.classList.add("spotlight");
 }
 
 function friendlyPrefCategoryNameToInternalName(aName) {
@@ -536,12 +496,9 @@ async function confirmRestartPrompt(
     restartLaterButtonText,
   ] = await document.l10n.formatValues([
     {
-      id:
-        aRestartToEnable === null
-          ? "feature-requires-restart"
-          : aRestartToEnable
-          ? "feature-enable-requires-restart"
-          : "feature-disable-requires-restart",
+      id: aRestartToEnable
+        ? "feature-enable-requires-restart"
+        : "feature-disable-requires-restart",
     },
     { id: "should-restart-title" },
     { id: "should-restart-ok" },
@@ -633,7 +590,7 @@ async function ensureScrollPadding() {
   let stickyContainer = document.querySelector(".sticky-container");
   let height = await window.browsingContext.topChromeWindow
     .promiseDocumentFlushed(() => stickyContainer.clientHeight)
-    .catch(() => Cu.reportError); // Can reject if the window goes away.
+    .catch(console.error); // Can reject if the window goes away.
 
   // Make it a bit more, to ensure focus rectangles etc. don't get cut off.
   // This being 8px causes us to end up with 90px if the policies container
@@ -648,6 +605,6 @@ async function ensureScrollPadding() {
 function maybeDisplayPoliciesNotice() {
   if (Services.policies.status == Services.policies.ACTIVE) {
     document.getElementById("policies-container").removeAttribute("hidden");
-    ensureScrollPadding();
   }
+  ensureScrollPadding();
 }

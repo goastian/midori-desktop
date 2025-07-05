@@ -38,13 +38,17 @@ appmenu-update-other-instance =
     .secondarybuttonaccesskey = N
 appmenu-update-other-instance-message = A new { -brand-shorter-name } update is available, but it can’t be installed because another copy of { -brand-shorter-name } is running. Close it to continue the update, or choose to update anyway (the other copy may not work correctly until you restart it).
 
-appmenu-addon-private-browsing-installed2 =
-    .buttonlabel = Okay
-    .buttonaccesskey = O
+appmenu-theme-installed =
+    .secondarybuttonlabel = Undo
+    .secondarybuttonaccesskey = U
 appmenu-addon-post-install-message3 = Manage your add-ons and themes through the application menu.
-appmenu-addon-post-install-incognito-checkbox =
-    .label = Allow this extension to run in Private Windows
-    .accesskey = A
+
+# This string is used in the confirmation popup displayed after an extension
+# has been installed, when the data collection feature is enabled.
+appmenu-addon-post-install-message-with-data-collection = Update permissions and data preferences any time in the <a data-l10n-name="settings-link">extension settings</a>.
+appmenu-addon-post-install-pin-toolbarbutton-checkbox =
+    .label = Pin extension to toolbar
+    .accesskey = P
 
 appmenu-new-tab-controlled-changes =
     .label = Your new tab has changed.

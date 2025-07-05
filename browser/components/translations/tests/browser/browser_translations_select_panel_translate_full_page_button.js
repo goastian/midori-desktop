@@ -25,10 +25,12 @@ add_task(
 
     await SelectTranslationsTestUtils.clickTranslateFullPageButton();
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await cleanup();
@@ -72,10 +74,12 @@ add_task(
 
     await SelectTranslationsTestUtils.clickTranslateFullPageButton();
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "fr",
-      "uk",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "fr",
+        toLanguage: "uk",
+        runInPage,
+      }
     );
 
     await cleanup();

@@ -299,11 +299,13 @@
 
 #protections-popup-not-blocking-section-why:hover,
 #protections-popup-show-report-stack:hover > .protections-popup-footer-button {
-  background-color: var(--panel-item-hover-bgcolor);
+  color: var(--button-text-color-ghost-hover);
+  background-color: var(--button-background-color-ghost-hover);
 }
 
 #protections-popup-show-report-stack:hover:active > .protections-popup-footer-button {
-  background-color: var(--panel-item-active-bgcolor);
+  color: var(--button-text-color-ghost-active);
+  background-color: var(--button-background-color-ghost-active);
 }
 
 /* This subview could get filled with a lot of trackers, set a maximum size
@@ -402,7 +404,7 @@
   border-radius: 2px;
 
   &:hover {
-    outline: 4px solid var(--panel-item-hover-bgcolor);
+    outline: 4px solid var(--button-background-color-ghost-hover);
   }
 }
 
@@ -494,30 +496,32 @@
   border-width: 0;
   padding: 2px;
   padding-inline-end: 6px;
-  background-color: var(--button-bgcolor);
-  color: var(--button-color);
+  background-color: var(--button-background-color);
+  color: var(--button-text-color);
   border-radius: 4px;
-}
 
-.permission-popup-permission-remove-button > .button-box > .button-icon {
-  margin: 0;
-  width: 12px;
-  height: 12px;
-  list-style-image: url(chrome://global/skin/icons/close.svg);
-  -moz-context-properties: fill;
-  fill: currentColor;
-}
+  > .button-box > .button-icon {
+    margin: 0;
+    width: 12px;
+    height: 12px;
+    list-style-image: url(chrome://global/skin/icons/close.svg);
+    -moz-context-properties: fill;
+    fill: currentColor;
+  }
 
-.permission-popup-permission-remove-button > .button-box > .button-text {
-  display: none;
-}
+  > .button-box > .button-text {
+    display: none;
+  }
 
-.permission-popup-permission-remove-button:not(:focus-visible):hover {
-  background-color: var(--button-hover-bgcolor);
-}
+  &:hover {
+    color: var(--button-text-color-hover);
+    background-color: var(--button-background-color-hover);
+  }
 
-.permission-popup-permission-remove-button:not(:focus-visible):hover:active {
-  background-color: var(--button-active-bgcolor)
+  &:hover:active {
+    color: var(--button-text-color-active);
+    background-color: var(--button-background-color-active)
+  }
 }
 
 #protections-popup-cookie-banner-section[hasException] .protections-popup-cookie-banner-switch-on-header,
@@ -744,4 +748,21 @@
 #protections-popup-cookieBannerView:not([data-state="site-disabled"]) description#cookieBannerView-enable-site,
 #protections-popup-cookieBannerView:not([data-state="site-disabled"]) description#cookieBannerView-enable-site-description {
   display: none;
+}
+
+.protections-popup-smartblock-section {
+  background-color: var(--background-color-information);
+  border-radius: var(--border-radius-small);
+  margin-inline: var(--arrowpanel-menuitem-margin-inline);
+  margin-block-start: var(--space-small);
+  padding-block: var(--space-small);
+}
+
+.protections-popup-smartblock-toggle-box {
+  margin-inline: var(--arrowpanel-menuitem-margin-inline);
+  padding-inline: var(--arrowpanel-menuitem-padding-inline);
+}
+
+.protections-popup-smartblock-toggle-box > moz-toggle {
+  padding-block-end: var(--arrowpanel-menuitem-padding-block);
 }

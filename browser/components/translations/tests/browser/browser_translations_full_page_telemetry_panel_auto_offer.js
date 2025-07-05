@@ -50,7 +50,7 @@ add_task(async function test_translations_panel_auto_offer() {
 
   await navigate("Navigate to a page on a different domain.", {
     url: SPANISH_PAGE_URL_DOT_ORG,
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();
@@ -77,6 +77,10 @@ add_task(async function test_translations_panel_auto_offer() {
   await TestTranslationsTelemetry.assertEvent(Glean.translationsPanel.close, {
     expectedEventCount: 2,
     expectNewFlowId: false,
+  });
+
+  await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+    expectedEventCount: 0,
   });
 
   await cleanup();

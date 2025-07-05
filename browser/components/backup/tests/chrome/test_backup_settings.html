@@ -10,11 +10,14 @@
   type="module"
 ></script>
   <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+  <link rel="localization" href="branding/brand.ftl"/>
+  <link rel="localization" href="preview/backupSettings.ftl" />
   <script>
 
     const { BrowserTestUtils } = ChromeUtils.importESModule(
       "resource://testing-common/BrowserTestUtils.sys.mjs"
     );
+    const testDefaultName = "test-default-path";
 
     /**
      * Tests that adding a backup-settings element to the DOM causes it to
@@ -38,8 +41,12 @@
      */
     add_task(async function test_turnOnScheduledBackupsDialog() {
       let settings = document.getElementById("test-backup-settings");
+
       settings.backupServiceState = {
-        scheduledBackupsEnabled: false,
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        }
       }
 
       await settings.updateComplete;
@@ -65,6 +72,341 @@
       await settings.updateComplete;
 
       ok(!dialog.open, "Dialog should not be open");
+    });
+
+    /**
+     * Tests that the dialog for turning off scheduled backups can be displayed
+     * from settings, or hidden if cancelled.
+     */
+    add_task(async function test_turnOffScheduledBackupsDialog() {
+      let settings = document.getElementById("test-backup-settings");
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+      }
+
+      await settings.updateComplete;
+
+      let turnOffButton = settings.scheduledBackupsButtonEl;
+      let dialog = settings.turnOffScheduledBackupsDialogEl;
+
+      ok(turnOffButton, "Button to turn off scheduled backups should be found");
+      ok(!dialog.open, "Dialog should not be open");
+
+      turnOffButton.click();
+      await settings.updateComplete;
+
+      ok(dialog?.open, "Dialog should be open");
+
+      let turnOffScheduledBackups = dialog.querySelector("turn-off-scheduled-backups");
+      ok(turnOffScheduledBackups, "turn-off-scheduled-backups should be found");
+
+      let cancelButton = turnOffScheduledBackups.shadowRoot.getElementById("backup-turn-off-scheduled-cancel-button");
+      ok(cancelButton, "Cancel button should be found");
+
+      cancelButton.click();
+      await settings.updateComplete;
+
+      ok(!dialog.open, "Dialog should not be open");
+    });
+
+    /**
+     * Tests that the dialog for turning off scheduled backups can be displayed
+     * from settings, or hidden if cancelled.
+     */
+    add_task(async function test_disableBackupEncryptionDialog() {
+      let settings = document.getElementById("test-backup-settings");
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+        encryptionEnabled: true,
+      }
+
+      await settings.updateComplete;
+
+      let sensitiveDataCheckboxInput = settings.sensitiveDataCheckboxInputEl;
+      let dialog = settings.disableBackupEncryptionDialogEl;
+
+      ok(sensitiveDataCheckboxInput, "Checkbox for toggling encryption should be found");
+      ok(!dialog.open, "Dialog should not be open");
+
+      sensitiveDataCheckboxInput.click();
+      await settings.updateComplete;
+
+      ok(dialog?.open, "Dialog should be open");
+
+      let disableBackupEncryption = dialog.querySelector("disable-backup-encryption");
+      ok(disableBackupEncryption, "disable-backup-encryption should be found");
+
+      let cancelButton = disableBackupEncryption.shadowRoot.getElementById("backup-disable-encryption-cancel-button");
+      ok(cancelButton, "Cancel button should be found");
+
+      cancelButton.click();
+      await settings.updateComplete;
+
+      ok(!dialog.open, "Dialog should not be open");
+    });
+
+    /**
+     * Test that the timestamp and name of the last backup is shown if and only
+     * if one exists.
+     */
+    add_task(async function test_lastBackupTimestamp() {
+      let settings = document.getElementById("test-backup-settings");
+
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        lastBackupDate: null,
+        lastBackupFileName: "",
+      };
+      await settings.updateComplete;
+      let backupInfo = settings.shadowRoot.querySelector("#last-backup-info");
+      ok(!backupInfo, "Last backup info was not rendered.");
+
+      const lastBackupTimestamp = 1719769205;
+      const lastBackupFileName = "SomeBackup.html"
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        lastBackupDate: lastBackupTimestamp,
+        lastBackupFileName,
+      };
+      await settings.updateComplete;
+
+      backupInfo = settings.shadowRoot.querySelector("#last-backup-info");
+      ok(backupInfo, "Last backup info was rendered.");
+
+      let backupDate = backupInfo.querySelector("#last-backup-date");
+      is(
+        JSON.parse(backupDate.getAttribute("data-l10n-args")).date,
+        lastBackupTimestamp * 1000,
+        "Should have converted the timestamp to milliseconds."
+      );
+      let backupFilename = backupInfo.querySelector("#last-backup-filename");
+      is(
+        JSON.parse(backupFilename.getAttribute("data-l10n-args")).fileName,
+        lastBackupFileName,
+        "Should be showing the right file name."
+      );
+    });
+
+    /**
+     * Test that the ability to change the configured location of the backup
+     * exists if and only if scheduled backups are enabled.
+     */
+    add_task(async function test_backupLocation() {
+      let settings = document.getElementById("test-backup-settings");
+
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        lastBackupDate: null,
+        lastBackupFileName: "",
+        scheduledBackupsEnabled: false,
+      };
+      await settings.updateComplete;
+      let backupLocationControl = settings.shadowRoot.querySelector("#last-backup-location-control");
+      ok(!backupLocationControl, "Last backup location control was not rendered.");
+
+      const backupDirPath = "Some/Expected/Path";
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+        backupDirPath,
+      };
+      await settings.updateComplete;
+
+      backupLocationControl = settings.shadowRoot.querySelector("#last-backup-location-control");
+      ok(backupLocationControl, "Last backup location control was rendered.");
+
+      let backupLocation = settings.shadowRoot.querySelector("#last-backup-location");
+      is(backupLocation.value, backupDirPath, "Last backup location set to the expected value.");
+    });
+
+    /**
+     * Test that the "Show in folder" button fires the right event.
+     */
+    add_task(async function test_showInFolder() {
+      let settings = document.getElementById("test-backup-settings");
+      let content = document.getElementById("content");
+
+      const backupDirPath = "Some/Expected/Path";
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+        backupDirPath,
+      };
+
+      let locationShowButton = settings.shadowRoot.querySelector("#backup-location-show");
+      ok(locationShowButton, "Backup location show button exists.");
+
+      let sawShowEvent = BrowserTestUtils.waitForEvent(content, "BackupUI:ShowBackupLocation");
+      locationShowButton.click();
+      await sawShowEvent;
+    });
+
+    /**
+     * Test that the "Edit" button fires the right event.
+     */
+    add_task(async function test_editLocation() {
+      let settings = document.getElementById("test-backup-settings");
+      let content = document.getElementById("content");
+
+      const backupDirPath = "Some/Expected/Path";
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+        backupDirPath,
+      };
+
+      let locationEditButton = settings.shadowRoot.querySelector("#backup-location-edit");
+      ok(locationEditButton, "Backup location edit button exists.");
+
+      let sawEditEvent = BrowserTestUtils.waitForEvent(content, "BackupUI:EditBackupLocation");
+      locationEditButton.click();
+      await sawEditEvent;
+    });
+
+    /**
+     * Tests that the encryption checkbox and change password button are only
+     * visible when scheduled backups are enabled.
+     */
+    add_task(async function test_password_controls_visibility() {
+      let settings = document.getElementById("test-backup-settings");
+
+      // First check visibility when scheduled backups are disabled
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: false,
+      }
+      await settings.updateComplete;
+
+      ok(
+        !settings.passwordControlsEl,
+        "Password controls should not be found"
+      );
+
+      // Now check visibility when scheduled backups are enabled
+      settings.backupServiceState.scheduledBackupsEnabled = true;
+      await settings.requestUpdate();
+      await settings.updateComplete;
+
+      ok(settings.passwordControlsEl, "Password controls should be found");
+      ok(
+        settings.sensitiveDataCheckboxInputEl,
+        "Password controls should be found"
+      );
+      ok(
+        !settings.sensitiveDataCheckboxInputEl.checked,
+        "Sensitive data checkbox should not be checked"
+      );
+      ok(
+        !settings.changePasswordButtonEl,
+        "Change password button should not be found"
+      );
+
+      // Now pretend encryption is enabled
+      settings.backupServiceState.encryptionEnabled = true;
+      await settings.requestUpdate();
+      await settings.updateComplete;
+
+      ok(
+        settings.sensitiveDataCheckboxInputEl.checked,
+        "Sensitive data checkbox should be checked"
+      );
+      ok(
+        settings.changePasswordButtonEl,
+        "Change password button should be found"
+      );
+    });
+
+    /**
+     * Tests that the right content is displayed if scheduled automatic backups
+     * are disabled.
+     */
+    add_task(async function test_content_when_scheduled_backups_disabled() {
+      let settings = document.getElementById("test-backup-settings");
+
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: false,
+      }
+      await settings.updateComplete;
+
+      ok(
+        settings.scheduledBackupsDescriptionEl,
+        "Scheduled backups description should be in the DOM"
+      );
+
+      is(
+        settings.restoreFromBackupButtonEl.getAttribute("data-l10n-id"),
+        "settings-data-backup-scheduled-backups-off-restore-choose"
+      );
+
+      is(
+        settings.restoreFromBackupDescriptionEl.getAttribute("data-l10n-id"),
+        "settings-data-backup-scheduled-backups-off-restore-description"
+      );
+    });
+
+    /**
+     * Tests that the right content is displayed if scheduled automatic backups
+     * are enabled.
+     */
+     add_task(async function test_content_when_scheduled_backups_enabled() {
+      let settings = document.getElementById("test-backup-settings");
+
+      settings.backupServiceState = {
+        defaultParent: {
+          path: PathUtils.join(PathUtils.tempDir, testDefaultName),
+          fileName: testDefaultName,
+        },
+        scheduledBackupsEnabled: true,
+      }
+      await settings.updateComplete;
+
+      ok(
+        !settings.scheduledBackupsDescriptionEl,
+        "Scheduled backups description should not be in the DOM"
+      );
+
+      is(
+        settings.restoreFromBackupButtonEl.getAttribute("data-l10n-id"),
+        "settings-data-backup-scheduled-backups-on-restore-choose"
+      );
+
+      is(
+        settings.restoreFromBackupDescriptionEl.getAttribute("data-l10n-id"),
+        "settings-data-backup-scheduled-backups-on-restore-description"
+      );
     });
   </script>
 </head>

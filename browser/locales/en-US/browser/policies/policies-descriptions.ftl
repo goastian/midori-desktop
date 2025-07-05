@@ -86,8 +86,6 @@ policy-DisablePrimaryPasswordCreation = If true, a Primary Password can’t be c
 
 policy-DisablePasswordReveal = Do not allow passwords to be revealed in saved logins.
 
-policy-DisablePocket2 = Disable the feature to save webpages to { -pocket-brand-name }.
-
 policy-DisablePrivateBrowsing = Disable Private Browsing.
 
 policy-DisableProfileImport = Disable the menu command to Import data from another browser.
@@ -226,6 +224,9 @@ policy-SecurityDevices2 = Add or delete PKCS #11 modules.
 
 policy-ShowHomeButton = Show the home button on the toolbar.
 
+# ”You represent that...” means ”You confirm/declare that...”
+policy-SkipTermsOfUse2 = Do not display the Terms of Use and Privacy Notice upon startup. You represent that you accept and have the authority to accept the Terms of Use on behalf of all individuals to whom you provide access to this browser.
+
 policy-SSLVersionMax = Set the maximum SSL version.
 
 policy-SSLVersionMin = Set the minimum SSL version.
@@ -245,5 +246,5 @@ policy-WebsiteFilter = Block websites from being visited. See documentation for 
 
 policy-Windows10SSO = Allow Windows single sign-on for Microsoft, work, and school accounts.
 
+# Entra is the name of a Microsoft product.
 policy-MicrosoftEntraSSO = Allow single sign-on for Microsoft Entra accounts.
-

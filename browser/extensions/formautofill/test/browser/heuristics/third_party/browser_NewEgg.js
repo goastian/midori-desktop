@@ -15,7 +15,7 @@ add_heuristic_tests(
             { fieldName: "given-name" },
             { fieldName: "family-name" },
             { fieldName: "country" },
-            { fieldName: "address-line1" },
+            { fieldName: "address-line1", reason: "update-heuristic" },
             { fieldName: "address-line2" },
             { fieldName: "address-level2" },
             { fieldName: "address-level1" }, // state
@@ -36,6 +36,7 @@ add_heuristic_tests(
           fields: [
             { fieldName: "cc-name" },
             { fieldName: "cc-number" }, // ac-off
+            { fieldName: "cc-csc", reason: "regex-heuristic"},
           ],
         },
         {
@@ -47,7 +48,7 @@ add_heuristic_tests(
             { fieldName: "cc-number" }, // ac-off
             { fieldName: "cc-exp-month", reason: "regex-heuristic" },
             { fieldName: "cc-exp-year", reason: "regex-heuristic" },
-            // { fieldName: "cc-csc"},
+            { fieldName: "cc-csc", reason: "regex-heuristic"},
           ],
         },
         {
@@ -55,8 +56,8 @@ add_heuristic_tests(
             reason: "regex-heuristic",
           },
           fields: [
-            { fieldName: "country" },
-            { fieldName: "address-line1" },
+            { fieldName: "country", reason: "update-heuristic-alternate" },
+            { fieldName: "address-line1", reason: "update-heuristic" },
             { fieldName: "address-line2" },
             { fieldName: "address-level2" },
             { fieldName: "address-level1" }, // state

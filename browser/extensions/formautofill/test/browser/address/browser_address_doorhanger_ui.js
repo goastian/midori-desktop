@@ -4,16 +4,6 @@ const { FormAutofill } = ChromeUtils.importESModule(
   "resource://autofill/FormAutofill.sys.mjs"
 );
 
-async function expectSavedAddresses(expectedCount) {
-  const addresses = await getAddresses();
-  is(
-    addresses.length,
-    expectedCount,
-    `${addresses.length} address in the storage`
-  );
-  return addresses;
-}
-
 function verifyDoorhangerContent(saved, removed = {}) {
   const rows = [
     ...getNotification().querySelectorAll(`.address-save-update-row-container`),
@@ -51,13 +41,14 @@ add_setup(async function () {
     set: [
       ["extensions.formautofill.addresses.capture.enabled", true],
       ["extensions.formautofill.addresses.supported", "on"],
+      ["extensions.formautofill.addresses.capture.requiredFields", ""],
     ],
   });
 });
 
 // Save address doorhanger should show description when users has no saved address
 add_task(async function test_save_doorhanger_show_description() {
-  await expectSavedAddresses(0);
+  await expectSavedAddressesCount(0);
 
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: ADDRESS_FORM_URL },
@@ -80,7 +71,7 @@ add_task(async function test_save_doorhanger_show_description() {
 // Save address doorhanger should not show description when users has at least one saved address
 add_task(async function test_save_doorhanger_hide_description() {
   await setStorage(TEST_ADDRESS_1);
-  await expectSavedAddresses(1);
+  await expectSavedAddressesCount(1);
 
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: ADDRESS_FORM_URL },
@@ -104,7 +95,7 @@ add_task(async function test_save_doorhanger_hide_description() {
 
 // Test open edit address popup and then click "learn more" button
 add_task(async function test_click_learn_more_button_in_edit_doorhanger() {
-  await expectSavedAddresses(0);
+  await expectSavedAddressesCount(0);
 
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: ADDRESS_FORM_URL },
@@ -125,7 +116,7 @@ add_task(async function test_click_learn_more_button_in_edit_doorhanger() {
 });
 
 add_task(async function test_click_address_setting_button_in_edit_doorhanger() {
-  await expectSavedAddresses(0);
+  await expectSavedAddressesCount(0);
 
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: ADDRESS_FORM_URL },
@@ -147,7 +138,7 @@ add_task(async function test_click_address_setting_button_in_edit_doorhanger() {
 });
 
 add_task(async function test_address_display_in_save_doorhanger() {
-  await expectSavedAddresses(0);
+  await expectSavedAddressesCount(0);
 
   const TESTS = [
     {
@@ -215,7 +206,7 @@ add_task(async function test_address_display_in_save_doorhanger() {
 
 add_task(async function test_show_added_text_in_update_doorhanger() {
   await setStorage(TEST_ADDRESS_2);
-  await expectSavedAddresses(1);
+  await expectSavedAddressesCount(1);
 
   const form = {
     ...TEST_ADDRESS_2,
@@ -249,7 +240,7 @@ add_task(async function test_show_removed_text_in_update_doorhanger() {
     organization: "Mozilla",
   };
   await setStorage(SAVED_ADDRESS);
-  await expectSavedAddresses(1);
+  await expectSavedAddressesCount(1);
 
   // We will ask whether users would like to update "Mozilla" to "mozilla"
   const form = {

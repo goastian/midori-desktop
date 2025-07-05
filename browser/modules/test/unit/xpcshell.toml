@@ -1,9 +1,19 @@
 [DEFAULT]
 head =  ''
 firefox-appdir = "browser"
-skip-if = ["os == 'android'"] # bug 1730213
+tags = "os_integration"
+
+["test_ContextId_LegacyBackend.js"]
+prefs = ["browser.contextual-services.contextId.rust-component.enabled=false"]
+
+["test_ContextId_RustBackend.js"]
+prefs = ["browser.contextual-services.contextId.rust-component.enabled=true"]
+
+["test_Dedupe.js"]
 
 ["test_E10SUtils_nested_URIs.js"]
+
+["test_FilterAdult.js"]
 
 ["test_FirefoxBridgeExtensionUtils.js"]
 run-if = ["os == 'win'"] # Test of a Windows-specific feature
@@ -22,6 +32,8 @@ run-if = [
 run-if = ["os == 'win'"] # Test of a Windows-specific feature
 
 ["test_LaterRun.js"]
+
+["test_LinksCache.js"]
 
 ["test_ProfileCounter.js"]
 run-if = ["os == 'win'"] # Test of a Windows-specific feature

@@ -91,7 +91,7 @@ var gMoreFromMozillaPane = {
           id: "fxMobile",
           type: "link",
           label_string_id: "more-from-moz-learn-more-link",
-          actionURL: AppConstants.isChinaRepack()
+          actionURL: BrowserUtils.isChinaRepack()
             ? "https://www.firefox.com.cn/browsers/mobile/"
             : "https://www.mozilla.org/firefox/browsers/mobile/",
         },
@@ -106,7 +106,7 @@ var gMoreFromMozillaPane = {
             label: {
               string_id: "more-from-moz-qr-code-box-firefox-mobile-button",
             },
-            actionURL: AppConstants.isChinaRepack()
+            actionURL: BrowserUtils.isChinaRepack()
               ? "https://www.firefox.com.cn/mobile/get-app/"
               : "https://www.mozilla.org/firefox/mobile/get-app/?v=mfm",
           },
@@ -156,6 +156,18 @@ var gMoreFromMozillaPane = {
       };
       products.push(relay);
     }
+
+    products.push({
+      id: "solo-ai",
+      title_string_id: "more-from-moz-solo-title",
+      description_string_id: "more-from-moz-solo-description",
+      region: "global",
+      button: {
+        id: "soloAI",
+        label_string_id: "more-from-moz-solo-button",
+        actionURL: "https://soloist.ai/?utm_type=more_from_mozilla",
+      },
+    });
 
     this._productsContainer = document.getElementById(
       "moreFromMozillaCategory"
@@ -229,7 +241,7 @@ var gMoreFromMozillaPane = {
           "-" +
           this.getTemplateName() +
           `${
-            AppConstants.isChinaRepack() &&
+            BrowserUtils.isChinaRepack() &&
             this.getTemplateName().includes("simple")
               ? "-cn"
               : ""

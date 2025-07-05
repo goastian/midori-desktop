@@ -16,6 +16,7 @@ add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.clipboard.featureGate", true],
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
       ["browser.urlbar.suggest.clipboard", true],
     ],
   });
@@ -298,56 +299,6 @@ add_task(async function testClipboardSuggestToggle() {
         "Clipboard suggestion should be present as the first suggestion."
       );
       await checkClipboardSuggestionAbsent(1);
-    }
-  );
-});
-
-add_task(async function testScalarAndStopWatchTelemetry() {
-  SpecialPowers.clipboardCopyString("https://example.com/6");
-  await BrowserTestUtils.withNewTab(
-    { gBrowser, url: "about:home" },
-    async () => {
-      Services.telemetry.clearScalars();
-      let histogram = Services.telemetry.getHistogramById(
-        "FX_URLBAR_PROVIDER_CLIPBOARD_READ_TIME_MS"
-      );
-      histogram.clear();
-      Assert.equal(
-        Object.values(histogram.snapshot().values).length,
-        0,
-        "histogram is empty before search"
-      );
-
-      await UrlbarTestUtils.promiseAutocompleteResultPopup({
-        window,
-        value: "",
-        waitForFocus,
-        fireInputEvent: true,
-      });
-
-      await UrlbarTestUtils.promisePopupClose(window, () => {
-        EventUtils.synthesizeKey("KEY_ArrowDown");
-        EventUtils.synthesizeKey("KEY_Enter");
-      });
-
-      const scalars = TelemetryTestUtils.getProcessScalars(
-        "parent",
-        true,
-        true
-      );
-
-      TelemetryTestUtils.assertKeyedScalar(
-        scalars,
-        `urlbar.picked.clipboard`,
-        0,
-        1
-      );
-
-      Assert.greater(
-        Object.values(histogram.snapshot().values).length,
-        0,
-        "histogram updated after search"
-      );
     }
   );
 });

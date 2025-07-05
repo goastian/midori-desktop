@@ -19,50 +19,33 @@ prefs = ["browser.bookmarks.testing.skipDefaultBookmarksImport=true"]
 
 ["browser_quicksuggest_configuration.js"]
 
+["browser_quicksuggest_contextual_optin.js"]
+
+["browser_quicksuggest_dynamicSuggestions.js"]
+
+["browser_quicksuggest_fakespot.js"]
+
 ["browser_quicksuggest_indexes.js"]
 
 ["browser_quicksuggest_mdn.js"]
 
 ["browser_quicksuggest_merinoSessions.js"]
 
-["browser_quicksuggest_onboardingDialog.js"]
-skip-if = ["os == 'linux' && bits == 64"] # Bug 1773830
+["browser_quicksuggest_ping_amp.js"]
+tags = "search-telemetry"
 
-["browser_quicksuggest_pocket.js"]
+["browser_quicksuggest_ping_deletionRequest.js"]
+tags = "search-telemetry"
+
+["browser_quicksuggest_ping_merinoAndNullValues.js"]
 tags = "search-telemetry"
 
 ["browser_quicksuggest_yelp.js"]
 
-["browser_telemetry_dynamicWikipedia.js"]
+["browser_telemetry_environment.js"]
 tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
 
-["browser_telemetry_gleanEmptyStrings.js"]
+["browser_telemetry_suggestMetrics.js"]
 tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_impressionEdgeCases.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_navigationalSuggestions.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_nonsponsored.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_other.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_sponsored.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
-
-["browser_telemetry_weather.js"]
-tags = "search-telemetry"
-skip-if = ["true"] # Bug 1880214
 
 ["browser_weather.js"]

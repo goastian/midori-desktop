@@ -90,7 +90,6 @@ login-intro-description2 = All passwords you save to { -brand-product-name } are
 login-intro-instructions-fxa2 = Create or sign in to your account on the device where your logins are saved.
 login-intro-instructions-fxa-settings = Go to Settings > Sync > Turn on syncing… Select the Logins and passwords checkbox.
 login-intro-instructions-fxa-passwords-help = Visit <a data-l10n-name="passwords-help-link">passwords support</a> for more help.
-about-logins-intro-browser-only-import = If your logins are saved in another browser, you can <a data-l10n-name="import-link">import them into { -brand-product-name }</a>
 about-logins-intro-import3 = Select the plus sign button above to add a password now. You can also <a data-l10n-name="import-browser-link">import passwords from another browser</a> or <a data-l10n-name="import-file-link">from a file</a>.
 
 ## Login
@@ -115,6 +114,8 @@ login-item-copied-username-button-text = Copied!
 login-item-password-label = Password
 login-item-password-reveal-checkbox =
   .aria-label = Show password
+login-item-password-conceal-checkbox =
+  .aria-label = Hide password
 login-item-copy-password-button-text = Copy
 login-item-copied-password-button-text = Copied!
 about-logins-login-item-save-changes-button = Save
@@ -241,7 +242,6 @@ about-logins-confirm-export-dialog-message2 = When you export, your passwords ar
     When you’re done using the file, we recommend deleting it so others who use this device can’t see your passwords.
 about-logins-confirm-export-dialog-confirm-button2 = Continue with export
 
-about-logins-alert-import-title = Import Complete
 about-logins-alert-import-message = View detailed Import Summary
 
 confirm-discard-changes-dialog-title = Discard unsaved changes?

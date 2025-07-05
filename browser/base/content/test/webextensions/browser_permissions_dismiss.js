@@ -3,6 +3,19 @@
 const INSTALL_PAGE = `${BASE}/file_install_extensions.html`;
 const INSTALL_XPI = `${BASE}/browser_webext_permissions.xpi`;
 
+// With the new dialog design both wildcards and non-wildcards host
+// permissions are expected to be shown as a single permission entry
+const expectedPermsCount = 4;
+
+function assertPermissionsListCount({ grantedPermissionsCount }) {
+  let permsUL = document.getElementById("addon-webext-perm-list-required");
+  is(
+    permsUL.childElementCount,
+    grantedPermissionsCount,
+    `Permissions list should have ${grantedPermissionsCount} entries`
+  );
+}
+
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -33,20 +46,21 @@ add_task(async function test_tab_switch_dismiss() {
     content.wrappedJSObject.installMozAM(url);
   });
 
-  await promisePopupNotificationShown("addon-webext-permissions");
-  let permsUL = document.getElementById("addon-webext-perm-list");
-  is(permsUL.childElementCount, 5, `Permissions list has 5 entries`);
+  const panel = await promisePopupNotificationShown("addon-webext-permissions");
+  assertPermissionsListCount({ grantedPermissionsCount: expectedPermsCount });
 
-  let permsLearnMore = document.getElementById("addon-webext-perm-info");
-  ok(
-    BrowserTestUtils.isVisible(permsLearnMore),
-    "Learn more link is shown on Permission popup"
+  let permsLearnMore = panel.querySelector(
+    ".popup-notification-learnmore-link"
   );
   is(
     permsLearnMore.href,
     Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "extension-permissions",
     "Learn more link has desired URL"
+  );
+  ok(
+    BrowserTestUtils.isVisible(permsLearnMore),
+    "Learn more link is shown on Permission popup"
   );
 
   // Switching tabs dismisses the notification and cancels the install.
@@ -76,11 +90,10 @@ add_task(async function test_add_tab_by_user_and_switch() {
 
   // Show addon permission notification.
   await promisePopupNotificationShown("addon-webext-permissions");
-  is(
-    document.getElementById("addon-webext-perm-list").childElementCount,
-    5,
-    "Permissions list has 5 entries"
-  );
+
+  assertPermissionsListCount({ grantedPermissionsCount: expectedPermsCount });
+
+  info("Verify permissions list again after switching active tab");
 
   // Open about:newtab page in a new tab.
   let newTab = await BrowserTestUtils.openNewForegroundTab(
@@ -91,11 +104,9 @@ add_task(async function test_add_tab_by_user_and_switch() {
 
   // Switch to tab that is opening addon permission notification.
   gBrowser.selectedTab = tab;
-  is(
-    document.getElementById("addon-webext-perm-list").childElementCount,
-    5,
-    "Permission notification is shown again"
-  );
+
+  assertPermissionsListCount({ grantedPermissionsCount: expectedPermsCount });
+
   ok(!listener.canceledPromise, "Extension installation is not canceled");
 
   // Cancel installation.

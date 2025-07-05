@@ -38,7 +38,6 @@
 
 /* Menus */
 #placesMenu > menu {
-  padding-inline-start: 4px;
   appearance: auto;
   -moz-default-appearance: toolbarbutton;
 
@@ -70,18 +69,14 @@
 
 .expander-up,
 .expander-down {
-  padding: 2px 0;
-  padding-inline-start: 2px;
+  > .button-box {
+    appearance: auto;
+    -moz-default-appearance: -moz-menulist-arrow-button;
+  }
 }
 
 .expander-up > .button-box {
-  appearance: auto;
-  -moz-default-appearance: button-arrow-up;
-}
-
-.expander-down > .button-box {
-  appearance: auto;
-  -moz-default-appearance: button-arrow-down;
+  transform: scaleY(-1);
 }
 
 /* Downloads pane */

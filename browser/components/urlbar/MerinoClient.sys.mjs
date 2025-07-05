@@ -20,9 +20,6 @@ const SEARCH_PARAMS = {
 
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-const HISTOGRAM_LATENCY = "FX_URLBAR_MERINO_LATENCY_MS";
-const HISTOGRAM_RESPONSE = "FX_URLBAR_MERINO_RESPONSE";
-
 /**
  * Client class for querying the Merino server. Each instance maintains its own
  * session state including a session ID and sequence number that is included in
@@ -40,9 +37,37 @@ export class MerinoClient {
   /**
    * @param {string} name
    *   An optional name for the client. It will be included in log messages.
+   * @param {object} options
+   *   Options object
+   * @param {string} options.cachePeriodMs
+   *   Enables caching when nonzero. The client will cache the response
+   *   suggestions from its most recent successful request for the specified
+   *   period. The client will serve the cached suggestions for all fetches for
+   *   the same URL until either the cache period elapses or a successful fetch
+   *   for a different URL is made (ignoring session-related URL params like
+   *   session ID and sequence number). Caching is per `MerinoClient` instance
+   *   and is not shared across instances.
+   *
+   *   WARNING: Cached suggestions are only ever evicted when new suggestions
+   *   are cached. They are not evicted on a timer. If the client has cached
+   *   some suggestions and no further fetches are made, they'll stay cached
+   *   indefinitely. If your request URLs contain senstive data that should not
+   *   stick around in the object graph indefinitely, you should either not use
+   *   caching or you should implement an eviction mechanism.
+   *
+   *   This cache strategy is intentionally simplistic and designed to be used
+   *   by the urlbar with very short cache periods to make sure Firefox doesn't
+   *   repeatedly call the same Merino URL on each keystroke in a urlbar
+   *   session, which is wasteful and can cause a suggestion to flicker out of
+   *   and into the urlbar panel as the user matches it again and again,
+   *   especially when Merino latency is high. It is not designed to be a
+   *   general caching mechanism. If you need more complex or long-lived
+   *   caching, try working with the Merino team to add cache headers to the
+   *   relevant responses so you can leverage Firefox's HTTP cache.
    */
-  constructor(name = "anonymous") {
+  constructor(name = "anonymous", { cachePeriodMs = 0 } = {}) {
     this.#name = name;
+    this.#cachePeriodMs = cachePeriodMs;
     ChromeUtils.defineLazyGetter(this, "logger", () =>
       lazy.UrlbarUtils.getLogger({ prefix: `MerinoClient [${name}]` })
     );
@@ -88,8 +113,7 @@ export class MerinoClient {
 
   /**
    * @returns {string}
-   *   A string that indicates the status of the last fetch. The values are the
-   *   same as the labels used in the `FX_URLBAR_MERINO_RESPONSE` histogram:
+   *   A string that indicates the status of the last fetch. Possible values:
    *   success, timeout, network_error, http_error
    */
   get lastFetchStatus() {
@@ -111,16 +135,10 @@ export class MerinoClient {
    *   Timeout in milliseconds. This method will return once the timeout
    *   elapses, a response is received, or an error occurs, whichever happens
    *   first.
-   * @param {string} options.extraLatencyHistogram
-   *   If specified, the fetch's latency will be recorded in this histogram in
-   *   addition to the usual Merino latency histogram.
-   * @param {string} options.extraResponseHistogram
-   *   If specified, the fetch's response will be recorded in this histogram in
-   *   addition to the usual Merino response histogram.
    * @param {object} options.otherParams
    *   If specified, the otherParams will be added as a query params. Currently
    *   used for accuweather's location autocomplete endpoint
-   * @returns {Array}
+   * @returns {Promise<object[]>}
    *   The Merino suggestions or null if there's an error or unexpected
    *   response.
    */
@@ -128,29 +146,9 @@ export class MerinoClient {
     query,
     providers = null,
     timeoutMs = lazy.UrlbarPrefs.get("merinoTimeoutMs"),
-    extraLatencyHistogram = null,
-    extraResponseHistogram = null,
     otherParams = {},
   }) {
-    this.logger.info(`Fetch starting with query: "${query}"`);
-
-    // Set up the Merino session ID and related state. The session ID is a UUID
-    // without leading and trailing braces.
-    if (!this.#sessionID) {
-      let uuid = Services.uuid.generateUUID().toString();
-      this.#sessionID = uuid.substring(1, uuid.length - 1);
-      this.#sequenceNumber = 0;
-      this.#sessionTimer?.cancel();
-
-      // Per spec, for the user's privacy, the session should time out and a new
-      // session ID should be used if the engagement does not end soon.
-      this.#sessionTimer = new lazy.SkippableTimer({
-        name: "Merino session timeout",
-        time: this.#sessionTimeoutMs,
-        logger: this.logger,
-        callback: () => this.resetSession(),
-      });
-    }
+    this.logger.debug("Fetch start", { query });
 
     // Get the endpoint URL. It's empty by default when running tests so they
     // don't hit the network.
@@ -158,17 +156,15 @@ export class MerinoClient {
     if (!endpointString) {
       return [];
     }
-    let url;
-    try {
-      url = new URL(endpointString);
-    } catch (error) {
-      this.logger.error("Error creating endpoint URL: " + error);
+    let url = URL.parse(endpointString);
+    if (!url) {
+      let error = new Error(`${endpointString} is not a valid URL`);
+      this.logger.error("Error creating endpoint URL", error);
       return [];
     }
+
+    // Start setting search params. Leave session-related params for last.
     url.searchParams.set(SEARCH_PARAMS.QUERY, query);
-    url.searchParams.set(SEARCH_PARAMS.SESSION_ID, this.#sessionID);
-    url.searchParams.set(SEARCH_PARAMS.SEQUENCE_NUMBER, this.#sequenceNumber);
-    this.#sequenceNumber++;
 
     let clientVariants = lazy.UrlbarPrefs.get("merinoClientVariants");
     if (clientVariants) {
@@ -201,17 +197,54 @@ export class MerinoClient {
       url.searchParams.set(param, value);
     }
 
-    let details = { query, providers, timeoutMs, url };
-    this.logger.debug("Fetch details: " + JSON.stringify(details));
+    // At this point, all search params should be set except for session-related
+    // params.
+
+    let details = { query, providers, timeoutMs, url: url.toString() };
+    this.logger.debug("Fetch details", details);
+
+    // If caching is enabled, generate the cache key for this request URL.
+    let cacheKey;
+    if (this.#cachePeriodMs && !MerinoClient._test_disableCache) {
+      url.searchParams.sort();
+      cacheKey = url.toString();
+
+      // If we have cached suggestions and they're still valid, return them.
+      if (
+        this.#cache.suggestions &&
+        Date.now() < this.#cache.dateMs + this.#cachePeriodMs &&
+        this.#cache.key == cacheKey
+      ) {
+        this.logger.debug("Fetch served from cache");
+        return this.#cache.suggestions;
+      }
+    }
+
+    // At this point, we're calling Merino.
+
+    // Set up the Merino session ID and related state. The session ID is a UUID
+    // without leading and trailing braces.
+    if (!this.#sessionID) {
+      let uuid = Services.uuid.generateUUID().toString();
+      this.#sessionID = uuid.substring(1, uuid.length - 1);
+      this.#sequenceNumber = 0;
+      this.#sessionTimer?.cancel();
+
+      // Per spec, for the user's privacy, the session should time out and a new
+      // session ID should be used if the engagement does not end soon.
+      this.#sessionTimer = new lazy.SkippableTimer({
+        name: "Merino session timeout",
+        time: this.#sessionTimeoutMs,
+        logger: this.logger,
+        callback: () => this.resetSession(),
+      });
+    }
+    url.searchParams.set(SEARCH_PARAMS.SESSION_ID, this.#sessionID);
+    url.searchParams.set(SEARCH_PARAMS.SEQUENCE_NUMBER, this.#sequenceNumber);
+    this.#sequenceNumber++;
 
     let recordResponse = category => {
-      this.logger.info("Fetch done with status: " + category);
-      Services.telemetry.getHistogramById(HISTOGRAM_RESPONSE).add(category);
-      if (extraResponseHistogram) {
-        Services.telemetry
-          .getHistogramById(extraResponseHistogram)
-          .add(category);
-      }
+      this.logger.debug("Fetch done", { status: category });
       this.#lastFetchStatus = category;
       recordResponse = null;
     };
@@ -223,7 +256,7 @@ export class MerinoClient {
       logger: this.logger,
       callback: () => {
         // The fetch timed out.
-        this.logger.info(`Fetch timed out (timeout = ${timeoutMs}ms)`);
+        this.logger.debug("Fetch timed out", { timeoutMs });
         recordResponse?.("timeout");
       },
     }));
@@ -234,17 +267,12 @@ export class MerinoClient {
     try {
       this.#fetchController?.abort();
     } catch (error) {
-      this.logger.error("Error aborting previous fetch: " + error);
+      this.logger.error("Error aborting previous fetch", error);
     }
 
     // Do the fetch.
     let response;
     let controller = (this.#fetchController = new AbortController());
-    let stopwatchInstance = (this.#latencyStopwatchInstance = {});
-    TelemetryStopwatch.start(HISTOGRAM_LATENCY, stopwatchInstance);
-    if (extraLatencyHistogram) {
-      TelemetryStopwatch.start(extraLatencyHistogram, stopwatchInstance);
-    }
     await Promise.race([
       timer.promise,
       (async () => {
@@ -258,24 +286,16 @@ export class MerinoClient {
           // the response from this inner function and assuming it will also be
           // returned by `Promise.race`.
           response = await fetch(url, { signal: controller.signal });
-          TelemetryStopwatch.finish(HISTOGRAM_LATENCY, stopwatchInstance);
-          if (extraLatencyHistogram) {
-            TelemetryStopwatch.finish(extraLatencyHistogram, stopwatchInstance);
-          }
-          this.logger.debug(
-            "Got response: " +
-              JSON.stringify({ "response.status": response.status, ...details })
-          );
+          this.logger.debug("Got response", {
+            status: response.status,
+            ...details,
+          });
           if (!response.ok) {
             recordResponse?.("http_error");
           }
         } catch (error) {
-          TelemetryStopwatch.cancel(HISTOGRAM_LATENCY, stopwatchInstance);
-          if (extraLatencyHistogram) {
-            TelemetryStopwatch.cancel(extraLatencyHistogram, stopwatchInstance);
-          }
           if (error.name != "AbortError") {
-            this.logger.error("Fetch error: " + error);
+            this.logger.error("Fetch error", error);
             recordResponse?.("network_error");
           }
         } finally {
@@ -295,16 +315,28 @@ export class MerinoClient {
       this.#timeoutTimer = null;
     }
 
+    if (!response?.ok) {
+      // `recordResponse()` was already called above, no need to call it here.
+      return [];
+    }
+
+    if (response.status == 204) {
+      // No content. We check for this because `response.json()` (below) throws
+      // in this case, and since we log the error it can spam the console.
+      recordResponse?.("no_suggestion");
+      return [];
+    }
+
     // Get the response body as an object.
     let body;
     try {
-      body = await response?.json();
+      body = await response.json();
     } catch (error) {
-      this.logger.error("Error getting response as JSON: " + error);
+      this.logger.error("Error getting response as JSON", error);
     }
 
     if (body) {
-      this.logger.debug("Response body: " + JSON.stringify(body));
+      this.logger.debug("Response body", body);
     }
 
     if (!body?.suggestions?.length) {
@@ -314,17 +346,27 @@ export class MerinoClient {
 
     let { suggestions, request_id } = body;
     if (!Array.isArray(suggestions)) {
-      this.logger.error("Unexpected response: " + JSON.stringify(body));
+      this.logger.error("Unexpected response", body);
       recordResponse?.("no_suggestion");
       return [];
     }
 
     recordResponse?.("success");
-    return suggestions.map(suggestion => ({
+    suggestions = suggestions.map(suggestion => ({
       ...suggestion,
       request_id,
       source: "merino",
     }));
+
+    if (cacheKey) {
+      this.#cache = {
+        suggestions,
+        key: cacheKey,
+        dateMs: Date.now(),
+      };
+    }
+
+    return suggestions;
   }
 
   /**
@@ -374,6 +416,8 @@ export class MerinoClient {
     return this.#nextSessionResetDeferred.promise;
   }
 
+  static _test_disableCache = false;
+
   get _test_sessionTimer() {
     return this.#sessionTimer;
   }
@@ -386,10 +430,6 @@ export class MerinoClient {
     return this.#fetchController;
   }
 
-  get _test_latencyStopwatchInstance() {
-    return this.#latencyStopwatchInstance;
-  }
-
   // State related to the current session.
   #sessionID = null;
   #sequenceNumber = 0;
@@ -399,8 +439,20 @@ export class MerinoClient {
   #name;
   #timeoutTimer = null;
   #fetchController = null;
-  #latencyStopwatchInstance = null;
   #lastFetchStatus = null;
   #nextResponseDeferred = null;
   #nextSessionResetDeferred = null;
+  #cachePeriodMs = 0;
+
+  // When caching is enabled, we cache response suggestions from the most recent
+  // successful request.
+  #cache = {
+    // The cached suggestions array.
+    suggestions: null,
+    // The cache key: the stringified request URL without session-related params
+    // (session ID and sequence number).
+    key: null,
+    // The date the suggestions were cached as returned by `Date.now()`.
+    dateMs: 0,
+  };
 }

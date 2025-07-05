@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Web Compatibility Interventions",
   "description": "Urgent post-release fixes for web compatibility.",
-  "version": "133.4.0",
+  "version": "140.8.0",
   "browser_specific_settings": {
     "gecko": {
       "id": "webcompat@mozilla.org",
@@ -69,6 +69,7 @@
   "content_security_policy": "script-src 'self' 'sha256-PeZc2H1vv7M8NXqlFyNbN4y4oM6wXmYEbf73m+Aqpak='; default-src 'self'; base-uri moz-extension://*; object-src 'none'",
 
   "permissions": [
+    "cookies",
     "mozillaAddons",
     "scripting",
     "tabs",
@@ -80,19 +81,16 @@
 
   "background": {
     "scripts": [
-      "lib/module_shim.js",
       "lib/messaging_helper.js",
+      "lib/ua_helpers.js",
       "lib/intervention_helpers.js",
       "lib/requestStorageAccess_helper.js",
-      "lib/ua_helpers.js",
-      "data/injections.js",
       "data/shims.js",
-      "data/ua_overrides.js",
       "lib/about_compat_broker.js",
       "lib/custom_functions.js",
-      "lib/injections.js",
+      "lib/interventions.js",
       "lib/shims.js",
-      "lib/ua_overrides.js",
+      "lib/smartblock_embeds_helper.js",
       "run.js"
     ]
   },
@@ -107,6 +105,7 @@
     "shims/blogger.js",
     "shims/bloggerAccount.js",
     "shims/bmauth.js",
+    "shims/botd.mjs",
     "shims/branch.js",
     "shims/chartbeat.js",
     "shims/crave-ca.js",
@@ -114,6 +113,7 @@
     "shims/cxense.js",
     "shims/doubleverify.js",
     "shims/eluminate.js",
+    "shims/embed-test-shim.js",
     "shims/empty-script.js",
     "shims/empty-shim.txt",
     "shims/everest.js",
@@ -132,10 +132,14 @@
     "shims/history.js",
     "shims/iam.js",
     "shims/iaspet.js",
+    "shims/instagram-embed.js",
     "shims/instagram.js",
+    "shims/instagram.svg",
+    "shims/jira-zendesk-support.js",
     "shims/kinja.js",
     "shims/live-test-shim.js",
     "shims/maxmind-geoip.js",
+    "shims/messengerLogin.js",
     "shims/microsoftLogin.js",
     "shims/microsoftVirtualAssistant.js",
     "shims/moat.js",
@@ -149,12 +153,18 @@
     "shims/rich-relevance.js",
     "shims/salesforce.js",
     "shims/spotify-embed.js",
+    "shims/stackoverflow-login.js",
+    "shims/tiktok-embed.js",
+    "shims/tiktok.svg",
     "shims/tracking-pixel.png",
     "shims/tsn-ca.js",
+    "shims/twitter-embed.js",
     "shims/vast2.xml",
     "shims/vast3.xml",
     "shims/vidible.js",
     "shims/vmad.xml",
-    "shims/webtrends.js"
+    "shims/webtrends.js",
+    "shims/x-logo.svg",
+    "shims/zendesk-asana-support.js"
   ]
 }

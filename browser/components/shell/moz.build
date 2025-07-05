@@ -35,8 +35,11 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     XPIDL_SOURCES += [
         "nsIGNOMEShellService.idl",
+        "nsIOpenTabsProvider.idl",
     ]
-
+    EXTRA_JS_MODULES += [
+        "OpenTabsProvider.sys.mjs",
+    ]
     SOURCES += [
         "nsGNOMEShellService.cpp",
     ]
@@ -77,6 +80,10 @@ EXTRA_JS_MODULES += [
     "HeadlessShell.sys.mjs",
     "ScreenshotChild.sys.mjs",
     "ShellService.sys.mjs",
+]
+
+MOZ_SRC_FILES += [
+    "StartupOSIntegration.sys.mjs",
 ]
 
 for var in (

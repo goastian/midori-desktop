@@ -3,8 +3,9 @@ tags = "search-telemetry"
 support-files = ["head.js", "head-spa.js"]
 prefs = ["browser.search.log=true"]
 
-["browser_search_glean_serp_event_telemetry_categorization_enabled_by_nimbus_variable.js"]
+["browser_search_glean_serp_event_telemetry_categorization_enabled_by_pref.js"]
 support-files = ["searchTelemetryDomainCategorizationReporting.html"]
+skip-if = ["os == 'mac'"] # Bug 1943499 - Frequent intermittent failure on Mac.
 
 ["browser_search_telemetry_abandonment.js"]
 support-files = [
@@ -34,6 +35,17 @@ support-files = ["searchTelemetryAd_searchbox_with_content.html", "serp.css"]
 
 ["browser_search_telemetry_adImpression_component_skipCount_parent.js"]
 support-files = ["searchTelemetryAd_searchbox_with_content.html", "serp.css"]
+
+["browser_search_telemetry_adblock_count.js"]
+
+["browser_search_telemetry_app_provided_and_overridden.js"]
+
+["browser_search_telemetry_categorization_experiment_info.js"]
+skip-if = ["artifact"] # Bug 1883857 - experimentInfo object is not accessible in artifact builds
+support-files = ["searchTelemetryDomainCategorizationReporting.html"]
+
+["browser_search_telemetry_categorization_missing_impression.js"]
+support-files = ["searchTelemetryDomainExtraction.html"]
 
 ["browser_search_telemetry_categorization_timing.js"]
 
@@ -153,6 +165,9 @@ support-files = [
   "serp.css",
 ]
 
+["browser_search_telemetry_engagement_target_after_load.js"]
+support-files = ["searchTelemetryAd_components_text.html", "serp.css"]
+
 ["browser_search_telemetry_new_window.js"]
 support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
 
@@ -168,6 +183,12 @@ support-files = [
   "telemetrySearchSuggestions.sjs",
   "telemetrySearchSuggestions.xml",
 ]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && a11y_checks", # Bug 1873335
+]
+
+
+["browser_search_telemetry_searchform.js"]
 
 ["browser_search_telemetry_shopping.js"]
 support-files = ["searchTelemetryAd_shopping.html"]
@@ -224,3 +245,21 @@ support-files = ["searchTelemetrySinglePageApp.html"]
 
 ["browser_search_telemetry_spa_single_tab.js"]
 support-files = ["searchTelemetrySinglePageApp.html"]
+
+["browser_search_telemetry_subframe.js"]
+support-files = [
+  "searchTelemetryAd_with_sponsored_subframe_hidden.html",
+  "searchTelemetryAd_with_sponsored_subframe_visible.html",
+  "searchTelemetrySubframe.html",
+]
+
+["browser_search_telemetry_subframe_click.js"]
+support-files = [
+  "searchTelemetryAd_with_sponsored_subframe_hidden.html",
+  "searchTelemetryAd_with_sponsored_subframe_visible.html",
+  "searchTelemetrySubframe.html",
+]
+
+["browser_search_telemetry_visibility_helper_horizontal.js"]
+
+["browser_search_telemetry_visibility_helper_vertical.js"]

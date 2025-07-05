@@ -93,6 +93,22 @@ export class PromptParent extends JSWindowActorParent {
     );
   }
 
+  // Note that this will return false for the sidebar <browser> element
+  // itself.
+  isEmbeddedInSidebar(browser) {
+    if (
+      browser?.ownerGlobal?.browsingContext.embedderElement?.id != "sidebar"
+    ) {
+      return false;
+    }
+    // Extensions in the sidebar have more layers of nesting, and this causes
+    // window leaks in tests. We would like to fix this at some point (bug 1513656)
+    if (browser.getAttribute("messagemanagergroup") == "webext-browsers") {
+      return false;
+    }
+    return true;
+  }
+
   receiveMessage(message) {
     switch (message.name) {
       case "Prompt:Open":
@@ -128,7 +144,8 @@ export class PromptParent extends JSWindowActorParent {
 
     let browser = browsingContext.embedderElement;
 
-    if (this.isAboutAddonsOptionsPage(browsingContext)) {
+    let isEmbeddedInSidebar = this.isEmbeddedInSidebar(browser);
+    if (isEmbeddedInSidebar || this.isAboutAddonsOptionsPage(browsingContext)) {
       browser = browser.ownerGlobal.browsingContext.embedderElement;
     }
 
@@ -158,26 +175,13 @@ export class PromptParent extends JSWindowActorParent {
       throw new Error("Cannot open a prompt in a hidden window");
     }
 
-    let swappedBrowser;
-    let cancelEventController = new AbortController();
-    let cancelEventSignal = cancelEventController.signal;
     try {
-      if (browser) {
-        browser.enterModalState();
-        // If this tab gets moved to a new window, we will need
-        // to leave the modal state on the new browser, so
-        // keep track of the new browser.
-        browser.addEventListener(
-          "EndSwapDocShells",
-          event => {
-            swappedBrowser = event.detail;
-          },
-          { signal: cancelEventSignal }
-        );
+      if (browsingContext.embedderElement) {
+        browsingContext.embedderElement.enterModalState();
         lazy.PromptUtils.fireDialogEvent(
           win,
           "DOMWillOpenModalDialog",
-          browser,
+          browsingContext.embedderElement,
           this.getOpenEventDetail(args)
         );
       }
@@ -237,9 +241,14 @@ export class PromptParent extends JSWindowActorParent {
               modalType: args.modalType,
               allowFocusCheckbox: args.allowFocusCheckbox,
               hideContent: args.isTopLevelCrossDomainAuth,
+              // If we are in the sidebar, use the inner browser to detect when navigation is done
+              webProgress: isEmbeddedInSidebar
+                ? browsingContext?.webProgress
+                : undefined,
             },
             bag
           );
+          dialog.promptID = promptID;
           this.registerDialog(dialog, promptID);
           await closedPromise;
         } finally {
@@ -274,16 +283,12 @@ export class PromptParent extends JSWindowActorParent {
 
       lazy.PromptUtils.propBagToObject(bag, args);
     } finally {
-      cancelEventController.abort();
-      // If this tab has been moved to a new window, make sure
-      // to leave the modal state on the new browser.
-      let currentBrowser = swappedBrowser ?? browser;
-      if (currentBrowser) {
-        currentBrowser.maybeLeaveModalState();
+      if (browsingContext.embedderElement) {
+        browsingContext.embedderElement.maybeLeaveModalState();
         lazy.PromptUtils.fireDialogEvent(
           win,
           "DOMModalDialogClosed",
-          currentBrowser,
+          browsingContext.embedderElement,
           this.getClosingEventDetail(args)
         );
       }
@@ -295,8 +300,8 @@ export class PromptParent extends JSWindowActorParent {
     let details =
       args.modalType === Services.prompt.MODAL_TYPE_CONTENT
         ? {
-            wasPermitUnload: args.inPermitUnload,
             areLeaving: args.ok,
+            promptType: args.inPermitUnload ? "beforeunload" : args.promptType,
             // If a prompt was not accepted, do not return the prompt value.
             value: args.ok ? args.value : null,
           }

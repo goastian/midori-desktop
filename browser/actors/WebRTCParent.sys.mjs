@@ -565,16 +565,18 @@ function prompt(aActor, aBrowser, aRequest) {
   }
   const reqAudioOutput = !!audioOutputDevices.length;
 
+  const isFile = principal.schemeIs("file");
   const stringId = getPromptMessageId(
     reqVideoInput,
     reqAudioInput,
     reqAudioOutput,
-    !!aRequest.secondOrigin
+    !!aRequest.secondOrigin,
+    isFile
   );
   let message;
   let originToShow;
-  if (principal.schemeIs("file")) {
-    message = localization.formatValueSync(stringId + "-with-file");
+  if (isFile) {
+    message = localization.formatValueSync(stringId);
     originToShow = null;
   } else {
     message = localization.formatValueSync(stringId, {
@@ -671,6 +673,15 @@ function prompt(aActor, aBrowser, aRequest) {
             ? lazy.SitePermissions.SCOPE_PERSISTENT
             : lazy.SitePermissions.SCOPE_TEMPORARY;
           if (reqAudioInput) {
+            if (!isPersistent) {
+              // After a temporary block, having permissions.query() calls
+              // persistently report "granted" would be misleading
+              maybeClearAlwaysAsk(
+                principal,
+                "microphone",
+                notification.browser
+              );
+            }
             lazy.SitePermissions.setForPrincipal(
               principal,
               "microphone",
@@ -680,6 +691,11 @@ function prompt(aActor, aBrowser, aRequest) {
             );
           }
           if (reqVideoInput) {
+            if (!isPersistent && !sharingScreen) {
+              // After a temporary block, having permissions.query() calls
+              // persistently report "granted" would be misleading
+              maybeClearAlwaysAsk(principal, "camera", notification.browser);
+            }
             lazy.SitePermissions.setForPrincipal(
               principal,
               sharingScreen ? "screen" : "camera",
@@ -761,11 +777,14 @@ function prompt(aActor, aBrowser, aRequest) {
         aActor.denyRequest(aRequest);
       } else if (
         aTopic == "shown" &&
-        audioOutputDevices.length > 1 &&
-        !notification.wasDismissed
+        !notification.wasDismissed &&
+        reqAudioOutput
       ) {
-        // Focus the list on first show so that arrow keys select the speaker.
-        doc.getElementById("webRTC-selectSpeaker-richlistbox").focus();
+        let focusElement =
+          audioOutputDevices.length > 1
+            ? doc.getElementById("webRTC-selectSpeaker-richlistbox") // Focus the list on first show so that arrow keys select the speaker.
+            : doc.querySelector("button.popup-notification-primary-button"); // Or if the list is hidden (only 1 device), focus the primary button.
+        focusElement.focus();
       }
 
       if (aTopic != "showing") {
@@ -1134,12 +1153,8 @@ function prompt(aActor, aBrowser, aRequest) {
               ({ deviceIndex }) => deviceIndex == videoDeviceIndex
             );
             aActor.activateDevicePerm(aRequest.windowID, mediaSource, rawId);
-            if (remember) {
-              lazy.SitePermissions.setForPrincipal(
-                principal,
-                "camera",
-                lazy.SitePermissions.ALLOW
-              );
+            if (!sharingScreen) {
+              persistGrantOrPromptPermission(principal, "camera", remember);
             }
           }
         }
@@ -1155,13 +1170,7 @@ function prompt(aActor, aBrowser, aRequest) {
               ({ deviceIndex }) => deviceIndex == audioDeviceIndex
             );
             aActor.activateDevicePerm(aRequest.windowID, mediaSource, rawId);
-            if (remember) {
-              lazy.SitePermissions.setForPrincipal(
-                principal,
-                "microphone",
-                lazy.SitePermissions.ALLOW
-              );
-            }
+            persistGrantOrPromptPermission(principal, "microphone", remember);
           }
         } else if (reqAudioInput === "AudioCapture") {
           // Only one device possible for audio capture.
@@ -1319,31 +1328,6 @@ function prompt(aActor, aBrowser, aRequest) {
     options
   );
   notification.callID = aRequest.callID;
-
-  let schemeHistogram = Services.telemetry.getKeyedHistogramById(
-    "PERMISSION_REQUEST_ORIGIN_SCHEME"
-  );
-  let userInputHistogram = Services.telemetry.getKeyedHistogramById(
-    "PERMISSION_REQUEST_HANDLING_USER_INPUT"
-  );
-
-  let docURI = aRequest.documentURI;
-  let scheme = 0;
-  if (docURI.startsWith("https")) {
-    scheme = 2;
-  } else if (docURI.startsWith("http")) {
-    scheme = 1;
-  }
-
-  for (let requestType of requestTypes) {
-    if (requestType == "AudioCapture") {
-      requestType = "Microphone";
-    }
-    requestType = requestType.toLowerCase();
-
-    schemeHistogram.add(requestType, scheme);
-    userInputHistogram.add(requestType, aRequest.isHandlingUserInput);
-  }
 }
 
 /**
@@ -1351,63 +1335,101 @@ function prompt(aActor, aBrowser, aRequest) {
  * @param {"AudioCapture" | "Microphone" | null} reqAudioInput
  * @param {boolean} reqAudioOutput
  * @param {boolean} delegation - Is the access delegated to a third party?
+ * @param {boolean} isFile - Is the request coming from a file?
  * @returns {string} Localization message identifier
  */
 function getPromptMessageId(
   reqVideoInput,
   reqAudioInput,
   reqAudioOutput,
-  delegation
+  delegation,
+  isFile
 ) {
   switch (reqVideoInput) {
     case "Camera":
       switch (reqAudioInput) {
         case "Microphone":
-          return delegation
-            ? "webrtc-allow-share-camera-and-microphone-unsafe-delegation"
-            : "webrtc-allow-share-camera-and-microphone";
+          if (isFile) {
+            return "webrtc-allow-share-camera-and-microphone-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-camera-and-microphone-unsafe-delegation";
+          }
+          return "webrtc-allow-share-camera-and-microphone";
         case "AudioCapture":
-          return delegation
-            ? "webrtc-allow-share-camera-and-audio-capture-unsafe-delegation"
-            : "webrtc-allow-share-camera-and-audio-capture";
+          if (isFile) {
+            return "webrtc-allow-share-camera-and-audio-capture-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-camera-and-audio-capture-unsafe-delegation";
+          }
+          return "webrtc-allow-share-camera-and-audio-capture";
         default:
-          return delegation
-            ? "webrtc-allow-share-camera-unsafe-delegation"
-            : "webrtc-allow-share-camera";
+          if (isFile) {
+            return "webrtc-allow-share-camera-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-camera-unsafe-delegation";
+          }
+          return "webrtc-allow-share-camera";
       }
 
     case "Screen":
       switch (reqAudioInput) {
         case "Microphone":
-          return delegation
-            ? "webrtc-allow-share-screen-and-microphone-unsafe-delegation"
-            : "webrtc-allow-share-screen-and-microphone";
+          if (isFile) {
+            return "webrtc-allow-share-screen-and-microphone-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-screen-and-microphone-unsafe-delegation";
+          }
+          return "webrtc-allow-share-screen-and-microphone";
         case "AudioCapture":
-          return delegation
-            ? "webrtc-allow-share-screen-and-audio-capture-unsafe-delegation"
-            : "webrtc-allow-share-screen-and-audio-capture";
+          if (isFile) {
+            return "webrtc-allow-share-screen-and-audio-capture-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-screen-and-audio-capture-unsafe-delegation";
+          }
+          return "webrtc-allow-share-screen-and-audio-capture";
         default:
-          return delegation
-            ? "webrtc-allow-share-screen-unsafe-delegation"
-            : "webrtc-allow-share-screen";
+          if (isFile) {
+            return "webrtc-allow-share-screen-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-screen-unsafe-delegation";
+          }
+          return "webrtc-allow-share-screen";
       }
 
     default:
       switch (reqAudioInput) {
         case "Microphone":
-          return delegation
-            ? "webrtc-allow-share-microphone-unsafe-delegation"
-            : "webrtc-allow-share-microphone";
+          if (isFile) {
+            return "webrtc-allow-share-microphone-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-microphone-unsafe-delegation";
+          }
+          return "webrtc-allow-share-microphone";
         case "AudioCapture":
-          return delegation
-            ? "webrtc-allow-share-audio-capture-unsafe-delegation"
-            : "webrtc-allow-share-audio-capture";
+          if (isFile) {
+            return "webrtc-allow-share-audio-capture-with-file";
+          }
+          if (delegation) {
+            return "webrtc-allow-share-audio-capture-unsafe-delegation";
+          }
+          return "webrtc-allow-share-audio-capture";
         default:
           // This should be always true, if we've reached this far.
           if (reqAudioOutput) {
-            return delegation
-              ? "webrtc-allow-share-speaker-unsafe-delegation"
-              : "webrtc-allow-share-speaker";
+            if (isFile) {
+              return "webrtc-allow-share-speaker-with-file";
+            }
+            if (delegation) {
+              return "webrtc-allow-share-speaker-unsafe-delegation";
+            }
+            return "webrtc-allow-share-speaker";
           }
           return undefined;
       }
@@ -1496,4 +1518,54 @@ function clearTemporaryGrants(browser, clearCamera, clearMicrophone) {
     .forEach(perm =>
       lazy.SitePermissions.removeFromPrincipal(null, perm.id, browser)
     );
+}
+
+/**
+ * Persist an ALLOW state if the remember option is true.
+ * Otherwise, persist PROMPT so that we can later tell the site
+ * that permission was granted once before.
+ * This makes Firefox seem much more like Chrome to sites that
+ * expect a one-off, persistent permission grant for cam/mic.
+ *
+ * @param principal - Principal to add permission to.
+ * @param {string} permissionName - name of permission.
+ * @param remember - whether the grant should be persisted.
+ */
+function persistGrantOrPromptPermission(principal, permissionName, remember) {
+  // There are cases like unsafe delegation where a prompt appears
+  // even in ALLOW state, so make sure to not overwrite it (there's
+  // no remember checkbox in those cases)
+  if (
+    lazy.SitePermissions.getForPrincipal(principal, permissionName).state ==
+    lazy.SitePermissions.ALLOW
+  ) {
+    return;
+  }
+
+  lazy.SitePermissions.setForPrincipal(
+    principal,
+    permissionName,
+    remember ? lazy.SitePermissions.ALLOW : lazy.SitePermissions.PROMPT
+  );
+}
+
+/**
+ * Clears any persisted PROMPT (aka Always Ask) permission.
+ * @param principal - Principal to remove permission from.
+ * @param {string} permissionName - name of permission.
+ * @param browser - Browser element to clear permission for.
+ */
+function maybeClearAlwaysAsk(principal, permissionName, browser) {
+  // For the "Always Ask" user choice, only persisted PROMPT is used,
+  // so no need to scan through temporary permissions.
+  if (
+    lazy.SitePermissions.getForPrincipal(principal, permissionName).state ==
+    lazy.SitePermissions.PROMPT
+  ) {
+    lazy.SitePermissions.removeFromPrincipal(
+      principal,
+      permissionName,
+      browser
+    );
+  }
 }

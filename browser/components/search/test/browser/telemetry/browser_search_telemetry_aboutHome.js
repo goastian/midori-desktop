@@ -32,9 +32,6 @@ add_setup(async function () {
   let oldCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
 
-  // Enable event recording for the events tested here.
-  Services.telemetry.setEventRecordingEnabled("navigation", true);
-
   await SpecialPowers.pushPrefEnv({
     set: [
       [
@@ -46,7 +43,6 @@ add_setup(async function () {
 
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
-    Services.telemetry.setEventRecordingEnabled("navigation", false);
     Services.telemetry.canRecordExtended = oldCanRecord;
   });
 });
@@ -56,8 +52,7 @@ add_task(async function test_abouthome_activitystream_simpleQuery() {
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
   Services.fog.testResetFOG();
-  let search_hist =
-    TelemetryTestUtils.getAndClearKeyedHistogram("SEARCH_COUNTS");
+  TelemetryTestUtils.getAndClearKeyedHistogram("SEARCH_COUNTS");
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
@@ -99,26 +94,13 @@ add_task(async function test_abouthome_activitystream_simpleQuery() {
     "This search must only increment one entry in the scalar."
   );
 
-  // Make sure SEARCH_COUNTS contains identical values.
-  TelemetryTestUtils.assertKeyedHistogramSum(
-    search_hist,
-    "other-MozSearch.abouthome",
-    1
-  );
+  await SearchUITestUtils.assertSAPTelemetry({
+    engineName: "MozSearch",
+    source: "abouthome",
+    count: 1,
+  });
 
-  // Also check events.
-  TelemetryTestUtils.assertEvents(
-    [
-      {
-        object: "about_home",
-        value: "enter",
-        extra: { engine: "other-MozSearch" },
-      },
-    ],
-    { category: "navigation", method: "search" }
-  );
-
-  // Also also check Glean events.
+  // Also check Glean events.
   const record = Glean.newtabSearch.issued.testGetValue();
   Assert.ok(!!record, "Must have recorded a search issuance");
   Assert.equal(record.length, 1, "One search, one event");

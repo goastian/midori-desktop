@@ -2,28 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
+  BrowserSearchTelemetry:
+    "moz-src:///browser/components/search/BrowserSearchTelemetry.sys.mjs",
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
-  Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
+  SERPCategorization:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
+  SERPCategorizationRecorder:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
+  SERPCategorizationEventScheduler:
+    "moz-src:///browser/components/search/SERPCategorization.sys.mjs",
 });
-
-ChromeUtils.defineLazyGetter(lazy, "gCryptoHash", () => {
-  return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
-});
-
-// The various histograms and scalars that we report to.
-const SEARCH_CONTENT_SCALAR_BASE = "browser.search.content.";
-const SEARCH_WITH_ADS_SCALAR_BASE = "browser.search.withads.";
-const SEARCH_AD_CLICKS_SCALAR_BASE = "browser.search.adclicks.";
-const SEARCH_DATA_TRANSFERRED_SCALAR = "browser.search.data_transferred";
-const SEARCH_TELEMETRY_PRIVATE_BROWSING_KEY_SUFFIX = "pb";
 
 // Exported for tests.
 export const ADLINK_CHECK_TIMEOUT_MS = 1000;
@@ -33,14 +27,6 @@ export const ADLINK_CHECK_TIMEOUT_MS = 1000;
 // slow to update the content on the page.
 export const SPA_ADLINK_CHECK_TIMEOUT_MS = 2500;
 export const TELEMETRY_SETTINGS_KEY = "search-telemetry-v2";
-export const TELEMETRY_CATEGORIZATION_KEY = "search-categorization";
-export const TELEMETRY_CATEGORIZATION_DOWNLOAD_SETTINGS = {
-  // Units are in milliseconds.
-  base: 3600000,
-  minAdjust: 60000,
-  maxAdjust: 600000,
-  maxTriesPerSession: 2,
-};
 
 export const SEARCH_TELEMETRY_SHARED = {
   PROVIDER_INFO: "SearchTelemetry:ProviderInfo",
@@ -50,48 +36,12 @@ export const SEARCH_TELEMETRY_SHARED = {
 
 const impressionIdsWithoutEngagementsSet = new Set();
 
-export const CATEGORIZATION_SETTINGS = {
-  STORE_SCHEMA: 1,
-  STORE_FILE: "domain_to_categories.sqlite",
-  STORE_NAME: "domain_to_categories",
-  MAX_DOMAINS_TO_CATEGORIZE: 10,
-  MINIMUM_SCORE: 0,
-  STARTING_RANK: 2,
-  IDLE_TIMEOUT_SECONDS: 60 * 60,
-  WAKE_TIMEOUT_MS: 60 * 60 * 1000,
-  PING_SUBMISSION_THRESHOLD: 10,
-};
-
 ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
   return console.createInstance({
     prefix: "SearchTelemetry",
     maxLogLevel: lazy.SearchUtils.loggingEnabled ? "Debug" : "Warn",
   });
 });
-
-const CATEGORIZATION_PREF =
-  "browser.search.serpEventTelemetryCategorization.enabled";
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "serpEventTelemetryCategorization",
-  CATEGORIZATION_PREF,
-  false,
-  (aPreference, previousValue, newValue) => {
-    if (newValue) {
-      SearchSERPCategorization.init();
-    } else {
-      SearchSERPCategorization.uninit({ deleteMap: true });
-    }
-  }
-);
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "activityLimit",
-  "telemetry.fog.test.activity_limit",
-  120
-);
 
 export const SearchSERPTelemetryUtils = {
   ACTIONS: {
@@ -109,6 +59,7 @@ export const SearchSERPTelemetryUtils = {
     AD_LINK: "ad_link",
     AD_SIDEBAR: "ad_sidebar",
     AD_SITELINK: "ad_sitelink",
+    AD_UNCATEGORIZED: "ad_uncategorized",
     COOKIE_BANNER: "cookie_banner",
     INCONTENT_SEARCHBOX: "incontent_searchbox",
     NON_ADS_LINK: "non_ads_link",
@@ -125,9 +76,6 @@ export const SearchSERPTelemetryUtils = {
     REFINE_ON_SERP: "follow_on_from_refine_on_SERP",
     SEARCHBOX: "follow_on_from_refine_on_incontent_search",
   },
-  CATEGORIZATION: {
-    INCONCLUSIVE: 0,
-  },
 };
 
 const AD_COMPONENTS = [
@@ -136,7 +84,89 @@ const AD_COMPONENTS = [
   SearchSERPTelemetryUtils.COMPONENTS.AD_LINK,
   SearchSERPTelemetryUtils.COMPONENTS.AD_SIDEBAR,
   SearchSERPTelemetryUtils.COMPONENTS.AD_SITELINK,
+  SearchSERPTelemetryUtils.COMPONENTS.AD_UNCATEGORIZED,
 ];
+
+/**
+ * @typedef {object} FollowOnCookies
+ *
+ * @property {string} codeParamName
+ *   The parameter name within the cookie.
+ * @property {string} extraCodeParamName
+ *   The query parameter name in the URL that indicates this might be a
+ *   follow-on search.
+ * @property {string[]} extraCodePrefixes
+ *   Possible values for the query parameter in the URL that indicates this
+ *   might be a follow-on search.
+ * @property {string} host
+ *   The hostname on which the cookie is stored.
+ * @property {string} name
+ *   The name of the cookie to check.
+ */
+
+/**
+ * @typedef {object} SignedInCookies
+ *
+ * @property {string} host
+ *   The host associated with a given cookie.
+ * @property {string} name
+ *   The name associated with a given cookie.
+ */
+
+/**
+ * @typedef {object} ShoppingTab
+ *
+ * @property {boolean} inspectRegexpInSERP
+ *   Whether the regexp should be used against hrefs the selector matches
+ *   against.
+ * @property {RegExp} regexp
+ *   The regular expression to match against a possible shopping tab. Must be
+ *   provided if using this feature.
+ * @property {string} selector
+ *   The elements on the page to inspect for the shopping tab. Should be anchor
+ *   elements.
+ */
+
+/**
+ * @typedef {object} ProviderInfo
+ *
+ * @property {string} codeParamName
+ *   The name of the query parameter for the partner code.
+ * @property {object[]} components
+ *   An array of components that could be on the SERP.
+ * @property {{key:string, value: string}} defaultPageQueryParam
+ *   Default page query parameter.
+ * @property {string[]} expectedOrganicCodes
+ *   An array of partner codes to match against the parameters in the url.
+ *   Matching these codes will report the SERP as organic:none which means the
+ *   user has done a search through the search engine's website rather than
+ *   through a SAP.
+ * @property {RegExp[]} extraAdServersRegexps
+ *   An array of regular expressions that match URLs of potential ad servers.
+ * @property {FollowOnCookies[]} followOnCookies
+ *   An array of cookie details that are used to identify follow-on searches.
+ * @property {string[]} followOnParamNames
+ *   An array of query parameter names that are used when a follow-on search
+ *   occurs.
+ * @property {boolean} isSPA
+ *   Whether the provider is a single page app.
+ * @property {string[]} organicCodes
+ *   An array of partner codes to match against the parameters in the url.
+ *   Matching these codes will report the SERP as organic:<partner code>, which
+ *   means the search was performed organically rather than through a SAP.
+ * @property {string[]} queryParamNames
+ *   An array of query parameters that may be used for the user's search string.
+ * @property {SignedInCookies[]} signedInCookies
+ *   An array of cookie details that are used to determine whether a client is
+ *   signed in to a provider's account.
+ * @property {ShoppingTab} shoppingTab
+ *   Shopping page parameter.
+ * @property {string[]} taggedCodes
+ *   An array of partner codes to match against the parameters in the url.
+ *   Matching one of these codes will report the SERP as tagged.
+ * @property {string} telemetryId
+ *   The telemetry identifier for the provider.
+ */
 
 /**
  * TelemetryHandler is the main class handling Search Engine Result Page (SERP)
@@ -182,6 +212,10 @@ class TelemetryHandler {
   // Browser objects mapped to the info in _browserInfoByURL.
   #browserToItemMap = new WeakMap();
 
+  // An array of regular expressions that match urls that could be subframes
+  // on SERPs.
+  #subframeRegexps = [];
+
   // _browserSourceMap is a map of the latest search source for a particular
   // browser - one of the KNOWN_SEARCH_SOURCES in BrowserSearchTelemetry.
   _browserSourceMap = new WeakMap();
@@ -217,9 +251,10 @@ class TelemetryHandler {
   constructor() {
     this._contentHandler = new ContentHandler({
       browserInfoByURL: this._browserInfoByURL,
-      findBrowserItemForURL: (...args) => this._findBrowserItemForURL(...args),
-      checkURLForSerpMatch: (...args) => this._checkURLForSerpMatch(...args),
-      findItemForBrowser: (...args) => this.findItemForBrowser(...args),
+      findBrowserItemForURL: this._findBrowserItemForURL.bind(this),
+      checkURLForSerpMatch: this._checkURLForSerpMatch.bind(this),
+      findItemForBrowser: this.findItemForBrowser.bind(this),
+      urlIsKnownSERPSubframe: this.urlIsKnownSERPSubframe.bind(this),
     });
   }
 
@@ -399,6 +434,7 @@ class TelemetryHandler {
    *   A raw array of provider information to set.
    */
   _setSearchProviderInfo(providerInfo) {
+    this.#subframeRegexps = [];
     this._searchProviderInfo = providerInfo.map(provider => {
       let newProvider = {
         ...provider,
@@ -426,6 +462,15 @@ class TelemetryHandler {
 
       newProvider.nonAdsLinkQueryParamNames =
         provider.nonAdsLinkQueryParamNames ?? [];
+
+      newProvider.subframes =
+        provider.subframes?.map(obj => {
+          let regexp = new RegExp(obj.regexp);
+          // Also add the Regexp to the list of urls to observe.
+          this.#subframeRegexps.push(regexp);
+          return { ...obj, regexp };
+        }) ?? [];
+
       return newProvider;
     });
     this._contentHandler._searchProviderInfo = this._searchProviderInfo;
@@ -594,7 +639,7 @@ class TelemetryHandler {
     let searchTerm = this.urlSearchTerms(url, providerInfo);
     let searchTermChanged = previousSearchTerm !== searchTerm;
 
-    let isSerp = !!this._checkURLForSerpMatch(url, providerInfo);
+    let isSerp = !!this._checkURLForSerpMatch(url);
     let browserIsTracked = !!telemetryState;
     let isTabHistory = loadType & Ci.nsIDocShell.LOAD_CMD_HISTORY;
 
@@ -657,7 +702,7 @@ class TelemetryHandler {
    *
    * @param {object} browser The browser associated with the tab to stop being
    *   tracked.
-   * @param {string} abandonmentReason
+   * @param {string} [abandonmentReason]
    *   An optional parameter that specifies why the browser is deemed abandoned.
    *   The reason will be recorded as part of Glean abandonment telemetry.
    *   One of SearchSERPTelemetryUtils.ABANDONMENTS.
@@ -672,10 +717,10 @@ class TelemetryHandler {
         }
 
         if (
-          lazy.serpEventTelemetryCategorization &&
+          lazy.SERPCategorization.enabled &&
           telemetryState.categorizationInfo
         ) {
-          SearchSERPCategorizationEventScheduler.sendCallback(browser);
+          lazy.SERPCategorizationEventScheduler.sendCallback(browser);
         }
 
         item.browserTelemetryStateMap.delete(browser);
@@ -777,6 +822,12 @@ class TelemetryHandler {
     return "";
   }
 
+  /**
+   * Finds any SERP data associated with the given browser.
+   *
+   * @param {object} browser
+   * @returns {object}
+   */
   findItemForBrowser(browser) {
     return this.#browserToItemMap.get(browser);
   }
@@ -788,7 +839,7 @@ class TelemetryHandler {
    * set, we do optional fuzzy matching of URLs to fetch the most relevant item
    * that contains tracking information.
    *
-   * @param {string} url URL to fetch the tracking data for.
+   * @param {string} urlString URL to fetch the tracking data for.
    * @returns {object} Map containing the following members:
    *   - {WeakMap} browsers
    *     Map of browser elements that belong to `url` and their ad report state.
@@ -798,10 +849,9 @@ class TelemetryHandler {
    *     The number of browser element we can most accurately tell we're
    *     tracking, since they're inside a WeakMap.
    */
-  _findBrowserItemForURL(url) {
-    try {
-      url = new URL(url);
-    } catch (ex) {
+  _findBrowserItemForURL(urlString) {
+    let url = URL.parse(urlString);
+    if (!url) {
       return null;
     }
 
@@ -811,13 +861,12 @@ class TelemetryHandler {
       if (currentBestMatch === Infinity) {
         break;
       }
-      try {
-        // Make sure to cache the parsed URL object, since there's no reason to
-        // do it twice.
-        trackingURL =
-          candidateItem._trackingURL ||
-          (candidateItem._trackingURL = new URL(trackingURL));
-      } catch (ex) {
+      // Make sure to cache the parsed URL object, since there's no reason to
+      // do it twice.
+      trackingURL =
+        candidateItem._trackingURL ||
+        (candidateItem._trackingURL = URL.parse(trackingURL));
+      if (!trackingURL) {
         continue;
       }
       let score = this.compareUrls(url, trackingURL);
@@ -876,6 +925,22 @@ class TelemetryHandler {
   }
 
   /**
+   * Determines if a URL to be in this SERP's subframes.
+   *
+   * @param {string} url
+   */
+  urlIsKnownSERPSubframe(url) {
+    if (url) {
+      for (let regexp of this.#subframeRegexps) {
+        if (regexp.test(url)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * Adds event listeners for the window and registers it with the content handler.
    *
    * @param {object} win The window to register.
@@ -904,8 +969,10 @@ class TelemetryHandler {
   /**
    * Searches for provider information for a given url.
    *
-   * @param {string} url The url to match for a provider.
-   * @returns {Array | null} Returns an array of provider name and the provider information.
+   * @param {string} url
+   *   The url to match for a provider.
+   * @returns {?ProviderInfo}
+   *   Returns a provider or undefined if no provider was found for the url.
    */
   _getProviderInfoForURL(url) {
     return this._searchProviderInfo.find(info =>
@@ -928,7 +995,7 @@ class TelemetryHandler {
       return null;
     }
 
-    let queries = new URLSearchParams(url.split("#")[0].split("?")[1]);
+    let queries = new URL(url).searchParams;
     queries.forEach((v, k) => {
       queries.set(k.toLowerCase(), v);
     });
@@ -1012,17 +1079,17 @@ class TelemetryHandler {
             }
 
             // Cookie values may take the form of "foo=bar&baz=1".
-            let [cookieParam, cookieValue] = cookie.value
-              .split("&")[0]
-              .split("=")
-              .map(p => p.trim());
-            if (
-              cookieParam == followOnCookie.codeParamName &&
-              searchProviderInfo.taggedCodes.includes(cookieValue)
-            ) {
-              type = "tagged-follow-on";
-              code = cookieValue;
-              break;
+            let cookieItems = cookie.value
+              ?.split("&")
+              .map(p => p.split("="))
+              .filter(p => p[0] == followOnCookie.codeParamName);
+            if (cookieItems.length == 1) {
+              let cookieValue = cookieItems[0][1];
+              if (searchProviderInfo.taggedCodes.includes(cookieValue)) {
+                type = "tagged-follow-on";
+                code = cookieValue;
+                break;
+              }
             }
           }
         }
@@ -1050,11 +1117,8 @@ class TelemetryHandler {
    */
   _reportSerpPage(info, source, url) {
     let payload = `${info.provider}:${info.type}:${info.code || "none"}`;
-    Services.telemetry.keyedScalarAdd(
-      SEARCH_CONTENT_SCALAR_BASE + source,
-      payload,
-      1
-    );
+    let name = source.replace(/_([a-z])/g, (m, p) => p.toUpperCase());
+    Glean.browserSearchContent[name][payload].add(1);
     lazy.logConsole.debug("Impression:", payload, url);
   }
 
@@ -1159,6 +1223,9 @@ class TelemetryHandler {
  * when ads detected and when they are selected.
  */
 class ContentHandler {
+  /** @type {ProviderInfo[]} */
+  _searchProviderInfo = null;
+
   /**
    * Constructor.
    *
@@ -1166,14 +1233,21 @@ class ContentHandler {
    *   The options for the handler.
    * @param {Map} options.browserInfoByURL
    *   The map of urls from TelemetryHandler.
-   * @param {Function} options.getProviderInfoForURL
-   *   A function that obtains the provider information for a url.
+   * @param {(urlString: string) => object} options.findBrowserItemForURL
+   *   The function for finding a browser item for the URL.
+   * @param {(url: string) => null|object} options.checkURLForSerpMatch
+   *   The function for checking a URL for a SERP match.
+   * @param {(browser: object) => object} options.findItemForBrowser
+   *   The function for finding an item for the browser.
+   * @param {(url: string) => boolean} options.urlIsKnownSERPSubframe
+   *   The function for determining if a URL is a known SERP sub frame.
    */
   constructor(options) {
     this._browserInfoByURL = options.browserInfoByURL;
     this._findBrowserItemForURL = options.findBrowserItemForURL;
     this._checkURLForSerpMatch = options.checkURLForSerpMatch;
     this._findItemForBrowser = options.findItemForBrowser;
+    this._urlIsKnownSERPSubframe = options.urlIsKnownSERPSubframe;
   }
 
   /**
@@ -1199,7 +1273,6 @@ class ContentHandler {
 
     Services.obs.addObserver(this, "http-on-examine-response");
     Services.obs.addObserver(this, "http-on-examine-cached-response");
-    Services.obs.addObserver(this, "http-on-stop-request");
   }
 
   /**
@@ -1208,7 +1281,6 @@ class ContentHandler {
   uninit() {
     Services.obs.removeObserver(this, "http-on-examine-response");
     Services.obs.removeObserver(this, "http-on-examine-cached-response");
-    Services.obs.removeObserver(this, "http-on-stop-request");
   }
 
   /**
@@ -1221,82 +1293,8 @@ class ContentHandler {
     Services.ppmm.sharedData.set("SearchTelemetry:ProviderInfo", providerInfo);
   }
 
-  /**
-   * Reports bandwidth used by the given channel if it is used by search requests.
-   *
-   * @param {object} aChannel The channel that generated the activity.
-   */
-  _reportChannelBandwidth(aChannel) {
-    if (!(aChannel instanceof Ci.nsIChannel)) {
-      return;
-    }
-    let wrappedChannel = ChannelWrapper.get(aChannel);
-
-    let getTopURL = channel => {
-      // top-level document
-      if (
-        channel.loadInfo &&
-        channel.loadInfo.externalContentPolicyType ==
-          Ci.nsIContentPolicy.TYPE_DOCUMENT
-      ) {
-        return channel.finalURL;
-      }
-
-      // iframe
-      let frameAncestors;
-      try {
-        frameAncestors = channel.frameAncestors;
-      } catch (e) {
-        frameAncestors = null;
-      }
-      if (frameAncestors) {
-        let ancestor = frameAncestors.find(obj => obj.frameId == 0);
-        if (ancestor) {
-          return ancestor.url;
-        }
-      }
-
-      // top-level resource
-      if (channel.loadInfo && channel.loadInfo.loadingPrincipal) {
-        return channel.loadInfo.loadingPrincipal.spec;
-      }
-
-      return null;
-    };
-
-    let topUrl = getTopURL(wrappedChannel);
-    if (!topUrl) {
-      return;
-    }
-
-    let info = this._checkURLForSerpMatch(topUrl);
-    if (!info) {
-      return;
-    }
-
-    let bytesTransferred =
-      wrappedChannel.requestSize + wrappedChannel.responseSize;
-    let { provider } = info;
-
-    let isPrivate =
-      wrappedChannel.loadInfo &&
-      wrappedChannel.loadInfo.originAttributes.privateBrowsingId > 0;
-    if (isPrivate) {
-      provider += `-${SEARCH_TELEMETRY_PRIVATE_BROWSING_KEY_SUFFIX}`;
-    }
-
-    Services.telemetry.keyedScalarAdd(
-      SEARCH_DATA_TRANSFERRED_SCALAR,
-      provider,
-      bytesTransferred
-    );
-  }
-
   observe(aSubject, aTopic) {
     switch (aTopic) {
-      case "http-on-stop-request":
-        this._reportChannelBandwidth(aSubject);
-        break;
       case "http-on-examine-response":
       case "http-on-examine-cached-response":
         this.observeActivity(aSubject);
@@ -1335,8 +1333,16 @@ class ContentHandler {
 
       // The wrapper is consistent across redirects, so we can use it to track state.
       let originURL = wrappedChannel.originURI && wrappedChannel.originURI.spec;
-      let item = this._findBrowserItemForURL(originURL);
-      if (!originURL || !item) {
+      if (!originURL) {
+        return;
+      }
+
+      let eligibleSubframeUrl = this.#getSerpUrlFromPossibleSubframeUrl(
+        originURL,
+        wrappedChannel
+      );
+      let item = this._findBrowserItemForURL(eligibleSubframeUrl || originURL);
+      if (!item) {
         return;
       }
 
@@ -1360,11 +1366,10 @@ class ContentHandler {
       }
 
       try {
-        Services.telemetry.keyedScalarAdd(
-          SEARCH_AD_CLICKS_SCALAR_BASE + item.source,
-          `${info.telemetryId}:${item.info.type}`,
-          1
-        );
+        let name = item.source.replace(/_([a-z])/g, (m, p) => p.toUpperCase());
+        Glean.browserSearchAdclicks[name][
+          `${info.telemetryId}:${item.info.type}`
+        ].add(1);
         wrappedChannel._adClickRecorded = true;
         if (item.newtabSessionId) {
           Glean.newtabSearchAd.click.record({
@@ -1408,6 +1413,7 @@ class ContentHandler {
     let url = wrappedChannel.finalURL;
 
     if (info.ignoreLinkRegexps.some(r => r.test(url))) {
+      lazy.logConsole.debug("Ignore url.");
       return;
     }
 
@@ -1421,6 +1427,7 @@ class ContentHandler {
       info.nonAdsLinkRegexps.some(r => r.test(originURL)) ||
       info.extraAdServersRegexps.some(r => r.test(originURL))
     ) {
+      lazy.logConsole.debug("Expecting redirect.");
       return;
     }
 
@@ -1495,6 +1502,8 @@ class ContentHandler {
         }
       }
 
+      lazy.logConsole.debug("Telemetry state:", telemetryState);
+
       // Step 2: If we have telemetryState, the browser object must be
       // associated with another browser that is tracked. Try to find the
       // component type on the SERP responsible for the request.
@@ -1524,19 +1533,18 @@ class ContentHandler {
           info.nonAdsLinkQueryParamNames.length &&
           info.nonAdsLinkRegexps.some(r => r.test(url))
         ) {
-          let newParsedUrl;
           for (let key of info.nonAdsLinkQueryParamNames) {
             let paramValue = parsedUrl.searchParams.get(key);
             if (paramValue) {
-              try {
-                newParsedUrl = /^https?:\/\//.test(paramValue)
-                  ? new URL(paramValue)
-                  : new URL(paramValue, parsedUrl.origin);
+              let newParsedUrl = /^https?:\/\//.test(paramValue)
+                ? URL.parse(paramValue)
+                : URL.parse(paramValue, parsedUrl.origin);
+              if (newParsedUrl) {
+                parsedUrl = newParsedUrl;
                 break;
-              } catch (e) {}
+              }
             }
           }
-          parsedUrl = newParsedUrl ?? parsedUrl;
         }
 
         // Determine the component type of the link.
@@ -1566,10 +1574,13 @@ class ContentHandler {
           "Find component for URL"
         );
 
-        // Default value for URLs that don't match any components categorized
-        // on the page.
+        // If no component was found, it's possible the link was added after
+        // components were categorized.
         if (!type) {
-          type = SearchSERPTelemetryUtils.COMPONENTS.NON_ADS_LINK;
+          let isAd = info.extraAdServersRegexps?.some(regex => regex.test(url));
+          type = isAd
+            ? SearchSERPTelemetryUtils.COMPONENTS.AD_UNCATEGORIZED
+            : SearchSERPTelemetryUtils.COMPONENTS.NON_ADS_LINK;
         }
 
         if (
@@ -1613,6 +1624,52 @@ class ContentHandler {
   }
 
   /**
+   * Checks if the url associated with a request is actually coming from a
+   * subframe within a SERP. If so, try to find the best url associated with
+   * the frame.
+   *
+   * @param {string} originURL
+   *   The url associated with the request.
+   * @param {ChannelWrapper} wrappedChannel
+   *   The wrapped channel.
+   * @returns {string?}
+   *   The url associated with the subframe.
+   */
+  #getSerpUrlFromPossibleSubframeUrl(originURL, wrappedChannel) {
+    if (!this._urlIsKnownSERPSubframe(originURL)) {
+      return null;
+    }
+
+    // The sponsored link could be opened in a new tab, in which case the
+    // browser URI may not match a SERP. Thus, try to find a tab that contains
+    // a URI matching a SERP.
+    let browser = wrappedChannel.browserElement;
+    if (browser?.currentURI.spec == "about:blank") {
+      let tabBrowser = browser.getTabBrowser();
+      let tab = tabBrowser.getTabForBrowser(browser).openerTab;
+      if (tab) {
+        return tab.linkedBrowser.currentURI.spec;
+      }
+      // If no opener tab was found, we're likely looking at the first tab of
+      // a new window. As a last resort, check if the window below the newly
+      // opened window contains a tab with a matching SERP.
+      let windows = lazy.BrowserWindowTracker.orderedWindows;
+      let win = windows.at(1);
+      if (win) {
+        let url = win.gBrowser.selectedBrowser.originalURI?.spec;
+        if (url) {
+          return url;
+        }
+      }
+      // If we couldn't find a matching tab or window, then return null to
+      // indicate to the caller we weren't able to find an appropriate SERP.
+      return null;
+    }
+
+    return browser?.currentURI.spec;
+  }
+
+  /**
    * Logs telemetry for a page with adverts, if it is one of the partner search
    * provider pages that we're tracking.
    *
@@ -1652,11 +1709,10 @@ class ContentHandler {
       item.source,
       info.url
     );
-    Services.telemetry.keyedScalarAdd(
-      SEARCH_WITH_ADS_SCALAR_BASE + item.source,
-      `${item.info.provider}:${item.info.type}`,
-      1
-    );
+    let name = item.source.replace(/_([a-z])/g, (m, p) => p.toUpperCase());
+    Glean.browserSearchWithads[name][
+      `${item.info.provider}:${item.info.type}`
+    ].add(1);
     Services.obs.notifyObservers(null, "reported-page-with-ads");
 
     telemetryState.adsReported = true;
@@ -1782,9 +1838,7 @@ class ContentHandler {
       lazy.logConsole.warn(
         "Expected to report a",
         info.action,
-        "engagement for",
-        info.url,
-        "but couldn't find an impression id."
+        "engagement but couldn't find an impression id."
       );
     }
   }
@@ -1838,20 +1892,19 @@ class ContentHandler {
   */
   async _reportPageDomains(info, browser) {
     let item = this._findItemForBrowser(browser);
-    let telemetryState = item.browserTelemetryStateMap.get(browser);
-    if (lazy.serpEventTelemetryCategorization && telemetryState) {
+    let telemetryState = item?.browserTelemetryStateMap.get(browser);
+    if (lazy.SERPCategorization.enabled && telemetryState) {
       lazy.logConsole.debug("Ad domains:", Array.from(info.adDomains));
       lazy.logConsole.debug("Non ad domains:", Array.from(info.nonAdDomains));
-      let result = await SearchSERPCategorization.maybeCategorizeSERP(
+      let result = await lazy.SERPCategorization.maybeCategorizeSERP(
         info.nonAdDomains,
-        info.adDomains,
-        item.info.provider
+        info.adDomains
       );
       if (result) {
         telemetryState.categorizationInfo = result;
         let callback = () => {
           let impressionInfo = telemetryState.impressionInfo;
-          SERPCategorizationRecorder.recordCategorizationTelemetry({
+          lazy.SERPCategorizationRecorder.recordCategorizationTelemetry({
             ...telemetryState.categorizationInfo,
             app_version: item.majorVersion,
             channel: item.channel,
@@ -1866,7 +1919,7 @@ class ContentHandler {
             num_ads_visible: telemetryState.adsVisible,
           });
         };
-        SearchSERPCategorizationEventScheduler.addCallback(browser, callback);
+        lazy.SERPCategorizationEventScheduler.addCallback(browser, callback);
       }
     }
     Services.obs.notifyObservers(
@@ -1876,1371 +1929,4 @@ class ContentHandler {
   }
 }
 
-/**
- * @typedef {object} CategorizationResult
- * @property {string} organic_category
- *  The category for the organic result.
- * @property {number} organic_num_domains
- *  The number of domains examined to determine the organic category result.
- * @property {number} organic_num_inconclusive
- *  The number of inconclusive domains when determining the organic result.
- * @property {number} organic_num_unknown
- *  The number of unknown domains when determining the organic result.
- * @property {string} sponsored_category
- *  The category for the organic result.
- * @property {number} sponsored_num_domains
- *  The number of domains examined to determine the sponsored category.
- * @property {number} sponsored_num_inconclusive
- *  The number of inconclusive domains when determining the sponsored category.
- * @property {number} sponsored_num_unknown
- *  The category for the sponsored result.
- * @property {string} mappings_version
- *  The category mapping version used to determine the categories.
- */
-
-/**
- * @typedef {object} CategorizationExtraParams
- * @property {number} num_ads_clicked
- *  The total number of ads clicked on a SERP.
- * @property {number} num_ads_hidden
- *  The total number of ads hidden from the user when categorization occured.
- * @property {number} num_ads_loaded
- *  The total number of ads loaded when categorization occured.
- * @property {number} num_ads_visible
- *  The total number of ads visible to the user when categorization occured.
- */
-
-/* eslint-disable jsdoc/valid-types */
-/**
- * @typedef {CategorizationResult & CategorizationExtraParams} RecordCategorizationParameters
- */
-/* eslint-enable jsdoc/valid-types */
-
-/**
- * Categorizes SERPs.
- */
-class SERPCategorizer {
-  async init() {
-    if (lazy.serpEventTelemetryCategorization) {
-      lazy.logConsole.debug("Initialize SERP categorizer.");
-      await SearchSERPDomainToCategoriesMap.init();
-      SearchSERPCategorizationEventScheduler.init();
-      SERPCategorizationRecorder.init();
-    }
-  }
-
-  async uninit({ deleteMap = false } = {}) {
-    lazy.logConsole.debug("Uninit SERP categorizer.");
-    await SearchSERPDomainToCategoriesMap.uninit(deleteMap);
-    SearchSERPCategorizationEventScheduler.uninit();
-    SERPCategorizationRecorder.uninit();
-  }
-
-  /**
-   * Categorizes domains extracted from SERPs. Note that we don't process
-   * domains if the domain-to-categories map is empty (if the client couldn't
-   * download Remote Settings attachments, for example).
-   *
-   * @param {Set} nonAdDomains
-   *   Domains from organic results extracted from the page.
-   * @param {Set} adDomains
-   *   Domains from ad results extracted from the page.
-   * @returns {CategorizationResult | null}
-   *   The final categorization result. Returns null if the map was empty.
-   */
-  async maybeCategorizeSERP(nonAdDomains, adDomains) {
-    // Per DS, if the map was empty (e.g. because of a technical issue
-    // downloading the data), we shouldn't report telemetry.
-    // Thus, there is no point attempting to categorize the SERP.
-    if (SearchSERPDomainToCategoriesMap.empty) {
-      return null;
-    }
-    let resultsToReport = {};
-
-    let results = await this.applyCategorizationLogic(nonAdDomains);
-    resultsToReport.organic_category = results.category;
-    resultsToReport.organic_num_domains = results.num_domains;
-    resultsToReport.organic_num_unknown = results.num_unknown;
-    resultsToReport.organic_num_inconclusive = results.num_inconclusive;
-
-    results = await this.applyCategorizationLogic(adDomains);
-    resultsToReport.sponsored_category = results.category;
-    resultsToReport.sponsored_num_domains = results.num_domains;
-    resultsToReport.sponsored_num_unknown = results.num_unknown;
-    resultsToReport.sponsored_num_inconclusive = results.num_inconclusive;
-
-    resultsToReport.mappings_version = SearchSERPDomainToCategoriesMap.version;
-
-    return resultsToReport;
-  }
-
-  /**
-   * Applies the logic for reducing extracted domains to a single category for
-   * the SERP.
-   *
-   * @param {Set} domains
-   *   The domains extracted from the page.
-   * @returns {object} resultsToReport
-   *   The final categorization results. Keys are: "category", "num_domains",
-   *   "num_unknown" and "num_inconclusive".
-   */
-  async applyCategorizationLogic(domains) {
-    let domainInfo = {};
-    let domainsCount = 0;
-    let unknownsCount = 0;
-    let inconclusivesCount = 0;
-
-    for (let domain of domains) {
-      domainsCount++;
-
-      let categoryCandidates = await SearchSERPDomainToCategoriesMap.get(
-        domain
-      );
-
-      if (!categoryCandidates.length) {
-        unknownsCount++;
-        continue;
-      }
-
-      // Inconclusive domains do not have more than one category candidate.
-      if (
-        categoryCandidates[0].category ==
-        SearchSERPTelemetryUtils.CATEGORIZATION.INCONCLUSIVE
-      ) {
-        inconclusivesCount++;
-        continue;
-      }
-
-      domainInfo[domain] = categoryCandidates;
-    }
-
-    let finalCategory;
-    let topCategories = [];
-    // Determine if all domains were unknown or inconclusive.
-    if (unknownsCount + inconclusivesCount == domainsCount) {
-      finalCategory = SearchSERPTelemetryUtils.CATEGORIZATION.INCONCLUSIVE;
-    } else {
-      let maxScore = CATEGORIZATION_SETTINGS.MINIMUM_SCORE;
-      let rank = CATEGORIZATION_SETTINGS.STARTING_RANK;
-      for (let categoryCandidates of Object.values(domainInfo)) {
-        for (let { category, score } of categoryCandidates) {
-          let adjustedScore = score / Math.log2(rank);
-          if (adjustedScore > maxScore) {
-            maxScore = adjustedScore;
-            topCategories = [category];
-          } else if (adjustedScore == maxScore) {
-            topCategories.push(Number(category));
-          }
-          rank++;
-        }
-      }
-      finalCategory =
-        topCategories.length > 1
-          ? this.#chooseRandomlyFrom(topCategories)
-          : topCategories[0];
-    }
-
-    return {
-      category: finalCategory,
-      num_domains: domainsCount,
-      num_unknown: unknownsCount,
-      num_inconclusive: inconclusivesCount,
-    };
-  }
-
-  #chooseRandomlyFrom(categories) {
-    let randIdx = Math.floor(Math.random() * categories.length);
-    return categories[randIdx];
-  }
-}
-
-/**
- * Contains outstanding categorizations of browser objects that have yet to be
- * scheduled to be reported into a Glean event.
- * They are kept here until one of the conditions are met:
- * 1. The browser that was tracked is no longer being tracked.
- * 2. A user has been idle for IDLE_TIMEOUT_SECONDS
- * 3. The user has awoken their computer and the time elapsed from the last
- *    categorization event exceeds WAKE_TIMEOUT_MS.
- */
-class CategorizationEventScheduler {
-  /**
-   * A WeakMap containing browser objects mapped to a callback.
-   *
-   * @type {WeakMap | null}
-   */
-  #browserToCallbackMap = null;
-
-  /**
-   * An instance of user idle service. Cached for testing purposes.
-   *
-   * @type {nsIUserIdleService | null}
-   */
-  #idleService = null;
-
-  /**
-   * Whether it has been initialized.
-   *
-   * @type {boolean}
-   */
-  #init = false;
-
-  /**
-   * The last Date.now() of a callback insertion.
-   *
-   * @type {number | null}
-   */
-  #mostRecentMs = null;
-
-  init() {
-    if (this.#init) {
-      return;
-    }
-
-    lazy.logConsole.debug("Initializing categorization event scheduler.");
-
-    this.#browserToCallbackMap = new WeakMap();
-
-    // In tests, we simulate idleness as it is more reliable and easier than
-    // trying to replicate idleness. The way to do is so it by creating
-    // an mock idle service and having the component subscribe to it. If we
-    // used a lazy instantiation of idle service, the test could only ever be
-    // subscribed to the real one.
-    this.#idleService = Cc["@mozilla.org/widget/useridleservice;1"].getService(
-      Ci.nsIUserIdleService
-    );
-
-    this.#idleService.addIdleObserver(
-      this,
-      CATEGORIZATION_SETTINGS.IDLE_TIMEOUT_SECONDS
-    );
-
-    Services.obs.addObserver(this, "quit-application");
-    Services.obs.addObserver(this, "wake_notification");
-
-    this.#init = true;
-  }
-
-  uninit() {
-    if (!this.#init) {
-      return;
-    }
-
-    this.#browserToCallbackMap = null;
-
-    lazy.logConsole.debug("Un-initializing categorization event scheduler.");
-    this.#idleService.removeIdleObserver(
-      this,
-      CATEGORIZATION_SETTINGS.IDLE_TIMEOUT_SECONDS
-    );
-
-    Services.obs.removeObserver(this, "quit-application");
-    Services.obs.removeObserver(this, "wake_notification");
-
-    this.#idleService = null;
-    this.#init = false;
-  }
-
-  observe(subject, topic) {
-    switch (topic) {
-      case "idle":
-        lazy.logConsole.debug("Triggering all callbacks due to idle.");
-        this.#sendAllCallbacks();
-        break;
-      case "quit-application":
-        this.uninit();
-        break;
-      case "wake_notification":
-        if (
-          this.#mostRecentMs &&
-          Date.now() - this.#mostRecentMs >=
-            CATEGORIZATION_SETTINGS.WAKE_TIMEOUT_MS
-        ) {
-          lazy.logConsole.debug(
-            "Triggering all callbacks due to a wake notification."
-          );
-          this.#sendAllCallbacks();
-        }
-        break;
-    }
-  }
-
-  addCallback(browser, callback) {
-    lazy.logConsole.debug("Adding callback to queue.");
-    this.#mostRecentMs = Date.now();
-    this.#browserToCallbackMap?.set(browser, callback);
-  }
-
-  sendCallback(browser) {
-    let callback = this.#browserToCallbackMap?.get(browser);
-    if (callback) {
-      lazy.logConsole.debug("Triggering callback.");
-      callback();
-      Services.obs.notifyObservers(
-        null,
-        "recorded-single-categorization-event"
-      );
-      this.#browserToCallbackMap.delete(browser);
-    }
-  }
-
-  #sendAllCallbacks() {
-    let browsers = ChromeUtils.nondeterministicGetWeakMapKeys(
-      this.#browserToCallbackMap
-    );
-    if (browsers) {
-      lazy.logConsole.debug("Triggering all callbacks.");
-      for (let browser of browsers) {
-        this.sendCallback(browser);
-      }
-    }
-    this.#mostRecentMs = null;
-    Services.obs.notifyObservers(null, "recorded-all-categorization-events");
-  }
-}
-
-/**
- * Handles reporting SERP categorization telemetry to Glean.
- */
-class CategorizationRecorder {
-  #init = false;
-
-  // The number of SERP categorizations that have been recorded but not yet
-  // reported in a Glean ping.
-  #serpCategorizationsCount = 0;
-
-  // When the user started interacting with the SERP.
-  #userInteractionStartTime = null;
-
-  async init() {
-    if (this.#init) {
-      return;
-    }
-
-    Services.obs.addObserver(this, "user-interaction-active");
-    Services.obs.addObserver(this, "user-interaction-inactive");
-    this.#init = true;
-    this.submitPing("startup");
-    Services.obs.notifyObservers(null, "categorization-recorder-init");
-  }
-
-  uninit() {
-    if (this.#init) {
-      Services.obs.removeObserver(this, "user-interaction-active");
-      Services.obs.removeObserver(this, "user-interaction-inactive");
-      this.#resetCategorizationRecorderData();
-      this.#init = false;
-    }
-  }
-
-  observe(subject, topic, _data) {
-    switch (topic) {
-      case "user-interaction-active": {
-        // If the user is already active, we don't want to overwrite the start
-        // time.
-        if (this.#userInteractionStartTime == null) {
-          this.#userInteractionStartTime = Date.now();
-        }
-        break;
-      }
-      case "user-interaction-inactive": {
-        let currentTime = Date.now();
-        let activityLimitInMs = lazy.activityLimit * 1000;
-        if (
-          this.#userInteractionStartTime &&
-          currentTime - this.#userInteractionStartTime >= activityLimitInMs
-        ) {
-          this.submitPing("inactivity");
-        }
-        this.#userInteractionStartTime = null;
-        break;
-      }
-    }
-  }
-
-  /**
-   * Helper function for recording the SERP categorization event.
-   *
-   * @param {RecordCategorizationParameters} resultToReport
-   *  The object containing all the data required to report.
-   */
-  recordCategorizationTelemetry(resultToReport) {
-    lazy.logConsole.debug(
-      "Reporting the following categorization result:",
-      resultToReport
-    );
-    Glean.serp.categorization.record(resultToReport);
-
-    this.#serpCategorizationsCount++;
-    if (
-      this.#serpCategorizationsCount >=
-      CATEGORIZATION_SETTINGS.PING_SUBMISSION_THRESHOLD
-    ) {
-      this.submitPing("threshold_reached");
-      this.#serpCategorizationsCount = 0;
-    }
-  }
-
-  submitPing(reason) {
-    lazy.logConsole.debug("Submitting SERP categorization ping:", reason);
-    GleanPings.serpCategorization.submit(reason);
-  }
-
-  /**
-   * Tests are able to clear telemetry on demand. When that happens, we need to
-   * ensure we're doing to the same here or else the internal count in tests
-   * will be inaccurate.
-   */
-  testReset() {
-    if (Cu.isInAutomation) {
-      this.#resetCategorizationRecorderData();
-    }
-  }
-
-  #resetCategorizationRecorderData() {
-    this.#serpCategorizationsCount = 0;
-    this.#userInteractionStartTime = null;
-  }
-}
-
-/**
- * @typedef {object} DomainToCategoriesRecord
- * @property {number} version
- *  The version of the record.
- */
-
-/**
- * @typedef {object} DomainCategoryScore
- * @property {number} category
- *  The index of the category.
- * @property {number} score
- *  The score associated with the category.
- */
-
-/**
- * Maps domain to categories. Data is downloaded from Remote Settings and
- * stored inside DomainToCategoriesStore.
- */
-class DomainToCategoriesMap {
-  /**
-   * Latest version number of the attachments.
-   *
-   * @type {number | null}
-   */
-  #version = null;
-
-  /**
-   * The Remote Settings client.
-   *
-   * @type {object | null}
-   */
-  #client = null;
-
-  /**
-   * Whether this is synced with Remote Settings.
-   *
-   * @type {boolean}
-   */
-  #init = false;
-
-  /**
-   * Callback when Remote Settings syncs.
-   *
-   * @type {Function | null}
-   */
-  #onSettingsSync = null;
-
-  /**
-   * When downloading an attachment from Remote Settings fails, this will
-   * contain a timer which will eventually attempt to retry downloading
-   * attachments.
-   */
-  #downloadTimer = null;
-
-  /**
-   * Number of times this has attempted to try another download. Will reset
-   * if the categorization preference has been toggled, or a sync event has
-   * been detected.
-   *
-   * @type {number}
-   */
-  #downloadRetries = 0;
-
-  /**
-   * A reference to the data store.
-   *
-   * @type {DomainToCategoriesStore | null}
-   */
-  #store = null;
-
-  /**
-   * Runs at application startup with startup idle tasks. If the SERP
-   * categorization preference is enabled, it creates a Remote Settings
-   * client to listen to updates, and populates the store.
-   */
-  async init() {
-    if (this.#init) {
-      return;
-    }
-    lazy.logConsole.debug("Initializing domain-to-categories map.");
-
-    // Set early to allow un-init from an initialization.
-    this.#init = true;
-
-    try {
-      await this.#setupClientAndStore();
-    } catch (ex) {
-      lazy.logConsole.error(ex);
-      await this.uninit();
-      return;
-    }
-
-    // If we don't have a client and store, it likely means an un-init process
-    // started during the initialization process.
-    if (this.#client && this.#store) {
-      lazy.logConsole.debug("Initialized domain-to-categories map.");
-      Services.obs.notifyObservers(null, "domain-to-categories-map-init");
-    }
-  }
-
-  async uninit(shouldDeleteStore) {
-    if (this.#init) {
-      lazy.logConsole.debug("Un-initializing domain-to-categories map.");
-      this.#clearClient();
-      this.#cancelAndNullifyTimer();
-
-      if (this.#store) {
-        if (shouldDeleteStore) {
-          try {
-            await this.#store.dropData();
-          } catch (ex) {
-            lazy.logConsole.error(ex);
-          }
-        }
-        await this.#store.uninit();
-        this.#store = null;
-      }
-
-      lazy.logConsole.debug("Un-initialized domain-to-categories map.");
-      this.#init = false;
-      Services.obs.notifyObservers(null, "domain-to-categories-map-uninit");
-    }
-  }
-
-  /**
-   * Given a domain, find categories and relevant scores.
-   *
-   * @param {string} domain Domain to lookup.
-   * @returns {Array<DomainCategoryScore>}
-   *  An array containing categories and their respective score. If no record
-   *  for the domain is available, return an empty array.
-   */
-  async get(domain) {
-    if (!this.#store || this.#store.empty || !this.#store.ready) {
-      return [];
-    }
-    lazy.gCryptoHash.init(lazy.gCryptoHash.SHA256);
-    let bytes = new TextEncoder().encode(domain);
-    lazy.gCryptoHash.update(bytes, domain.length);
-    let hash = lazy.gCryptoHash.finish(true);
-    let rawValues = await this.#store.getCategories(hash);
-    if (rawValues?.length) {
-      let output = [];
-      // Transform data into a more readable format.
-      // [x, y] => { category: x, score: y }
-      for (let i = 0; i < rawValues.length; i += 2) {
-        output.push({ category: rawValues[i], score: rawValues[i + 1] });
-      }
-      return output;
-    }
-    return [];
-  }
-
-  /**
-   * If the map was initialized, returns the version number for the data.
-   * The version number is determined by the record with the highest version
-   * number. Even if the records have different versions, only records from the
-   * latest version should be available. Returns null if the map was not
-   * initialized.
-   *
-   * @returns {null | number} The version number.
-   */
-  get version() {
-    return this.#version;
-  }
-
-  /**
-   * Whether the store is empty of data.
-   *
-   * @returns {boolean}
-   */
-  get empty() {
-    if (!this.#store) {
-      return true;
-    }
-    return this.#store.empty;
-  }
-
-  /**
-   * Unit test-only function, used to override the domainToCategoriesMap so
-   * that tests can set it to easy to test values.
-   *
-   * @param {object} domainToCategoriesMap
-   *   An object where the key is a hashed domain and the value is an array
-   *   containing an arbitrary number of DomainCategoryScores.
-   * @param {number} version
-   *   The version number for the store.
-   */
-  async overrideMapForTests(domainToCategoriesMap, version = 1) {
-    if (Cu.isInAutomation || Services.env.exists("XPCSHELL_TEST_PROFILE_DIR")) {
-      await this.#store.init();
-      await this.#store.dropData();
-      await this.#store.insertObject(domainToCategoriesMap, version);
-    }
-  }
-
-  /**
-   * Connect with Remote Settings and retrieve the records associated with
-   * categorization. Then, check if the records match the store version. If
-   * no records exist, return early. If records exist but the version stored
-   * on the records differ from the store version, then attempt to
-   * empty the store and fill it with data from downloaded attachments. Only
-   * reuse the store if the version in each record matches the store.
-   */
-  async #setupClientAndStore() {
-    if (this.#client && !this.empty) {
-      return;
-    }
-    lazy.logConsole.debug("Setting up domain-to-categories map.");
-    this.#client = lazy.RemoteSettings(TELEMETRY_CATEGORIZATION_KEY);
-
-    this.#onSettingsSync = event => this.#sync(event.data);
-    this.#client.on("sync", this.#onSettingsSync);
-
-    this.#store = new DomainToCategoriesStore();
-    await this.#store.init();
-
-    let records = await this.#client.get();
-    // Even though records don't exist, this is still technically initialized
-    // since the next sync from Remote Settings will populate the store with
-    // records.
-    if (!records.length) {
-      lazy.logConsole.debug("No records found for domain-to-categories map.");
-      return;
-    }
-
-    this.#version = this.#retrieveLatestVersion(records);
-    let storeVersion = await this.#store.getVersion();
-    if (storeVersion == this.#version && !this.#store.empty) {
-      lazy.logConsole.debug("Reuse existing domain-to-categories map.");
-      Services.obs.notifyObservers(
-        null,
-        "domain-to-categories-map-update-complete"
-      );
-      return;
-    }
-
-    await this.#clearAndPopulateStore(records);
-  }
-
-  #clearClient() {
-    if (this.#client) {
-      lazy.logConsole.debug("Removing Remote Settings client.");
-      this.#client.off("sync", this.#onSettingsSync);
-      this.#client = null;
-      this.#onSettingsSync = null;
-      this.#downloadRetries = 0;
-    }
-  }
-
-  /**
-   * Inspects a list of records from the categorization domain bucket and finds
-   * the maximum version score from the set of records. Each record should have
-   * the same version number but if for any reason one entry has a lower
-   * version number, the latest version can be used to filter it out.
-   *
-   * @param {Array<DomainToCategoriesRecord>} records
-   *   An array containing the records from a Remote Settings collection.
-   * @returns {number}
-   */
-  #retrieveLatestVersion(records) {
-    return records.reduce((version, record) => {
-      if (record.version > version) {
-        return record.version;
-      }
-      return version;
-    }, 0);
-  }
-
-  /**
-   * Callback when Remote Settings has indicated the collection has been
-   * synced. Since the records in the collection will be updated all at once,
-   * use the array of current records which at this point in time would have
-   * the latest records from Remote Settings. Additionally, delete any
-   * attachment for records that no longer exist.
-   *
-   * @param {object} data
-   *  Object containing records that are current, deleted, created, or updated.
-   *
-   */
-  async #sync(data) {
-    lazy.logConsole.debug("Syncing domain-to-categories with Remote Settings.");
-
-    // Remove local files of deleted records.
-    let toDelete = data?.deleted.filter(d => d.attachment);
-    await Promise.all(
-      toDelete.map(record => this.#client.attachments.deleteDownloaded(record))
-    );
-
-    // In case a user encountered network failures in the past and kept their
-    // session on, this will ensure the next sync event will retry downloading
-    // again in case there's a new download error.
-    this.#downloadRetries = 0;
-
-    try {
-      await this.#clearAndPopulateStore(data?.current);
-    } catch (ex) {
-      lazy.logConsole.error("Error populating map: ", ex);
-      await this.uninit();
-    }
-  }
-
-  /**
-   * Clear the existing store and populate it with attachments found in the
-   * records. If no attachments are found, or no record containing an
-   * attachment contained the latest version, then nothing will change.
-   *
-   * @param {Array<DomainToCategoriesRecord>} records
-   *  The records containing attachments.
-   * @throws {Error}
-   *  Will throw if it was not able to drop the store data, or it was unable
-   *  to insert data into the store.
-   */
-  async #clearAndPopulateStore(records) {
-    // If we don't have a handle to a store, it would mean that it was removed
-    // during an uninitialization process.
-    if (!this.#store) {
-      lazy.logConsole.debug(
-        "Could not populate store because no store was available."
-      );
-      return;
-    }
-
-    if (!this.#store.ready) {
-      lazy.logConsole.debug(
-        "Could not populate store because it was not ready."
-      );
-      return;
-    }
-
-    // Empty table so that if there are errors in the download process, callers
-    // querying the map won't use information we know is probably outdated.
-    await this.#store.dropData();
-
-    this.#version = null;
-    this.#cancelAndNullifyTimer();
-
-    // A collection with no records is still a valid init state.
-    if (!records?.length) {
-      lazy.logConsole.debug("No records found for domain-to-categories map.");
-      return;
-    }
-
-    let fileContents = [];
-    let start = Cu.now();
-    for (let record of records) {
-      let result;
-      // Downloading attachments can fail.
-      try {
-        result = await this.#client.attachments.download(record);
-      } catch (ex) {
-        lazy.logConsole.error("Could not download file:", ex);
-        this.#createTimerToPopulateMap();
-        return;
-      }
-      fileContents.push(result.buffer);
-    }
-    ChromeUtils.addProfilerMarker(
-      "SearchSERPTelemetry.#clearAndPopulateStore",
-      start,
-      "Download attachments."
-    );
-
-    this.#version = this.#retrieveLatestVersion(records);
-    if (!this.#version) {
-      lazy.logConsole.debug("Could not find a version number for any record.");
-      return;
-    }
-
-    await this.#store.insertFileContents(fileContents, this.#version);
-
-    lazy.logConsole.debug("Finished updating domain-to-categories store.");
-    Services.obs.notifyObservers(
-      null,
-      "domain-to-categories-map-update-complete"
-    );
-  }
-
-  #cancelAndNullifyTimer() {
-    if (this.#downloadTimer) {
-      lazy.logConsole.debug("Cancel and nullify download timer.");
-      this.#downloadTimer.cancel();
-      this.#downloadTimer = null;
-    }
-  }
-
-  #createTimerToPopulateMap() {
-    if (
-      this.#downloadRetries >=
-        TELEMETRY_CATEGORIZATION_DOWNLOAD_SETTINGS.maxTriesPerSession ||
-      !this.#client
-    ) {
-      return;
-    }
-    if (!this.#downloadTimer) {
-      this.#downloadTimer = Cc["@mozilla.org/timer;1"].createInstance(
-        Ci.nsITimer
-      );
-    }
-    lazy.logConsole.debug("Create timer to retry downloading attachments.");
-    let delay =
-      TELEMETRY_CATEGORIZATION_DOWNLOAD_SETTINGS.base +
-      randomInteger(
-        TELEMETRY_CATEGORIZATION_DOWNLOAD_SETTINGS.minAdjust,
-        TELEMETRY_CATEGORIZATION_DOWNLOAD_SETTINGS.maxAdjust
-      );
-    this.#downloadTimer.initWithCallback(
-      async () => {
-        this.#downloadRetries += 1;
-        let records = await this.#client.get();
-        try {
-          await this.#clearAndPopulateStore(records);
-        } catch (ex) {
-          lazy.logConsole.error("Error populating store: ", ex);
-          await this.uninit();
-        }
-      },
-      delay,
-      Ci.nsITimer.TYPE_ONE_SHOT
-    );
-  }
-}
-
-/**
- * Handles the storage of data containing domains to categories.
- */
-export class DomainToCategoriesStore {
-  #init = false;
-
-  /**
-   * The connection to the store.
-   *
-   * @type {object | null}
-   */
-  #connection = null;
-
-  /**
-   * Reference for the shutdown blocker in case we need to remove it before
-   * shutdown.
-   *
-   * @type {Function | null}
-   */
-  #asyncShutdownBlocker = null;
-
-  /**
-   * Whether the store is empty of data.
-   *
-   * @type {boolean}
-   */
-  #empty = true;
-
-  /**
-   * For a particular subset of errors, we'll attempt to rebuild the database
-   * from scratch.
-   */
-  #rebuildableErrors = ["NS_ERROR_FILE_CORRUPTED"];
-
-  /**
-   * Initializes the store. If the store is initialized it should have cached
-   * a connection to the store and ensured the store exists.
-   */
-  async init() {
-    if (this.#init) {
-      return;
-    }
-    lazy.logConsole.debug("Initializing domain-to-categories store.");
-
-    // Attempts to cache a connection to the store.
-    // If a failure occured, try to re-build the store.
-    let rebuiltStore = false;
-    try {
-      await this.#initConnection();
-    } catch (ex1) {
-      lazy.logConsole.error(`Error initializing a connection: ${ex1}`);
-      if (this.#rebuildableErrors.includes(ex1.name)) {
-        try {
-          await this.#rebuildStore();
-        } catch (ex2) {
-          await this.#closeConnection();
-          lazy.logConsole.error(`Could not rebuild store: ${ex2}`);
-          return;
-        }
-        rebuiltStore = true;
-      }
-    }
-
-    // If we don't have a connection, bail because the browser could be
-    // shutting down ASAP, or re-creating the store is impossible.
-    if (!this.#connection) {
-      lazy.logConsole.debug(
-        "Bailing from DomainToCategoriesStore.init because connection doesn't exist."
-      );
-      return;
-    }
-
-    // If we weren't forced to re-build the store, we only have the connection.
-    // We want to ensure the store exists so calls to public methods can pass
-    // without throwing errors due to the absence of the store.
-    if (!rebuiltStore) {
-      try {
-        await this.#initSchema();
-      } catch (ex) {
-        lazy.logConsole.error(`Error trying to create store: ${ex}`);
-        await this.#closeConnection();
-        return;
-      }
-    }
-
-    lazy.logConsole.debug("Initialized domain-to-categories store.");
-    this.#init = true;
-  }
-
-  async uninit() {
-    if (this.#init) {
-      lazy.logConsole.debug("Un-initializing domain-to-categories store.");
-      await this.#closeConnection();
-      this.#asyncShutdownBlocker = null;
-      lazy.logConsole.debug("Un-initialized domain-to-categories store.");
-    }
-  }
-
-  /**
-   * Whether the store has an open connection to the physical store.
-   *
-   * @returns {boolean}
-   */
-  get ready() {
-    return this.#init;
-  }
-
-  /**
-   * Whether the store is devoid of data.
-   *
-   * @returns {boolean}
-   */
-  get empty() {
-    return this.#empty;
-  }
-
-  /**
-   * Clears information in the store. If dropping data encountered a failure,
-   * try to delete the file containing the store and re-create it.
-   *
-   * @throws {Error} Will throw if it was unable to clear information from the
-   * store.
-   */
-  async dropData() {
-    if (!this.#connection) {
-      return;
-    }
-    let tableExists = await this.#connection.tableExists(
-      CATEGORIZATION_SETTINGS.STORE_NAME
-    );
-    if (tableExists) {
-      lazy.logConsole.debug("Drop domain_to_categories.");
-      // This can fail if the permissions of the store are read-only.
-      await this.#connection.executeTransaction(async () => {
-        await this.#connection.execute(`DROP TABLE domain_to_categories`);
-        const createDomainToCategoriesTable = `
-            CREATE TABLE IF NOT EXISTS
-              domain_to_categories (
-                string_id
-                  TEXT PRIMARY KEY NOT NULL,
-                categories
-                  TEXT
-              );
-            `;
-        await this.#connection.execute(createDomainToCategoriesTable);
-        await this.#connection.execute(`DELETE FROM moz_meta`);
-        await this.#connection.executeCached(
-          `
-              INSERT INTO
-                moz_meta (key, value)
-              VALUES
-                (:key, :value)
-              ON CONFLICT DO UPDATE SET
-                value = :value
-            `,
-          { key: "version", value: 0 }
-        );
-      });
-
-      this.#empty = true;
-    }
-  }
-
-  /**
-   * Given file contents, try moving them into the store. If a failure occurs,
-   * it will attempt to drop existing data to ensure callers aren't accessing
-   * a partially filled store.
-   *
-   * @param {Array<ArrayBuffer>} fileContents
-   *   Contents to convert.
-   * @param {number} version
-   *   The version for the store.
-   * @throws {Error}
-   *   Will throw if the insertion failed and dropData was unable to run
-   *   successfully.
-   */
-  async insertFileContents(fileContents, version) {
-    if (!this.#init || !fileContents?.length || !version) {
-      return;
-    }
-
-    try {
-      await this.#insert(fileContents, version);
-    } catch (ex) {
-      lazy.logConsole.error(`Could not insert file contents: ${ex}`);
-      await this.dropData();
-    }
-  }
-
-  /**
-   * Convenience function to make it trivial to insert Javascript objects into
-   * the store. This avoids having to set up the collection in Remote Settings.
-   *
-   * @param {object} domainToCategoriesMap
-   *   An object whose keys should be hashed domains with values containing
-   *   an array of integers.
-   * @param {number} version
-   *   The version for the store.
-   * @returns {boolean}
-   *   Whether the operation was successful.
-   */
-  async insertObject(domainToCategoriesMap, version) {
-    if (!Cu.isInAutomation || !this.#init) {
-      return false;
-    }
-    let buffer = new TextEncoder().encode(
-      JSON.stringify(domainToCategoriesMap)
-    ).buffer;
-    await this.insertFileContents([buffer], version);
-    return true;
-  }
-
-  /**
-   * Retrieves domains mapped to the key.
-   *
-   * @param {string} key
-   *   The value to lookup in the store.
-   * @returns {Array<number>}
-   *   An array of numbers corresponding to the category and score. If the key
-   *   does not exist in the store or the store is having issues retrieving the
-   *   value, returns an empty array.
-   */
-  async getCategories(key) {
-    if (!this.#init) {
-      return [];
-    }
-
-    let rows;
-    try {
-      rows = await this.#connection.executeCached(
-        `
-        SELECT
-          categories
-        FROM
-          domain_to_categories
-        WHERE
-          string_id = :key
-      `,
-        {
-          key,
-        }
-      );
-    } catch (ex) {
-      lazy.logConsole.error(`Could not retrieve from the store: ${ex}`);
-      return [];
-    }
-
-    if (!rows.length) {
-      return [];
-    }
-    return JSON.parse(rows[0].getResultByName("categories")) ?? [];
-  }
-
-  /**
-   * Retrieves the version number of the store.
-   *
-   * @returns {number}
-   *   The version number. Returns 0 if the version was never set or if there
-   *   was an issue accessing the version number.
-   */
-  async getVersion() {
-    if (this.#connection) {
-      let rows;
-      try {
-        rows = await this.#connection.executeCached(
-          `
-          SELECT
-            value
-          FROM
-            moz_meta
-          WHERE
-            key = "version"
-          `
-        );
-      } catch (ex) {
-        lazy.logConsole.error(`Could not retrieve version of the store: ${ex}`);
-        return 0;
-      }
-      if (rows.length) {
-        return parseInt(rows[0].getResultByName("value")) ?? 0;
-      }
-    }
-    return 0;
-  }
-
-  /**
-   * Test only function allowing tests to delete the store.
-   */
-  async testDelete() {
-    if (Cu.isInAutomation) {
-      await this.#closeConnection();
-      await this.#delete();
-    }
-  }
-
-  /**
-   * If a connection is available, close it and remove shutdown blockers.
-   */
-  async #closeConnection() {
-    this.#init = false;
-    this.#empty = true;
-    if (this.#asyncShutdownBlocker) {
-      lazy.Sqlite.shutdown.removeBlocker(this.#asyncShutdownBlocker);
-      this.#asyncShutdownBlocker = null;
-    }
-
-    if (this.#connection) {
-      lazy.logConsole.debug("Closing connection.");
-      // An error could occur while closing the connection. We suppress the
-      // error since it is not a critical part of the browser.
-      try {
-        await this.#connection.close();
-      } catch (ex) {
-        lazy.logConsole.error(ex);
-      }
-      this.#connection = null;
-    }
-  }
-
-  /**
-   * Initialize the schema for the store.
-   *
-   * @throws {Error}
-   *   Will throw if a permissions error prevents creating the store.
-   */
-  async #initSchema() {
-    if (!this.#connection) {
-      return;
-    }
-    lazy.logConsole.debug("Create store.");
-    // Creation can fail if the store is read only.
-    await this.#connection.executeTransaction(async () => {
-      // Let outer try block handle the exception.
-      const createDomainToCategoriesTable = `
-          CREATE TABLE IF NOT EXISTS
-            domain_to_categories (
-              string_id
-                TEXT PRIMARY KEY NOT NULL,
-              categories
-                TEXT
-            ) WITHOUT ROWID;
-        `;
-      await this.#connection.execute(createDomainToCategoriesTable);
-      const createMetaTable = `
-          CREATE TABLE IF NOT EXISTS
-            moz_meta (
-              key
-                TEXT PRIMARY KEY NOT NULL,
-              value
-                INTEGER
-            ) WITHOUT ROWID;
-          `;
-      await this.#connection.execute(createMetaTable);
-      await this.#connection.setSchemaVersion(
-        CATEGORIZATION_SETTINGS.STORE_SCHEMA
-      );
-    });
-
-    let rows = await this.#connection.executeCached(
-      "SELECT count(*) = 0 FROM domain_to_categories"
-    );
-    this.#empty = !!rows[0].getResultByIndex(0);
-  }
-
-  /**
-   * Attempt to delete the store.
-   *
-   * @throws {Error}
-   *   Will throw if the permissions for the file prevent its deletion.
-   */
-  async #delete() {
-    lazy.logConsole.debug("Attempt to delete the store.");
-    try {
-      await IOUtils.remove(
-        PathUtils.join(
-          PathUtils.profileDir,
-          CATEGORIZATION_SETTINGS.STORE_FILE
-        ),
-        { ignoreAbsent: true }
-      );
-    } catch (ex) {
-      lazy.logConsole.error(ex);
-    }
-    this.#empty = true;
-    lazy.logConsole.debug("Store was deleted.");
-  }
-
-  /**
-   * Tries to establish a connection to the store.
-   *
-   * @throws {Error}
-   *   Will throw if there was an issue establishing a connection or adding
-   *   adding a shutdown blocker.
-   */
-  async #initConnection() {
-    if (this.#connection) {
-      return;
-    }
-
-    // This could fail if the store is corrupted.
-    this.#connection = await lazy.Sqlite.openConnection({
-      path: PathUtils.join(
-        PathUtils.profileDir,
-        CATEGORIZATION_SETTINGS.STORE_FILE
-      ),
-    });
-
-    await this.#connection.execute("PRAGMA journal_mode = TRUNCATE");
-
-    this.#asyncShutdownBlocker = async () => {
-      await this.#connection.close();
-      this.#connection = null;
-    };
-
-    // This could fail if we're adding it during shutdown. In this case,
-    // don't throw but close the connection.
-    try {
-      lazy.Sqlite.shutdown.addBlocker(
-        "SearchSERPTelemetry:DomainToCategoriesSqlite closing",
-        this.#asyncShutdownBlocker
-      );
-    } catch (ex) {
-      lazy.logConsole.error(ex);
-      await this.#closeConnection();
-    }
-  }
-
-  /**
-   * Inserts into the store.
-   *
-   * @param {Array<ArrayBuffer>} fileContents
-   *   The data that should be converted and inserted into the store.
-   * @param {number} version
-   *   The version number that should be inserted into the store.
-   * @throws {Error}
-   *   Will throw if a connection is not present, if the store is not
-   *   able to be updated (permissions error, corrupted file), or there is
-   *   something wrong with the file contents.
-   */
-  async #insert(fileContents, version) {
-    let start = Cu.now();
-    await this.#connection.executeTransaction(async () => {
-      lazy.logConsole.debug("Insert into domain_to_categories table.");
-      for (let fileContent of fileContents) {
-        await this.#connection.executeCached(
-          `
-            INSERT INTO
-              domain_to_categories (string_id, categories)
-            SELECT
-              json_each.key AS string_id,
-              json_each.value AS categories
-            FROM
-              json_each(json(:obj))
-          `,
-          {
-            obj: new TextDecoder().decode(fileContent),
-          }
-        );
-      }
-      // Once the insertions have successfully completed, update the version.
-      await this.#connection.executeCached(
-        `
-          INSERT INTO
-            moz_meta (key, value)
-          VALUES
-            (:key, :value)
-          ON CONFLICT DO UPDATE SET
-            value = :value
-        `,
-        { key: "version", value: version }
-      );
-    });
-    ChromeUtils.addProfilerMarker(
-      "DomainToCategoriesSqlite.#insert",
-      start,
-      "Move file contents into table."
-    );
-
-    if (fileContents?.length) {
-      this.#empty = false;
-    }
-  }
-
-  /**
-   * Deletes and re-build's the store. Used in cases where we encounter a
-   * failure and we want to try fixing the error by starting with an
-   * entirely fresh store.
-   *
-   * @throws {Error}
-   *   Will throw if a connection could not be established, if it was
-   *   unable to delete the store, or it was unable to build a new store.
-   */
-  async #rebuildStore() {
-    lazy.logConsole.debug("Try rebuilding store.");
-    // Step 1. Close all connections.
-    await this.#closeConnection();
-
-    // Step 2. Delete the existing store.
-    await this.#delete();
-
-    // Step 3. Re-establish the connection.
-    await this.#initConnection();
-
-    // Step 4. If a connection exists, try creating the store.
-    await this.#initSchema();
-  }
-}
-
-function randomInteger(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-export var SearchSERPDomainToCategoriesMap = new DomainToCategoriesMap();
 export var SearchSERPTelemetry = new TelemetryHandler();
-export var SearchSERPCategorization = new SERPCategorizer();
-export var SERPCategorizationRecorder = new CategorizationRecorder();
-export var SearchSERPCategorizationEventScheduler =
-  new CategorizationEventScheduler();

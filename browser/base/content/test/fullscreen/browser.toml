@@ -11,6 +11,10 @@ support-files = [
   "fullscreen.html",
   "fullscreen_frame.html",
 ]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && swgl", # Bug 1864085
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan && swgl", # Bug 1864085
+]
 
 ["browser_domFS_statuspanel.js"]
 
@@ -51,9 +55,16 @@ skip-if = [
 
 ["browser_fullscreen_permissions_prompt.js"]
 
+["browser_fullscreen_tab_preview.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && swgl", # Bug 1949995
+]
+
 ["browser_fullscreen_warning.js"]
 support-files = ["fullscreen.html"]
-skip-if = ["os == 'mac'"] # Bug 1848423
+skip-if = [
+  "os == 'mac'", # Bug 1848423
+]
 
 ["browser_fullscreen_window_focus.js"]
 skip-if = ["os == 'mac' && debug"] # Bug 1568570

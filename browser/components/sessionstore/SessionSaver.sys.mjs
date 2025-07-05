@@ -10,7 +10,6 @@ import {
 } from "resource://gre/modules/Timer.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-import { FloorpServices } from "resource://floorp/FloorpServices.sys.mjs";
 
 const lazy = {};
 
@@ -48,18 +47,6 @@ const PREF_IDLE_DELAY = "browser.sessionstore.idleDelay";
 function notify(subject, topic) {
   Services.obs.notifyObservers(subject, topic);
 }
-
-// TelemetryStopwatch helper functions.
-function stopWatch(method) {
-  return function (...histograms) {
-    for (let hist of histograms) {
-      TelemetryStopwatch[method]("FX_SESSION_RESTORE_" + hist);
-    }
-  };
-}
-
-var stopWatchStart = stopWatch("start");
-var stopWatchFinish = stopWatch("finish");
 
 /**
  * The external API implemented by the SessionSaver module.
@@ -250,13 +237,10 @@ var SessionSaverInternal = {
       return Promise.resolve();
     }
 
-    stopWatchStart("COLLECT_DATA_MS");
-    let state = lazy.SessionStore.getCurrentState(true);
+    let timerId = Glean.sessionRestore.collectData.start();
+    let state = lazy.SessionStore.getCurrentState(forceUpdateAllWindows);
     lazy.PrivacyFilter.filterPrivateWindowsAndTabs(state);
-    // Floorp Injections
-    state =
-      FloorpServices.SessionStore.filterFloorpSpecificWindowAndTabs(state);
-    // End Floorp Injections
+
     // Make sure we only write worth saving tabs to disk.
     lazy.SessionStore.keepOnlyWorthSavingTabs(state);
 
@@ -288,7 +272,7 @@ var SessionSaverInternal = {
     // Clear cookies and storage on clean shutdown.
     this._maybeClearCookiesAndStorage(state);
 
-    stopWatchFinish("COLLECT_DATA_MS");
+    Glean.sessionRestore.collectData.stopAndAccumulate(timerId);
     return this._writeState(state);
   },
 

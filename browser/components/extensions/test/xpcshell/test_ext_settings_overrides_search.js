@@ -12,7 +12,6 @@ const { setTimeout } = ChromeUtils.importESModule(
 
 let delay = () => new Promise(resolve => setTimeout(resolve, 0));
 
-const kSearchFormURL = "https://example.com/searchform";
 const kSearchEngineURL = "https://example.com/?search={searchTerms}";
 const kSearchSuggestURL = "https://example.com/?suggest={searchTerms}";
 const kSearchTerm = "foo";
@@ -43,7 +42,6 @@ add_task(async function test_extension_adding_engine() {
         search_provider: {
           name: "MozSearch",
           keyword: "MozSearch",
-          search_form: kSearchFormURL,
           search_url: kSearchEngineURL,
           suggest_url: kSearchSuggestURL,
         },
@@ -69,13 +67,12 @@ add_task(async function test_extension_adding_engine() {
     baseURI.resolve("foo.ico"),
     "16x16 icon path matches"
   );
-  // TODO: Bug 1871036 - Differently sized icons are currently incorrectly
-  // handled for add-ons.
-  // equal(
-  //   await engine.getIconURL(32),
-  //   baseURI.resolve("foo32.ico"),
-  //   "32x32 icon path matches"
-  // );
+
+  equal(
+    await engine.getIconURL(32),
+    baseURI.resolve("foo32.ico"),
+    "32x32 icon path matches"
+  );
 
   let expectedSuggestURL = kSearchSuggestURL.replace(
     "{searchTerms}",
@@ -102,7 +99,6 @@ add_task(async function test_extension_adding_engine() {
     "Suggest URLs should match"
   );
 
-  equal(engine.searchForm, kSearchFormURL, "Search form URLs should match");
   await ext1.unload();
   await delay();
 
@@ -501,7 +497,6 @@ async function checkValidUrl(urlValue) {
       search_provider: {
         name: "MozSearch",
         keyword: "MozSearch",
-        search_form: urlValue,
         search_url: urlValue,
         suggest_url: urlValue,
       },
@@ -511,7 +506,6 @@ async function checkValidUrl(urlValue) {
 }
 
 add_task(async function test_extension_not_allow_http() {
-  await checkBadUrl("search_form", "http://example.com/{searchTerms}");
   await checkBadUrl("search_url", "http://example.com/{searchTerms}");
   await checkBadUrl("suggest_url", "http://example.com/{searchTerms}");
 });

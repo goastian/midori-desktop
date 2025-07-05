@@ -131,14 +131,30 @@ function assertVisibilityScalars(expected) {
     ] ?? {};
 
   // Only some platforms have the menubar items.
-  if (AppConstants.MENUBAR_CAN_AUTOHIDE) {
+  if (!Services.appinfo.nativeMenubar) {
     expected.push("menubar-items_pinned_menu-bar");
   }
+
+  // FIXME(bug 1883857): object metric type not available in artefact builds.
+  const widgetPositions = Glean.browserUi.toolbarWidgets?.testGetValue();
+  Services.fog.testResetFOG();
 
   let keys = new Set(expected.concat(Object.keys(scalars)));
   for (let key of keys) {
     Assert.ok(expected.includes(key), `Scalar key ${key} was unexpected.`);
     Assert.ok(scalars[key], `Expected to see see scalar key ${key} be true.`);
+    // FIXME(bug 1883857): object metric type not available in artefact builds.
+    if ("toolbarWidgets" in Glean.browserUi) {
+      const [widgetId, position] = key.split("_pinned_");
+      Assert.ok(
+        widgetPositions.some(
+          widgetPosition =>
+            widgetPosition.position == position &&
+            widgetPosition.widgetId == widgetId
+        ),
+        `widget ${widgetId} expected at ${position}.`
+      );
+    }
   }
 }
 
@@ -171,6 +187,7 @@ add_task(async function widgetPositions() {
     "tabbrowser-tabs_pinned_tabs-bar",
     "alltabs-button_pinned_tabs-bar",
     "unified-extensions-button_pinned_nav-bar-end",
+    "vertical-spacer_pinned_nav-bar-end",
 
     "forward-button_pinned_nav-bar-start",
     "back-button_pinned_nav-bar-start",
@@ -187,6 +204,7 @@ add_task(async function widgetPositions() {
       "stop-reload-button",
       "tabbrowser-tabs",
       "personal-bookmarks",
+      "alltabs-button",
     ],
 
     "nav-bar": [
@@ -219,6 +237,7 @@ add_task(async function widgetPositions() {
     "back-button_pinned_nav-bar-end",
     "library-button_pinned_nav-bar-end",
     "unified-extensions-button_pinned_nav-bar-end",
+    "vertical-spacer_pinned_nav-bar-end",
 
     "fxa-toolbar-menu-button_pinned_bookmarks-bar",
     "new-tab-button_pinned_bookmarks-bar",
@@ -233,7 +252,7 @@ add_task(async function customizeMode() {
   organizeToolbars({
     PersonalToolbar: ["personal-bookmarks"],
 
-    TabsToolbar: ["tabbrowser-tabs", "new-tab-button"],
+    TabsToolbar: ["tabbrowser-tabs", "new-tab-button", "alltabs-button"],
 
     "nav-bar": [
       "back-button",
@@ -262,6 +281,7 @@ add_task(async function customizeMode() {
     "home-button_pinned_nav-bar-end",
     "library-button_pinned_nav-bar-end",
     "unified-extensions-button_pinned_nav-bar-end",
+    "vertical-spacer_pinned_nav-bar-end",
 
     "personal-bookmarks_pinned_bookmarks-bar",
   ]);
@@ -328,7 +348,7 @@ add_task(async function contextMenus() {
   organizeToolbars({
     PersonalToolbar: ["personal-bookmarks"],
 
-    TabsToolbar: ["tabbrowser-tabs", "new-tab-button"],
+    TabsToolbar: ["tabbrowser-tabs", "new-tab-button", "alltabs-button"],
 
     "nav-bar": [
       "back-button",
@@ -357,6 +377,7 @@ add_task(async function contextMenus() {
     "home-button_pinned_nav-bar-end",
     "library-button_pinned_nav-bar-end",
     "unified-extensions-button_pinned_nav-bar-end",
+    "vertical-spacer_pinned_nav-bar-end",
 
     "personal-bookmarks_pinned_bookmarks-bar",
   ]);
@@ -450,6 +471,7 @@ add_task(async function extensions() {
 
       "random-addon-example-com_pinned_nav-bar-end",
       "unified-extensions-button_pinned_nav-bar-end",
+      "vertical-spacer_pinned_nav-bar-end",
 
       "random-addon-example-com_pinned_pageaction-urlbar",
     ]);
@@ -475,6 +497,7 @@ add_task(async function extensions() {
       "forward-button_pinned_nav-bar-start",
       "back-button_pinned_nav-bar-start",
       "unified-extensions-button_pinned_nav-bar-end",
+      "vertical-spacer_pinned_nav-bar-end",
     ]);
 
     await addon.enable();
@@ -499,6 +522,7 @@ add_task(async function extensions() {
 
       "random-addon-example-com_pinned_nav-bar-end",
       "unified-extensions-button_pinned_nav-bar-end",
+      "vertical-spacer_pinned_nav-bar-end",
 
       "random-addon-example-com_pinned_pageaction-urlbar",
     ]);
@@ -545,6 +569,7 @@ add_task(async function extensions() {
       "forward-button_pinned_nav-bar-start",
       "back-button_pinned_nav-bar-start",
       "unified-extensions-button_pinned_nav-bar-end",
+      "vertical-spacer_pinned_nav-bar-end",
     ]);
   });
 });

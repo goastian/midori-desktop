@@ -10,6 +10,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   CrashSubmit: "resource://gre/modules/CrashSubmit.sys.mjs",
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
+  RemoteSettingsCrashPull:
+    "resource://gre/modules/RemoteSettingsCrashPull.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -110,9 +112,7 @@ export var TabCrashHandler = {
         let subframeCrashItem = this.getAndRemoveSubframeCrash(childID);
 
         if (!dumpID) {
-          Services.telemetry
-            .getHistogramById("FX_CONTENT_CRASH_DUMP_UNAVAILABLE")
-            .add(1);
+          Glean.browserContentCrash.dumpUnavailable.add(1);
         } else if (AppConstants.MOZ_CRASHREPORTER) {
           this.childMap.set(childID, dumpID);
 
@@ -517,13 +517,6 @@ export var TabCrashHandler = {
 
     browser.docShell.displayLoadError(Cr.NS_ERROR_BUILDID_MISMATCH, uri, null);
     tab.setAttribute("crashed", true);
-    gBrowser.tabContainer.updateTabIndicatorAttr(tab);
-
-    // Make sure to only count once even if there are multiple windows
-    // that will all show about:restartrequired.
-    if (this._crashedTabCount == 1) {
-      Services.telemetry.scalarAdd("dom.contentprocess.buildID_mismatch", 1);
-    }
   },
 
   /**
@@ -548,7 +541,6 @@ export var TabCrashHandler = {
     browser.docShell.displayLoadError(Cr.NS_ERROR_CONTENT_CRASHED, uri, null);
     browser.removeAttribute("crashedPageTitle");
     tab.setAttribute("crashed", true);
-    gBrowser.tabContainer.updateTabIndicatorAttr(tab);
   },
 
   /**
@@ -595,13 +587,12 @@ export var TabCrashHandler = {
     }
 
     if (!message.data.sendReport) {
-      Services.telemetry
-        .getHistogramById("FX_CONTENT_CRASH_NOT_SUBMITTED")
-        .add(1);
+      Glean.browserContentCrash.notSubmitted.add(1);
       this.prefs.setBoolPref("sendReport", false);
       return;
     }
 
+    // eslint-disable-next-line no-shadow
     let { includeURL, comments, URL } = message.data;
 
     let extraExtraKeyVals = {
@@ -716,9 +707,7 @@ export var TabCrashHandler = {
     // Make sure to only count once even if there are multiple windows
     // that will all show about:tabcrashed.
     if (this._crashedTabCount == 0 && childID) {
-      Services.telemetry
-        .getHistogramById("FX_CONTENT_CRASH_NOT_SUBMITTED")
-        .add(1);
+      Glean.browserContentCrash.notSubmitted.add(1);
     }
   },
 
@@ -786,6 +775,8 @@ export var UnsubmittedCrashHandler = {
 
   _checkTimeout: null,
 
+  log: null,
+
   init() {
     if (this.initialized) {
       return;
@@ -793,17 +784,26 @@ export var UnsubmittedCrashHandler = {
 
     this.initialized = true;
 
+    this.log = console.createInstance({
+      prefix: "UnsubmittedCrashHandler",
+      maxLogLevel: this.prefs.getStringPref("loglevel", "Error"),
+    });
+
     // UnsubmittedCrashHandler can be initialized but still be disabled.
     // This is intentional, as this makes simulating UnsubmittedCrashHandler's
     // reactions to browser startup and shutdown easier in test automation.
     //
     // UnsubmittedCrashHandler, when initialized but not enabled, is inert.
     if (this.enabled) {
+      lazy.RemoteSettingsCrashPull.start(
+        this.showRequestedSubmissionsNotification.bind(this)
+      );
       if (this.prefs.prefHasUserValue("suppressUntilDate")) {
         if (this.prefs.getCharPref("suppressUntilDate") > this.dateString()) {
           // We'll be suppressing any notifications until after suppressedDate,
           // so there's no need to do anything more.
           this.suppressed = true;
+          this.log.debug("suppressing crash handler due to suppressUntilDate");
           return;
         }
 
@@ -812,6 +812,8 @@ export var UnsubmittedCrashHandler = {
       }
 
       Services.obs.addObserver(this, "profile-before-change");
+    } else {
+      this.log.debug("not enabled");
     }
   },
 
@@ -822,6 +824,8 @@ export var UnsubmittedCrashHandler = {
 
     this.initialized = false;
 
+    this.log = null;
+
     if (this._checkTimeout) {
       lazy.clearTimeout(this._checkTimeout);
       this._checkTimeout = null;
@@ -830,6 +834,8 @@ export var UnsubmittedCrashHandler = {
     if (!this.enabled) {
       return;
     }
+
+    lazy.RemoteSettingsCrashPull.stop();
 
     if (this.suppressed) {
       this.suppressed = false;
@@ -878,6 +884,8 @@ export var UnsubmittedCrashHandler = {
       return null;
     }
 
+    this.log.debug("checking for unsubmitted crash reports");
+
     let dateLimit = new Date();
     dateLimit.setDate(dateLimit.getDate() - PENDING_CRASH_REPORT_DAYS);
 
@@ -885,13 +893,15 @@ export var UnsubmittedCrashHandler = {
     try {
       reportIDs = await lazy.CrashSubmit.pendingIDs(dateLimit);
     } catch (e) {
-      console.error(e);
+      this.log.error(e);
       return null;
     }
 
     if (reportIDs.length) {
+      this.log.debug("found ", reportIDs.length, " unsubmitted crash reports");
       Glean.crashSubmission.pending.add(reportIDs.length);
       if (this.autoSubmit) {
+        this.log.debug("auto submitted crash reports");
         this.submitReports(reportIDs, lazy.CrashSubmit.SUBMITTED_FROM_AUTO);
       } else if (this.shouldShowPendingSubmissionsNotification()) {
         return this.showPendingSubmissionsNotification(reportIDs);
@@ -911,6 +921,11 @@ export var UnsubmittedCrashHandler = {
    * @returns bool
    */
   shouldShowPendingSubmissionsNotification() {
+    // If user is already presented with a remote settings request, do not show
+    if (this._requestedSubmission.notification) {
+      return false;
+    }
+
     if (!this.prefs.prefHasUserValue("shutdownWhileShowing")) {
       return true;
     }
@@ -962,6 +977,8 @@ export var UnsubmittedCrashHandler = {
       return null;
     }
 
+    this.log.debug("showing pending submissions notification");
+
     let notification = await this.show({
       notificationID: "pending-crash-reports",
       reportIDs,
@@ -976,6 +993,59 @@ export var UnsubmittedCrashHandler = {
     }
 
     return notification;
+  },
+
+  removeExistingNotification(aNotification) {
+    if (aNotification) {
+      let chromeWin = lazy.BrowserWindowTracker.getTopWindow();
+      if (!chromeWin) {
+        return false;
+      }
+
+      chromeWin.gNotificationBox.removeNotification(aNotification, true);
+      aNotification = null;
+    }
+    return true;
+  },
+
+  _requestedSubmission: {
+    notification: null,
+    reportIDs: [],
+  },
+
+  /**
+   * Given an array of interesting unsubmitted crash report IDs, try to open
+   * up a notification asking the user to submit them.
+   *
+   * @param newReportIDs (Array<string>)
+   *        The Array of report IDs to offer the user to send.
+   * @returns The <xul:notification> if one is shown. null otherwise.
+   */
+  async showRequestedSubmissionsNotification(newReportIDs) {
+    if (!newReportIDs.length) {
+      return null;
+    }
+
+    this.log.debug("showing requested pending notification");
+
+    if (
+      !this.removeExistingNotification(this._requestedSubmission.notification)
+    ) {
+      return null;
+    }
+
+    this._requestedSubmission.reportIDs.push(...newReportIDs);
+    this._requestedSubmission.notification = await this.show({
+      notificationID: "pending-crash-reports-req",
+      reportIDs: this._requestedSubmission.reportIDs,
+      onAction: () => {
+        this._requestedSubmission.notification = null;
+        this._requestedSubmission.reportIDs = [];
+      },
+      requestedByDevs: true,
+    });
+
+    return this._requestedSubmission.notification;
   },
 
   /**
@@ -1019,9 +1089,16 @@ export var UnsubmittedCrashHandler = {
    *          action on the notification bar (this includes
    *          dismissing the notification).
    *
+   *        requestedByDevs (boolean)
+   *          Does it match a Remote Settings request.
+   *          If true, a few impactful differences on the notification:
+   *           - message will have a different wording
+   *           - will not include the "always send" and "view all" buttons.
+   *           - when clicking "send", the crash reports will disable throttling
+   *
    * @returns The <xul:notification> if one is shown. null otherwise.
    */
-  show({ notificationID, reportIDs, onAction }) {
+  show({ notificationID, reportIDs, onAction, requestedByDevs }) {
     let chromeWin = lazy.BrowserWindowTracker.getTopWindow();
     if (!chromeWin) {
       // Can't show a notification in this case. We'll hopefully
@@ -1038,40 +1115,63 @@ export var UnsubmittedCrashHandler = {
 
     chromeWin.MozXULElement.insertFTLIfNeeded("browser/contentCrash.ftl");
 
-    let buttons = [
-      {
-        "l10n-id": "pending-crash-reports-send",
-        callback: () => {
-          this.submitReports(
-            reportIDs,
-            lazy.CrashSubmit.SUBMITTED_FROM_INFOBAR
-          );
-          if (onAction) {
-            onAction();
-          }
-        },
+    const pendingCrashReportsSend = {
+      "l10n-id": "pending-crash-reports-send",
+      callback: () => {
+        this.submitReports(
+          reportIDs,
+          lazy.CrashSubmit.SUBMITTED_FROM_INFOBAR,
+          requestedByDevs ? { noThrottle: true } : {}
+        );
+        if (onAction) {
+          onAction();
+        }
       },
-      {
-        "l10n-id": "pending-crash-reports-always-send",
-        callback: () => {
-          this.autoSubmit = true;
-          this.submitReports(
-            reportIDs,
-            lazy.CrashSubmit.SUBMITTED_FROM_INFOBAR
-          );
-          if (onAction) {
-            onAction();
-          }
-        },
+    };
+    const pendingCrashReportsAlwaysSend = {
+      "l10n-id": "pending-crash-reports-always-send",
+      callback: () => {
+        this.autoSubmit = true;
+        this.submitReports(reportIDs, lazy.CrashSubmit.SUBMITTED_FROM_INFOBAR);
+        if (onAction) {
+          onAction();
+        }
       },
-      {
-        "l10n-id": "pending-crash-reports-view-all",
-        callback() {
-          chromeWin.openTrustedLinkIn("about:crashes", "tab");
-          return true;
-        },
+    };
+    const pendingCrashReportsViewAll = {
+      "l10n-id": "pending-crash-reports-view-all",
+      callback() {
+        chromeWin.openTrustedLinkIn("about:crashes", "tab");
+        return true;
       },
-    ];
+    };
+
+    const requestedCrashSupport = {
+      supportPage: "requested-crash-minidump",
+    };
+    const requestedCrashReportsDontShowAgain = {
+      "l10n-id": "requested-crash-reports-dont-show-again",
+      callback: () => {
+        this.requestedNeverShowAgain = true;
+        if (onAction) {
+          onAction();
+        }
+      },
+    };
+
+    let buttons = [];
+    if (requestedByDevs) {
+      // Somehow needs to be the first one
+      buttons.push(requestedCrashSupport);
+    }
+
+    buttons.push(pendingCrashReportsSend);
+
+    if (!requestedByDevs) {
+      buttons.push(pendingCrashReportsAlwaysSend, pendingCrashReportsViewAll);
+    } else {
+      buttons.push(requestedCrashReportsDontShowAgain);
+    }
 
     let eventCallback = eventType => {
       if (eventType == "dismissed") {
@@ -1092,7 +1192,9 @@ export var UnsubmittedCrashHandler = {
       notificationID,
       {
         label: {
-          "l10n-id": "pending-crash-reports-message",
+          "l10n-id": requestedByDevs
+            ? "requested-crash-reports-message"
+            : "pending-crash-reports-message",
           "l10n-args": { reportCount: reportIDs.length },
         },
         image: TABCRASHED_ICON_URI,
@@ -1116,6 +1218,13 @@ export var UnsubmittedCrashHandler = {
     );
   },
 
+  set requestedNeverShowAgain(val) {
+    Services.prefs.setBoolPref(
+      "browser.crashReports.requestedNeverShowAgain",
+      val
+    );
+  },
+
   /**
    * Attempt to submit reports to the crash report server.
    *
@@ -1124,10 +1233,20 @@ export var UnsubmittedCrashHandler = {
    * @param submittedFrom (string)
    *        One of the CrashSubmit.SUBMITTED_FROM_* constants representing
    *        how this crash was submitted.
+   * @param params (object)
+   *        Parameters to be passed to CrashSubmit.submit(), e.g. 'noThrottle'.
    */
-  submitReports(reportIDs, submittedFrom) {
+  submitReports(reportIDs, submittedFrom, params) {
+    this.log.debug(
+      "submitting ",
+      reportIDs.length,
+      " reports from ",
+      submittedFrom
+    );
     for (let reportID of reportIDs) {
-      lazy.CrashSubmit.submit(reportID, submittedFrom).catch(console.error);
+      lazy.CrashSubmit.submit(reportID, submittedFrom, params).catch(
+        this.log.error.bind(this.log)
+      );
     }
   },
 };

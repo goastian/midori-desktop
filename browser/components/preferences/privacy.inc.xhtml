@@ -5,7 +5,6 @@
 <!-- Privacy panel -->
 
 <script src="chrome://browser/content/preferences/privacy.js"/>
-<script src="chrome://floorp/content/preferences/floorp-privacy.js"/>
 <stringbundle id="signonBundle" src="chrome://passwordmgr/locale/passwordmgr.properties"/>
 <html:template id="template-panePrivacy">
 <hbox id="browserPrivacyCategory"
@@ -53,7 +52,7 @@
           <html:span data-l10n-id="content-blocking-rfp-incompatibility-warning"/>
           <html:a is="moz-support-link"
                   class="learnMore"
-                  support-page="firefox-protection-against-fingerprinting"
+                  support-page="resist-fingerprinting"
           />
         </description>
       </vbox>
@@ -359,10 +358,10 @@
     </vbox>
   </vbox>
 </groupbox>
-<groupbox id="nonTechnicalPrivacyGroup" data-category="panePrivacy" data-subcategory="nontechnicalprivacy" data-hidden-from-search="true" hidden="true">
+<groupbox id="nonTechnicalPrivacyGroup" data-category="panePrivacy" hidden="true">
   <label id="nonTechnicalPrivacyHeader"><html:h2 data-l10n-id="non-technical-privacy-header"/></label>
   <vbox id="nonTechnicalPrivacyBox">
-    <hbox id="globalPrivacyControlBox" flex="1" align="center" hidden="true">
+    <hbox id="globalPrivacyControlBox" flex="1" align="center">
       <checkbox id="globalPrivacyControlCheckbox"
               class="tail-with-learn-more"
               preference="privacy.globalprivacycontrol.enabled"
@@ -372,51 +371,13 @@
           id="globalPrivacyControlLearnMoreLink"
           support-page="global-privacy-control" />
     </hbox>
-    <vbox id="legacyDoNotTrackBox">
-      <label>
-        <label class="tail-with-learn-more" data-l10n-id="do-not-track-description" id="doNotTrackDesc"></label>
+    <hbox id="doNotTrackBox" flex="1" align="center" hidden="true">
       <html:a is="moz-support-link"
-              class="learnMore"
-              support-page="how-do-i-turn-do-not-track-feature"
-      />
-      </label>
-      <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
-        <radio value="true" data-l10n-id="do-not-track-option-always"/>
-        <radio value="false" data-l10n-id="do-not-track-option-default-content-blocking-known"/>
-      </radiogroup>
-    </vbox>
-    <hbox id="doNotTrackBox" flex="1" align="center">
-      <checkbox id="doNotTrackCheckbox"
-              class="tail-with-learn-more"
-              preference="privacy.donottrackheader.enabled"
-              data-l10n-id="do-not-track-description2" />
-      <html:a is="moz-support-link"
-          id="doNotTrackLearnMoreLink"
-          support-page="how-do-i-turn-do-not-track-feature" />
+          id="doNotTrackRemoval"
+          support-page="how-do-i-turn-do-not-track-feature"
+          data-l10n-id="do-not-track-removal" />
     </hbox>
   </vbox>
-</groupbox>
-
- <groupbox id="fingerprint" data-category="panePrivacy" hidden="true">
-  <label><html:h2 data-l10n-id="fingerprint-header"/></label>
-  <description class="indent tip-caption" data-l10n-id="block-fingerprint"/>
-  <checkbox preference="privacy.resistFingerprinting" data-l10n-id="enable-firefox-fingerprint-protections"/>
-  <description class="indent tip-caption">
-    <html:span data-l10n-id="about-firefox-fingerprint-protection"></html:span>
-    <html:a is="text-link" href="https://support.mozilla.org/kb/firefox-protection-against-fingerprinting" data-l10n-id="do-not-track-learn-more"/>
-  </description>
-  <checkbox preference="privacy.resistFingerprinting.autoDeclineNoUserInputCanvasPrompts"
-            id="fingerprintProtection" data-l10n-id="html5-canvas-prompt-settings"/>
-      <description class="indent tip-caption"
-                   id="fingerprintDiscription" data-l10n-id="canvas-prompt"/>
-  <checkbox preference="webgl.disabled"
-            id="webgl" data-l10n-id="disable-webgl"/>
-      <description class="indent tip-caption"
-                   id="webgldiscription" data-l10n-id="about-webgl"/>
-  <checkbox preference="media.peerconnection.enabled"
-            id="wertc" data-l10n-id="WebRTC"/>
-      <description class="indent tip-caption"
-                   id="webrtcDiscription" data-l10n-id="WebRTC-connection"/>
 </groupbox>
 
 <!-- Site Data -->
@@ -559,8 +520,10 @@
       <checkbox id="relayIntegration"
                 class="tail-with-learn-more"
                 data-l10n-id="preferences-relay-integration-checkbox2"/>
-      <html:a id="relayIntegrationLearnMoreLink" class="learnMore"
-             data-l10n-id="relay-integration-learn-more-link"/>
+      <html:a is="moz-support-link"
+              id="relayIntegrationLearnMoreLink"
+              class="learnMore"
+              data-l10n-id="relay-integration-learn-more-link"/>
     </hbox>
     <hbox class="indent" id="breachAlertsBox" flex="1" align="center">
       <checkbox id="breachAlerts"
@@ -949,10 +912,19 @@
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="collection-header2" data-l10n-attrs="searchkeywords"/></label>
 
   <description class="description-deemphasized">
-    <html:span data-l10n-id="collection-description"/>
+    <html:span data-l10n-id="preferences-collection-description"/>
     <html:a id="dataCollectionPrivacyNotice"
-           class="learnMore"
-           data-l10n-id="collection-privacy-notice"/>
+            class="learnMore"
+            target="_blank"
+            data-l10n-id="preferences-collection-privacy-notice"/>
+  </description>
+  <description class="description-deemphasized"
+               id="preferences-privacy-profiles"
+               hidden="true">
+    <html:span data-l10n-id="preferences-across-profiles"/>
+    <html:a id="dataCollectionViewProfiles"
+            target="_blank"
+            data-l10n-id="preferences-view-profiles"/>
   </description>
 #ifdef MOZ_DATA_REPORTING
   <hbox id="telemetry-container" class="info-box-container smaller-font-size" hidden="true">
@@ -963,81 +935,85 @@
       <html:span id="telemetryDisabledDescription"
                  data-l10n-id="collection-health-report-telemetry-disabled"/>
       <html:a is="moz-support-link"
-              id="telemetryDataDeletionLearnMore"
+              support-page="telemetry-clientid"
               class="learnMore"
               data-l10n-id="collection-health-report-telemetry-disabled-link"/>
     </description>
   </hbox>
+
   <vbox data-subcategory="reports">
-    <html:span flex="1">
-      <checkbox id="submitHealthReportBox"
-                data-l10n-id="collection-health-report"
-                class="tail-with-learn-more"/>
+    <checkbox id="submitHealthReportBox"
+              data-l10n-id="collection-health-report2"/>
+    <description class="indent tip-caption">
+#ifdef MOZ_TELEMETRY_REPORTING
+      <html:span data-l10n-id="collection-health-report-description"/>
+#else # !MOZ_TELEMETRY_REPORTING
+      <html:span data-l10n-id="collection-health-report-disabled2"/>
+#endif # MOZ_TELEMETRY_REPORTING
       <html:a id="FHRLearnMore"
-             class="learnMore"
-             data-l10n-id="collection-health-report-link"/>
-      <vbox class="indent">
-        <hbox align="center">
-          <checkbox id="addonRecommendationEnabled"
-                    class="tail-with-learn-more"
-                    data-l10n-id="addon-recommendations"/>
-          <html:a is="moz-support-link"
-                  id="addonRecommendationLearnMore"
-                  class="learnMore"
-                  data-l10n-id="addon-recommendations-link"
-                  support-page="personalized-addons"
-          />
-        </hbox>
-      </vbox>
-    </html:span>
-#ifndef MOZ_TELEMETRY_REPORTING
-  <description id="TelemetryDisabledDesc"
-    class="indent tip-caption" control="telemetryGroup"
-    data-l10n-id="collection-health-report-disabled"/>
-#endif
+              is="moz-support-link"
+              support-page="technical-and-interaction-data"
+              class="learnMore"
+              data-l10n-id="collection-health-report-link"/>
+    </description>
+
+    <vbox class="indent">
+      <checkbox id="addonRecommendationEnabled"
+                data-l10n-id="addon-recommendations2"/>
+      <description class="indent tip-caption">
+        <html:span data-l10n-id="addon-recommendations-description"/>
+        <html:a is="moz-support-link"
+                id="addonRecommendationLearnMore"
+                class="learnMore"
+                support-page="personalized-addons"/>
+      </description>
 
 #ifdef MOZ_NORMANDY
-    <hbox align="center">
       <checkbox id="optOutStudiesEnabled"
-                class="tail-with-learn-more"
-                data-l10n-id="collection-studies"/>
-      <html:a id="viewShieldStudies"
-              href="about:studies"
-              useoriginprincipal="true"
+                data-l10n-id="collection-studies2"/>
+      <description class="indent tip-caption">
+        <html:span data-l10n-id="collection-studies-description"/>
+        <html:a id="viewShieldStudies"
+                href="about:studies"
+                class="learnMore"
+                target="_blank"
+                data-l10n-id="collection-studies-link"/>
+      </description>
+#endif # MOZ_NORMANDY
+    </vbox>
+
+    <checkbox id="submitUsagePingBox"
+              data-l10n-id="collection-usage-ping"
+              preference="datareporting.usage.uploadEnabled"/>
+    <description class="indent tip-caption">
+      <html:span data-l10n-id="collection-usage-ping-description"/>
+      <html:a id="submitUsagePingLearnMore"
+              is="moz-support-link"
               class="learnMore"
-              data-l10n-id="collection-studies-link"/>
-    </hbox>
-#endif
+              support-page="usage-ping-settings"/>
+    </description>
 
 #ifdef MOZ_CRASHREPORTER
-    <hbox align="center" class="checkbox-row">
-      <html:input type="checkbox"
-                id="automaticallySubmitCrashesBox"
-                preference="browser.crashReports.unsubmittedCheck.autoSubmit2"/>
-      <html:label is="moz-label"
-                for="automaticallySubmitCrashesBox"
-                id="crashReporterLabel"
-                data-l10n-id="collection-backlogged-crash-reports"
-                data-l10n-attrs="accesskey"/>
-      <html:a id="crashReporterLearnMore" is="moz-support-link" class="learnMore"/>
-    </hbox>
-#endif
+    <checkbox id="automaticallySubmitCrashesBox"
+              data-l10n-id="collection-backlogged-crash-reports2"
+              preference="browser.crashReports.unsubmittedCheck.autoSubmit2"/>
+    <description class="indent tip-caption">
+      <html:span data-l10n-id="collection-backlogged-crash-reports-description"/>
+      <html:a is="moz-support-link"
+              class="learnMore"
+              support-page="crash-reports"
+              id="crashReporterLearnMore"/>
+    </description>
+#endif # MOZ_CRASHREPORTER
   </vbox>
-#endif
-  <vbox class="firefoxSuggestOptionBox" id="firefoxSuggestPrivacyContainer" hidden="true">
-    <html:moz-toggle id="firefoxSuggestDataCollectionPrivacyToggle"
-                     preference="browser.urlbar.quicksuggest.dataCollection.enabled"
-                     data-l10n-id="addressbar-firefox-suggest-data-collection"
-                     data-l10n-attrs="label, description">
-      <html:a slot="support-link"
-              is="moz-support-link"
-              id="firefoxSuggestDataCollectionLearnMorePrivacy"
-              class="learnMore firefoxSuggestLearnMore"
-              data-l10n-id="addressbar-locbar-firefox-suggest-learn-more"
-              support-page="firefox-suggest"
-      />
-    </html:moz-toggle>
-  </vbox>
+#endif MOZ_DATA_REPORTING
+  <html:moz-toggle hidden="true"
+                   id="firefoxSuggestDataCollectionPrivacyToggle"
+                   preference="browser.urlbar.quicksuggest.dataCollection.enabled"
+                   data-l10n-id="addressbar-firefox-suggest-data-collection"
+                   data-l10n-attrs="label, description"
+                   support-page="firefox-suggest#w_what-setting-is-opt-in"
+  />
   <vbox id="privacySegmentationSection" data-subcategory="privacy-segmentation" hidden="true">
     <label>
       <html:h2 data-l10n-id="privacy-segmentation-section-header"/>
@@ -1171,26 +1147,27 @@
 <groupbox id="httpsOnlyBox" data-category="panePrivacy" hidden="true">
   <label><html:h2 data-l10n-id="httpsonly-header"/></label>
   <vbox data-subcategory="httpsonly" flex="1">
-    <description id="httpsOnlyDescription" class="description-deemphasized" data-l10n-id="httpsonly-description"/>
+    <description id="httpsOnlyDescription" class="description-deemphasized" data-l10n-id="httpsonly-description3"/>
     <html:a is="moz-support-link"
             id="httpsOnlyLearnMore"
             class="learnMore"
-            data-l10n-id="httpsonly-learn-more"
+            data-l10n-id="httpsonly-learn-more2"
             support-page="https-only-prefs"
     />
   </vbox>
   <hbox>
-    <radiogroup flex="1" id="httpsOnlyRadioGroup">
-      <radio id="httpsOnlyRadioEnabled"
-              data-l10n-id="httpsonly-radio-enabled"
-              value="enabled"/>
-      <radio id="httpsOnlyRadioEnabledPBM"
-              data-l10n-id="httpsonly-radio-enabled-pbm"
-              value="privateOnly"/>
-      <radio id="httpsOnlyRadioDisabled"
-              data-l10n-id="httpsonly-radio-disabled"
-              value="disabled"/>
-    </radiogroup>
+    <html:moz-radio-group id="httpsOnlyRadioGroup" data-category="panePrivacy" style="flex: 1;">
+      <html:moz-radio id="httpsOnlyRadioEnabled"
+                      data-l10n-id="httpsonly-radio-enabled"
+                      value="enabled"></html:moz-radio>
+      <html:moz-radio id="httpsOnlyRadioEnabledPBM"
+                      data-l10n-id="httpsonly-radio-enabled-pbm"
+                      value="privateOnly"></html:moz-radio>
+      <html:moz-radio id="httpsOnlyRadioDisabled"
+                      data-l10n-id="httpsonly-radio-disabled3"
+                      value="disabled"
+                      support-page="connection-upgrades"></html:moz-radio>
+    </html:moz-radio-group>
     <vbox>
       <button id="httpsOnlyExceptionButton" is="highlightable-button" class="accessory-button" disabled="true"
         data-l10n-id="sitedata-cookies-exceptions" search-l10n-ids="
@@ -1293,12 +1270,6 @@
                   />
                 </hbox>
               </vbox>
-              <hbox id="dohWarningBox1" class="extra-information-label" hidden="true">
-                <checkbox id="dohWarnCheckbox1"
-                          flex="1"
-                          data-l10n-id="preferences-doh-checkbox-warn"
-                          preference="network.trr.display_fallback_warning"/>
-              </hbox>
             </vbox>
           </vbox>
         </vbox>
@@ -1325,12 +1296,6 @@
                   <label class="doh-label" data-l10n-id="preferences-doh-enabled-detailed-desc-2"/>
                 </hbox>
               </vbox>
-              <hbox id="dohWarningBox2" class="extra-information-label" hidden="true">
-                <checkbox id="dohWarnCheckbox2"
-                          flex="1"
-                          data-l10n-id="preferences-doh-checkbox-warn"
-                          preference="network.trr.display_fallback_warning"/>
-              </hbox>
               <vbox class="extra-information-label">
                 <label data-l10n-id="preferences-doh-select-resolver"/>
                 <menulist id="dohEnabledResolverChoices"

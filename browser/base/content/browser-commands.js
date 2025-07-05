@@ -396,7 +396,9 @@ var BrowserCommands = {
 
     // In a multi-select context, close all selected tabs
     if (gBrowser.multiSelectedTabsCount) {
-      gBrowser.removeMultiSelectedTabs();
+      gBrowser.removeMultiSelectedTabs(
+        gBrowser.TabMetrics.userTriggeredContext()
+      );
       return;
     }
 
@@ -407,14 +409,17 @@ var BrowserCommands = {
       (event.ctrlKey || event.metaKey || event.altKey) &&
       gBrowser.selectedTab.pinned
     ) {
-      if (gBrowser.visibleTabs.length > gBrowser._numPinnedTabs) {
-        gBrowser.tabContainer.selectedIndex = gBrowser._numPinnedTabs;
+      if (gBrowser.visibleTabs.length > gBrowser.pinnedTabCount) {
+        gBrowser.tabContainer.selectedIndex = gBrowser.pinnedTabCount;
       }
       return;
     }
 
     // If the current tab is the last one, this will close the window.
-    gBrowser.removeCurrentTab({ animate: true });
+    gBrowser.removeCurrentTab({
+      animate: true,
+      ...gBrowser.TabMetrics.userTriggeredContext(),
+    });
   },
 
   tryToCloseWindow(event) {

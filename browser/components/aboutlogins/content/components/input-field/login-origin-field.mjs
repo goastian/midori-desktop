@@ -8,18 +8,50 @@ import { editableFieldTemplate, stylesTemplate } from "./input-field.mjs";
 class LoginOriginField extends MozLitElement {
   static properties = {
     value: { type: String, reflect: true },
+    name: { type: String },
     readonly: { type: Boolean, reflect: true },
+    required: { type: Boolean, reflect: true },
+    onOriginClick: { type: Function },
   };
+
+  static queries = {
+    input: "input",
+  };
+
+  constructor() {
+    super();
+    this.value = "";
+  }
+
+  addHTTPSPrefix(e) {
+    const input = e.composedTarget;
+    let originValue = input.value.trim();
+    if (!originValue) {
+      return;
+    }
+
+    if (!originValue.match(/:\/\//)) {
+      input.value = "https://" + originValue;
+    }
+  }
 
   get readonlyTemplate() {
     return html`
+      <label
+        for="origin"
+        class="field-label"
+        data-l10n-id="login-item-origin-label"
+      >
+      </label>
       <a
+        id="origin"
         class="origin-input"
         dir="auto"
         target="_blank"
         rel="noreferrer"
         name="origin"
         href=${this.value}
+        @click=${this.onOriginClick}
       >
         ${this.value}
       </a>
@@ -29,12 +61,15 @@ class LoginOriginField extends MozLitElement {
   render() {
     return html`
       ${stylesTemplate()}
-      <label class="field-label" data-l10n-id="login-item-origin-label"></label>
       ${this.readonly
         ? this.readonlyTemplate
         : editableFieldTemplate({
             type: "url",
             value: this.value,
+            required: this.required,
+            labelL10nId: "login-item-origin-label",
+            noteL10nId: "contextual-manager-passwords-origin-tooltip",
+            onBlur: e => this.addHTTPSPrefix(e),
           })}
     `;
   }

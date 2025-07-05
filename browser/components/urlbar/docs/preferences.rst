@@ -130,6 +130,10 @@ browser.urlbar.filter.javascript (boolean, default: true)
   When true, `javascript:` URLs are not included in search results for safety
   reasons.
 
+browser.urlbar.focusContentDocumentOnEsc (boolean, default: true)
+  Focus the content document when pressing the Escape key, if there's no
+  remaining typed history.
+
 browser.urlbar.formatting.enabled (boolean, default: true)
   Applies URL highlighting and other styling to the text in the urlbar input
   field. This should usually be enabled for security reasons.
@@ -159,9 +163,6 @@ browser.urlbar.merino.providers (string, default: "")
 browser.urlbar.openintab (boolean, default: false)
   Whether address bar results should be opened in new tabs by default.
 
-browser.urlbar.pocket.featureGate (boolean, default: false)
-  Feature gate pref for Pocket suggestions in the urlbar.
-
 browser.urlbar.quicksuggest.enabled (boolean, default: false)
   Whether the quick suggest feature is enabled, i.e., sponsored and recommended
   results related to the user's search string. This pref can be overridden by
@@ -173,9 +174,6 @@ browser.urlbar.quicksuggest.enabled (boolean, default: false)
 browser.urlbar.quicksuggest.dataCollection.enabled (boolean, default: false)
   Whether data collection is enabled for quick suggest results.
 
-browser.urlbar.quicksuggest.shouldShowOnboardingDialog (boolean, default: true)
-  Whether to show the quick suggest onboarding dialog.
-
 browser.urlbar.richSuggestions.tail (boolean, default: true)
   If true, we show tail search suggestions when available.
 
@@ -185,7 +183,7 @@ browser.urlbar.searchTips.test.ignoreShowLimits (boolean, default: false)
   This is useful for testing purposes.
 
 browser.urlbar.speculativeConnect.enabled (boolean, default: true)
-  Speculative connections allow to resolve domains pre-emptively when the user
+  Speculative connections allow to resolve domains preemptively when the user
   is likely to pick a result from the Address Bar. This allows for faster
   navigation.
 
@@ -194,10 +192,6 @@ browser.urlbar.sponsoredTopSites (boolean, default: false)
 
 browser.urlbar.suggest.addons (boolean, default: true)
   If ``browser.urlbar.addons.featureGate`` is true, this controls whether add-on
-  suggestions are turned on. Otherwise they won't be shown.
-
-browser.urlbar.suggest.pocket (boolean, default: true)
-  If ``browser.urlbar.pocket.featureGate`` is true, this controls whether Pocket
   suggestions are turned on. Otherwise they won't be shown.
 
 browser.urlbar.suggest.yelp (boolean, default: true)

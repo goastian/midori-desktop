@@ -1,17 +1,26 @@
 [DEFAULT]
 support-files = [
   "head.js",
-  "print_postdata.sjs",
-  "searchSuggestionEngine.sjs",
-  "searchSuggestionEngine.xml",
   "slow_loading_page.sjs",
-  "POSTSearchEngine.xml",
   "dummy_page.html",
 ]
 
 ["browser_aboutCertError.js"]
 
+["browser_aboutCertError_cca_telemetry.js"]
+
 ["browser_aboutCertError_clockSkew.js"]
+
+["browser_aboutCertError_coep.js"]
+support-files = [
+  "sandbox_corp_iframe.sjs",
+]
+
+["browser_aboutCertError_coop.js"]
+support-files = [
+  "sandbox_corp_iframe.sjs",
+  "sandbox_corp_popup.html",
+]
 
 ["browser_aboutCertError_exception.js"]
 
@@ -25,23 +34,17 @@ support-files = [
 
 ["browser_aboutDialog_distribution.js"]
 
-["browser_aboutHome_search_POST.js"]
+["browser_aboutNetError.js"]
 
-["browser_aboutHome_search_composing.js"]
-
-["browser_aboutHome_search_searchbar.js"]
-
-["browser_aboutHome_search_suggestion.js"]
-skip-if = [
-  "os == 'mac'",
-  "os == 'linux' && os_version == '18.04' && !debug",
-  "os == 'linux' && os_version == '18.04' && bits == 64",
-  "win10_2009 && bits == 64 && !debug", # Bug 1399648, bug 1402502
+["browser_aboutNetError_basicHttpAuth.js"]
+support-files = [
+  "basic_auth_route.sjs",
 ]
 
-["browser_aboutHome_search_telemetry.js"]
-
-["browser_aboutNetError.js"]
+["browser_aboutNetError_blank_page.js"]
+support-files = [
+  "blank_page.sjs",
+]
 
 ["browser_aboutNetError_csp_iframe.js"]
 https_first_disabled = true
@@ -50,11 +53,23 @@ support-files = [
   "csp_iframe.sjs",
 ]
 
-["browser_aboutNetError_native_fallback.js"]
-skip-if = ["socketprocess_networking"]
+["browser_aboutNetError_internet_connection_offline.js"]
+
+["browser_aboutNetError_invalid_header.js"]
+support-files = [
+  "invalid_header.sjs",
+]
+
+["browser_aboutNetError_server_error.js"]
+support-files = [
+  "server_error.sjs",
+]
 
 ["browser_aboutNetError_trr.js"]
-skip-if = ["socketprocess_networking"]
+skip-if = [
+  "socketprocess_networking",
+   "os == 'win' && os_version == '11.26100' && bits == 64 && asan", # Bug 1831977
+]
 
 ["browser_aboutNetError_xfo_iframe.js"]
 https_first_disabled = true
@@ -83,10 +98,13 @@ tags = "remote-settings"
 ["browser_aboutSupport_places.js"]
 skip-if = ["os == 'android'"]
 
+["browser_aboutSupport_user_namespaces.js"]
+skip-if = ["os != 'linux'", "asan", "tsan"]
+
 ["browser_bug435325.js"]
 skip-if = [
-  "apple_catalina && !debug && verify",
-  "apple_silicon && !debug && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && !debug && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && !debug && verify",
 ]
 
 ["browser_bug633691.js"]

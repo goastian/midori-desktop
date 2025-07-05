@@ -8,7 +8,7 @@
  */
 
 const BASE_URL =
-  "http://example.org/browser/browser/components/places/tests/browser/";
+  "https://example.org/browser/browser/components/places/tests/browser/";
 const bookmarkItems = [
   {
     url: `${BASE_URL}bookmark_dummy_1.html`,
@@ -133,6 +133,9 @@ add_setup(async function () {
   await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.menuGuid,
     children: bookmarkItems,
+  });
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.bookmarks.openInTabClosesMenu", false]],
   });
 
   registerCleanupFunction(async () => {

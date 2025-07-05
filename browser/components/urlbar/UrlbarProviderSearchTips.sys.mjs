@@ -18,13 +18,14 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
-  DefaultBrowserCheck: "resource:///modules/BrowserGlue.sys.mjs",
+  DefaultBrowserCheck:
+    "moz-src:///browser/components/DefaultBrowserCheck.sys.mjs",
   LaterRun: "resource:///modules/LaterRun.sys.mjs",
-  SearchStaticData: "resource://gre/modules/SearchStaticData.sys.mjs",
+  SearchStaticData:
+    "moz-src:///toolkit/components/search/SearchStaticData.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderTopSites: "resource:///modules/UrlbarProviderTopSites.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
-  UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
@@ -35,15 +36,10 @@ XPCOMUtils.defineLazyPreferenceGetter(
   true
 );
 
-// The possible tips to show.  These names (except NONE) are used in the names
-// of keys in the `urlbar.tips` keyed scalar telemetry (see telemetry.rst).
-// Don't modify them unless you've considered that.  If you do modify them or
-// add new tips, then you are also adding new `urlbar.tips` keys and therefore
-// need an expanded data collection review.
+// The possible tips to show.
 const TIPS = {
   NONE: "",
   ONBOARD: "searchTip_onboard",
-  PERSIST: "searchTip_persist",
   REDIRECT: "searchTip_redirect",
 };
 
@@ -81,11 +77,6 @@ const MAX_SHOWN_COUNT = 4;
 // navigating to a page where we should show a tip.
 const SHOW_TIP_DELAY_MS = 200;
 
-// Amount of time to wait before showing the persist tip after the
-// onLocationChange event during the process of loading
-// a default search engine results page.
-const SHOW_PERSIST_TIP_DELAY_MS = 1500;
-
 // We won't show a tip if the browser has been updated in the past
 // LAST_UPDATE_THRESHOLD_HOURS.
 const LAST_UPDATE_THRESHOLD_HOURS = 24;
@@ -121,7 +112,7 @@ class ProviderSearchTips extends UrlbarProvider {
   /**
    * Enum of the types of search tips.
    *
-   * @returns {{ NONE: string; ONBOARD: string; PERSIST: string; REDIRECT: string; }}
+   * @returns {{ NONE: string; ONBOARD: string; REDIRECT: string; }}
    */
   get TIP_TYPE() {
     return TIPS;
@@ -130,10 +121,6 @@ class ProviderSearchTips extends UrlbarProvider {
   get PRIORITY() {
     // Search tips are prioritized over the Places and top sites providers.
     return lazy.UrlbarProviderTopSites.PRIORITY + 1;
-  }
-
-  get SHOW_PERSIST_TIP_DELAY_MS() {
-    return SHOW_PERSIST_TIP_DELAY_MS;
   }
 
   /**
@@ -147,9 +134,7 @@ class ProviderSearchTips extends UrlbarProvider {
   }
 
   /**
-   * The type of the provider.
-   *
-   * @returns {UrlbarUtils.PROVIDER_TYPE}
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.PROFILE;
@@ -159,11 +144,9 @@ class ProviderSearchTips extends UrlbarProvider {
    * Whether this provider should be invoked for the given context.
    * If this method returns false, the providers manager won't start a query
    * with this provider, to save on resources.
-   *
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive() {
-    return this.currentTip && lazy.cfrFeaturesUserPref;
+  async isActive() {
+    return !!this.currentTip && lazy.cfrFeaturesUserPref;
   }
 
   /**
@@ -226,19 +209,7 @@ class ProviderSearchTips extends UrlbarProvider {
           },
         };
         break;
-      case TIPS.PERSIST:
-        result.heuristic = false;
-        result.payload.titleL10n = {
-          id: "urlbar-search-tips-persist",
-        };
-        result.payload.icon = UrlbarUtils.ICON.TIP;
-        result.payload.buttons = [
-          { l10n: { id: "urlbar-search-tips-confirm-short" } },
-        ];
-        break;
     }
-
-    Services.telemetry.keyedScalarAdd("urlbar.tips", `${tip}-shown`, 1);
 
     addCallback(this, result);
   }
@@ -252,25 +223,19 @@ class ProviderSearchTips extends UrlbarProvider {
    *   The browser window in which the tip is being displayed.
    */
   #pickResult(result, window) {
-    let tip = result.payload.type;
-    switch (tip) {
-      case TIPS.PERSIST:
-        window.gURLBar.removeAttribute("suppress-focus-border");
-        window.gURLBar.select();
-        break;
-      default:
-        window.gURLBar.value = "";
-        window.gURLBar.setPageProxyState("invalid");
-        window.gURLBar.removeAttribute("suppress-focus-border");
-        window.gURLBar.focus();
-        break;
-    }
+    window.gURLBar.value = "";
+    window.gURLBar.setPageProxyState("invalid");
+    window.gURLBar.removeAttribute("suppress-focus-border");
+    window.gURLBar.focus();
 
     // The user either clicked the tip's "Okay, Got It" button, or they clicked
     // in the urlbar while the tip was showing. We treat both as the user's
     // acknowledgment of the tip, and we don't show tips again in any session.
     // Set the shown count to the max.
-    lazy.UrlbarPrefs.set(`tipShownCount.${tip}`, MAX_SHOWN_COUNT);
+    lazy.UrlbarPrefs.set(
+      `tipShownCount.${result.payload.type}`,
+      MAX_SHOWN_COUNT
+    );
   }
 
   onEngagement(queryContext, controller, details) {
@@ -288,14 +253,12 @@ class ProviderSearchTips extends UrlbarProvider {
    *  The browser window where the location change happened.
    * @param {nsIURI} uri
    *  The URI being navigated to.
-   * @param {nsIURI | null} originalUri
-   *  The original URI being navigated to.
    * @param {nsIWebProgress} webProgress
    *   The progress object, which can have event listeners added to it.
    * @param {number} flags
    *   Load flags. See nsIWebProgressListener.idl for possible values.
    */
-  async onLocationChange(window, uri, originalUri, webProgress, flags) {
+  async onLocationChange(window, uri, webProgress, flags) {
     let instance = (this._onLocationChangeInstance = {});
 
     // If this is the first time we've seen this browser window, we take some
@@ -347,7 +310,7 @@ class ProviderSearchTips extends UrlbarProvider {
       return;
     }
 
-    this._maybeShowTipForUrl(uri.spec, originalUri, window).catch(ex =>
+    this._maybeShowTipForUrl(uri.spec, window).catch(ex =>
       this.logger.error(ex)
     );
   }
@@ -358,12 +321,10 @@ class ProviderSearchTips extends UrlbarProvider {
    *
    * @param {string} urlStr
    *   The URL of the page being loaded, in string form.
-   * @param {nsIURI | null} originalUri
-   *   The original URI of the page being loaded.
    * @param {window} window
    *   The browser window in which the tip is being displayed.
    */
-  async _maybeShowTipForUrl(urlStr, originalUri, window) {
+  async _maybeShowTipForUrl(urlStr, window) {
     let instance = {};
     this._maybeShowTipForUrlInstance = instance;
 
@@ -379,25 +340,10 @@ class ProviderSearchTips extends UrlbarProvider {
     let isNewtab = ["about:newtab", "about:home"].includes(urlStr);
     let isSearchHomepage = !isNewtab && (await isDefaultEngineHomepage(urlStr));
 
-    // Only show the persist tip if: the feature is enabled,
-    // it's been shown fewer than the maximum number of times
-    // a specific tip can be shown to the user, and the
-    // the url is a default SERP.
-    let shouldShowPersistTip =
-      lazy.UrlbarPrefs.isPersistedSearchTermsEnabled() &&
-      (lazy.UrlbarPrefs.get(`tipShownCount.${TIPS.PERSIST}`) <
-        MAX_SHOWN_COUNT ||
-        ignoreShowLimits) &&
-      !!lazy.UrlbarSearchUtils.getSearchTermIfDefaultSerpUri(
-        originalUri ?? urlStr
-      );
-
     if (isNewtab) {
       tip = TIPS.ONBOARD;
     } else if (isSearchHomepage) {
       tip = TIPS.REDIRECT;
-    } else if (shouldShowPersistTip) {
-      tip = TIPS.PERSIST;
     } else {
       // No tip.
       return;
@@ -411,22 +357,13 @@ class ProviderSearchTips extends UrlbarProvider {
     }
 
     // Don't show a tip if the browser has been updated recently.
-    // Exception: TIPS.PERSIST should show immediately
-    // after the feature is enabled for users.
     let hoursSinceUpdate = Math.min(
       lazy.LaterRun.hoursSinceInstall,
       lazy.LaterRun.hoursSinceUpdate
     );
-    if (
-      tip != TIPS.PERSIST &&
-      hoursSinceUpdate < LAST_UPDATE_THRESHOLD_HOURS &&
-      !ignoreShowLimits
-    ) {
+    if (hoursSinceUpdate < LAST_UPDATE_THRESHOLD_HOURS && !ignoreShowLimits) {
       return;
     }
-
-    let tipDelay =
-      tip == TIPS.PERSIST ? SHOW_PERSIST_TIP_DELAY_MS : SHOW_TIP_DELAY_MS;
 
     // Start a search.
     lazy.setTimeout(async () => {
@@ -435,19 +372,11 @@ class ProviderSearchTips extends UrlbarProvider {
       }
 
       // We don't want to interrupt a user's typed query with a Search Tip.
-      // See bugs 1613662 and 1619547. The persist search tip is an
-      // exception because the query is not erased.
+      // See bugs 1613662 and 1619547.
       if (
         window.gURLBar.getAttribute("pageproxystate") == "invalid" &&
         window.gURLBar.value != ""
       ) {
-        return;
-      }
-
-      // The tab that initiated the tip might not be in the same window
-      // as the one that is currently at the top. Only apply this search
-      // tip to a tab showing a search term.
-      if (tip == TIPS.PERSIST && !window.gBrowser.selectedBrowser.searchTerms) {
         return;
       }
 
@@ -460,22 +389,6 @@ class ProviderSearchTips extends UrlbarProvider {
         return;
       }
 
-      // Don't show a tip if a request is in progress, and the URI associated
-      // with the request differs from the URI that triggered the search tip.
-      // One contraint with this approach is related to Bug 1797748: SERPs
-      // that use the History API to navigate between views will call
-      // onLocationChange without a request, and thus, no originalUri is
-      // available to check against, so the search tip and search terms may
-      // show on search pages outside of the default SERP.
-      let { documentRequest } = window.gBrowser.selectedBrowser.webProgress;
-      if (
-        documentRequest instanceof Ci.nsIChannel &&
-        documentRequest.originalURI?.spec != originalUri?.spec &&
-        (!isNewtab || originalUri)
-      ) {
-        return;
-      }
-
       // At this point, we're showing a tip.
       this.disableTipsForCurrentSession = true;
 
@@ -484,10 +397,8 @@ class ProviderSearchTips extends UrlbarProvider {
 
       this.currentTip = tip;
 
-      let value =
-        tip == TIPS.PERSIST ? window.gBrowser.selectedBrowser.searchTerms : "";
-      window.gURLBar.search(value, { focus: tip == TIPS.ONBOARD });
-    }, tipDelay);
+      window.gURLBar.search("", { focus: tip == TIPS.ONBOARD });
+    }, SHOW_TIP_DELAY_MS);
   }
 }
 
@@ -559,7 +470,7 @@ async function isBrowserShowingNotification(window) {
  * @param {string} urlStr
  *   The URL to check, in string form.
  *
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
 async function isDefaultEngineHomepage(urlStr) {
   let defaultEngine = await Services.search.getDefault();
@@ -572,11 +483,8 @@ async function isDefaultEngineHomepage(urlStr) {
     return false;
   }
 
-  // The URL object throws if the string isn't a valid URL.
-  let url;
-  try {
-    url = new URL(urlStr);
-  } catch (e) {
+  let url = URL.parse(urlStr);
+  if (!url) {
     return false;
   }
 

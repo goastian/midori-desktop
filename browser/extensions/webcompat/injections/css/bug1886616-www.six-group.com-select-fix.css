@@ -10,6 +10,6 @@
  * The page is hiding CSS content, which is not interoperable. In this
  * case, it causes their select dropdown's values to be hidden.
  */
- select {
-    content: normal;
-  }
+select {
+  content: normal;
+}

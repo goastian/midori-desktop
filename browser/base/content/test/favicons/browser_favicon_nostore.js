@@ -2,7 +2,8 @@
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 
 // Test that a favicon with Cache-Control: no-store is not stored in Places.
-// Also tests that favicons added after pageshow are not stored.
+// Also tests that favicons added after pageshow are not stored, unless they
+// are root icons.
 
 const TEST_SITE = "http://example.net";
 const ICON_URL =
@@ -30,44 +31,11 @@ add_task(async function browser_loader() {
   // Ensure the favicon has not been stored.
   /* eslint-disable mozilla/no-arbitrary-setTimeout */
   await new Promise(resolve => setTimeout(resolve, 1000));
-  await new Promise((resolve, reject) => {
-    PlacesUtils.favicons.getFaviconURLForPage(
-      Services.io.newURI(PAGE_URL),
-      foundIconURI => {
-        if (foundIconURI) {
-          reject(new Error("An icon has been stored " + foundIconURI.spec));
-        }
-        resolve();
-      }
-    );
-  });
+  let favicon = await PlacesUtils.favicons.getFaviconForPage(
+    Services.io.newURI(PAGE_URL)
+  );
+  Assert.ok(!favicon);
   BrowserTestUtils.removeTab(tab);
-});
-
-add_task(async function places_loader() {
-  await cleanup();
-
-  // Ensure the favicon is not stored even if Places is directly invoked.
-  await PlacesTestUtils.addVisits(PAGE_URL);
-  let faviconData = new Map();
-  faviconData.set(PAGE_URL, ICON_URL);
-  // We can't wait for the promise due to bug 740457, so we race with a timer.
-  await Promise.race([
-    PlacesTestUtils.addFavicons(faviconData),
-    /* eslint-disable mozilla/no-arbitrary-setTimeout */
-    new Promise(resolve => setTimeout(resolve, 1000)),
-  ]);
-  await new Promise((resolve, reject) => {
-    PlacesUtils.favicons.getFaviconURLForPage(
-      Services.io.newURI(PAGE_URL),
-      foundIconURI => {
-        if (foundIconURI) {
-          reject(new Error("An icon has been stored " + foundIconURI.spec));
-        }
-        resolve();
-      }
-    );
-  });
 });
 
 async function later_addition(iconUrl) {
@@ -93,17 +61,10 @@ async function later_addition(iconUrl) {
   // Ensure the favicon has not been stored.
   /* eslint-disable mozilla/no-arbitrary-setTimeout */
   await new Promise(resolve => setTimeout(resolve, 1000));
-  await new Promise((resolve, reject) => {
-    PlacesUtils.favicons.getFaviconURLForPage(
-      Services.io.newURI(PAGE_URL),
-      foundIconURI => {
-        if (foundIconURI) {
-          reject(new Error("An icon has been stored " + foundIconURI.spec));
-        }
-        resolve();
-      }
-    );
-  });
+  let favicon = await PlacesUtils.favicons.getFaviconForPage(
+    Services.io.newURI(PAGE_URL)
+  );
+  Assert.ok(!favicon);
   BrowserTestUtils.removeTab(tab);
 }
 
@@ -152,15 +113,55 @@ add_task(async function root_icon_stored() {
     },
     async function () {
       await TestUtils.waitForCondition(async () => {
-        let uri = await new Promise(resolve =>
-          PlacesUtils.favicons.getFaviconURLForPage(
-            Services.io.newURI("http://www.nostore.com/page"),
-            resolve
-          )
+        let favicon = await PlacesUtils.favicons.getFaviconForPage(
+          Services.io.newURI("http://www.nostore.com/page")
         );
-        return uri?.spec == "http://www.nostore.com/favicon.ico";
+        return favicon?.uri.spec == "http://www.nostore.com/favicon.ico";
       }, "wait for the favicon to be stored");
       Assert.ok(await noStorePromise, "Should have received no-store header");
+    }
+  );
+});
+
+add_task(async function root_icon_after_pageshow_stored() {
+  XPCShellContentUtils.ensureInitialized(this);
+  let server = XPCShellContentUtils.createHttpServer({
+    hosts: ["rootafterpageshow.com"],
+  });
+  server.registerFile(
+    "/favicon.ico",
+    new FileUtils.File(
+      PathUtils.join(
+        Services.dirsvc.get("CurWorkD", Ci.nsIFile).path,
+        "browser",
+        "browser",
+        "base",
+        "content",
+        "test",
+        "favicons",
+        "no-store.png"
+      )
+    )
+  );
+  server.registerPathHandler("/page", (request, response) => {
+    response.write(`<html><body>
+      <link rel="shortcut icon" href="/favicon.ico">
+      A page with root icon in body.
+      </body></html>`);
+  });
+
+  await BrowserTestUtils.withNewTab(
+    {
+      gBrowser,
+      url: "http://rootafterpageshow.com/page",
+    },
+    async function () {
+      await TestUtils.waitForCondition(async () => {
+        let favicon = await PlacesUtils.favicons.getFaviconForPage(
+          Services.io.newURI("http://rootafterpageshow.com/page")
+        );
+        return favicon?.uri.spec == "http://rootafterpageshow.com/favicon.ico";
+      }, "wait for the favicon to be stored");
     }
   );
 });

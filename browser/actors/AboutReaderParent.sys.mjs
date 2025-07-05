@@ -8,7 +8,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   PageActions: "resource:///modules/PageActions.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
+  ReaderMode: "moz-src:///toolkit/components/reader/ReaderMode.sys.mjs",
 });
 
 // A set of all of the AboutReaderParent actors that exist.
@@ -101,25 +101,13 @@ export class AboutReaderParent extends JSWindowActorParent {
           let preferredWidth = message.data.preferredWidth || 0;
           let uri = Services.io.newURI(message.data.url);
 
-          let result = await new Promise(resolve => {
-            lazy.PlacesUtils.favicons.getFaviconURLForPage(
-              uri,
-              iconUri => {
-                if (iconUri) {
-                  resolve({
-                    url: message.data.url,
-                    faviconUrl: iconUri.spec,
-                  });
-                } else {
-                  resolve(null);
-                }
-              },
-              preferredWidth
-            );
-          });
+          let result = await lazy.PlacesUtils.favicons.getFaviconForPage(
+            uri,
+            preferredWidth
+          );
 
           this.callListeners(message);
-          return result;
+          return result && { url: uri.spec, faviconUrl: result.uri.spec };
         } catch (ex) {
           console.error(
             "Error requesting favicon URL for about:reader content: ",
@@ -211,13 +199,6 @@ export class AboutReaderParent extends JSWindowActorParent {
   static forceShowReaderIcon(browser) {
     browser.isArticle = true;
     AboutReaderParent.updateReaderButton(browser);
-  }
-
-  static buttonClick(event) {
-    if (event.button != 0) {
-      return;
-    }
-    AboutReaderParent.toggleReaderMode(event);
   }
 
   static toggleReaderMode(event) {

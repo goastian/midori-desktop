@@ -5,15 +5,15 @@
 
 // Test for the following data of engagement telemetry.
 // - selected_result
-// - selected_result_subtype
 // - selected_position
 // - provider
 // - results
+// - actions
 
 ChromeUtils.defineESModuleGetters(this, {
   UrlbarProviderClipboard:
     "resource:///modules/UrlbarProviderClipboard.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
 });
 
 // This test has many subtests and can time out in verify mode.
@@ -31,7 +31,6 @@ add_task(async function selected_result_autofill_about() {
     assertEngagementTelemetry([
       {
         selected_result: "autofill_about",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "Autofill",
         results: "autofill_about",
@@ -54,7 +53,6 @@ add_task(async function selected_result_autofill_adaptive() {
     assertEngagementTelemetry([
       {
         selected_result: "autofill_adaptive",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "Autofill",
         results: "autofill_adaptive",
@@ -75,7 +73,6 @@ add_task(async function selected_result_autofill_origin() {
     assertEngagementTelemetry([
       {
         selected_result: "autofill_origin",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "Autofill",
         results: "autofill_origin,history",
@@ -94,7 +91,6 @@ add_task(async function selected_result_autofill_url() {
     assertEngagementTelemetry([
       {
         selected_result: "autofill_url",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "Autofill",
         results: "autofill_url",
@@ -105,6 +101,9 @@ add_task(async function selected_result_autofill_url() {
 
 add_task(async function selected_result_bookmark() {
   await doTest(async () => {
+    await SpecialPowers.pushPrefEnv({
+      set: [["browser.urlbar.secondaryActions.featureGate", false]],
+    });
     await PlacesUtils.bookmarks.insert({
       parentGuid: PlacesUtils.bookmarks.unfiledGuid,
       url: "https://example.com/bookmark",
@@ -118,7 +117,6 @@ add_task(async function selected_result_bookmark() {
     assertEngagementTelemetry([
       {
         selected_result: "bookmark",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "Places",
         results: "search_engine,bookmark",
@@ -142,7 +140,6 @@ add_task(async function selected_result_history() {
     assertEngagementTelemetry([
       {
         selected_result: "history",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "Places",
         results: "search_engine,history",
@@ -166,7 +163,6 @@ add_task(async function selected_result_keyword() {
     assertEngagementTelemetry([
       {
         selected_result: "keyword",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "BookmarkKeywords",
         results: "keyword",
@@ -185,7 +181,6 @@ add_task(async function selected_result_search_engine() {
     assertEngagementTelemetry([
       {
         selected_result: "search_engine",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "HeuristicFallback",
         results: "search_engine",
@@ -210,7 +205,6 @@ add_task(async function selected_result_search_suggest() {
     assertEngagementTelemetry([
       {
         selected_result: "search_suggest",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "SearchSuggestions",
         results: "search_engine,search_suggest,search_suggest",
@@ -239,7 +233,6 @@ add_task(async function selected_result_search_history() {
     assertEngagementTelemetry([
       {
         selected_result: "search_history",
-        selected_result_subtype: "",
         selected_position: 3,
         provider: "SearchSuggestions",
         results: "search_engine,search_history,search_history",
@@ -258,7 +251,6 @@ add_task(async function selected_result_url() {
     assertEngagementTelemetry([
       {
         selected_result: "url",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "HeuristicFallback",
         results: "url",
@@ -268,10 +260,6 @@ add_task(async function selected_result_url() {
 });
 
 add_task(async function selected_result_tab() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.secondaryActions.featureGate", false]],
-  });
-
   const tab = BrowserTestUtils.addTab(gBrowser, "https://example.com/");
 
   await doTest(async () => {
@@ -283,7 +271,6 @@ add_task(async function selected_result_tab() {
     assertEngagementTelemetry([
       {
         selected_result: "tab",
-        selected_result_subtype: "",
         selected_position: 4,
         provider: "Places",
         results: "search_engine,search_suggest,search_suggest,tab",
@@ -306,7 +293,6 @@ add_task(async function selected_result_remote_tab() {
     assertEngagementTelemetry([
       {
         selected_result: "remote_tab",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "RemoteTabs",
         results: "search_engine,remote_tab",
@@ -328,7 +314,6 @@ add_task(async function selected_result_addon() {
     assertEngagementTelemetry([
       {
         selected_result: "addon",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "Omnibox",
         results: "addon",
@@ -363,7 +348,6 @@ add_task(async function selected_result_tab_to_search() {
     assertEngagementTelemetry([
       {
         selected_result: "tab_to_search",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "TabToSearch",
         results: "search_engine,tab_to_search,history",
@@ -384,7 +368,6 @@ add_task(async function selected_result_top_site() {
     assertEngagementTelemetry([
       {
         selected_result: "top_site",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "UrlbarProviderTopSites",
         results: "top_site",
@@ -408,7 +391,6 @@ add_task(async function selected_result_calc() {
     assertEngagementTelemetry([
       {
         selected_result: "calc",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "calculator",
         results: "search_engine,calc",
@@ -438,7 +420,6 @@ add_task(async function selected_result_clipboard() {
     assertEngagementTelemetry([
       {
         selected_result: "clipboard",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "UrlbarProviderClipboard",
         results: "clipboard",
@@ -466,7 +447,6 @@ add_task(async function selected_result_unit() {
     assertEngagementTelemetry([
       {
         selected_result: "unit",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UnitConversion",
         results: "search_engine,unit",
@@ -477,59 +457,10 @@ add_task(async function selected_result_unit() {
   await SpecialPowers.popPrefEnv();
 });
 
-add_task(async function selected_result_rs_adm_sponsored() {
-  const cleanupQuickSuggest = await ensureQuickSuggestInit({
-    prefs: [["quicksuggest.rustEnabled", false]],
-  });
-
-  await doTest(async () => {
-    await openPopup("sponsored");
-    await selectRowByURL("https://example.com/sponsored");
-    await doEnter();
-
-    assertEngagementTelemetry([
-      {
-        selected_result: "rs_adm_sponsored",
-        selected_result_subtype: "",
-        selected_position: 2,
-        provider: "UrlbarProviderQuickSuggest",
-        results: "search_engine,rs_adm_sponsored",
-      },
-    ]);
-  });
-
-  await cleanupQuickSuggest();
-});
-
-add_task(async function selected_result_rs_adm_nonsponsored() {
-  const cleanupQuickSuggest = await ensureQuickSuggestInit({
-    prefs: [["quicksuggest.rustEnabled", false]],
-  });
-
-  await doTest(async () => {
-    await openPopup("nonsponsored");
-    await selectRowByURL("https://example.com/nonsponsored");
-    await doEnter();
-
-    assertEngagementTelemetry([
-      {
-        selected_result: "rs_adm_nonsponsored",
-        selected_result_subtype: "",
-        selected_position: 2,
-        provider: "UrlbarProviderQuickSuggest",
-        results: "search_engine,rs_adm_nonsponsored",
-      },
-    ]);
-  });
-
-  await cleanupQuickSuggest();
-});
-
 add_task(async function selected_result_input_field() {
   const expected = [
     {
       selected_result: "input_field",
-      selected_result_subtype: "",
       selected_position: 0,
       provider: null,
       results: "",
@@ -557,18 +488,15 @@ add_task(async function selected_result_weather() {
   const cleanupQuickSuggest = await ensureQuickSuggestInit();
   await MerinoTestUtils.initWeather();
 
-  let provider = UrlbarPrefs.get("quickSuggestRustEnabled")
-    ? "UrlbarProviderQuickSuggest"
-    : "Weather";
+  let provider = "UrlbarProviderQuickSuggest";
   await doTest(async () => {
-    await openPopup(MerinoTestUtils.WEATHER_KEYWORD);
+    await openPopup("weather");
     await selectRowByProvider(provider);
     await doEnter();
 
     assertEngagementTelemetry([
       {
         selected_result: "weather",
-        selected_result_subtype: "",
         selected_position: 2,
         provider,
         results: "search_engine,weather",
@@ -603,7 +531,6 @@ add_task(async function selected_result_navigational() {
     assertEngagementTelemetry([
       {
         selected_result: "merino_top_picks",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UrlbarProviderQuickSuggest",
         results: "search_engine,merino_top_picks",
@@ -638,7 +565,6 @@ add_task(async function selected_result_dynamic_wikipedia() {
     assertEngagementTelemetry([
       {
         selected_result: "merino_wikipedia",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UrlbarProviderQuickSuggest",
         results: "search_engine,merino_wikipedia",
@@ -677,7 +603,6 @@ add_task(async function selected_result_search_shortcut_button() {
     assertEngagementTelemetry([
       {
         selected_result: "search_shortcut_button",
-        selected_result_subtype: "",
         selected_position: 0,
         provider: null,
         results: "search_engine",
@@ -698,76 +623,46 @@ add_task(async function selected_result_trending() {
   });
 
   let defaultEngine = await Services.search.getDefault();
-  let extension;
-  if (!SearchUtils.newSearchConfigEnabled) {
-    extension = await SearchTestUtils.installSearchExtension(
-      {
+
+  await SearchTestUtils.updateRemoteSettingsConfig([
+    {
+      recordType: "engine",
+      identifier: "mozengine",
+      base: {
         name: "mozengine",
-        search_url: "https://example.org/",
+        urls: {
+          search: {
+            base: "https://example.org/",
+            searchTermParamName: "q",
+          },
+          trending: {
+            base: "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
+            method: "GET",
+          },
+        },
       },
-      { setAsDefault: true, skipUnload: true }
-    );
-  }
+      variants: [
+        {
+          environment: { allRegionsAndLocales: true },
+        },
+      ],
+    },
+    {
+      recordType: "defaultEngines",
+      globalDefault: "mozengine",
+      specificDefaults: [],
+    },
+    {
+      recordType: "engineOrders",
+      orders: [],
+    },
+  ]);
 
-  SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.updateRemoteSettingsConfig(
-    SearchUtils.newSearchConfigEnabled
-      ? [
-          {
-            recordType: "engine",
-            identifier: "mozengine",
-            base: {
-              name: "mozengine",
-              urls: {
-                search: {
-                  base: "https://example.org/",
-                  searchTermParamName: "q",
-                },
-                trending: {
-                  base: "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
-                  method: "GET",
-                },
-              },
-            },
-            variants: [
-              {
-                environment: { allRegionsAndLocales: true },
-              },
-            ],
-          },
-          {
-            recordType: "defaultEngines",
-            globalDefault: "mozengine",
-            specificDefaults: [],
-          },
-          {
-            recordType: "engineOrders",
-            orders: [],
-          },
-        ]
-      : [
-          {
-            webExtension: { id: "mozengine@tests.mozilla.org" },
-            urls: {
-              trending: {
-                fullPath:
-                  "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
-                query: "",
-              },
-            },
-            appliesTo: [{ included: { everywhere: true } }],
-            default: "yes",
-          },
-        ]
+  let engine = Services.search.getEngineByName("mozengine");
+  await Services.search.setDefault(
+    engine,
+    Ci.nsISearchService.CHANGE_REASON_UNKNOWN
   );
-
-  if (SearchUtils.newSearchConfigEnabled) {
-    let engine = Services.search.getEngineByName("mozengine");
-    await Services.search.setDefault(
-      engine,
-      Ci.nsISearchService.CHANGE_REASON_UNKNOWN
-    );
-  }
 
   await doTest(async () => {
     await openPopup("");
@@ -777,7 +672,6 @@ add_task(async function selected_result_trending() {
     assertEngagementTelemetry([
       {
         selected_result: "trending_search",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "SearchSuggestions",
         results: "trending_search",
@@ -785,12 +679,7 @@ add_task(async function selected_result_trending() {
     ]);
   });
 
-  if (SearchUtils.newSearchConfigEnabled) {
-    let engine = Services.search.getEngineByName("mozengine");
-    await Services.search.removeEngine(engine);
-  } else {
-    await extension.unload();
-  }
+  await Services.search.removeEngine(engine);
 
   await Services.search.setDefault(
     defaultEngine,
@@ -818,82 +707,52 @@ add_task(async function selected_result_trending_rich() {
   });
 
   let defaultEngine = await Services.search.getDefault();
-  let extension;
-  if (!SearchUtils.newSearchConfigEnabled) {
-    extension = await SearchTestUtils.installSearchExtension(
-      {
-        name: "mozengine",
-        search_url: "https://example.org/",
-      },
-      { setAsDefault: true, skipUnload: true }
-    );
-  }
 
-  SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.updateRemoteSettingsConfig(
-    SearchUtils.newSearchConfigEnabled
-      ? [
-          {
-            recordType: "engine",
-            identifier: "mozengine",
-            base: {
-              name: "mozengine",
-              urls: {
-                search: {
-                  base: "https://example.org/",
-                  searchTermParamName: "q",
-                },
-                trending: {
-                  base: "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
-                  method: "GET",
-                  params: [
-                    {
-                      name: "richsuggestions",
-                      value: "true",
-                    },
-                  ],
-                },
-              },
-            },
-            variants: [
+  await SearchTestUtils.updateRemoteSettingsConfig([
+    {
+      recordType: "engine",
+      identifier: "mozengine",
+      base: {
+        name: "mozengine",
+        urls: {
+          search: {
+            base: "https://example.org/",
+            searchTermParamName: "q",
+          },
+          trending: {
+            base: "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
+            method: "GET",
+            params: [
               {
-                environment: { allRegionsAndLocales: true },
+                name: "richsuggestions",
+                value: "true",
               },
             ],
           },
-          {
-            recordType: "defaultEngines",
-            globalDefault: "mozengine",
-            specificDefaults: [],
-          },
-          {
-            recordType: "engineOrders",
-            orders: [],
-          },
-        ]
-      : [
-          {
-            webExtension: { id: "mozengine@tests.mozilla.org" },
-            urls: {
-              trending: {
-                fullPath:
-                  "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs?richsuggestions=true",
-                query: "",
-              },
-            },
-            appliesTo: [{ included: { everywhere: true } }],
-            default: "yes",
-          },
-        ]
-  );
+        },
+      },
+      variants: [
+        {
+          environment: { allRegionsAndLocales: true },
+        },
+      ],
+    },
+    {
+      recordType: "defaultEngines",
+      globalDefault: "mozengine",
+      specificDefaults: [],
+    },
+    {
+      recordType: "engineOrders",
+      orders: [],
+    },
+  ]);
 
-  if (SearchUtils.newSearchConfigEnabled) {
-    let engine = Services.search.getEngineByName("mozengine");
-    await Services.search.setDefault(
-      engine,
-      Ci.nsISearchService.CHANGE_REASON_UNKNOWN
-    );
-  }
+  let engine = Services.search.getEngineByName("mozengine");
+  await Services.search.setDefault(
+    engine,
+    Ci.nsISearchService.CHANGE_REASON_UNKNOWN
+  );
 
   await doTest(async () => {
     await openPopup("");
@@ -903,7 +762,6 @@ add_task(async function selected_result_trending_rich() {
     assertEngagementTelemetry([
       {
         selected_result: "trending_search_rich",
-        selected_result_subtype: "",
         selected_position: 1,
         provider: "SearchSuggestions",
         results: "trending_search_rich",
@@ -911,12 +769,7 @@ add_task(async function selected_result_trending_rich() {
     ]);
   });
 
-  if (SearchUtils.newSearchConfigEnabled) {
-    let engine = Services.search.getEngineByName("mozengine");
-    await Services.search.removeEngine(engine);
-  } else {
-    await extension.unload();
-  }
+  await Services.search.removeEngine(engine);
 
   await Services.search.setDefault(
     defaultEngine,
@@ -967,7 +820,6 @@ add_task(async function selected_result_addons() {
     assertEngagementTelemetry([
       {
         selected_result: "merino_amo",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UrlbarProviderQuickSuggest",
         results: "search_engine,merino_amo",
@@ -980,19 +832,16 @@ add_task(async function selected_result_addons() {
 });
 
 add_task(async function selected_result_rust_adm_sponsored() {
-  const cleanupQuickSuggest = await ensureQuickSuggestInit({
-    prefs: [["quicksuggest.rustEnabled", true]],
-  });
+  const cleanupQuickSuggest = await ensureQuickSuggestInit();
 
   await doTest(async () => {
-    await openPopup("sponsored");
-    await selectRowByURL("https://example.com/sponsored");
+    await openPopup("amp");
+    await selectRowByURL("https://example.com/amp");
     await doEnter();
 
     assertEngagementTelemetry([
       {
         selected_result: "rust_adm_sponsored",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UrlbarProviderQuickSuggest",
         results: "search_engine,rust_adm_sponsored",
@@ -1004,19 +853,16 @@ add_task(async function selected_result_rust_adm_sponsored() {
 });
 
 add_task(async function selected_result_rust_adm_nonsponsored() {
-  const cleanupQuickSuggest = await ensureQuickSuggestInit({
-    prefs: [["quicksuggest.rustEnabled", true]],
-  });
+  const cleanupQuickSuggest = await ensureQuickSuggestInit();
 
   await doTest(async () => {
-    await openPopup("nonsponsored");
-    await selectRowByURL("https://example.com/nonsponsored");
+    await openPopup("wikipedia");
+    await selectRowByURL("https://example.com/wikipedia");
     await doEnter();
 
     assertEngagementTelemetry([
       {
         selected_result: "rust_adm_nonsponsored",
-        selected_result_subtype: "",
         selected_position: 2,
         provider: "UrlbarProviderQuickSuggest",
         results: "search_engine,rust_adm_nonsponsored",
@@ -1025,4 +871,31 @@ add_task(async function selected_result_rust_adm_nonsponsored() {
   });
 
   await cleanupQuickSuggest();
+});
+
+add_task(async function selected_result_action() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", true]],
+  });
+  await doTest(async () => {
+    await openPopup("settings");
+    EventUtils.synthesizeKey("KEY_Tab");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await BrowserTestUtils.waitForCondition(
+      () =>
+        gBrowser.selectedTab.linkedBrowser.currentURI.spec ==
+        "about:preferences"
+    );
+
+    assertEngagementTelemetry([
+      {
+        selected_result: "action",
+        selected_position: 2,
+        provider: "UrlbarProviderGlobalActions",
+        results: "search_engine,action",
+        actions: "none,settings",
+      },
+    ]);
+  });
+  await SpecialPowers.popPrefEnv();
 });

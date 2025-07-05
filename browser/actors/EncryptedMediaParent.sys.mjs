@@ -109,6 +109,7 @@ export class EncryptedMediaParent extends JSWindowActorParent {
         if (keySystem != "org.w3.clearkey") {
           this.showPopupNotificationForSuccess(browser, keySystem);
         }
+        this.reportEMEDecryptionProbe();
         // ... and bail!
         return;
 
@@ -203,12 +204,13 @@ export class EncryptedMediaParent extends JSWindowActorParent {
       return;
     }
 
-    let msgPrefix = "eme-notifications-drm-content-playing";
-    let msgId = msgPrefix;
-    let manageLabelId = msgPrefix + "-manage";
-    let manageAccessKeyId = msgPrefix + "-manage-accesskey";
-    let dismissLabelId = msgPrefix + "-dismiss";
-    let dismissAccessKeyId = msgPrefix + "-dismiss-accesskey";
+    let msgId = "eme-notifications-drm-content-playing";
+    let manageLabelId = "eme-notifications-drm-content-playing-manage";
+    let manageAccessKeyId =
+      "eme-notifications-drm-content-playing-manage-accesskey";
+    let dismissLabelId = "eme-notifications-drm-content-playing-dismiss";
+    let dismissAccessKeyId =
+      "eme-notifications-drm-content-playing-dismiss-accesskey";
 
     let [
       message,
@@ -272,5 +274,48 @@ export class EncryptedMediaParent extends JSWindowActorParent {
       secondaryActions,
       options
     );
+  }
+
+  async reportEMEDecryptionProbe() {
+    let hasHardwareDecryption = false;
+    let hasSoftwareClearlead = false;
+    let hasHardwareClearlead = false;
+    let hasHdcp22Plus = false;
+    let hasWMF = false;
+
+    // Get CDM capabilities from the GMP process.
+    let infos = [];
+    let cdmInfo = await ChromeUtils.getGMPContentDecryptionModuleInformation();
+    infos.push(...cdmInfo);
+
+    // Get CDM capabilities from the MFCDM process, if exists.
+    if (ChromeUtils.getWMFContentDecryptionModuleInformation !== undefined) {
+      hasWMF = true;
+      cdmInfo = await ChromeUtils.getWMFContentDecryptionModuleInformation();
+      infos.push(...cdmInfo);
+    }
+
+    for (let info of infos) {
+      if (info.isHardwareDecryption) {
+        hasHardwareDecryption = true;
+      }
+      if (info.clearlead) {
+        if (info.isHardwareDecryption) {
+          hasHardwareClearlead = true;
+        } else {
+          hasSoftwareClearlead = true;
+        }
+      }
+      if (info.isHDCP22Compatible) {
+        hasHdcp22Plus = true;
+      }
+    }
+    Glean.mediadrm.decryption.has_hardware_decryption.set(
+      hasHardwareDecryption
+    );
+    Glean.mediadrm.decryption.has_hardware_clearlead.set(hasHardwareClearlead);
+    Glean.mediadrm.decryption.has_software_clearlead.set(hasSoftwareClearlead);
+    Glean.mediadrm.decryption.has_hdcp22_plus.set(hasHdcp22Plus);
+    Glean.mediadrm.decryption.has_wmf.set(hasWMF);
   }
 }

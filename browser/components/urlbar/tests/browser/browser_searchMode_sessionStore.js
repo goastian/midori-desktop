@@ -27,6 +27,11 @@ const URL = "http://example.com/";
 const INITIAL_URL = "about:newtab";
 
 // The following tasks make sure non-null search mode is restored.
+add_setup(async function () {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
+  });
+});
 
 add_task(async function initialPageOnRestore() {
   await doTest({
@@ -319,6 +324,8 @@ async function withNewWindow(urls, callback) {
  *
  * @param {string} expectedRestoredURL
  *   The URL you expect will be restored in the selected browser.
+ * @returns {object}
+ *   The reopened window.
  */
 async function restoreWindow(expectedRestoredURL) {
   let winPromise = BrowserTestUtils.waitForNewWindow();

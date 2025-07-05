@@ -10,16 +10,29 @@ tabbrowser-menuitem-close-tab =
 tabbrowser-menuitem-close =
     .label = Close
 
-# Displayed as a tooltip on container tabs
+# Displayed within the tooltip on tabs inside of a tab group.
 # Variables:
-#   $title (String): the title of the current tab.
-#   $containerName (String): the name of the current container.
-tabbrowser-container-tab-title = { $title } — { $containerName }
+#   $tabGroupName (String): the user-defined name of the current tab group.
+tabbrowser-tab-tooltip-tab-group = { $tabGroupName }
 
+# Displayed within the tooltip on tabs in a container.
+# Variables:
+#   $containerName (String): the name of the current container.
+tabbrowser-tab-tooltip-container = { $containerName }
+
+# Displayed within the tooltip on tabs inside of a tab group if the tab is also in a container.
+# Variables:
+#   $tabGroupName (String): the user-defined name of the current tab group.
+#   $containerName (String): the name of the current container.
+tabbrowser-tab-tooltip-tab-group-container = { $tabGroupName } — { $containerName }
+
+# This text serves as an on-screen tooltip as well as an accessible name for
+# the "X" button that is shown on the active tab or, when multiple tabs are
+# selected, to all their "X" buttons.
 # Variables:
 #   $tabCount (Number): The number of tabs that will be closed.
-tabbrowser-close-tabs-tooltip =
-    .label =
+tabbrowser-close-tabs-button =
+    .tooltiptext =
         { $tabCount ->
             [one] Close tab
            *[other] Close { $tabCount } tabs
@@ -64,6 +77,16 @@ tabbrowser-unblock-tab-audio-tooltip =
            *[other] Play { $tabCount } tabs
         }
 
+## Tooltips for tab audio control
+
+tabbrowser-unmute-tab-audio-aria-label =
+    .aria-label = Unmute tab
+tabbrowser-mute-tab-audio-aria-label =
+    .aria-label = Mute tab
+# Used to unblock a tab with audio from autoplaying
+tabbrowser-unblock-tab-audio-aria-label =
+    .aria-label = Play tab
+
 ## Confirmation dialog when closing a window with more than one tab open,
 ## or when quitting when only one window is open.
 
@@ -75,7 +98,7 @@ tabbrowser-confirm-close-tabs-title =
        *[other] Close { $tabCount } tabs?
     }
 tabbrowser-confirm-close-tabs-button = Close tabs
-tabbrowser-confirm-close-tabs-checkbox = Confirm before closing multiple tabs
+tabbrowser-ask-close-tabs-checkbox = Ask before closing multiple tabs
 
 ## Confirmation dialog when quitting using the menu and multiple windows are open.
 
@@ -100,7 +123,18 @@ tabbrowser-confirm-close-tabs-with-key-title = Close window and quit { -brand-sh
 tabbrowser-confirm-close-tabs-with-key-button = Quit { -brand-short-name }
 # Variables:
 #   $quitKey (String): the text of the keyboard shortcut for quitting.
-tabbrowser-confirm-close-tabs-with-key-checkbox = Confirm before quitting with { $quitKey }
+tabbrowser-ask-close-tabs-with-key-checkbox = Ask before quitting with { $quitKey }
+
+## Confirmation dialog when quitting using the keyboard shortcut (Ctrl/Cmd+Q)
+## and browser.warnOnQuitShortcut is true.
+
+tabbrowser-confirm-close-warn-shortcut-title = Quit { -brand-short-name } or close current tab?
+tabbrowser-confirm-close-windows-warn-shortcut-button =
+    { PLATFORM() ->
+        [windows] Exit { -brand-short-name }
+       *[other] Quit { -brand-short-name }
+    }
+tabbrowser-confirm-close-tab-only-button = Close current tab
 
 ## Confirmation dialog when opening multiple tabs simultaneously
 
@@ -122,8 +156,10 @@ tabbrowser-confirm-caretbrowsing-checkbox = Do not show me this dialog box again
 
 ## Confirmation dialog for closing all duplicate tabs
 
-tabbrowser-confirm-close-duplicate-tabs-title = Heads up
-tabbrowser-confirm-close-duplicate-tabs-text = We’ll keep open the last active tab
+tabbrowser-confirm-close-all-duplicate-tabs-title = Close duplicate tabs?
+tabbrowser-confirm-close-all-duplicate-tabs-text = We’ll close duplicate tabs in this window. The last active
+ tab will stay open.
+tabbrowser-confirm-close-all-duplicate-tabs-button-closetabs = Close tabs
 
 ##
 
@@ -165,6 +201,9 @@ tabbrowser-ctrl-tab-list-all-tabs =
         }
 
 ## Tab manager menu buttons
+## Variables:
+##  $tabGroupName (String): The name of the tab group. See also tab-group-name-default, which will be
+##                          used when the group's name is empty.
 
 tabbrowser-manager-mute-tab =
   .tooltiptext = Mute tab
@@ -172,3 +211,130 @@ tabbrowser-manager-unmute-tab =
   .tooltiptext = Unmute tab
 tabbrowser-manager-close-tab =
   .tooltiptext = Close tab
+# This is for tab groups that have been "saved and closed" (see tab-group-editor-action-save). It does
+# not include "deleted" tab groups (see tab-group-editor-action-delete).
+tabbrowser-manager-closed-tab-group =
+  .label = { $tabGroupName }
+  .tooltiptext = { $tabGroupName } — Closed
+tabbrowser-manager-current-window-tab-group =
+  .label = { $tabGroupName }
+  .tooltiptext = { $tabGroupName } — Current window
+
+## Tab Groups
+
+tab-group-name-default = Unnamed Group
+tab-group-editor-title-create = Create tab group
+tab-group-editor-title-edit = Manage tab group
+tab-group-editor-name-label = Name
+tab-group-editor-name-field =
+  .placeholder = Example: Shopping
+tab-group-editor-cancel =
+  .label = Cancel
+  .accesskey = C
+
+tab-group-editor-color-selector =
+  .aria-label = Tab group color
+tab-group-editor-color-selector2-blue = Blue
+  .title = Blue
+tab-group-editor-color-selector2-purple = Purple
+  .title = Purple
+tab-group-editor-color-selector2-cyan = Cyan
+  .title = Cyan
+tab-group-editor-color-selector2-orange = Orange
+  .title = Orange
+tab-group-editor-color-selector2-yellow = Yellow
+  .title = Yellow
+tab-group-editor-color-selector2-pink = Pink
+  .title = Pink
+tab-group-editor-color-selector2-green = Green
+  .title = Green
+tab-group-editor-color-selector2-gray = Gray
+  .title = Gray
+tab-group-editor-color-selector2-red = Red
+  .title = Red
+
+# Variables:
+#  $tabGroupName (String): The name of the tab group. Defaults to the value
+#                          of tab-group-name-default.
+tab-group-description = { $tabGroupName } — Tab Group
+
+tab-context-unnamed-group =
+    .label = Unnamed group
+
+## Variables:
+##  $tabCount (Number): the number of tabs that are affected by the action.
+
+tab-context-move-tab-to-new-group =
+    .label =
+        { $tabCount ->
+            [1] Add Tab to New Group
+           *[other] Add Tabs to New Group
+        }
+    .accesskey = G
+tab-context-move-tab-to-group =
+    .label =
+        { $tabCount ->
+            [1] Add Tab to Group
+           *[other] Add Tabs to Group
+        }
+    .accesskey = G
+
+tab-group-editor-action-new-tab =
+    .label = New tab in group
+tab-group-editor-action-new-window =
+    .label = Move group to new window
+tab-group-editor-action-save =
+    .label = Save and close group
+tab-group-editor-action-ungroup =
+    .label = Ungroup tabs
+tab-group-editor-action-delete =
+    .label = Delete group
+tab-group-editor-done =
+    .label = Done
+    .accessKey = D
+
+tab-context-reopen-tab-group =
+    .label = Reopen tab group
+
+# Variables:
+#  $groupCount (Number): the number of tab groups that are affected by the action.
+tab-context-ungroup-tab =
+    .label =
+        { $groupCount ->
+            [1] Remove from Group
+           *[other] Remove from Groups
+        }
+    .accesskey = R
+
+## Open/saved tab group context menu
+
+# For right-click context menu use in the "all tabs"/"tab overflow menu" when
+# right-clicking on a tab group that is currently open in one of the user's
+# windows.
+
+# For a tab group open in any window, clicking this will create a new
+# window and move this tab group to that new window.
+tab-group-context-move-to-new-window =
+    .label = Move Group to New Window
+
+# For a tab group open in a different window from the one that the
+# user is using to access the tab group menu, move that tab group into the
+# user's current window.
+tab-group-context-move-to-this-window =
+    .label = Move Group to This Window
+
+# For a tab group that is open in any window, close the tab group and
+# do not save it. For a tab group that is closed but saved by the user, clicking
+# this will forget the saved tab group.
+tab-group-context-delete =
+    .label = Delete Group
+
+# For a saved tab group that is not open in any window, open the tab group
+# in the user's current window.
+tab-group-context-open-saved-group-in-this-window =
+    .label = Open Group in This Window
+
+# For a saved tab group that is not open in any window, create a new window and
+# open the tab group in that window.
+tab-group-context-open-saved-group-in-new-window =
+    .label = Open Group in New Window

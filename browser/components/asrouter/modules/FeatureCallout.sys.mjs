@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -88,12 +86,6 @@ export class FeatureCallout {
 
     this._handlePrefChange = this._handlePrefChange.bind(this);
 
-    XPCOMUtils.defineLazyPreferenceGetter(
-      this,
-      "cfrFeaturesUserPref",
-      "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
-      true
-    );
     this.setupFeatureTourProgress();
 
     // When the window is focused, ensure tour is synced with tours in any other
@@ -192,13 +184,138 @@ export class FeatureCallout {
           this._featureTourProgress = null;
         }
         if (topic === "nsPref:changed") {
-          this._maybeAdvanceScreens();
+          this._advanceOnTourPrefChange();
         }
         break;
     }
   }
 
-  _maybeAdvanceScreens() {
+  /**
+   * @typedef {Object} AdvanceScreensOptions
+   * @property {Boolean|"actionResult"} [behavior] Set to true to take effect
+   *   immediately, or set to "actionResult" to only advance screens after the
+   *   special message action has resolved successfully. "actionResult" requires
+   *   `action.needsAwait` to be true. Defaults to true.
+   * @property {String} [id] The id of the screen to advance to. If both id and
+   *   direction are provided (which they shouldn't be), the id takes priority.
+   *   Either `id` or `direction` is required. Passing `%end%` ends the tour.
+   * @property {Number} [direction] How many screens, and in which direction, to
+   *   advance. Positive integers advance forward, negative integers advance
+   *   backward. Must be an integer. If advancing by the specified number of
+   *   screens would take you beyond the last screen, it will end the tour, just
+   *   like if you used `dismiss: true`. If it's a negative integer that
+   *   advances beyond the first screen, it will stop at the first screen.
+   */
+
+  /** @param {AdvanceScreensOptions} options */
+  _advanceScreens({ id, direction } = {}) {
+    if (!this.currentScreen) {
+      lazy.log.error(
+        `In ${this.location}: Cannot advance screens without a current screen.`
+      );
+      return;
+    }
+    if ((!direction || !Number.isInteger(direction)) && !id) {
+      lazy.log.debug(
+        `In ${this.location}: Cannot advance screens without a valid direction or id.`
+      );
+      return;
+    }
+    if (id === "%end%") {
+      // Special case for ending the tour. When `id` is `%end%`, we should end
+      // the tour and clear the current screen.
+      this.endTour();
+      return;
+    }
+    let nextIndex = -1; // Default to -1 to indicate an invalid index.
+    let currentIndex = this.config.screens.findIndex(
+      screen => screen.id === this.currentScreen.id
+    );
+    if (id) {
+      nextIndex = this.config.screens.findIndex(screen => screen.id === id);
+      if (nextIndex === -1) {
+        lazy.log.debug(
+          `In ${this.location}: Unable to find screen with id: ${id}`
+        );
+        return;
+      }
+      if (nextIndex === currentIndex) {
+        lazy.log.debug(
+          `In ${this.location}: Already on screen with id: ${id}. Not advancing.`
+        );
+        return;
+      }
+    } else {
+      // Calculate the next index based on the current screen and direction.
+      nextIndex = Math.max(0, currentIndex + direction);
+    }
+    if (nextIndex < 0) {
+      // Don't allow going before the first screen.
+      lazy.log.debug(
+        `In ${this.location}: Cannot advance before the first screen.`
+      );
+      return;
+    }
+    if (nextIndex >= this.config.screens.length) {
+      // Allow ending the tour if we would go beyond the last screen.
+      this.endTour();
+      return;
+    }
+
+    this.ready = false;
+    this._container?.classList.toggle(
+      "hidden",
+      this._container?.localName !== "panel"
+    );
+    this._pageEventManager?.emit({
+      type: "touradvance",
+      target: this._container,
+    });
+    const onFadeOut = async () => {
+      this._container?.remove();
+      this.renderObserver?.disconnect();
+      this._removePositionListeners();
+      this._removePanelConflictListeners();
+      this.doc.querySelector(`[src="${BUNDLE_SRC}"]`)?.remove();
+      if (this.message) {
+        const isMessageUnblocked = await lazy.ASRouter.isUnblockedMessage(
+          this.message
+        );
+        if (!isMessageUnblocked) {
+          this.endTour();
+          return;
+        }
+      }
+      let updated = await this._updateConfig(this.message, nextIndex);
+      if (!updated && !this.currentScreen) {
+        this.endTour();
+        return;
+      }
+      let rendering = await this._renderCallout();
+      if (!rendering) {
+        this.endTour();
+      }
+    };
+    if (this._container?.localName === "panel") {
+      this._container.removeEventListener("popuphiding", this);
+      const controller = new AbortController();
+      this._container.addEventListener(
+        "popuphidden",
+        event => {
+          if (event.target === this._container) {
+            controller.abort();
+            onFadeOut();
+          }
+        },
+        { signal: controller.signal }
+      );
+      this._container.hidePopup(true);
+    } else {
+      this.win.setTimeout(onFadeOut, TRANSITION_MS);
+    }
+  }
+
+  _advanceOnTourPrefChange() {
     if (this.doc.visibilityState === "hidden" || !this.featureTourProgress) {
       return;
     }
@@ -219,7 +336,7 @@ export class FeatureCallout {
     let prefVal = this.featureTourProgress;
     // End the tour according to the tour progress pref or if the user disabled
     // contextual feature recommendations.
-    if (prefVal.complete || !this.cfrFeaturesUserPref) {
+    if (prefVal.complete) {
       this.endTour();
     } else if (prefVal.screen !== this.currentScreen?.id) {
       // Pref changes only matter to us insofar as they let us advance an
@@ -263,9 +380,8 @@ export class FeatureCallout {
         this._removePanelConflictListeners();
         this.doc.querySelector(`[src="${BUNDLE_SRC}"]`)?.remove();
         if (nextMessage) {
-          const isMessageUnblocked = await lazy.ASRouter.isUnblockedMessage(
-            nextMessage
-          );
+          const isMessageUnblocked =
+            await lazy.ASRouter.isUnblockedMessage(nextMessage);
           if (!isMessageUnblocked) {
             this.endTour();
             return;
@@ -283,9 +399,17 @@ export class FeatureCallout {
       };
       if (this._container?.localName === "panel") {
         this._container.removeEventListener("popuphiding", this);
-        this._container.addEventListener("popuphidden", onFadeOut, {
-          once: true,
-        });
+        const controller = new AbortController();
+        this._container.addEventListener(
+          "popuphidden",
+          event => {
+            if (event.target === this._container) {
+              controller.abort();
+              onFadeOut();
+            }
+          },
+          { signal: controller.signal }
+        );
         this._container.hidePopup(true);
       } else {
         this.win.setTimeout(onFadeOut, TRANSITION_MS);
@@ -331,33 +455,21 @@ export class FeatureCallout {
         if (!this._container) {
           return;
         }
-        let focusedElement =
-          this.context === "chrome"
-            ? Services.focus.focusedElement
-            : this.doc.activeElement;
-        // If the window has a focused element, let it handle the ESC key instead.
-        if (
-          !focusedElement ||
-          focusedElement === this.doc.body ||
-          (focusedElement === this.browser && this.theme.simulateContent) ||
-          this._container.contains(focusedElement)
-        ) {
-          this.win.AWSendEventTelemetry?.({
-            event: "DISMISS",
-            event_context: {
-              source: `KEY_${event.key}`,
-              page: this.location,
-            },
-            message_id: this.config?.id.toUpperCase(),
-          });
-          this._dismiss();
-          event.preventDefault();
-        }
+        this.win.AWSendEventTelemetry?.({
+          event: "DISMISS",
+          event_context: {
+            source: `KEY_${event.key}`,
+            page: this.location,
+          },
+          message_id: this.config?.id.toUpperCase(),
+        });
+        this._dismiss();
+        event.preventDefault();
         break;
       }
 
       case "visibilitychange":
-        this._maybeAdvanceScreens();
+        this._advanceOnTourPrefChange();
         break;
 
       case "resize":
@@ -518,6 +630,19 @@ export class FeatureCallout {
    */
 
   /**
+   * @typedef {Object} AutoFocusOptions For the optional autofocus feature.
+   * @property {String} [selector] A preferred CSS selector, if you want a
+   *   specific element to be focused. If omitted, the default prioritization
+   *   listed below will be used, based on `use_defaults`.
+   * Default prioritization: primary_button, secondary_button, additional_button
+   *   (excluding pseudo-links), dismiss_button, <input>, any button.
+   * @property {Boolean} [use_defaults] Whether to use the default element
+   *   prioritization. If `selector` is provided and the element can't be found,
+   *   and this is set to false, nothing will be selected. If `selector` is not
+   *   provided, this must be true. Defaults to true.
+   */
+
+  /**
    * @typedef {Object} Anchor
    * @property {String} selector CSS selector for the anchor node.
    * @property {Element} [element] The anchor node resolved from the selector.
@@ -536,6 +661,9 @@ export class FeatureCallout {
    *   [open] style. Buttons do, for example. It's usually similar to :active.
    * @property {Number} [arrow_width] The desired width of the arrow in a number
    *   of pixels. 33.94113 by default (this corresponds to 24px edges).
+   * @property {AutoFocusOptions} [autofocus] Options for the optional autofocus
+   *   feature. Typically omitted, but if provided, an element inside the
+   *   callout will be automatically focused when the callout appears.
    */
 
   /**
@@ -604,12 +732,28 @@ export class FeatureCallout {
           continue;
         }
       }
+      if (selector.includes("::%shadow%")) {
+        let parts = selector.split("::%shadow%");
+        for (let i = 0; i < parts.length; i++) {
+          selector = parts[i].trim();
+          if (i === parts.length - 1) {
+            break;
+          }
+          let el = scope.querySelector(selector);
+          if (!el) {
+            break;
+          }
+          if (el.shadowRoot) {
+            scope = el.shadowRoot;
+          }
+        }
+      }
       let element = scope.querySelector(selector);
       // The element may not be a child of the scope, but the scope itself. For
       // example, if we're anchoring directly to the trigger tab, our selector
       // might look like `%triggerTab%[visuallyselected]`. In this case,
       // querySelector() will return nothing, but matches() will return true.
-      if (!element && scope.matches(selector)) {
+      if (!element && scope.matches?.(selector)) {
         element = scope;
       }
       if (!element) {
@@ -768,7 +912,7 @@ export class FeatureCallout {
       return false;
     }
 
-    const { autohide, padding } = this.currentScreen.content;
+    const { autohide, ignorekeys, padding } = this.currentScreen.content;
     const { panel_position, hide_arrow, no_open_on_anchor, arrow_width } =
       anchor;
     const needsPanel =
@@ -785,13 +929,15 @@ export class FeatureCallout {
         let fragment = this.win.MozXULElement.parseXULToFragment(`<panel
             class="panel-no-padding"
             orient="vertical"
-            ignorekeys="true"
             noautofocus="true"
             flip="slide"
             type="arrow"
+            consumeoutsideclicks="never"
+            norolluponanchor="true"
             position="${panel_position.panel_position_string}"
             ${hide_arrow ? "" : 'show-arrow=""'}
             ${autohide ? "" : 'noautohide="true"'}
+            ${ignorekeys ? 'ignorekeys="true"' : ""}
             ${no_open_on_anchor ? 'no-open-on-anchor=""' : ""}
           />`);
         this._container = fragment.firstElementChild;
@@ -800,7 +946,7 @@ export class FeatureCallout {
         this._container = this.doc.createElement("div");
         this._container?.classList.add("hidden");
       }
-      this._container.classList.add("featureCallout", "callout-arrow");
+      this._container.classList.add("featureCallout");
       if (hide_arrow) {
         this._container.setAttribute("hide-arrow", "permanent");
       } else {
@@ -809,7 +955,7 @@ export class FeatureCallout {
       this._container.id = CONTAINER_ID;
       this._container.setAttribute(
         "aria-describedby",
-        `#${CONTAINER_ID} .welcome-text`
+        "multi-stage-message-welcome-text"
       );
       if (arrow_width) {
         this._container.style.setProperty("--arrow-width", `${arrow_width}px`);
@@ -817,7 +963,21 @@ export class FeatureCallout {
         this._container.style.removeProperty("--arrow-width");
       }
       if (padding) {
-        this._container.style.setProperty("--callout-padding", `${padding}px`);
+        // This property used to accept a number value, either a number or a
+        // string that is a number. It now accepts a standard CSS padding value
+        // (e.g. "10px 12px" or "1em"), but we need to maintain backwards
+        // compatibility with the old number value until there are no more uses
+        // of it across experiments.
+        if (CSS.supports("padding", padding)) {
+          this._container.style.setProperty("--callout-padding", padding);
+        } else {
+          let cssValue = `${padding}px`;
+          if (CSS.supports("padding", cssValue)) {
+            this._container.style.setProperty("--callout-padding", cssValue);
+          } else {
+            this._container.style.removeProperty("--callout-padding");
+          }
+        }
       } else {
         this._container.style.removeProperty("--callout-padding");
       }
@@ -1319,6 +1479,7 @@ export class FeatureCallout {
     this._windowFuncs = {
       AWGetFeatureConfig: () => this.config,
       AWGetSelectedTheme: getActionHandler("GET_SELECTED_THEME"),
+      AWGetInstalledAddons: getActionHandler("GET_INSTALLED_ADDONS"),
       // Do not send telemetry if message config sets metrics as 'block'.
       AWSendEventTelemetry,
       AWSendToDeviceEmailsSupported: getActionHandler(
@@ -1326,7 +1487,11 @@ export class FeatureCallout {
       ),
       AWSendToParent: (name, data) => getActionHandler(name)(data),
       AWFinish: () => this.endTour(),
+      AWAdvanceScreens: options => this._advanceScreens(options),
       AWEvaluateScreenTargeting: getActionHandler("EVALUATE_SCREEN_TARGETING"),
+      AWEvaluateAttributeTargeting: getActionHandler(
+        "EVALUATE_ATTRIBUTE_TARGETING"
+      ),
     };
     for (const [name, func] of Object.entries(this._windowFuncs)) {
       this.win[name] = func;
@@ -1400,9 +1565,17 @@ export class FeatureCallout {
       this._emitEvent("end");
     };
     if (this._container?.localName === "panel") {
-      this._container.addEventListener("popuphidden", onFadeOut, {
-        once: true,
-      });
+      const controller = new AbortController();
+      this._container.addEventListener(
+        "popuphidden",
+        event => {
+          if (event.target === this._container) {
+            controller.abort();
+            onFadeOut();
+          }
+        },
+        { signal: controller.signal }
+      );
       this._container.hidePopup(!skipFadeOut);
     } else if (this._container) {
       this.win.setTimeout(onFadeOut, skipFadeOut ? 0 : TRANSITION_MS);
@@ -1412,7 +1585,9 @@ export class FeatureCallout {
   }
 
   _dismiss() {
-    let action = this.currentScreen?.content.dismiss_button?.action;
+    let action =
+      this.currentScreen?.content.dismiss_action ??
+      this.currentScreen?.content.dismiss_button?.action;
     if (action?.type) {
       this.win.AWSendToParent("SPECIAL_ACTION", action);
       if (!action.dismiss) {
@@ -1423,8 +1598,8 @@ export class FeatureCallout {
   }
 
   async _addScriptsAndRender() {
-    const reactSrc = "resource://activity-stream/vendor/react.js";
-    const domSrc = "resource://activity-stream/vendor/react-dom.js";
+    const reactSrc = "chrome://global/content/vendor/react.js";
+    const domSrc = "chrome://global/content/vendor/react-dom.js";
     // Add React script
     const getReactReady = () => {
       return new Promise(resolve => {
@@ -1467,21 +1642,22 @@ export class FeatureCallout {
    * in this.config, which is returned by AWGetFeatureConfig. The aboutwelcome
    * bundle will use that function to get the content when it executes.
    * @param {Object} [message] ASRouter message. Omit to request a new one.
+   * @param {Number} [screenIndex] Index of the screen to render.
    * @returns {Promise<boolean>} true if a message is loaded, false if not.
    */
-  async _updateConfig(message) {
+  async _updateConfig(message, screenIndex) {
     if (this.loadingConfig) {
       return false;
     }
 
-    this.message = message || (await this._loadConfig());
+    this.message = structuredClone(message || (await this._loadConfig()));
 
     switch (this.message.template) {
       case "feature_callout":
         break;
       case "spotlight":
-        // Special handling for spotlight messages, which can be configured as a
-        // kind of introduction to a feature tour.
+        // Deprecated: Special handling for spotlight messages, used as an
+        // introduction to feature tours.
         this.currentScreen = "spotlight";
       // fall through
       default:
@@ -1490,12 +1666,29 @@ export class FeatureCallout {
 
     this.config = this.message.content;
 
-    // Set the default start screen.
-    let newScreen = this.config?.screens?.[this.config?.startScreen || 0];
+    if (!this.config.screens) {
+      lazy.log.error(
+        `In ${
+          this.location
+        }: Expected a message object with content.screens property, got: ${JSON.stringify(
+          this.message
+        )}`
+      );
+      return false;
+    }
+
+    // Set or override the default start screen.
+    let overrideScreen = Number.isInteger(screenIndex);
+    if (overrideScreen) {
+      this.config.startScreen = screenIndex;
+    }
+
+    let newScreen = this.config?.screens?.[this.config?.startScreen ?? 0];
+
     // If we have a feature tour in progress, try to set the start screen to
     // whichever screen is configured in the feature tour pref.
     if (
-      this.config.screens &&
+      !overrideScreen &&
       this.config?.tour_pref_name &&
       this.config.tour_pref_name === this.pref?.name &&
       this.featureTourProgress
@@ -1571,18 +1764,25 @@ export class FeatureCallout {
    * @property {PageEventListenerOptions} [options] addEventListener options
    *
    * @typedef {Object} PageEventListenerOptions
-   * @property {Boolean} [capture] Use event capturing phase?
-   * @property {Boolean} [once] Remove listener after first event?
-   * @property {Boolean} [preventDefault] Prevent default action?
+   * @property {Boolean} [capture] Use event capturing phase
+   * @property {Boolean} [once] Remove listener after first event
+   * @property {Boolean} [preventDefault] Prevent default action
    * @property {Number} [interval] Used only for `timeout` and `interval` event
    *   types. These don't set up real event listeners, but instead invoke the
    *   action on a timer.
+   * @property {Boolean} [every_window] Extend addEventListener to all windows.
+   *   Not compatible with `interval`.
    *
    * @typedef {Object} PageEventListenerAction Action sent to AboutWelcomeParent
    * @property {String} [type] Action type, e.g. `OPEN_URL`
    * @property {Object} [data] Extra data, properties depend on action type
-   * @property {Boolean} [dismiss] Dismiss screen after performing action?
-   * @property {Boolean} [reposition] Reposition screen after performing action?
+   * @property {AdvanceScreensOptions} [advance_screens] Jump to a new screen
+   * @property {Boolean|"actionResult"} [dismiss] Dismiss callout
+   * @property {Boolean|"actionResult"} [reposition] Reposition callout
+   * @property {Boolean} [needsAwait] Wait for any special message actions
+   *   (given by the type property above) to resolve before advancing screens,
+   *   dismissing, or repositioning the callout, if those actions are set to
+   *   "actionResult".
    */
   _attachPageEventListeners(listeners) {
     listeners?.forEach(({ params, action }) =>
@@ -1603,13 +1803,14 @@ export class FeatureCallout {
    * @param {PageEventListenerAction} action
    * @param {Event} event Triggering event
    */
-  _handlePageEventAction(action, event) {
+  async _handlePageEventAction(action, event) {
     const page = this.location;
     const message_id = this.config?.id.toUpperCase();
     const source =
       typeof event.target === "string"
         ? event.target
         : this._getUniqueElementIdentifier(event.target);
+    let actionResult;
     if (action.type) {
       this.win.AWSendEventTelemetry?.({
         event: "PAGE_EVENT",
@@ -1621,9 +1822,36 @@ export class FeatureCallout {
         },
         message_id,
       });
-      this.win.AWSendToParent("SPECIAL_ACTION", action);
+      let actionPromise = this.win.AWSendToParent("SPECIAL_ACTION", action);
+      if (action.needsAwait) {
+        actionResult = await actionPromise;
+      }
     }
-    if (action.dismiss) {
+
+    // `navigate` and `dismiss` can be true/false/undefined, or they can be a
+    // string "actionResult" in which case we should use the actionResult
+    // (boolean resolved by handleUserAction)
+    const shouldDoBehavior = behavior => {
+      if (behavior !== "actionResult") {
+        return behavior;
+      }
+      if (action.needsAwait) {
+        return actionResult;
+      }
+      lazy.log.warn(
+        `In ${
+          this.location
+        }: "actionResult" is only supported for actions with needsAwait, got: ${JSON.stringify(action)}`
+      );
+      return false;
+    };
+
+    if (action.advance_screens) {
+      if (shouldDoBehavior(action.advance_screens.behavior ?? true)) {
+        this._advanceScreens?.(action.advance_screens);
+      }
+    }
+    if (shouldDoBehavior(action.dismiss)) {
       this.win.AWSendEventTelemetry?.({
         event: "DISMISS",
         event_context: { source: `PAGE_EVENT:${source}`, page },
@@ -1631,7 +1859,7 @@ export class FeatureCallout {
       });
       this._dismiss();
     }
-    if (action.reposition) {
+    if (shouldDoBehavior(action.reposition)) {
       this.win.requestAnimationFrame(() => this._positionCallout());
     }
   }
@@ -1657,7 +1885,8 @@ export class FeatureCallout {
           .map(attr => `[${attr.name}="${attr.value}"]`)
           .join("")}`;
       }
-      if (this.doc.querySelectorAll(source).length > 1) {
+      let doc = target.ownerDocument;
+      if (doc.querySelectorAll(source).length > 1) {
         let uniqueAncestor = target.closest(`[id]:not(:scope, :root, body)`);
         if (uniqueAncestor) {
           source = `${this._getUniqueElementIdentifier(
@@ -1665,38 +1894,54 @@ export class FeatureCallout {
           )} > ${source}`;
         }
       }
+      if (doc !== this.doc) {
+        let windowIndex = [
+          ...Services.wm.getEnumerator("navigator:browser"),
+        ].indexOf(target.ownerGlobal);
+        source = `window${windowIndex + 1}: ${source}`;
+      }
     }
     return source;
   }
 
   /**
-   * Get the element that should be initially focused. Prioritize the primary
-   * button, then the secondary button, then any additional button, excluding
-   * pseudo-links and the dismiss button. If no button is found, focus the first
-   * input element. If no affirmative action is found, focus the first button,
-   * which is probably the dismiss button. If no button is found, focus the
-   * container itself.
+   * Get the element that should be autofocused when the callout first opens. By
+   * default, prioritize the primary button, then the secondary button, then any
+   * additional button, excluding pseudo-links and the dismiss button. If no
+   * button is found, focus the first input element. If no affirmative action is
+   * found, focus the first button, which is probably the dismiss button. A
+   * custom selector can also be provided to focus a specific element.
+   * @param {AutoFocusOptions} [options]
    * @returns {Element|null} The element to focus when the callout is shown.
    */
-  getInitialFocus() {
+  getAutoFocusElement({ selector, use_defaults = true } = {}) {
     if (!this._container) {
       return null;
     }
-    return (
-      this._container.querySelector(
-        ".primary:not(:disabled, [hidden], .text-link, .cta-link, .split-button)"
-      ) ||
-      this._container.querySelector(
-        ".secondary:not(:disabled, [hidden], .text-link, .cta-link, .split-button)"
-      ) ||
-      this._container.querySelector(
-        "button:not(:disabled, [hidden], .text-link, .cta-link, .dismiss-button, .split-button)"
-      ) ||
-      this._container.querySelector("input:not(:disabled, [hidden])") ||
-      this._container.querySelector(
-        "button:not(:disabled, [hidden], .text-link, .cta-link)"
-      )
-    );
+    if (selector) {
+      let element = this._container.querySelector(selector);
+      if (element) {
+        return element;
+      }
+    }
+    if (use_defaults) {
+      return (
+        this._container.querySelector(
+          ".primary:not(:disabled, [hidden], .text-link, .cta-link, .split-button)"
+        ) ||
+        this._container.querySelector(
+          ".secondary:not(:disabled, [hidden], .text-link, .cta-link, .split-button)"
+        ) ||
+        this._container.querySelector(
+          "button:not(:disabled, [hidden], .text-link, .cta-link, .dismiss-button, .split-button)"
+        ) ||
+        this._container.querySelector("input:not(:disabled, [hidden])") ||
+        this._container.querySelector(
+          "button:not(:disabled, [hidden], .text-link, .cta-link)"
+        )
+      );
+    }
+    return null;
   }
 
   /**
@@ -1716,13 +1961,16 @@ export class FeatureCallout {
       this.renderObserver = new this.win.MutationObserver(() => {
         // Check if the Feature Callout screen has loaded for the first time
         if (!this.ready && this._container.querySelector(".screen")) {
+          const anchor = this._getAnchor();
           const onRender = () => {
             this.ready = true;
             this._pageEventManager?.clear();
             this._attachPageEventListeners(
               this.currentScreen?.content?.page_event_listeners
             );
-            this.getInitialFocus()?.focus();
+            if (anchor?.autofocus) {
+              this.getAutoFocusElement(anchor.autofocus)?.focus();
+            }
             this.win.addEventListener("keypress", this, { capture: true });
             if (this._container.localName === "div") {
               this.win.addEventListener("focus", this, {
@@ -1753,7 +2001,6 @@ export class FeatureCallout {
               this.win.requestAnimationFrame(onRender);
             });
           } else if (this._container.localName === "panel") {
-            const anchor = this._getAnchor();
             if (!anchor?.panel_position) {
               this.endTour();
               return;
@@ -1778,11 +2025,6 @@ export class FeatureCallout {
     this.ready = false;
     this._container?.remove();
     this.renderObserver?.disconnect();
-
-    if (!this.cfrFeaturesUserPref) {
-      this.endTour();
-      return false;
-    }
 
     let rendering = (await this._renderCallout()) && !!this.currentScreen;
     if (!rendering) {
@@ -1910,6 +2152,10 @@ export class FeatureCallout {
     "link-color",
     "link-color-hover",
     "link-color-active",
+    "icon-success-color",
+    "dismiss-button-bg",
+    "dismiss-button-bg-hover",
+    "dismiss-button-bg-active",
   ];
 
   /** @type {Object<String, FeatureCalloutTheme>} */
@@ -1957,6 +2203,12 @@ export class FeatureCallout {
         "link-color-hover": "LinkText",
         "link-color-active": "ActiveText",
         "link-color-visited": "VisitedText",
+        "dismiss-button-bg":
+          "var(--newtab-background-color, var(--in-content-page-background)) linear-gradient(var(--newtab-background-color-secondary), var(--newtab-background-color-secondary))",
+        "dismiss-button-bg-hover":
+          "var(--newtab-background-color, var(--in-content-page-background)) linear-gradient(color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary)), color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary)))",
+        "dismiss-button-bg-active":
+          "var(--newtab-background-color, var(--in-content-page-background)) linear-gradient(color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary)), color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary)))",
       },
       dark: {
         border:
@@ -1979,6 +2231,11 @@ export class FeatureCallout {
         "button-background-active": "ButtonText",
         "button-color-active": "ButtonFace",
         "button-border-active": "ButtonText",
+        "dismiss-button-bg": "-moz-dialog",
+        "dismiss-button-bg-hover":
+          "color-mix(in srgb, currentColor 14%, -moz-dialog)",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, -moz-dialog)",
       },
     },
     // PDF.js colors are from toolkit/components/pdfjs/content/web/viewer.css
@@ -2002,6 +2259,10 @@ export class FeatureCallout {
         "link-color-hover": "LinkText",
         "link-color-active": "ActiveText",
         "link-color-visited": "VisitedText",
+        "dismiss-button-bg": "#FFF",
+        "dismiss-button-bg-hover": "color-mix(in srgb, currentColor 14%, #FFF)",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, #FFF)",
       },
       dark: {
         background: "#1C1B22",
@@ -2013,6 +2274,11 @@ export class FeatureCallout {
         "button-color-hover": "#F9F9FA",
         "button-background-active": "rgb(102, 102, 103)",
         "button-color-active": "#F9F9FA",
+        "dismiss-button-bg": "#1C1B22",
+        "dismiss-button-bg-hover":
+          "color-mix(in srgb, currentColor 14%, #1C1B22)",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, #1C1B22)",
       },
       hcm: {
         background: "-moz-dialog",
@@ -2028,6 +2294,11 @@ export class FeatureCallout {
         "button-background-active": "Highlight",
         "button-color-active": "CanvasText",
         "button-border-active": "Highlight",
+        "dismiss-button-bg": "-moz-dialog",
+        "dismiss-button-bg-hover":
+          "color-mix(in srgb, currentColor 14%, -moz-dialog)",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, -moz-dialog)",
       },
     },
     newtab: {
@@ -2052,6 +2323,13 @@ export class FeatureCallout {
         "link-color-hover": "rgb(0, 97, 224)",
         "link-color-active": "color-mix(in srgb, rgb(0, 97, 224) 80%, #000)",
         "link-color-visited": "rgb(0, 97, 224)",
+        "icon-success-color": "#2AC3A2",
+        "dismiss-button-bg":
+          "var(--newtab-background-color, #F9F9FB) linear-gradient(var(--newtab-background-color-secondary, #FFF), var(--newtab-background-color-secondary, #FFF))",
+        "dismiss-button-bg-hover":
+          "var(--newtab-background-color, #F9F9FB) linear-gradient(color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary, #FFF)), color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary, #FFF)))",
+        "dismiss-button-bg-active":
+          "var(--newtab-background-color, #F9F9FB) linear-gradient(color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary, #FFF)), color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary, #FFF)))",
       },
       dark: {
         "accent-color": "rgb(0, 221, 255)",
@@ -2066,6 +2344,13 @@ export class FeatureCallout {
         "link-color-hover": "rgb(0,221,255)",
         "link-color-active": "color-mix(in srgb, rgb(0, 221, 255) 60%, #FFF)",
         "link-color-visited": "rgb(0, 221, 255)",
+        "icon-success-color": "#54FFBD",
+        "dismiss-button-bg":
+          "var(--newtab-background-color, #2B2A33) linear-gradient(var(--newtab-background-color-secondary, #42414D), var(--newtab-background-color-secondary, #42414D))",
+        "dismiss-button-bg-hover":
+          "var(--newtab-background-color, #2B2A33) linear-gradient(color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary, #42414D)), color-mix(in srgb, currentColor 14%, var(--newtab-background-color-secondary, #42414D)))",
+        "dismiss-button-bg-active":
+          "var(--newtab-background-color, #2B2A33) linear-gradient(color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary, #42414D), color-mix(in srgb, currentColor 21%, var(--newtab-background-color-secondary, #42414D)))",
       },
       hcm: {
         background: "-moz-dialog",
@@ -2085,6 +2370,11 @@ export class FeatureCallout {
         "link-color-hover": "LinkText",
         "link-color-active": "ActiveText",
         "link-color-visited": "VisitedText",
+        "dismiss-button-bg": "-moz-dialog",
+        "dismiss-button-bg-hover":
+          "color-mix(in srgb, currentColor 14%, -moz-dialog)",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, -moz-dialog)",
       },
     },
     // These colors are intended to inherit the user's theme properties from the
@@ -2102,33 +2392,63 @@ export class FeatureCallout {
         color: "var(--arrowpanel-color)",
         border: "var(--arrowpanel-border-color)",
         "accent-color": "var(--focus-outline-color)",
-        "button-background": "var(--button-bgcolor)",
-        "button-color": "var(--button-color)",
-        "button-border": "transparent",
-        "button-background-hover": "var(--button-hover-bgcolor)",
-        "button-color-hover": "var(--button-color)",
-        "button-border-hover": "transparent",
-        "button-background-active": "var(--button-active-bgcolor)",
-        "button-color-active": "var(--button-color)",
-        "button-border-active": "transparent",
-        "primary-button-background": "var(--button-primary-bgcolor)",
-        "primary-button-color": "var(--button-primary-color)",
-        "primary-button-border": "transparent",
+        // Button Background
+        "button-background": "var(--button-background-color)",
+        "button-background-hover": "var(--button-background-color-hover)",
+        "button-background-active": "var(--button-background-color-active)",
+        "button-background-disabled": "var(--button-background-color-disabled)",
+        // Button Text
+        "button-color": "var(--button-text-color)",
+        "button-color-hover": "var(--button-text-color-hover)",
+        "button-color-active": "var(--button-text-color-active)",
+        // Button Border
+        "button-border": "var(--button-border-color)",
+        "button-border-color": "var(--button-border-color)",
+        "button-border-hover": "var(--button-border-color-hover)",
+        "button-border-active": "var(--button-border-color-active)",
+        "button-border-disabled": "var(--button-border-color-disabled)",
+        // Primary Button Background
+        "primary-button-background": "var(--button-background-color-primary)",
         "primary-button-background-hover":
-          "var(--button-primary-hover-bgcolor)",
-        "primary-button-color-hover": "var(--button-primary-color)",
-        "primary-button-border-hover": "transparent",
+          "var(--button-background-color-primary-hover)",
         "primary-button-background-active":
-          "var(--button-primary-active-bgcolor)",
-        "primary-button-color-active": "var(--button-primary-color)",
-        "primary-button-border-active": "transparent",
+          "var(--button-background-color-primary-active)",
+        "primary-button-background-disabled":
+          "var(--button-background-color-primary-disabled)",
+        // Primary Button Color
+        "primary-button-color": "var(--button-text-color-primary)",
+        "primary-button-color-hover": "var(--button-text-color-primary)",
+        "primary-button-color-active": "var(--button-text-color-primary)",
+        "primary-button-color-disabled": "var(--button-text-color-primary)",
+        // Primary Button Border
+        "primary-button-border": "var(--button-border-color-primary)",
+        "primary-button-border-hover":
+          "var(--button-border-color-primary-hover)",
+        "primary-button-border-active":
+          "var(--button-border-color-primary-active)",
+        "primary-button-border-disabled":
+          "var(--button-border-color-primary-disabled)",
+        // Links
         "link-color": "LinkText",
         "link-color-hover": "LinkText",
         "link-color-active": "ActiveText",
         "link-color-visited": "VisitedText",
+        "icon-success-color": "var(--attention-dot-color)",
+        // Dismiss Button
+        "dismiss-button-bg":
+          "Menu linear-gradient(var(--arrowpanel-background), var(--arrowpanel-background))",
+        "dismiss-button-bg-hover":
+          "Menu linear-gradient(color-mix(in srgb, currentColor 14%, var(--arrowpanel-background)))",
+        "dismiss-button-bg-active":
+          "Menu linear-gradient(color-mix(in srgb, currentColor 21%, var(--arrowpanel-background)))",
       },
       hcm: {
         background: "var(--arrowpanel-background)",
+        "dismiss-button-bg": "var(--arrowpanel-background)",
+        "dismiss-button-bg-hover":
+          "color-mix(in srgb, currentColor 14%, var(--arrowpanel-background))",
+        "dismiss-button-bg-active":
+          "color-mix(in srgb, currentColor 21%, var(--arrowpanel-background))",
       },
     },
   };

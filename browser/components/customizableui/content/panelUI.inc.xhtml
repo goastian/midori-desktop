@@ -28,32 +28,29 @@
   <!-- This menu is here because not having it in the menu in which it's used flickers
        when hover styles overlap. See https://bugzilla.mozilla.org/show_bug.cgi?id=1378427 .
        -->
-  <menupopup id="customizationPanelItemContextMenu"
-             onpopupshowing="gCustomizeMode.onPanelContextMenuShowing(event); ToolbarContextMenu.updateExtension(this)">
-    <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
+  <menupopup id="customizationPanelItemContextMenu">
+    <menuitem id="customizationPanelItemContextMenuManageExtension"
               data-lazy-l10n-id="toolbar-context-menu-manage-extension"
               contexttype="toolbaritem"
               class="customize-context-manageExtension"/>
-    <menuitem oncommand="ToolbarContextMenu.removeExtensionForContextAction(this.parentElement)"
+    <menuitem id="customizationPanelItemContextMenuRemoveExtension"
               data-lazy-l10n-id="toolbar-context-menu-remove-extension"
               contexttype="toolbaritem"
               class="customize-context-removeExtension"/>
-    <menuitem oncommand="ToolbarContextMenu.reportExtensionForContextAction(this.parentElement, 'toolbar_context_menu')"
+    <menuitem id="customizationPanelItemContextMenuReportExtension"
               data-lazy-l10n-id="toolbar-context-menu-report-extension"
               contexttype="toolbaritem"
               class="customize-context-reportExtension"/>
     <menuseparator/>
-    <menuitem oncommand="gCustomizeMode.addToPanel(this.parentNode.triggerNode, 'panelitem-context')"
-              id="customizationPanelItemContextMenuPin"
+    <menuitem id="customizationPanelItemContextMenuPin"
               data-lazy-l10n-id="toolbar-context-menu-pin-to-overflow-menu"
               closemenu="single"
               class="customize-context-moveToPanel"/>
-    <menuitem oncommand="gCustomizeMode.addToToolbar(this.parentNode.triggerNode, 'panelitem-context')"
-              id="customizationPanelItemContextMenuUnpin"
+    <menuitem id="customizationPanelItemContextMenuUnpin"
               closemenu="single"
               class="customize-context-moveToToolbar"
               data-l10n-id="customize-menu-unpin-from-overflowmenu"/>
-    <menuitem oncommand="gCustomizeMode.removeFromArea(this.parentNode.triggerNode, 'panelitem-context')"
+    <menuitem id="customizationPanelItemContextMenuRemove"
               closemenu="single"
               class="customize-context-removeFromPanel"
               data-lazy-l10n-id="toolbar-context-menu-remove-from-toolbar"/>
@@ -106,8 +103,7 @@
 
         <toolbarbutton id="unified-extensions-manage-extensions"
                        class="subviewbutton panel-subview-footer-button unified-extensions-manage-extensions"
-                       data-l10n-id="unified-extensions-manage-extensions"
-                       oncommand="BrowserAddonUI.openAddonsMgr('addons://list/extension');" />
+                       data-l10n-id="unified-extensions-manage-extensions" />
       </panelview>
     </panelmultiview>
   </panel>
@@ -128,8 +124,7 @@
       </vbox>
     </hbox>
     <button id="panic-button-success-closebutton"
-            data-l10n-id="panic-button-thankyou-button"
-            oncommand="PanicButtonNotifier.close()"/>
+            data-l10n-id="panic-button-thankyou-button"/>
   </panel>
 </html:template>
 
@@ -220,46 +215,53 @@
     </popupnotification>
 
     <popupnotification id="appMenu-addon-installed-notification"
+                       is="addon-installed-notification"
                        popupid="addon-installed"
                        closebuttonhidden="true"
                        secondarybuttonhidden="true"
-                       data-lazy-l10n-id="appmenu-addon-private-browsing-installed2"
-                       data-l10n-attrs="buttonlabel, buttonaccesskey"
                        dropmarkerhidden="true"
                        checkboxhidden="true"
                        buttonhighlight="true"
                        hidden="true">
       <popupnotificationcontent class="addon-installed-notification-content" orient="vertical">
-        <description id="addon-install-description" data-lazy-l10n-id="appmenu-addon-post-install-message3"/>
-        <checkbox id="addon-incognito-checkbox"
-                  data-lazy-l10n-id="appmenu-addon-post-install-incognito-checkbox"/>
+        <description id="addon-install-description"></description>
+        <checkbox id="addon-pin-toolbarbutton-checkbox"
+                  data-lazy-l10n-id="appmenu-addon-post-install-pin-toolbarbutton-checkbox"/>
+      </popupnotificationcontent>
+    </popupnotification>
+
+    <popupnotification id="appMenu-theme-installed-notification"
+                       popupid="theme-installed"
+                       closebuttonhidden="true"
+                       secondarybuttonhidden="false"
+                       data-lazy-l10n-id="appmenu-theme-installed"
+                       data-l10n-attrs="secondarybuttonlabel, secondarybuttonaccesskey"
+                       dropmarkerhidden="true"
+                       checkboxhidden="true"
+                       buttonhighlight="true"
+                       hidden="true">
+      <popupnotificationcontent class="addon-installed-notification-content" orient="vertical">
+        <description id="theme-install-description" data-lazy-l10n-id="appmenu-addon-post-install-message3"/>
       </popupnotificationcontent>
     </popupnotification>
   </panel>
 </html:template>
 
 <html:template id="customModeWrapper">
-  <menupopup id="customizationPaletteItemContextMenu"
-             onpopupshowing="gCustomizeMode.onPaletteContextMenuShowing(event)">
-    <menuitem oncommand="gCustomizeMode.addToToolbar(this.parentNode.triggerNode, 'palette-context')"
+  <menupopup id="customizationPaletteItemContextMenu">
+    <menuitem id="customizationPaletteItemContextMenuAddToToolbar"
               class="customize-context-addToToolbar"
               data-l10n-id="customize-menu-add-to-toolbar"/>
-    <menuitem oncommand="gCustomizeMode.addToPanel(this.parentNode.triggerNode, 'palette-context')"
+    <menuitem id="customizationPaletteItemContextMenuAddToPanel"
               class="customize-context-addToPanel"
               data-l10n-id="customize-menu-add-to-overflowmenu"/>
   </menupopup>
 
   <panel id="downloads-button-autohide-panel"
          role="group"
-         type="arrow"
-         onpopupshown="gCustomizeMode._downloadPanelAutoHideTimeout = setTimeout(() => event.target.hidePopup(), 4000);"
-         onmouseover="clearTimeout(gCustomizeMode._downloadPanelAutoHideTimeout);"
-         onmouseout="gCustomizeMode._downloadPanelAutoHideTimeout = setTimeout(() => event.target.hidePopup(), 2000);"
-         onpopuphidden="clearTimeout(gCustomizeMode._downloadPanelAutoHideTimeout);"
-         >
+         type="arrow">
     <checkbox id="downloads-button-autohide-checkbox"
-              data-l10n-id="customize-mode-downloads-button-autohide" checked="true"
-              oncommand="gCustomizeMode.onDownloadsAutoHideChange(event)"/>
+              data-l10n-id="customize-mode-downloads-button-autohide" checked="true"/>
   </panel>
 </html:template>
 

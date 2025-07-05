@@ -39,22 +39,28 @@ function disableAddon(addon) {
 add_task(async function test_update_defined_command() {
   let extension;
   let updatedExtension;
-
-  registerCleanupFunction(async () => {
-    await extension.unload();
-
-    // updatedExtension might not have started up if we didn't make it that far.
-    if (updatedExtension) {
-      await updatedExtension.unload();
+  let needsCleanup = true;
+  const cleanup = async () => {
+    if (!needsCleanup) {
+      return;
     }
+    needsCleanup = false;
+    const extensionId = extension.id;
+    await extension?.unload();
+    // updatedExtension might not have started up if we didn't make it that far.
+    await updatedExtension?.unload();
 
     // Check that ESS is cleaned up on uninstall.
-    let storedCommands = ExtensionSettingsStore.getAllForExtension(
-      extension.id,
-      "commands"
-    );
-    is(storedCommands.length, 0, "There are no stored commands after unload");
-  });
+    if (extensionId) {
+      let storedCommands = ExtensionSettingsStore.getAllForExtension(
+        extensionId,
+        "commands"
+      );
+      is(storedCommands.length, 0, "There are no stored commands after unload");
+    }
+  };
+
+  registerCleanupFunction(cleanup);
 
   extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",
@@ -352,9 +358,20 @@ add_task(async function test_update_defined_command() {
   await TestUtils.waitForCondition(() => extensionKeyset(extension.id));
   // Shortcut is unchanged since it was previously updated.
   checkNumericKey(extension.id, "9", "alt,shift");
+
+  await cleanup();
 });
 
 add_task(async function updateSidebarCommand() {
+  // This test doesn't work with the new sidebar because it relies on the
+  // switcher, which is no longer a thing in the new sidebar. See the
+  // `test_extension_sidebar_shortcuts` task, which covers shortcuts for the
+  // new sidebar separately.
+  if (Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    info("skipping test because sidebar.revamp is set");
+    return;
+  }
+
   let extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "temporary",
     manifest: {
@@ -423,6 +440,144 @@ add_task(async function updateSidebarCommand() {
 
   acceltext = menuitem.getAttribute("acceltext");
   ok(acceltext.endsWith("M"), "The menuitem accel text has been updated");
+
+  await extension.unload();
+});
+
+add_task(async function test_extension_sidebar_shortcuts() {
+  // TODO: Bug 1905766 - we can remove the push/pop pref and the need for a new
+  // window in this test once the new sidebar is enabled by default.
+  await SpecialPowers.pushPrefEnv({ set: [["sidebar.revamp", true]] });
+
+  const extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: {
+      commands: {
+        _execute_sidebar_action: {
+          suggested_key: {
+            default: "F1",
+          },
+        },
+      },
+      sidebar_action: {
+        default_panel: "sidebar.html",
+      },
+    },
+    background() {
+      browser.test.onMessage.addListener(async (msg, data) => {
+        if (msg == "updateShortcut") {
+          await browser.commands.update(data);
+          return browser.test.sendMessage("done");
+        }
+        throw new Error("Unknown message");
+      });
+    },
+    files: {
+      "sidebar.html": `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"/>
+        <script src="sidebar.js"></script>
+        </head>
+        <body>A Test Sidebar</body>
+        </html>
+      `,
+
+      "sidebar.js": function () {
+        window.onload = () => {
+          browser.test.sendMessage("sidebar");
+        };
+      },
+    },
+  });
+  await extension.startup();
+  // The sidebar panel is shown in the initial window.
+  await extension.awaitMessage("sidebar");
+
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  // The sidebar panel is shown in the new window.
+  await extension.awaitMessage("sidebar");
+  const sidebar = win.document.querySelector("sidebar-main");
+  ok(sidebar, "sidebar is shown");
+  ok(win.SidebarController.isOpen, "sidebar panel is open by default");
+
+  // The sidebar panel is open by default, so let's just close it.
+  EventUtils.synthesizeKey("KEY_F1", {}, win);
+  await sidebar.updateComplete;
+  ok(!win.SidebarController.isOpen, "sidebar is closed");
+
+  // Update shortcut.
+  extension.sendMessage("updateShortcut", {
+    name: "_execute_sidebar_action",
+    shortcut: "F2",
+  });
+  await extension.awaitMessage("done");
+
+  // Re-open the sidebar panel with the new shortcut.
+  EventUtils.synthesizeKey("KEY_F2", {}, win);
+  await sidebar.updateComplete;
+  // The sidebar panel is shown again.
+  await extension.awaitMessage("sidebar");
+  ok(win.SidebarController.isOpen, "sidebar is open");
+
+  await extension.unload();
+  await BrowserTestUtils.closeWindow(win);
+
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function test_extended_function_keys() {
+  const extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      version: "1.0",
+      browser_specific_settings: { gecko: { id: "commands@mochi.test" } },
+      commands: {
+        foo: {
+          suggested_key: {
+            default: "Alt+Shift+F12",
+          },
+          description: "The foo command",
+        },
+      },
+    },
+    background() {
+      browser.test.onMessage.addListener(async (msg, data) => {
+        if (msg == "update") {
+          await browser.commands.update(data);
+          return browser.test.sendMessage("updateDone");
+        }
+      });
+      browser.commands.onCommand.addListener(name =>
+        browser.test.sendMessage("oncommand", name)
+      );
+      browser.test.sendMessage("bgpage:ready");
+    },
+  });
+
+  await extension.startup();
+  await extension.awaitMessage("bgpage:ready");
+
+  // Sanity check.
+  info("Verify command listener called on original manifest-assigned shortcut");
+  EventUtils.synthesizeKey("VK_F12", { altKey: true, shiftKey: true });
+  is(
+    await extension.awaitMessage("oncommand"),
+    "foo",
+    "Expect onCommand listener call for command foo on Alt+Shift+F12"
+  );
+
+  info("Update foo command shortcut to be set to Alt+Shift+F19");
+  extension.sendMessage("update", { name: "foo", shortcut: "Alt+Shift+F19" });
+  await extension.awaitMessage("updateDone");
+
+  info("Verify command listener called on extension-updated shortcut");
+  EventUtils.synthesizeKey("VK_F19", { altKey: true, shiftKey: true });
+  is(
+    await extension.awaitMessage("oncommand"),
+    "foo",
+    "Expect onCommand listener call for command foo on Alt+Shift+F19"
+  );
 
   await extension.unload();
 });

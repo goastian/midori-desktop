@@ -17,38 +17,43 @@ add_task(async function test_translations_panel_retry() {
     "The button is available."
   );
 
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickTranslateButton({
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "en",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "en",
+    runInPage,
+  });
 
   await FullPageTranslationsTestUtils.openPanel({
+    expectedToLanguage: "en",
     onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
   });
 
-  FullPageTranslationsTestUtils.changeSelectedToLanguage("fr");
+  await FullPageTranslationsTestUtils.changeSelectedToLanguage({
+    langTag: "fr",
+  });
 
   await FullPageTranslationsTestUtils.clickTranslateButton({
     downloadHandler: resolveDownloads,
     pivotTranslation: true,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "fr",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "fr",
+    runInPage,
+  });
 
   await cleanup();
 });

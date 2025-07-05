@@ -8,8 +8,7 @@ $schema: moz://mozilla.org/schemas/glean/pings/2-0-0
 newtab:
   description: |
     Newtab-related instrumentation.
-    Can be disabled via the `newtabPingEnabled` variable of the `glean` Nimbus
-    feature, or the `browser.newtabpage.ping.enabled` pref.
+    Can be disabled via the `browser.newtabpage.ping.enabled` pref.
   reasons:
     newtab_session_end: |
       The newtab visit ended.
@@ -30,19 +29,31 @@ newtab:
     - anicholson@mozilla.com
     - najiang@mozilla.com
 
-messaging-system:
+newtab-content:
   description: |
-    This is a ping representing single events triggered by the messaging system
-    and captures some pings from About:Welcome, ASRouter, and other corners.
+    Private Newtab-related instrumentation sent over OHTTP
+    Can be disabled via the `newtabPingEnabled` variable of the `glean` Nimbus
+    feature, or the `browser.newtabpage.ping.enabled` pref.
+  metadata:
+    include_info_sections: false
   include_client_id: false
-  send_if_empty: false
+  uploader_capabilities:
+    - ohttp
+  reasons:
+    newtab_session_end: |
+      The newtab visit ended.
+      Could be by navigation, being closed, etc.
+    component_init: |
+      The newtab component init'd,
+      and the newtab and homepage settings have been categorized.
+      This is mostly to ensure we hear at least once from clients configured to
+      not show a newtab UI.
   bugs:
-    - https://bugzilla.mozilla.org/show_bug.cgi?id=1825863
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1956331
   data_reviews:
-    - https://bugzilla.mozilla.org/show_bug.cgi?id=1825863
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1956331
   notification_emails:
-    - pmcmanis@mozilla.com
-    - dmosedale@mozilla.com
+    - nbarrett@mozilla.com
 
 top-sites:
   description: |

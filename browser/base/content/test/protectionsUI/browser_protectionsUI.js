@@ -31,8 +31,10 @@ add_setup(async function () {
       ["browser.contentblocking.report.lockwise.enabled", false],
       ["browser.contentblocking.report.proxy.enabled", false],
       ["privacy.trackingprotection.enabled", true],
+      ["browser.urlbar.scotchBonnet.enableOverride", true],
     ],
   });
+
   let oldCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
   Services.telemetry.clearEvents();
@@ -41,6 +43,8 @@ add_setup(async function () {
     Services.telemetry.canRecordExtended = oldCanRecord;
     Services.telemetry.clearEvents();
   });
+
+  Services.fog.testResetFOG();
 });
 
 async function clickToggle(toggle) {
@@ -61,16 +65,9 @@ add_task(async function testToggleSwitch() {
     return gProtectionsHandler._protectionsPopup.hasAttribute("blocking");
   });
 
-  let events = Services.telemetry.snapshotEvents(
-    Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS
-  ).parent;
-  let buttonEvents = events.filter(
-    e =>
-      e[1] == "security.ui.protectionspopup" &&
-      e[2] == "open" &&
-      e[3] == "protections_popup"
-  );
-  console.log(buttonEvents);
+  let buttonEvents =
+    Glean.securityUiProtectionspopup.openProtectionsPopup.testGetValue();
+
   is(buttonEvents.length, 1, "recorded telemetry for opening the popup");
 
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
@@ -242,23 +239,7 @@ add_task(async function testShowFullReportButton() {
   BrowserTestUtils.removeTab(tab);
 });
 
-/**
- * A test for ensuring the mini panel is working correctly
- */
-add_task(async function testMiniPanel() {
-  // Open a tab.
-  let tab = await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    "https://example.com"
-  );
-
-  // Open the mini panel.
-  await openProtectionsPanel(true);
-  let popuphiddenPromise = BrowserTestUtils.waitForEvent(
-    gProtectionsHandler._protectionsPopup,
-    "popuphidden"
-  );
-
+function checkMiniPanel() {
   // Check that only the header is displayed.
   let mainView = document.getElementById("protections-popup-mainView");
   for (let item of mainView.childNodes) {
@@ -274,11 +255,83 @@ add_task(async function testMiniPanel() {
       );
     }
   }
+}
+
+/**
+ * A test for ensuring the mini panel closes automatically
+ */
+add_task(async function testMiniPanel() {
+  // Open a tab.
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "https://example.com"
+  );
+
+  // Open the mini panel.
+  await openProtectionsPanel(true);
+  let popuphiddenPromise = BrowserTestUtils.waitForEvent(
+    gProtectionsHandler._protectionsPopup,
+    "popuphidden"
+  );
+
+  checkMiniPanel();
 
   // Wait until the auto hide is happening.
   await popuphiddenPromise;
 
   ok(true, "The mini panel hides automatically.");
+
+  BrowserTestUtils.removeTab(tab);
+});
+
+/**
+ * A test for ensuring that clicking the mini panel opens the big panel
+ */
+add_task(async function testMiniPanelClick() {
+  // Open a tab.
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "https://example.com"
+  );
+
+  // Open the mini panel.
+  await openProtectionsPanel(true);
+  let popuphiddenPromise = BrowserTestUtils.waitForEvent(
+    gProtectionsHandler._protectionsPopup,
+    "popuphidden"
+  );
+
+  checkMiniPanel();
+
+  let popupShownPromise = BrowserTestUtils.waitForEvent(
+    window,
+    "popupshown",
+    true,
+    e => e.target.id == "protections-popup"
+  );
+
+  // Simulate clicking on the mini panel text
+  let buttonEl = document.getElementById(
+    "protections-popup-toast-panel-tp-on-desc"
+  );
+  await EventUtils.synthesizeMouseAtCenter(buttonEl, {});
+
+  info("Waiting for mini panel to close");
+  await popuphiddenPromise;
+
+  info("Waiting for big popup to be shown");
+  await popupShownPromise;
+
+  let header = document.getElementById(
+    "protections-popup-mainView-panel-header-section"
+  );
+  ok(BrowserTestUtils.isVisible(header), "Header is visible");
+
+  let body = document.getElementById("protections-popup-main-body");
+  ok(BrowserTestUtils.isVisible(body), "Main body is visible");
+
+  let footer = document.getElementById("protections-popup-footer");
+  ok(BrowserTestUtils.isVisible(footer), "Footer is visible");
 
   BrowserTestUtils.removeTab(tab);
 });
@@ -332,14 +385,12 @@ add_task(async function testToggleSwitchFlow() {
     gProtectionsHandler._protectionsPopup,
     "popuphidden"
   );
-  // We intentionally turn off a11y_checks, because the following click
-  // is targeting static toast message that's not meant to be interactive and
-  // is not expected to be accessible:
-  AccessibilityUtils.setEnv({
-    mustHaveAccessibleRule: false,
-  });
-  document.getElementById("protections-popup-mainView-panel-header").click();
-  AccessibilityUtils.resetEnv();
+
+  // Simulate clicking on the mini panel text
+  let buttonEl = document.getElementById(
+    "protections-popup-toast-panel-tp-off-desc"
+  );
+  await EventUtils.synthesizeMouseAtCenter(buttonEl, {});
   await popuphiddenPromise;
   await popupShownPromise;
 

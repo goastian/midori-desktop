@@ -8,9 +8,6 @@ const LARGE_DATA_URL =
 
 // Tests for the caret position after gURLBar.setURI().
 add_task(async function setURI() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.trimHttps", false]],
-  });
   const testData = [
     {
       firstURL: "https://example.com/test",
@@ -77,8 +74,8 @@ add_task(async function setURI() {
       expectedSelectionEnd: 10,
     },
     {
-      firstURL: "https://example.com/test",
-      secondURL: "https://example.org/test",
+      firstURL: "https://example.com/test/more",
+      secondURL: "https://example.org/test/more",
       initialSelectionStart: "https://example.".length,
       initialSelectionEnd: "https://example.c".length,
       expectedSelectionStart: "https://example.c".length,
@@ -212,6 +209,24 @@ add_task(async function setURI() {
     );
     info("Check the caret position after setting second URL");
     gURLBar.setURI(makeURI(data.firstURL));
+
+    // The protocol may be trimmed when the urlbar is blurred, then we must
+    // adjust the expected selection accordingly.
+    let offset =
+      gURLBar.value != gURLBar.untrimmedValue
+        ? BrowserUIUtils.trimURLProtocol.length
+        : 0;
+    data.initialSelectionStart = Math.max(
+      0,
+      data.initialSelectionStart - offset
+    );
+    data.initialSelectionEnd = Math.max(0, data.initialSelectionEnd - offset);
+    data.expectedSelectionStart = Math.max(
+      0,
+      data.expectedSelectionStart - offset
+    );
+    data.expectedSelectionEnd = Math.max(0, data.expectedSelectionEnd - offset);
+
     gURLBar.selectionStart = data.initialSelectionStart;
     gURLBar.selectionEnd = data.initialSelectionEnd;
 
@@ -290,6 +305,199 @@ add_task(async function navigation() {
   } else {
     await checkPopupOpens("KEY_ArrowDown", window);
     await checkPopupOpens("KEY_ArrowUp", window);
+  }
+});
+
+// Test mac specific keybinds that move the caret to edge of word.
+add_task(async function word_break_binding_in_mac() {
+  if (AppConstants.platform != "macosx") {
+    return;
+  }
+
+  const testData = [
+    {
+      input: "a bc d",
+      initialSelectionStart: 0,
+      // Indexes when fowarding is repeated.
+      forward: [1, 4, 6, 6],
+      // Indexes when backwarding is repeated.
+      backward: [0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 1,
+      forward: [4, 6, 6],
+      backward: [0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 2,
+      forward: [4, 6, 6],
+      backward: [0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 3,
+      forward: [4, 6, 6],
+      backward: [2, 0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 4,
+      forward: [6, 6],
+      backward: [2, 0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 5,
+      forward: [6, 6],
+      backward: [2, 0, 0],
+    },
+    {
+      input: "a bc d",
+      initialSelectionStart: 6,
+      forward: [6, 6],
+      backward: [5, 2, 0, 0],
+    },
+    {
+      input: "  a",
+      initialSelectionStart: 0,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "  a",
+      initialSelectionStart: 1,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "  a",
+      initialSelectionStart: 2,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "  a",
+      initialSelectionStart: 3,
+      forward: [3, 3],
+      backward: [2, 0, 0],
+    },
+    {
+      input: "a  ",
+      initialSelectionStart: 0,
+      forward: [1, 3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "a  ",
+      initialSelectionStart: 1,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "a  ",
+      initialSelectionStart: 2,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "a  ",
+      initialSelectionStart: 3,
+      forward: [3, 3],
+      backward: [0, 0],
+    },
+    {
+      input: "a  b",
+      initialSelectionStart: 0,
+      forward: [1, 4, 4],
+      backward: [0, 0],
+    },
+    {
+      input: "a  b",
+      initialSelectionStart: 1,
+      forward: [4, 4],
+      backward: [0, 0],
+    },
+    {
+      input: "a  b",
+      initialSelectionStart: 2,
+      forward: [4, 4],
+      backward: [0, 0],
+    },
+    {
+      input: "a  b",
+      initialSelectionStart: 3,
+      forward: [4, 4],
+      backward: [0, 0],
+    },
+    {
+      input: "a  b",
+      initialSelectionStart: 4,
+      forward: [4, 4],
+      backward: [3, 0, 0],
+    },
+    {
+      input: "a b c",
+      initialSelectionStart: 1,
+      initialSelectionEnd: 3,
+      forward: [3, 5, 5],
+      backward: [1, 0, 0],
+    },
+  ];
+
+  for (let {
+    input,
+    initialSelectionStart,
+    initialSelectionEnd = initialSelectionStart,
+    forward,
+    backward,
+  } of testData) {
+    info(`Prepare text in urlbar [${input}]`);
+    await UrlbarTestUtils.promiseAutocompleteResultPopup({
+      window,
+      value: input,
+    });
+    await UrlbarTestUtils.promisePopupClose(window);
+
+    info(
+      `Initialize caret position ${(initialSelectionStart, initialSelectionEnd)}`
+    );
+    gURLBar.selectionStart = initialSelectionStart;
+    gURLBar.selectionEnd = initialSelectionEnd;
+
+    info("Test for forward binding");
+    for (let expectedIndex of forward) {
+      EventUtils.synthesizeKey("f", { altKey: true, ctrlKey: true });
+      Assert.equal(
+        gURLBar.selectionStart,
+        gURLBar.selectionEnd,
+        "The selection start position and selection end position should be same"
+      );
+      Assert.equal(
+        gURLBar.selectionStart,
+        expectedIndex,
+        "The caret position is expected"
+      );
+    }
+
+    info("Reset caret position");
+    gURLBar.selectionStart = initialSelectionStart;
+    gURLBar.selectionEnd = initialSelectionEnd;
+    info("Test for backward binding");
+    for (let expectedIndex of backward) {
+      EventUtils.synthesizeKey("b", { altKey: true, ctrlKey: true });
+      Assert.equal(
+        gURLBar.selectionStart,
+        gURLBar.selectionEnd,
+        "The selection start position and selection end position should be same"
+      );
+      Assert.equal(
+        gURLBar.selectionStart,
+        expectedIndex,
+        "The caret position is expected"
+      );
+    }
   }
 });
 

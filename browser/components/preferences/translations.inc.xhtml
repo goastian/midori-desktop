@@ -9,6 +9,7 @@
      xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
      data-category="paneTranslations"
      data-hidden-from-search="true"
+     data-subpanel="true"
      hidden="true">
 
   <button id="translations-settings-back-button" class="back-button"
@@ -19,7 +20,7 @@
 
   <p id="translations-settings-description" data-l10n-id="translations-settings-description"/>
 
-  <moz-card class="translations-settings-manage-section" data-l10n-attrs="heading"
+  <moz-card class="translations-settings-manage-section"
        id="translations-settings-always-translate-section">
     <div class="translations-settings-manage-language">
       <h2 id="translations-settings-always-translate" data-l10n-id="translations-settings-always-translate"/>
@@ -29,6 +30,12 @@
         <!-- The list of <menuitem> will be dynamically inserted. -->
         <xul:menupopup id="translations-settings-always-translate-popup"/>
       </xul:menulist>
+    </div>
+    <div id="translations-settings-always-translate-languages-card" class="translations-settings-languages-card" hidden="true">
+      <h3 class="translations-settings-language-header" data-l10n-id="translations-settings-language-header"></h3>
+      <div id="translations-settings-always-translate-language-list" class="translations-settings-language-list"
+        tabindex="0" role="listbox">
+      </div>
     </div>
   </moz-card>
 
@@ -43,6 +50,12 @@
         <xul:menupopup id="translations-settings-never-translate-popup"/>
       </xul:menulist>
     </div>
+    <div id="translations-settings-never-translate-languages-card" class="translations-settings-languages-card" hidden="true">
+      <h3 class="translations-settings-language-header" data-l10n-id="translations-settings-language-header"></h3>
+      <div id="translations-settings-never-translate-language-list" class="translations-settings-language-list"
+                tabindex="0" role="listbox">
+      </div>
+    </div>
   </moz-card>
 
   <moz-card id="translations-settings-never-sites-section"
@@ -52,6 +65,12 @@
           data-l10n-id="translations-settings-never-sites-header"/>
       <p id="translations-settings-never-sites"
          data-l10n-id="translations-settings-never-sites-description"/>
+    </div>
+    <div id="translations-settings-never-translate-site-card" class="translations-settings-languages-card" hidden="true">
+      <h3 class="translations-settings-language-header" data-l10n-id="translations-settings-language-header"></h3>
+      <div id="translations-settings-never-translate-site-list" class="translations-settings-language-list"
+              tabindex="0" role="listbox">
+      </div>
     </div>
   </moz-card>
 
@@ -66,10 +85,11 @@
     </div>
     <div class="translations-settings-languages-card">
       <h3 class="translations-settings-language-header" data-l10n-id="translations-settings-language-header"></h3>
-      <div class="translations-settings-language-list">
-        <div class="translations-settings-language">
-          <moz-button class="translations-settings-download-icon" type="ghost icon"
-                      aria-label="translations-settings-download-all-languages"></moz-button>
+      <div id="translations-settings-download-language-list" class="translations-settings-language-list" tabindex="0"
+        role="listbox">
+        <div id="translations-settings-download-all-languages-id" class="translations-settings-language" role="option">
+          <moz-button class="translations-settings-download-icon translations-settings-manage-downloaded-language-button" type="ghost icon"
+                      data-l10n-id="translations-settings-download-all-button" tabindex="-1"></moz-button>
           <!--  The option to "All languages" is added here.
                 In translations.js the option to download individual languages is
                 added dynamically based on the supported language list -->

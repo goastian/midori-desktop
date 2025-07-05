@@ -18,7 +18,9 @@ add_task(async function test_translations_panel_cancel() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();

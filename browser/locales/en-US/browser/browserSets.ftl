@@ -104,6 +104,12 @@ nav-reload-shortcut =
 nav-stop-shortcut =
     .key = .
 
+ai-chatbot-sidebar-shortcut =
+    .key = X
+
+toggle-sidebar-shortcut =
+    .key = Z
+
 history-show-all-shortcut =
     .key = H
 
@@ -202,9 +208,6 @@ private-browsing-shortcut =
 
 quit-app-shortcut =
     .key = Q
-
-help-shortcut =
-    .key = ?
 
 preferences-shortcut =
     .key = ,

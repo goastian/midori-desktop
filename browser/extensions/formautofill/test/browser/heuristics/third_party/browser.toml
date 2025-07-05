@@ -8,6 +8,7 @@ support-files = [
 ["browser_BestBuy.js"]
 
 ["browser_CDW.js"]
+skip-if = ["true"] # Bug 1939626
 
 ["browser_CostCo.js"]
 
@@ -20,6 +21,8 @@ support-files = [
 ["browser_GlobalDirectAsda.js"]
 
 ["browser_HomeDepot.js"]
+
+["browser_Inkbox.js"]
 
 ["browser_Lufthansa.js"]
 

@@ -8,19 +8,19 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  SearchUIUtils: "resource:///modules/SearchUIUtils.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  AddonSearchEngine:
+    "moz-src:///toolkit/components/search/AddonSearchEngine.sys.mjs",
+  CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
+  SearchUIUtils: "moz-src:///browser/components/search/SearchUIUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
+  UserSearchEngine:
+    "moz-src:///toolkit/components/search/UserSearchEngine.sys.mjs",
 });
-
-const PREF_URLBAR_QUICKSUGGEST_BLOCKLIST =
-  "browser.urlbar.quicksuggest.blockedDigests";
-const PREF_URLBAR_WEATHER_USER_ENABLED = "browser.urlbar.suggest.weather";
 
 Preferences.addAll([
   { id: "browser.search.suggest.enabled", type: "bool" },
   { id: "browser.urlbar.suggest.searches", type: "bool" },
   { id: "browser.search.suggest.enabled.private", type: "bool" },
-  { id: "browser.search.widget.inNavBar", type: "bool" },
   { id: "browser.urlbar.showSearchSuggestionsFirst", type: "bool" },
   { id: "browser.urlbar.showSearchTerms.enabled", type: "bool" },
   { id: "browser.search.separatePrivateDefault", type: "bool" },
@@ -29,6 +29,8 @@ Preferences.addAll([
   { id: "browser.urlbar.trending.featureGate", type: "bool" },
   { id: "browser.urlbar.recentsearches.featureGate", type: "bool" },
   { id: "browser.urlbar.suggest.recentsearches", type: "bool" },
+  { id: "browser.urlbar.scotchBonnet.enableOverride", type: "bool" },
+  { id: "browser.urlbar.update2.engineAliasRefresh", type: "bool" },
 ]);
 
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
@@ -71,23 +73,40 @@ var gSearchPane = {
 
     Services.obs.addObserver(this, "browser-search-engine-modified");
     Services.obs.addObserver(this, "intl:app-locales-changed");
+    Services.obs.addObserver(this, "quicksuggest-dismissals-changed");
     window.addEventListener("unload", () => {
       Services.obs.removeObserver(this, "browser-search-engine-modified");
       Services.obs.removeObserver(this, "intl:app-locales-changed");
+      Services.obs.removeObserver(this, "quicksuggest-dismissals-changed");
     });
 
     let suggestsPref = Preferences.get("browser.search.suggest.enabled");
     let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
-    let searchBarPref = Preferences.get("browser.search.widget.inNavBar");
     let privateSuggestsPref = Preferences.get(
       "browser.search.suggest.enabled.private"
+    );
+
+    Preferences.get("browser.urlbar.update2.engineAliasRefresh").on(
+      "change",
+      () => gEngineView.updateUserEngineButtonVisibility()
     );
 
     let updateSuggestionCheckboxes =
       this._updateSuggestionCheckboxes.bind(this);
     suggestsPref.on("change", updateSuggestionCheckboxes);
     urlbarSuggestsPref.on("change", updateSuggestionCheckboxes);
-    searchBarPref.on("change", updateSuggestionCheckboxes);
+    let customizableUIListener = {
+      onWidgetAfterDOMChange: node => {
+        if (node.id == "search-container") {
+          updateSuggestionCheckboxes();
+        }
+      },
+    };
+    lazy.CustomizableUI.addListener(customizableUIListener);
+    window.addEventListener("unload", () => {
+      lazy.CustomizableUI.removeListener(customizableUIListener);
+    });
+
     let urlbarSuggests = document.getElementById("urlBarSuggestion");
     urlbarSuggests.addEventListener("command", () => {
       urlbarSuggestsPref.value = urlbarSuggests.checked;
@@ -99,7 +118,7 @@ var gSearchPane = {
     // all prefs.
     suggestionsInSearchFieldsCheckbox.addEventListener("command", () => {
       this._skipUpdateSuggestionCheckboxesFromPrefChanges = true;
-      if (!searchBarPref.value) {
+      if (!lazy.CustomizableUI.getPlacementOfWidget("search-container")) {
         urlbarSuggestsPref.value = suggestionsInSearchFieldsCheckbox.checked;
       }
       suggestsPref.value = suggestionsInSearchFieldsCheckbox.checked;
@@ -155,28 +174,28 @@ var gSearchPane = {
 
   _initShowSearchTermsCheckbox() {
     let checkbox = document.getElementById("searchShowSearchTermCheckbox");
-
-    // Add Nimbus event to show/hide checkbox.
-    let onNimbus = () => {
-      checkbox.hidden = !UrlbarPrefs.get("showSearchTermsFeatureGate");
-    };
-    NimbusFeatures.urlbar.onUpdate(onNimbus);
-
-    // Add observer of Search Bar preference as showSearchTerms
-    // can't be shown/hidden while Search Bar is enabled.
-    let searchBarPref = Preferences.get("browser.search.widget.inNavBar");
     let updateCheckboxHidden = () => {
       checkbox.hidden =
-        !UrlbarPrefs.get("showSearchTermsFeatureGate") || searchBarPref.value;
+        !UrlbarPrefs.getScotchBonnetPref("showSearchTerms.featureGate") ||
+        !!lazy.CustomizableUI.getPlacementOfWidget("search-container");
     };
-    searchBarPref.on("change", updateCheckboxHidden);
+
+    // Add observer of CustomizableUI as showSearchTerms checkbox
+    // should be hidden while Search Bar is enabled.
+    let customizableUIListener = {
+      onWidgetAfterDOMChange: node => {
+        if (node.id == "search-container") {
+          updateCheckboxHidden();
+        }
+      },
+    };
+    lazy.CustomizableUI.addListener(customizableUIListener);
 
     // Fire once to initialize.
-    onNimbus();
     updateCheckboxHidden();
 
     window.addEventListener("unload", () => {
-      NimbusFeatures.urlbar.offUpdate(onNimbus);
+      lazy.CustomizableUI.removeListener(customizableUIListener);
     });
   },
 
@@ -214,14 +233,14 @@ var gSearchPane = {
       "showSearchSuggestionsPrivateWindows"
     );
     let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
-    let searchBarPref = Preferences.get("browser.search.widget.inNavBar");
+    let searchBarVisible =
+      !!lazy.CustomizableUI.getPlacementOfWidget("search-container");
 
     suggestionsInSearchFieldsCheckbox.checked =
-      suggestsPref.value &&
-      (searchBarPref.value ? true : urlbarSuggestsPref.value);
+      suggestsPref.value && (searchBarVisible || urlbarSuggestsPref.value);
 
     urlbarSuggests.disabled = !suggestsPref.value || permanentPB;
-    urlbarSuggests.hidden = !searchBarPref.value;
+    urlbarSuggests.hidden = !searchBarVisible;
 
     privateWindowCheckbox.disabled = !suggestsPref.value;
     privateWindowCheckbox.checked = Preferences.get(
@@ -248,7 +267,7 @@ var gSearchPane = {
     }
     if (
       suggestionsInSearchFieldsCheckbox.checked &&
-      !searchBarPref.value &&
+      !searchBarVisible &&
       !urlbarSuggests.checked
     ) {
       urlbarSuggestsPref.value = true;
@@ -301,19 +320,6 @@ var gSearchPane = {
       NimbusFeatures.urlbar.offUpdate(onNimbus);
     });
 
-    // The Firefox Suggest info box potentially needs updating when any of the
-    // toggles change.
-    let infoBoxPrefs = [
-      "browser.urlbar.suggest.quicksuggest.nonsponsored",
-      "browser.urlbar.suggest.quicksuggest.sponsored",
-      "browser.urlbar.quicksuggest.dataCollection.enabled",
-    ];
-    for (let pref of infoBoxPrefs) {
-      Preferences.get(pref).on("change", () =>
-        this._updateFirefoxSuggestInfoBox()
-      );
-    }
-
     document.getElementById("clipboardSuggestion").hidden = !UrlbarPrefs.get(
       "clipboard.featureGate"
     );
@@ -332,7 +338,10 @@ var gSearchPane = {
   _updateFirefoxSuggestSection(onInit = false) {
     let container = document.getElementById("firefoxSuggestContainer");
 
-    if (UrlbarPrefs.get("quickSuggestEnabled")) {
+    if (
+      UrlbarPrefs.get("quickSuggestEnabled") &&
+      UrlbarPrefs.get("quickSuggestSettingsUi") != QuickSuggest.SETTINGS_UI.NONE
+    ) {
       // Update the l10n IDs of text elements.
       let l10nIdByElementId = {
         locationBarGroupHeader: "addressbar-header-firefox-suggest",
@@ -344,93 +353,53 @@ var gSearchPane = {
         element.dataset.l10nId = l10nId;
       }
 
-      // Show the container.
-      this._updateFirefoxSuggestInfoBox();
+      // Update the learn more link in the section's description.
+      document
+        .getElementById("locationBarSuggestionLabel")
+        .classList.add("tail-with-learn-more");
+      document.getElementById("firefoxSuggestLearnMore").hidden = false;
+
+      document.getElementById(
+        "firefoxSuggestDataCollectionSearchToggle"
+      ).hidden =
+        UrlbarPrefs.get("quickSuggestSettingsUi") !=
+        QuickSuggest.SETTINGS_UI.FULL;
 
       this._updateDismissedSuggestionsStatus();
-      Preferences.get(PREF_URLBAR_QUICKSUGGEST_BLOCKLIST).on("change", () =>
-        this._updateDismissedSuggestionsStatus()
-      );
-      Preferences.get(PREF_URLBAR_WEATHER_USER_ENABLED).on("change", () =>
-        this._updateDismissedSuggestionsStatus()
-      );
       setEventListener("restoreDismissedSuggestions", "command", () =>
-        this.restoreDismissedSuggestions()
+        QuickSuggest.clearDismissedSuggestions()
       );
 
-      container.removeAttribute("hidden");
+      container.hidden = false;
     } else if (!onInit) {
       // Firefox Suggest is not enabled. This is the default, so to avoid
       // accidentally messing anything up, only modify the doc if we're being
       // called due to a change in the rollout-enabled status (!onInit).
-      container.setAttribute("hidden", "true");
+      document
+        .getElementById("locationBarSuggestionLabel")
+        .classList.remove("tail-with-learn-more");
+      document.getElementById("firefoxSuggestLearnMore").hidden = true;
+      container.hidden = true;
       let elementIds = ["locationBarGroupHeader", "locationBarSuggestionLabel"];
       for (let id of elementIds) {
         let element = document.getElementById(id);
-        element.dataset.l10nId = element.dataset.l10nIdOriginal;
-        delete element.dataset.l10nIdOriginal;
-        document.l10n.translateElements([element]);
-      }
-    }
-  },
-
-  /**
-   * Updates the Firefox Suggest info box (in the address bar section) depending
-   * on the states of the Firefox Suggest toggles.
-   */
-  _updateFirefoxSuggestInfoBox() {
-    let nonsponsored = Preferences.get(
-      "browser.urlbar.suggest.quicksuggest.nonsponsored"
-    ).value;
-    let sponsored = Preferences.get(
-      "browser.urlbar.suggest.quicksuggest.sponsored"
-    ).value;
-    let dataCollection = Preferences.get(
-      "browser.urlbar.quicksuggest.dataCollection.enabled"
-    ).value;
-
-    // Get the l10n ID of the appropriate text based on the values of the three
-    // prefs.
-    let l10nId;
-    if (nonsponsored && sponsored && dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-all";
-    } else if (nonsponsored && sponsored && !dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-nonsponsored-sponsored";
-    } else if (nonsponsored && !sponsored && dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-nonsponsored-data";
-    } else if (nonsponsored && !sponsored && !dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-nonsponsored";
-    } else if (!nonsponsored && sponsored && dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-sponsored-data";
-    } else if (!nonsponsored && sponsored && !dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-sponsored";
-    } else if (!nonsponsored && !sponsored && dataCollection) {
-      l10nId = "addressbar-firefox-suggest-info-data";
-    }
-
-    let instance = (this._firefoxSuggestInfoBoxInstance = {});
-    let infoBox = document.getElementById("firefoxSuggestInfoBox");
-    if (!l10nId) {
-      infoBox.hidden = true;
-    } else {
-      let infoText = document.getElementById("firefoxSuggestInfoText");
-      infoText.dataset.l10nId = l10nId;
-
-      // If the info box is currently hidden and we unhide it immediately, it
-      // will show its old text until the new text is asyncly fetched and shown.
-      // That's ugly, so wait for the fetch to finish before unhiding it.
-      document.l10n.translateElements([infoText]).then(() => {
-        if (instance == this._firefoxSuggestInfoBoxInstance) {
-          infoBox.hidden = false;
+        if (element.dataset.l10nIdOriginal) {
+          document.l10n.setAttributes(element, element.dataset.l10nIdOriginal);
+          delete element.dataset.l10nIdOriginal;
         }
-      });
+      }
     }
   },
 
   _initQuickActionsSection() {
     let showPref = Preferences.get("browser.urlbar.quickactions.showPrefs");
+    let scotchBonnet = Preferences.get(
+      "browser.urlbar.scotchBonnet.enableOverride"
+    );
     let showQuickActionsGroup = () => {
-      document.getElementById("quickActionsBox").hidden = !showPref.value;
+      document.getElementById("quickActionsBox").hidden = !(
+        showPref.value || scotchBonnet.value
+      );
     };
     showPref.on("change", showQuickActionsGroup);
     showQuickActionsGroup();
@@ -440,21 +409,9 @@ var gSearchPane = {
    * Enables/disables the "Restore" button for dismissed Firefox Suggest
    * suggestions.
    */
-  _updateDismissedSuggestionsStatus() {
+  async _updateDismissedSuggestionsStatus() {
     document.getElementById("restoreDismissedSuggestions").disabled =
-      !Services.prefs.prefHasUserValue(PREF_URLBAR_QUICKSUGGEST_BLOCKLIST) &&
-      !(
-        Services.prefs.prefHasUserValue(PREF_URLBAR_WEATHER_USER_ENABLED) &&
-        !Services.prefs.getBoolPref(PREF_URLBAR_WEATHER_USER_ENABLED)
-      );
-  },
-
-  /**
-   * Restores Firefox Suggest suggestions dismissed by the user.
-   */
-  restoreDismissedSuggestions() {
-    Services.prefs.clearUserPref(PREF_URLBAR_QUICKSUGGEST_BLOCKLIST);
-    Services.prefs.clearUserPref(PREF_URLBAR_WEATHER_USER_ENABLED);
+      !(await QuickSuggest.canClearDismissedSuggestions());
   },
 
   handleEvent(aEvent) {
@@ -507,7 +464,11 @@ var gSearchPane = {
           default:
             this._engineStore.browserSearchEngineModified(engine, data);
         }
+        break;
       }
+      case "quicksuggest-dismissals-changed":
+        this._updateDismissedSuggestionsStatus();
+        break;
     }
   },
 
@@ -650,9 +611,13 @@ class EngineStore {
     var clonedObj = {
       iconURL: null,
     };
-    for (let i of ["id", "name", "alias", "hidden"]) {
+    for (let i of ["id", "name", "alias", "hidden", "isAppProvided"]) {
       clonedObj[i] = aEngine[i];
     }
+    clonedObj.isAddonEngine =
+      aEngine.wrappedJSObject instanceof lazy.AddonSearchEngine;
+    clonedObj.isUserEngine =
+      aEngine.wrappedJSObject instanceof lazy.UserSearchEngine;
     clonedObj.originalEngine = aEngine;
 
     // Trigger getting the iconURL for this engine.
@@ -716,8 +681,8 @@ class EngineStore {
       throw new Error("Cannot remove last engine!");
     }
 
-    let engineName = aEngine.name;
-    let index = this.engines.findIndex(element => element.name == engineName);
+    let engineId = aEngine.id;
+    let index = this.engines.findIndex(element => element.id == engineId);
 
     if (index == -1) {
       throw new Error("invalid engine?");
@@ -797,7 +762,10 @@ class EngineStore {
       let engine = Services.search.getEngineByName(engineName);
       if (engine) {
         try {
-          await Services.search.removeEngine(engine);
+          await Services.search.removeEngine(
+            engine,
+            Ci.nsISearchService.CHANGE_REASON_ENTERPRISE
+          );
         } catch (ex) {
           // Engine might not exist
         }
@@ -825,10 +793,13 @@ class EngineStore {
  * Manages the view of the Search Shortcuts tree on the search pane of preferences.
  */
 class EngineView {
-  _engineStore = null;
+  _engineStore;
   _engineList = null;
   tree = null;
 
+  /**
+   * @param {EngineStore} aEngineStore
+   */
   constructor(aEngineStore) {
     this._engineStore = aEngineStore;
     this._engineList = document.getElementById("engineList");
@@ -839,29 +810,50 @@ class EngineView {
 
     this.loadL10nNames();
     this.#addListeners();
-    this.#showAddEngineButton();
+    this.updateUserEngineButtonVisibility();
   }
 
-  loadL10nNames() {
+  async loadL10nNames() {
     // This maps local shortcut sources to their l10n names.  The names are needed
     // by getCellText.  Getting the names is async but getCellText is not, so we
     // cache them here to retrieve them syncronously in getCellText.
     this._localShortcutL10nNames = new Map();
-    return document.l10n
-      .formatValues(
-        UrlbarUtils.LOCAL_SEARCH_MODES.map(mode => {
-          let name = UrlbarUtils.getResultSourceName(mode.source);
-          return { id: `urlbar-search-mode-${name}` };
-        })
-      )
-      .then(names => {
-        for (let { source } of UrlbarUtils.LOCAL_SEARCH_MODES) {
-          this._localShortcutL10nNames.set(source, names.shift());
-        }
+
+    let getIDs = (suffix = "") =>
+      UrlbarUtils.LOCAL_SEARCH_MODES.map(mode => {
+        let name = UrlbarUtils.getResultSourceName(mode.source);
+        return { id: `urlbar-search-mode-${name}${suffix}` };
+      });
+
+    try {
+      let localizedIDs = getIDs();
+      let englishIDs = getIDs("-en");
+
+      let englishSearchStrings = new Localization([
+        "preview/enUS-searchFeatures.ftl",
+      ]);
+      let localizedNames = await document.l10n.formatValues(localizedIDs);
+      let englishNames = await englishSearchStrings.formatValues(englishIDs);
+
+      UrlbarUtils.LOCAL_SEARCH_MODES.forEach(({ source }, index) => {
+        let localizedName = localizedNames[index];
+        let englishName = englishNames[index];
+
+        // Add only the English name if localized and English are the same
+        let names =
+          localizedName === englishName
+            ? [englishName]
+            : [localizedName, englishName];
+
+        this._localShortcutL10nNames.set(source, names);
+
         // Invalidate the tree now that we have the names in case getCellText was
         // called before name retrieval finished.
         this.invalidate();
       });
+    } catch (ex) {
+      console.error("Error loading l10n names", ex);
+    }
   }
 
   #addListeners() {
@@ -873,17 +865,15 @@ class EngineView {
   }
 
   /**
-   * Shows the "Add Search Engine" button if the pref is enabled.
+   * Shows the Add and Edit Search Engines buttons if the pref is enabled.
    */
-  #showAddEngineButton() {
+  updateUserEngineButtonVisibility() {
     let aliasRefresh = Services.prefs.getBoolPref(
       "browser.urlbar.update2.engineAliasRefresh",
       false
     );
-    if (aliasRefresh) {
-      let addButton = document.getElementById("addEngineButton");
-      addButton.hidden = false;
-    }
+    document.getElementById("addEngineButton").hidden = !aliasRefresh;
+    document.getElementById("editEngineButton").hidden = !aliasRefresh;
   }
 
   get lastEngineIndex() {
@@ -961,6 +951,61 @@ class EngineView {
   }
 
   /**
+   * Removes a search engine from the search service.
+   *
+   * Application provided engines are removed without confirmation since they
+   * can easily be restored. Addon engines are not removed (see comment).
+   * For other engine types, the user is prompted for confirmation.
+   *
+   * @param {object} engine
+   *   The search engine object from EngineStore to remove.
+   */
+  async promptAndRemoveEngine(engine) {
+    if (engine.isAppProvided) {
+      Services.search.removeEngine(
+        this.selectedEngine.originalEngine,
+        Ci.nsISearchService.CHANGE_REASON_USER
+      );
+      return;
+    }
+
+    if (engine.isAddonEngine) {
+      // Addon engines will re-appear after restarting, see Bug 1546652.
+      // This should ideally prompt the user if they want to remove the addon.
+      let msg = await document.l10n.formatValue("remove-addon-engine-alert");
+      alert(msg);
+      return;
+    }
+
+    let [body, removeLabel] = await document.l10n.formatValues([
+      "remove-engine-confirmation",
+      "remove-engine-remove",
+    ]);
+
+    let button = Services.prompt.confirmExBC(
+      window.browsingContext,
+      Services.prompt.MODAL_TYPE_CONTENT,
+      null,
+      body,
+      (Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0) |
+        (Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1),
+      removeLabel,
+      null,
+      null,
+      null,
+      {}
+    );
+
+    // Button 0 is the remove button.
+    if (button == 0) {
+      Services.search.removeEngine(
+        this.selectedEngine.originalEngine,
+        Ci.nsISearchService.CHANGE_REASON_USER
+      );
+    }
+  }
+
+  /**
    * Returns the local shortcut corresponding to a tree row, or null if the row
    * is not a local shortcut.
    *
@@ -1031,12 +1076,25 @@ class EngineView {
             this.#onRestoreDefaults();
             break;
           case "removeEngineButton":
-            Services.search.removeEngine(this.selectedEngine.originalEngine);
+            if (this.isEngineSelectedAndRemovable()) {
+              this.promptAndRemoveEngine(this.selectedEngine);
+            }
+            break;
+          case "editEngineButton":
+            if (this.selectedEngine.isUserEngine) {
+              let engine = this.selectedEngine.originalEngine.wrappedJSObject;
+              gSubDialog.open(
+                "chrome://browser/content/search/addEngine.xhtml",
+                { features: "resizable=no, modal=yes" },
+                { engine, mode: "EDIT" }
+              );
+            }
             break;
           case "addEngineButton":
             gSubDialog.open(
-              "chrome://browser/content/preferences/dialogs/addEngine.xhtml",
-              { features: "resizable=no, modal=yes" }
+              "chrome://browser/content/search/addEngine.xhtml",
+              { features: "resizable=no, modal=yes" },
+              { mode: "NEW" }
             );
             break;
         }
@@ -1088,6 +1146,8 @@ class EngineView {
   #onTreeSelect() {
     document.getElementById("removeEngineButton").disabled =
       !this.isEngineSelectedAndRemovable();
+    document.getElementById("editEngineButton").disabled =
+      !this.selectedEngine?.isUserEngine;
   }
 
   #onTreeKeyPress(aEvent) {
@@ -1121,11 +1181,12 @@ class EngineView {
         aEvent.keyCode == KeyEvent.DOM_VK_DELETE ||
         (isMac &&
           aEvent.shiftKey &&
-          aEvent.keyCode == KeyEvent.DOM_VK_BACK_SPACE &&
-          this.isEngineSelectedAndRemovable())
+          aEvent.keyCode == KeyEvent.DOM_VK_BACK_SPACE)
       ) {
         // Delete and Shift+Backspace (Mac) removes selected engine.
-        Services.search.removeEngine(this.selectedEngine.originalEngine);
+        if (this.isEngineSelectedAndRemovable()) {
+          this.promptAndRemoveEngine(this.selectedEngine);
+        }
       }
     }
   }
@@ -1141,18 +1202,40 @@ class EngineView {
       return;
     }
 
-    let tree = document.getElementById("engineList");
     let engine = this._engineStore.engines[index];
-    tree.startEditing(index, tree.columns.getLastColumn());
-    tree.inputField.value = engine.alias || "";
-    tree.inputField.select();
+    this.tree.startEditing(index, this.tree.columns.getLastColumn());
+    this.tree.inputField.value = engine.alias || "";
+    this.tree.inputField.select();
+  }
+
+  /**
+   * Triggers editing of an engine name in the tree.
+   *
+   * @param {number} index
+   */
+  #startEditingName(index) {
+    let engine = this._engineStore.engines[index];
+    if (!engine.isUserEngine) {
+      return;
+    }
+
+    this.tree.startEditing(
+      index,
+      this.tree.columns.getNamedColumn("engineName")
+    );
+    this.tree.inputField.value = engine.name;
+    this.tree.inputField.select();
   }
 
   // nsITreeView
   get rowCount() {
-    return (
-      this._engineStore.engines.length + UrlbarUtils.LOCAL_SEARCH_MODES.length
-    );
+    let localModes = UrlbarUtils.LOCAL_SEARCH_MODES;
+    if (!UrlbarPrefs.get("scotchBonnet.enableOverride")) {
+      localModes = localModes.filter(
+        mode => mode.source != UrlbarUtils.RESULT_SOURCE.ACTIONS
+      );
+    }
+    return this._engineStore.engines.length + localModes.length;
   }
 
   getImageSrc(index, column) {
@@ -1172,12 +1255,23 @@ class EngineView {
     if (column.id == "engineName") {
       let shortcut = this._getLocalShortcut(index);
       if (shortcut) {
-        return this._localShortcutL10nNames.get(shortcut.source) || "";
+        return this._localShortcutL10nNames.get(shortcut.source)[0] || "";
       }
       return this._engineStore.engines[index].name;
     } else if (column.id == "engineKeyword") {
       let shortcut = this._getLocalShortcut(index);
       if (shortcut) {
+        if (
+          UrlbarPrefs.getScotchBonnetPref("searchRestrictKeywords.featureGate")
+        ) {
+          let keywords = this._localShortcutL10nNames
+            .get(shortcut.source)
+            .map(keyword => `@${keyword.toLowerCase()}`)
+            .join(", ");
+
+          return `${keywords}, ${shortcut.restrict}`;
+        }
+
         return shortcut.restrict;
       }
       return this._engineStore.engines[index].originalEngine.aliases.join(", ");
@@ -1285,8 +1379,10 @@ class EngineView {
   cycleCell() {}
   isEditable(index, column) {
     return (
-      column.id != "engineName" &&
-      (column.id == "engineShown" || !this._getLocalShortcut(index))
+      column.id == "engineShown" ||
+      (column.id == "engineKeyword" && !this._getLocalShortcut(index)) ||
+      (column.id == "engineName" &&
+        this._engineStore.engines[index].isUserEngine)
     );
   }
   setCellValue(index, column, value) {
@@ -1302,15 +1398,18 @@ class EngineView {
       this.invalidate();
     }
   }
-  setCellText(index, column, value) {
+  async setCellText(index, column, value) {
+    let engine = this._engineStore.engines[index];
     if (column.id == "engineKeyword") {
-      this.#changeKeyword(this._engineStore.engines[index], value).then(
-        valid => {
-          if (!valid) {
-            this.#startEditingAlias(index);
-          }
-        }
-      );
+      let valid = await this.#changeKeyword(engine, value);
+      if (!valid) {
+        this.#startEditingAlias(index);
+      }
+    } else if (column.id == "engineName" && engine.isUserEngine) {
+      let valid = await this.#changeName(engine, value);
+      if (!valid) {
+        this.#startEditingName(index);
+      }
     }
   }
 
@@ -1328,48 +1427,55 @@ class EngineView {
   async #changeKeyword(aEngine, aNewKeyword) {
     let keyword = aNewKeyword.trim();
     if (keyword) {
-      let eduplicate = false;
-      let dupName = "";
+      let isBookmarkDuplicate = !!(await PlacesUtils.keywords.fetch(keyword));
 
-      // Check for duplicates in Places keywords.
-      let bduplicate = !!(await PlacesUtils.keywords.fetch(keyword));
-
-      // Check for duplicates in changes we haven't committed yet
-      let engines = this._engineStore.engines;
-      let lc_keyword = keyword.toLocaleLowerCase();
-      for (let engine of engines) {
-        if (
-          engine.alias &&
-          engine.alias.toLocaleLowerCase() == lc_keyword &&
-          engine.name != aEngine.name
-        ) {
-          eduplicate = true;
-          dupName = engine.name;
-          break;
-        }
-      }
+      let dupEngine = await Services.search.getEngineByAlias(keyword);
+      let isEngineDuplicate = dupEngine !== null && dupEngine.id != aEngine.id;
 
       // Notify the user if they have chosen an existing engine/bookmark keyword
-      if (eduplicate || bduplicate) {
-        let msgids = [{ id: "search-keyword-warning-title" }];
-        if (eduplicate) {
-          msgids.push({
+      if (isEngineDuplicate || isBookmarkDuplicate) {
+        let msgid;
+        if (isEngineDuplicate) {
+          msgid = {
             id: "search-keyword-warning-engine",
-            args: { name: dupName },
-          });
+            args: { name: dupEngine.name },
+          };
         } else {
-          msgids.push({ id: "search-keyword-warning-bookmark" });
+          msgid = { id: "search-keyword-warning-bookmark" };
         }
 
-        let [dtitle, msg] = await document.l10n.formatValues(msgids);
-
-        Services.prompt.alert(window, dtitle, msg);
+        let msg = await document.l10n.formatValue(msgid.id, msgid.args);
+        alert(msg);
         return false;
       }
     }
 
     this._engineStore.changeEngine(aEngine, "alias", keyword);
     this.invalidate();
+    return true;
+  }
+
+  /**
+   * Handles changing the name for a user engine. This will check for
+   * duplicate names and warn the user if necessary.
+   *
+   * @param {object} aEngine
+   *   The user search engine to change.
+   * @param {string} aNewName
+   *   The new name.
+   * @returns {Promise<boolean>}
+   *   Resolves to true if the name was changed.
+   */
+  async #changeName(aEngine, aNewName) {
+    let valid = aEngine.originalEngine.wrappedJSObject.rename(aNewName);
+    if (!valid) {
+      let msg = await document.l10n.formatValue(
+        "edit-engine-name-warning-duplicate",
+        { name: aNewName }
+      );
+      alert(msg);
+      return false;
+    }
     return true;
   }
 }
@@ -1423,9 +1529,10 @@ class DefaultEngineDropDown {
     ) {
       return;
     }
-    let defaultEngine = await Services.search[
-      this.#type == "normal" ? "getDefault" : "getDefaultPrivate"
-    ]();
+    let defaultEngine =
+      await Services.search[
+        this.#type == "normal" ? "getDefault" : "getDefaultPrivate"
+      ]();
 
     this.#element.removeAllItems();
     for (let engine of enginesList) {

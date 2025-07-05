@@ -5,8 +5,6 @@
 // These tests check the behavior of the Urlbar when search terms are
 // expected to be shown and tabs are opened in the background.
 
-let defaultTestEngine;
-
 // The main search string used in tests
 const SEARCH_STRING = "chocolate cake";
 
@@ -14,19 +12,10 @@ add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
-
-  await SearchTestUtils.installSearchExtension(
-    {
-      name: "MozSearch",
-      search_url: "https://www.example.com/",
-      search_url_get_params: "q={searchTerms}&pc=fake_code",
-    },
-    { setAsDefault: true }
-  );
-  defaultTestEngine = Services.search.getEngineByName("MozSearch");
-
+  let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
+    cleanup();
   });
 });
 
@@ -34,7 +23,7 @@ add_setup(async function () {
 // the search term should show when the tab is focused.
 add_task(async function ctrl_open() {
   let [expectedSearchUrl] = UrlbarUtils.getSearchQueryUrl(
-    defaultTestEngine,
+    Services.search.defaultEngine,
     SEARCH_STRING
   );
   // Search for the term in a new background tab.

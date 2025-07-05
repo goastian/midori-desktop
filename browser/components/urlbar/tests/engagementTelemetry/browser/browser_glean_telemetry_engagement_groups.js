@@ -170,9 +170,9 @@ add_task(async function general() {
     assert: () =>
       assertEngagementTelemetry([
         {
-          groups: "heuristic,general",
-          results: "search_engine,bookmark",
-          n_results: 2,
+          groups: "heuristic,suggested_index,general",
+          results: "search_engine,action,bookmark",
+          n_results: 3,
         },
       ]),
   });
@@ -190,16 +190,51 @@ add_task(async function general() {
   });
 });
 
+add_task(async function restrict_keywords() {
+  const telemetryTemplate = {
+    groups:
+      "general,general,general,general,general,general,restrict_keyword," +
+      "restrict_keyword,restrict_keyword,restrict_keyword",
+    results:
+      "search_engine,search_engine,search_engine,search_engine," +
+      "search_engine,search_engine,restrict_keyword_bookmarks," +
+      "restrict_keyword_tabs,restrict_keyword_history,restrict_keyword_actions",
+    n_results: 10,
+  };
+  let telemetry = [];
+  await doRestrictKeywordsTest({
+    trigger: async (rowToSelect, category) => {
+      await triggerKeywordTest(rowToSelect, category);
+    },
+    assert: () => assertEngagementTelemetry(telemetry),
+  });
+
+  async function triggerKeywordTest(rowToSelect, category) {
+    EventUtils.synthesizeMouseAtCenter(rowToSelect, {});
+    await UrlbarTestUtils.exitSearchMode(window);
+    await UrlbarTestUtils.promisePopupClose(window, () => {
+      EventUtils.synthesizeKey("KEY_Escape");
+    });
+
+    const telemetryItem = {
+      ...telemetryTemplate,
+      selected_result: `restrict_keyword_${category}`,
+    };
+    telemetry.push(telemetryItem);
+  }
+});
+
 add_task(async function suggest() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.suggest.engines", false]],
+  });
   await doSuggestTest({
     trigger: () => doEnter(),
     assert: () =>
       assertEngagementTelemetry([
         {
           groups: "heuristic,suggest",
-          results: UrlbarPrefs.get("quickSuggestRustEnabled")
-            ? "search_engine,rust_adm_nonsponsored"
-            : "search_engine,rs_adm_nonsponsored",
+          results: "search_engine,rust_adm_nonsponsored",
           n_results: 2,
         },
       ]),
@@ -288,6 +323,31 @@ add_task(async function always_empty_if_paste_go() {
     await UrlbarTestUtils.promisePopupClose(window);
 
     await doPasteAndGo("example.com");
+
+    assertEngagementTelemetry(expected);
+  });
+});
+
+add_task(async function actions_search_mode() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.scotchBonnet.enableOverride", true]],
+  });
+
+  const expected = [
+    {
+      engagement_type: "enter",
+      groups: "general",
+      results: "action",
+      n_results: 1,
+    },
+  ];
+
+  await doTest(async () => {
+    await openPopup("> addon");
+    await UrlbarTestUtils.promisePopupClose(window, () => {
+      EventUtils.synthesizeKey("KEY_Tab");
+      EventUtils.synthesizeKey("KEY_Enter");
+    });
 
     assertEngagementTelemetry(expected);
   });

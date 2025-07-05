@@ -35,7 +35,7 @@ function dirtyFrame(win) {
  * @param win (browser window, optional)
  *        The browser window to monitor. Defaults to the current window.
  *
- * @return An array of reflow stacks
+ * @return An array of reflow stacks and paths
  */
 async function recordReflows(testPromise, win = window) {
   // Collect all reflow stacks, we'll process them later.
@@ -44,15 +44,49 @@ async function recordReflows(testPromise, win = window) {
   let observer = {
     reflow() {
       // Gather information about the current code path.
-      reflows.push(new Error().stack);
+      let stack = new Error().stack;
+      let path = stack
+        .trim()
+        .split("\n")
+        .slice(1) // the first frame which is our test code.
+        .map(line => line.replace(/:\d+:\d+$/, "")); // strip line numbers.
 
-      // Just in case, dirty the frame now that we've reflowed.
+      // Stack trace is empty. Reflow was triggered by native code, which
+      // we ignore.
+      if (path.length === 0) {
+        ChromeUtils.addProfilerMarker(
+          "ignoredNativeReflow",
+          { category: "Test" },
+          "Intentionally ignoring reflow without JS stack"
+        );
+        return;
+      }
+
+      if (
+        path[0] ===
+        "forceRefreshDriverTick@chrome://mochikit/content/tests/SimpleTest/AccessibilityUtils.js"
+      ) {
+        // a11y-checks fake a refresh driver tick.
+        return;
+      }
+
+      reflows.push({ stack, path: path.join("|") });
+
+      // Just in case, dirty the frame now that we've reflowed. This will
+      // allow us to detect additional reflows that occur in this same tick
+      // of the event loop.
+      ChromeUtils.addProfilerMarker(
+        "dirtyFrame",
+        { category: "Test" },
+        "Intentionally dirtying the frame to help ensure that synchrounous " +
+          "reflows will be detected."
+      );
       dirtyFrame(win);
     },
 
     reflowInterruptible() {
-      // Interruptible reflows are the reflows caused by the refresh
-      // driver ticking. These are fine.
+      // Interruptible reflows are always triggered by native code, like the
+      // refresh driver. These are fine.
     },
 
     QueryInterface: ChromeUtils.generateQI([
@@ -144,19 +178,7 @@ function reportUnexpectedReflows(reflows, expectedReflows = []) {
     );
   }
 
-  for (let stack of reflows) {
-    let path = stack
-      .split("\n")
-      .slice(1) // the first frame which is our test code.
-      .map(line => line.replace(/:\d+:\d+$/, "")) // strip line numbers.
-      .join("|");
-
-    // Stack trace is empty. Reflow was triggered by native code, which
-    // we ignore.
-    if (path === "") {
-      continue;
-    }
-
+  for (let { stack, path } of reflows) {
     // Functions from EventUtils.js calculate coordinates and
     // dimensions, causing us to reflow. That's the test
     // harness and we don't care about that, so we'll filter that out.
@@ -796,9 +818,18 @@ async function runUrlbarTest(
   };
 
   let urlbarRect = URLBar.textbox.getBoundingClientRect();
-  const SHADOW_SIZE = 17;
+  // To isolate unexpected repaints, we need to filter out the rectangle of
+  // pixels changed by showing the urlbar popover
+  const SHADOW_SIZE = 17; // The blur/spread of the box shadow, plus 1px fudge factor
+  const INLINE_MARGIN = 5; // Margin applied to the breakout-extend urlbar
+  const VERTICAL_OFFSET = -4; // The popover positioning requires this offset
   let expectedRects = {
     filter: rects => {
+      const referenceRect = {
+        x1: Math.floor(urlbarRect.left) - INLINE_MARGIN - SHADOW_SIZE,
+        x2: Math.ceil(urlbarRect.right) + INLINE_MARGIN + SHADOW_SIZE,
+        y1: Math.floor(urlbarRect.top) + VERTICAL_OFFSET - SHADOW_SIZE,
+      };
       // We put text into the urlbar so expect its textbox to change.
       // We expect many changes in the results view.
       // So we just allow changes anywhere in the urlbar. We don't check the
@@ -809,9 +840,9 @@ async function runUrlbarTest(
       return rects.filter(
         r =>
           !(
-            r.x1 >= Math.floor(urlbarRect.left) - SHADOW_SIZE &&
-            r.x2 <= Math.ceil(urlbarRect.right) + SHADOW_SIZE &&
-            r.y1 >= Math.floor(urlbarRect.top) - SHADOW_SIZE
+            r.x1 >= referenceRect.x1 &&
+            r.x2 <= referenceRect.x2 &&
+            r.y1 >= referenceRect.y1
           )
       );
     },

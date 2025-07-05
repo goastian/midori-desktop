@@ -8,13 +8,13 @@
 html.private {
   --in-content-page-color: white;
   --in-content-text-color: white;
-  --in-content-page-background: #003e0d;
+  --in-content-page-background: #25003e;
   --link-color: white;
   --link-color-hover: white;
   --link-color-active: white;
   --in-content-banner-background: #f9f9fe;
-  --in-content-banner-text-color: #0c0d0c;
-  --in-content-button-background-hover: rgba(12, 13, 12, 0.1);
+  --in-content-banner-text-color: #0c0c0d;
+  --in-content-button-background-hover: rgba(12,12,13,.1);
   --in-content-button-background-active: rgba(12,12,13,.15);
 }
 }
@@ -89,7 +89,7 @@ p {
 }
 
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+@media -moz-pref("browser.privatebrowsing.felt-privacy-v1") {
   .search-inner-wrapper {
     height: 52px;
     padding: 0;
@@ -251,7 +251,7 @@ p {
 }
 
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+@media -moz-pref("browser.privatebrowsing.felt-privacy-v1") {
   .search-handoff-button,
   .search-handoff-button:hover:not(.focused),
   .search-handoff-button:active,
@@ -384,7 +384,7 @@ p {
 }
 
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+@media -moz-pref("browser.privatebrowsing.felt-privacy-v1") {
   .info-border {
     border-radius: 8px;
     margin-top: 64px;
@@ -605,18 +605,18 @@ p {
 }
 
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "browser.privatebrowsing.felt-privacy-v1") {
+@media -moz-pref("browser.privatebrowsing.felt-privacy-v1") {
   .promo.below-search.promo-visible {
     margin-block: 0 25px;
 
     @media not (prefers-contrast) {
-      background-color: #1c6438;
+      background-color: #321c64;
     }
   }
 
   @media not (prefers-contrast) {
     html.private {
-      background: linear-gradient(45deg, #669122 0%, #508d27 50%, #3b7334 100%);
+      background: linear-gradient(45deg, #722291 0%, #45278D 50%, #393473 100%);
     }
   }
 }

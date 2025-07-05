@@ -6,6 +6,7 @@ support-files = [
 prefs = [
   "browser.sessionstore.closedTabsFromAllWindows=true",
   "browser.sessionstore.closedTabsFromClosedWindows=true",
+  "sidebar.revamp=false",
 ]
 
 ["browser_1003588_no_specials_in_panel.js"]
@@ -18,7 +19,6 @@ prefs = [
 
 ["browser_1087303_button_fullscreen.js"]
 tags = "fullscreen"
-skip-if = ["os == 'mac'"]
 
 ["browser_1087303_button_preferences.js"]
 
@@ -43,12 +43,12 @@ tags = "overflowable-toolbar"
 # MacOS builds in browser_876926_customize_mode_wrapping.js
 skip-if = ["os == 'mac' && debug"]
 
-["browser_694291_searchbar_preference.js"]
+["browser_1880230_hideInNonPrivateBrowsing.js"]
 
 ["browser_873501_handle_specials.js"]
 
 ["browser_876926_customize_mode_wrapping.js"]
-skip-if = ["os == 'linux' && !debug"] # Bug 1682752
+skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && release_or_beta"] # bug 1921617
 
 ["browser_876944_customize_mode_create_destroy.js"]
 
@@ -59,6 +59,9 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1682752
 ["browser_877447_skip_missing_ids.js"]
 
 ["browser_878452_drag_to_panel.js"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1961559
+]
 
 ["browser_884402_customize_from_overflow.js"]
 tags = "overflowable-toolbar"
@@ -92,12 +95,12 @@ skip-if = ["os == 'linux'"]
 ["browser_918049_skipintoolbarset_dnd.js"]
 
 ["browser_923857_customize_mode_event_wrapping_during_reset.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt && socketprocess_networking"] # Bug 1961545
 
 ["browser_927717_customize_drag_empty_toolbar.js"]
 
 ["browser_934113_menubar_removable.js"]
-# Because this test is about the menubar, it can't be run on mac
-skip-if = ["os == 'mac'"]
+run-if = ["os != 'mac'"] # Because this test is about the menubar, it can't be run on mac
 
 ["browser_934951_zoom_in_toolbar.js"]
 
@@ -144,7 +147,7 @@ support-files = ["dummy_history_item.html"]
 ["browser_947914_button_zoomOut.js"]
 
 ["browser_947914_button_zoomReset.js"]
-skip-if = ["os == 'linux' && debug"] # Intermittent failures
+skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && socketprocess_networking"]
 
 ["browser_947987_removable_default.js"]
 
@@ -161,6 +164,7 @@ tags = "overflowable-toolbar"
 ["browser_963639_customizing_attribute_non_customizable_toolbar.js"]
 
 ["browser_968565_insert_before_hidden_items.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1961547
 
 ["browser_969427_recreate_destroyed_widget_after_reset.js"]
 
@@ -273,6 +277,7 @@ https_first_disabled = true
 ["browser_history_after_appMenu.js"]
 
 ["browser_history_recently_closed.js"]
+fail-if = ["a11y_checks"] # Bug 1947098
 
 ["browser_history_recently_closed_middleclick.js"]
 https_first_disabled = true
@@ -282,7 +287,7 @@ https_first_disabled = true
 ["browser_insert_before_moved_node.js"]
 
 ["browser_menubar_visibility.js"]
-skip-if = ["os == 'mac'"] # no toggle-able menubar on macOS.
+run-if = ["os != 'mac'"] # no toggle-able menubar on macOS.
 
 ["browser_newtab_button_customizemode.js"]
 
@@ -302,7 +307,7 @@ skip-if = ["verify"]
 
 ["browser_panelUINotifications_fullscreen.js"]
 tags = "fullscreen"
-skip-if = ["os == 'mac'"]
+run-if = ["os != 'mac'"]
 
 ["browser_panelUINotifications_fullscreen_noAutoHideToolbar.js"]
 skip-if = ["verify && (os == 'linux' || os == 'mac')"]
@@ -335,6 +340,8 @@ skip-if = ["(verify && debug && (os == 'linux' || os == 'mac'))"]
 
 ["browser_remove_customized_specials.js"]
 
+["browser_remove_sidebar_button_and_sidebar.js"]
+
 ["browser_reset_builtin_widget_currentArea.js"]
 
 ["browser_reset_dom_events.js"]
@@ -342,6 +349,10 @@ skip-if = ["(verify && debug && (os == 'linux' || os == 'mac'))"]
 ["browser_screenshot_button_disabled.js"]
 
 ["browser_searchbar_removal.js"]
+
+["browser_sidebar_button_reset.js"]
+
+["browser_sidebar_position_start.js"]
 
 ["browser_sidebar_toggle.js"]
 skip-if = ["verify"]
@@ -363,6 +374,12 @@ skip-if = [
 
 ["browser_unified_extensions_reset.js"]
 
+["browser_vertical_tabs_customize_navbar.js"]
+
 ["browser_widget_animation.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1961548
 
 ["browser_widget_recreate_events.js"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1961546
+]

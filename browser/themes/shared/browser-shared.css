@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+@import url("chrome://browser/skin/browser-colors.css");
 @import url("chrome://browser/skin/addons/extension-controlled.css");
 @import url("chrome://browser/skin/addons/unified-extensions.css");
 @import url("chrome://browser/skin/downloads/indicator.css");
@@ -27,8 +28,6 @@
 @import url("chrome://browser/skin/UITour.css");
 @import url("chrome://browser/skin/formautofill-notification.css");
 
-@namespace html url("http://www.w3.org/1999/xhtml");
-
 :root,
 body {
   height: 100%;
@@ -39,10 +38,13 @@ body {
 :root {
   user-select: none;
   color-scheme: light dark;
-  accent-color: var(--button-primary-bgcolor);
   text-rendering: optimizeLegibility;
   min-height: 95px;
   min-width: 95px;
+
+  @media not (forced-colors) {
+    accent-color: var(--color-accent-primary);
+  }
 
   &:-moz-locale-dir(rtl) {
     direction: rtl;
@@ -51,6 +53,28 @@ body {
   &:not([chromehidden~="toolbar"]) {
     min-width: 450px;
     min-height: 120px;
+
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media -moz-pref("sidebar.verticalTabs") {
+      min-width: 732px;
+
+      /* If the Content Analysis icon is showing, we don't
+         want to collapse it, so make a little more room. */
+      &[contentanalysisactive] {
+        min-width: 768px;
+      }
+
+      @media (-moz-platform: macos) {
+        min-width: 670px;
+
+        /* If the Content Analysis icon is showing, we don't
+          want to collapse it, so make a little more room. */
+        /* stylelint-disable max-nesting-depth */
+        &[contentanalysisactive] {
+          min-width: 706px;
+        }
+      }
+    }
   }
 
   /* z-indices that fight on the browser stack */
@@ -58,49 +82,26 @@ body {
   --browser-stack-z-index-dialog-stack: 2;
   --browser-stack-z-index-rdm-toolbar: 3;
 
-  --toolbox-non-lwt-bgcolor: -moz-headerbar;
-  --toolbox-non-lwt-textcolor: -moz-headerbartext;
-  --toolbox-non-lwt-bgcolor-inactive: -moz-headerbarinactive;
-  --toolbox-non-lwt-textcolor-inactive: -moz-headerbarinactivetext;
+  /* z-indices that fight in the general browser / toolbox area */
+  --browser-area-z-index-toolbox: 0;
+  --browser-area-z-index-sidebar: 1;
+  --browser-area-z-index-tabbox: 2;
+  --browser-area-z-index-sidebar-expand-on-hover: 4;
+  --browser-area-z-index-sidebar-splitter: 3;
+
+  /* on macOS the animation of the toolbox in fullscreen needs the toolbox to be higher */
+  --browser-area-z-index-toolbox-while-animating: 4;
 
   --toolbarbutton-border-radius: 4px;
-
-  --chrome-content-separator-color: ThreeDShadow;
-  --tabs-navbar-separator-color: ThreeDShadow;
-  --tabs-navbar-separator-style: solid;
-
-  --panelui-subview-transition-duration: 150ms;
-
-  --short-notification-background: #0250BB;
-  --short-notification-gradient: #9059FF;
-
-  --button-bgcolor: color-mix(in srgb, currentColor 13%, transparent);
-  --button-hover-bgcolor: color-mix(in srgb, currentColor 17%, transparent);
-  --button-active-bgcolor: color-mix(in srgb, currentColor 30%, transparent);
-  --button-color: currentColor;
-  --button-primary-bgcolor: AccentColor;
-  --button-primary-hover-bgcolor: color-mix(in srgb, black 10%, AccentColor);
-  --button-primary-active-bgcolor: color-mix(in srgb, black 20%, AccentColor);
-  --button-primary-color: AccentColorText;
-
-  --buttons-destructive-bgcolor: #e22850;
-  --buttons-destructive-hover-bgcolor: #c50042;
-  --buttons-destructive-active-bgcolor: #810220;
-  --buttons-destructive-color: #fbfbfe;
-
   --identity-box-margin-inline: 4px;
-  --urlbar-box-bgcolor: var(--button-bgcolor);
-  --urlbar-box-focus-bgcolor: var(--button-bgcolor);
-  --urlbar-box-hover-bgcolor: var(--button-hover-bgcolor);
-  --urlbar-box-active-bgcolor: var(--button-active-bgcolor);
-  --urlbar-box-text-color: inherit;
-  --urlbar-box-hover-text-color: var(--urlbar-box-text-color);
   --urlbar-min-height: max(32px, 1.4em);
-  --urlbar-icon-fill-opacity: 0.9;
   --urlbar-icon-padding: calc((var(--urlbar-min-height) - 2px /* border */ - 2px /* padding */ - 16px /* icon */) / 2);
+
   /* This should be used for icons and chiclets inside the input field. It makes
      the gap around them more uniform when they are close to the field edges */
   --urlbar-icon-border-radius: calc(var(--toolbarbutton-border-radius) - 1px);
+  --urlbar-searchmodeswitcher-inline-padding: 6px;
+  --urlbar-searchmodeswitcher-margin-inline-end: .45em;
 
   --pocket-icon-fill: #ef4056;
 
@@ -109,6 +110,7 @@ body {
   --lwt-background-tiling: no-repeat;
 
   --ext-theme-background-transition: background-color 0.1s cubic-bezier(.17,.67,.83,.67);
+
   --inactive-window-transition: 0.2s ease;
   --inactive-titlebar-opacity: .6;
   /**
@@ -122,29 +124,12 @@ body {
   @media (-moz-platform: windows) {
     --inactive-titlebar-opacity: .75;
   }
-
-  &:where([tabsintitlebar]) {
-    --toolbox-non-lwt-bgcolor: ActiveCaption;
-    --toolbox-non-lwt-textcolor: CaptionText;
-    --toolbox-non-lwt-bgcolor-inactive: InactiveCaption;
-    --toolbox-non-lwt-textcolor-inactive: InactiveCaptionText;
+  @media (prefers-reduced-motion) {
+    --inactive-window-transition: 0s;
   }
 
   &[lwtheme] {
     color: var(--lwt-text-color);
-
-    --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
-    --chrome-content-separator-color: rgba(0,0,0,.3);
-    --tabs-navbar-separator-color: light-dark(rgba(0,0,0,.1), rgba(0,0,0,.3));
-    --attention-dot-color: light-dark(#2ac3a2, #54ffbd);
-
-    @media not (prefers-contrast) {
-      --focus-outline-color: light-dark(#0061E0, #00DDFF);
-    }
-  }
-
-  @media (prefers-contrast) {
-    --urlbar-icon-fill-opacity: 1;
   }
 
   &[uidensity=compact] {
@@ -153,18 +138,6 @@ body {
 
   &[uidensity=touch] {
     --urlbar-min-height: max(34px, 1.4em);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    /* Increase the contrast of urlbar boxes in dark mode.
-       In practice these are bumped-up --button(-hover)-bgcolor rules */
-    --urlbar-box-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
-    --urlbar-box-focus-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
-    --urlbar-box-hover-bgcolor: color-mix(in srgb, currentColor 22%, transparent);
-  }
-
-  @media (prefers-reduced-motion) {
-    --inactive-window-transition: 0s;
   }
 }
 
@@ -179,39 +152,33 @@ body {
 
 #navigator-toolbox {
   appearance: none;
-
-  /* Toolbar / content area border */
-  border-bottom: 0.01px solid var(--chrome-content-separator-color);
-
-  background-color: var(--toolbox-non-lwt-bgcolor);
-  color: var(--toolbox-non-lwt-textcolor);
-
-  will-change: background-color;
-  transition: background-color var(--inactive-window-transition);
-
-  &:-moz-window-inactive {
-    background-color: var(--toolbox-non-lwt-bgcolor-inactive);
-    color: var(--toolbox-non-lwt-textcolor-inactive);
-  }
+  z-index: var(--browser-area-z-index-toolbox);
 
   &[fullscreenShouldAnimate] {
     transition: 0.8s margin-top ease-out;
   }
 
-  :root[customizing] & {
-    border-bottom-style: none;
+  /* While we are animating / have animated in the titlebar from macOS,
+   * the z-indices are subtly different to accommodate the sidebar better.
+   *
+   * We also give the toolbox a shadow and border in this case.
+   */
+  &.fullscreen-with-menubar {
+    z-index: var(--browser-area-z-index-toolbox-while-animating);
+    box-shadow: var(--content-area-shadow);
+    border-bottom-color: var(--chrome-content-separator-color);
   }
 
+  /* Themes define a set of toolbox foreground and background colors which we
+   * want to use across the toolbox and sidebar areas. That happens via the
+   * .browser-toolbox-background class. It's hard to make a theme's background
+   * images work with something other than the toolbox, so for now we ignore
+   * them on other things like the sidebar that could have
+   * .browser-toolbox-background */
   :root[lwtheme] & {
     background-image: var(--lwt-additional-images);
     background-repeat: var(--lwt-background-tiling);
     background-position: var(--lwt-background-alignment);
-    background-color: var(--lwt-accent-color);
-    color: inherit;
-
-    &:-moz-window-inactive {
-      background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
-    }
   }
 
   /* When a theme defines both theme_frame and additional_backgrounds, show
@@ -223,24 +190,76 @@ body {
   }
 }
 
+.browser-toolbox-background {
+  position: relative;
+  background-color: var(--toolbox-bgcolor);
+  color: var(--toolbox-textcolor);
+
+  will-change: background-color;
+  transition: background-color var(--inactive-window-transition);
+
+  &:-moz-window-inactive {
+    background-color: var(--toolbox-bgcolor-inactive);
+    color: var(--toolbox-textcolor-inactive);
+  }
+
+  :root[customizing] & {
+    border-bottom-style: none;
+  }
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media (-moz-platform: macos) and -moz-pref("browser.theme.native-theme") {
+    /* This is conceptually a background, but putting this on a pseudo-element
+     * avoids it from suppressing the chrome-content separator border, etc.
+     *
+     * We make this exist unconditionally to prevent dynamic changes from
+     * reframing the whole toolbox when adding or removing it.
+     *
+     * See bug 1949528 and bug 1476281 (which would make this unnecessary). */
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+    }
+
+    /* Don't make the toolbox vibrant when in full-screen. macOS fullscreen has a
+     * native titlebar outside of the window (revealed on hover) anyways. */
+    :root[customtitlebar]:not([lwtheme], [macOSNativeFullscreen]) & {
+      background-color: transparent;
+
+      &::after {
+        -moz-default-appearance: -moz-window-titlebar;
+        appearance: auto;
+      }
+    }
+  }
+}
+
 .browser-toolbar {
   appearance: none;
   /* Reset linux padding */
   padding: 0;
+  border-style: none;
+  background-color: transparent;
+  color: inherit;
 
-  &:not(.titlebar-color) {
-    background-color: var(--toolbar-bgcolor);
-    color: var(--toolbar-color);
-    border-style: none;
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("sidebar.verticalTabs") {
+    &:not(.browser-titlebar) {
+      background-color: var(--toolbar-bgcolor);
+      color: var(--toolbar-color);
+    }
   }
 }
 
 /* Title bar */
 
-#titlebar {
+.browser-titlebar {
   -moz-window-dragging: drag;
 
-  :root[tabsintitlebar] & {
+  :root[customtitlebar] &,
+  :root[customtitlebar] & #urlbar:popover-open {
     will-change: opacity;
     transition: opacity var(--inactive-window-transition);
 
@@ -265,18 +284,20 @@ body {
     }
   }
 
-  #toolbar-menubar[autohide="true"]:not([inactive]) + #TabsToolbar > & {
+  #toolbar-menubar[autohide="true"]:not([inactive]) ~ :is(#TabsToolbar, #nav-bar) > & {
     visibility: hidden;
   }
 
-  :root:not([chromemargin], [inFullscreen]) & {
+  :root:not([customtitlebar], [inFullscreen]) & {
     display: none;
   }
 }
 
 .titlebar-spacer {
+  width: 40px;
+
   :root[inFullscreen] &,
-  :root:not([tabsintitlebar]) & {
+  :root:not([customtitlebar]) & {
     display: none;
   }
 
@@ -299,12 +320,30 @@ body {
       display: none;
     }
   }
+
+  @media (max-width: 500px) {
+    &[type="post-tabs"] {
+      display: none;
+    }
+  }
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media -moz-pref("sidebar.verticalTabs") {
+    &[type="pre-tabs"], &[type="post-tabs"] {
+      display: none;
+    }
+  }
 }
 
-/* Hide the TabsToolbar titlebar controls if the menubar is permanently shown.
+/* Hide the TabsToolbar/nav-bar titlebar controls if the menubar is permanently shown.
  * (That is, if the menu bar doesn't autohide, and we're not in a fullscreen or
  * popup window.) */
-:root:not([chromehidden~="menubar"], [inFullscreen]) #toolbar-menubar[autohide="false"] + #TabsToolbar > :is(.titlebar-buttonbox-container, .titlebar-spacer) {
+:root:not([chromehidden~="menubar"], [inFullscreen]) #toolbar-menubar[autohide="false"] ~ :is(#TabsToolbar, #nav-bar) > :is(.titlebar-buttonbox-container, .titlebar-spacer) {
+  display: none;
+}
+
+/* Only show the titlebar buttons and spacers in the first visible toolbar. */
+#navigator-toolbox:not([tabs-hidden]) > #nav-bar > :is(.titlebar-buttonbox-container, .titlebar-spacer) {
   display: none;
 }
 
@@ -318,7 +357,7 @@ body {
   -moz-default-appearance: -moz-window-button-box;
   position: relative;
 
-  :root:not([tabsintitlebar], [sizemode=fullscreen]) & {
+  :root:not([customtitlebar], [sizemode=fullscreen]) & {
     display: none;
   }
 }
@@ -328,6 +367,19 @@ body {
 #toolbar-menubar {
   &[autohide="true"] {
     overflow: hidden;
+
+    /* For linux and windows, when temporarily showing the menu bar, make it at least
+       as tall as the tab toolbar such that the window controls don't appear to move up.
+       For MacOS, autohide is never true on the menubar.
+    */
+    :root[customtitlebar] #navigator-toolbox:not([tabs-hidden]) > & {
+      min-height: var(--tabstrip-min-height);
+    }
+    /* adjust the height of the auto-hiding toolbar menubar when the tabstrip is
+       hidden and we need to match the height of the nav-bar. */
+    :root[customtitlebar] #navigator-toolbox[tabs-hidden] > & {
+      min-height: calc(var(--urlbar-min-height) + 2 * var(--urlbar-padding-block));
+    }
 
     &[inactive]:not([customizing]) {
       min-height: 0 !important;
@@ -340,6 +392,19 @@ body {
   &:not([autohide]) {
     visibility: collapse;
   }
+}
+
+/* Hide menu elements intended for keyboard access support */
+#main-menubar[openedwithkey=false] .show-only-for-keyboard {
+  display: none;
+}
+
+/* Profiles menu */
+
+.menuitem-iconic-profile {
+  -moz-context-properties: fill, stroke;
+  fill: var(--menu-profiles-theme-bg);
+  stroke: var(--menu-profiles-theme-fg);
 }
 
 /* Navigation toolbar */
@@ -369,6 +434,15 @@ body {
   > :is(toolbarbutton, toolbaritem):first-child,
   > toolbarpaletteitem:first-child > :is(toolbarbutton, toolbaritem) {
     padding-inline-start: var(--toolbar-start-end-padding);
+  }
+}
+
+#vertical-spacer {
+  min-width: 20px;
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("sidebar.verticalTabs") {
+    display: none;
   }
 }
 
@@ -408,28 +482,11 @@ body {
 
   /* Bookmarks toolbar empty message */
 
+  /* If the toolbar is not initialized set a zero width, but retain height. */
   &[collapsed=false]:not([initialized]) > #personal-toolbar-empty {
     visibility: hidden;
-  }
-
-  /*
-   * Make the empty bookmarks toolbar message take up no horizontal space.
-   * This avoids two issues:
-   * 1) drag/drop of urls/bookmarks to the toolbar not working, because they
-   *    land on the personal-toolbar-empty element.
-   * 2) buttons in the toolbar moving horizontally while the window opens,
-   *    because the element is first shown at full width and then completely
-   *    hidden.
-   * TODO(emilio): The comment above was never quite true (the message did take
-   * horizontal space, see bug 1812636). Figure out how much of this rule is
-   * really needed.
-   */
-  &[collapsed=false] > #personal-toolbar-empty[nowidth] > #personal-toolbar-empty-description {
-    margin-inline: 0;
-    min-width: 0;
-    white-space: nowrap;
-    position: relative;
-    z-index: 1;
+    width: 0;
+    overflow-x: hidden;
   }
 
   /* Bookmarks toolbar in customize mode */
@@ -442,44 +499,19 @@ body {
   }
 }
 
+#personal-toolbar-empty-description {
+  white-space: nowrap;
+}
+
 #personal-bookmarks {
   position: relative;
   -moz-window-dragging: inherit;
 }
 
+#fxms-bmb-button-wrapper,
 toolbarpaletteitem > #personal-bookmarks > #PlacesToolbar,
 #personal-bookmarks:is([overflowedItem=true], [cui-areatype="panel"]) > #PlacesToolbar {
   display: none;
-}
-
-/* Bookmarks toolbar only-on-new-tab mode */
-
-:root {
-  --bookmarks-toolbar-overlapping-browser-height: max(28px, 2em);
-}
-
-:root[BookmarksToolbarOverlapsBrowser] {
-  #PersonalToolbar {
-    height: var(--bookmarks-toolbar-overlapping-browser-height);
-  }
-
-  #navigator-toolbox {
-    /* Overlap the content area by the height of the bookmarks toolbar so that
-       temporarily showing the toolbar for new tabs doesn't resize the content
-       area for all tabs. */
-    margin-bottom: calc(-1 * var(--bookmarks-toolbar-overlapping-browser-height));
-    z-index: 1;
-  }
-
-  .newTabBrowserPanel,
-  #sidebar-main,
-  #sidebar-box {
-    /* Make room for the bookmarks toolbar so that it won't visibly overlap the
-       new tab page and sidebar contents. We do not put this padding on #browser
-       as that would resize the content area for all tabs including background
-       tabs, which is what we explicitly want to avoid doing here. */
-    padding-top: var(--bookmarks-toolbar-overlapping-browser-height);
-  }
 }
 
 /* Bookmarks toolbar drop indicator */
@@ -492,6 +524,23 @@ toolbarpaletteitem > #personal-bookmarks > #PlacesToolbar,
 #PlacesToolbarDropIndicator {
   list-style-image: url(chrome://browser/skin/toolbar-drag-indicator.svg);
   pointer-events: none;
+}
+
+#notifications-toolbar {
+  min-height: 0;
+  flex-direction: column;
+}
+
+.bookmark-item[cutting] {
+  > .toolbarbutton-icon,
+  > .menu-icon {
+    opacity: 0.5;
+  }
+
+  > .toolbarbutton-text,
+  > .menu-text {
+    opacity: 0.7;
+  }
 }
 
 /* Menupopup drop indicators */
@@ -521,7 +570,11 @@ menupopup::part(drop-indicator) {
   pointer-events: none;
 }
 
-/* Back / Forward context menu */
+/* Back / Forward buttons context menu */
+
+.unified-nav-current {
+  font-weight: var(--font-weight-bold);
+}
 
 .unified-nav-back,
 .unified-nav-forward {
@@ -545,7 +598,7 @@ menupopup::part(drop-indicator) {
   background-color: var(--toolbar-bgcolor);
   color: var(--toolbar-color);
   color-scheme: var(--toolbar-color-scheme);
-  border-top-color: var(--chrome-content-separator-color, ThreeDShadow);
+  border-top-color: var(--chrome-content-separator-color);
 
   :root[lwtheme] & {
     background-color: var(--lwt-accent-color);
@@ -568,12 +621,23 @@ menupopup::part(drop-indicator) {
 
 /* Private browsing indicator */
 
-#private-browsing-indicator-with-label {
+.private-browsing-indicator-with-label {
   align-items: center;
   margin-inline: 7px;
 
-  :root:not([privatebrowsingmode=temporary]) & {
+  :root:not([privatebrowsingmode=temporary]) &,
+  #navigator-toolbox:not([tabs-hidden]) #nav-bar > & {
     display: none;
+  }
+
+  #navigator-toolbox[tabs-hidden] #nav-bar > & {
+    margin-inline-end: 12px;
+
+  /* Hide the private browsing indicator
+    label when vertical tabs are enabled */
+    > .private-browsing-indicator-label {
+      display: none;
+    }
   }
 }
 
@@ -583,15 +647,21 @@ menupopup::part(drop-indicator) {
   height: 16px;
 }
 
-/* End private browsing indicator */
-
 /* Content analysis indicator */
-
-:root:not([contentanalysisactive]) #content-analysis-indicator {
-  display: none;
+.content-analysis-indicator {
+  :root:not([contentanalysisactive]) &,
+  #navigator-toolbox:not([tabs-hidden]) > #nav-bar > & {
+    display: none;
+  }
 }
 
-/* End content analysis indicator */
+/* Various panels and popup notifications */
+
+#screenshotsPagePanel {
+  position: relative;
+  max-height: 0;
+  z-index: 1; /* Above the web content in this stack. */
+}
 
 /* Override theme colors since the picker uses extra colors that
    themes cannot set */
@@ -613,13 +683,35 @@ menupopup::part(drop-indicator) {
   margin: 2px 4px;
 }
 
+#invalid-form-popup {
+  white-space: pre-wrap;
+  word-break: break-word;
+  unicode-bidi: plaintext;
+
+  > description {
+    max-width: 280px;
+  }
+}
+
+.popup-notification-invalid-input {
+  box-shadow: 0 0 1.5px 1px red;
+
+  &[focused] {
+    box-shadow: 0 0 2px 2px rgba(255,0,0,0.4);
+  }
+}
+
+.popup-notification-description[popupid="webauthn-prompt-register-direct"] {
+  white-space: pre-line;
+}
+
 /* Contextual Feature Recommendation popup-notification */
 
 #cfr-notification-header {
   width: 100%;
   display: block;
   text-align: center;
-  box-shadow: 0px 1px 0px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
 }
 
 #cfr-notification-header-stack {
@@ -899,15 +991,6 @@ menupopup::part(drop-indicator) {
   flex-grow: 1;
 }
 
-/* nhnt11: Workaround to insert a linebreak after the DoH doorhanger's title.
- * The title uses the inline <b> that usually contains the hostname for
- * permission prompts to achieve bold formatting. This is always the 2nd child.
- */
-.popup-notification-description[popupid="doh-first-time"] > b:first-of-type {
-  display: block;
-  margin-bottom: 4px; /* matches the margin-bottom on description elements */
-}
-
 /* Sharing tabs warning */
 
 #sharing-tabs-warning-panel {
@@ -1062,14 +1145,6 @@ popupnotificationcontent {
   }
 }
 
-#password-notification-visibilityToggle {
-  margin-block-start: 14px;
-
-  > .checkbox-label-box > .checkbox-label {
-    opacity: 0.7;
-  }
-}
-
 #tab-notification-deck {
   display: block;
 }
@@ -1081,21 +1156,36 @@ popupnotificationcontent {
   align-items: center;
   font-size: 2em;
 
-  > div {
+  > div:nth-of-type(1) {
     width: 32px;
     height: 32px;
     background-image: url("chrome://browser/content/logos/relay.svg");
     background-repeat: no-repeat;
   }
 
-  > span:first-of-type {
-    font-weight: bold;
-    margin-inline-start: 8px;
-  }
+  > div:nth-of-type(2) {
+    direction: ltr;
+    margin-inline: 8px;
 
-  > span:last-of-type {
-    font-weight: normal;
-    white-space: pre;
+    > span:first-of-type {
+      font-weight: bold;
+    }
+
+    > span:last-of-type {
+      font-weight: normal;
+    }
+  }
+}
+
+.relay-integration-header-variation {
+  display: flex;
+  align-items: center;
+  font-weight: var(--font-weight-bold);
+  font-size: 1.5em;
+  margin: auto;
+
+  > p {
+    margin-block: auto;
   }
 }
 
@@ -1136,6 +1226,11 @@ popupnotificationcontent {
 
 /* History swipe navigation animation */
 
+#historySwipeAnimationContainer {
+  overflow: hidden;
+  pointer-events: none;
+}
+
 #historySwipeAnimationPreviousArrow,
 #historySwipeAnimationNextArrow {
   --swipe-nav-icon-primary-color: SelectedItemText;
@@ -1144,8 +1239,7 @@ popupnotificationcontent {
   will-change: transform;
 
   @media not (prefers-contrast) {
-  /* TODO: Should this be in browser-custom-colors to respect system theming on
-   * Linux? */
+    /* TODO: Should this be in browser-colors to respect system theming on Linux? */
     --swipe-nav-icon-primary-color: light-dark(#0060DF, #00DDFF);
     --swipe-nav-icon-accent-color: light-dark(#FFFFFF, #000000);
   }
@@ -1155,52 +1249,52 @@ popupnotificationcontent {
   }
 }
 
-#historySwipeAnimationPreviousArrow:-moz-locale-dir(rtl),
-#historySwipeAnimationNextArrow:-moz-locale-dir(ltr) {
+.swipe-nav-icon:-moz-locale-dir(rtl),
+#historySwipeAnimationNextArrow {
   transform: scaleX(-1);
 }
 
-.swipe-nav-icon {
-  > path {
-    transition: fill 1s;
-  }
+.swipe-nav-icon-circle,
+.swipe-nav-icon-circle-outline,
+.swipe-nav-icon-arrow {
+  transition: fill 1s;
+}
 
-  @media not (-moz-platform: macos) {
-    /*
-     * Styles for the swipe navigation SVG icon.
-     *
-     * `will-navigate` class name is added to the <svg> element when the user's
-     * swipe gesture reached to the point where history navigation will be
-     * triggered. It's used for triggering three animations, an arrow color change,
-     * a circle color change and a glowing effect outer the circle.
-     */
-    > circle {
-      fill: var(--swipe-nav-icon-accent-color);
-      stroke: var(--swipe-nav-icon-primary-color);
-      transition: fill 1s;
+@media not (-moz-platform: macos) {
+  /*
+   * Styles for the swipe navigation SVG icon.
+   *
+   * `will-navigate` class name is added to the <svg> element when the user's
+   * swipe gesture reached to the point where history navigation will be
+   * triggered. It's used for triggering three animations, an arrow color change,
+   * a circle color change and a glowing effect outer the circle.
+   */
+  .swipe-nav-icon-circle {
+    fill: var(--swipe-nav-icon-accent-color);
+    stroke: var(--swipe-nav-icon-primary-color);
 
-      &:first-of-type {
-        fill: var(--swipe-nav-icon-primary-color);
-        transition: opacity 1s;
-        will-change: opacity; /* a workaround for bug 1804189 */
-        opacity: 0;
-      }
-    }
-
-    &.will-navigate > circle:not(:first-of-type) {
+    .will-navigate > & {
       fill: var(--swipe-nav-icon-primary-color);
     }
+  }
 
-    &.will-navigate > circle:first-of-type {
+  .swipe-nav-icon-circle-outline {
+    fill: var(--swipe-nav-icon-primary-color);
+    stroke: var(--swipe-nav-icon-primary-color);
+    transition: opacity 1s;
+    will-change: opacity; /* a workaround for bug 1804189 */
+    opacity: 0;
+
+    .will-navigate > & {
       transition-delay: 0.2s;
       opacity: 0.2;
     }
+  }
 
-    > path {
-      fill: var(--swipe-nav-icon-primary-color);
-    }
+  .swipe-nav-icon-arrow {
+    fill: var(--swipe-nav-icon-primary-color);
 
-    &.will-navigate > path {
+    .will-navigate > & {
       fill: var(--swipe-nav-icon-accent-color);
       stroke: var(--swipe-nav-icon-accent-color);
     }
@@ -1218,19 +1312,16 @@ popupnotificationcontent {
   .swipe-nav-icon-circle-outline,
   .swipe-nav-icon-arrow {
     fill: var(--swipe-nav-icon-primary-color);
+
+    .will-navigate > & {
+      fill: var(--swipe-nav-icon-accent-color);
+    }
   }
 
   .swipe-nav-icon-circle {
     fill: var(--swipe-nav-icon-accent-color);
-  }
 
-  .swipe-nav-icon.will-navigate {
-    > .swipe-nav-icon-circle-outline,
-    > .swipe-nav-icon-arrow {
-      fill: var(--swipe-nav-icon-accent-color);
-    }
-
-    > .swipe-nav-icon-circle {
+    .will-navigate > & {
       fill: var(--swipe-nav-icon-primary-color);
     }
   }
@@ -1260,14 +1351,4 @@ panel toolbarseparator {
 
 #PictureInPicturePanelFooter {
   margin: 8px 16px 16px;
-}
-
-/* Shopping sidebar */
-
-shopping-sidebar {
-  border-inline-start: 1px solid var(--chrome-content-separator-color);
-  min-width: 16.92em;
-  max-width: 32.31em;
-  width: 320px;
-  box-sizing: content-box;
 }

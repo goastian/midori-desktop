@@ -15,16 +15,66 @@
 }
 
 html|*.addon-webext-perm-list {
-  margin-block-end: 0;
-  padding-inline-start: 10px;
+  margin-block: 0;
+  padding-inline-start: 0;
+
+  > html|li {
+    list-style: none;
+
+    &.webext-perm-granted {
+      /* NOTE: Insert line breaks on long permission strings (or domain name
+       * included in the localized string that ends up be overflowing */
+      overflow-wrap: break-word;
+      list-style-type: disc;
+      /* Align the list with the rest of the page, and use `list-style-position:
+       * outside` to keep long string correctly wrapped. */
+      margin-inline-start: calc(1em + var(--space-xsmall));
+    }
+
+    /* Add some space between the list of permissions and the data collection
+     * permissions since this is displayed as a single sentence. */
+    & + &.webext-data-collection-perm-granted,
+    & + &.webext-data-collection-perm-optional {
+      margin-top: var(--space-medium);
+    }
+
+    /* Add some space between the list of permissions and the private browsing
+     * checkbox. */
+    &:not(.webext-data-collection-perm-optional) + &.webext-perm-privatebrowsing {
+      margin-top: var(--space-medium);
+    }
+  }
 }
 
-.addon-webext-perm-single-entry {
-  margin-top: 11px;
+html|ul.webext-perm-domains-list {
+  --domains-list-border-color: var(--border-color-deemphasized);
+  --domains-list-text-color: var(--text-color-deemphasized);
+
+  border: var(--border-width) solid var(--domains-list-border-color);
+  border-radius: var(--border-radius-small);
+  margin-block: var(--space-small);
+  margin-inline: calc(var(--size-item-small) + var(--space-small)) 0;
+  padding-block: var(--space-xsmall);
+  padding-inline: calc(var(--space-xlarge) + var(--space-xsmall));
+
+  max-width: 80vw;
+  overflow: auto;
+
+  /* max-height is set when the domains list is longer than 5 domains
+   * to force the domains list to become scrollable. */
+  &.scrollable-domains-list {
+    max-height: 5.5lh;
+  }
+
+  > html|li {
+    list-style: disc;
+    color: var(--domains-list-text-color);
+    /* NOTE: Insert line breaks anywhere in long domain names that would be overflowing */
+    overflow-wrap: anywhere;
+  }
 }
 
-.addon-webext-perm-text,
-.addon-webext-perm-single-entry {
+.addon-webext-perm-text {
   margin-inline-start: 0;
 }
 
@@ -38,13 +88,23 @@ html|*.addon-webext-perm-list {
   margin-inline-start: -1px;
 }
 
+.popup-notification-description[popupid="addon-install-failed-blocklist"] {
+  font-weight: normal;
+}
+
 .addon-webext-perm-notification-content,
 .addon-installed-notification-content {
   margin-top: 0;
 }
 
-.addon-installed-notification-content > checkbox {
-  margin: 8px 4px 2px;
+.addon-webext-perm-notification-content {
+  moz-checkbox {
+    margin-block: var(--space-small);
+  }
+
+  > h2 {
+    margin-block-end: var(--space-xsmall);
+  }
 }
 
 .addon-webext-name {

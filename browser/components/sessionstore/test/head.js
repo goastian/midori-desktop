@@ -33,6 +33,10 @@ const { SessionStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/SessionStoreTestUtils.sys.mjs"
 );
 
+const { PageWireframes } = ChromeUtils.importESModule(
+  "resource:///modules/sessionstore/PageWireframes.sys.mjs"
+);
+
 const ss = SessionStore;
 SessionStoreTestUtils.init(this, window);
 
@@ -356,9 +360,24 @@ function forgetClosedWindows() {
 
 // Forget all closed tabs for a window
 function forgetClosedTabs(win) {
-  while (ss.getClosedTabCountForWindow(win) > 0) {
-    ss.forgetClosedTab(win, 0);
+  const closedTabCount = ss.getClosedTabCountForWindow(win);
+  for (let i = 0; i < closedTabCount; i++) {
+    try {
+      ss.forgetClosedTab(win, 0);
+    } catch (err) {
+      // This will fail if there are tab groups in here
+    }
   }
+}
+
+function forgetSavedTabGroups() {
+  const tabGroups = ss.getSavedTabGroups();
+  tabGroups.forEach(tabGroup => ss.forgetSavedTabGroup(tabGroup.id));
+}
+
+function forgetClosedTabGroups(win) {
+  const tabGroups = ss.getClosedTabGroups(win);
+  tabGroups.forEach(tabGroup => ss.forgetClosedTabGroup(win, tabGroup.id));
 }
 
 /**

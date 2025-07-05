@@ -11,6 +11,68 @@ $tags:
   - 'Firefox :: Profiles'
 
 browser.backup:
+  enabled:
+    type: boolean
+    description: >
+      True if the BackupService is enabled by default.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_ENABLED
+
+  scheduler_enabled:
+    type: boolean
+    description: >
+      True if the BackupService is configured to automatically create backups
+      in the background.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_SCHEDULER_ENABLED
+
+  pswd_encrypted:
+    type: boolean
+    description: >
+      True if the BackupService is configured to encrypt backups.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_PSWD_ENCRYPTED
+
+  location_on_device:
+    type: quantity
+    unit: enum (see description)
+    description: >
+      1 = the default location, 2 = a non-default location
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908727
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_LOCATION_ON_DEVICE
+
   prof_d_disk_space:
     type: quantity
     unit: kilobyte
@@ -29,6 +91,58 @@ browser.backup:
     expires: never
     telemetry_mirror: BROWSER_BACKUP_PROF_D_DISK_SPACE
 
+  total_backup_size:
+    type: memory_distribution
+    memory_unit: megabyte
+    description: >
+      The total uncompressed size of all profile data included in a
+      completed backup. To reduce fingerprintability, we round to the
+      nearest 1 mebibyte.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887765
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887765
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_TOTAL_BACKUP_SIZE
+
+  compressed_archive_size:
+    type: memory_distribution
+    memory_unit: megabyte
+    description: >
+      The total compressed size of a single-file profile data backup archive.
+      To reduce fingerprintability, we round to the nearest 1 mebibyte.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907625
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907625
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_COMPRESSED_ARCHIVE_SIZE
+
+  total_backup_time:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Total time elapsed, in milliseconds, between the start and end
+      of the profile backup creation process
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_TOTAL_BACKUP_TIME_MS
+
   places_size:
     type: quantity
     unit: kilobyte
@@ -46,6 +160,23 @@ browser.backup:
     expires: never
     telemetry_mirror: BROWSER_BACKUP_PLACES_SIZE
 
+  places_time:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Total time, in milliseconds, required to back up a profile's places
+      database.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_PLACES_TIME_MS
+
   favicons_size:
     type: quantity
     unit: kilobyte
@@ -60,6 +191,23 @@ browser.backup:
       - mconley@mozilla.com
     expires: never
     telemetry_mirror: BROWSER_BACKUP_FAVICONS_SIZE
+
+  favicons_time:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Total time, in milliseconds, required to back up a profile's favicons
+      database.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1891146
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_BACKUP_FAVICONS_TIME_MS
 
   credentials_data_size:
     type: quantity
@@ -304,3 +452,149 @@ browser.backup:
       - mconley@mozilla.com
     expires: never
     telemetry_mirror: BROWSER_BACKUP_EXTENSIONS_STORAGE_SIZE
+
+  toggle_on:
+    type: event
+    description: >
+      Dispatched when scheduled backups are enabled.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_ToggleOn_Backupservice
+
+  toggle_off:
+    type: event
+    description: >
+      Dispatched when scheduled backups are disabled.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_ToggleOff_Backupservice
+
+  created:
+    type: event
+    description: >
+      Dispatched when a backup is successfully created.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - technical
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_Created_Backupservice
+
+  change_location:
+    type: event
+    description: >
+      Dispatched when the backup destination location is changed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_ChangeLocation_Backupservice
+
+  password_changed:
+    type: event
+    description: >
+      Dispatched when the backup encryption password is changed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_PasswordChanged_Backupservice
+
+  password_added:
+    type: event
+    description: >
+      Dispatched when the backup encryption is enabled.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_PasswordAdded_Backupservice
+
+  password_removed:
+    type: event
+    description: >
+      Dispatched when the backup encryption is removed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BrowserBackup_PasswordRemoved_Backupservice
+
+  error:
+    type: event
+    description: >
+      Dispatched when a backup fails to be created. We encode the error code
+      as well as the stage the backup failed in in the extra data.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908732
+    data_sensitivity:
+      - interaction
+    send_in_pings:
+      - events
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    extra_keys:
+      error_code:
+        type: string
+        description: The string representation of the error code.
+      backup_step:
+        type: string
+        description: >
+          The string representation of the step that backup creation was in
+          when the error occurred.
+    telemetry_mirror: BrowserBackup_Error_Backupservice

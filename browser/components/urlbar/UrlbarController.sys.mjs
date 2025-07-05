@@ -7,18 +7,11 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.sys.mjs",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
 });
-
-const TELEMETRY_1ST_RESULT = "PLACES_AUTOCOMPLETE_1ST_RESULT_TIME_MS";
-const TELEMETRY_6_FIRST_RESULTS = "PLACES_AUTOCOMPLETE_6_FIRST_RESULTS_TIME_MS";
-
-const TELEMETRY_SCALAR_ENGAGEMENT = "urlbar.engagement";
-const TELEMETRY_SCALAR_ABANDONMENT = "urlbar.abandonment";
 
 const NOTIFICATIONS = {
   QUERY_STARTED: "onQueryStarted",
@@ -67,7 +60,7 @@ export class UrlbarController {
     }
     if (
       !options.input.window.location ||
-      !options.input.window.location.href.startsWith(AppConstants.BROWSER_CHROME_URL)
+      options.input.window.location.href != AppConstants.BROWSER_CHROME_URL
     ) {
       throw new Error("input.window should be an actual browser window.");
     }
@@ -111,6 +104,8 @@ export class UrlbarController {
    * Takes a query context and starts the query based on the user input.
    *
    * @param {UrlbarQueryContext} queryContext The query details.
+   * @returns {Promise<UrlbarQueryContext>}
+   *   The updated query context.
    */
   async startQuery(queryContext) {
     // Cancel any running query.
@@ -125,8 +120,10 @@ export class UrlbarController {
     let contextWrapper = (this._lastQueryContextWrapper = { queryContext });
 
     queryContext.lastResultCount = 0;
-    TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, queryContext);
-    TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, queryContext);
+    queryContext.firstTimerId =
+      Glean.urlbar.autocompleteFirstResultTime.start();
+    queryContext.sixthTimerId =
+      Glean.urlbar.autocompleteSixthResultTime.start();
 
     // For proper functionality we must ensure this notification is fired
     // synchronously, as soon as startQuery is invoked, but after any
@@ -146,15 +143,6 @@ export class UrlbarController {
       this.notify(NOTIFICATIONS.QUERY_FINISHED, queryContext);
     }
 
-    // Record a potential exposure if the current search string matches one of
-    // the registered keywords.
-    if (!queryContext.isPrivate) {
-      let searchStr = queryContext.trimmedLowerCaseSearchString;
-      if (lazy.UrlbarPrefs.get("potentialExposureKeywords").has(searchStr)) {
-        this.engagementEvent.addPotentialExposure(searchStr);
-      }
-    }
-
     return queryContext;
   }
 
@@ -171,8 +159,12 @@ export class UrlbarController {
     this._lastQueryContextWrapper.done = true;
 
     let { queryContext } = this._lastQueryContextWrapper;
-    TelemetryStopwatch.cancel(TELEMETRY_1ST_RESULT, queryContext);
-    TelemetryStopwatch.cancel(TELEMETRY_6_FIRST_RESULTS, queryContext);
+
+    Glean.urlbar.autocompleteFirstResultTime.cancel(queryContext.firstTimerId);
+    queryContext.firstTimerId = 0;
+    Glean.urlbar.autocompleteSixthResultTime.cancel(queryContext.sixthTimerId);
+    queryContext.sixthTimerId = 0;
+
     this.manager.cancelQuery(queryContext);
     this.notify(NOTIFICATIONS.QUERY_CANCELLED, queryContext);
     this.notify(NOTIFICATIONS.QUERY_FINISHED, queryContext);
@@ -185,10 +177,16 @@ export class UrlbarController {
    */
   receiveResults(queryContext) {
     if (queryContext.lastResultCount < 1 && queryContext.results.length >= 1) {
-      TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, queryContext);
+      Glean.urlbar.autocompleteFirstResultTime.stopAndAccumulate(
+        queryContext.firstTimerId
+      );
+      queryContext.firstTimerId = 0;
     }
     if (queryContext.lastResultCount < 6 && queryContext.results.length >= 6) {
-      TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, queryContext);
+      Glean.urlbar.autocompleteSixthResultTime.stopAndAccumulate(
+        queryContext.sixthTimerId
+      );
+      queryContext.sixthTimerId = 0;
     }
 
     if (queryContext.firstResultChanged) {
@@ -283,6 +281,7 @@ export class UrlbarController {
    *   will be deferred by the event bufferer, but preventDefault() and friends
    *   should still happen synchronously.
    */
+  // eslint-disable-next-line complexity
   handleKeyNavigation(event, executeAction = true) {
     const isMac = AppConstants.platform == "macosx";
     // Handle readline/emacs-style navigation bindings on Mac.
@@ -328,8 +327,18 @@ export class UrlbarController {
         if (executeAction) {
           if (this.view.isOpen) {
             this.view.close();
+          } else if (
+            lazy.UrlbarPrefs.get("focusContentDocumentOnEsc") &&
+            !this.input.searchMode &&
+            (this.input.getAttribute("pageproxystate") == "valid" ||
+              (this.input.value == "" &&
+                this.browserWindow.isBlankPageURL(
+                  this.browserWindow.gBrowser.currentURI.spec
+                )))
+          ) {
+            this.browserWindow.gBrowser.selectedBrowser.focus();
           } else {
-            this.input.handleRevert(true);
+            this.input.handleRevert();
           }
         }
         event.preventDefault();
@@ -347,6 +356,48 @@ export class UrlbarController {
         event.preventDefault();
         break;
       case KeyEvent.DOM_VK_TAB: {
+        if (!this.view.visibleRowCount) {
+          // Leave it to the default behaviour if there are not results.
+          break;
+        }
+
+        // Change the tab behavior when urlbar view is open.
+        if (
+          lazy.UrlbarPrefs.get("scotchBonnet.enableOverride") &&
+          this.view.isOpen &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
+          if (
+            (event.shiftKey &&
+              this.view.selectedElement ==
+                this.view.getFirstSelectableElement()) ||
+            (!event.shiftKey &&
+              this.view.selectedElement == this.view.getLastSelectableElement())
+          ) {
+            // If pressing tab + shift when the first or pressing tab when last
+            // element has been selected, move the focus to the Unified Search
+            // Button. Then make urlbar results selectable by tab + shift.
+            event.preventDefault();
+            this.view.selectedRowIndex = -1;
+            this.#focusOnUnifiedSearchButton();
+            break;
+          } else if (
+            !this.view.selectedElement &&
+            this.input.focusedViaMousedown
+          ) {
+            if (event.shiftKey) {
+              this.#focusOnUnifiedSearchButton();
+            } else {
+              this.view.selectBy(1, {
+                userPressedTab: true,
+              });
+            }
+            event.preventDefault();
+            break;
+          }
+        }
+
         // It's always possible to tab through results when the urlbar was
         // focused with the mouse or has a search string, or when the view
         // already has a selection.
@@ -424,6 +475,7 @@ export class UrlbarController {
       case KeyEvent.DOM_VK_END:
         this.input.maybeConfirmSearchModeFromResult({
           entry: "typed",
+          startQuery: true,
         });
       // Fall through.
       case KeyEvent.DOM_VK_LEFT:
@@ -478,10 +530,6 @@ export class UrlbarController {
     if (!this.input || context.isPrivate || !context.results.length) {
       return;
     }
-    let { url } = lazy.UrlbarUtils.getUrlFromResult(result);
-    if (!url) {
-      return;
-    }
 
     switch (reason) {
       case "resultsadded": {
@@ -505,6 +553,11 @@ export class UrlbarController {
               );
             }
           } else if (result.autofill) {
+            const { url } = lazy.UrlbarUtils.getUrlFromResult(result);
+            if (!url) {
+              return;
+            }
+
             lazy.UrlbarUtils.setupSpeculativeConnection(
               url,
               this.browserWindow
@@ -514,6 +567,11 @@ export class UrlbarController {
         return;
       }
       case "mousedown": {
+        const { url } = lazy.UrlbarUtils.getUrlFromResult(result);
+        if (!url) {
+          return;
+        }
+
         // On mousedown, connect only to http/https urls.
         if (url.startsWith("http")) {
           lazy.UrlbarUtils.setupSpeculativeConnection(url, this.browserWindow);
@@ -542,69 +600,9 @@ export class UrlbarController {
   }
 
   /**
-   * Records details of the selected result in telemetry. We only record the
-   * selection behavior, type and index.
-   *
-   * @param {Event} event
-   *   The event which triggered the result to be selected.
-   * @param {UrlbarResult} result
-   *   The selected result.
-   */
-  recordSelectedResult(event, result) {
-    let resultIndex = result ? result.rowIndex : -1;
-    let selectedResult = -1;
-    if (resultIndex >= 0) {
-      // Except for the history popup, the urlbar always has a selection.  The
-      // first result at index 0 is the "heuristic" result that indicates what
-      // will happen when you press the Enter key.  Treat it as no selection.
-      selectedResult = resultIndex > 0 || !result.heuristic ? resultIndex : -1;
-    }
-    lazy.BrowserSearchTelemetry.recordSearchSuggestionSelectionMethod(
-      event,
-      "urlbar",
-      selectedResult,
-      this._userSelectionBehavior
-    );
-
-    if (!result) {
-      return;
-    }
-
-    // Do not modify existing telemetry types.  To add a new type:
-    //
-    // * Set telemetryType appropriately. Since telemetryType is used as the
-    //   probe name, it must be alphanumeric with optional underscores.
-    // * Add a new keyed scalar probe into the urlbar.picked category for the
-    //   newly added telemetryType.
-    // * Add a test named browser_UsageTelemetry_urlbar_newType.js to
-    //   browser/modules/test/browser.
-    //
-    // The "topsite" type overrides the other ones, because it starts from a
-    // unique user interaction, that we want to count apart. We do this here
-    // rather than in telemetryTypeFromResult because other consumers, like
-    // events telemetry, are reporting this information separately.
-    let telemetryType =
-      result.providerName == "UrlbarProviderTopSites"
-        ? "topsite"
-        : lazy.UrlbarUtils.telemetryTypeFromResult(result);
-    Services.telemetry.keyedScalarAdd(
-      `urlbar.picked.${telemetryType}`,
-      resultIndex,
-      1
-    );
-    if (this.input.searchMode && !this.input.searchMode.isPreview) {
-      Services.telemetry.keyedScalarAdd(
-        `urlbar.picked.searchmode.${this.input.searchMode.entry}`,
-        resultIndex,
-        1
-      );
-    }
-  }
-
-  /**
    * Triggers a "dismiss" engagement for the selected result if one is selected
    * and it's not the heuristic. Providers that can respond to dismissals of
-   * their results should implement `onLegacyEngagement()`, handle the
+   * their results should implement `onEngagement()`, handle the
    * dismissal, and call `controller.removeResult()`.
    *
    * @param {Event} event
@@ -704,6 +702,42 @@ export class UrlbarController {
       }
     }
   }
+
+  #focusOnUnifiedSearchButton() {
+    this.input.setUnifiedSearchButtonAvailability(true);
+
+    const switcher = this.input.document.getElementById(
+      "urlbar-searchmode-switcher"
+    );
+    // Set tabindex to be focusable.
+    switcher.setAttribute("tabindex", "-1");
+    // Remove blur listener to avoid closing urlbar view panel.
+    this.input.removeEventListener("blur", this.input);
+    // Move the focus.
+    switcher.focus();
+    // Restore all.
+    this.input.addEventListener("blur", this.input);
+    switcher.addEventListener(
+      "blur",
+      e => {
+        switcher.removeAttribute("tabindex");
+        if (
+          this.input.hasAttribute("focused") &&
+          !e.relatedTarget?.closest("#urlbar")
+        ) {
+          // If the focus is not back to urlbar, fire blur event explicitly to
+          // clear the urlbar. Because the input field has been losing an
+          // opportunity to lose the focus since we removed blur listener once.
+          this.input.inputField.dispatchEvent(
+            new FocusEvent("blur", {
+              relatedTarget: e.relatedTarget,
+            })
+          );
+        }
+      },
+      { once: true }
+    );
+  }
 }
 
 /**
@@ -720,7 +754,9 @@ class TelemetryEvent {
   constructor(controller, category) {
     this._controller = controller;
     this._category = category;
-    this.#beginObservingPingPrefs();
+    lazy.UrlbarPrefs.addObserver(this);
+    this.#readPingPrefs();
+    this._lastSearchDetailsForDisableSuggestTracking = null;
   }
 
   /**
@@ -876,34 +912,11 @@ class TelemetryEvent {
       throw new Error("Invalid event details: " + details);
     }
 
-    let action;
-    let skipLegacyTelemetry = false;
-    if (!event) {
-      action =
-        startEventInfo.interactionType == "dropped" ? "drop_go" : "paste_go";
-    } else if (event.type == "blur") {
-      action = "blur";
-    } else if (event.type == "tabswitch") {
-      action = "tab_switch";
-    } else if (
-      details.element?.dataset.command &&
-      // The "help" selType is recognized by legacy telemetry, and `action`
-      // should be set to either "click" or "enter" depending on whether the
-      // event is a mouse event, so ignore "help" here.
-      details.element.dataset.command != "help"
-    ) {
-      action = details.element.dataset.command;
-      skipLegacyTelemetry = true;
-    } else if (details.selType == "dismiss") {
-      action = "dismiss";
-      skipLegacyTelemetry = true;
-    } else if (MouseEvent.isInstance(event)) {
-      action = event.target.classList.contains("urlbar-go-button")
-        ? "go_button"
-        : "click";
-    } else {
-      action = "enter";
-    }
+    let action = this.#getActionFromEvent(
+      event,
+      details,
+      startEventInfo.interactionType
+    );
 
     let method =
       action == "blur" || action == "tab_switch" ? "abandonment" : "engagement";
@@ -932,46 +945,32 @@ class TelemetryEvent {
 
     let { queryContext } = this._controller._lastQueryContextWrapper || {};
 
-    this._recordSearchEngagementTelemetry(
-      queryContext,
-      method,
-      startEventInfo,
-      {
-        action,
-        numChars,
-        numWords,
-        searchWords,
-        provider: details.provider,
-        searchSource: details.searchSource,
-        searchMode: details.searchMode,
-        selectedElement: details.element,
-        selIndex: details.selIndex,
-        selType: details.selType,
-      }
-    );
+    this._recordSearchEngagementTelemetry(method, startEventInfo, {
+      action,
+      numChars,
+      numWords,
+      searchWords,
+      provider: details.provider,
+      searchSource: details.searchSource,
+      searchMode: details.searchMode,
+      selectedElement: details.element,
+      selIndex: details.selIndex,
+      selType: details.selType,
+    });
 
     if (!details.isSessionOngoing) {
-      this.#recordEndOfSessionTelemetry(details.searchString);
+      this.#recordExposures(queryContext);
     }
 
-    if (!skipLegacyTelemetry) {
-      Services.telemetry.scalarAdd(
-        method == "engagement"
-          ? TELEMETRY_SCALAR_ENGAGEMENT
-          : TELEMETRY_SCALAR_ABANDONMENT,
-        1
-      );
+    const visibleResults = this._controller.view?.visibleResults ?? [];
 
-      if (
-        method === "engagement" &&
-        this._controller.view?.visibleResults?.[0]?.autofill
-      ) {
-        // Record autofill impressions upon engagement.
-        const type = lazy.UrlbarUtils.telemetryTypeFromResult(
-          this._controller.view.visibleResults[0]
-        );
-        Services.telemetry.scalarAdd(`urlbar.impression.${type}`, 1);
-      }
+    // Start tracking for a disable event if there was a Suggest result
+    // during an engagement or abandonment event.
+    if (
+      (method == "engagement" || method == "abandonment") &&
+      visibleResults.some(r => r.providerName == "UrlbarProviderQuickSuggest")
+    ) {
+      this.startTrackingDisableSuggest(event, details);
     }
 
     try {
@@ -989,7 +988,6 @@ class TelemetryEvent {
   }
 
   _recordSearchEngagementTelemetry(
-    queryContext,
     method,
     startEventInfo,
     {
@@ -1036,15 +1034,26 @@ class TelemetryEvent {
     let results = currentResults
       .map(r => lazy.UrlbarUtils.searchEngagementTelemetryType(r))
       .join(",");
+    let actions = currentResults
+      .map((r, i) => lazy.UrlbarUtils.searchEngagementTelemetryAction(r, i))
+      .filter(v => v)
+      .join(",");
     const search_engine_default_id = Services.search.defaultEngine.telemetryId;
 
     let eventInfo;
     if (method === "engagement") {
-      const selected_result = lazy.UrlbarUtils.searchEngagementTelemetryType(
+      let selected_result = lazy.UrlbarUtils.searchEngagementTelemetryType(
         currentResults[selIndex],
         selType
       );
-      const selected_result_subtype = "";
+
+      if (selType == "action") {
+        let actionKey = lazy.UrlbarUtils.searchEngagementTelemetryAction(
+          currentResults[selIndex],
+          selIndex
+        );
+        selected_result = `action_${actionKey}`;
+      }
 
       if (selected_result === "input_field" && !this._controller.view?.isOpen) {
         numResults = 0;
@@ -1061,13 +1070,13 @@ class TelemetryEvent {
         n_results: numResults,
         selected_position: selIndex + 1,
         selected_result,
-        selected_result_subtype,
         provider,
         engagement_type:
           selType === "help" || selType === "dismiss" ? selType : action,
         search_engine_default_id,
         groups,
         results,
+        actions,
       };
     } else if (method === "abandonment") {
       eventInfo = {
@@ -1081,6 +1090,7 @@ class TelemetryEvent {
         search_engine_default_id,
         groups,
         results,
+        actions,
       };
     } else if (method === "impression") {
       eventInfo = {
@@ -1094,63 +1104,107 @@ class TelemetryEvent {
         search_engine_default_id,
         groups,
         results,
+        actions,
+      };
+    } else if (method == "disable") {
+      const previousEvent =
+        action == "blur" || action == "tab_switch"
+          ? "abandonment"
+          : "engagement";
+      let selected_result = "none";
+      if (previousEvent == "engagement") {
+        selected_result = lazy.UrlbarUtils.searchEngagementTelemetryType(
+          currentResults[selIndex],
+          selType
+        );
+      }
+      eventInfo = {
+        sap,
+        interaction,
+        search_mode,
+        search_engine_default_id,
+        n_chars: numChars,
+        n_words: numWords,
+        n_results: numResults,
+        selected_result,
+        results,
+        feature: "suggest",
       };
     } else {
       console.error(`Unknown telemetry event method: ${method}`);
       return;
     }
 
-    this._controller.logger.info(
-      `${method} event: ${JSON.stringify(eventInfo)}`
-    );
+    this._controller.logger.info(`${method} event:`, eventInfo);
 
     Glean.urlbar[method].record(eventInfo);
   }
 
-  #recordEndOfSessionTelemetry(searchString) {
-    // exposures
-    if (this.#exposureResultTypes.size) {
-      let exposure = {
-        results: [...this.#exposureResultTypes].sort().join(","),
-      };
-      this._controller.logger.debug(
-        `exposure event: ${JSON.stringify(exposure)}`
-      );
-      Glean.urlbar.exposure.record(exposure);
-      this.#exposureResultTypes.clear();
+  #recordExposures(queryContext) {
+    let exposures = this.#exposures;
+    this.#exposures = [];
+    this.#tentativeExposures = [];
+    if (!exposures.length) {
+      return;
     }
-    this.#tentativeExposureResultTypes.clear();
 
-    // potential exposures
-    if (this.#potentialExposureKeywords.size) {
-      let normalizedSearchString = searchString.trim().toLowerCase();
-      for (let keyword of this.#potentialExposureKeywords) {
-        let data = {
-          keyword,
-          terminal: keyword == normalizedSearchString,
-        };
-        this._controller.logger.debug(
-          `potential_exposure event: ${JSON.stringify(data)}`
-        );
-        Glean.urlbar.potentialExposure.record(data);
+    let terminalByType = new Map();
+    let keywordExposureRecorded = false;
+    for (let { weakResult, resultType, keyword } of exposures) {
+      let terminal = false;
+      let result = weakResult.get();
+      if (result) {
+        this.#exposureResults.delete(result);
+
+        let endResults = result.isHiddenExposure
+          ? queryContext.results
+          : this._controller.view?.visibleResults;
+        terminal = endResults?.includes(result);
       }
-      GleanPings.urlbarPotentialExposure.submit();
-      this.#potentialExposureKeywords.clear();
+
+      terminalByType.set(resultType, terminal);
+
+      // Record the `keyword_exposure` event if there's a keyword.
+      if (keyword) {
+        let data = { keyword, terminal, result: resultType };
+        this._controller.logger.debug("Recording keyword_exposure event", data);
+        Glean.urlbar.keywordExposure.record(data);
+        keywordExposureRecorded = true;
+      }
+    }
+
+    // Record the `exposure` event.
+    let tuples = [...terminalByType].sort((a, b) => a[0].localeCompare(b[0]));
+    let exposure = {
+      results: tuples.map(t => t[0]).join(","),
+      terminal: tuples.map(t => t[1]).join(","),
+    };
+    this._controller.logger.debug("Recording exposure event", exposure);
+    Glean.urlbar.exposure.record(exposure);
+
+    // Submit the `urlbar-keyword-exposure` ping if any keyword exposure events
+    // were recorded above.
+    if (keywordExposureRecorded) {
+      GleanPings.urlbarKeywordExposure.submit();
     }
   }
 
   /**
-   * Registers an exposure for a result in the current urlbar session. All
-   * exposures that are added during a session are recorded in an exposure event
-   * at the end of the session. Exposures are cleared at the end of each session
-   * and do not carry over to the next session.
+   * Registers an exposure for a result in the current urlbar session, if the
+   * result should record exposure telemetry. All exposures that are added
+   * during a session are recorded in the `exposure` event at the end of the
+   * session. If keyword exposures are enabled, they will be recorded in the
+   * `urlbar-keyword-exposure` ping at the end of the session as well. Exposures
+   * are cleared at the end of each session and do not carry over.
    *
    * @param {UrlbarResult} result An exposure will be added for this result if
    *        exposures are enabled for its result type.
+   * @param {UrlbarQueryContext} queryContext The query context associated with
+   *        the result.
    */
-  addExposure(result) {
-    if (result.exposureResultType) {
-      this.#exposureResultTypes.add(result.exposureResultType);
+  addExposure(result, queryContext) {
+    if (result.exposureTelemetry) {
+      this.#addExposureInternal(result, queryContext);
     }
   }
 
@@ -1161,10 +1215,15 @@ class TelemetryEvent {
    *
    * @param {UrlbarResult} result A tentative exposure will be added for this
    *        result if exposures are enabled for its result type.
+   * @param {UrlbarQueryContext} queryContext The query context associated with
+   *        the result.
    */
-  addTentativeExposure(result) {
-    if (result.exposureResultType) {
-      this.#tentativeExposureResultTypes.add(result.exposureResultType);
+  addTentativeExposure(result, queryContext) {
+    if (result.exposureTelemetry) {
+      this.#tentativeExposures.push({
+        weakResult: Cu.getWeakReference(result),
+        weakQueryContext: Cu.getWeakReference(queryContext),
+      });
     }
   }
 
@@ -1174,10 +1233,16 @@ class TelemetryEvent {
    * recorded at the end of the session.
    */
   acceptTentativeExposures() {
-    for (let type of this.#tentativeExposureResultTypes) {
-      this.#exposureResultTypes.add(type);
+    if (this.#tentativeExposures.length) {
+      for (let { weakResult, weakQueryContext } of this.#tentativeExposures) {
+        let result = weakResult.get();
+        let queryContext = weakQueryContext.get();
+        if (result && queryContext) {
+          this.#addExposureInternal(result, queryContext);
+        }
+      }
+      this.#tentativeExposures = [];
     }
-    this.#tentativeExposureResultTypes.clear();
   }
 
   /**
@@ -1185,17 +1250,28 @@ class TelemetryEvent {
    * during the current urlbar session.
    */
   discardTentativeExposures() {
-    this.#tentativeExposureResultTypes.clear();
+    if (this.#tentativeExposures.length) {
+      this.#tentativeExposures = [];
+    }
   }
 
-  /**
-   * Registers a potential exposure in the current urlbar session.
-   *
-   * @param {string} keyword
-   *   The keyword that was matched.
-   */
-  addPotentialExposure(keyword) {
-    this.#potentialExposureKeywords.add(keyword);
+  #addExposureInternal(result, queryContext) {
+    // If we haven't added an exposure for this result, add it now. The view can
+    // add exposures for the same results again and again due to the nature of
+    // its update process, but we should record at most one exposure per result.
+    if (!this.#exposureResults.has(result)) {
+      this.#exposureResults.add(result);
+      let resultType = lazy.UrlbarUtils.searchEngagementTelemetryType(result);
+      this.#exposures.push({
+        resultType,
+        weakResult: Cu.getWeakReference(result),
+        keyword:
+          !queryContext.isPrivate &&
+          lazy.UrlbarPrefs.get("keywordExposureResults").has(resultType)
+            ? queryContext.trimmedLowerCaseSearchString
+            : null,
+      });
+    }
   }
 
   #getInteractionType(
@@ -1257,6 +1333,33 @@ class TelemetryEvent {
       m => m.source == searchMode.source
     )?.telemetryLabel;
     return source ?? "unknown";
+  }
+
+  #getActionFromEvent(event, details, defaultInteractionType) {
+    if (!event) {
+      return defaultInteractionType === "dropped" ? "drop_go" : "paste_go";
+    }
+    if (event.type === "blur") {
+      return "blur";
+    }
+    if (event.type === "tabswitch") {
+      return "tab_switch";
+    }
+    if (
+      details.element?.dataset.command &&
+      details.element.dataset.command !== "help"
+    ) {
+      return details.element.dataset.command;
+    }
+    if (details.selType === "dismiss") {
+      return "dismiss";
+    }
+    if (MouseEvent.isInstance(event)) {
+      return event.target.classList.contains("urlbar-go-button")
+        ? "go_button"
+        : "click";
+    }
+    return "enter";
   }
 
   _parseSearchString(searchString) {
@@ -1370,17 +1473,25 @@ class TelemetryEvent {
     "suggest.topsites": Glean.urlbar.prefSuggestTopsites,
   };
 
-  #beginObservingPingPrefs() {
+  #readPingPrefs() {
     for (const p of Object.keys(this.#PING_PREFS)) {
       this.onPrefChanged(p);
     }
-    lazy.UrlbarPrefs.addObserver(this);
   }
 
   onPrefChanged(pref) {
     const metric = this.#PING_PREFS[pref];
+    const prefValue = lazy.UrlbarPrefs.get(pref);
     if (metric) {
-      metric.set(lazy.UrlbarPrefs.get(pref));
+      metric.set(prefValue);
+    }
+    switch (pref) {
+      case "suggest.quicksuggest.nonsponsored":
+      case "suggest.quicksuggest.sponsored":
+      case "quicksuggest.enabled":
+        if (!prefValue) {
+          this.handleDisableSuggest();
+        }
     }
   }
 
@@ -1389,7 +1500,127 @@ class TelemetryEvent {
 
   #previousSearchWordsSet = null;
 
-  #exposureResultTypes = new Set();
-  #tentativeExposureResultTypes = new Set();
-  #potentialExposureKeywords = new Set();
+  // These properties are used to record exposure telemetry. For general info on
+  // exposures, see [1]. For keyword exposures, see [2] and [3]. Here's a
+  // summary of how a result flows through the exposure telemetry code path:
+  //
+  // 1. The view makes the result's row visible and calls `addExposure()` for
+  //    it. (Or, if the result is a hidden exposure, the view would have made
+  //    its row visible.)
+  // 2. If exposure telemetry should be recorded for the result, we push its
+  //    telemetry type and some other data onto `#exposures`. If keyword
+  //    exposures are enabled, we also include the search string in the data. We
+  //    use `#exposureResults` to efficiently make sure we add at most one
+  //    exposure per result to `#exposures`.
+  // 3. At the end of a session, we record a single `exposure` event that
+  //    includes all unique telemetry types in the `#exposures` data. We also
+  //    record one `keyword_exposure` event per search string in the data, with
+  //    each search string recorded as the `keyword` for that exposure. We clear
+  //    `#exposures` so that the data does not carry over into the next session.
+  //
+  // `#tentativeExposures` supports hidden exposures and is necessary due to how
+  // the view updates itself. When the view creates a row for a normal result,
+  // the row can start out hidden, and it's only unhidden if the query finishes
+  // without being canceled. When the view encounters a hidden-exposure result,
+  // it doesn't actually create a row for it, but if the hypothetical row would
+  // have started out visible, the view will call `addExposure()`. If the
+  // hypothetical row would have started out hidden, the view will call
+  // `addTentativeExposure()` and we'll add the result to `#tentativeExposures`.
+  // Once the query finishes and the view unhides its rows, it will call
+  // `acceptTentativeExposures()`, finally registering exposures for all such
+  // hidden-exposure results in the query. If instead the query is canceled, the
+  // view will remove its hidden rows and call `discardTentativeExposures()`.
+  //
+  // [1] https://dictionary.telemetry.mozilla.org/apps/firefox_desktop/metrics/urlbar_exposure
+  // [2] https://dictionary.telemetry.mozilla.org/apps/firefox_desktop/pings/urlbar-keyword-exposure
+  // [3] https://dictionary.telemetry.mozilla.org/apps/firefox_desktop/metrics/urlbar_keyword_exposure
+  #exposures = [];
+  #tentativeExposures = [];
+  #exposureResults = new WeakSet();
+
+  /**
+   * Start tracking a potential disable suggest event after user has seen a
+   * suggest result.
+   *
+   * @param {event} [event] A DOM event.
+   * @param {object} details An object describing interaction details.
+   */
+  startTrackingDisableSuggest(event, details) {
+    this._lastSearchDetailsForDisableSuggestTracking = {
+      // The time when a user interacts a suggest result, either through
+      // an engagement or an abandonment.
+      interactionTime: this.getCurrentTime(),
+      event,
+      details,
+    };
+  }
+
+  handleDisableSuggest() {
+    let state = this._lastSearchDetailsForDisableSuggestTracking;
+    if (
+      !state ||
+      this.getCurrentTime() - state.interactionTime >
+        lazy.UrlbarPrefs.get("events.disableSuggest.maxSecondsFromLastSearch") *
+          1000
+    ) {
+      this._lastSearchDetailsForDisableSuggestTracking = null;
+      return;
+    }
+
+    let event = state.event;
+    let details = state.details;
+
+    let startEventInfo = {
+      interactionType: this._getStartInteractionType(
+        event,
+        details.searchString
+      ),
+      searchString: details.searchString,
+    };
+
+    if (
+      !event &&
+      startEventInfo.interactionType != "pasted" &&
+      startEventInfo.interactionType != "dropped"
+    ) {
+      // If no event is passed, we must be executing either paste&go or drop&go.
+      throw new Error("Event must be defined, unless input was pasted/dropped");
+    }
+    if (!details) {
+      throw new Error("Invalid event details: " + details);
+    }
+
+    let action = this.#getActionFromEvent(
+      event,
+      details,
+      startEventInfo.interactionType
+    );
+    let method = "disable";
+
+    let { numChars, numWords, searchWords } = this._parseSearchString(
+      details.searchString
+    );
+
+    details.provider = details.result?.providerName;
+    details.selIndex = details.result?.rowIndex ?? -1;
+
+    this._recordSearchEngagementTelemetry(method, startEventInfo, {
+      action,
+      numChars,
+      numWords,
+      searchWords,
+      provider: details.provider,
+      searchSource: details.searchSource,
+      searchMode: details.searchMode,
+      selectedElement: details.element,
+      selIndex: details.selIndex,
+      selType: details.selType,
+    });
+
+    this._lastSearchDetailsForDisableSuggestTracking = null;
+  }
+
+  getCurrentTime() {
+    return Cu.now();
+  }
 }

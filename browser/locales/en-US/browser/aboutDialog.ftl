@@ -66,8 +66,8 @@ community-2 = { -brand-short-name } is designed by <label data-l10n-name="commun
 helpus = Want to help? <label data-l10n-name="helpus-donateLink">Make a donation</label> or <label data-l10n-name="helpus-getInvolvedLink">get involved!</label>
 
 bottomLinks-license = Licensing Information
-bottomLinks-rights = End-User Rights
-bottomLinks-privacy = Privacy Policy
+bottom-links-terms = Terms of Use
+bottom-links-privacy = Privacy Notice
 
 # Example of resulting string: 66.0.1 (64-bit)
 # Variables:
@@ -81,3 +81,16 @@ aboutDialog-version = { $version } ({ $bits }-bit)
 #   $isodate (String): date in ISO format, e.g. 2019-01-16
 #   $bits (Number): bits of the architecture (32 or 64)
 aboutDialog-version-nightly = { $version } ({ $isodate }) ({ $bits }-bit)
+
+# Example of resulting string: 131.0a1 (aarch64)
+# Variables:
+#   $version (String): version of Firefox, e.g. 66.0.1
+#   $arch (String): name of the architecture (arm, aarch64, etc.)
+aboutdialog-version-arch = { $version } ({ $arch })
+
+# Example of resulting string: 131.0a1 (2024-08-27) (aarch64)
+# Variables:
+#   $version (String): version of Firefox for Nightly builds, e.g. 66.0a1
+#   $isodate (String): date in ISO format, e.g. 2019-01-16
+#   $arch (String): name of the architecture (arm, aarch64, etc.)
+aboutdialog-version-arch-nightly = { $version } ({ $isodate }) ({ $arch })

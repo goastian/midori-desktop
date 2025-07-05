@@ -46,16 +46,6 @@ const TEST_CASE = [
   },
 ];
 
-async function expectSavedAddresses(expectedCount) {
-  const addresses = await getAddresses();
-  is(
-    addresses.length,
-    expectedCount,
-    `${addresses.length} address in the storage`
-  );
-  return addresses;
-}
-
 function recordToFormSelector(record) {
   let obj = {};
   for (const [key, value] of Object.entries(record)) {
@@ -69,13 +59,14 @@ add_setup(async function () {
     set: [
       ["extensions.formautofill.addresses.capture.enabled", true],
       ["extensions.formautofill.addresses.supported", "on"],
+      ["extensions.formautofill.addresses.capture.requiredFields", ""],
     ],
   });
 });
 
 // Test different scenarios when we change something in the edit address dorhanger
 add_task(async function test_save_edited_fields() {
-  await expectSavedAddresses(0);
+  await expectSavedAddressesCount(0);
 
   for (const TEST of TEST_CASE) {
     await BrowserTestUtils.withNewTab(
@@ -83,6 +74,7 @@ add_task(async function test_save_edited_fields() {
       async function (browser) {
         info(`Test ${TEST.description}`);
 
+        info(`Wait for save doorhanger shown`);
         const onSavePopupShown = waitForPopupShown();
         await focusUpdateSubmitForm(browser, {
           focusSelector: "#given-name",
@@ -90,10 +82,12 @@ add_task(async function test_save_edited_fields() {
         });
         await onSavePopupShown;
 
+        info(`Wait for edit doorhanger shown`);
         const onEditPopupShown = waitForPopupShown();
         await clickAddressDoorhangerButton(EDIT_ADDRESS_BUTTON);
         await onEditPopupShown;
 
+        info(`Fill edit doorhanger`);
         fillEditDoorhanger(TEST.editedFields);
         await clickAddressDoorhangerButton(MAIN_BUTTON);
       }
@@ -104,7 +98,7 @@ add_task(async function test_save_edited_fields() {
       ...TEST.editedFields,
     });
 
-    const addresses = await expectSavedAddresses(1);
+    const addresses = await expectSavedAddressesCount(1);
     for (const [key, value] of Object.entries(expectedRecord)) {
       is(addresses[0][key] ?? "", value, `${key} field is saved`);
     }

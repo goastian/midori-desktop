@@ -43,7 +43,7 @@ async function testInFolder(folderGuid, prefix) {
   let item = await PlacesUtils.bookmarks.insert({
     parentGuid: folderGuid,
     title: `${prefix}1`,
-    url: `http://${prefix}1.mozilla.org/`,
+    url: `https://${prefix}1.mozilla.org/`,
   });
   await bookmarksObserver.assertViewsUpdatedCorrectly();
 
@@ -87,7 +87,7 @@ async function testInFolder(folderGuid, prefix) {
   item = await PlacesUtils.bookmarks.insert({
     parentGuid: item.guid,
     title: `${prefix}f1`,
-    url: `http://${prefix}f1.mozilla.org/`,
+    url: `https://${prefix}f1.mozilla.org/`,
   });
   await bookmarksObserver.assertViewsUpdatedCorrectly();
   addedBookmarks.push(item);
@@ -335,7 +335,7 @@ function getNodeForToolbarItem(itemGuid, validator) {
 
       // Don't search in queries, they could contain our item in a
       // different position.  Search only folders
-      if (PlacesUtils.nodeIsFolder(child._placesNode)) {
+      if (PlacesUtils.nodeIsFolderOrShortcut(child._placesNode)) {
         var popup = child.menupopup;
         popup.openPopup();
         var foundNode = findNode(popup);
@@ -382,7 +382,7 @@ function getNodeForMenuItem(itemGuid, validator) {
 
       // Don't search in queries, they could contain our item in a
       // different position.  Search only folders
-      if (PlacesUtils.nodeIsFolder(child._placesNode)) {
+      if (PlacesUtils.nodeIsFolderOrShortcut(child._placesNode)) {
         var popup = child.lastElementChild;
         fakeOpenPopup(popup);
         var foundNode = findNode(popup);
@@ -429,7 +429,7 @@ function getNodeForSidebarItem(itemGuid, validator) {
         return [node, i - tree.view.getParentIndex(i) - 1, valid];
       }
 
-      if (PlacesUtils.nodeIsFolder(node)) {
+      if (PlacesUtils.nodeIsFolderOrShortcut(node)) {
         // Open container.
         tree.view.toggleOpenState(i);
         // Search inside it.

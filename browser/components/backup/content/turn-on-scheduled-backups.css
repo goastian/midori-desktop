@@ -3,6 +3,7 @@
 * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 @import url("chrome://global/skin/in-content/common.css");
+@import url("chrome://browser/content/backup/backup-common.css");
 
 :host {
   --margin-inline-start-checkbox-content: calc(var(--checkbox-margin-inline) + var(--checkbox-size));
@@ -15,12 +16,9 @@
     "content"
     "button-group";
   grid-template-rows: auto auto auto;
-  line-height: 1.5;
 
   #backup-turn-on-scheduled-header {
     grid-area: header;
-    font-size: var(--font-size-large);
-    font-weight: var(--font-weight);
     margin: 0;
   }
 
@@ -55,11 +53,6 @@
       column-gap: var(--space-small);
       align-items: center;
     }
-
-    #backup-location-filepicker-input {
-      margin: 0;
-      flex: 1;
-    }
   }
 
   #sensitive-data-controls {
@@ -89,18 +82,7 @@
   }
 
   #passwords {
-    display: flex;
-    flex-direction: column;
     margin-inline-start: var(--margin-inline-start-checkbox-content);
-
-    & > #new-password-label, #repeat-password-label {
-      display: flex;
-      flex-direction: column;
-    }
-
-    & > #new-password-label > input, #repeat-password-label > input {
-      margin-inline-start: 0px;
-    }
   }
 
   #backup-turn-on-scheduled-button-group {

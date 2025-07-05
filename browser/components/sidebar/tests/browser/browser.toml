@@ -1,16 +1,69 @@
 [DEFAULT]
 support-files = ["head.js"]
+prefs = [
+  "sidebar.revamp=true",
+]
 
 ["browser_a11y_sidebar.js"]
 
+["browser_adopt_sidebar_from_opener.js"]
+
 ["browser_customize_sidebar.js"]
+
+["browser_domfullscreen_sidebar.js"]
 
 ["browser_extensions_sidebar.js"]
 
+["browser_glean_sidebar.js"]
+
+["browser_hide_sidebar_on_popup.js"]
+
 ["browser_history_sidebar.js"]
+
+["browser_resize_sidebar.js"]
+skip-if = [
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1946263
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt", # Bug 1946263
+]
+
+["browser_sidebar_collapsed_close_tab_button.js"]
 
 ["browser_sidebar_context_menu.js"]
 
+["browser_sidebar_expand_on_hover.js"]
+
+["browser_sidebar_macmenu.js"]
+run-if = ["os == 'mac'"] # Mac only feature
+
+["browser_sidebar_max_width.js"]
+
+["browser_sidebar_menubar_item_commands.js"]
+
+["browser_sidebar_nimbus.js"]
+
+["browser_sidebar_panel_header.js"]
+
+["browser_sidebar_panel_states.js"]
+
+["browser_sidebar_position.js"]
+
+["browser_sidebar_prefs.js"]
+
+["browser_syncedtabs_sidebar.js"]
+
 ["browser_toolbar_sidebar_button.js"]
+
+["browser_tools_migration.js"]
+
+["browser_tools_overflow.js"]
+
+["browser_verticalTabs_widget_placements.js"]
+
+["browser_vertical_tabs.js"]
+
+["browser_vertical_tabs_cui_reset.js"]
+
+["browser_vertical_tabs_stacking_context.js"]
+skip-if = ["os == 'linux' && os_version == '18.04' && processor == 'x86_64' && a11y_checks"] # Bug 1922725
 
 ["browser_view_sidebar_menu.js"]

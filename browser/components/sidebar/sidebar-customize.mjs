@@ -5,28 +5,87 @@
 import { html, when } from "chrome://global/content/vendor/lit.all.mjs";
 
 import { SidebarPage } from "./sidebar-page.mjs";
-// eslint-disable-next-line import/no-unassigned-import
-import "chrome://global/content/elements/moz-button.mjs";
+
+const { XPCOMUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/XPCOMUtils.sys.mjs"
+);
 
 const l10nMap = new Map([
+  ["viewGenaiChatSidebar", "sidebar-menu-genai-chat-label"],
   ["viewHistorySidebar", "sidebar-menu-history-label"],
   ["viewTabsSidebar", "sidebar-menu-synced-tabs-label"],
   ["viewBookmarksSidebar", "sidebar-menu-bookmarks-label"],
+  ["viewCPMSidebar", "sidebar-menu-contextual-password-manager-label"],
 ]);
+const VISIBILITY_SETTING_PREF = "sidebar.visibility";
+const EXPAND_ON_HOVER_PREF = "sidebar.expandOnHover";
+const POSITION_SETTING_PREF = "sidebar.position_start";
+const TAB_DIRECTION_SETTING_PREF = "sidebar.verticalTabs";
 
 export class SidebarCustomize extends SidebarPage {
   constructor() {
     super();
     this.activeExtIndex = 0;
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this.#prefValues,
+      "visibility",
+      VISIBILITY_SETTING_PREF,
+      "always-show",
+      (_aPreference, _previousValue, newValue) => {
+        this.visibility = newValue;
+      }
+    );
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this.#prefValues,
+      "isPositionStart",
+      POSITION_SETTING_PREF,
+      true,
+      (_aPreference, _previousValue, newValue) => {
+        this.isPositionStart = newValue;
+      }
+    );
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this.#prefValues,
+      "verticalTabsEnabled",
+      TAB_DIRECTION_SETTING_PREF,
+      false,
+      (_aPreference, _previousValue, newValue) => {
+        this.verticalTabsEnabled = newValue;
+      }
+    );
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this.#prefValues,
+      "expandOnHoverEnabled",
+      EXPAND_ON_HOVER_PREF,
+      false,
+      (_aPreference, _previousValue, newValue) => {
+        this.expandOnHoverEnabled = newValue;
+      }
+    );
+    this.visibility = this.#prefValues.visibility;
+    this.isPositionStart = this.#prefValues.isPositionStart;
+    this.verticalTabsEnabled = this.#prefValues.verticalTabsEnabled;
+    this.expandOnHoverEnabled = this.#prefValues.expandOnHoverEnabled;
+    this.boundObserve = (...args) => this.observe(...args);
   }
+
+  #prefValues = {};
 
   static properties = {
     activeExtIndex: { type: Number },
+    visibility: { type: String },
+    isPositionStart: { type: Boolean },
+    verticalTabsEnabled: { type: Boolean },
+    expandOnHoverEnabled: { type: Boolean },
   };
 
   static queries = {
-    toolInputs: { all: ".customize-firefox-tools input" },
+    toolInputs: { all: ".tool" },
     extensionLinks: { all: ".extension-link" },
+    positionInput: "#position",
+    visibilityInput: "#hide-sidebar",
+    verticalTabsInput: "#vertical-tabs",
+    expandOnHoverInput: "#expand-on-hover",
   };
 
   connectedCallback() {
@@ -35,6 +94,7 @@ export class SidebarCustomize extends SidebarPage {
     this.getWindow().addEventListener("SidebarItemChanged", this);
     this.getWindow().addEventListener("SidebarItemRemoved", this);
   }
+
   disconnectedCallback() {
     super.disconnectedCallback();
     this.getWindow().removeEventListener("SidebarItemAdded", this);
@@ -42,18 +102,15 @@ export class SidebarCustomize extends SidebarPage {
     this.getWindow().removeEventListener("SidebarItemRemoved", this);
   }
 
-  get sidebarLauncher() {
-    return this.getWindow().document.querySelector("sidebar-launcher");
+  get fluentStrings() {
+    if (!this._fluentStrings) {
+      this._fluentStrings = new Localization(["browser/sidebar.ftl"], true);
+    }
+    return this._fluentStrings;
   }
 
   getWindow() {
     return window.browsingContext.embedderWindowGlobal.browsingContext.window;
-  }
-
-  closeCustomizeView(e) {
-    e.preventDefault();
-    let view = e.target.getAttribute("view");
-    this.getWindow().SidebarController.toggle(view);
   }
 
   handleEvent(e) {
@@ -66,29 +123,66 @@ export class SidebarCustomize extends SidebarPage {
     }
   }
 
-  async onToggleInput(e) {
+  async onToggleToolInput(e) {
     e.preventDefault();
     this.getWindow().SidebarController.toggleTool(e.target.id);
+    switch (e.target.id) {
+      case "viewGenaiChatSidebar":
+        Glean.sidebarCustomize.chatbotEnabled.record({
+          checked: e.target.checked,
+        });
+        break;
+      case "viewTabsSidebar":
+        Glean.sidebarCustomize.syncedTabsEnabled.record({
+          checked: e.target.checked,
+        });
+        break;
+      case "viewHistorySidebar":
+        Glean.sidebarCustomize.historyEnabled.record({
+          checked: e.target.checked,
+        });
+        break;
+      case "viewBookmarksSidebar":
+        Glean.sidebarCustomize.bookmarksEnabled.record({
+          checked: e.target.checked,
+        });
+        break;
+      case "viewCPMSidebar":
+        Glean.contextualManager.passwordsEnabled.record({
+          checked: e.target.checked,
+        });
+        break;
+    }
   }
 
   getInputL10nId(view) {
     return l10nMap.get(view);
   }
 
-  inputTemplate(tool) {
-    return html`<div class="input-wrapper">
-      <input
+  openFirefoxSettings(e) {
+    if (e.type == "click" || (e.type == "keydown" && e.code == "Enter")) {
+      e.preventDefault();
+      this.getWindow().openPreferences();
+      Glean.sidebarCustomize.firefoxSettingsClicked.record();
+    }
+  }
+
+  toolInputTemplate(tool) {
+    if (tool.hidden) {
+      return null;
+    }
+    return html`
+      <moz-checkbox
+        class="tool"
         type="checkbox"
         id=${tool.view}
         name=${tool.view}
-        @change=${this.onToggleInput}
+        iconsrc=${tool.iconUrl}
+        data-l10n-id=${this.getInputL10nId(tool.view)}
+        @change=${this.onToggleToolInput}
         ?checked=${!tool.disabled}
-      />
-      <label for=${tool.view}>
-        <img src=${tool.iconUrl} class="icon" role="presentation" />
-        <span data-l10n-id=${this.getInputL10nId(tool.view)} />
-      </label>
-    </div>`;
+      ></moz-checkbox>
+    `;
   }
 
   async manageAddon(extensionId) {
@@ -96,15 +190,16 @@ export class SidebarCustomize extends SidebarPage {
       extensionId,
       "unifiedExtensions"
     );
+    Glean.sidebarCustomize.extensionsClicked.record();
   }
 
   handleKeydown(e) {
     if (e.code == "ArrowUp") {
-      if (this.activeExtIndex >= 0) {
+      if (this.activeExtIndex > 0) {
         this.focusIndex(this.activeExtIndex - 1);
       }
     } else if (e.code == "ArrowDown") {
-      if (this.activeExtIndex < this.extensionLinks.length) {
+      if (this.activeExtIndex < this.extensionLinks.length - 1) {
         this.focusIndex(this.activeExtIndex + 1);
       }
     } else if (
@@ -123,20 +218,28 @@ export class SidebarCustomize extends SidebarPage {
     this.activeExtIndex = index;
   }
 
+  reversePosition() {
+    const { SidebarController } = this.getWindow();
+    SidebarController.reversePosition();
+    Glean.sidebarCustomize.sidebarPosition.record({
+      position:
+        this.isPositionStart !== this.getWindow().RTL_UI ? "left" : "right",
+    });
+  }
+
   extensionTemplate(extension, index) {
     return html` <div class="extension-item">
       <img src=${extension.iconUrl} class="icon" role="presentation" />
       <div
-        class="extension-link"
         extensionId=${extension.extensionId}
-        tabindex=${index === this.activeExtIndex ? 0 : -1}
-        role="list-item"
+        role="listitem"
         @click=${() => this.manageAddon(extension.extensionId)}
         @keydown=${this.handleKeydown}
       >
         <a
           href="about:addons"
-          tabindex="-1"
+          class="extension-link"
+          tabindex=${index === this.activeExtIndex ? 0 : -1}
           target="_blank"
           @click=${e => e.preventDefault()}
           >${extension.tooltiptext}
@@ -150,39 +253,127 @@ export class SidebarCustomize extends SidebarPage {
     return html`
       ${this.stylesheet()}
       <link rel="stylesheet" href="chrome://browser/content/sidebar/sidebar-customize.css"></link>
-      <div class="container">
-        <div class="customize-header">
-          <h2 data-l10n-id="sidebar-menu-customize-label"></h2>
-          <moz-button
-            class="customize-close-button"
-            @click=${this.closeCustomizeView}
-            view="viewCustomizeSidebar"
-            size="default"
-            type="icon ghost"
+      <div class="sidebar-panel">
+        <sidebar-panel-header data-l10n-id="sidebar-menu-customize-header" data-l10n-attrs="heading" view="viewCustomizeSidebar">
+        </sidebar-panel-header>
+        <moz-fieldset class="customize-group no-end-margin" data-l10n-id="sidebar-settings">
+          <moz-checkbox
+            type="checkbox"
+            id="vertical-tabs"
+            name="verticalTabs"
+            iconsrc="chrome://browser/skin/sidebar-collapsed.svg"
+            data-l10n-id="sidebar-vertical-tabs"
+            @change=${this.#handleTabDirectionChange}
+            ?checked=${this.verticalTabsEnabled}
           >
-          </moz-button>
-        </div>
-        <div class="customize-firefox-tools">
-          <h5 data-l10n-id="sidebar-customize-firefox-tools"></h5>
-          <div class="inputs">
+          ${when(
+            this.verticalTabsEnabled,
+            () => html`
+              ${when(
+                this.expandOnHoverEnabled,
+                () => html`
+                  <moz-checkbox
+                    slot="nested"
+                    type="checkbox"
+                    id="expand-on-hover"
+                    name="expand-on-hover"
+                    data-l10n-id="expand-sidebar-on-hover"
+                    @change=${this.#toggleExpandOnHover}
+                    ?checked=${this.getWindow().SidebarController._state
+                      .revampVisibility === "expand-on-hover"}
+                    ?disabled=${this.visibility == "hide-sidebar"}
+                  ></moz-checkbox>
+                `
+              )}
+              <moz-checkbox
+                slot="nested"
+                type="checkbox"
+                id="hide-sidebar"
+                name="hideSidebar"
+                data-l10n-id="sidebar-hide-tabs-and-sidebar"
+                @change=${this.#handleVisibilityChange}
+                ?checked=${this.visibility == "hide-sidebar"}
+                ?disabled=${this.getWindow().SidebarController._state
+                  .revampVisibility === "expand-on-hover"}
+              ></moz-checkbox>
+            `
+          )}
+          </moz-checkbox>
+        </moz-fieldset>
+        <moz-fieldset class="customize-group medium-top-margin no-label">
+          <moz-checkbox
+            type="checkbox"
+            id="position"
+            name="position"
+            data-l10n-id=${document.dir == "rtl" ? "sidebar-show-on-the-left" : "sidebar-show-on-the-right"}
+            @change=${this.reversePosition}
+            ?checked=${!this.isPositionStart}
+        ></moz-checkbox>
+        </moz-fieldset>
+        <moz-fieldset class="customize-group" data-l10n-id="sidebar-customize-firefox-tools-header">
           ${this.getWindow()
             .SidebarController.getTools()
-            .map(tool => this.inputTemplate(tool))}
-          </div>
-        </div>
+            .map(tool => this.toolInputTemplate(tool))}
+        </moz-fieldset>
         ${when(
           extensions.length,
-          () => html`<div class="customize-extensions">
-            <h5 data-l10n-id="sidebar-customize-extensions"></h5>
-            <div role="list" class="extensions">
-              ${extensions.map((extension, index) =>
-                this.extensionTemplate(extension, index)
-              )}
-            </div>
-          </div>`
+          () =>
+            html`<div class="customize-group">
+              <h4
+                class="customize-extensions-heading"
+                data-l10n-id="sidebar-customize-extensions-header"
+              ></h4>
+              <div role="list" class="extensions">
+                ${extensions.map((extension, index) =>
+                  this.extensionTemplate(extension, index)
+                )}
+              </div>
+            </div>`
         )}
+        <div id="manage-settings">
+          <img src="chrome://browser/skin/preferences/category-general.svg" class="icon" role="presentation" />
+          <a
+            href="about:preferences"
+            @click=${this.openFirefoxSettings}
+            @keydown=${this.openFirefoxSettings}
+            data-l10n-id="sidebar-customize-firefox-settings"
+          >
+          </a>
+        </div>
       </div>
     `;
+  }
+
+  #handleVisibilityChange(e) {
+    e.stopPropagation();
+    this.visibility = e.target.checked ? "hide-sidebar" : "always-show";
+    Services.prefs.setStringPref(
+      VISIBILITY_SETTING_PREF,
+      e.target.checked ? "hide-sidebar" : "always-show"
+    );
+    Glean.sidebarCustomize.sidebarDisplay.record({
+      preference: e.target.checked ? "hide" : "always",
+    });
+  }
+
+  #toggleExpandOnHover(e) {
+    e.stopPropagation();
+    if (e.target.checked) {
+      Services.prefs.setStringPref("sidebar.visibility", "expand-on-hover");
+      Glean.sidebarCustomize.expandOnHoverEnabled.record({
+        checked: true,
+      });
+    } else {
+      Services.prefs.setStringPref("sidebar.visibility", "always-show");
+    }
+  }
+
+  #handleTabDirectionChange({ target: { checked } }) {
+    const verticalTabsEnabled = checked;
+    Services.prefs.setBoolPref(TAB_DIRECTION_SETTING_PREF, verticalTabsEnabled);
+    Glean.sidebarCustomize.tabsLayout.record({
+      orientation: verticalTabsEnabled ? "vertical" : "horizontal",
+    });
   }
 }
 

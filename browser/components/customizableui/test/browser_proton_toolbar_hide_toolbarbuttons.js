@@ -50,7 +50,7 @@ async function testToolbarButtons(aActions) {
       "nav-bar": defaultPlacements,
     },
   });
-  CustomizableUIInternal._updateForNewProtonVersion();
+  CustomizableUIInternal.updateForNewProtonVersion();
 
   let navbarPlacements =
     CustomizableUI.getTestOnlyInternalProp("gSavedState").placements["nav-bar"];
@@ -208,10 +208,17 @@ add_task(async function testNullSavedState() {
     !navbarPlacements.includes("library-button"),
     "Library button isn't included by default"
   );
-  Assert.ok(
-    !navbarPlacements.includes("sidebar-button"),
-    "Sidebar button isn't included by default"
-  );
+  if (!Services.prefs.getBoolPref("sidebar.revamp", false)) {
+    Assert.ok(
+      !navbarPlacements.includes("sidebar-button"),
+      "Sidebar button isn't included by default"
+    );
+  } else {
+    Assert.ok(
+      navbarPlacements.includes("sidebar-button"),
+      "Sidebar button is included by default"
+    );
+  }
 
   // Cleanup
   CustomizableUI.setTestOnlyInternalProp("gSavedState", oldState);
@@ -243,7 +250,7 @@ add_task(async function testNoNavbarPlacements() {
   CustomizableUI.setTestOnlyInternalProp("gSavedState", {
     placements: { "widget-overflow-fixed-list": [] },
   });
-  CustomizableUIInternal._updateForNewProtonVersion();
+  CustomizableUIInternal.updateForNewProtonVersion();
 
   Assert.ok(true, "_updateForNewProtonVersion didn't throw");
 
@@ -274,7 +281,7 @@ add_task(async function testNullPlacements() {
   );
 
   CustomizableUI.setTestOnlyInternalProp("gSavedState", {});
-  CustomizableUIInternal._updateForNewProtonVersion();
+  CustomizableUIInternal.updateForNewProtonVersion();
 
   Assert.ok(true, "_updateForNewProtonVersion didn't throw");
 

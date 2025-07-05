@@ -1,7 +1,7 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -47,6 +47,8 @@
         </p>
         <p id="last-backup-status"></p>
         <button id="open-backup-folder">Open backups folder</button>
+        <button id="recover-from-archive">Recover from archive</button>
+        <p id="recover-from-archive-status"></p>
         <button id="recover-from-staging">
           Recover from staging folder and launch
         </button>
@@ -58,6 +60,14 @@
           be launched.
         </p>
         <p id="last-recovery-status"></p>
+        <button id="extract-from-archive">Extract from archive</button>
+        <p id="extraction-status"></p>
+        <p>
+          Clicking "Extract from archive" will open a file picker to allow you
+          to select an single-file archive (the HTML file). Once selected, the
+          ZIP file contained inside will be extracted into the same folder,
+          named extraction.zip.
+        </p>
       </section>
     </main>
 

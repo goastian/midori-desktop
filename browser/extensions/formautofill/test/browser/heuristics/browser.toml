@@ -5,6 +5,8 @@ support-files = [
   "../../fixtures/**",
 ]
 
+["browser_autocomplete_fields.js"]
+
 ["browser_autocomplete_off_on_form.js"]
 
 ["browser_autocomplete_off_on_inputs.js"]
@@ -14,11 +16,19 @@ support-files = [
 ["browser_basic.js"]
 
 ["browser_capture_name.js"]
-skip-if = ["apple_silicon && !debug"]
+skip-if = ["os == 'mac' && os_version == '11.20' && arch == 'aarch64' && !debug"]
 
 ["browser_cc_exp.js"]
 
+["browser_consecutive_cc_number.js"]
+
+["browser_country_rules.js"]
+
 ["browser_de_fields.js"]
+
+["browser_duplicate_fields.js"]
+
+["browser_formless.js"]
 
 ["browser_fr_fields.js"]
 
@@ -30,9 +40,13 @@ skip-if = ["apple_silicon && !debug"]
 
 ["browser_parse_creditcard_expiry_fields.js"]
 
+["browser_parse_creditcard_type_fields.js"]
+
 ["browser_parse_name_fields.js"]
 
 ["browser_parse_street_address_fields.js"]
+
+["browser_parse_tel_fields.js"]
 
 ["browser_section_validation_address.js"]
 

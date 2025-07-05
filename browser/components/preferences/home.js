@@ -26,10 +26,6 @@ Preferences.addAll([
   { id: "pref.browser.homepage.disable_button.bookmark_page", type: "bool" },
   { id: "pref.browser.homepage.disable_button.restore_default", type: "bool" },
   { id: "browser.newtabpage.enabled", type: "bool" },
-  { id: "browser.newtabpage.activity-stream.floorp.background.type", type: "int" },
-  { id: "browser.newtabpage.activity-stream.floorp.newtab.backdrop.blur.disable", type: "bool" },
-  { id: "browser.newtabpage.activity-stream.floorp.newtab.releasenote.hide", type: "bool" },
-  { id: "browser.newtabpage.activity-stream.floorp.newtab.imagecredit.hide", type: "bool" },
 ]);
 
 const HOMEPAGE_OVERRIDE_KEY = "homepage_override";
@@ -164,13 +160,14 @@ var gHomePane = {
       }
 
       let extensionOptions;
+      await ExtensionSettingsStore.initialize();
       if (select.id === "homeMode") {
-        extensionOptions = await ExtensionSettingsStore.getAllSettings(
+        extensionOptions = ExtensionSettingsStore.getAllSettings(
           PREF_SETTING_TYPE,
           HOMEPAGE_OVERRIDE_KEY
         );
       } else {
-        extensionOptions = await ExtensionSettingsStore.getAllSettings(
+        extensionOptions = ExtensionSettingsStore.getAllSettings(
           URL_OVERRIDES_TYPE,
           NEW_TAB_KEY
         );
@@ -348,12 +345,15 @@ var gHomePane = {
   },
 
   /**
-   * _isTabAboutPreferences: Is a given tab set to about:preferences?
+   * _isTabAboutPreferencesOrSettings: Is a given tab set to about:preferences or about:settings?
    * @param {Element} aTab A tab element
-   * @returns {bool} Is the linkedBrowser of aElement set to about:preferences?
+   * @returns {bool} Is the linkedBrowser of aElement set to about:preferences or about:settings?
    */
-  _isTabAboutPreferences(aTab) {
-    return aTab.linkedBrowser.currentURI.spec.startsWith("about:preferences");
+  _isTabAboutPreferencesOrSettings(aTab) {
+    return (
+      aTab.linkedBrowser.currentURI.spec.startsWith("about:preferences") ||
+      aTab.linkedBrowser.currentURI.spec.startsWith("about:settings")
+    );
   },
 
   /**
@@ -370,8 +370,8 @@ var gHomePane = {
       win.document.documentElement.getAttribute("windowtype") ===
         "navigator:browser"
     ) {
-      tabs = win.gBrowser.visibleTabs.slice(win.gBrowser._numPinnedTabs);
-      tabs = tabs.filter(tab => !this._isTabAboutPreferences(tab));
+      tabs = win.gBrowser.visibleTabs.slice(win.gBrowser.pinnedTabCount);
+      tabs = tabs.filter(tab => !this._isTabAboutPreferencesOrSettings(tab));
       // XXX: Bug 1441637 - Fix tabbrowser to report tab.closing before it blurs it
       tabs = tabs.filter(tab => !tab.closing);
     }
@@ -685,88 +685,6 @@ var gHomePane = {
     this._updateUseCurrentButton();
     this._handleHomePageOverrides();
     this.syncFromNewTabPref();
-    this.syncFromNewTabBackground();
-
-    document
-    .getElementById("newTabbackground")
-    .addEventListener("command", this.syncToNewTabBackground.bind(this));
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.type",this.syncFromNewTabBackground.bind(this))
-    this.imagesFolderInputSet()
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.folder",this.imagesFolderInputSet.bind(this))
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.images.extensions",this.imagesFolderInputSet.bind(this))
-    this.imagePathInputSet()
-    Services.prefs.addObserver("browser.newtabpage.activity-stream.floorp.background.image.path",this.imagePathInputSet.bind(this))
-    document
-    .getElementById("openImagesFolder")
-    .addEventListener("command", ()=>{
-      let nsLocalFile = Components.Constructor("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
-    new nsLocalFile(PathUtils.join(Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder","") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages"),"a").slice( 0, -1 ),).reveal();
-    });
-    document
-    .getElementById("reloadImages")
-    .addEventListener("command", ()=>{
-      Services.obs.notifyObservers({},"floorp-newtab-background-update")
-
-    })
-
-    document
-    .getElementById("resetFolder")
-    .addEventListener("command", (()=>{
-      Services.prefs.clearUserPref("browser.newtabpage.activity-stream.floorp.background.images.folder")
-    }))
-
-    document
-    .getElementById("resetExtensions")
-    .addEventListener("command", (()=>{
-      Services.prefs.clearUserPref("browser.newtabpage.activity-stream.floorp.background.images.extensions")
-    }))
-    document
-    .getElementById("saveExtensions")
-    .addEventListener("command", (()=>{
-      Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.images.extensions",document.querySelector("#pictureExtensions").value)
-    }))
-
-    document
-    .getElementById("chooseImagesFolder")
-    .addEventListener("command", (async ()=>{
-      let [title] = await document.l10n.formatValues([
-        { id: "newtab-background-folder-choose" },
-      ]);
-      let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-
-      fp.init(window.browsingContext, title, Ci.nsIFilePicker.modeGetFolder);
-      fp.appendFilters(Ci.nsIFilePicker.filterAll);
-
-
-      fp.displayDirectory = FileUtils.File(PathUtils.join(Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder","") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages"),"a").slice( 0, -1 ))
-      let result = await new Promise(resolve => fp.open(resolve));
-      if (result != Ci.nsIFilePicker.returnOK) {
-        return;
-      }
-      Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder",fp.file.path)
-    }))
-
-    document
-    .getElementById("chooseImagePath")
-    .addEventListener("command", (async ()=>{
-      let [title] = await document.l10n.formatValues([
-        { id: "newtab-background-image-choose" },
-      ]);
-      let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-
-      fp.init(window.browsingContext, title, Ci.nsIFilePicker.filterImages);
-      fp.appendFilters(Ci.nsIFilePicker.filterAll);
-
-      const imgPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path","")
-      if(imgPath){
-        fp.displayDirectory =FileUtils.File(PathUtils.parent(imgPath))
-      }
-      let result = await new Promise(resolve => fp.open(resolve));
-      if (result != Ci.nsIFilePicker.returnOK) {
-        return;
-      }
-      Services.prefs.setStringPref("browser.newtabpage.activity-stream.floorp.background.image.path",fp.file.path)
-    }))
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
 
     // Extension/override-related events
@@ -777,59 +695,4 @@ var gHomePane = {
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "home-pane-loaded");
   },
-
-  async syncToNewTabBackground() {
-    let menulist = document.getElementById("newTabbackground");
-      let newtabEnabledPref = Services.prefs.getIntPref("browser.newtabpage.activity-stream.floorp.background.type",0);
-      let newValue = menulist.value;
-      // Only set this if the pref has changed, otherwise the pref change will trigger other listeners to repeat.
-      if (newtabEnabledPref !== newValue) {
-        Services.prefs.setIntPref("browser.newtabpage.activity-stream.floorp.background.type", newValue);
-        for(const elem of document.querySelectorAll(`[displayBackgroundType]`)){
-          if(elem.getAttribute(`displayBackgroundType`) == Services.prefs.getIntPref(
-            "browser.newtabpage.activity-stream.floorp.background.type",
-            0
-          )){
-            elem.style.display = ""
-          }else{
-            elem.style.display = "none"
-          }
-        }
-      }
-  },
-
-  async syncFromNewTabBackground() {
-    let menulist = document.getElementById("newTabbackground");
-      let newtabEnabledPref = Services.prefs.getIntPref(
-        "browser.newtabpage.activity-stream.floorp.background.type",
-        0
-      );
-      if (newtabEnabledPref !== menulist.value) {
-        menulist.value = newtabEnabledPref;
-        for(const elem of document.querySelectorAll(`[displayBackgroundType]`)){
-          if(elem.getAttribute(`displayBackgroundType`) == Services.prefs.getIntPref(
-            "browser.newtabpage.activity-stream.floorp.background.type",
-            0
-          )){
-            elem.style.display = ""
-          }else{
-            elem.style.display = "none"
-          }
-        }
-      }
-  },
-
-  imagesFolderInputSet(){
-    let folderPath = PathUtils.join(Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.folder","") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages"),"a").slice( 0, -1 )
-    document.querySelector("#pictureFolder").value = folderPath
-    document.querySelector("#pictureFolder").style.backgroundImage = `url(moz-icon://${Services.io.newFileURI(FileUtils.File(folderPath)).asciiSpec})`
-    document.querySelector("#pictureExtensions").value = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.images.extensions","")
-  },
-
-  imagePathInputSet(){
-    let folderPath = Services.prefs.getStringPref("browser.newtabpage.activity-stream.floorp.background.image.path") || PathUtils.join(Services.dirsvc.get("ProfD", Ci.nsIFile).path, "newtabImages","wallpaper.png")
-    document.querySelector("#picturePath").value = folderPath
-    document.querySelector("#picturePath").style.backgroundImage = `url(moz-icon://${Services.io.newFileURI(FileUtils.File(folderPath)).asciiSpec})`
-  }
-
 };

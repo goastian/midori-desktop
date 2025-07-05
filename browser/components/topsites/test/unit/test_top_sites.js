@@ -3,28 +3,20 @@
 
 "use strict";
 
-const { TopSites, DEFAULT_TOP_SITES } = ChromeUtils.importESModule(
-  "resource:///modules/TopSites.sys.mjs"
-);
-
-const { actionTypes: at } = ChromeUtils.importESModule(
-  "resource://activity-stream/common/Actions.mjs"
-);
+const { TopSites, insertPinned, DEFAULT_TOP_SITES } =
+  ChromeUtils.importESModule("resource:///modules/topsites/TopSites.sys.mjs");
 
 ChromeUtils.defineESModuleGetters(this, {
-  FilterAdult: "resource://activity-stream/lib/FilterAdult.sys.mjs",
+  FilterAdult: "resource:///modules/FilterAdult.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
-  shortURL: "resource://activity-stream/lib/ShortURL.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  Screenshots: "resource://activity-stream/lib/Screenshots.sys.mjs",
   SearchService: "resource://gre/modules/SearchService.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
-  TOP_SITES_DEFAULT_ROWS: "resource://activity-stream/common/Reducers.sys.mjs",
-  TOP_SITES_MAX_SITES_PER_ROW:
-    "resource://activity-stream/common/Reducers.sys.mjs",
+  TOP_SITES_DEFAULT_ROWS: "resource:///modules/topsites/constants.mjs",
+  TOP_SITES_MAX_SITES_PER_ROW: "resource:///modules/topsites/constants.mjs",
 });
 
 const FAKE_FAVICON = "data987";
@@ -36,7 +28,6 @@ const FAKE_LINKS = new Array(2 * TOP_SITES_MAX_SITES_PER_ROW)
     frecency: FAKE_FRECENCY,
     url: `http://www.site${i}.com`,
   }));
-const FAKE_SCREENSHOT = "data123";
 
 function FakeTippyTopProvider() {}
 FakeTippyTopProvider.prototype = {
@@ -64,8 +55,13 @@ function stubTopSites(sandbox) {
     TopSites.pinnedCache.clear();
     TopSites.frecentCache.clear();
     TopSites._reset();
+    stub.restore();
     info("Finished cleaning up TopSites.");
   }
+
+  // To avoid having to setup search for each test, we stub this method and
+  // unstub it when the unit test calls for the search shortcuts.
+  let stub = sandbox.stub(TopSites, "updateCustomSearchShortcuts");
 
   TopSites._requestRichIcon = sandbox.stub();
   // Set preferences to match the store state.
@@ -104,7 +100,7 @@ add_setup(async () => {
 
   let sandbox = sinon.createSandbox();
   sandbox.stub(SearchService.prototype, "defaultEngine").get(() => {
-    return { identifier: "ddg", searchForm: "https://duckduckgo.com" };
+    return { identifier: "ddg", searchUrlDomain: "duckduckgo.com" };
   });
 
   gGetTopSitesStub = sandbox
@@ -128,10 +124,6 @@ add_setup(async () => {
         })
       );
     });
-
-  sandbox.stub(Screenshots, "getScreenshotForURL").resolves(FAKE_SCREENSHOT);
-  sandbox.spy(Screenshots, "maybeCacheScreenshot");
-  sandbox.stub(Screenshots, "_shouldGetScreenshots").returns(true);
 
   registerCleanupFunction(() => {
     sandbox.restore();
@@ -207,7 +199,7 @@ add_task(async function test_refreshDefaults() {
   let [site] = DEFAULT_TOP_SITES;
   Assert.equal(
     site.hostname,
-    shortURL(site),
+    NewTabUtils.shortURL(site),
     "Lone top site should have the right hostname."
   );
 
@@ -277,7 +269,7 @@ add_task(async function test_getLinksWithDefaults() {
 
   const reference = FAKE_LINKS.map(site =>
     Object.assign({}, site, {
-      hostname: shortURL(site),
+      hostname: NewTabUtils.shortURL(site),
       typedBonus: true,
     })
   );
@@ -322,7 +314,7 @@ add_task(async function test_getLinksWithDefaults_caching() {
   const url = "www.myonlytopsite.com";
   const topsite = {
     frecency: FAKE_FRECENCY,
-    hostname: shortURL({ url }),
+    hostname: NewTabUtils.shortURL({ url }),
     typedBonus: true,
     url,
   };
@@ -393,7 +385,7 @@ add_task(async function test_getLinksWithDefaults_adds_defaults() {
 
   let reference = [...TEST_LINKS, ...DEFAULT_TOP_SITES].map(s =>
     Object.assign({}, s, {
-      hostname: shortURL(s),
+      hostname: NewTabUtils.shortURL(s),
       typedBonus: true,
     })
   );
@@ -426,7 +418,7 @@ add_task(
 
     let reference = [...testLinks, DEFAULT_TOP_SITES[0]].map(s =>
       Object.assign({}, s, {
-        hostname: shortURL(s),
+        hostname: NewTabUtils.shortURL(s),
         typedBonus: true,
       })
     );
@@ -886,6 +878,80 @@ add_task(async function test_init() {
     })
   );
 
+  TopSites.uninit();
+  sandbox.restore();
+  await cleanup();
+});
+
+/**
+ * If multiple callers are attempting to initializing TopSites, we should
+ * initialize only once and wait until its completed.
+ */
+add_task(async function test_multiple_init() {
+  info("Initing TopSites multiple times should call _readDefaults only once.");
+  let sandbox = sinon.createSandbox();
+  sandbox.stub(NimbusFeatures.newtab, "onUpdate");
+  sandbox.stub(TopSites, "_readDefaults");
+  let cleanup = stubTopSites(sandbox);
+
+  Assert.ok(TopSites._readDefaults.notCalled, "Read defaults not called.");
+  for (let i = 0; i < 5; ++i) {
+    await TopSites.init();
+  }
+  Assert.ok(TopSites._readDefaults.calledOnce, "Read defaults called once.");
+
+  sandbox.restore();
+  await cleanup();
+});
+
+add_task(async function test_multiple_init_delay() {
+  TopSites.uninit();
+
+  info(
+    "Initing TopSites multiple times should allow callers " +
+      "only call readDefaults once and wait until its finished."
+  );
+  let sandbox = sinon.createSandbox();
+
+  let resolvePromise;
+  let promise = new Promise(resolve => {
+    resolvePromise = resolve;
+  });
+
+  sandbox.stub(NimbusFeatures.newtab, "onUpdate");
+  sandbox.stub(TopSites, "_readDefaults").returns(promise);
+  let cleanup = stubTopSites(sandbox);
+
+  Assert.ok(TopSites._readDefaults.notCalled, "Read defaults not called.");
+  let finishedPromiseCount = 0;
+  let promises = [];
+  let callInit = async () => {
+    await TopSites.init();
+    ++finishedPromiseCount;
+  };
+  for (let i = 0; i < 5; ++i) {
+    promises.push(callInit());
+  }
+  Assert.equal(
+    finishedPromiseCount,
+    0,
+    "Finished promise count should be equal."
+  );
+  Assert.ok(TopSites._readDefaults.calledOnce, "Read defaults called once.");
+
+  info("Resolve the promises.");
+  resolvePromise();
+  await Promise.all(promises);
+  Assert.equal(
+    finishedPromiseCount,
+    5,
+    "Finished promise count should be equal."
+  );
+  Assert.ok(
+    TopSites._readDefaults.calledOnce,
+    "Read defaults was still only called once."
+  );
+
   sandbox.restore();
   await cleanup();
 });
@@ -909,6 +975,96 @@ add_task(async function test_uninit() {
   Assert.ok(
     TopSites.frecentCache.expire.calledOnce,
     "frecentCache.expire called once"
+  );
+
+  sandbox.restore();
+  await cleanup();
+});
+
+add_task(async function test_get_sites_init() {
+  info("TopSites.getSites should initialize TopSites if its not inited.");
+  let sandbox = sinon.createSandbox();
+
+  let cleanup = stubTopSites(sandbox);
+  sandbox.stub(TopSites, "init");
+
+  Assert.ok(TopSites.init.notCalled, "TopSites.init not called.");
+  await TopSites.getSites();
+  Assert.ok(TopSites.init.calledOnce, "TopSites.init called once.");
+
+  sandbox.restore();
+  await cleanup();
+});
+
+add_task(async function test_get_sites_already_inited() {
+  info(
+    "TopSites.getSites should not call related initialization methods " +
+      "more than once if TopSites is already inited."
+  );
+  let sandbox = sinon.createSandbox();
+
+  let cleanup = stubTopSites(sandbox);
+  sandbox.spy(TopSites, "_readDefaults");
+  await TopSites.init();
+
+  Assert.ok(
+    TopSites._readDefaults.calledOnce,
+    "TopSites._readDefaults called once."
+  );
+  Assert.ok(
+    TopSites.updateCustomSearchShortcuts.calledOnce,
+    "TopSites.updateCustomSearchShortcuts called once."
+  );
+  await TopSites.getSites();
+  Assert.ok(
+    TopSites._readDefaults.calledOnce,
+    "TopSites._readDefaults still only called once."
+  );
+  Assert.ok(
+    TopSites.updateCustomSearchShortcuts.calledOnce,
+    "TopSites.updateCustomSearchShortcuts still only called once."
+  );
+
+  sandbox.restore();
+  await cleanup();
+});
+
+add_task(async function test_get_sites_delayed_init() {
+  info("TopSites.getSites should wait until initialization is done.");
+  let sandbox = sinon.createSandbox();
+
+  let cleanup = stubTopSites(sandbox);
+
+  // Ensure it's not initialized.
+  TopSites.uninit();
+
+  let resolvePromise;
+  let promise = new Promise(resolve => {
+    resolvePromise = resolve;
+  });
+  sandbox.stub(TopSites, "init").returns(promise);
+
+  let promises = [];
+  let finishedPromiseCount = 0;
+  let callGetSites = async () => {
+    await TopSites.getSites();
+    finishedPromiseCount += 1;
+  };
+  for (let i = 0; i < 5; ++i) {
+    promises.push(callGetSites());
+  }
+
+  Assert.equal(
+    finishedPromiseCount,
+    0,
+    "All calls to TopSites.getSites() haven't finished."
+  );
+  resolvePromise();
+  await Promise.all(promises);
+  Assert.equal(
+    finishedPromiseCount,
+    5,
+    "All calls to TopSites.getSites() finished."
   );
 
   sandbox.restore();
@@ -994,7 +1150,7 @@ add_task(async function test_refresh_dispatch() {
   await TopSites.refresh();
   let reference = FAKE_LINKS.map(site =>
     Object.assign({}, site, {
-      hostname: shortURL(site),
+      hostname: NewTabUtils.shortURL(site),
       typedBonus: true,
     })
   );
@@ -1036,7 +1192,7 @@ add_task(async function test_refresh_empty_slots() {
 
   let reference = FAKE_LINKS.map(site =>
     Object.assign({}, site, {
-      hostname: shortURL(site),
+      hostname: NewTabUtils.shortURL(site),
       typedBonus: true,
     })
   );
@@ -1061,7 +1217,7 @@ add_task(async function test_refresh_empty_slots() {
   await cleanup();
 });
 
-add_task(async function test_onAction_part_2() {
+add_task(async function test_insert_part_2() {
   let sandbox = sinon.createSandbox();
 
   info(
@@ -1107,19 +1263,18 @@ add_task(async function test_onAction_part_2() {
   });
   Assert.ok(TopSites.refresh.calledOnce, "TopSites.refresh called once");
 
-  info("TopSites.onAction should call refresh on bookmark-removed");
+  info("TopSites should call refresh on bookmark-removed");
   TopSites.refresh.resetHistory();
   await PlacesUtils.bookmarks.remove(bookmark);
   Assert.ok(TopSites.refresh.calledOnce, "TopSites.refresh called once");
 
   info(
-    "TopSites.onAction should call pin with correct args on " +
-      "TOP_SITES_INSERT without an index specified"
+    "TopSites.insert should call pin with correct args " +
+      "without an index specified"
   );
   sandbox.stub(NewTabUtils.pinnedLinks, "pin");
 
   let addAction = {
-    type: at.TOP_SITES_INSERT,
     data: { site: { url: "foo.bar", label: "foo" } },
   };
   TopSites.insert(addAction);
@@ -1129,13 +1284,9 @@ add_task(async function test_onAction_part_2() {
   );
   Assert.ok(NewTabUtils.pinnedLinks.pin.calledWith(addAction.data.site, 0));
 
-  info(
-    "TopSites.onAction should call pin with correct args on " +
-      "TOP_SITES_INSERT"
-  );
+  info("TopSites.insert should call pin with correct args");
   NewTabUtils.pinnedLinks.pin.resetHistory();
   let dropAction = {
-    type: at.TOP_SITES_INSERT,
     data: { site: { url: "foo.bar", label: "foo" }, index: 3 },
   };
   TopSites.insert(dropAction);
@@ -1264,10 +1415,9 @@ add_task(async function test_insert_part_2() {
   }
 
   {
-    info("TopSites.insert should trigger refresh on TOP_SITES_INSERT");
+    info("TopSites.insert should trigger refresh");
     sandbox.stub(TopSites, "refresh");
     let addAction = {
-      type: at.TOP_SITES_INSERT,
       data: { site: { url: "foo.com" } },
     };
 
@@ -1566,11 +1716,10 @@ add_task(async function test_pin_part_3() {
   }
 
   {
-    info("TopSites.pin should trigger refresh on TOP_SITES_PIN");
+    info("TopSites.pin should trigger refresh");
     let cleanup = stubTopSites(sandbox);
     sandbox.stub(TopSites, "refresh");
     let pinExistingAction = {
-      type: at.TOP_SITES_PIN,
       data: { site: FAKE_LINKS[4], index: 4 },
     };
 
@@ -1588,12 +1737,11 @@ add_task(async function test_pin_part_4() {
   let sandbox = sinon.createSandbox();
   let cleanup = stubTopSites(sandbox);
 
-  info("TopSites.pin should call with correct parameters on TOP_SITES_PIN");
+  info("TopSites.pin should call with correct parameters");
   sandbox.stub(NewTabUtils.pinnedLinks, "pin");
   sandbox.spy(TopSites, "pin");
 
   let pinAction = {
-    type: at.TOP_SITES_PIN,
     data: { site: { url: "foo.com" }, index: 7 },
   };
   await TopSites.pin(pinAction);
@@ -1609,7 +1757,7 @@ add_task(async function test_pin_part_4() {
   );
   Assert.ok(
     TopSites.pin.calledOnce,
-    "TopSites.pin should call pin on TOP_SITES_PIN"
+    "TopSites.pin should have been called once"
   );
 
   info(
@@ -1618,7 +1766,6 @@ add_task(async function test_pin_part_4() {
   );
   sandbox.stub(NewTabUtils.blockedLinks, "unblock");
   pinAction = {
-    type: at.TOP_SITES_PIN,
     data: { site: { url: "foo.com" }, index: -1 },
   };
   await TopSites.pin(pinAction);
@@ -1628,20 +1775,16 @@ add_task(async function test_pin_part_4() {
     })
   );
 
-  info("TopSites.pin should call insert on TOP_SITES_INSERT");
+  info("TopSites.pin should call insert");
   sandbox.stub(TopSites, "insert");
   let addAction = {
-    type: at.TOP_SITES_INSERT,
     data: { site: { url: "foo.com" } },
   };
 
   await TopSites.pin(addAction);
   Assert.ok(TopSites.insert.calledOnce, "TopSites.insert called once");
 
-  info(
-    "TopSites.unpin should call unpin with correct parameters " +
-      "on TOP_SITES_UNPIN"
-  );
+  info("TopSites.unpin should call unpin with correct parameters");
 
   sandbox
     .stub(NewTabUtils.pinnedLinks, "links")
@@ -1659,7 +1802,6 @@ add_task(async function test_pin_part_4() {
   sandbox.stub(NewTabUtils.pinnedLinks, "unpin");
 
   let unpinAction = {
-    type: at.TOP_SITES_UNPIN,
     data: { site: { url: "foo.com" } },
   };
   await TopSites.unpin(unpinAction);
@@ -1687,7 +1829,7 @@ add_task(async function test_integration() {
     NewTabUtils.pinnedLinks.links.push(link);
   });
 
-  await TopSites.insert({ type: at.TOP_SITES_INSERT, data: { site: { url } } });
+  await TopSites.insert({ data: { site: { url } } });
   await TestUtils.topicObserved("topsites-refreshed");
   let oldSites = await TopSites.getSites();
   NewTabUtils.pinnedLinks.links.pop();
@@ -1708,7 +1850,6 @@ add_task(async function test_improvesearch_noDefaultSearchTile_experiment() {
 
   sandbox.stub(SearchService.prototype, "getDefault").resolves({
     identifier: "google",
-    searchForm: "google.com",
   });
 
   {
@@ -1851,7 +1992,6 @@ add_task(
 
     sandbox.stub(SearchService.prototype, "getDefault").resolves({
       identifier: "google",
-      searchForm: "google.com",
     });
 
     sandbox.stub(TopSites, "refresh");
@@ -1960,6 +2100,9 @@ add_task(async function test_improvesearch_topSitesSearchShortcuts() {
       "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts",
       false
     );
+    // stubTopSites stubs updateCustomSearchShortcuts, when we need to add
+    // a spy.
+    TopSites.updateCustomSearchShortcuts.restore();
     sandbox.spy(TopSites, "updateCustomSearchShortcuts");
 
     // turn the experiment on
@@ -2060,6 +2203,9 @@ add_task(async function test_improvesearch_topSitesSearchShortcuts() {
       "browser.newtabpage.activity-stream.improvesearch.noDefaultSearchTile",
       true
     );
+    // stubTopSites stubs updateCustomSearchShortcuts, when in this case, we
+    // want to check the effect of the method.
+    TopSites.updateCustomSearchShortcuts.restore();
     await TopSites.updateCustomSearchShortcuts();
     let searchShortcuts = await TopSites.getSearchShortcuts();
     Assert.deepEqual(searchShortcuts, [
@@ -2330,4 +2476,100 @@ add_task(async function test_updatePinnedSearchShortcuts() {
   }
 
   sandbox.restore();
+});
+
+add_task(async function test_insertPinned() {
+  info("#insertPinned");
+
+  function createLinks(count) {
+    return new Array(count).fill(null).map((v, i) => ({ url: `site${i}.com` }));
+  }
+
+  info("should place pinned links where they belong");
+  {
+    let links = createLinks(12);
+    const pinned = [
+      { url: "http://github.com/mozilla/activity-stream", title: "moz/a-s" },
+      { url: "http://example.com", title: "example" },
+    ];
+
+    const result = insertPinned(links, pinned);
+    for (let index of [0, 1]) {
+      Assert.equal(result[index].url, pinned[index].url, "Pinned URL matches");
+      Assert.ok(result[index].isPinned, "Link is marked as pinned");
+      Assert.equal(result[index].pinIndex, index, "Pin index is correct");
+    }
+    Assert.deepEqual(result.slice(2), links, "Remaining links are unchanged");
+  }
+
+  info("should handle empty slots in the pinned list");
+  {
+    let links = createLinks(12);
+    const pinned = [
+      null,
+      { url: "http://github.com/mozilla/activity-stream", title: "moz/a-s" },
+      null,
+      null,
+      { url: "http://example.com", title: "example" },
+    ];
+
+    const result = insertPinned(links, pinned);
+    for (let index of [1, 4]) {
+      Assert.equal(result[index].url, pinned[index].url, "Pinned URL matches");
+      Assert.ok(result[index].isPinned, "Link is marked as pinned");
+      Assert.equal(result[index].pinIndex, index, "Pin index is correct");
+    }
+    result.splice(4, 1);
+    result.splice(1, 1);
+    Assert.deepEqual(result, links, "Remaining links are unchanged");
+  }
+
+  info("should handle a pinned site past the end of the list of links");
+  {
+    const pinned = [];
+    pinned[11] = {
+      url: "http://github.com/mozilla/activity-stream",
+      title: "moz/a-s",
+    };
+
+    const result = insertPinned([], pinned);
+    Assert.equal(result[11].url, pinned[11].url, "Pinned URL matches");
+    Assert.ok(result[11].isPinned, "Link is marked as pinned");
+    Assert.equal(result[11].pinIndex, 11, "Pin index is correct");
+  }
+
+  info("should unpin previously pinned links no longer in the pinned list");
+  {
+    let links = createLinks(12);
+    const pinned = [];
+    links[2].isPinned = true;
+    links[2].pinIndex = 2;
+
+    const result = insertPinned(links, pinned);
+    Assert.ok(!result[2].isPinned, "isPinned property removed");
+    Assert.ok(!result[2].pinIndex, "pinIndex property removed");
+  }
+
+  info("should handle a link present in both the links and pinned list");
+  {
+    let links = createLinks(12);
+    const pinned = [links[7]];
+
+    const result = insertPinned(links, pinned);
+    Assert.equal(links.length, result.length, "Length of links is unchanged");
+  }
+
+  info("should not modify the original data");
+  {
+    let links = createLinks(12);
+    const pinned = [{ url: "http://example.com" }];
+
+    insertPinned(links, pinned);
+
+    Assert.equal(
+      typeof pinned[0].isPinned,
+      "undefined",
+      "Pinned data is not mutated"
+    );
+  }
 });

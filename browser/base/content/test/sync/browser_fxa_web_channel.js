@@ -12,8 +12,7 @@ var { FxAccountsWebChannel } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsWebChannel.sys.mjs"
 );
 
-// eslint-disable-next-line @microsoft/sdl/no-insecure-url
-const TEST_HTTP_PATH = "http://example.com";
+const TEST_HTTP_PATH = "https://example.com";
 const TEST_BASE_URL =
   TEST_HTTP_PATH +
   "/browser/browser/base/content/test/sync/browser_fxa_web_channel.html";
@@ -61,9 +60,6 @@ var gTests = [
           Assert.equal(accountData.uid, "uid");
           Assert.equal(accountData.unwrapBKey, "unwrap_b_key");
           Assert.equal(accountData.verified, true);
-
-          client.tearDown();
-          resolve();
         };
 
         let client = new FxAccountsWebChannel({
@@ -73,6 +69,12 @@ var gTests = [
             login,
           },
         });
+
+        client._channel.send = (message, _context) => {
+          Assert.equal(message.data.ok, true);
+          client.tearDown();
+          resolve();
+        };
       });
 
       await BrowserTestUtils.withNewTab(
@@ -118,6 +120,12 @@ var gTests = [
             shouldAllowRelink(acctName) {
               return acctName === "testuser@testuser.com";
             },
+            promptProfileSyncWarningIfNeeded(acctName) {
+              if (acctName === "testuser@testuser.com") {
+                return { action: "continue" };
+              }
+              return { action: "cancel" };
+            },
           },
         });
       });
@@ -139,9 +147,6 @@ var gTests = [
       let promiseLogout = new Promise(resolve => {
         let logout = uid => {
           Assert.equal(uid, "uid");
-
-          client.tearDown();
-          resolve();
         };
 
         let client = new FxAccountsWebChannel({
@@ -151,6 +156,12 @@ var gTests = [
             logout,
           },
         });
+
+        client._channel.send = (message, _context) => {
+          Assert.equal(message.data.ok, true);
+          client.tearDown();
+          resolve();
+        };
       });
 
       await BrowserTestUtils.withNewTab(
@@ -170,9 +181,6 @@ var gTests = [
       let promiseDelete = new Promise(resolve => {
         let logout = uid => {
           Assert.equal(uid, "uid");
-
-          client.tearDown();
-          resolve();
         };
 
         let client = new FxAccountsWebChannel({
@@ -182,6 +190,12 @@ var gTests = [
             logout,
           },
         });
+
+        client._channel.send = (message, _context) => {
+          Assert.equal(message.data.ok, true);
+          client.tearDown();
+          resolve();
+        };
       });
 
       await BrowserTestUtils.withNewTab(
@@ -211,9 +225,6 @@ var gTests = [
             "function",
             "We can reach the openTab method"
           );
-
-          client.tearDown();
-          resolve();
         };
 
         let client = new FxAccountsWebChannel({
@@ -223,6 +234,12 @@ var gTests = [
             openFirefoxView,
           },
         });
+
+        client._channel.send = (message, _context) => {
+          Assert.equal(message.data.ok, true);
+          client.tearDown();
+          resolve();
+        };
       });
 
       await BrowserTestUtils.withNewTab(

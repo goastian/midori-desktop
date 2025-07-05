@@ -108,7 +108,9 @@ async function getExpectedWebCompatInfo(tab, snapshot, fullAppData = false) {
     securitySoftware;
 
   const browserInfo = {
+    addons: [],
     app,
+    experiments: [],
     graphics: {
       devicesJson(actualStr) {
         const expected = getExpectedGraphicsDevices(snapshot);
@@ -161,6 +163,10 @@ async function getExpectedWebCompatInfo(tab, snapshot, fullAppData = false) {
         "privacy.globalprivacycontrol.enabled",
         false
       ),
+      h1InSectionUseragentStylesEnabled: Services.prefs.getBoolPref(
+        "layout.css.h1-in-section-ua-styles.enabled",
+        false
+      ),
       installtriggerEnabled: Services.prefs.getBoolPref(
         "extensions.InstallTrigger.enabled",
         false
@@ -175,6 +181,14 @@ async function getExpectedWebCompatInfo(tab, snapshot, fullAppData = false) {
       ),
       softwareWebrender: Services.prefs.getBoolPref(
         "gfx.webrender.software",
+        false
+      ),
+      thirdPartyCookieBlockingEnabled: Services.prefs.getBoolPref(
+        "network.cookie.cookieBehavior.optInPartitioning",
+        false
+      ),
+      thirdPartyCookieBlockingEnabledInPbm: Services.prefs.getBoolPref(
+        "network.cookie.cookieBehavior.optInPartitioning.pbmode",
         false
       ),
     },
@@ -201,6 +215,8 @@ async function getExpectedWebCompatInfo(tab, snapshot, fullAppData = false) {
           hasTrackingContentBlocked: false,
           hasMixedActiveContentBlocked: false,
           hasMixedDisplayContentBlocked: false,
+          btpHasPurgedSite: false,
+          etpCategory: "standard",
         },
         frameworks: {
           fastclick: false,
@@ -237,8 +253,12 @@ function extractBrokenSiteReportFromGleanPing(Glean) {
     Glean.brokenSiteReportTabInfoFrameworks
   );
   ping.browserInfo = {
+    addons: Array.from(Glean.brokenSiteReportBrowserInfo.addons.testGetValue()),
     app: extractPingData(Glean.brokenSiteReportBrowserInfoApp),
     graphics: extractPingData(Glean.brokenSiteReportBrowserInfoGraphics),
+    experiments: Array.from(
+      Glean.brokenSiteReportBrowserInfo.experiments.testGetValue()
+    ),
     prefs: extractPingData(Glean.brokenSiteReportBrowserInfoPrefs),
     security: extractPingData(Glean.brokenSiteReportBrowserInfoSecurity),
     system: extractPingData(Glean.brokenSiteReportBrowserInfoSystem),
@@ -260,6 +280,14 @@ async function testSend(tab, menu, expectedOverrides = {}) {
   expected.description = description;
   expected.breakageCategory = breakageCategory;
 
+  if (expectedOverrides.addons) {
+    expected.browserInfo.addons = expectedOverrides.addons;
+  }
+
+  if (expectedOverrides.experiments) {
+    expected.browserInfo.experiments = expectedOverrides.experiments;
+  }
+
   if (expectedOverrides.antitracking) {
     expected.tabInfo.antitracking = expectedOverrides.antitracking;
   }
@@ -272,9 +300,9 @@ async function testSend(tab, menu, expectedOverrides = {}) {
     rbs.chooseReason(breakageCategory);
   }
 
-  const pingCheck = new Promise(resolve => {
-    Services.fog.testResetFOG();
-    GleanPings.brokenSiteReport.testBeforeNextSubmit(() => {
+  Services.fog.testResetFOG();
+  await GleanPings.brokenSiteReport.testSubmission(
+    () => {
       const ping = extractBrokenSiteReportFromGleanPing(Glean);
 
       // sanity checks
@@ -290,13 +318,13 @@ async function testSend(tab, menu, expectedOverrides = {}) {
         "Got a default UA string"
       );
 
-      ok(areObjectsEqual(ping, expected), "ping matches expectations");
-      resolve();
-    });
-  });
+      filterFrameworkDetectorFails(ping.tabInfo, expected.tabInfo);
 
-  await rbs.clickSend();
-  await pingCheck;
+      ok(areObjectsEqual(ping, expected), "ping matches expectations");
+    },
+    () => rbs.clickSend()
+  );
+
   await rbs.clickOkay();
 
   // re-opening the panel, the url and description should be reset

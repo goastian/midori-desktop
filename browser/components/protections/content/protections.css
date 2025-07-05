@@ -149,8 +149,6 @@ h2 {
 #manage-protections,
 .etp-card .icon.dark,
 .proxy-card .icon.dark,
-.vpn-card .icon.dark,
-.vpn-banner .icon.dark,
 a.hidden,
 .loading .card-body,
 .lockwise-card.hidden,
@@ -212,16 +210,12 @@ a.hidden,
   }
 
   .etp-card .icon.dark,
-  .proxy-card .icon.dark,
-  .vpn-card .icon.dark,
-  .vpn-banner .icon.dark {
+  .proxy-card .icon.dark {
     display: block;
   }
 
   .etp-card .icon.light,
-  .proxy-card .icon.light,
-  .vpn-card .icon.light,
-  .vpn-banner .icon.light {
+  .proxy-card .icon.light {
     display: none;
   }
 }
@@ -355,7 +349,7 @@ a.hidden,
 #private-window-message {
   border: 1px solid var(--in-content-border-color);
   grid-area: 1 / 2 / 1 / 7;
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--in-content-box-info-background);
   padding: 13px 45px;
   font-size: 13px;
   margin-bottom: 25px;
@@ -561,7 +555,7 @@ label:hover {
   display: none;
   padding: 22px 20px 20px;
   border-block-start: 1px solid var(--tab-highlight);
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--in-content-box-info-background);
   font-size: 0.8em;
   line-height: 1.75;
 }
@@ -1037,7 +1031,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   height: 110px;
   width: 765px;
   content: "";
-  background-image: linear-gradient(to right, var(--in-content-box-background) 0%, var(--protection-report-loader-color-stop) 30%, var(--in-content-box-background) 40%, var(--in-content-box-background) 100%);
+  background-image: linear-gradient(to right, var(--background-color-box) 0%, var(--protection-report-loader-color-stop) 30%, var(--background-color-box) 40%, var(--background-color-box) 100%);
   background-repeat: no-repeat;
   animation-duration: 2s;
   animation-iteration-count: infinite;
@@ -1049,7 +1043,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 
 .monitor-card.loading:dir(rtl)::after,
 .lockwise-card.loading:dir(rtl)::after {
-  background-image: linear-gradient(to left, var(--in-content-box-background) 0%, var(--protection-report-loader-color-stop) 30%, var(--in-content-box-background) 40%, var(--in-content-box-background) 100%);
+  background-image: linear-gradient(to left, var(--background-color-box) 0%, var(--protection-report-loader-color-stop) 30%, var(--background-color-box) 40%, var(--background-color-box) 100%);
   animation-name: loading-rtl;
 }
 

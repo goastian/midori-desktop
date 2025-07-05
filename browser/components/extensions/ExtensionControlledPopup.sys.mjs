@@ -55,9 +55,6 @@ export class ExtensionControlledPopup {
    *                 An observer topic to trigger the popup on with Services.obs. If the
    *                 doorhanger should appear on a specific window include it as the
    *                 subject in the observer event.
-   * @param {string} opts.anchorId
-   *                 The id to anchor the popupnotification on. If it is not provided
-   *                 then it will anchor to a browser action or the app menu.
    * @param {string} opts.popupnotificationId
    *                 The id for the popupnotification element in the markup. This
    *                 element should be defined in panelUI.inc.xhtml.
@@ -103,7 +100,6 @@ export class ExtensionControlledPopup {
   constructor(opts) {
     this.confirmedType = opts.confirmedType;
     this.observerTopic = opts.observerTopic;
-    this.anchorId = opts.anchorId;
     this.popupnotificationId = opts.popupnotificationId;
     this.settingType = opts.settingType;
     this.settingKey = opts.settingKey;
@@ -259,13 +255,27 @@ export class ExtensionControlledPopup {
     let addon = await lazy.AddonManager.getAddonByID(extensionId);
     this.populateDescription(doc, addon);
 
-    // Setup the command handler.
-    let handleCommand = async event => {
+    // Setup the buttoncommand handler.
+    let handleButtonCommand = async event => {
+      event.preventDefault();
       panel.hidePopup();
-      if (event.originalTarget == popupnotification.button) {
-        // Main action is to keep changes.
-        await this.setConfirmation(extensionId);
-      } else if (this.preferencesLocation) {
+
+      // Main action is to keep changes.
+      await this.setConfirmation(extensionId);
+
+      // If the page this is appearing on is the New Tab page then the URL bar may
+      // have been focused when the doorhanger stole focus away from it. Once an
+      // action is taken the focus state should be restored to what the user was
+      // expecting.
+      if (urlBarWasFocused) {
+        win.gURLBar.focus();
+      }
+    };
+    let handleSecondaryButtonCommand = async event => {
+      event.preventDefault();
+      panel.hidePopup();
+
+      if (this.preferencesLocation) {
         // Secondary action opens Preferences, if a preferencesLocation option is included.
         let options = this.Entrypoint
           ? { urlParams: { entrypoint: this.Entrypoint } }
@@ -279,44 +289,61 @@ export class ExtensionControlledPopup {
         await addon.disable();
       }
 
-      // If the page this is appearing on is the New Tab page then the URL bar may
-      // have been focused when the doorhanger stole focus away from it. Once an
-      // action is taken the focus state should be restored to what the user was
-      // expecting.
       if (urlBarWasFocused) {
         win.gURLBar.focus();
       }
     };
-    panel.addEventListener("command", handleCommand);
+    panel.addEventListener("buttoncommand", handleButtonCommand);
+    panel.addEventListener(
+      "secondarybuttoncommand",
+      handleSecondaryButtonCommand
+    );
     panel.addEventListener(
       "popuphidden",
       () => {
         popupnotification.hidden = true;
-        panel.removeEventListener("command", handleCommand);
+        panel.removeEventListener("buttoncommand", handleButtonCommand);
+        panel.removeEventListener(
+          "secondarybuttoncommand",
+          handleSecondaryButtonCommand
+        );
       },
       { once: true }
     );
 
-    let anchorButton;
-    if (this.anchorId) {
-      // If there's an anchorId, use that right away.
-      anchorButton = doc.getElementById(this.anchorId);
-    } else {
-      // Look for a browserAction on the toolbar.
-      let action = lazy.CustomizableUI.getWidget(
-        `${makeWidgetId(extensionId)}-browser-action`
-      );
-      if (action) {
-        action =
-          action.areaType == "toolbar" &&
-          action.forWindow(win).node.firstElementChild;
-      }
-
-      // Anchor to a toolbar browserAction if found, otherwise use the menu button.
-      anchorButton = action || doc.getElementById("PanelUI-menu-button");
+    // Look for a browserAction on the toolbar.
+    let action = lazy.CustomizableUI.getWidget(
+      `${makeWidgetId(extensionId)}-browser-action`
+    );
+    if (action) {
+      action =
+        action.areaType == "toolbar" &&
+        action
+          .forWindow(win)
+          .node.querySelector(".unified-extensions-item-action-button");
     }
-    let anchor = anchorButton.icon;
+
+    // Anchor to a toolbar browserAction if found, otherwise use the extensions
+    // button.
+    const anchor = action || doc.getElementById("unified-extensions-button");
+
+    if (this.learnMoreLink) {
+      const learnMoreURL =
+        Services.urlFormatter.formatURLPref("app.support.baseURL") +
+        this.learnMoreLink;
+      popupnotification.setAttribute("learnmoreurl", learnMoreURL);
+    } else {
+      // In practice this isn't really needed because each of the
+      // controlled popups use its own popupnotification instance
+      // and they always have an learnMoreURL.
+      popupnotification.removeAttribute("learnmoreurl");
+    }
     popupnotification.show();
+    if (anchor?.id == "unified-extensions-button") {
+      const { gUnifiedExtensions } = anchor.ownerGlobal;
+      gUnifiedExtensions.recordButtonTelemetry("extension_controlled_setting");
+      gUnifiedExtensions.ensureButtonShownBeforeAttachingPanel(panel);
+    }
     panel.openPopup(anchor);
   }
 
@@ -349,11 +376,6 @@ export class ExtensionControlledPopup {
         lazy.BrowserUIUtils.getLocalizedFragment(doc, message, addonDetails)
       );
     }
-
-    let link = doc.createElement("a", { is: "moz-support-link" });
-    link.setAttribute("class", "learnMore");
-    link.setAttribute("support-page", this.learnMoreLink);
-    description.appendChild(link);
   }
 
   async _ensureWindowReady(win) {

@@ -32,9 +32,8 @@ const RECENT_REMOTE_TAB_THRESHOLD_MS = 72 * 60 * 60 * 1000; // 72 hours.
 
 ChromeUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
   try {
-    return Cc["@mozilla.org/weave/service;1"].getService(
-      Ci.nsISupports
-    ).wrappedJSObject;
+    return Cc["@mozilla.org/weave/service;1"].getService(Ci.nsISupports)
+      .wrappedJSObject;
   } catch (ex) {
     // The app didn't build Sync.
   }
@@ -45,13 +44,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
   "showRemoteIconsPref",
   "services.sync.syncedTabs.showRemoteIcons",
-  true
-);
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "showRemoteTabsPref",
-  "services.sync.syncedTabs.showRemoteTabs",
   true
 );
 
@@ -86,9 +78,7 @@ class ProviderRemoteTabs extends UrlbarProvider {
   }
 
   /**
-   * The type of the provider, must be one of UrlbarUtils.PROVIDER_TYPE.
-   *
-   * @returns {UrlbarUtils.PROVIDER_TYPE}
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.NETWORK;
@@ -100,12 +90,10 @@ class ProviderRemoteTabs extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive(queryContext) {
+  async isActive(queryContext) {
     return (
       lazy.syncUsernamePref &&
-      lazy.showRemoteTabsPref &&
       lazy.UrlbarPrefs.get("suggest.remotetab") &&
       queryContext.sources.includes(UrlbarUtils.RESULT_SOURCE.TABS) &&
       lazy.weaveXPCService &&
@@ -201,6 +189,8 @@ class ProviderRemoteTabs extends UrlbarProvider {
 
   /**
    * Build the in-memory structure we use.
+   *
+   * @returns {Promise<{tab: object, client: object}[]>}
    */
   async buildItems() {
     // This is sorted by most recent client, most recent tab.
@@ -223,6 +213,8 @@ class ProviderRemoteTabs extends UrlbarProvider {
 
   /**
    * Ensure the cache is good.
+   *
+   * @returns {Promise<{tab: object, client: object}[]>}
    */
   async ensureCache() {
     if (!_cache) {

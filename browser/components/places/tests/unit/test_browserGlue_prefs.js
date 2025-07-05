@@ -11,10 +11,9 @@ const PREF_RESTORE_DEFAULT_BOOKMARKS =
   "browser.bookmarks.restore_default_bookmarks";
 const PREF_AUTO_EXPORT_HTML = "browser.bookmarks.autoExportHTML";
 
-const TOPIC_BROWSERGLUE_TEST = "browser-glue-test";
-const TOPICDATA_FORCE_PLACES_INIT = "test-force-places-init";
-
-var bg = Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver);
+// Make sure browser glue is initialized, so we can initialize places by
+// using the history service.
+Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsIObserver);
 
 add_task(async function setup() {
   // Create our bookmarks.html from bookmarks.glue.html.
@@ -35,9 +34,12 @@ add_task(async function setup() {
 
 function simulatePlacesInit() {
   info("Simulate Places init");
-  // Force nsBrowserGlue::_initPlaces().
-  bg.observe(null, TOPIC_BROWSERGLUE_TEST, TOPICDATA_FORCE_PLACES_INIT);
-  return promiseTopicObserved("places-browser-init-complete");
+  let { PlacesBrowserStartup } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs"
+  );
+  PlacesBrowserStartup._placesInitialized = false;
+  PlacesBrowserStartup.initPlaces();
+  return TestUtils.topicObserved("places-browser-init-complete");
 }
 
 add_task(async function test_checkPreferences() {
@@ -113,13 +115,16 @@ add_task(async function test_restore() {
 
   await simulatePlacesInit();
 
-  // Check bookmarks.html has been restored.
-  Assert.ok(
-    await PlacesUtils.bookmarks.fetch({
-      parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-      index: 0,
-    })
-  );
+  // Check default-bookmarks.html has been restored.
+  let bm = await PlacesUtils.bookmarks.fetch({
+    parentGuid: PlacesUtils.bookmarks.menuGuid,
+    index: 0,
+  });
+
+  let chanTitle = AppConstants.NIGHTLY_BUILD
+    ? "Firefox Nightly Resources"
+    : "Mozilla Firefox";
+  Assert.equal(bm.title, chanTitle, "Default bookmarks folder restored.");
 
   // Check preferences have been reverted.
   Assert.ok(!Services.prefs.getBoolPref(PREF_RESTORE_DEFAULT_BOOKMARKS));
@@ -147,13 +152,16 @@ add_task(async function test_restore_import() {
 
   await simulatePlacesInit();
 
-  // Check bookmarks.html has been restored.
-  Assert.ok(
-    await PlacesUtils.bookmarks.fetch({
-      parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-      index: 0,
-    })
-  );
+  // Check default-bookmarks.html has been restored.
+  let bm = await PlacesUtils.bookmarks.fetch({
+    parentGuid: PlacesUtils.bookmarks.menuGuid,
+    index: 0,
+  });
+
+  let chanTitle = AppConstants.NIGHTLY_BUILD
+    ? "Firefox Nightly Resources"
+    : "Mozilla Firefox";
+  Assert.equal(bm.title, chanTitle, "Default bookmarks folder restored.");
 
   // Check preferences have been reverted.
   Assert.ok(!Services.prefs.getBoolPref(PREF_RESTORE_DEFAULT_BOOKMARKS));

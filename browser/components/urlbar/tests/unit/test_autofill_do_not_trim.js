@@ -25,8 +25,8 @@ add_task(async function test_not_autofill_ws_1() {
     context,
     matches: [
       makeVisitResult(context, {
-        uri: "http://astian.org/",
-        fallbackTitle: "astian.org/",
+        uri: "http://mozilla.org/",
+        fallbackTitle: "mozilla.org/",
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         heuristic: true,
       }),
@@ -45,8 +45,8 @@ add_task(async function test_not_autofill_ws_2() {
     context,
     matches: [
       makeVisitResult(context, {
-        uri: "http://astian.org/",
-        fallbackTitle: "astian.org/",
+        uri: "http://mozilla.org/",
+        fallbackTitle: "mozilla.org/",
         iconUri: "page-icon:http://mozilla.org/",
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         heuristic: true,

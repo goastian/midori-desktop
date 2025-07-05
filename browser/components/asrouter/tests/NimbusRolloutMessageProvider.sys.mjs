@@ -12,471 +12,3507 @@ export const NimbusRolloutMessageProvider = {
   getMessages() {
     return [
       {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population-esr:treatment (message 1 of 3)
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population-esr/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
+        // Nimbus slug: upgraded-sidebar-138-broad-rollout:rollout-treatment
+        // Version range: 138+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/upgraded-sidebar-138-broad-rollout/summary#rollout-treatment
+        id: "SIDEBAR_INTRO_138",
+        groups: ["cfr"],
         content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
+          id: "SIDEBAR_INTRO_138",
           screens: [
             {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_BACKUP",
+              id: "SIDEBAR_INTRO_138_2",
+              anchors: [
+                {
+                  selector: "#urlbar-container ~ #sidebar-button",
+                  panel_position: {
+                    anchor_attachment: "rightcenter",
+                    callout_attachment: "topright",
+                  },
+                },
+                {
+                  selector: "#sidebar-button",
+                  panel_position: {
+                    anchor_attachment: "rightcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
               content: {
-                logo: {
-                  height: "152px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/c92a41e4-82cf-4ad5-8480-04a138bfb3cd.png",
-                },
                 title: {
-                  fontSize: "24px",
-                  string_id: "device-migration-fxa-spotlight-heavy-user-header",
-                  letterSpacing: 0,
+                  string_id: "sidebar-customization-callout-2-title",
+                  marginInline: "4px 4px",
                 },
+                width: "324px",
+                padding: 16,
+                position: "callout",
                 subtitle: {
-                  fontSize: "15px",
-                  string_id: "device-migration-fxa-spotlight-heavy-user-body",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "20px",
+                  string_id: "sidebar-customization-callout-2-subtitle",
+                  marginInline: "4px 4px",
                 },
                 dismiss_button: {
+                  size: "small",
                   action: {
-                    navigate: true,
+                    dismiss: true,
                   },
+                  marginBlock: "14px 0",
+                  marginInline: "0 14px",
                 },
                 primary_button: {
                   label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-heavy-user-primary-button",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
+                    string_id: "sidebar-customization-callout-callout-button",
                   },
                   action: {
                     data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=dont-forget-to-backup&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
+                      actions: [
+                        {
+                          data: "viewCustomizeSidebar",
+                          type: "OPEN_SIDEBAR",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.sidebar-customize-138",
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
                     },
-                    type: "OPEN_URL",
-                    navigate: true,
+                    type: "MULTI_ACTION",
+                    dismiss: true,
                   },
                 },
+                page_event_listeners: [
+                  {
+                    action: {
+                      dismiss: true,
+                    },
+                    params: {
+                      type: "click",
+                      selectors: "#sidebar-button",
+                    },
+                  },
+                ],
               },
             },
           ],
           backdrop: "transparent",
           template: "multistage",
-          transitions: true,
+          transitions: false,
+          disableHistoryUpdates: true,
         },
         trigger: {
-          id: "defaultBrowserCheck",
+          id: "openURL",
+          patterns: ["*://*/*"],
         },
-        template: "spotlight",
+        template: "feature_callout",
         frequency: {
           lifetime: 1,
         },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && (((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35)",
+        targeting: "true",
       },
       {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population-esr:treatment (message 2 of 3)
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population-esr/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
+        // Nimbus slug: tab-groups-promotional-onboarding:onboarding (message 1 of 2)
+        // Version range: 138+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/tab-groups-promotional-onboarding/summary#onboarding
+        id: "TAB_GROUP_ONBOARDING_CALLOUT",
+        groups: ["cfr"],
         content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
+          id: "TAB_GROUP_ONBOARDING_CALLOUT",
           screens: [
             {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_PEACE",
+              id: "TAB_GROUP_ONBOARDING_CALLOUT_HORIZONTAL",
+              anchors: [
+                {
+                  selector:
+                    "#tabbrowser-tabs:not([overflow]) .tab-content[selected]:not([pinned])",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                },
+                {
+                  selector: "#tabbrowser-tabs",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                },
+              ],
               content: {
                 logo: {
-                  height: "133px",
+                  width: "300px",
+                  height: "172px",
                   imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/4a56d3ed-98c8-4a33-b853-b2cf7646efd8.png",
-                  marginBlock: "22px -10px",
-                },
-                title: {
-                  fontSize: "24px",
-                  string_id:
-                    "device-migration-fxa-spotlight-older-device-header",
-                  letterSpacing: 0,
-                },
-                subtitle: {
-                  fontSize: "15px",
-                  string_id: "device-migration-fxa-spotlight-older-device-body",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "40px",
-                },
-                dismiss_button: {
-                  action: {
-                    navigate: true,
-                  },
-                },
-                primary_button: {
-                  label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-older-device-primary-button",
-                    marginBlock: "0 22px",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
-                  },
-                  action: {
-                    data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=peace-of-mind&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
-                    },
-                    type: "OPEN_URL",
-                    navigate: true,
-                  },
-                },
-              },
-            },
-          ],
-          backdrop: "transparent",
-          template: "multistage",
-          transitions: true,
-        },
-        trigger: {
-          id: "defaultBrowserCheck",
-        },
-        template: "spotlight",
-        frequency: {
-          lifetime: 1,
-        },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && !(((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35) && os.isWindows && os.windowsVersion >= 6.1 && os.windowsBuildNumber < 22000",
-      },
-      {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population-esr:treatment (message 3 of 3)
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population-esr/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
-        content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
-          screens: [
-            {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_NEW_DEVICE",
-              content: {
-                logo: {
-                  height: "149px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/a43cd9cc-e8b2-477c-92f2-345557370de1.svg",
-                },
-                title: {
-                  fontSize: "24px",
-                  string_id:
-                    "device-migration-fxa-spotlight-getting-new-device-header-2",
-                  letterSpacing: 0,
-                },
-                subtitle: {
-                  fontSize: "15px",
-                  string_id:
-                    "device-migration-fxa-spotlight-getting-new-device-body-2",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "40px",
-                },
-                dismiss_button: {
-                  action: {
-                    navigate: true,
-                  },
-                },
-                primary_button: {
-                  label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-getting-new-device-primary-button",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
-                  },
-                  action: {
-                    data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=new-device-in-your-future&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
-                    },
-                    type: "OPEN_URL",
-                    navigate: true,
-                  },
-                },
-              },
-            },
-          ],
-          backdrop: "transparent",
-          template: "multistage",
-          transitions: true,
-        },
-        trigger: {
-          id: "defaultBrowserCheck",
-        },
-        template: "spotlight",
-        frequency: {
-          lifetime: 1,
-        },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && !(((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35) && !(os.isWindows && os.windowsVersion >= 6.1 && os.windowsBuildNumber < 22000)",
-      },
-      {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population:treatment (message 1 of 3)
-        // Version range: 122+
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
-        content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
-          screens: [
-            {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_BACKUP",
-              content: {
-                logo: {
-                  height: "152px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/c92a41e4-82cf-4ad5-8480-04a138bfb3cd.png",
-                },
-                title: {
-                  fontSize: "24px",
-                  string_id: "device-migration-fxa-spotlight-heavy-user-header",
-                  letterSpacing: 0,
-                },
-                subtitle: {
-                  fontSize: "15px",
-                  string_id: "device-migration-fxa-spotlight-heavy-user-body",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "20px",
-                },
-                dismiss_button: {
-                  action: {
-                    navigate: true,
-                  },
-                },
-                primary_button: {
-                  label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-heavy-user-primary-button",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
-                  },
-                  action: {
-                    data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=dont-forget-to-backup&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
-                    },
-                    type: "OPEN_URL",
-                    navigate: true,
-                  },
-                },
-              },
-            },
-          ],
-          backdrop: "transparent",
-          template: "multistage",
-          transitions: true,
-        },
-        trigger: {
-          id: "defaultBrowserCheck",
-        },
-        template: "spotlight",
-        frequency: {
-          lifetime: 1,
-        },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && (((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35)",
-      },
-      {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population:treatment (message 2 of 3)
-        // Version range: 122+
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
-        content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
-          screens: [
-            {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_PEACE",
-              content: {
-                logo: {
-                  height: "133px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/4a56d3ed-98c8-4a33-b853-b2cf7646efd8.png",
-                  marginBlock: "22px -10px",
-                },
-                title: {
-                  fontSize: "24px",
-                  string_id:
-                    "device-migration-fxa-spotlight-older-device-header",
-                  letterSpacing: 0,
-                },
-                subtitle: {
-                  fontSize: "15px",
-                  string_id: "device-migration-fxa-spotlight-older-device-body",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "40px",
-                },
-                dismiss_button: {
-                  action: {
-                    navigate: true,
-                  },
-                },
-                primary_button: {
-                  label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-older-device-primary-button",
-                    marginBlock: "0 22px",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
-                  },
-                  action: {
-                    data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=peace-of-mind&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
-                    },
-                    type: "OPEN_URL",
-                    navigate: true,
-                  },
-                },
-              },
-            },
-          ],
-          backdrop: "transparent",
-          template: "multistage",
-          transitions: true,
-        },
-        trigger: {
-          id: "defaultBrowserCheck",
-        },
-        template: "spotlight",
-        frequency: {
-          lifetime: 1,
-        },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && !(((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35) && os.isWindows && os.windowsVersion >= 6.1 && os.windowsBuildNumber < 22000",
-      },
-      {
-        // Nimbus slug: device-migration-q4-spotlights-remaining-population:treatment (message 3 of 3)
-        // Version range: 122+
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/device-migration-q4-spotlights-remaining-population/summary#treatment
-        id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-        groups: ["eco"],
-        content: {
-          id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT",
-          modal: "tab",
-          screens: [
-            {
-              id: "Q4_DEVICE_MIGRATION_BACKUP_SPOTLIGHT_NEW_DEVICE",
-              content: {
-                logo: {
-                  height: "149px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/a43cd9cc-e8b2-477c-92f2-345557370de1.svg",
-                },
-                title: {
-                  fontSize: "24px",
-                  string_id:
-                    "device-migration-fxa-spotlight-getting-new-device-header-2",
-                  letterSpacing: 0,
-                },
-                subtitle: {
-                  fontSize: "15px",
-                  string_id:
-                    "device-migration-fxa-spotlight-getting-new-device-body-2",
-                  lineHeight: "1.4",
-                  marginBlock: "8px 20px",
-                  letterSpacing: 0,
-                  paddingInline: "40px",
-                },
-                dismiss_button: {
-                  action: {
-                    navigate: true,
-                  },
-                },
-                primary_button: {
-                  label: {
-                    string_id:
-                      "device-migration-fxa-spotlight-getting-new-device-primary-button",
-                    paddingBlock: "4px",
-                    paddingInline: "16px",
-                  },
-                  action: {
-                    data: {
-                      args: "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/switching-devices?utm_source=spotlight-default&utm_medium=firefox-desktop&utm_campaign=migration&utm_content=new-device-in-your-future&entrypoint=device-migration-spotlight-experiment-v2",
-                      where: "tabshifted",
-                    },
-                    type: "OPEN_URL",
-                    navigate: true,
-                  },
-                },
-              },
-            },
-          ],
-          backdrop: "transparent",
-          template: "multistage",
-          transitions: true,
-        },
-        trigger: {
-          id: "defaultBrowserCheck",
-        },
-        template: "spotlight",
-        frequency: {
-          lifetime: 1,
-        },
-        targeting:
-          "source == 'startup' && !willShowDefaultPrompt && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features'|preferenceValue && !usesFirefoxSync && !hasActiveEnterprisePolicies && userMonthlyActivity[userMonthlyActivity|length - 2][1]|date >= currentDate|date - (28 * 24 * 60 * 60 * 1000) && !(((currentDate|date - profileAgeCreated|date) / 86400000 >= 168) || totalBookmarksCount >= 35) && !(os.isWindows && os.windowsVersion >= 6.1 && os.windowsBuildNumber < 22000)",
-      },
-      {
-        // Nimbus slug: fox-doodle-set-to-default-early-day-user-de-fr-it-treatment-a-rollout:treatment-a
-        // Version range: 116+
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-set-to-default-early-day-user-de-fr-it-treatment-a-rollout/summary#treatment-a
-        id: "fox-doodle-set-to-default-early-day-user-de-fr-it:A",
-        groups: ["eco"],
-        content: {
-          id: "fox-doodle-set-to-default-early-day-user-de-fr-it:A",
-          screens: [
-            {
-              id: "SET_DEFAULT",
-              content: {
-                logo: {
-                  height: "140px",
-                  imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/05f5265b-d1e4-4fe1-9a46-0ea36f8afced.png",
+                    "chrome://browser/content/asrouter/assets/tabgroups/hort-animated-light.svg",
+                  darkModeImageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/hort-animated-dark.svg",
                   reducedMotionImageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/05f5265b-d1e4-4fe1-9a46-0ea36f8afced.png",
+                    "chrome://browser/content/asrouter/assets/tabgroups/hort-static-light.svg",
+                  darkModeReducedMotionImageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/hort-static-dark.svg",
+                },
+                title: {
+                  string_id: "tab-groups-onboarding-feature-callout-title",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "tab-groups-onboarding-feature-callout-subtitle",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  background: true,
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "nthTabClosed",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "tabsClosedCount >= 1 && currentTabsOpen >= 8 && ('browser.tabs.groups.enabled' | preferenceValue) && (!'sidebar.verticalTabs' | preferenceValue) && currentTabGroups == 0 && savedTabGroups == 0 && !activeNotifications",
+        skip_in_tests:
+          "not tested in automation and might pop up unexpectedly during review checker tests",
+      },
+      {
+        // Nimbus slug: tab-groups-promotional-onboarding:onboarding (message 2 of 2)
+        // Version range: 138+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/tab-groups-promotional-onboarding/summary#onboarding
+        id: "TAB_GROUP_ONBOARDING_CALLOUT",
+        groups: ["cfr"],
+        content: {
+          id: "TAB_GROUP_ONBOARDING_CALLOUT",
+          screens: [
+            {
+              id: "TAB_GROUP_ONBOARDING_CALLOUT_VERTICAL",
+              anchors: [
+                {
+                  selector:
+                    "#tabbrowser-tabs:not([overflow]) .tab-content[selected]:not([pinned])",
+                  panel_position: {
+                    anchor_attachment: "rightcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+                {
+                  selector: "#tabbrowser-tabs",
+                  panel_position: {
+                    anchor_attachment: "rightcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "300px",
+                  height: "172px",
+                  imageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/vert-animated-light.svg",
+                  darkModeImageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/vert-animated-dark.svg",
+                  reducedMotionImageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/vert-static-light.svg",
+                  darkModeReducedMotionImageURL:
+                    "chrome://browser/content/asrouter/assets/tabgroups/vert-static-dark.svg",
+                },
+                title: {
+                  string_id: "tab-groups-onboarding-feature-callout-title",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "tab-groups-onboarding-feature-callout-subtitle",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  background: true,
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "nthTabClosed",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "tabsClosedCount >= 1 && currentTabsOpen >= 8 && ('browser.tabs.groups.enabled' | preferenceValue) && ('sidebar.revamp' | preferenceValue) && ('sidebar.verticalTabs' | preferenceValue) && currentTabGroups == 0 && savedTabGroups == 0 && !activeNotifications",
+        skip_in_tests:
+          "not tested in automation and might pop up unexpectedly during review checker tests",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout-extention:control (message 1 of 4)
+        // Version range: 137+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout-extention/summary#control
+        id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT",
+          screens: [
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_USB",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/bec3b8d9-a658-4877-b96e-70f7bc6e3e42.svg",
+                },
+                title: {
+                  string_id: "unified-search-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-callout-primary-label",
+                  },
+                  action: {
+                    data: {
+                      pref: {
+                        name: "messaging-system-action.unifiedsearch.feature-tour-1",
+                        value:
+                          '{"screen":"UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_ENGINE","complete": false}',
+                      },
+                    },
+                    type: "SET_PREF",
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    string_id: "unified-search-callout-secondary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_ENGINE",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/97b96045-1e85-439a-b8ba-e32fc6ad8886.svg",
+                },
+                title: {
+                  string_id: "unified-search-engines-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "332px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-engines-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 30px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-engines-callout-primary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+          tour_pref_name:
+            "messaging-system-action.unifiedsearch.feature-tour-1",
+          tour_pref_default_value:
+            '{"screen":"UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_USB","complete":false}',
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode == 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout-extention:control (message 2 of 4)
+        // Version range: 137+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout-extention/summary#control
+        id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT",
+          screens: [
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_USB",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "unified-search-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-callout-primary-label",
+                  },
+                  action: {
+                    data: {
+                      pref: {
+                        name: "messaging-system-action.unifiedsearch.feature-tour-2",
+                        value:
+                          '{"screen":"UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_ENGINE","complete": false}',
+                      },
+                    },
+                    type: "SET_PREF",
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    string_id: "unified-search-callout-secondary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_ENGINE",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "unified-search-engines-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "332px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-engines-callout-subtitle",
+                  marginBlock: "-12px -8px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-engines-callout-primary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+          tour_pref_name:
+            "messaging-system-action.unifiedsearch.feature-tour-2",
+          tour_pref_default_value:
+            '{"screen":"UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_USB","complete": false}',
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode != 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout-extention:control (message 3 of 4)
+        // Version range: 137+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout-extention/summary#control
+        id: "ACTIONS_CALLOUT_WITH_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "ACTIONS_CALLOUT",
+          screens: [
+            {
+              id: "ACTIONS_CALLOUT_WITH_SCREENSHOT",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/bde7e406-f576-4154-ba9c-b5f472b6f4c8.svg",
+                },
+                title: {
+                  string_id: "actions-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "actions-callout-subtitle",
+                  marginBlock: "0 10px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode == 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28) && (messageImpressions.UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT[messageImpressions.UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT | length - 1] < currentDate|date - 172800000)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout-extention:control (message 4 of 4)
+        // Version range: 137+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout-extention/summary#control
+        id: "ACTIONS_CALLOUT_WITHOUT_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "ACTIONS_CALLOUT",
+          screens: [
+            {
+              id: "ACTIONS_CALLOUT_WITHOUT_SCREENSHOT",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "actions-callout-title",
+                  paddingInline: "0 40px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "actions-callout-subtitle",
+                  marginBlock: "-4px 4px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode != 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28) && (messageImpressions.UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT[messageImpressions.UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT | length - 1] < currentDate|date - 172800000)",
+      },
+      {
+        // Nimbus slug: login-status-advisory-callout-rollout:treatment-a
+        // Version range: 135+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/login-status-advisory-callout-rollout/summary#treatment-a
+        id: "LOGIN_STATUS_ADVISORY",
+        groups: ["cfr"],
+        content: {
+          id: "LOGIN_STATUS_ADVISORY",
+          screens: [
+            {
+              id: "LOGIN_STATUS_ADVISORY_A",
+              anchors: [
+                {
+                  selector: "#fxa-toolbar-menu-button",
+                  arrow_width: "19.79899",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                    panel_position_string: "bottomcenter topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+              ],
+              content: {
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "login-status-advisory-title-a",
+                      text: "You’re signed out. Click the Account icon to sign in.",
+                      comment:
+                        "The 'account icon' is the toolbar button with a 'profile' icon of a human head/shoulders. It's for dealing with your Mozilla account. When hovering the icon, the tooltip says 'Account'",
+                    },
+                  },
+                  fontSize: "0.6875em",
+                  fontWeight: "normal",
+                  lineHeight: "1",
+                  marginBlock: "10px",
+                  marginInline: "16px",
+                  letterSpacing: "0",
+                },
+                width: "fit-content",
+                padding: "0",
+                autohide: true,
+                position: "callout",
+                page_event_listeners: [
+                  {
+                    action: {
+                      dismiss: true,
+                    },
+                    params: {
+                      type: "tourend",
+                      options: {
+                        once: true,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          disableHistoryUpdates: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          custom: [
+            {
+              cap: 1,
+              period: 604800000,
+            },
+          ],
+          lifetime: 3,
+        },
+        targeting:
+          "source == 'startup' && previousSessionEnd && !willShowDefaultPrompt && !activeNotifications && !isFxASignedIn && (currentDate|date - profileAgeCreated|date) / 86400000 >= 7",
+      },
+      {
+        // Nimbus slug: recommend-bookmark-toolbar-early-day-rollout:treatment-a
+        // Version range: 132+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/recommend-bookmark-toolbar-early-day-rollout/summary#treatment-a
+        id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+        groups: ["cfr"],
+        content: {
+          id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+          screens: [
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_1",
+              anchors: [
+                {
+                  selector:
+                    "#tabbrowser-tabs:not([overflow]) %triggerTab%[visuallyselected] .tab-content .tab-icon-stack",
+                  panel_position: {
+                    offset_x: -3,
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/e7da4d9e-79e8-41b5-b559-111309285496.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/e4fd7d61-c283-4788-bea7-76ffd6ad9601.svg",
                 },
                 title: {
                   raw: {
                     $l10n: {
-                      id: "fox-doodle-trackers-title",
-                      text: "Keep pesky trackers off your tail",
-                      comment:
-                        "This title is displayed together with the picture of a running fox with a long tail. In English, this is a figure of speech meaning 'stop something from following you'. If the localization of this message is challenging, consider using a simplified alternative as a reference for translation: 'Keep unwanted trackers away'.",
-                    },
-                  },
-                  fontSize: "22px",
-                  fontWeight: 590,
-                  paddingBlock: "4px 0",
-                  letterSpacing: 0,
-                  paddingInline: "24px",
-                },
-                subtitle: {
-                  raw: {
-                    $l10n: {
-                      id: "fox-doodle-trackers-subtitle",
-                      text: "Say goodbye to annoying ad trackers and settle into a safer, speedy internet experience.",
+                      id: "treatment-a-screen-1-title",
+                      text: "Add this site to your bookmarks toolbar?",
                       comment: "",
                     },
                   },
-                  fontSize: "15px",
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-1-subtitle",
+                      text: "Your bookmark will be saved just below the address bar for quick access.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/173414e1-81f7-4612-b868-e78df0557011.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                submenu_button: {
+                  submenu: [
+                    {
+                      id: "block_recommendation",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-1",
+                            text: "Don’t show this recommendation again",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                        },
+                        type: "BLOCK_MESSAGE",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      id: "show_fewer_recommendations",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-2",
+                            text: "Show fewer recommendations",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.show-fewer-bookmarks-recommendations",
+                                  value: true,
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                              },
+                              type: "BLOCK_MESSAGE",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      type: "separator",
+                    },
+                    {
+                      id: "manage_settings",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-3",
+                            text: "Manage settings",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          args: "preferences#general-cfrfeatures",
+                          where: "tab",
+                        },
+                        type: "OPEN_ABOUT_PAGE",
+                        dismiss: true,
+                      },
+                    },
+                  ],
+                  attached_to: "additional_button",
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-1-primary-button",
+                        text: "Add bookmark",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            shouldHideDialog: true,
+                            shouldHideConfirmationHint: true,
+                          },
+                          type: "BOOKMARK_CURRENT_TAB",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.recommend-bookmarks-toolbar-tour",
+                              value:
+                                '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_ACCEPT","complete":false}',
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                        {
+                          data: {
+                            visibility: "always",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                  },
+                },
+                additional_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-1-secondary-button",
+                        text: "No thanks",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.recommend-bookmarks-toolbar-tour",
+                              value:
+                                '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_DECLINE","complete":false}',
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                        {
+                          data: {
+                            visibility: "always",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_ACCEPT",
+              anchors: [
+                {
+                  selector: "#PlacesToolbarItems",
+                  panel_position: {
+                    offset_x: 14,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/349cc073-a414-4640-9dc1-2a3b480e9935.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/100a978d-83ff-4b11-886d-ffac280fea57.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-accept-title",
+                      text: "Easily add more bookmarks",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-accept-subtitle",
+                      text: "You can drag and drop tabs here to keep more of your favorite sites within reach.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/029822ed-8ccc-435b-bd9a-c93bb2c86dd5.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                primary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-accept-secondary-button",
+                        text: "Hide toolbar",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            visibility: "newtab",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                        {
+                          data: {
+                            id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-accept-primary-button",
+                        text: "Got it!",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                    },
+                    type: "BLOCK_MESSAGE",
+                    dismiss: true,
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_DECLINE",
+              anchors: [
+                {
+                  selector: "#PlacesToolbarItems",
+                  panel_position: {
+                    offset_x: 5,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/349cc073-a414-4640-9dc1-2a3b480e9935.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/100a978d-83ff-4b11-886d-ffac280fea57.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-decline-title",
+                      text: "Keep your bookmarks toolbar open?",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-decline-subtitle",
+                      text: "You can add other sites you visit more often. Simply drag and drop tabs here to keep favorite websites within reach.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/029822ed-8ccc-435b-bd9a-c93bb2c86dd5.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                primary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-decline-secondary-button",
+                        text: "No thanks",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            visibility: "newtab",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                        {
+                          data: {
+                            id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-decline-primary-button",
+                        text: "Keep open",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                    },
+                    type: "BLOCK_MESSAGE",
+                    dismiss: true,
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          tour_pref_name:
+            "messaging-system-action.recommend-bookmarks-toolbar-tour",
+          disableHistoryUpdates: true,
+          tour_pref_default_value:
+            '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_1","complete":false}',
+        },
+        trigger: {
+          id: "openURL",
+          patterns: [
+            "https://mail.google.com/*",
+            "https://mail.aol.com/*",
+            "https://outlook.live.com/*",
+            "https://app.neo.space/mail/*",
+            "https://mail.yahoo.com/*",
+            "https://www.icloud.com/mail/*",
+            "https://www.zoho.com/mail/*",
+            "https://account.proton.me/mail/*",
+            "https://navigator-bs.gmx.com/mail/*",
+            "https://tuta.com/*",
+            "https://mailfence.com/*",
+            "https://360.yandex.com/mail/*",
+            "https://titan.email/*",
+            "https://posteo.de/en/*",
+            "https://runbox.com/*",
+            "https://webmail.countermail.com/*",
+            "https://kolabnow.com/*",
+            "https://soverin.net/mail/*",
+            "https://calendar.google.com/*",
+            "https://www.calendar.com/*",
+            "https://www.icloud.com/calendar/*",
+            "https://www.zoho.com/calendar/*",
+            "https://www.cozi.com/*",
+            "https://kalender.digital/*",
+            "https://www.kalender.com/*",
+            "https://proton.me/de/calendar/*",
+            "https://www.stackfield.com/de/*",
+            "https://www.any.do/*",
+            "https://zeeg.me/en/*",
+            "https://www.pandora.com/*",
+            "https://open.spotify.com/*",
+            "https://tunein.com/radio/home/*",
+            "https://www.iheart.com/*",
+            "https://www.accuradio.com/*",
+            "https://www.siriusxm.com/*",
+            "https://www.jango.com/*",
+            "https://live365.com/*",
+            "https://www.radioguide.fm/*",
+            "https://worldwidefm.net/*",
+            "https://www.radio.net/s/fip/*",
+            "https://www.nts.live/*",
+            "https://vintagefm.com.au/*",
+            "https://www.kcrw.com/music/shows/eclectic24/*",
+            "https://sohoradiolondon.com/*",
+            "https://power1051.iheart.com/*",
+            "https://www.balamii.com/*",
+            "https://www.cinemix.us/*",
+            "https://www.kexp.org/*",
+            "https://www.dublab.com/*",
+            "https://www.facebook.com/*",
+            "https://www.reddit.com/*",
+            "https://www.instagram.com/*",
+            "https://www.TikTok.com/*",
+            "https://www.Pinterest.com/*",
+            "https://twitter.com/*",
+            "https://www.linkedin.com/*",
+            "https://www.quora.com/*",
+            "https://www.tumblr.com/*",
+          ],
+        },
+        priority: 1,
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "!os.isLinux && visitsCount >= 3 && !willShowDefaultPrompt && !activeNotifications && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features' | preferenceValue != false",
+      },
+      {
+        // Nimbus slug: recommend-bookmark-toolbar-existing-user-rollout:treatment-a
+        // Version range: 132+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/recommend-bookmark-toolbar-existing-user-rollout/summary#treatment-a
+        id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+        groups: ["cfr"],
+        content: {
+          id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+          screens: [
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_1",
+              anchors: [
+                {
+                  selector:
+                    "#tabbrowser-tabs:not([overflow]) %triggerTab%[visuallyselected] .tab-content .tab-icon-stack",
+                  panel_position: {
+                    offset_x: -3,
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/e7da4d9e-79e8-41b5-b559-111309285496.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/e4fd7d61-c283-4788-bea7-76ffd6ad9601.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-1-title",
+                      text: "Add this site to your bookmarks toolbar?",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-1-subtitle",
+                      text: "Your bookmark will be saved just below the address bar for quick access.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/173414e1-81f7-4612-b868-e78df0557011.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                submenu_button: {
+                  submenu: [
+                    {
+                      id: "block_recommendation",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-1",
+                            text: "Don’t show this recommendation again",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                        },
+                        type: "BLOCK_MESSAGE",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      id: "show_fewer_recommendations",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-2",
+                            text: "Show fewer recommendations",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.show-fewer-bookmarks-recommendations",
+                                  value: true,
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                              },
+                              type: "BLOCK_MESSAGE",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      type: "separator",
+                    },
+                    {
+                      id: "manage_settings",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "split-dismiss-button-option-3",
+                            text: "Manage settings",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          args: "preferences#general-cfrfeatures",
+                          where: "tab",
+                        },
+                        type: "OPEN_ABOUT_PAGE",
+                        dismiss: true,
+                      },
+                    },
+                  ],
+                  attached_to: "additional_button",
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-1-primary-button",
+                        text: "Add bookmark",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            shouldHideDialog: true,
+                            shouldHideConfirmationHint: true,
+                          },
+                          type: "BOOKMARK_CURRENT_TAB",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.recommend-bookmarks-toolbar-tour",
+                              value:
+                                '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_ACCEPT","complete":false}',
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                        {
+                          data: {
+                            visibility: "always",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                  },
+                },
+                additional_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-1-secondary-button",
+                        text: "No thanks",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.recommend-bookmarks-toolbar-tour",
+                              value:
+                                '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_DECLINE","complete":false}',
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                        {
+                          data: {
+                            visibility: "always",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_ACCEPT",
+              anchors: [
+                {
+                  selector: "#PlacesToolbarItems",
+                  panel_position: {
+                    offset_x: 14,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/349cc073-a414-4640-9dc1-2a3b480e9935.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/100a978d-83ff-4b11-886d-ffac280fea57.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-accept-title",
+                      text: "Easily add more bookmarks",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-accept-subtitle",
+                      text: "You can drag and drop tabs here to keep more of your favorite sites within reach.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/029822ed-8ccc-435b-bd9a-c93bb2c86dd5.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                primary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-accept-secondary-button",
+                        text: "Hide toolbar",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            visibility: "newtab",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                        {
+                          data: {
+                            id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-accept-primary-button",
+                        text: "Got it!",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                    },
+                    type: "BLOCK_MESSAGE",
+                    dismiss: true,
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+            {
+              id: "RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_2_DECLINE",
+              anchors: [
+                {
+                  selector: "#PlacesToolbarItems",
+                  panel_position: {
+                    offset_x: 5,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  width: "338px",
+                  height: "170px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/349cc073-a414-4640-9dc1-2a3b480e9935.svg",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/100a978d-83ff-4b11-886d-ffac280fea57.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-decline-title",
+                      text: "Keep your bookmarks toolbar open?",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "370px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "treatment-a-screen-2-decline-subtitle",
+                      text: "You can add other sites you visit more often. Simply drag and drop tabs here to keep favorite websites within reach.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "25px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/029822ed-8ccc-435b-bd9a-c93bb2c86dd5.svg",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                primary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-decline-secondary-button",
+                        text: "No thanks",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            visibility: "newtab",
+                          },
+                          type: "SET_BOOKMARKS_TOOLBAR_VISIBILITY",
+                        },
+                        {
+                          data: {
+                            id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "treatment-a-screen-2-decline-primary-button",
+                        text: "Keep open",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      id: "RECOMMEND_BOOKMARKS_TOOLBAR",
+                    },
+                    type: "BLOCK_MESSAGE",
+                    dismiss: true,
+                  },
+                },
+              },
+              force_hide_steps_indicator: true,
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          tour_pref_name:
+            "messaging-system-action.recommend-bookmarks-toolbar-tour",
+          disableHistoryUpdates: true,
+          tour_pref_default_value:
+            '{"screen":"RECOMMEND_BOOKMARKS_TOOLBAR_TREATMENT_A_SCREEN_1","complete":false}',
+        },
+        trigger: {
+          id: "openURL",
+          patterns: [
+            "https://mail.google.com/*",
+            "https://mail.aol.com/*",
+            "https://outlook.live.com/*",
+            "https://app.neo.space/mail/*",
+            "https://mail.yahoo.com/*",
+            "https://www.icloud.com/mail/*",
+            "https://www.zoho.com/mail/*",
+            "https://account.proton.me/mail/*",
+            "https://navigator-bs.gmx.com/mail/*",
+            "https://tuta.com/*",
+            "https://mailfence.com/*",
+            "https://360.yandex.com/mail/*",
+            "https://titan.email/*",
+            "https://posteo.de/en/*",
+            "https://runbox.com/*",
+            "https://webmail.countermail.com/*",
+            "https://kolabnow.com/*",
+            "https://soverin.net/mail/*",
+            "https://calendar.google.com/*",
+            "https://www.calendar.com/*",
+            "https://www.icloud.com/calendar/*",
+            "https://www.zoho.com/calendar/*",
+            "https://www.cozi.com/*",
+            "https://kalender.digital/*",
+            "https://www.kalender.com/*",
+            "https://proton.me/de/calendar/*",
+            "https://www.stackfield.com/de/*",
+            "https://www.any.do/*",
+            "https://zeeg.me/en/*",
+            "https://www.pandora.com/*",
+            "https://open.spotify.com/*",
+            "https://tunein.com/radio/home/*",
+            "https://www.iheart.com/*",
+            "https://www.accuradio.com/*",
+            "https://www.siriusxm.com/*",
+            "https://www.jango.com/*",
+            "https://live365.com/*",
+            "https://www.radioguide.fm/*",
+            "https://worldwidefm.net/*",
+            "https://www.radio.net/s/fip/*",
+            "https://www.nts.live/*",
+            "https://vintagefm.com.au/*",
+            "https://www.kcrw.com/music/shows/eclectic24/*",
+            "https://sohoradiolondon.com/*",
+            "https://power1051.iheart.com/*",
+            "https://www.balamii.com/*",
+            "https://www.cinemix.us/*",
+            "https://www.kexp.org/*",
+            "https://www.dublab.com/*",
+            "https://www.facebook.com/*",
+            "https://www.reddit.com/*",
+            "https://www.instagram.com/*",
+            "https://www.TikTok.com/*",
+            "https://www.Pinterest.com/*",
+            "https://twitter.com/*",
+            "https://www.linkedin.com/*",
+            "https://www.quora.com/*",
+            "https://www.tumblr.com/*",
+          ],
+        },
+        priority: 1,
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "!os.isLinux && visitsCount >= 3 && !willShowDefaultPrompt && !activeNotifications && 'browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features' | preferenceValue != false",
+      },
+      {
+        // Nimbus slug: onboarding-set-up-checklist-windows-rollout-march:treatment-branch (message 1 of 3)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/onboarding-set-up-checklist-windows-rollout-march/summary#treatment-branch
+        id: "FINISH_SETUP_CHECKLIST",
+        content: {
+          id: "FINISH_SETUP_CHECKLIST",
+          screens: [
+            {
+              id: "FINISH_SETUP_CHECKLIST",
+              anchors: [
+                {
+                  selector: "#fxms-bmb-button",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+                {
+                  selector: "#FINISH_SETUP_BUTTON",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+              ],
+              content: {
+                tiles: {
+                  data: [
+                    {
+                      id: "action-checklist-set-to-default",
+                      label: {
+                        string_id: "onboarding-checklist-set-default",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      targeting: "isDefaultBrowserUncached",
+                    },
+                    {
+                      id: "action-checklist-pin-to-taskbar",
+                      label: {
+                        string_id: "onboarding-checklist-pin",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              type: "PIN_FIREFOX_TO_TASKBAR",
+                            },
+                            {
+                              type: "PIN_FIREFOX_TO_START_MENU",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting: "!doesAppNeedPinUncached",
+                    },
+                    {
+                      id: "action-checklist-import-data",
+                      label: {
+                        string_id: "onboarding-checklist-import",
+                      },
+                      action: {
+                        type: "SHOW_MIGRATION_WIZARD",
+                      },
+                      targeting:
+                        "hasMigratedBookmarks || hasMigratedCSVPasswords || hasMigratedHistory || hasMigratedPasswords",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-explore-extensions",
+                      label: {
+                        string_id: "onboarding-checklist-extension",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.hasOpenedExtensions",
+                                  value: "true",
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                args: "https://addons.mozilla.org/en-US/firefox/collections/4757633/b4d5649fb087446aa05add5f0258c3/?page=1&collection_sort=-popularity",
+                                where: "current",
+                              },
+                              type: "OPEN_URL",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting:
+                        "'messaging-system-action.hasOpenedExtensions'|preferenceValue",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-sign-in",
+                      label: {
+                        string_id: "onboarding-checklist-sign-up",
+                      },
+                      action: {
+                        data: {
+                          entrypoint: "fx-onboarding-checklist",
+                          extraParams: {
+                            utm_medium: "firefox-desktop",
+                            utm_source: "fx-new-device-sync",
+                            utm_content: "migration-onboarding",
+                            utm_campaign: "migration",
+                          },
+                        },
+                        type: "FXA_SIGNIN_FLOW",
+                      },
+                      targeting: "isFxASignedIn",
+                      showExternalLinkIcon: true,
+                    },
+                  ],
+                  type: "action_checklist",
+                },
+                title: {
+                  fontSize: "16px",
+                  string_id: "onboarding-checklist-title",
+                  fontWeight: "600",
+                  marginInline: "3px 40px",
+                },
+                position: "callout",
+                title_logo: {
+                  imageURL: "chrome://branding/content/about-logo.png",
+                  alignment: "top",
+                },
+                dismiss_button: {
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            pref: {
+                              name: "easyChecklist.open",
+                              value: false,
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                page_event_listeners: [
+                  {
+                    action: {
+                      data: {
+                        pref: {
+                          name: "messaging-system-action.easyChecklist.open",
+                          value: "false",
+                        },
+                      },
+                      type: "SET_PREF",
+                    },
+                    params: {
+                      type: "tourend",
+                    },
+                  },
+                ],
+                action_checklist_subtitle: {
+                  string_id: "onboarding-checklist-subtitle",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          disableHistoryUpdates: true,
+        },
+        trigger: {
+          id: "preferenceObserver",
+          params: ["messaging-system-action.easyChecklist.open"],
+        },
+        priority: 3,
+        template: "feature_callout",
+        targeting:
+          "'messaging-system-action.easyChecklist.open' | preferenceValue == true",
+      },
+      {
+        // Nimbus slug: onboarding-set-up-checklist-windows-rollout-march:treatment-branch (message 2 of 3)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/onboarding-set-up-checklist-windows-rollout-march/summary#treatment-branch
+        id: "FINISH_SETUP_CHECKLIST",
+        content: {
+          id: "FINISH_SETUP_CHECKLIST",
+          screens: [
+            {
+              id: "FINISH_SETUP_CHECKLIST",
+              anchors: [
+                {
+                  selector: "#fxms-bmb-button",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+                {
+                  selector: "#FINISH_SETUP_BUTTON",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+                {
+                  selector: "#PersonalToolbar",
+                  hide_arrow: true,
+                  panel_position: {
+                    offset_x: -24,
+                    offset_y: 24,
+                    anchor_attachment: "bottomright",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+              ],
+              content: {
+                tiles: {
+                  data: [
+                    {
+                      id: "action-checklist-set-to-default",
+                      label: {
+                        string_id: "onboarding-checklist-set-default",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      targeting: "isDefaultBrowserUncached",
+                    },
+                    {
+                      id: "action-checklist-pin-to-taskbar",
+                      label: {
+                        string_id: "onboarding-checklist-pin",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              type: "PIN_FIREFOX_TO_TASKBAR",
+                            },
+                            {
+                              type: "PIN_FIREFOX_TO_START_MENU",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting: "!doesAppNeedPinUncached",
+                    },
+                    {
+                      id: "action-checklist-import-data",
+                      label: {
+                        string_id: "onboarding-checklist-import",
+                      },
+                      action: {
+                        type: "SHOW_MIGRATION_WIZARD",
+                      },
+                      targeting:
+                        "hasMigratedBookmarks || hasMigratedCSVPasswords || hasMigratedHistory || hasMigratedPasswords",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-explore-extensions",
+                      label: {
+                        string_id: "onboarding-checklist-extension",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.hasOpenedExtensions",
+                                  value: "true",
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                args: "https://addons.mozilla.org/en-US/firefox/collections/4757633/b4d5649fb087446aa05add5f0258c3/?page=1&collection_sort=-popularity",
+                                where: "current",
+                              },
+                              type: "OPEN_URL",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting:
+                        "'messaging-system-action.hasOpenedExtensions'|preferenceValue",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-sign-in",
+                      label: {
+                        string_id: "onboarding-checklist-sign-up",
+                      },
+                      action: {
+                        data: {
+                          entrypoint: "fx-onboarding-checklist",
+                          extraParams: {
+                            utm_medium: "firefox-desktop",
+                            utm_source: "fx-new-device-sync",
+                            utm_content: "migration-onboarding",
+                            utm_campaign: "migration",
+                          },
+                        },
+                        type: "FXA_SIGNIN_FLOW",
+                      },
+                      targeting: "isFxASignedIn",
+                      showExternalLinkIcon: true,
+                    },
+                  ],
+                  type: "action_checklist",
+                },
+                title: {
+                  fontSize: "16px",
+                  string_id: "onboarding-checklist-title",
+                  fontWeight: "600",
+                  marginInline: "3px 40px",
+                },
+                position: "callout",
+                title_logo: {
+                  imageURL: "chrome://branding/content/about-logo.png",
+                  alignment: "top",
+                },
+                dismiss_button: {
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            pref: {
+                              name: "easyChecklist.open",
+                              value: false,
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                page_event_listeners: [
+                  {
+                    action: {
+                      data: {
+                        pref: {
+                          name: "messaging-system-action.easyChecklist.open",
+                          value: "false",
+                        },
+                      },
+                      type: "SET_PREF",
+                    },
+                    params: {
+                      type: "tourend",
+                    },
+                  },
+                ],
+                action_checklist_subtitle: {
+                  string_id: "onboarding-checklist-subtitle",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          disableHistoryUpdates: true,
+        },
+        trigger: {
+          id: "messagesLoaded",
+        },
+        priority: 3,
+        template: "feature_callout",
+        targeting:
+          "'messaging-system-action.easyChecklist.open' | preferenceValue == true",
+      },
+      {
+        // Nimbus slug: onboarding-set-up-checklist-windows-rollout-march:treatment-branch (message 3 of 3)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/onboarding-set-up-checklist-windows-rollout-march/summary#treatment-branch
+        id: "FINISH_SETUP_CHECKLIST_AUTO_OPEN",
+        content: {
+          id: "FINISH_SETUP_CHECKLIST",
+          screens: [
+            {
+              id: "FINISH_SETUP_CHECKLIST",
+              anchors: [
+                {
+                  selector: "#fxms-bmb-button",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+                {
+                  selector: "#FINISH_SETUP_BUTTON",
+                  panel_position: {
+                    offset_y: 4,
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                  no_open_on_anchor: true,
+                },
+              ],
+              content: {
+                tiles: {
+                  data: [
+                    {
+                      id: "action-checklist-set-to-default",
+                      label: {
+                        string_id: "onboarding-checklist-set-default",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      targeting: "isDefaultBrowserUncached",
+                    },
+                    {
+                      id: "action-checklist-pin-to-taskbar",
+                      label: {
+                        string_id: "onboarding-checklist-pin",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              type: "PIN_FIREFOX_TO_TASKBAR",
+                            },
+                            {
+                              type: "PIN_FIREFOX_TO_START_MENU",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting: "!doesAppNeedPinUncached",
+                    },
+                    {
+                      id: "action-checklist-import-data",
+                      label: {
+                        string_id: "onboarding-checklist-import",
+                      },
+                      action: {
+                        type: "SHOW_MIGRATION_WIZARD",
+                      },
+                      targeting:
+                        "hasMigratedBookmarks || hasMigratedCSVPasswords || hasMigratedHistory || hasMigratedPasswords",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-explore-extensions",
+                      label: {
+                        string_id: "onboarding-checklist-extension",
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.hasOpenedExtensions",
+                                  value: "true",
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                args: "https://addons.mozilla.org/en-US/firefox/collections/4757633/b4d5649fb087446aa05add5f0258c3/?page=1&collection_sort=-popularity",
+                                where: "current",
+                              },
+                              type: "OPEN_URL",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                      },
+                      targeting:
+                        "'messaging-system-action.hasOpenedExtensions'|preferenceValue",
+                      showExternalLinkIcon: true,
+                    },
+                    {
+                      id: "action-checklist-sign-in",
+                      label: {
+                        string_id: "onboarding-checklist-sign-up",
+                      },
+                      action: {
+                        data: {
+                          entrypoint: "fx-onboarding-checklist",
+                          extraParams: {
+                            utm_medium: "firefox-desktop",
+                            utm_source: "fx-new-device-sync",
+                            utm_content: "migration-onboarding",
+                            utm_campaign: "migration",
+                          },
+                        },
+                        type: "FXA_SIGNIN_FLOW",
+                      },
+                      targeting: "isFxASignedIn",
+                      showExternalLinkIcon: true,
+                    },
+                  ],
+                  type: "action_checklist",
+                },
+                title: {
+                  fontSize: "16px",
+                  string_id: "onboarding-checklist-title",
+                  fontWeight: "600",
+                  marginInline: "3px 40px",
+                },
+                position: "callout",
+                title_logo: {
+                  imageURL: "chrome://branding/content/about-logo.png",
+                  alignment: "top",
+                },
+                dismiss_button: {
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            pref: {
+                              name: "easyChecklist.open",
+                              value: false,
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                page_event_listeners: [
+                  {
+                    action: {
+                      data: {
+                        pref: {
+                          name: "messaging-system-action.easyChecklist.open",
+                          value: "false",
+                        },
+                      },
+                      type: "SET_PREF",
+                    },
+                    params: {
+                      type: "tourend",
+                    },
+                  },
+                ],
+                action_checklist_subtitle: {
+                  string_id: "onboarding-checklist-subtitle",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          disableHistoryUpdates: true,
+        },
+        trigger: {
+          id: "nthTabClosed",
+        },
+        priority: 3,
+        template: "feature_callout",
+        frequency: {
+          custom: [
+            {
+              cap: 1,
+              period: 86400000,
+            },
+          ],
+          lifetime: 3,
+        },
+        targeting:
+          "(tabsClosedCount == 4 || tabsClosedCount == 12 || tabsClosedCount == 24) && (!isDefaultBrowserUncached || doesAppNeedPinUncached || (!hasMigratedBookmarks || !hasMigratedCSVPasswords || !hasMigratedHistory || !hasMigratedPasswords) || !'messaging-system-action.hasOpenedExtensions'|preferenceValue || !isFxASignedIn)",
+      },
+      {
+        // Nimbus slug: onboarding-set-up-checklist-windows-rollout-march:treatment-branch
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/onboarding-set-up-checklist-windows-rollout-march/summary#treatment-branch
+        id: "FINISH_SETUP_BUTTON",
+        groups: [],
+        weight: 100,
+        content: {
+          logo: {
+            imageURL: "chrome://branding/content/about-logo.png",
+          },
+          label: {
+            raw: "Finish setup",
+            tooltip: "Finish setting up Firefox",
+          },
+          action: {
+            data: {
+              pref: {
+                name: "easyChecklist.open",
+                value: true,
+              },
+            },
+            type: "SET_PREF",
+          },
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        priority: 1,
+        template: "bookmarks_bar_button",
+        targeting: "true",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout:control (message 1 of 4)
+        // Version range: 136+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout/summary#control
+        id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT",
+          screens: [
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_USB",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/bec3b8d9-a658-4877-b96e-70f7bc6e3e42.svg",
+                },
+                title: {
+                  string_id: "unified-search-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-callout-primary-label",
+                  },
+                  action: {
+                    data: {
+                      pref: {
+                        name: "messaging-system-action.unifiedsearch.feature-tour-1",
+                        value:
+                          '{"screen":"UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_ENGINE","complete": false}',
+                      },
+                    },
+                    type: "SET_PREF",
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    string_id: "unified-search-callout-secondary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_ENGINE",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/97b96045-1e85-439a-b8ba-e32fc6ad8886.svg",
+                },
+                title: {
+                  string_id: "unified-search-engines-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "332px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-engines-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 30px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-engines-callout-primary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+          tour_pref_name:
+            "messaging-system-action.unifiedsearch.feature-tour-1",
+          tour_pref_default_value:
+            '{"screen":"UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT_USB","complete":false}',
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode == 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout:control (message 2 of 4)
+        // Version range: 136+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout/summary#control
+        id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT",
+          screens: [
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_USB",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "unified-search-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-callout-subtitle",
+                  marginBlock: "-12px 0",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-callout-primary-label",
+                  },
+                  action: {
+                    data: {
+                      pref: {
+                        name: "messaging-system-action.unifiedsearch.feature-tour-2",
+                        value:
+                          '{"screen":"UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_ENGINE","complete": false}',
+                      },
+                    },
+                    type: "SET_PREF",
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    string_id: "unified-search-callout-secondary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+            {
+              id: "UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_ENGINE",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "unified-search-engines-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "332px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "unified-search-engines-callout-subtitle",
+                  marginBlock: "-12px -8px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                primary_button: {
+                  label: {
+                    string_id: "unified-search-engines-callout-primary-label",
+                  },
+                  action: {
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+          tour_pref_name:
+            "messaging-system-action.unifiedsearch.feature-tour-2",
+          tour_pref_default_value:
+            '{"screen":"UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT_USB","complete": false}',
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode != 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout:control (message 3 of 4)
+        // Version range: 136+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout/summary#control
+        id: "ACTIONS_CALLOUT_WITH_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "ACTIONS_CALLOUT",
+          screens: [
+            {
+              id: "ACTIONS_CALLOUT_WITH_SCREENSHOT",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "168px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/bde7e406-f576-4154-ba9c-b5f472b6f4c8.svg",
+                },
+                title: {
+                  string_id: "actions-callout-title",
+                  paddingInline: "0 20px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "actions-callout-subtitle",
+                  marginBlock: "0 10px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode == 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28) && (messageImpressions.UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT[messageImpressions.UNIFIED_SEARCH_CALLOUT_WITH_SCREENSHOT | length - 1] < currentDate|date - 172800000)",
+      },
+      {
+        // Nimbus slug: unified-search-button-callout:control (message 4 of 4)
+        // Version range: 136+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/unified-search-button-callout/summary#control
+        id: "ACTIONS_CALLOUT_WITHOUT_SCREENSHOT",
+        groups: ["cfr"],
+        content: {
+          id: "ACTIONS_CALLOUT",
+          screens: [
+            {
+              id: "ACTIONS_CALLOUT_WITHOUT_SCREENSHOT",
+              anchors: [
+                {
+                  selector: ".urlbar-input-container",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    offset_x: 16,
+                    anchor_attachment: "bottomleft",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: null,
+                title: {
+                  string_id: "actions-callout-title",
+                  paddingInline: "0 40px",
+                },
+                width: "333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "actions-callout-subtitle",
+                  marginBlock: "-4px 4px",
+                  paddingInline: "42px 20px",
+                },
+                title_logo: {
+                  width: "32px",
+                  height: "34px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2ff87710-8c83-41cd-a2b4-99d0c7ec67f1.svg",
+                  alignment: "top",
+                  marginBlock: "4px 0",
+                  marginInline: "8px 18px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "('browser.urlbar.scotchBonnet.enableOverride' | preferenceValue) && localeLanguageCode != 'en' && source == 'newtab' && !willShowDefaultPrompt && ((currentDate|date - profileAgeCreated|date) / 86400000 > 28) && (messageImpressions.UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT[messageImpressions.UNIFIED_SEARCH_CALLOUT_WITHOUT_SCREENSHOT | length - 1] < currentDate|date - 172800000)",
+      },
+      {
+        // Nimbus slug: mozilla-vpn-in-private-browsing-treatment-d-rollout-en-only:treatment-d
+        // Version range: 128+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/mozilla-vpn-in-private-browsing-treatment-d-rollout-en-only/summary#treatment-d
+        id: "mozilla-vpn-in-private-browsing:treatment-d",
+        groups: [],
+        content: {
+          infoBody:
+            "fluent:about-private-browsing-info-description-private-window",
+          infoIcon: "",
+          infoTitle: "",
+          promoTitle:
+            "VPNs aren’t all the same. Some simply aren’t secure. Some log your activity. But Mozilla VPN is different — it’s open source and backed by a company with a track record of putting people and their privacy first.",
+          infoEnabled: true,
+          promoButton: {
+            action: {
+              data: {
+                args: "https://www.mozilla.org/products/vpn/?utm_medium=product&utm_campaign=evergreen&utm_source=firefox-desktop&utm_content=why-mozilla-vpn&entrypoint_experiment=mozilla-vpn-in-private-browsing&entrypoint_variation=treatment-d",
+              },
+              type: "OPEN_URL",
+            },
+          },
+          promoHeader: "Why Mozilla VPN?",
+          infoLinkText: "fluent:about-private-browsing-learn-more-link",
+          promoEnabled: true,
+          promoLinkText: "Check out Mozilla VPN",
+          promoLinkType: "button",
+          promoImageLarge: "chrome://browser/content/assets/moz-vpn.svg",
+          infoTitleEnabled: false,
+          promoSectionStyle: "below-search",
+          promoTitleEnabled: true,
+        },
+        priority: 5,
+        template: "pb_newtab",
+        frequency: {
+          custom: [
+            {
+              cap: 3,
+              period: 604800000,
+            },
+          ],
+          lifetime: 12,
+        },
+        targeting:
+          "!hasActiveEnterprisePolicies && (('e6eb0d1e856335fc' in attachedFxAOAuthClients|mapToProperty('id')) ? (attachedFxAOAuthClients[.id == 'e6eb0d1e856335fc'].lastAccessedDaysAgo > 29) : true)",
+      },
+      {
+        // Nimbus slug: pdf-annotations-highlight-treatment-b-rollout:treatment-b (message 1 of 2)
+        // Version range: 131+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/pdf-annotations-highlight-treatment-b-rollout/summary#treatment-b
+        id: "PDF_ANNOTATIONS_HIGHLIGHT",
+        content: {
+          id: "PDF_ANNOTATIONS_HIGHLIGHT",
+          screens: [
+            {
+              id: "PDF_ANNOTATIONS_HIGHLIGHT_SET_DEFAULT_ROLLOUT_SCREEN_1",
+              anchors: [
+                {
+                  selector: "hbox#browser",
+                  hide_arrow: true,
+                  absolute_position: {
+                    top: "45px",
+                    right: "13px",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "190px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/ce5a14ef-ed44-4c16-9aaf-eb99f58bcb4f.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-1-header",
+                      text: "Now you can highlight your PDFs!",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "333.3333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-1-variant-2-subtitle",
+                      text: "With our new highlighter tool, you can read and edit PDFs in one place.",
+                      comment:
+                        "This string appears below an image of a document with important parts highlighted.",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "22px",
+                },
+                title_logo: {
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/5c4047e1-77cc-4094-8693-6474562afc1b.svg",
+                  alignment: "top",
+                },
+                submenu_button: {
+                  style: "secondary",
+                  submenu: [
+                    {
+                      id: "item1",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-1",
+                            text: "Don’t show this recommendation again",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                        },
+                        type: "BLOCK_MESSAGE",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      id: "item2",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-2",
+                            text: "Show fewer recommendations",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.show-fewer-pdf-recommendations",
+                                  value: true,
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                              },
+                              type: "BLOCK_MESSAGE",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      type: "separator",
+                    },
+                    {
+                      id: "item3",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-3",
+                            text: "Manage settings",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          args: "preferences#general-cfrfeatures",
+                          where: "tab",
+                        },
+                        type: "OPEN_ABOUT_PAGE",
+                        dismiss: true,
+                      },
+                    },
+                  ],
+                  attached_to: "additional_button",
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "feature-tour-next-button",
+                        text: "Next",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      pref: {
+                        name: "messaging-system-action.pdfjsannotation.feature-tour-2",
+                        value:
+                          '{"screen":"PDF_ANNOTATIONS_HIGHLIGHT_SET_DEFAULT_ROLLOUT_SCREEN_2","complete":false}',
+                      },
+                    },
+                    type: "SET_PREF",
+                  },
+                },
+                additional_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "feature-tour-dismiss-button",
+                        text: "Dismiss",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.pdfjsannotation.feature-tour-2",
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+            {
+              id: "PDF_ANNOTATIONS_HIGHLIGHT_SET_DEFAULT_ROLLOUT_SCREEN_2",
+              anchors: [
+                {
+                  selector: "hbox#browser",
+                  hide_arrow: true,
+                  absolute_position: {
+                    top: "45px",
+                    right: "13px",
+                  },
+                },
+              ],
+              content: {
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-2-header",
+                      text: "Make Firefox your default PDF editor?",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "max(340px, 43ex)",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-2-subtitle",
+                      text: "You’ll have access to our tools every time you open a PDF.",
+                      comment: "",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "28px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL: "chrome://branding/content/icon32.png",
+                  alignment: "top",
+                  marginInline: "0 12px",
+                },
+                primary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "feature-tour-dismiss-button",
+                        text: "Dismiss",
+                        comment: "",
+                      },
+                    },
+                    marginInline: "36px 0",
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.pdfjsannotation.feature-tour-2",
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "feature-tour-set-default-button",
+                        text: "Set as default",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "primary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          type: "SET_DEFAULT_PDF_HANDLER",
+                        },
+                        {
+                          data: {
+                            id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.pdfjsannotation.feature-tour-2",
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          tour_pref_name:
+            "messaging-system-action.pdfjsannotation.feature-tour-2",
+          disableHistoryUpdates: true,
+          tour_pref_default_value:
+            '{"screen":"PDF_ANNOTATIONS_HIGHLIGHT_SET_DEFAULT_ROLLOUT_SCREEN_1","complete":false}',
+        },
+        trigger: {
+          id: "pdfJsFeatureCalloutCheck",
+        },
+        priority: 2,
+        template: "feature_callout",
+        targeting:
+          "userPrefs.cfrFeatures && os.isWindows && os.windowsVersion >= 10 && !hasActiveEnterprisePolicies && !(isDefaultHandler || {}).pdf && (!(defaultPDFHandler || {}).registered || (defaultPDFHandler || {}).knownBrowser)",
+      },
+      {
+        // Nimbus slug: pdf-annotations-highlight-treatment-b-rollout:treatment-b (message 2 of 2)
+        // Version range: 131+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/pdf-annotations-highlight-treatment-b-rollout/summary#treatment-b
+        id: "PDF_ANNOTATIONS_HIGHLIGHT",
+        content: {
+          id: "PDF_ANNOTATIONS_HIGHLIGHT",
+          screens: [
+            {
+              id: "PDF_ANNOTATIONS_HIGHLIGHT_WAS_DEFAULT_ROLLOUT_SCREEN_1",
+              anchors: [
+                {
+                  selector: "hbox#browser",
+                  hide_arrow: true,
+                  absolute_position: {
+                    top: "45px",
+                    right: "13px",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  height: "190px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/ce5a14ef-ed44-4c16-9aaf-eb99f58bcb4f.svg",
+                },
+                title: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-1-header",
+                      text: "Now you can highlight your PDFs!",
+                      comment: "",
+                    },
+                  },
+                },
+                width: "333.3333px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: {
+                    $l10n: {
+                      id: "screen-1-variant-2-subtitle",
+                      text: "With our new highlighter tool, you can read and edit PDFs in one place.",
+                      comment:
+                        "This string appears below an image of a document with important parts highlighted.",
+                    },
+                  },
+                  marginBlock: "-8px 0",
+                  marginInline: "22px",
+                },
+                title_logo: {
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/5c4047e1-77cc-4094-8693-6474562afc1b.svg",
+                  alignment: "top",
+                },
+                submenu_button: {
+                  style: "secondary",
+                  submenu: [
+                    {
+                      id: "item1",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-1",
+                            text: "Don’t show this recommendation again",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                        },
+                        type: "BLOCK_MESSAGE",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      id: "item2",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-2",
+                            text: "Show fewer recommendations",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          actions: [
+                            {
+                              data: {
+                                pref: {
+                                  name: "messaging-system-action.show-fewer-pdf-recommendations",
+                                  value: true,
+                                },
+                              },
+                              type: "SET_PREF",
+                            },
+                            {
+                              data: {
+                                id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                              },
+                              type: "BLOCK_MESSAGE",
+                            },
+                          ],
+                        },
+                        type: "MULTI_ACTION",
+                        dismiss: true,
+                      },
+                    },
+                    {
+                      type: "separator",
+                    },
+                    {
+                      id: "item3",
+                      type: "action",
+                      label: {
+                        raw: {
+                          $l10n: {
+                            id: "feature-tour-submenu-item-3",
+                            text: "Manage settings",
+                            comment: "",
+                          },
+                        },
+                      },
+                      action: {
+                        data: {
+                          args: "preferences#general-cfrfeatures",
+                          where: "tab",
+                        },
+                        type: "OPEN_ABOUT_PAGE",
+                        dismiss: true,
+                      },
+                    },
+                  ],
+                  attached_to: "additional_button",
+                },
+                additional_button: {
+                  label: {
+                    raw: {
+                      $l10n: {
+                        id: "feature-tour-dismiss-button",
+                        text: "Dismiss",
+                        comment: "",
+                      },
+                    },
+                  },
+                  style: "secondary",
+                  action: {
+                    data: {
+                      actions: [
+                        {
+                          data: {
+                            id: "PDF_ANNOTATIONS_HIGHLIGHT",
+                          },
+                          type: "BLOCK_MESSAGE",
+                        },
+                        {
+                          data: {
+                            pref: {
+                              name: "messaging-system-action.pdfjsannotation.feature-tour-2",
+                            },
+                          },
+                          type: "SET_PREF",
+                        },
+                      ],
+                    },
+                    type: "MULTI_ACTION",
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          tour_pref_name:
+            "messaging-system-action.pdfjsannotation.feature-tour-2",
+          disableHistoryUpdates: true,
+          tour_pref_default_value:
+            '{"screen":"PDF_ANNOTATIONS_HIGHLIGHT_WAS_DEFAULT_ROLLOUT_SCREEN_1","complete":false}',
+        },
+        trigger: {
+          id: "pdfJsFeatureCalloutCheck",
+        },
+        priority: 1,
+        template: "feature_callout",
+        targeting:
+          "userPrefs.cfrFeatures && (!os.isWindows || os.windowsVersion < 10 || hasActiveEnterprisePolicies || (isDefaultHandler || {}).pdf || ((defaultPDFHandler || {}).registered && !(defaultPDFHandler || {}).knownBrowser))",
+      },
+      {
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 1 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "FOX_DOODLE_MULTI_ACTION",
+        groups: ["eco"],
+        content: {
+          id: "FOX_DOODLE_MULTI_ACTION",
+          screens: [
+            {
+              id: "FOX_DOODLE_MULTI_ACTION_CHECKBOXES_MAC_WINDOWS_NON_MSIX_EARLY_DAY_SCREEN",
+              content: {
+                logo: {
+                  height: "125px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/3600b535-329d-4147-89c1-689108a804a8.gif",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/35814ce7-903b-4140-a7b8-9ad8a1a010b3.png",
+                },
+                tiles: {
+                  data: [
+                    {
+                      id: "checkbox-1-set-default",
+                      label: {
+                        string_id:
+                          "mr2022-onboarding-easy-setup-set-default-checkbox-label",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-2-pin",
+                      label: {
+                        string_id: "mr2022-onboarding-pin-primary-button-label",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_TASKBAR",
+                      },
+                      defaultValue: true,
+                    },
+                  ],
+                  type: "multiselect",
+                  style: {
+                    gap: "10px",
+                    fontSize: "13px",
+                    lineHeight: "1.4",
+                    marginInline: "auto",
+                    letterSpacing: 0,
+                  },
+                },
+                title: {
+                  fontSize: "22px",
+                  string_id: "multi-cta-fox-doodle-title",
+                  fontWeight: 590,
+                  marginBlock: "-16px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  fontSize: "13px",
+                  string_id: "multi-cta-fox-doodle-quick-reminder-subtitle",
+                  textAlign: "center",
                   lineHeight: "1.4",
-                  marginBlock: "8px 16px",
+                  marginBlock: "8px 24px",
                   letterSpacing: 0,
                   paddingInline: "24px",
                 },
@@ -487,35 +3523,16 @@ export const NimbusRolloutMessageProvider = {
                 },
                 primary_button: {
                   label: {
-                    raw: {
-                      $l10n: {
-                        id: "fox-doodle-set-default-driving-primary-button-label",
-                        text: "Open my links with Firefox",
-                        comment: "",
-                      },
-                    },
-                    marginBlock: "4px 0",
-                    paddingBlock: "0",
-                    paddingInline: "16px",
+                    string_id:
+                      "multi-cta-fox-doodle-start-browsing-primary-button-label",
                   },
                   action: {
-                    type: "SET_DEFAULT_BROWSER",
-                    navigate: true,
-                  },
-                },
-                secondary_button: {
-                  label: {
-                    raw: {
-                      $l10n: {
-                        id: "fox-doodle-driving-secondary-button-label",
-                        text: "Not now",
-                        comment: "",
-                      },
+                    data: {
+                      actions: [],
                     },
-                    marginBlock: "0 -20px",
-                  },
-                  action: {
+                    type: "MULTI_ACTION",
                     navigate: true,
+                    collectSelect: true,
                   },
                 },
               },
@@ -528,44 +3545,384 @@ export const NimbusRolloutMessageProvider = {
         trigger: {
           id: "defaultBrowserCheck",
         },
-        priority: 1,
+        priority: 2,
         template: "spotlight",
         frequency: {
           lifetime: 1,
         },
         targeting:
-          "source == 'startup' && !willShowDefaultPrompt && !isMajorUpgrade && !activeNotifications && (((currentDate|date) - (profileAgeCreated|date)) / 3600000 >= 6) && !isDefaultBrowser",
+          "doesAppNeedPin && (os.isMac || (os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && !isMSIX)) && source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && previousSessionEnd && userPrefs.cfrFeatures == true && (currentDate|date - profileAgeCreated|date) / 86400000 <= 28 && (currentDate|date - profileAgeCreated|date) / 86400000 >= 7",
       },
       {
-        // Nimbus slug: fox-doodle-set-to-default-early-day-user-en-treatment-a-rollout:treatment-a
-        // Version range: 116+
-        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-set-to-default-early-day-user-en-treatment-a-rollout/summary#treatment-a
-        id: "fox-doodle-set-to-default-early-day-user:A",
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 2 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "FOX_DOODLE_MULTI_ACTION",
         groups: ["eco"],
         content: {
-          id: "fox-doodle-set-to-default-early-day-user:A",
+          id: "FOX_DOODLE_MULTI_ACTION",
           screens: [
             {
-              id: "SET_DEFAULT",
+              id: "FOX_DOODLE_MULTI_ACTION_CHECKBOXES_MSIX_EARLY_DAY_SCREEN",
+              content: {
+                logo: {
+                  height: "125px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/3600b535-329d-4147-89c1-689108a804a8.gif",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/35814ce7-903b-4140-a7b8-9ad8a1a010b3.png",
+                },
+                tiles: {
+                  data: [
+                    {
+                      id: "checkbox-1-set-default",
+                      label: {
+                        string_id:
+                          "mr2022-onboarding-easy-setup-set-default-checkbox-label",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-2-pin",
+                      label: {
+                        string_id: "multi-cta-fox-doodle-pin-checkbox",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_TASKBAR",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-3-pin-to-start",
+                      label: {
+                        string_id:
+                          "multi-cta-fox-doodle-pin-startmenu-checkbox",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_START_MENU",
+                      },
+                      defaultValue: true,
+                    },
+                  ],
+                  type: "multiselect",
+                  style: {
+                    gap: "10px",
+                    fontSize: "13px",
+                    lineHeight: "1.4",
+                    marginInline: "auto",
+                    letterSpacing: 0,
+                  },
+                },
+                title: {
+                  fontSize: "22px",
+                  string_id: "multi-cta-fox-doodle-title",
+                  fontWeight: 590,
+                  marginBlock: "-16px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  fontSize: "13px",
+                  string_id: "multi-cta-fox-doodle-quick-reminder-subtitle",
+                  textAlign: "center",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 24px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    string_id:
+                      "mr2022-onboarding-gratitude-secondary-button-label",
+                  },
+                  action: {
+                    data: {
+                      actions: [],
+                    },
+                    type: "MULTI_ACTION",
+                    navigate: true,
+                    collectSelect: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        priority: 2,
+        template: "spotlight",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "doesAppNeedPin && isMSIX && os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && previousSessionEnd && userPrefs.cfrFeatures == true && (currentDate|date - profileAgeCreated|date) / 86400000 <= 28 && (currentDate|date - profileAgeCreated|date) / 86400000 >= 7",
+      },
+      {
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 3 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "FOX_DOODLE_MULTI_ACTION",
+        groups: ["eco"],
+        content: {
+          id: "FOX_DOODLE_MULTI_ACTION",
+          screens: [
+            {
+              id: "FOX_DOODLE_MULTI_ACTION_CHECKBOXES_MAC_WINDOWS_NON_MSIX_EXISTING_USER_SCREEN",
+              content: {
+                logo: {
+                  height: "125px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/3600b535-329d-4147-89c1-689108a804a8.gif",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/35814ce7-903b-4140-a7b8-9ad8a1a010b3.png",
+                },
+                tiles: {
+                  data: [
+                    {
+                      id: "checkbox-1-set-default",
+                      label: {
+                        string_id:
+                          "mr2022-onboarding-easy-setup-set-default-checkbox-label",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-2-pin",
+                      label: {
+                        string_id: "mr2022-onboarding-pin-primary-button-label",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_TASKBAR",
+                      },
+                      defaultValue: true,
+                    },
+                  ],
+                  type: "multiselect",
+                  style: {
+                    gap: "10px",
+                    fontSize: "13px",
+                    lineHeight: "1.4",
+                    marginInline: "auto",
+                    letterSpacing: 0,
+                  },
+                },
+                title: {
+                  fontSize: "22px",
+                  string_id: "multi-cta-fox-doodle-title",
+                  fontWeight: 590,
+                  marginBlock: "-16px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  fontSize: "13px",
+                  string_id: "multi-cta-fox-doodle-quick-reminder-subtitle",
+                  textAlign: "center",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 24px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    string_id:
+                      "multi-cta-fox-doodle-start-browsing-primary-button-label",
+                  },
+                  action: {
+                    data: {
+                      actions: [],
+                    },
+                    type: "MULTI_ACTION",
+                    navigate: true,
+                    collectSelect: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        priority: 2,
+        template: "spotlight",
+        frequency: {
+          lifetime: 2,
+        },
+        targeting:
+          "doesAppNeedPin && (os.isMac || (os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && !isMSIX)) && source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && previousSessionEnd && userPrefs.cfrFeatures == true && (currentDate|date - profileAgeCreated|date) / 86400000 >= 28",
+      },
+      {
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 4 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "FOX_DOODLE_MULTI_ACTION",
+        groups: ["eco"],
+        content: {
+          id: "FOX_DOODLE_MULTI_ACTION",
+          screens: [
+            {
+              id: "FOX_DOODLE_MULTI_ACTION_CHECKBOXES_MSIX_SCREEN_EXISTING_USER_SCREEN",
+              content: {
+                logo: {
+                  height: "125px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/3600b535-329d-4147-89c1-689108a804a8.gif",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/35814ce7-903b-4140-a7b8-9ad8a1a010b3.png",
+                },
+                tiles: {
+                  data: [
+                    {
+                      id: "checkbox-1-set-default",
+                      label: {
+                        string_id:
+                          "mr2022-onboarding-easy-setup-set-default-checkbox-label",
+                      },
+                      action: {
+                        type: "SET_DEFAULT_BROWSER",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-2-pin",
+                      label: {
+                        string_id: "multi-cta-fox-doodle-pin-checkbox",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_TASKBAR",
+                      },
+                      defaultValue: true,
+                    },
+                    {
+                      id: "checkbox-3-pin-to-start",
+                      label: {
+                        string_id:
+                          "multi-cta-fox-doodle-pin-startmenu-checkbox",
+                      },
+                      action: {
+                        type: "PIN_FIREFOX_TO_START_MENU",
+                      },
+                      defaultValue: true,
+                    },
+                  ],
+                  type: "multiselect",
+                  style: {
+                    gap: "10px",
+                    fontSize: "13px",
+                    lineHeight: "1.4",
+                    marginInline: "auto",
+                    letterSpacing: 0,
+                  },
+                },
+                title: {
+                  fontSize: "22px",
+                  string_id: "multi-cta-fox-doodle-title",
+                  fontWeight: 590,
+                  marginBlock: "-16px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  fontSize: "13px",
+                  string_id: "multi-cta-fox-doodle-quick-reminder-subtitle",
+                  textAlign: "center",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 24px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    string_id:
+                      "mr2022-onboarding-gratitude-secondary-button-label",
+                  },
+                  action: {
+                    data: {
+                      actions: [],
+                    },
+                    type: "MULTI_ACTION",
+                    navigate: true,
+                    collectSelect: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        priority: 2,
+        template: "spotlight",
+        frequency: {
+          lifetime: 2,
+        },
+        targeting:
+          "doesAppNeedPin && isMSIX && os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && previousSessionEnd && userPrefs.cfrFeatures == true && (currentDate|date - profileAgeCreated|date) / 86400000 >= 28",
+      },
+      {
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 5 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "TAIL_FOX_SET_DEFAULT",
+        groups: ["eco"],
+        content: {
+          id: "TAIL_FOX_SET_DEFAULT_CONTENT",
+          screens: [
+            {
+              id: "TAIL_FOX_SET_DEFAULT_SCREEN",
               content: {
                 logo: {
                   height: "140px",
                   imageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/05f5265b-d1e4-4fe1-9a46-0ea36f8afced.png",
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/92de1223-159b-4c2c-83bb-38e5ab767900.png",
                   reducedMotionImageURL:
-                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/05f5265b-d1e4-4fe1-9a46-0ea36f8afced.png",
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/92de1223-159b-4c2c-83bb-38e5ab767900.png",
                 },
                 title: {
-                  raw: "Keep pesky trackers off your tail",
                   fontSize: "22px",
+                  string_id: "tail-fox-spotlight-title",
                   fontWeight: 590,
                   paddingBlock: "4px 0",
                   letterSpacing: 0,
                   paddingInline: "24px",
                 },
                 subtitle: {
-                  raw: "Say goodbye to annoying ad trackers and settle into a safer, speedy internet experience.",
                   fontSize: "15px",
+                  string_id: "tail-fox-spotlight-subtitle",
                   lineHeight: "1.4",
                   marginBlock: "8px 16px",
                   letterSpacing: 0,
@@ -578,7 +3935,7 @@ export const NimbusRolloutMessageProvider = {
                 },
                 primary_button: {
                   label: {
-                    raw: "Open my links with Firefox",
+                    string_id: "tail-fox-spotlight-primary-button",
                     marginBlock: "4px 0",
                     paddingBlock: "0",
                     paddingInline: "16px",
@@ -590,7 +3947,7 @@ export const NimbusRolloutMessageProvider = {
                 },
                 secondary_button: {
                   label: {
-                    raw: "Not now",
+                    string_id: "tail-fox-spotlight-secondary-button",
                     marginBlock: "0 -20px",
                   },
                   action: {
@@ -607,13 +3964,411 @@ export const NimbusRolloutMessageProvider = {
         trigger: {
           id: "defaultBrowserCheck",
         },
-        priority: 1,
         template: "spotlight",
         frequency: {
           lifetime: 1,
         },
         targeting:
-          "source == 'startup' && !willShowDefaultPrompt && !isMajorUpgrade && !activeNotifications && (((currentDate|date) - (profileAgeCreated|date)) / 3600000 >= 6) && !isDefaultBrowser",
+          "source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && (currentDate|date - profileAgeCreated|date) / 86400000 <= 28 && (currentDate|date - profileAgeCreated|date) / 86400000 >= 7 && previousSessionEnd && userPrefs.cfrFeatures == true && ((os.isMac && !doesAppNeedPin) || (os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && !doesAppNeedPin) || (os.isLinux || os.isWindows && (os.windowsVersion < 10.0 || os.windowsBuildNumber < 18362)))",
+      },
+      {
+        // Nimbus slug: fox-doodle-multi-action-cta-2025-rollout:treatment-a (message 6 of 6)
+        // Version range: 134+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/fox-doodle-multi-action-cta-2025-rollout/summary#treatment-a
+        id: "FOX_DOODLE_SET_DEFAULT",
+        groups: ["eco"],
+        content: {
+          id: "FOX_DOODLE_SET_DEFAULT",
+          screens: [
+            {
+              id: "FOX_DOODLE_SET_DEFAULT_SCREEN",
+              content: {
+                logo: {
+                  height: "125px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/3600b535-329d-4147-89c1-689108a804a8.gif",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/35814ce7-903b-4140-a7b8-9ad8a1a010b3.png",
+                },
+                title: {
+                  fontSize: "22px",
+                  string_id: "fox-doodle-pin-headline",
+                  fontWeight: 590,
+                  paddingBlock: "4px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  fontSize: "15px",
+                  string_id: "fox-doodle-pin-body",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 16px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    string_id: "fox-doodle-pin-primary",
+                    marginBlock: "4px 0",
+                    paddingBlock: "0",
+                    paddingInline: "16px",
+                  },
+                  action: {
+                    type: "SET_DEFAULT_BROWSER",
+                    navigate: true,
+                  },
+                },
+                secondary_button: {
+                  label: {
+                    string_id: "fox-doodle-pin-secondary",
+                    marginBlock: "0 -20px",
+                  },
+                  action: {
+                    navigate: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "spotlight",
+        frequency: {
+          lifetime: 2,
+        },
+        targeting:
+          "source == 'startup' && !isMajorUpgrade && !activeNotifications && !isDefaultBrowser && !willShowDefaultPrompt && (currentDate|date - profileAgeCreated|date) / 86400000 >= 28 && previousSessionEnd && userPrefs.cfrFeatures == true && ((os.isMac && !doesAppNeedPin) || (os.isWindows && os.windowsVersion >= 10.0 && os.windowsBuildNumber >= 18362 && !doesAppNeedPin) || (os.isLinux || os.isWindows && (os.windowsVersion < 10.0 || os.windowsBuildNumber < 18362)))",
+      },
+      {
+        // Nimbus slug: sidebar-button-feature-callout-vertical-tabs-users-existing-profiles:control
+        // Version range: 133+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/sidebar-button-feature-callout-vertical-tabs-users-existing-profiles/summary#control
+        id: "SIDEBAR_FEATURE_TOUR",
+        groups: [],
+        content: {
+          id: "SIDEBAR_FEATURE_TOUR",
+          screens: [
+            {
+              id: "SIDEBAR_BUTTON_CALLOUT",
+              anchors: [
+                {
+                  selector: "#urlbar-container ~ #sidebar-button",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                },
+                {
+                  selector: "#sidebar-button",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topleft",
+                  },
+                },
+              ],
+              content: {
+                logo: {
+                  alt: "An illustration of the vertical tabs pane expanding to reveal tab labels",
+                  height: "167px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/7448e55f-2f86-4565-8d8b-4f6620a57921.svg",
+                  marginInline: "12px 12px",
+                  darkModeImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/5534a39b-5c5c-41cb-b8c8-f647a5e697f0.svg",
+                  reducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/aae218dc-7888-494d-845e-6d9f70e41a31.svg",
+                  darkModeReducedMotionImageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2f19306c-3dcb-4362-8152-1442b8b3af32.svg",
+                },
+                title: {
+                  string_id: "sidebar-button-callout-title",
+                  marginInline: "4px 4px",
+                },
+                width: "324px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  string_id: "sidebar-button-callout-subtitle",
+                  marginInline: "4px 4px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "20px 0",
+                  marginInline: "0 20px",
+                },
+                page_event_listeners: [
+                  {
+                    action: {
+                      dismiss: true,
+                    },
+                    params: {
+                      type: "click",
+                      selectors: "#sidebar-button",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+          disableHistoryUpdates: true,
+        },
+        trigger: {
+          id: "openURL",
+          patterns: ["*://*/*"],
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting: "'sidebar.verticalTabs'|preferenceValue",
+      },
+      {
+        // Nimbus slug: account-spotlight-modal-english-rollout-v2:rollout
+        // Version range: 116+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/account-spotlight-modal-english-rollout-v2/summary#rollout
+        id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT",
+        groups: ["eco"],
+        content: {
+          id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT",
+          modal: "tab",
+          screens: [
+            {
+              id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT_SYNC",
+              content: {
+                logo: {
+                  height: "185px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2f2e0abe-5fb7-4fcd-bf9e-2a7f24b2af0d.png",
+                },
+                title: {
+                  raw: "Browse without missing a beat",
+                  fontSize: "24px",
+                  fontWeight: 590,
+                  paddingBlock: "4px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  raw: "Sync all your important info with encryption – like bookmarks and passwords. You can pull everything up anywhere you use Firefox.",
+                  fontSize: "15px",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 16px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    raw: "Get started",
+                    marginBlock: "4px 0",
+                    paddingBlock: "0",
+                    paddingInline: "16px",
+                  },
+                  action: {
+                    data: {
+                      entrypoint: "device-migration-spotlight-rollout-v3",
+                      extraParams: {
+                        utm_medium: "firefox-desktop",
+                        utm_source: "spotlight-sync-and-backup",
+                        utm_content: "sync",
+                        utm_campaign: "migration",
+                      },
+                    },
+                    type: "FXA_SIGNIN_FLOW",
+                    navigate: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "spotlight",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "source == 'newtab' && !usesFirefoxSync && !hasActiveEnterprisePolicies",
+      },
+      {
+        // Nimbus slug: account-spotlight-modal-english-rollout-esr-v2:rollout
+        // Version range: 115+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/account-spotlight-modal-english-rollout-esr-v2/summary#rollout
+        id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT",
+        groups: ["eco"],
+        content: {
+          id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT",
+          modal: "tab",
+          screens: [
+            {
+              id: "DEVICE_MIGRATION_BACKUP_AND_SYNC_SPOTLIGHT_SYNC",
+              content: {
+                logo: {
+                  height: "185px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/2f2e0abe-5fb7-4fcd-bf9e-2a7f24b2af0d.png",
+                },
+                title: {
+                  raw: "Browse without missing a beat",
+                  fontSize: "24px",
+                  fontWeight: 590,
+                  paddingBlock: "4px 0",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                subtitle: {
+                  raw: "Sync all your important info with encryption – like bookmarks and passwords. You can pull everything up anywhere you use Firefox.",
+                  fontSize: "15px",
+                  lineHeight: "1.4",
+                  marginBlock: "8px 16px",
+                  letterSpacing: 0,
+                  paddingInline: "24px",
+                },
+                dismiss_button: {
+                  action: {
+                    navigate: true,
+                  },
+                },
+                primary_button: {
+                  label: {
+                    raw: "Get started",
+                    marginBlock: "4px 0",
+                    paddingBlock: "0",
+                    paddingInline: "16px",
+                  },
+                  action: {
+                    data: {
+                      entrypoint: "device-migration-spotlight-rollout-v3",
+                      extraParams: {
+                        utm_medium: "firefox-desktop",
+                        utm_source: "spotlight-sync-and-backup-esr",
+                        utm_content: "sync",
+                        utm_campaign: "migration",
+                      },
+                    },
+                    type: "FXA_SIGNIN_FLOW",
+                    navigate: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: true,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "spotlight",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "source == 'newtab' && !usesFirefoxSync && !hasActiveEnterprisePolicies",
+      },
+      {
+        // Nimbus slug: recommend-add-ons-staff-pick-relaunch-treatment-a-rollout:treatment-a
+        // Version range: 123+
+        // Recipe: https://experimenter.services.mozilla.com/nimbus/recommend-add-ons-staff-pick-relaunch-treatment-a-rollout/summary#treatment-a
+        id: "ADDONS_STAFF_PICK",
+        groups: ["cfr"],
+        content: {
+          id: "ADDONS_STAFF_PICK",
+          screens: [
+            {
+              id: "ADDONS_STAFF_PICK_A",
+              anchors: [
+                {
+                  selector: "#unified-extensions-button",
+                  arrow_width: "26.9",
+                  panel_position: {
+                    anchor_attachment: "bottomcenter",
+                    callout_attachment: "topright",
+                  },
+                },
+              ],
+              content: {
+                title: {
+                  raw: "Give your browsing a boost",
+                  marginInline: "0 48px",
+                },
+                width: "310px",
+                padding: 16,
+                position: "callout",
+                subtitle: {
+                  raw: "Make browsing faster, safer, or just plain fun with Firefox add-ons. See what our staff recommends!",
+                  paddingInline: "34px 0",
+                },
+                title_logo: {
+                  width: "24px",
+                  height: "24px",
+                  imageURL:
+                    "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/ms-images/173414e1-81f7-4612-b868-e78df0557011.svg",
+                  marginInline: "4px 14px",
+                },
+                dismiss_button: {
+                  size: "small",
+                  action: {
+                    dismiss: true,
+                  },
+                  marginBlock: "14px 0",
+                  marginInline: "0 14px",
+                },
+                primary_button: {
+                  label: {
+                    raw: "Explore add-ons",
+                  },
+                  action: {
+                    data: {
+                      args: "https://addons.mozilla.org/en-US/firefox/collections/4757633/25c2b44583534b3fa8fea977c419cd/?page=1&collection_sort=-added",
+                      where: "tabshifted",
+                    },
+                    type: "OPEN_URL",
+                    dismiss: true,
+                  },
+                },
+              },
+            },
+          ],
+          backdrop: "transparent",
+          template: "multistage",
+          transitions: false,
+        },
+        trigger: {
+          id: "defaultBrowserCheck",
+        },
+        template: "feature_callout",
+        frequency: {
+          lifetime: 1,
+        },
+        targeting:
+          "!screenImpressions.AW_AMO_INTRODUCE && !willShowDefaultPrompt && !activeNotifications && source == 'newtab' && !isFirstStartup",
       },
     ];
   },

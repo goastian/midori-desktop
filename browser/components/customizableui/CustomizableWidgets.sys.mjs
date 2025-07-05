@@ -20,7 +20,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 const kPrefCustomizationDebug = "browser.uiCustomization.debug";
-const kPrefScreenshots = "extensions.screenshots.disabled";
 
 ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
@@ -36,18 +35,27 @@ ChromeUtils.defineLazyGetter(lazy, "log", () => {
 
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
-  "screenshotsDisabled",
-  kPrefScreenshots,
+  "sidebarRevampEnabled",
+  "sidebar.revamp",
   false
 );
 
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "SCREENSHOT_BROWSER_COMPONENT",
-  "screenshots.browser.component.enabled",
-  false
-);
-
+/**
+ * A helper method to synchronize aNode's DOM attributes with the properties and
+ * values in aAttrs. If aNode has an attribute that is false-y in aAttrs,
+ * then this attribute is removed.
+ *
+ * If aAttrs includes "shortcutId", the value is never set on aNode, but is
+ * instead used when setting the "label" or "tooltiptext" attributes to include
+ * the shortcut key combo. shortcutId should refer to the ID of the XUL <key>
+ * element that acts as the shortcut.
+ *
+ * @param {Element} aNode
+ *   The element to change the attributes of.
+ * @param {object} aAttrs
+ *   A set of key-value pairs where the key is set as the attribute name, and
+ *   the value is set as the attribute value.
+ */
 function setAttributes(aNode, aAttrs) {
   let doc = aNode.ownerDocument;
   for (let [name, value] of Object.entries(aAttrs)) {
@@ -79,6 +87,12 @@ function setAttributes(aNode, aAttrs) {
   }
 }
 
+/**
+ * The array of built-in CustomizableUICreateWidgetProperties that are
+ * registered as widgets upon browser start.
+ *
+ * @type {CustomizableUICreateWidgetProperties[]}
+ */
 export const CustomizableWidgets = [
   {
     id: "history-panelmenu",
@@ -210,8 +224,8 @@ export const CustomizableWidgets = [
       const utils = lazy.RecentlyClosedTabsAndWindowsMenuUtils;
       const fragment =
         panelview.id == this.recentlyClosedTabsPanel
-          ? utils.getTabsFragment(window, "toolbarbutton", true)
-          : utils.getWindowsFragment(window, "toolbarbutton", true);
+          ? utils.getTabsFragment(window, "toolbarbutton")
+          : utils.getWindowsFragment(window, "toolbarbutton");
       let elementCount = fragment.childElementCount;
       this._panelMenuView._setEmptyPopupStatus(panelview, !elementCount);
       if (!elementCount) {
@@ -225,13 +239,12 @@ export const CustomizableWidgets = [
       let footer;
       while (--elementCount >= 0) {
         let element = body.children[elementCount];
+        if (element.tagName != "toolbarbutton") {
+          continue;
+        }
         lazy.CustomizableUI.addShortcut(element);
-        element.classList.add("subviewbutton");
         if (element.classList.contains("restoreallitem")) {
           footer = element;
-          element.classList.add("panel-subview-footer-button");
-        } else {
-          element.classList.add("subviewbutton-iconic", "bookmark-item");
         }
       }
       panelview.appendChild(body);
@@ -277,29 +290,34 @@ export const CustomizableWidgets = [
   },
   {
     id: "sidebar-button",
-    tooltiptext: "sidebar-button.tooltiptext2",
+    l10nId: "show-sidebars",
     defaultArea: "nav-bar",
     _introducedByPref: "sidebar.revamp",
     onCommand(aEvent) {
-      let { SidebarController } = aEvent.target.ownerGlobal;
-      if (SidebarController.sidebarRevampEnabled) {
-        SidebarController.toggleExpanded();
+      const { SidebarController } = aEvent.target.ownerGlobal;
+      if (lazy.sidebarRevampEnabled) {
+        SidebarController.handleToolbarButtonClick();
       } else {
         SidebarController.toggle();
       }
     },
     onCreated(aNode) {
-      // Add an observer so the button is checked while the sidebar is open
-      let doc = aNode.ownerDocument;
-      let obChecked = doc.createXULElement("observes");
-      obChecked.setAttribute("element", "sidebar-box");
-      obChecked.setAttribute("attribute", "checked");
-      let obPosition = doc.createXULElement("observes");
-      obPosition.setAttribute("element", "sidebar-box");
-      obPosition.setAttribute("attribute", "positionend");
-
-      aNode.appendChild(obChecked);
-      aNode.appendChild(obPosition);
+      if (lazy.sidebarRevampEnabled) {
+        const { SidebarController } = aNode.ownerGlobal;
+        SidebarController.updateToolbarButton(aNode);
+        aNode.setAttribute("overflows", "false");
+      } else {
+        // Add an observer so the button is checked while the sidebar is open
+        let doc = aNode.ownerDocument;
+        let obChecked = doc.createXULElement("observes");
+        obChecked.setAttribute("element", "sidebar-box");
+        obChecked.setAttribute("attribute", "checked");
+        let obPosition = doc.createXULElement("observes");
+        obPosition.setAttribute("element", "sidebar-box");
+        obPosition.setAttribute("attribute", "positionend");
+        aNode.appendChild(obChecked);
+        aNode.appendChild(obPosition);
+      }
     },
   },
   {
@@ -461,7 +479,7 @@ export const CustomizableWidgets = [
     l10nId: "toolbar-button-logins",
     onCommand(aEvent) {
       let window = aEvent.view;
-      lazy.LoginHelper.openPasswordManager(window, { entryPoint: "toolbar" });
+      lazy.LoginHelper.openPasswordManager(window, { entryPoint: "Toolbar" });
     },
   },
 ];
@@ -535,49 +553,6 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
               break;
           }
         }
-      }
-    },
-  });
-}
-
-if (!lazy.screenshotsDisabled) {
-  CustomizableWidgets.push({
-    id: "screenshot-button",
-    shortcutId: "key_screenshot",
-    l10nId: "screenshot-toolbarbutton",
-    onCommand(aEvent) {
-      if (lazy.SCREENSHOT_BROWSER_COMPONENT) {
-        Services.obs.notifyObservers(
-          aEvent.currentTarget.ownerGlobal,
-          "menuitem-screenshot",
-          "toolbar_button"
-        );
-      } else {
-        Services.obs.notifyObservers(
-          null,
-          "menuitem-screenshot-extension",
-          "toolbar"
-        );
-      }
-    },
-    onCreated(aNode) {
-      aNode.ownerGlobal.MozXULElement.insertFTLIfNeeded(
-        "browser/screenshots.ftl"
-      );
-      Services.obs.addObserver(this, "toggle-screenshot-disable");
-    },
-    observe(subj, topic, data) {
-      let document = subj.document;
-      let button = document.getElementById("screenshot-button");
-
-      if (!button) {
-        return;
-      }
-
-      if (data == "true") {
-        button.setAttribute("disabled", "true");
-      } else {
-        button.removeAttribute("disabled");
       }
     },
   });

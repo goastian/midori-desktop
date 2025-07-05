@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
-
 <!-- -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- -->
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<?csp default-src chrome:; img-src chrome: moz-icon:; style-src chrome:
+'unsafe-inline'; ?>
 
 <!DOCTYPE window>
 
@@ -57,7 +58,6 @@
       <menulist
         id="sanitizeDurationChoice"
         preference="privacy.sanitize.timeSpan"
-        onselect="gSanitizePromptDialog.selectByTimespan();"
         flex="1"
       >
         <menupopup id="sanitizeDurationPopup">
@@ -73,7 +73,11 @@
             data-l10n-id="clear-time-duration-value-last-4-hours"
             value="3"
           />
-          <menuitem data-l10n-id="clear-time-duration-value-today" value="4" />
+          <menuitem
+            data-l10n-id="clear-time-duration-value-today"
+            value="4"
+            id="sanitizeSinceMidnight"
+          />
           <menuseparator />
           <menuitem
             data-l10n-id="clear-time-duration-value-everything"
@@ -107,13 +111,13 @@
         <vbox>
           <checkbox
             class="clearingItemCheckbox"
-            data-l10n-id="item-history-form-data-downloads"
-            preference="privacy.clearHistory.historyFormDataAndDownloads"
-            id="historyFormDataAndDownloads"
+            data-l10n-id="item-history-and-downloads"
+            preference="privacy.clearHistory.browsingHistoryAndDownloads"
+            id="browsingHistoryAndDownloads"
           />
           <description
-            id="history-form-data-description"
-            data-l10n-id="item-history-form-data-downloads-description"
+            id="browsing-history-downloads-description"
+            data-l10n-id="item-history-and-downloads-description2"
             class="sanitizeCheckboxDescription text-deemphasized"
           />
         </vbox>
@@ -154,6 +158,22 @@
         <vbox>
           <checkbox
             class="clearingItemCheckbox"
+            data-l10n-id="item-formdata-prefs"
+            aria-describedby="formdata-description"
+            preference="privacy.clearHistory.formdata"
+            id="formdata"
+          />
+          <description
+            id="formdata-description"
+            data-l10n-id="item-formdata-description"
+            class="sanitizeCheckboxDescription text-deemphasized"
+          />
+        </vbox>
+      </hbox>
+      <hbox class="checkboxWithDescription">
+        <vbox>
+          <checkbox
+            class="clearingItemCheckbox"
             data-l10n-id="item-site-prefs"
             aria-describedby="site-prefs-description"
             preference="privacy.clearHistory.siteSettings"
@@ -172,13 +192,13 @@
         <vbox>
           <checkbox
             class="clearingItemCheckbox"
-            data-l10n-id="item-history-form-data-downloads"
-            preference="privacy.clearSiteData.historyFormDataAndDownloads"
-            id="historyFormDataAndDownloads"
+            data-l10n-id="item-history-and-downloads"
+            preference="privacy.clearSiteData.browsingHistoryAndDownloads"
+            id="browsingHistoryAndDownloads"
           />
           <description
-            id="history-form-data-description"
-            data-l10n-id="item-history-form-data-downloads-description"
+            id="browsing-history-downloads-description"
+            data-l10n-id="item-history-and-downloads-description2"
             class="sanitizeCheckboxDescription text-deemphasized"
           />
         </vbox>
@@ -219,6 +239,22 @@
         <vbox>
           <checkbox
             class="clearingItemCheckbox"
+            data-l10n-id="item-formdata-prefs"
+            aria-describedby="formdata-description"
+            preference="privacy.clearSiteData.formdata"
+            id="formdata"
+          />
+          <description
+            id="formdata-description"
+            data-l10n-id="item-formdata-description"
+            class="sanitizeCheckboxDescription text-deemphasized"
+          />
+        </vbox>
+      </hbox>
+      <hbox class="checkboxWithDescription">
+        <vbox>
+          <checkbox
+            class="clearingItemCheckbox"
             data-l10n-id="item-site-prefs"
             aria-describedby="site-prefs-description"
             preference="privacy.clearSiteData.siteSettings"
@@ -237,14 +273,14 @@
         <vbox>
           <checkbox
             class="clearingItemCheckbox"
-            data-l10n-id="item-history-form-data-downloads"
-            preference="privacy.clearOnShutdown_v2.historyFormDataAndDownloads"
-            id="historyFormDataAndDownloads"
+            data-l10n-id="item-history-and-downloads"
+            preference="privacy.clearOnShutdown_v2.browsingHistoryAndDownloads"
+            id="browsingHistoryAndDownloads"
           />
           <description
             class="sanitizeCheckboxDescription text-deemphasized"
-            data-l10n-id="item-history-form-data-downloads-description"
-            id="history-form-data-downloads-description"
+            data-l10n-id="item-history-and-downloads-description2"
+            id="history-and-downloads-description"
           />
         </vbox>
       </hbox>
@@ -277,6 +313,22 @@
             class="sanitizeCheckboxDescription text-deemphasized"
             data-l10n-id="item-cached-content-description"
             id="cached-content-description"
+          />
+        </vbox>
+      </hbox>
+      <hbox class="checkboxWithDescription">
+        <vbox>
+          <checkbox
+            class="clearingItemCheckbox"
+            data-l10n-id="item-formdata-prefs"
+            aria-describedby="formdata-description"
+            preference="privacy.clearOnShutdown_v2.formdata"
+            id="formdata"
+          />
+          <description
+            id="formdata-description"
+            data-l10n-id="item-formdata-description"
+            class="sanitizeCheckboxDescription text-deemphasized"
           />
         </vbox>
       </hbox>

@@ -92,7 +92,6 @@ export var ProcessHangMonitor = {
     Services.obs.addObserver(this, "quit-application-granted");
     Services.obs.addObserver(this, "xpcom-shutdown");
     Services.ww.registerNotification(this);
-    Services.telemetry.setEventRecordingEnabled("slow_script_warning", true);
   },
 
   /**
@@ -385,20 +384,14 @@ export var ProcessHangMonitor = {
       // use. :-(
       let hangDuration =
         report.hangDuration + Cu.now() - info.lastReportFromChild;
-      Services.telemetry.recordEvent(
-        "slow_script_warning",
-        "shown",
-        "content",
-        null,
-        {
-          end_reason: endReason,
-          hang_duration: "" + hangDuration,
-          n_tab_deselect: "" + info.deselectCount,
-          uri_type,
-          uptime,
-          wait_count: "" + info.waitCount,
-        }
-      );
+      Glean.slowScriptWarning.shownContent.record({
+        end_reason: endReason,
+        hang_duration: hangDuration,
+        n_tab_deselect: info.deselectCount,
+        uri_type,
+        uptime,
+        wait_count: info.waitCount,
+      });
     } catch (ex) {
       console.error(ex);
     }
@@ -673,7 +666,7 @@ export var ProcessHangMonitor = {
 
     // On e10s this counts slow-script notice only once.
     // This code is not reached on non-e10s.
-    Services.telemetry.getHistogramById("SLOW_SCRIPT_NOTICE_COUNT").add();
+    Glean.dom.slowScriptNoticeCount.add(1);
 
     this._activeReports.set(report, {
       deselectCount: 0,

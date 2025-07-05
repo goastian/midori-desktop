@@ -21,7 +21,9 @@ add_task(
     );
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
 
     const { fromMenuList, toMenuList } = FullPageTranslationsPanel.elements;
@@ -47,7 +49,9 @@ add_task(
     });
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
 
     is(

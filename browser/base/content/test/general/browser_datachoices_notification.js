@@ -20,6 +20,9 @@ const PREF_ACCEPTED_POLICY_VERSION =
   PREF_BRANCH + "dataSubmissionPolicyAcceptedVersion";
 const PREF_ACCEPTED_POLICY_DATE =
   PREF_BRANCH + "dataSubmissionPolicyNotifiedTime";
+const PREF_TOS_ROLLOUT_POPULATION =
+  "browser.preonboarding.onTrainRolloutPopulation";
+const PREF_TOS_ENABLED = "browser.preonboarding.enabled";
 
 const PREF_TELEMETRY_LOG_LEVEL = "toolkit.telemetry.log.level";
 
@@ -33,12 +36,12 @@ function fakeShowPolicyTimeout(set, clear) {
   reportingPolicy.clearShowInfobarTimeout = clear;
 }
 
-function sendSessionRestoredNotification() {
+async function sendSessionRestoredNotification() {
   let reportingPolicy = ChromeUtils.importESModule(
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs"
   ).Policy;
 
-  reportingPolicy.fakeSessionRestoreNotification();
+  await reportingPolicy.fakeSessionRestoreNotification();
 }
 
 /**
@@ -76,7 +79,7 @@ function promiseWaitForNotificationClose(aNotification) {
   return deferred.promise;
 }
 
-function triggerInfoBar(expectedTimeoutMs) {
+async function triggerInfoBar(expectedTimeoutMs) {
   let showInfobarCallback = null;
   let timeoutMs = null;
   fakeShowPolicyTimeout(
@@ -86,7 +89,7 @@ function triggerInfoBar(expectedTimeoutMs) {
     },
     () => {}
   );
-  sendSessionRestoredNotification();
+  await sendSessionRestoredNotification();
   Assert.ok(!!showInfobarCallback, "Must have a timer callback.");
   if (expectedTimeoutMs !== undefined) {
     Assert.equal(timeoutMs, expectedTimeoutMs, "Timeout should match");
@@ -120,6 +123,7 @@ add_setup(async function () {
   const isFirstRun = Preferences.get(PREF_FIRST_RUN, true);
   const bypassNotification = Preferences.get(PREF_BYPASS_NOTIFICATION, true);
   const currentPolicyVersion = Preferences.get(PREF_CURRENT_POLICY_VERSION, 1);
+  const TOSEnabled = Preferences.get(PREF_TOS_ENABLED, false);
 
   // Register a cleanup function to reset our preferences.
   registerCleanupFunction(() => {
@@ -127,7 +131,7 @@ add_setup(async function () {
     Preferences.set(PREF_BYPASS_NOTIFICATION, bypassNotification);
     Preferences.set(PREF_CURRENT_POLICY_VERSION, currentPolicyVersion);
     Preferences.reset(PREF_TELEMETRY_LOG_LEVEL);
-
+    Preferences.set(PREF_TOS_ENABLED, TOSEnabled);
     return closeAllNotifications();
   });
 
@@ -138,6 +142,8 @@ add_setup(async function () {
   // Ensure this isn't the first run, because then we open the first run page.
   Preferences.set(PREF_FIRST_RUN, false);
   TelemetryReportingPolicy.testUpdateFirstRun();
+  // Do not enable the TOS modal
+  Preferences.set(PREF_TOS_ENABLED, false);
 });
 
 function clearAcceptedPolicy() {
@@ -165,6 +171,7 @@ function assertCoherentInitialState() {
 }
 
 add_task(async function test_single_window() {
+  TelemetryReportingPolicy.reset();
   clearAcceptedPolicy();
 
   // Close all the notifications, then try to trigger the data choices infobar.
@@ -179,7 +186,8 @@ add_task(async function test_single_window() {
   );
 
   // Wait for the infobar to be displayed.
-  triggerInfoBar(10 * 1000);
+  await triggerInfoBar(10 * 1000);
+
   await alertShownPromise;
   await promiseNextTick();
 
@@ -254,7 +262,7 @@ add_task(async function test_multiple_windows() {
   );
 
   // Wait for the infobars.
-  triggerInfoBar(10 * 1000);
+  await triggerInfoBar(10 * 1000);
   await Promise.all(showAlertPromises);
 
   // Both notification were displayed. Close one and check that both gets closed.

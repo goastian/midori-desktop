@@ -5,8 +5,6 @@
 // These tests check the behavior of the Urlbar when search terms are
 // expected to be shown but the url is modified from what the browser expects.
 
-let defaultTestEngine;
-
 // The main search string used in tests
 const SEARCH_STRING = "chocolate cake";
 
@@ -14,19 +12,10 @@ add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
-
-  await SearchTestUtils.installSearchExtension(
-    {
-      name: "MozSearch",
-      search_url: "https://www.example.com/",
-      search_url_get_params: "q={searchTerms}&pc=fake_code",
-    },
-    { setAsDefault: true }
-  );
-  defaultTestEngine = Services.search.getEngineByName("MozSearch");
-
+  let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
+    cleanup();
   });
 });
 
@@ -36,7 +25,7 @@ add_task(async function history_push_state() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
 
   let [expectedSearchUrl] = UrlbarUtils.getSearchQueryUrl(
-    defaultTestEngine,
+    Services.search.defaultEngine,
     SEARCH_STRING
   );
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(
@@ -76,7 +65,7 @@ add_task(async function history_push_state() {
 add_task(async function url_with_additional_query_params() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
   let [expectedSearchUrl] = UrlbarUtils.getSearchQueryUrl(
-    defaultTestEngine,
+    Services.search.defaultEngine,
     SEARCH_STRING
   );
   // Add a query param

@@ -21,4 +21,46 @@ translations-settings-never-sites-description = To add to this list, visit a sit
 translations-settings-download-languages = Download languages
 translations-settings-download-all-languages = All languages
 translations-settings-download-languages-link = Learn more about downloading languages
+# Variables:
+#   $size (number) - The size of the download in megabites
+translations-settings-download-size = ({ $size })
 translations-settings-language-header = Language
+
+# Variables:
+#   $name (string) - The language to be downloaded
+translations-settings-language-download-error =
+    .heading = Download Error
+    .message = Could not download { $name } language. Please try again.
+
+# Variables:
+#   $name (string) - The language to be downloaded
+translations-settings-language-remove-error =
+    .heading = Remove Error
+    .message = Could not remove { $name } language. Please try again.
+
+# Variables:
+#   $name (string) - The display name of the language that is to be downloaded
+translations-settings-download-button =
+  .aria-label = Download { $name }
+# Variables:
+#   $name (string) - The display name of the language that is to be removed
+translations-settings-remove-button =
+  .aria-label = Remove { $name }
+# Variables:
+#   $name (string) - The display name of the language that is loading
+translations-settings-loading-button =
+  .aria-label = Loading { $name }
+translations-settings-download-all-button =
+  .aria-label = Download all languages
+translations-settings-remove-all-button =
+  .aria-label = Remove all languages
+translations-settings-loading-all-button =
+  .aria-label = Loading all languages
+# Variables:
+#   $name (string) - The display name of the language that is Always/Never translated
+translations-settings-remove-language-button-2 =
+  .aria-label = Remove { $name }
+# Variables:
+#   $name (string) - The site address that is Never to be translated
+translations-settings-remove-site-button-2 =
+  .aria-label = Remove { $name }

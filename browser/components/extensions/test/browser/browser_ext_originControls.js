@@ -32,13 +32,22 @@ async function makeExtension({
   id,
   permissions,
   host_permissions,
+  optional_host_permissions,
+  optional_permissions,
   content_scripts,
   granted,
   default_area,
 }) {
   info(
     `Loading extension ` +
-      JSON.stringify({ id, permissions, host_permissions, granted })
+      JSON.stringify({
+        id,
+        permissions,
+        optional_permissions,
+        host_permissions,
+        optional_host_permissions,
+        granted,
+      })
   );
 
   let manifest = {
@@ -46,7 +55,9 @@ async function makeExtension({
     manifest_version,
     browser_specific_settings: { gecko: { id } },
     permissions,
+    optional_permissions,
     host_permissions,
+    optional_host_permissions,
     content_scripts,
     action: {
       default_popup: "popup.html",
@@ -161,7 +172,9 @@ async function testOriginControls(
   switch (contextMenuId) {
     case "toolbar-context-menu": {
       let target = `#${CSS.escape(makeWidgetId(extension.id))}-BAP`;
-      buttonOrWidget = document.querySelector(target).parentElement;
+      buttonOrWidget = document
+        .querySelector(target)
+        .closest("toolbaritem.unified-extensions-item");
       menu = await openChromeContextMenu(contextMenuId, target);
       nextMenuItemClassName = "customize-context-manageExtension";
       break;
@@ -276,7 +289,20 @@ async function testOriginControls(
     await testQuarantinePopup(popup, extension.id);
 
     if (allowQuarantine) {
+      // Wait for the AOM onPropertyChanged event emitted when the quarantineIgnoredByUser
+      // AddonWrapper property has been changed as expected by clicking the primary button
+      // on the popup (Needed to prevent intermittent failures due to a race between the
+      // internals reacting to the quarantine popup button and the assertions checking that
+      // the context menu items has been refreshed to reflect the updated access to the
+      // quarantined websites granted to the specific extension being tested).
+      const promiseQuarantineAllowed = AddonTestUtils.promiseAddonEvent(
+        "onPropertyChanged",
+        (addon, changedProps) =>
+          addon.id === extension.id &&
+          changedProps.includes("quarantineIgnoredByUser")
+      );
       popup.button.click();
+      await promiseQuarantineAllowed;
     } else {
       popup.secondaryButton.click();
     }
@@ -317,6 +343,7 @@ const originControlsInContextMenu = async options => {
   let ext4 = await makeExtension({
     id: "ext4@test",
     host_permissions: ["<all_urls>"],
+    optional_host_permissions: ["<all_urls>"],
     granted: ["<all_urls>"],
     useAddonManager: "permanent",
   });
@@ -335,13 +362,34 @@ const originControlsInContextMenu = async options => {
     useAddonManager: "permanent",
   });
 
-  // Add an extension always visible in the extensions panel.
   let ext6 = await makeExtension({
     id: "ext6@test",
+    optional_host_permissions: ["<all_urls>"],
+    useAddonManager: "permanent",
+  });
+
+  let ext7 = await makeExtension({
+    id: "ext7@test",
+    optional_permissions: ["*://example.com/*"],
+    useAddonManager: "permanent",
+  });
+
+  // MV3 with two separate "http://*/*" and "https://*/*" host_permissions
+  // (used to cover Bug 1856383 with explicit test assertions).
+  let ext8 = await makeExtension({
+    id: "ext8@test",
+    host_permissions: ["http://*/*", "https://*/*"],
+    granted: ["http://*/*", "https://*/*"],
+    useAddonManager: "permanent",
+  });
+
+  // Add an extension always visible in the extensions panel.
+  let ext_last = await makeExtension({
+    id: "ext_last@test",
     default_area: "menupanel",
   });
 
-  let extensions = [ext1, ext2, ext3, ext4, ext5, ext6];
+  let extensions = [ext1, ext2, ext3, ext4, ext5, ext6, ext7, ext8, ext_last];
 
   let unifiedButton;
   if (options.contextMenuId === "unified-extensions-context-menu") {
@@ -350,6 +398,9 @@ const originControlsInContextMenu = async options => {
     moveWidget(ext3, false);
     moveWidget(ext4, false);
     moveWidget(ext5, false);
+    moveWidget(ext6, false);
+    moveWidget(ext7, false);
+    moveWidget(ext8, false);
     unifiedButton = document.querySelector("#unified-extensions-button");
   } else {
     // TestVerify runs this again in the same Firefox instance, so move the
@@ -360,6 +411,9 @@ const originControlsInContextMenu = async options => {
     moveWidget(ext3, true);
     moveWidget(ext4, true);
     moveWidget(ext5, true);
+    moveWidget(ext6, true);
+    moveWidget(ext7, true);
+    moveWidget(ext8, true);
   }
 
   const NO_ACCESS = { id: "origin-controls-no-access", args: null };
@@ -394,6 +448,8 @@ const originControlsInContextMenu = async options => {
     await testOriginControls(ext3, options, { items: [NO_ACCESS] });
     await testOriginControls(ext4, options, { items: [NO_ACCESS] });
     await testOriginControls(ext5, options, { items: [] });
+    await testOriginControls(ext6, options, { items: [NO_ACCESS] });
+    await testOriginControls(ext7, options, { items: [NO_ACCESS] });
 
     if (unifiedButton) {
       ok(
@@ -430,15 +486,71 @@ const originControlsInContextMenu = async options => {
       attention: true,
     });
 
-    // Has <all_urls> granted.
+    // Has <all_urls> granted at install time.
     await testOriginControls(ext4, options, {
       items: [ACCESS_OPTIONS, ALL_SITES],
       selected: 1,
       attention: false,
     });
 
+    // Revoke the all_urls permission, then verify that we show the attention indicator
+    // for the  <all_urls> listed as host_permissions even when the same <all_urls>
+    // is also listed as optional_host_permissions.
+    const promiseRevokedPermission = ext4.awaitMessage("revoked");
+    await ExtensionPermissions.remove(
+      ext4.id,
+      { permissions: ["<all_urls>"], origins: ["<all_urls>"] },
+      WebExtensionPolicy.getByID(ext4.id).extension
+    );
+    is(
+      await promiseRevokedPermission,
+      "<all_urls>",
+      "Expected ext4 <all_urls> permission to be revoked"
+    );
+    await testOriginControls(ext4, options, {
+      items: [ACCESS_OPTIONS, WHEN_CLICKED, ALWAYS_ON],
+      selected: 1,
+      attention: true,
+    });
+
+    // Grant back the <all_urls> permission as it was originally
+    // granted at install time.
+    const promiseGrantedPermission = ext4.awaitMessage("granted");
+    await ExtensionPermissions.add(
+      ext4.id,
+      { permissions: [], origins: ["<all_urls>"] },
+      WebExtensionPolicy.getByID(ext4.id).extension
+    );
+    is(
+      await promiseGrantedPermission,
+      "<all_urls>",
+      "Expected ext4 <all_urls> permission to be granted"
+    );
+
     // MV2 extension, has no origin controls, and never flags for attention.
     await testOriginControls(ext5, options, { items: [], attention: false });
+
+    // MV3 with <all_urls> in optional_host_permissions not already granted.
+    await testOriginControls(ext6, options, {
+      items: [ACCESS_OPTIONS, WHEN_CLICKED, ALWAYS_ON],
+      selected: 1,
+      attention: false,
+    });
+
+    // MV3 with "*://example.com/*" in optional_permissions not already granted.
+    await testOriginControls(ext7, options, { items: [NO_ACCESS] });
+
+    // MV3 with two separate "http://*/*" and "https://*/*" host_permissions
+    // already granted.
+    // The two permissions combined are expected to be showing the ALL_SITES
+    // message as with a single "<all_urls>" or "*://*/*" host permission
+    // (Bug 1856383).
+    await testOriginControls(ext8, options, {
+      items: [ACCESS_OPTIONS, ALL_SITES],
+      selected: 1,
+      attention: false,
+    });
+
     if (unifiedButton) {
       ok(
         unifiedButton.hasAttribute("attention"),
@@ -464,8 +576,15 @@ const originControlsInContextMenu = async options => {
   QuarantinedDomains.setUserAllowedAddonIdPref(ext2.id, false);
   QuarantinedDomains.setUserAllowedAddonIdPref(ext4.id, false);
   QuarantinedDomains.setUserAllowedAddonIdPref(ext5.id, false);
+  QuarantinedDomains.setUserAllowedAddonIdPref(ext6.id, false);
+  QuarantinedDomains.setUserAllowedAddonIdPref(ext8.id, false);
 
   await BrowserTestUtils.withNewTab("http://mochi.test:8888/", async () => {
+    const ALWAYS_ON = {
+      id: "origin-controls-option-always-on",
+      args: { domain: "mochi.test" },
+    };
+
     await testOriginControls(ext1, options, {
       items: [NO_ACCESS],
       attention: false,
@@ -524,6 +643,39 @@ const originControlsInContextMenu = async options => {
     });
     await testOriginControls(ext5, options, {
       items: [],
+      attention: false,
+      quarantined: false,
+    });
+
+    await testOriginControls(ext6, options, {
+      items: [QUARANTINED, ALLOW_QUARANTINED],
+      attention: true,
+      quarantined: true,
+      click: 1,
+      allowQuarantine: true,
+    });
+    await testOriginControls(ext6, options, {
+      items: [ACCESS_OPTIONS, WHEN_CLICKED, ALWAYS_ON],
+      selected: 1,
+      attention: false,
+      quarantined: false,
+    });
+
+    await testOriginControls(ext7, options, {
+      items: [NO_ACCESS],
+      attention: false,
+    });
+
+    await testOriginControls(ext8, options, {
+      items: [QUARANTINED, ALLOW_QUARANTINED],
+      attention: true,
+      quarantined: true,
+      click: 1,
+      allowQuarantine: true,
+    });
+    await testOriginControls(ext8, options, {
+      items: [ACCESS_OPTIONS, ALL_SITES],
+      selected: 1,
       attention: false,
       quarantined: false,
     });
@@ -605,6 +757,26 @@ const originControlsInContextMenu = async options => {
     });
 
     await testOriginControls(ext5, options, { items: [], attention: false });
+
+    await testOriginControls(ext6, options, {
+      items: [ACCESS_OPTIONS, WHEN_CLICKED, ALWAYS_ON],
+      selected: 1,
+      click: 1,
+      // This MV3 extension has <all_urls> host permission,
+      // but only listed in the optional_host_permissions manifest properties,
+      // and so we expect the attention indicator to not be shown.
+      attention: false,
+    });
+
+    await testOriginControls(ext7, options, {
+      items: [ACCESS_OPTIONS, WHEN_CLICKED, ALWAYS_ON],
+      selected: 1,
+      click: 1,
+      // This MV3 extension has "*://example.com/" host permission,
+      // but only listed in the optional_permissions manifest properties
+      // and so we expect the attention indicator to not be shown.
+      attention: false,
+    });
 
     if (unifiedButton) {
       ok(

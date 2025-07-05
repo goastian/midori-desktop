@@ -289,58 +289,132 @@ const gClipboardHelper = getClipboardHelper();
  *                                the calling window's document will be used
  *                         - initialTab: (optional) id of the inital tab to display
  */
-async function onLoadPageInfo() {
-  [
-    SIZE_UNKNOWN,
-    ALT_NOT_SET,
-    MEDIA_STRINGS.img,
-    MEDIA_STRINGS["bg-img"],
-    MEDIA_STRINGS["border-img"],
-    MEDIA_STRINGS["list-img"],
-    MEDIA_STRINGS.cursor,
-    MEDIA_STRINGS.object,
-    MEDIA_STRINGS.embed,
-    MEDIA_STRINGS.link,
-    MEDIA_STRINGS.input,
-    MEDIA_STRINGS.video,
-    MEDIA_STRINGS.audio,
-  ] = await document.l10n.formatValues([
-    "image-size-unknown",
-    "not-set-alternative-text",
-    "media-img",
-    "media-bg-img",
-    "media-border-img",
-    "media-list-img",
-    "media-cursor",
-    "media-object",
-    "media-embed",
-    "media-link",
-    "media-input",
-    "media-video",
-    "media-audio",
-  ]);
+window.addEventListener(
+  "load",
+  async function onLoadPageInfo() {
+    [
+      SIZE_UNKNOWN,
+      ALT_NOT_SET,
+      MEDIA_STRINGS.img,
+      MEDIA_STRINGS["bg-img"],
+      MEDIA_STRINGS["border-img"],
+      MEDIA_STRINGS["list-img"],
+      MEDIA_STRINGS.cursor,
+      MEDIA_STRINGS.object,
+      MEDIA_STRINGS.embed,
+      MEDIA_STRINGS.link,
+      MEDIA_STRINGS.input,
+      MEDIA_STRINGS.video,
+      MEDIA_STRINGS.audio,
+    ] = await document.l10n.formatValues([
+      "image-size-unknown",
+      "not-set-alternative-text",
+      "media-img",
+      "media-bg-img",
+      "media-border-img",
+      "media-list-img",
+      "media-cursor",
+      "media-object",
+      "media-embed",
+      "media-link",
+      "media-input",
+      "media-video",
+      "media-audio",
+    ]);
 
-  const args =
-    "arguments" in window &&
-    window.arguments.length >= 1 &&
-    window.arguments[0];
+    const args =
+      "arguments" in window &&
+      window.arguments.length >= 1 &&
+      window.arguments[0];
 
-  // Init media view
-  let imageTree = document.getElementById("imagetree");
-  imageTree.view = gImageView;
+    // Init media view
+    let imageTree = document.getElementById("imagetree");
+    imageTree.view = gImageView;
 
-  imageTree.controllers.appendController(treeController);
+    imageTree.controllers.appendController(treeController);
 
-  document
-    .getElementById("metatree")
-    .controllers.appendController(treeController);
+    document
+      .getElementById("metatree")
+      .controllers.appendController(treeController);
 
-  // Select the requested tab, if the name is specified
-  await loadTab(args);
+    document
+      .querySelector("#metatree > treecols")
+      .addEventListener("click", event => {
+        let id = event.target.id;
+        switch (id) {
+          case "meta-name":
+          case "meta-content":
+            gMetaView.onPageMediaSort(id);
+            break;
+        }
+      });
 
-  // Emit init event for tests
-  window.dispatchEvent(new Event("page-info-init"));
-}
+    document
+      .querySelector("#imagetree > treecols")
+      .addEventListener("click", event => {
+        let id = event.target.id;
+        switch (id) {
+          case "image-address":
+          case "image-type":
+          case "image-size":
+          case "image-alt":
+          case "image-count":
+            gImageView.onPageMediaSort(id);
+            break;
+        }
+      });
+
+    let imagetree = document.getElementById("imagetree");
+    imagetree.addEventListener("select", onImageSelect);
+    imagetree.addEventListener("dragstart", event =>
+      onBeginLinkDrag(event, "image-address", "image-alt")
+    );
+
+    document.addEventListener("command", event => {
+      switch (event.target.id) {
+        // == pageInfoCommandSet ==
+        case "cmd_close":
+          window.close();
+          break;
+        case "cmd_help":
+          doHelpButton();
+          break;
+        // == topBar ==
+        case "generalTab":
+        case "mediaTab":
+        case "permTab":
+        case "securityTab":
+          showTab(event.target.id.slice(0, -3));
+          break;
+        // == imageSaveBox ==
+        case "selectallbutton":
+          doSelectAllMedia();
+          break;
+        case "imagesaveasbutton":
+        case "mediasaveasbutton":
+          saveMedia();
+          break;
+        // == securityPanel ==
+        case "security-view-cert":
+          security.viewCert();
+          break;
+        case "security-clear-sitedata":
+          security.clearSiteData();
+          break;
+        case "security-view-password":
+          security.viewPasswords();
+          break;
+      }
+    });
+
+    // Select the requested tab, if the name is specified
+    await loadTab(args);
+
+    // Emit init event for tests
+    window.dispatchEvent(new Event("page-info-init"));
+  },
+  { once: true }
+);
 
 async function loadPageInfo(browsingContext, imageElement, browser) {
   browser = browser || window.opener.gBrowser.selectedBrowser;

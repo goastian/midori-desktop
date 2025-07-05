@@ -1,10 +1,11 @@
 [DEFAULT]
-skip-if = ["!crashreporter"]
+run-if = ["crashreporter"]
 support-files = [
   "head.js",
   "file_contains_emptyiframe.html",
   "file_iframe.html",
 ]
+tags = "os_integration"
 
 ["browser_autoSubmitRequest.js"]
 

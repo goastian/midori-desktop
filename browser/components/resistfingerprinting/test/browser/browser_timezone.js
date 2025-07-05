@@ -10,7 +10,7 @@ async function verifySpoofed() {
   SpecialPowers.Cu.getJSTestingFunctions().setTimeZone("PST8PDT");
   is(
     Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-    "PST8PDT",
+    "America/Los_Angeles",
     "Default time zone should have changed"
   );
 
@@ -65,7 +65,10 @@ async function verifySpoofed() {
       doc.lastModified.replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$1-$2")
     );
     // Allow up to one minute of difference for the time to run the test.
-    let offset = Math.floor((new Date() - lastModified) / (60 * 1000));
+    // Need to round current time up to nearest second since resolution of lastModified is 1sec
+    let offset = Math.floor(
+      (Math.ceil(new Date() / 1000) * 1000 - lastModified) / (60 * 1000)
+    );
     is(offset, 0, "document.lastModified does not leak the timezone.");
   }
 
@@ -113,7 +116,7 @@ add_task(async function test_timezone_exempt() {
     SpecialPowers.Cu.getJSTestingFunctions().setTimeZone("PST8PDT");
     is(
       Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-      "PST8PDT",
+      "America/Los_Angeles",
       "Default time zone should have changed"
     );
 
@@ -126,7 +129,7 @@ add_task(async function test_timezone_exempt() {
 
       is(
         Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-        "PST8PDT",
+        "America/Los_Angeles",
         "Content should use default time zone"
       );
     }
@@ -169,7 +172,7 @@ add_task(async function test_timezone_exmpt_browser() {
   SpecialPowers.Cu.getJSTestingFunctions().setTimeZone("PST8PDT");
   is(
     Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-    "PST8PDT",
+    "America/Los_Angeles",
     "Default time zone should have changed"
   );
 
@@ -179,7 +182,7 @@ add_task(async function test_timezone_exmpt_browser() {
 
   is(
     Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-    "PST8PDT",
+    "America/Los_Angeles",
     "Timezone in chrome should be unaffected by resistFingerprinting"
   );
 
@@ -187,13 +190,13 @@ add_task(async function test_timezone_exmpt_browser() {
     null,
     AppConstants.BROWSER_CHROME_URL,
     "_blank",
-    "chrome,dialog=no,all,alwaysRaised",
+    "chrome,dialog=no,all",
     null
   );
 
   is(
     newWindow.Intl.DateTimeFormat("en-US").resolvedOptions().timeZone,
-    "PST8PDT",
+    "America/Los_Angeles",
     "Timezone in new chrome window should be unaffected by resistFingerprinting"
   );
 

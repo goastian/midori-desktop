@@ -1,10 +1,11 @@
 [DEFAULT]
 support-files = [
-  "../../../newtab/test/browser/blue_page.html",
+  "../../../../extensions/newtab/test/browser/blue_page.html",
   "head.js",
 ]
 
 ["browser_asrouter_bug1761522.js"]
+tags = "remote-settings"
 
 ["browser_asrouter_bug1800087.js"]
 
@@ -17,12 +18,19 @@ https_first_disabled = true
 https_first_disabled = true
 
 ["browser_asrouter_group_userprefs.js"]
-skip-if = ["os == 'linux' && bits == 64 && !debug"] # Bug 1643036
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan && swgl", # Bug 1775852
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && swgl", # Bug 1775852
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt && swgl && socketprocess_networking", # Bug 1775852
+]
 
 ["browser_asrouter_infobar.js"]
+skip-if = ["os == 'linux' && bits == 64 && debug"] # Bug 1892548
 
 ["browser_asrouter_keyboard_cfr.js"]
 https_first_disabled = true
+
+["browser_asrouter_menu_messages.js"]
 
 ["browser_asrouter_milestone_message_cfr.js"]
 
@@ -37,13 +45,33 @@ tags = "remote-settings"
 tags = "remote-settings"
 skip-if = ["a11y_checks"] # Bug 1854515 and 1858041 to investigate intermittent a11y_checks results (fails on Autoland, passes on Try)
 
+["browser_asrouter_universal_infobar.js"]
+
+["browser_bookmarks_bar_button.js"]
+
+["browser_feature_callout.js"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1796720
+]
+
 ["browser_feature_callout_in_chrome.js"]
 skip-if = [
-  "os == 'mac' && debug", # Bug 1804349
-  "win11_2009", # Bug 1804349
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug", # Bug 1804349
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64' && debug", # Bug 1932912
 ]
 
 ["browser_feature_callout_panel.js"]
 
+["browser_multistage_spotlight.js"]
+
+["browser_multistage_spotlight_telemetry.js"]
+skip-if = ["verify"] # bug 1834620 - order of events not stable
+
+["browser_remote_l10n.js"]
+
+["browser_spotlight_default_messages.js"]
+
 ["browser_trigger_listeners.js"]
 https_first_disabled = true
+
+["browser_trigger_messagesLoaded.js"]

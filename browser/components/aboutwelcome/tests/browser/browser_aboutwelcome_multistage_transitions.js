@@ -3,7 +3,7 @@
 const { ExperimentAPI } = ChromeUtils.importESModule(
   "resource://nimbus/ExperimentAPI.sys.mjs"
 );
-const { ExperimentFakes } = ChromeUtils.importESModule(
+const { NimbusTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
@@ -113,7 +113,7 @@ add_task(async function test_multistage_aboutwelcome_transitions() {
   await setAboutWelcomePref(true);
   await ExperimentAPI.ready();
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       id: "my-mochitest-experiment",
@@ -159,7 +159,7 @@ add_task(async function test_multistage_aboutwelcome_transitions() {
     ["div.proton.transition-out .screen", "div.proton.transition- .screen-1"]
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });
 
 /**
@@ -170,7 +170,7 @@ add_task(async function test_multistage_aboutwelcome_transitions_off() {
   await setAboutWelcomePref(true);
   await ExperimentAPI.ready();
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "aboutwelcome",
     value: {
       id: "my-mochitest-experiment",
@@ -215,5 +215,5 @@ add_task(async function test_multistage_aboutwelcome_transitions_off() {
     ["div.proton.transition-out .screen-0"]
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });

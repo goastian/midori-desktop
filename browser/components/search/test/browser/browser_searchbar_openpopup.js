@@ -17,7 +17,7 @@ async function endCustomizing(aWindow = window) {
 }
 
 async function startCustomizing(aWindow = window) {
-  if (!aWindow.document.documentElement.hasAttribute("customizing")) {
+  if (aWindow.document.documentElement.hasAttribute("customizing")) {
     return true;
   }
   let eventPromise = BrowserTestUtils.waitForEvent(

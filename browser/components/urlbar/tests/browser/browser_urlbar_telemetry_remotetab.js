@@ -33,6 +33,8 @@ function assertSearchTelemetryEmpty(search_hist) {
     "other-MozSearch.alias",
     undefined
   );
+  let sapEvent = Glean.sap.counts.testGetValue();
+  Assert.equal(sapEvent, null, "Should not have recorded any SAP events");
 
   // Also check events.
   let events = Services.telemetry.snapshotEvents(
@@ -52,23 +54,10 @@ function assertSearchTelemetryEmpty(search_hist) {
 function snapshotHistograms() {
   Services.telemetry.clearScalars();
   Services.telemetry.clearEvents();
+  Services.fog.testResetFOG();
   return {
-    resultMethodHist: TelemetryTestUtils.getAndClearHistogram(
-      "FX_URLBAR_SELECTED_RESULT_METHOD"
-    ),
     search_hist: TelemetryTestUtils.getAndClearKeyedHistogram("SEARCH_COUNTS"),
   };
-}
-
-function assertTelemetryResults(histograms, type, index, method) {
-  TelemetryTestUtils.assertHistogram(histograms.resultMethodHist, method, 1);
-
-  TelemetryTestUtils.assertKeyedScalar(
-    TelemetryTestUtils.getProcessScalars("parent", true, true),
-    `urlbar.picked.${type}`,
-    index,
-    1
-  );
 }
 
 add_setup(async function () {
@@ -83,16 +72,12 @@ add_setup(async function () {
       ["browser.urlbar.autoFill", false],
       // Special prefs for remote tabs.
       ["services.sync.username", "fake"],
-      ["services.sync.syncedTabs.showRemoteTabs", true],
     ],
   });
 
   // Enable local telemetry recording for the duration of the tests.
   let oldCanRecord = Services.telemetry.canRecordExtended;
   Services.telemetry.canRecordExtended = true;
-
-  // Enable event recording for the events tested here.
-  Services.telemetry.setEventRecordingEnabled("navigation", true);
 
   // Clear history so that history added by previous tests doesn't mess up this
   // test when it selects results in the urlbar.
@@ -150,7 +135,6 @@ add_setup(async function () {
     Services.telemetry.canRecordExtended = oldCanRecord;
     await PlacesUtils.history.clear();
     await PlacesUtils.bookmarks.eraseEverything();
-    Services.telemetry.setEventRecordingEnabled("navigation", false);
   });
 });
 
@@ -174,12 +158,6 @@ add_task(async function test_remotetab() {
   await p;
 
   assertSearchTelemetryEmpty(histograms.search_hist);
-  assertTelemetryResults(
-    histograms,
-    "remotetab",
-    1,
-    UrlbarTestUtils.SELECTED_RESULT_METHODS.arrowEnterSelection
-  );
 
   BrowserTestUtils.removeTab(tab);
 });

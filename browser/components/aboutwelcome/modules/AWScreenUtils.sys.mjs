@@ -25,7 +25,8 @@ export const AWScreenUtils = {
   },
   /**
    * Given a JEXL expression, returns the evaluation of the expression or returns
-   * true if the expression did not evaluate successfully
+   * true if the expression did not evaluate successfully. This is also used for
+   * attribute targeting for the checklist feature.
    *
    * @param {string} targeting - The JEXL expression that will be evaluated
    * @returns {boolean}
@@ -40,6 +41,20 @@ export const AWScreenUtils = {
     }
 
     return true;
+  },
+  /**
+   * Returns the string identifier of an unhandled campaign action, if
+   * applicable otherwise false.
+   *
+   * @returns {string|boolean}
+   */
+  async getUnhandledCampaignAction() {
+    const UNHANDLED_CAMPAIGN_ACTION_TARGETING = "unhandledCampaignAction";
+    let result = await lazy.ASRouter.evaluateExpression({
+      expression: UNHANDLED_CAMPAIGN_ACTION_TARGETING,
+      context: lazy.ASRouterTargeting.Environment,
+    });
+    return result?.evaluationStatus?.result || false;
   },
   /**
    * Filter out screens whose targeting do not match.

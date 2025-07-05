@@ -52,19 +52,26 @@ async function addTopSites(url) {
 }
 
 function assertAbandonmentTelemetry(expectedExtraList) {
-  _assertGleanTelemetry("abandonment", expectedExtraList);
+  assertGleanTelemetry("abandonment", expectedExtraList);
 }
 
 function assertEngagementTelemetry(expectedExtraList) {
-  _assertGleanTelemetry("engagement", expectedExtraList);
+  assertGleanTelemetry("engagement", expectedExtraList);
 }
 
 function assertExposureTelemetry(expectedExtraList) {
-  _assertGleanTelemetry("exposure", expectedExtraList);
+  assertGleanTelemetry("exposure", expectedExtraList);
 }
 
-function _assertGleanTelemetry(telemetryName, expectedExtraList) {
-  const telemetries = Glean.urlbar[telemetryName].testGetValue() ?? [];
+function assertDisableTelemetry(expectedExtraList) {
+  assertGleanTelemetry("disable", expectedExtraList);
+}
+
+function assertGleanTelemetry(telemetryName, expectedExtraList) {
+  const camelName = telemetryName.replaceAll(/_(.)/g, (match, p1) =>
+    p1.toUpperCase()
+  );
+  const telemetries = Glean.urlbar[camelName].testGetValue() ?? [];
   info(
     "Asserting Glean telemetry is correct, actual events are: " +
       JSON.stringify(telemetries)
@@ -93,40 +100,43 @@ function _assertGleanTelemetry(telemetryName, expectedExtraList) {
 
 async function ensureQuickSuggestInit({ ...args } = {}) {
   return lazy.QuickSuggestTestUtils.ensureQuickSuggestInit({
-    ...args,
     remoteSettingsRecords: [
       {
-        type: "data",
+        collection: lazy.QuickSuggestTestUtils.RS_COLLECTION.AMP,
+        type: lazy.QuickSuggestTestUtils.RS_TYPE.AMP,
         attachment: [
-          {
-            id: 1,
-            url: "https://example.com/sponsored",
-            title: "Sponsored suggestion",
-            keywords: ["sponsored"],
-            click_url: "https://example.com/click",
-            impression_url: "https://example.com/impression",
-            advertiser: "TestAdvertiser",
-            iab_category: "22 - Shopping",
-            icon: "1234",
-          },
-          {
-            id: 2,
-            url: `https://example.com/nonsponsored`,
-            title: "Non-sponsored suggestion",
-            keywords: ["nonsponsored"],
-            click_url: "https://example.com/click",
-            impression_url: "https://example.com/impression",
-            advertiser: "Wikipedia",
-            iab_category: "5 - Education",
-            icon: "1234",
-          },
+          lazy.QuickSuggestTestUtils.ampRemoteSettings({
+            keywords: ["amp", "amp and wikipedia"],
+          }),
         ],
       },
       {
-        type: "weather",
-        weather: MerinoTestUtils.WEATHER_RS_DATA,
+        collection: lazy.QuickSuggestTestUtils.RS_COLLECTION.OTHER,
+        type: lazy.QuickSuggestTestUtils.RS_TYPE.WIKIPEDIA,
+        attachment: [
+          lazy.QuickSuggestTestUtils.wikipediaRemoteSettings({
+            keywords: ["wikipedia", "amp and wikipedia"],
+          }),
+        ],
+      },
+      lazy.QuickSuggestTestUtils.weatherRecord(),
+      {
+        type: "dynamic-suggestions",
+        suggestion_type: "test-exposure-aaa",
+        score: 1.0,
+        attachment: [
+          {
+            keywords: ["aaa keyword"],
+            data: {
+              result: {
+                isHiddenExposure: true,
+              },
+            },
+          },
+        ],
       },
     ],
+    ...args,
   });
 }
 
@@ -208,8 +218,7 @@ async function doTest(testFn) {
   await PlacesTestUtils.clearHistoryVisits();
   await PlacesTestUtils.clearInputHistory();
   await UrlbarTestUtils.formHistory.clear(window);
-  await QuickSuggest.blockedSuggestions.clear();
-  await QuickSuggest.blockedSuggestions._test_readyPromise;
+  await QuickSuggest.clearDismissedSuggestions();
   await updateTopSites(() => true);
   await BrowserTestUtils.withNewTab(gBrowser, testFn);
 }
@@ -307,7 +316,6 @@ async function loadRemoteTab(url) {
       ["browser.urlbar.maxHistoricalSearchSuggestions", 0],
       ["browser.urlbar.autoFill", false],
       ["services.sync.username", "fake"],
-      ["services.sync.syncedTabs.showRemoteTabs", true],
     ],
   });
 
@@ -407,6 +415,7 @@ async function setup() {
       ["browser.urlbar.searchEngagementTelemetry.enabled", true],
       ["browser.urlbar.quickactions.enabled", true],
       ["browser.urlbar.secondaryActions.featureGate", true],
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
     ],
   });
 

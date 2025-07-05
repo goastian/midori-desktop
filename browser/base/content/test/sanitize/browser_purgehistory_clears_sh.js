@@ -6,7 +6,7 @@ const url =
 
 // We will be removing the ["history"] option once we remove the
 // old clear history dialog in Bug 1856418 - Remove all old clear data dialog boxes
-let prefs = [["history"], ["historyFormDataAndDownloads"]];
+let prefs = [["history"], ["browsingHistoryAndDownloads"]];
 
 for (let itemsToClear of prefs) {
   add_task(async function purgeHistoryTest() {
@@ -36,8 +36,12 @@ for (let itemsToClear of prefs) {
 
         await SpecialPowers.spawn(browser, [], async function () {
           let startHistory = content.history.length;
+          content.document.notifyUserGestureActivation();
           content.history.pushState({}, "");
+          content.document.notifyUserGestureActivation();
           content.history.pushState({}, "");
+          content.document.notifyUserGestureActivation();
+
           content.history.back();
           await new Promise(function (r) {
             content.onpopstate = r;

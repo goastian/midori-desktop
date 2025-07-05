@@ -7,11 +7,12 @@ ChromeUtils.defineESModuleGetters(this, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
   BrowsetUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
-  ExperimentFakes: "resource://testing-common/NimbusTestUtils.sys.mjs",
+  NimbusTestUtils: "resource://testing-common/NimbusTestUtils.sys.mjs",
   ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   PromptTestUtils: "resource://testing-common/PromptTestUtils.sys.mjs",
   ResetProfile: "resource://gre/modules/ResetProfile.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUITestUtils: "resource://testing-common/SearchUITestUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   UrlbarController: "resource:///modules/UrlbarController.sys.mjs",
   UrlbarEventBufferer: "resource:///modules/UrlbarEventBufferer.sys.mjs",
@@ -29,6 +30,8 @@ ChromeUtils.defineLazyGetter(this, "PlacesFrecencyRecalculator", () => {
     Ci.nsIObserver
   ).wrappedJSObject;
 });
+
+SearchUITestUtils.init(this);
 
 let sandbox;
 
@@ -163,7 +166,7 @@ async function search({
   // Set the input value and move the caret to the end to simulate the user
   // typing. It's important the caret is at the end because otherwise autofill
   // won't happen.
-  gURLBar._setValue(searchString, { allowTrim: false });
+  gURLBar._setValue(searchString);
   gURLBar.inputField.setSelectionRange(
     searchString.length,
     searchString.length
@@ -288,4 +291,125 @@ function selectWithDoubleClick(offsetX, win = window) {
     clickCount: 2,
   });
   return promise;
+}
+
+/**
+ * Asserts a search term is in the url bar and state values are
+ * what they should be.
+ *
+ * @param {string} searchString
+ *   String that should be matched in the url bar.
+ * @param {object | null} options
+ *   Options for the assertions.
+ * @param {Window | null} options.window
+ *   Window to use for tests.
+ * @param {string | null} options.pageProxyState
+ *   The pageproxystate that should be expected.
+ * @param {string | null} options.userTypedValue
+ *   The userTypedValue that should be expected.
+ * @param {boolean | null} options.persistSearchTerms
+ *   The attribute persistsearchterms that should be expected.
+ */
+function assertSearchStringIsInUrlbar(
+  searchString,
+  {
+    win = window,
+    pageProxyState = "invalid",
+    userTypedValue = searchString,
+    persistSearchTerms = true,
+  } = {}
+) {
+  Assert.equal(
+    win.gURLBar.value,
+    searchString,
+    `Search string should be the urlbar value.`
+  );
+  let state = win.gURLBar.getBrowserState(win.gBrowser.selectedBrowser);
+  Assert.equal(
+    state.persist.searchTerms,
+    searchString,
+    `Search terms should match.`
+  );
+  Assert.equal(
+    win.gBrowser.userTypedValue,
+    userTypedValue,
+    "userTypedValue should match."
+  );
+  Assert.equal(
+    win.gURLBar.getAttribute("pageproxystate"),
+    pageProxyState,
+    "Pageproxystate should match."
+  );
+  if (persistSearchTerms) {
+    Assert.ok(
+      win.gURLBar.hasAttribute("persistsearchterms"),
+      "Urlbar has persistsearchterms attribute."
+    );
+  } else {
+    Assert.ok(
+      !win.gURLBar.hasAttribute("persistsearchterms"),
+      "Urlbar does not have persistsearchterms attribute."
+    );
+  }
+}
+
+async function searchWithTab(
+  searchString,
+  tab = null,
+  engine = Services.search.defaultEngine,
+  expectedPersistedSearchTerms = true
+) {
+  if (!tab) {
+    tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+  }
+
+  let [expectedSearchUrl] = UrlbarUtils.getSearchQueryUrl(engine, searchString);
+  let browserLoadedPromise = BrowserTestUtils.browserLoaded(
+    tab.linkedBrowser,
+    false,
+    expectedSearchUrl
+  );
+
+  gURLBar.focus();
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    waitForFocus,
+    value: searchString,
+    fireInputEvent: true,
+    selectionStart: 0,
+    selectionEnd: searchString.length - 1,
+  });
+  EventUtils.synthesizeKey("KEY_Enter");
+  await browserLoadedPromise;
+
+  if (expectedPersistedSearchTerms) {
+    info("Load a tab with search terms persisting in the urlbar.");
+    assertSearchStringIsInUrlbar(searchString);
+  }
+
+  return { tab, expectedSearchUrl };
+}
+
+async function focusSwitcher(win = window) {
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window: win,
+    waitForFocus: true,
+    value: "",
+    fireInputEvent: true,
+  });
+  Assert.ok(win.gURLBar.hasAttribute("focused"));
+
+  EventUtils.synthesizeKey("KEY_Tab", { shiftKey: true }, win);
+  let switcher = win.document.getElementById("urlbar-searchmode-switcher");
+  await BrowserTestUtils.waitForCondition(
+    () => win.document.activeElement == switcher
+  );
+}
+
+/**
+ * Clears the SAP telemetry probes (SEARCH_COUNTS and all of Glean).
+ */
+function clearSAPTelemetry() {
+  TelemetryTestUtils.getAndClearKeyedHistogram("SEARCH_COUNTS");
+  Services.fog.testResetFOG();
 }

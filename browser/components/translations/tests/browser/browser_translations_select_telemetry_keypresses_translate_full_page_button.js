@@ -35,10 +35,12 @@ add_task(
     );
 
     await fullPageTranslationCompletePromise;
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await closeAllOpenPanelsAndMenus();
@@ -49,6 +51,10 @@ add_task(
         expectedEventCount: 1,
       }
     );
+
+    await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+      expectedEventCount: 1,
+    });
 
     await cleanup();
   }
@@ -86,10 +92,12 @@ add_task(
     );
 
     await fullPageTranslationCompletePromise;
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "fr",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "fr",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await closeAllOpenPanelsAndMenus();
@@ -100,6 +108,10 @@ add_task(
         expectedEventCount: 1,
       }
     );
+
+    await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+      expectedEventCount: 1,
+    });
 
     await cleanup();
   }

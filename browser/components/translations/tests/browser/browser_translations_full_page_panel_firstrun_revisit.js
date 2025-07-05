@@ -6,14 +6,13 @@
 /**
  * Tests that the first-show intro message message is displayed
  * when viewing the panel subsequent times on the same URL,
- * but is no longer displayed after navigating to new URL,
- * or when returning to the first URL after navigating away.
+ * when navigating to new URL, and when returning to the first URL
+ * after navigating away.
  */
 add_task(async function test_translations_panel_firstrun() {
   const { cleanup } = await loadTestPage({
     page: SPANISH_PAGE_URL,
     languagePairs: LANGUAGE_PAIRS,
-    prefs: [["browser.translations.panelShown", false]],
   });
 
   await FullPageTranslationsTestUtils.assertTranslationsButton(
@@ -22,13 +21,17 @@ add_task(async function test_translations_panel_firstrun() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewFirstShow,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewFirstShow,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();
@@ -38,7 +41,9 @@ add_task(async function test_translations_panel_firstrun() {
   });
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();
@@ -48,7 +53,9 @@ add_task(async function test_translations_panel_firstrun() {
   });
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickCancelButton();

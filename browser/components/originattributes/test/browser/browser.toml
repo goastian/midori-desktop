@@ -73,7 +73,10 @@ skip-if = ["verify && debug && os == 'win'"]
 ["browser_broadcastChannel.js"]
 
 ["browser_cache.js"]
-skip-if = ["verify"]
+skip-if = [
+  "verify",
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov",
+]
 
 ["browser_cacheAPI.js"]
 
@@ -87,7 +90,6 @@ skip-if = ["verify"]
 ["browser_favicon_userContextId.js"]
 
 ["browser_firstPartyIsolation.js"]
-skip-if = ["debug"] #Bug 1345346
 
 ["browser_firstPartyIsolation_aboutPages.js"]
 
@@ -110,10 +112,6 @@ skip-if = ["debug"] #Bug 1345346
 ["browser_postMessage.js"]
 
 ["browser_sanitize.js"]
-skip-if = [
-  "os == 'win'", #Bug 1544810
-  "os == 'linux' && bits == 64", #Bug 1544810
-]
 
 ["browser_sharedworker.js"]
 

@@ -11,7 +11,6 @@
 
   <stringbundleset id="stringbundleset">
     <stringbundle id="bundle_brand" src="chrome://branding/locale/brand.properties"/>
-    <stringbundle id="bundle_shell" src="chrome://browser/locale/shellservice.properties"/>
   </stringbundleset>
 
   <!-- The event listeners are defined by _initCommandSet in browser-init.js -->
@@ -34,16 +33,19 @@
     <command id="cmd_help_importFromAnotherBrowser" />
     <command id="cmd_close" />
     <command id="cmd_closeWindow" />
+    <command id="cmd_minimizeWindow" />
+    <command id="cmd_maximizeWindow" />
+    <command id="cmd_restoreWindow" />
     <command id="cmd_toggleMute" />
-    <command id="cmd_CustomizeToolbars" oncommand="gCustomizeMode.enter();" />
+    <command id="cmd_CustomizeToolbars" />
     <command id="cmd_toggleOfflineStatus" />
     <command id="cmd_quitApplication" />
 
     <command id="View:AboutProcesses" />
     <command id="View:PageSource" />
     <command id="View:PageInfo" />
-    <command id="View:FullScreen" oncommand="BrowserCommands.fullScreen();" />
-    <command id="View:ReaderView" oncommand="AboutReaderParent.toggleReaderMode(event);" />
+    <command id="View:FullScreen" />
+    <command id="View:ReaderView" />
     <command id="View:PictureInPicture" />
     <command id="cmd_find" />
     <command id="cmd_findAgain" />
@@ -51,7 +53,7 @@
 #ifdef XP_MACOSX
     <command id="cmd_findSelection" />
 #endif
-    <command id="cmd_reportBrokenSite" oncommand="ReportBrokenSite.open(event);" />
+    <command id="cmd_reportBrokenSite"/>
     <command id="cmd_translate" />
     <!-- work-around bug 392512 -->
     <command id="Browser:AddBookmarkAs" />
@@ -73,6 +75,9 @@
     <command id="Browser:ReloadSkipCache" disabled="true">
       <observes element="Browser:Reload" attribute="disabled"/>
     </command>
+    <command id="Profiles:CreateProfile" />
+    <command id="Profiles:ManageProfiles" />
+    <command id="Profiles:LaunchProfile" />
     <command id="Browser:NextTab" />
     <command id="Browser:PrevTab" />
     <command id="Browser:ShowAllTabs" />
@@ -90,10 +95,11 @@
     <command id="Tools:Search" />
     <command id="Tools:Downloads" />
     <command id="Tools:Addons" />
+    <command id="cmd_openUnifiedExtensionsPanel" />
     <command id="Tools:Sanitize" />
     <command id="Tools:PrivateBrowsing" />
     <command id="Browser:Screenshot" />
-    <command id="History:UndoCloseTab" oncommand="undoCloseTab();" data-l10n-args='{"tabCount": 1}' />
+    <command id="History:UndoCloseTab" data-l10n-args='{"tabCount": 1}' />
     <command id="History:UndoCloseWindow" />
     <command id="History:RestoreLastClosedTabOrWindowOrSession" />
     <command id="History:SearchHistory" />
@@ -104,7 +110,6 @@
     <command id="windowRecordingCmd" />
 #endif
 #ifdef XP_MACOSX
-    <command id="minimizeWindow" data-l10n-id="window-minimize-command" />
     <command id="zoomWindow" data-l10n-id="window-zoom-command" />
 #endif
   </commandset>
@@ -207,7 +212,7 @@
     <key id="goBackKb2" data-l10n-id="nav-back-shortcut-alt" command="Browser:Back" modifiers="accel"/>
     <key id="goForwardKb2" data-l10n-id="nav-fwd-shortcut-alt" command="Browser:Forward" modifiers="accel"/>
 #endif
-    <key id="goHome" keycode="VK_HOME" oncommand="BrowserCommands.home();" modifiers="alt"/>
+    <key id="goHome" keycode="VK_HOME" modifiers="alt"/>
     <key keycode="VK_F5" command="Browser:Reload"/>
 #ifndef XP_MACOSX
     <key id="showAllHistoryKb" data-l10n-id="history-show-all-shortcut" command="Browser:ShowAllHistory" modifiers="accel,shift"/>
@@ -261,16 +266,13 @@
     <key id="addBookmarkAsKb" data-l10n-id="bookmark-this-page-shortcut" command="Browser:AddBookmarkAs" modifiers="accel"/>
     <key id="bookmarkAllTabsKb"
          data-l10n-id="bookmark-this-page-shortcut"
-         oncommand="PlacesCommandHook.bookmarkTabs();"
          modifiers="accel,shift"/>
     <key id="manBookmarkKb" data-l10n-id="bookmark-show-library-shortcut" command="Browser:ShowAllBookmarks" modifiers="accel,shift"/>
     <key id="viewBookmarksSidebarKb"
          data-l10n-id="bookmark-show-sidebar-shortcut"
-         modifiers="accel"
-         oncommand="SidebarController.toggle('viewBookmarksSidebar');"/>
+         modifiers="accel"/>
     <key id="viewBookmarksToolbarKb"
          data-l10n-id="bookmark-show-toolbar-shortcut"
-         oncommand="BookmarkingUI.toggleBookmarksToolbar('shortcut');"
          modifiers="accel,shift"/>
 
     <key id="key_stop" keycode="VK_ESCAPE" command="Browser:Stop"/>
@@ -279,6 +281,22 @@
     <key id="key_stop_mac" modifiers="accel" data-l10n-id="nav-stop-shortcut" command="Browser:Stop"/>
 #endif
 
+    <key id="viewGenaiChatSidebarKb"
+         data-l10n-id="ai-chatbot-sidebar-shortcut"
+#ifdef XP_MACOSX
+         modifiers="control"
+#else
+         modifiers="accel,alt"
+#endif
+         />
+    <key id="toggleSidebarKb"
+         data-l10n-id="toggle-sidebar-shortcut"
+#ifdef XP_MACOSX
+         modifiers="control"
+#else
+         modifiers="control,alt"
+#endif
+        />
     <key id="key_gotoHistory"
          data-l10n-id="history-sidebar-shortcut"
 #ifdef XP_MACOSX
@@ -286,7 +304,7 @@
 #else
          modifiers="accel"
 #endif
-         oncommand="SidebarController.toggle('viewHistorySidebar');"/>
+        />
 
     <key id="key_fullZoomReduce" data-l10n-id="full-zoom-reduce-shortcut" command="cmd_fullZoomReduce"  modifiers="accel"/>
     <key                         data-l10n-id="full-zoom-reduce-shortcut-alt-a" command="cmd_fullZoomReduce"  modifiers="accel"/>
@@ -333,15 +351,15 @@
 #define NUM_SELECT_TAB_MODIFIER accel
 #endif
 
-#expand    <key id="key_selectTab1" oncommand="gBrowser.selectTabAtIndex(0, event);" key="1" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab2" oncommand="gBrowser.selectTabAtIndex(1, event);" key="2" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab3" oncommand="gBrowser.selectTabAtIndex(2, event);" key="3" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab4" oncommand="gBrowser.selectTabAtIndex(3, event);" key="4" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab5" oncommand="gBrowser.selectTabAtIndex(4, event);" key="5" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab6" oncommand="gBrowser.selectTabAtIndex(5, event);" key="6" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab7" oncommand="gBrowser.selectTabAtIndex(6, event);" key="7" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectTab8" oncommand="gBrowser.selectTabAtIndex(7, event);" key="8" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
-#expand    <key id="key_selectLastTab" oncommand="gBrowser.selectTabAtIndex(-1, event);" key="9" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab1" key="1" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab2" key="2" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab3" key="3" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab4" key="4" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab5" key="5" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab6" key="6" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab7" key="7" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectTab8" key="8" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
+#expand    <key id="key_selectLastTab" key="9" modifiers="__NUM_SELECT_TAB_MODIFIER__"/>
 
     <key id="key_wrCaptureCmd"
 #ifdef XP_MACOSX
@@ -368,13 +386,8 @@
 #endif
 #ifdef XP_MACOSX
     <key id="key_minimizeWindow"
-         command="minimizeWindow"
+         command="cmd_minimizeWindow"
          data-l10n-id="window-minimize-shortcut"
-         modifiers="accel"
-         internal="true"/>
-    <key id="key_openHelpMac"
-         oncommand="openHelpLink('firefox-osxkey');"
-         data-l10n-id="help-shortcut"
          modifiers="accel"
          internal="true"/>
     <!-- These are used to build the Application menu -->
@@ -391,5 +404,4 @@
          modifiers="accel,alt"
          internal="true"/>
 #endif
-    <key id="new-identity-key" modifiers="accel shift" key="U" oncommand="NewIdentityButton.onCommand(event)"/>
   </keyset>

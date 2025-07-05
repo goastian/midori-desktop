@@ -7,31 +7,55 @@
 ChromeUtils.defineESModuleGetters(this, {
   ActionsProviderQuickActions:
     "resource:///modules/ActionsProviderQuickActions.sys.mjs",
+  UrlbarProviderInterventions:
+    "resource:///modules/UrlbarProviderInterventions.sys.mjs",
 });
 
 add_setup(async () => {
-  UrlbarPrefs.set("quickactions.enabled", true);
+  UrlbarPrefs.set("secondaryActions.featureGate", true);
 
   ActionsProviderQuickActions.addAction("newaction", {
     commands: ["newaction"],
   });
 
   registerCleanupFunction(async () => {
-    UrlbarPrefs.clear("quickactions.enabled");
+    UrlbarPrefs.clear("secondaryActions.featureGate");
     ActionsProviderQuickActions.removeAction("newaction");
   });
 });
 
 add_task(async function nomatch() {
   let context = createContext("this doesnt match", {});
-  let result = await ActionsProviderQuickActions.queryAction(context);
-  Assert.ok(result === null, "there were no matches");
+  let results = await ActionsProviderQuickActions.queryActions(context);
+  Assert.ok(results === null, "there were no matches");
 });
 
 add_task(async function quickactions_match() {
   let context = createContext("new", {});
-  let result = await ActionsProviderQuickActions.queryAction(context);
-  Assert.ok(result.key == "newaction", "Matched the new action");
+  let results = await ActionsProviderQuickActions.queryActions(context);
+  Assert.ok(results[0].key == "newaction", "Matched the new action");
+});
+
+add_task(async function quickactions_match_multiple() {
+  ActionsProviderQuickActions.addAction("multiaction", {
+    commands: ["testcommand1", "commandtest2"],
+  });
+
+  let context = createContext("testcommand1", {});
+  let results = await ActionsProviderQuickActions.queryActions(context);
+  Assert.ok(
+    results[0].key == "multiaction",
+    "Matched the action with first keyword"
+  );
+
+  context = createContext("commandtest2", {});
+  results = await ActionsProviderQuickActions.queryActions(context);
+  Assert.ok(
+    results[0].key == "multiaction",
+    "Matched the action with first keyword"
+  );
+
+  ActionsProviderQuickActions.removeAction("multiaction");
 });
 
 add_task(async function duplicate_matches() {
@@ -40,9 +64,9 @@ add_task(async function duplicate_matches() {
   });
 
   let context = createContext("test", {});
-  let result = await ActionsProviderQuickActions.queryAction(context);
+  let results = await ActionsProviderQuickActions.queryActions(context);
 
-  Assert.ok(result.key == "testaction", "Matched the test action");
+  Assert.ok(results[0].key == "testaction", "Matched the test action");
 
   ActionsProviderQuickActions.removeAction("testaction");
 });
@@ -54,7 +78,7 @@ add_task(async function remove_action() {
   ActionsProviderQuickActions.removeAction("testaction");
 
   let context = createContext("test", {});
-  let result = await ActionsProviderQuickActions.queryAction(context);
+  let result = await ActionsProviderQuickActions.queryActions(context);
 
   Assert.ok(result === null, "there were no matches");
 });
@@ -66,11 +90,11 @@ add_task(async function minimum_search_string() {
     UrlbarPrefs.set("quickactions.minimumSearchString", minimumSearchString);
     for (let i = 1; i < 4; i++) {
       let context = createContext(searchString.substring(0, i), {});
-      let result = await ActionsProviderQuickActions.queryAction(context);
-      let isActive = ActionsProviderQuickActions.isActive(context);
+      let result = await ActionsProviderQuickActions.queryActions(context);
+      let isActive = await ActionsProviderQuickActions.isActive(context);
 
       if (i >= minimumSearchString) {
-        Assert.ok(result.key == "newaction", "Matched the new action");
+        Assert.ok(result[0].key == "newaction", "Matched the new action");
         Assert.equal(isActive, true, "Provider is active");
       } else {
         Assert.equal(isActive, false, "Provider is not active");
@@ -78,4 +102,12 @@ add_task(async function minimum_search_string() {
     }
   }
   UrlbarPrefs.clear("quickactions.minimumSearchString");
+});
+
+add_task(async function interventions_disabled() {
+  let context = createContext("test", { isPrivate: false });
+  Assert.ok(
+    !(await UrlbarProviderInterventions.isActive(context)),
+    "Urlbar interventions are disabled when actions are enabled"
+  );
 });

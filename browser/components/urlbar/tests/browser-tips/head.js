@@ -334,21 +334,6 @@ async function doUpdateTest({
   // Pick the tip and wait for the action.
   let values = await Promise.all([awaitCallback(), pickTip()]);
 
-  // Check telemetry.
-  const scalars = TelemetryTestUtils.getProcessScalars("parent", true, true);
-  TelemetryTestUtils.assertKeyedScalar(
-    scalars,
-    "urlbar.tips",
-    `${tip}-shown`,
-    1
-  );
-  TelemetryTestUtils.assertKeyedScalar(
-    scalars,
-    "urlbar.tips",
-    `${tip}-picked`,
-    1
-  );
-
   return values[0] || null;
 }
 
@@ -497,20 +482,6 @@ function checkIntervention({
     // Ensure the urlbar is closed so that the engagement is ended.
     await UrlbarTestUtils.promisePopupClose(window, () => gURLBar.blur());
 
-    const scalars = TelemetryTestUtils.getProcessScalars("parent", true, true);
-    TelemetryTestUtils.assertKeyedScalar(
-      scalars,
-      "urlbar.tips",
-      `${tip}-shown`,
-      1
-    );
-    TelemetryTestUtils.assertKeyedScalar(
-      scalars,
-      "urlbar.tips",
-      `${tip}-picked`,
-      1
-    );
-
     return values[0] || null;
   });
 }
@@ -577,34 +548,17 @@ async function checkTip(win, expectedTip, closeView = true) {
         `Start your search in the address bar to see suggestions from ` +
         `${name} and your browsing history.`;
       break;
-    case UrlbarProviderSearchTips.TIP_TYPE.PERSIST:
-      heuristic = false;
-      title =
-        "Searching just got simpler." +
-        " Try making your search more specific here in the address bar." +
-        " To show the URL instead, visit Search, in settings.";
-      break;
   }
   Assert.equal(result.heuristic, heuristic, "Result is heuristic");
   Assert.equal(result.displayed.title, title, "Title");
   Assert.equal(
     result.element.row._buttons.get("0").textContent,
-    expectedTip == UrlbarProviderSearchTips.TIP_TYPE.PERSIST
-      ? `Got it`
-      : `Okay, Got It`,
+    "Okay, Got It",
     "Button text"
   );
   Assert.ok(
     !result.element.row._buttons.has("help"),
     "Buttons in row does not include help"
-  );
-
-  const scalars = TelemetryTestUtils.getProcessScalars("parent", true, true);
-  TelemetryTestUtils.assertKeyedScalar(
-    scalars,
-    "urlbar.tips",
-    `${expectedTip}-shown`,
-    1
   );
 
   Assert.ok(
@@ -739,9 +693,6 @@ async function withDNSRedirect(domain, path, callback) {
 function resetSearchTipsProvider() {
   Services.prefs.clearUserPref(
     `browser.urlbar.tipShownCount.${UrlbarProviderSearchTips.TIP_TYPE.ONBOARD}`
-  );
-  Services.prefs.clearUserPref(
-    `browser.urlbar.tipShownCount.${UrlbarProviderSearchTips.TIP_TYPE.PERSIST}`
   );
   Services.prefs.clearUserPref(
     `browser.urlbar.tipShownCount.${UrlbarProviderSearchTips.TIP_TYPE.REDIRECT}`

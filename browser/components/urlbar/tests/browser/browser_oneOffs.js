@@ -16,6 +16,11 @@ ChromeUtils.defineLazyGetter(this, "oneOffSearchButtons", () => {
   return UrlbarTestUtils.getOneOffSearchButtons(window);
 });
 
+// The oneoffs are disabled within scotchBonnet so for most of the
+// time we want to filter out the actions search mode.
+let filterActionsMode = action =>
+  action.source != UrlbarUtils.RESULT_SOURCE.ACTIONS;
+
 add_setup(async function () {
   gMaxResults = Services.prefs.getIntPref("browser.urlbar.maxRichResults");
 
@@ -30,6 +35,7 @@ add_setup(async function () {
     set: [
       ["browser.search.separatePrivateDefault.ui.enabled", false],
       ["browser.urlbar.suggest.quickactions", false],
+      ["browser.urlbar.scotchBonnet.enableOverride", false],
     ],
   });
 
@@ -140,9 +146,8 @@ add_task(async function topSites() {
   );
 
   // There's one top sites result, the page with a lot of visits from init.
-  let resultURL = UrlbarTestUtils.trimURL(
-    "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - 1)
-  );
+  let resultURL =
+    "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - 1);
   Assert.equal(UrlbarTestUtils.getResultCount(window), 1, "Result count");
 
   Assert.equal(
@@ -219,9 +224,7 @@ add_task(async function editedView() {
     assertState(
       i + 1,
       -1,
-      UrlbarTestUtils.trimURL(
-        "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
-      )
+      "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
     );
     Assert.ok(
       !BrowserTestUtils.isVisible(heuristicResult.element.action),
@@ -271,9 +274,7 @@ add_task(async function editedView() {
     assertState(
       i + 1,
       -1,
-      UrlbarTestUtils.trimURL(
-        "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
-      )
+      "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
     );
     Assert.ok(
       !BrowserTestUtils.isVisible(heuristicResult.element.action),
@@ -821,8 +822,8 @@ add_task(async function individualLocalShortcutsHidden() {
     Assert.ok(buttons.length, "Sanity check: Local shortcuts exist");
 
     let otherModes = UrlbarUtils.LOCAL_SEARCH_MODES.filter(
-      m => m.source != source
-    );
+      filterActionsMode
+    ).filter(m => m.source != source);
     Assert.equal(
       buttons.length,
       otherModes.length,
@@ -910,7 +911,7 @@ add_task(async function localShortcutsShownWhenEnginesHidden() {
 
   Assert.equal(
     oneOffSearchButtons.localButtons.length,
-    UrlbarUtils.LOCAL_SEARCH_MODES.length,
+    UrlbarUtils.LOCAL_SEARCH_MODES.filter(filterActionsMode).length,
     "All local shortcuts are visible"
   );
 

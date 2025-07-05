@@ -4,7 +4,7 @@
 
 "use strict";
 
-/* globals browser, module */
+/* globals browser */
 
 const replaceStringInRequest = (
   requestId,
@@ -35,75 +35,147 @@ const replaceStringInRequest = (
   };
 };
 
-const CUSTOM_FUNCTIONS = {
-  detectSwipeFix: injection => {
-    const { urls, types } = injection.data;
-    const listener = (injection.data.listener = ({ requestId }) => {
-      replaceStringInRequest(
-        requestId,
-        "preventDefault:true",
-        "preventDefault:false"
+const interventionListeners = new Map();
+
+function rememberListener(intervention, key, listener) {
+  if (!interventionListeners.has(intervention)) {
+    interventionListeners.set(intervention, new Map());
+  }
+  const map = interventionListeners.get(intervention);
+  if (map.has(key)) {
+    throw new Error(`multiple custom listeners have the same key ${key}`);
+  }
+  map.set(key, listener);
+}
+
+function forgetListener(intervention, key) {
+  const map = interventionListeners.get(intervention);
+  if (!map) {
+    return undefined;
+  }
+  const listener = map.get(key);
+  map.delete(key);
+  return listener;
+}
+
+var CUSTOM_FUNCTIONS = {
+  alter_response_headers: {
+    details: ["headers", "replacement"],
+    optionalDetails: ["fallback", "replace", "types", "urls"],
+    getKey(config) {
+      return `alter_headers:${JSON.stringify(config)}`;
+    },
+    enable(config, intervention) {
+      let { fallback, headers, replace, replacement, types, urls } = config;
+      if (!urls) {
+        urls = Object.values(intervention.bugs)
+          .map(bug => bug.matches)
+          .flat()
+          .filter(v => v !== undefined);
+      }
+      const regex =
+        replace === null ? null : new RegExp(replace ?? "^.*$", "gi");
+      const listener = evt => {
+        let found = false;
+        const responseHeaders = [];
+        for (const header of evt.responseHeaders) {
+          if (headers.includes(header.name.toLowerCase())) {
+            if (regex !== null && replacement !== null) {
+              found = true;
+              const value = header.value.replaceAll(regex, replacement);
+              responseHeaders.push({ name: header.name, value });
+            }
+          } else {
+            responseHeaders.push(header);
+          }
+        }
+        if (!found && (replace === undefined || typeof fallback === "string")) {
+          const value = fallback ?? replacement;
+          if (value !== null) {
+            responseHeaders.push({
+              name: headers[0],
+              value,
+            });
+          }
+        }
+        return { responseHeaders };
+      };
+      browser.webRequest.onHeadersReceived.addListener(
+        listener,
+        { types, urls },
+        ["blocking", "responseHeaders"]
       );
-      return {};
-    });
-    browser.webRequest.onBeforeRequest.addListener(listener, { urls, types }, [
-      "blocking",
-    ]);
+      rememberListener(intervention, this.getKey(config), listener);
+    },
+    disable(config, intervention) {
+      const listener = forgetListener(intervention, this.getKey(config));
+      if (listener) {
+        browser.webRequest.onHeadersReceived.removeListener(listener);
+      }
+    },
   },
-  detectSwipeFixDisable: injection => {
-    const { listener } = injection.data;
-    browser.webRequest.onBeforeRequest.removeListener(listener);
-    delete injection.data.listener;
+  replace_string_in_request: {
+    details: ["find", "replace", "urls"],
+    optionalDetails: ["types"],
+    enable(details) {
+      const { find, replace, urls, types } = details;
+      const listener = (details.listener = ({ requestId }) => {
+        replaceStringInRequest(requestId, find, replace);
+        return {};
+      });
+      browser.webRequest.onBeforeRequest.addListener(
+        listener,
+        { urls, types },
+        ["blocking"]
+      );
+    },
+    disable(details) {
+      const { listener } = details;
+      browser.webRequest.onBeforeRequest.removeListener(listener);
+      delete details.listener;
+    },
   },
-  noSniffFix: injection => {
-    const { urls, contentType } = injection.data;
-    const listener = (injection.data.listener = e => {
-      e.responseHeaders.push(contentType);
-      return { responseHeaders: e.responseHeaders };
-    });
+  run_script_before_request: {
+    details: ["message", "urls", "script"],
+    optionalDetails: ["types"],
+    enable(details, intervention) {
+      const { bug } = intervention;
+      const { message, script, types, urls } = details;
+      const warning = `${message} See https://bugzilla.mozilla.org/show_bug.cgi?id=${bug} for details.`;
 
-    browser.webRequest.onHeadersReceived.addListener(listener, { urls }, [
-      "blocking",
-      "responseHeaders",
-    ]);
-  },
-  noSniffFixDisable: injection => {
-    const { listener } = injection.data;
-    browser.webRequest.onHeadersReceived.removeListener(listener);
-    delete injection.data.listener;
-  },
-  runScriptBeforeRequest: injection => {
-    const { bug, message, request, script, types } = injection;
-    const warning = `${message} See https://bugzilla.mozilla.org/show_bug.cgi?id=${bug} for details.`;
-
-    const listener = (injection.listener = e => {
-      const { tabId, frameId } = e;
-      return browser.tabs
-        .executeScript(tabId, {
-          file: script,
-          frameId,
-          runAt: "document_start",
-        })
-        .then(() => {
-          browser.tabs.executeScript(tabId, {
-            code: `console.warn(${JSON.stringify(warning)})`,
+      const listener = (details.listener = evt => {
+        const { tabId, frameId } = evt;
+        return browser.tabs
+          .executeScript(tabId, {
+            file: script,
+            frameId,
             runAt: "document_start",
+          })
+          .then(() => {
+            browser.tabs.executeScript(tabId, {
+              code: `console.warn(${JSON.stringify(warning)})`,
+              runAt: "document_start",
+            });
+          })
+          .catch(err => {
+            console.error(
+              "Error running script before request for webcompat intervention for bug",
+              bug,
+              err
+            );
           });
-        })
-        .catch(_ => {});
-    });
+      });
 
-    browser.webRequest.onBeforeRequest.addListener(
-      listener,
-      { urls: request, types: types || ["script"] },
-      ["blocking"]
-    );
-  },
-  runScriptBeforeRequestDisable: injection => {
-    const { listener } = injection;
-    browser.webRequest.onBeforeRequest.removeListener(listener);
-    delete injection.data.listener;
+      browser.webRequest.onBeforeRequest.addListener(
+        listener,
+        { urls, types: types || ["script"] },
+        ["blocking"]
+      );
+    },
+    disable(details) {
+      const { listener } = details;
+      browser.webRequest.onBeforeRequest.removeListener(listener);
+      delete details.listener;
+    },
   },
 };
-
-module.exports = CUSTOM_FUNCTIONS;

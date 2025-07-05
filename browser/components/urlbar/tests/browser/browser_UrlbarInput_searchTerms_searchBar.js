@@ -14,24 +14,14 @@ const SEARCH_STRING = "example_string";
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.search.widget.inNavBar", true],
-      ["browser.urlbar.showSearchTerms.featureGate", true],
-    ],
+    set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
-
-  await SearchTestUtils.installSearchExtension(
-    {
-      name: "MozSearch",
-      search_url: "https://www.example.com/",
-      search_url_get_params: "q={searchTerms}&pc=fake_code",
-    },
-    { setAsDefault: true }
-  );
-
+  await gCUITestUtils.addSearchBar();
+  let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
     gCUITestUtils.removeSearchBar();
+    cleanup();
   });
 });
 
@@ -46,10 +36,11 @@ function assertSearchStringIsNotInUrlbar(searchString) {
     "valid",
     "Pageproxystate should be valid."
   );
+  let state = window.gURLBar.getBrowserState(window.gBrowser.selectedBrowser);
   Assert.equal(
-    gBrowser.selectedBrowser.searchTerms,
-    "",
-    "searchTerms should be blank."
+    state.persist?.searchTerms,
+    undefined,
+    "searchTerms should be undefined."
   );
 }
 
@@ -57,15 +48,14 @@ function assertSearchStringIsNotInUrlbar(searchString) {
 // the search term should not show in the URL bar.
 add_task(async function search_bar_on() {
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
-  await gCUITestUtils.addSearchBar();
+  let searchBar = await gCUITestUtils.addSearchBar();
 
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(
     tab.linkedBrowser,
     false,
-    `https://www.example.com/?q=${SEARCH_STRING}&pc=fake_code`
+    `https://www.example.com/?q=${SEARCH_STRING}`
   );
 
-  let searchBar = BrowserSearch.searchBar;
   searchBar.value = SEARCH_STRING;
   searchBar.focus();
   EventUtils.synthesizeKey("KEY_Enter");
@@ -85,7 +75,7 @@ add_task(async function search_bar_on_with_url_bar_search() {
   let browserLoadedPromise = BrowserTestUtils.browserLoaded(
     tab.linkedBrowser,
     false,
-    `https://www.example.com/?q=${SEARCH_STRING}&pc=fake_code`
+    `https://www.example.com/?q=${SEARCH_STRING}`
   );
 
   gURLBar.focus();

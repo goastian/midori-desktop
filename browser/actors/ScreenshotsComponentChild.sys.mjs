@@ -76,7 +76,7 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
       case "Screenshots:AddEventListeners":
         return this.addEventListeners();
       case "Screenshots:MoveFocusToContent":
-        return this.focusOverlay();
+        return this.focusOverlay(message.data);
       case "Screenshots:ClearFocus":
         Services.focus.clearFocus(this.contentWindow);
         return null;
@@ -115,7 +115,7 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
 
     switch (event.type) {
       case "beforeunload":
-        this.requestCancelScreenshot("navigation");
+        this.requestCancelScreenshot("Navigation");
         break;
       case "resize":
         if (!this.#resizeTask && this.overlay?.initialized) {
@@ -148,8 +148,8 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
         break;
       }
       case "Screenshots:RecordEvent": {
-        let { eventName, reason, args } = event.detail;
-        this.recordTelemetryEvent(eventName, reason, args);
+        let { eventName, args } = event.detail;
+        Glean.screenshots[eventName].record(args);
         break;
       }
       case "Screenshots:ShowPanel":
@@ -212,9 +212,9 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
     return methodsUsed;
   }
 
-  focusOverlay() {
+  focusOverlay(direction) {
     this.contentWindow.focus();
-    this.#overlay.focus();
+    this.#overlay.focus(direction);
   }
 
   /**
@@ -423,9 +423,5 @@ export class ScreenshotsComponentChild extends JSWindowActorChild {
       devicePixelRatio,
     };
     return rect;
-  }
-
-  recordTelemetryEvent(type, object, args = {}) {
-    Services.telemetry.recordEvent("screenshots", type, object, null, args);
   }
 }

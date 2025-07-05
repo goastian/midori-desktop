@@ -9,11 +9,7 @@ import {
   when,
 } from "chrome://global/content/vendor/lit.all.mjs";
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
-import {
-  getLogger,
-  placeLinkOnClipboard,
-  MAX_TABS_FOR_RECENT_BROWSING,
-} from "./helpers.mjs";
+import { getLogger, MAX_TABS_FOR_RECENT_BROWSING } from "./helpers.mjs";
 import { searchTabList } from "./search-helpers.mjs";
 import { ViewPage, ViewPageContent } from "./viewpage.mjs";
 // eslint-disable-next-line import/no-unassigned-import
@@ -23,12 +19,14 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BookmarkList: "resource://gre/modules/BookmarkList.sys.mjs",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   NonPrivateTabs: "resource:///modules/OpenTabs.sys.mjs",
   getTabsTargetForWindow: "resource:///modules/OpenTabs.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  TabMetrics: "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
@@ -271,22 +269,21 @@ class OpenTabsInView extends ViewPage {
       >
         ${when(
           currentWindowIndex && currentWindowTabs,
-          () =>
-            html`
-              <view-opentabs-card
-                class=${cardClasses}
-                .tabs=${currentWindowTabs}
-                .paused=${this.paused}
-                data-inner-id="${this.currentWindow.windowGlobalChild
-                  .innerWindowId}"
-                data-l10n-id="firefoxview-opentabs-current-window-header"
-                data-l10n-args="${JSON.stringify({
-                  winID: currentWindowIndex,
-                })}"
-                .searchQuery=${this.searchQuery}
-                .bookmarkList=${this.bookmarkList}
-              ></view-opentabs-card>
-            `
+          () => html`
+            <view-opentabs-card
+              class=${cardClasses}
+              .tabs=${currentWindowTabs}
+              .paused=${this.paused}
+              data-inner-id=${this.currentWindow.windowGlobalChild
+                .innerWindowId}
+              data-l10n-id="firefoxview-opentabs-current-window-header"
+              data-l10n-args=${JSON.stringify({
+                winID: currentWindowIndex,
+              })}
+              .searchQuery=${this.searchQuery}
+              .bookmarkList=${this.bookmarkList}
+            ></view-opentabs-card>
+          `
         )}
         ${map(
           otherWindows,
@@ -295,9 +292,9 @@ class OpenTabsInView extends ViewPage {
               class=${cardClasses}
               .tabs=${tabs}
               .paused=${this.paused}
-              data-inner-id="${win.windowGlobalChild.innerWindowId}"
+              data-inner-id=${win.windowGlobalChild.innerWindowId}
               data-l10n-id="firefoxview-opentabs-window-header"
-              data-l10n-args="${JSON.stringify({ winID })}"
+              data-l10n-args=${JSON.stringify({ winID })}
               .searchQuery=${this.searchQuery}
               .bookmarkList=${this.bookmarkList}
             ></view-opentabs-card>
@@ -472,15 +469,9 @@ class OpenTabsInViewCard extends ViewPageContent {
       (event.type == "keydown" && event.code == "Space")
     ) {
       event.preventDefault();
-      Services.telemetry.recordEvent(
-        "firefoxview_next",
-        "search_show_all",
-        "showallbutton",
-        null,
-        {
-          section: "opentabs",
-        }
-      );
+      Glean.firefoxviewNext.searchShowAllShowallbutton.record({
+        section: "opentabs",
+      });
       this.showAll = true;
     }
   }
@@ -499,38 +490,26 @@ class OpenTabsInViewCard extends ViewPageContent {
     browserWindow.focus();
     browserWindow.gBrowser.selectedTab = tab;
 
-    Services.telemetry.recordEvent(
-      "firefoxview_next",
-      "open_tab",
-      "tabs",
-      null,
-      {
-        page: this.recentBrowsing ? "recentbrowsing" : "opentabs",
-        window: this.title || "Window 1 (Current)",
-      }
-    );
+    Glean.firefoxviewNext.openTabTabs.record({
+      page: this.recentBrowsing ? "recentbrowsing" : "opentabs",
+      window: this.title || "Window 1 (Current)",
+    });
     if (this.searchQuery) {
-      const searchesHistogram = Services.telemetry.getKeyedHistogramById(
-        "FIREFOX_VIEW_CUMULATIVE_SEARCHES"
-      );
-      searchesHistogram.add(
-        this.recentBrowsing ? "recentbrowsing" : "opentabs",
-        this.cumulativeSearches
-      );
+      Glean.firefoxview.cumulativeSearches[
+        this.recentBrowsing ? "recentbrowsing" : "opentabs"
+      ].accumulateSingleSample(this.cumulativeSearches);
       this.cumulativeSearches = 0;
     }
   }
 
   closeTab(event) {
     const tab = event.originalTarget.tabElement;
-    tab?.ownerGlobal.gBrowser.removeTab(tab);
-
-    Services.telemetry.recordEvent(
-      "firefoxview_next",
-      "close_open_tab",
-      "tabs",
-      null
+    tab?.ownerGlobal.gBrowser.removeTab(
+      tab,
+      lazy.TabMetrics.userTriggeredContext()
     );
+
+    Glean.firefoxviewNext.closeOpenTabTabs.record();
   }
 
   viewVisibleCallback() {
@@ -559,10 +538,11 @@ class OpenTabsInViewCard extends ViewPageContent {
       >
         ${when(
           this.recentBrowsing,
-          () => html`<h3
-            slot="header"
-            data-l10n-id="firefoxview-opentabs-header"
-          ></h3>`,
+          () =>
+            html`<h3
+              slot="header"
+              data-l10n-id="firefoxview-opentabs-header"
+            ></h3>`,
           () => html`<h3 slot="header">${this.title}</h3>`
         )}
         <div class="fxview-tab-list-container" slot="main">
@@ -584,22 +564,23 @@ class OpenTabsInViewCard extends ViewPageContent {
         </div>
         ${when(
           this.recentBrowsing,
-          () => html` <div
-            @click=${this.enableShowAll}
-            @keydown=${this.enableShowAll}
-            data-l10n-id="firefoxview-show-all"
-            ?hidden=${!this.isShowAllLinkVisible()}
-            slot="footer"
-            tabindex="0"
-            role="link"
-          ></div>`,
+          () =>
+            html` <div
+              @click=${this.enableShowAll}
+              @keydown=${this.enableShowAll}
+              data-l10n-id="firefoxview-show-all"
+              ?hidden=${!this.isShowAllLinkVisible()}
+              slot="footer"
+              tabindex="0"
+              role="link"
+            ></div>`,
           () =>
             html` <div
               @click=${this.toggleShowMore}
               @keydown=${this.toggleShowMore}
-              data-l10n-id="${this.showMore
+              data-l10n-id=${this.showMore
                 ? "firefoxview-show-less"
-                : "firefoxview-show-more"}"
+                : "firefoxview-show-more"}
               ?hidden=${!this.classList.contains("height-limited") ||
               this.tabs.length <=
                 OpenTabsInViewCard.MAX_TABS_FOR_COMPACT_HEIGHT}
@@ -729,7 +710,7 @@ class OpenTabsContextMenu extends MozLitElement {
   }
 
   copyLink(e) {
-    placeLinkOnClipboard(this.triggerNode.title, this.triggerNode.url);
+    lazy.BrowserUtils.copyLink(this.triggerNode.url, this.triggerNode.title);
     this.ownerViewPage.recordContextMenuTelemetry("copy-link", e);
   }
 

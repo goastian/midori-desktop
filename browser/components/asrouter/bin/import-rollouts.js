@@ -94,6 +94,10 @@ async function getMessageValidators(skipValidation) {
   );
 
   const messageValidators = {
+    bookmarks_bar_button: await getValidator(
+      "./content-src/templates/OnboardingMessage/BookmarksBarButton.schema.json",
+      { common: true }
+    ),
     cfr_doorhanger: await getValidator(
       "./content-src/templates/CFR/templates/ExtensionDoorhanger.schema.json",
       { common: true }
@@ -129,6 +133,14 @@ async function getMessageValidators(skipValidation) {
     feature_callout: await getValidator(
       // For now, Feature Callout and Spotlight share a common schema
       "./content-src/templates/OnboardingMessage/Spotlight.schema.json",
+      { common: true }
+    ),
+    menu_message: await getValidator(
+      "./content-src/templates/OnboardingMessage/MenuMessage.schema.json",
+      { common: true }
+    ),
+    newtab_message: await getValidator(
+      "./content-src/templates/OnboardingMessage/NewtabMessage.schema.json",
       { common: true }
     ),
   };
@@ -193,7 +205,7 @@ async function main() {
   
     Examples
       $ node bin/import-rollouts.js --collection nimbus-preview
-      $ ./mach npm run import-rollouts --prefix=browser/components/newtab -- -e
+      $ ./mach npm run import-rollouts --prefix=browser/components/asrouter -- -e
   `,
     {
       description: false,
@@ -212,17 +224,17 @@ async function main() {
       flags: {
         collection: {
           type: "string",
-          alias: "c",
+          shortFlag: "c",
           default: DEFAULT_COLLECTION_ID,
         },
         experiments: {
           type: "boolean",
-          alias: "e",
+          shortFlag: "e",
           default: false,
         },
         skipValidation: {
           type: "boolean",
-          alias: "s",
+          shortFlag: "s",
           default: false,
         },
       },

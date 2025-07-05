@@ -6,16 +6,30 @@
 
 class PictureInPictureVideoWrapper {
   setCaptionContainerObserver(video, updateCaptionsFunction) {
-    let container = document.querySelector("#player");
+    let container = video.closest(".player");
 
     if (container) {
       updateCaptionsFunction("");
-      const callback = function () {
+      const callback = (mutationList = []) => {
+        if (mutationList.length) {
+          let changed = false;
+          for (const mutation of mutationList) {
+            if (mutation.target.matches?.(".subtitles-text")) {
+              changed = true;
+              break;
+            }
+          }
+
+          if (!changed) {
+            return;
+          }
+        }
+
         let textNodeList = container
-          ?.querySelector(".subtitles")
+          .querySelector(".subtitles")
           ?.querySelectorAll("div");
 
-        if (!textNodeList) {
+        if (!textNodeList?.length) {
           updateCaptionsFunction("");
           return;
         }
@@ -26,16 +40,19 @@ class PictureInPictureVideoWrapper {
       };
 
       // immediately invoke the callback function to add subtitles to the PiP window
-      callback([1], null);
+      callback();
 
-      let captionsObserver = new MutationObserver(callback);
+      this.captionsObserver = new MutationObserver(callback);
 
-      captionsObserver.observe(container, {
-        attributes: false,
+      this.captionsObserver.observe(container, {
         childList: true,
         subtree: true,
       });
     }
+  }
+
+  removeCaptionContainerObserver() {
+    this.captionsObserver?.disconnect();
   }
 }
 

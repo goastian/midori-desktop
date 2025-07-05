@@ -1,6 +1,7 @@
 requestLongerTimeout(2);
 
-const DUMMY_PATH = "browser/browser/base/content/test/general/dummy_page.html";
+const DUMMY_PATH =
+  "browser/browser/components/tabbrowser/test/browser/tabs/dummy_page.html";
 
 const gExpectedHistory = {
   index: -1,
@@ -115,17 +116,17 @@ var waitForLoad = async function (uriString) {
 // Waits for a load and updates the known history
 var waitForLoadWithFlags = async function (
   uriString,
-  flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE
+  loadFlags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE
 ) {
-  info("Loading " + uriString + " flags = " + flags);
+  info("Loading " + uriString + " flags = " + loadFlags);
   gBrowser.selectedBrowser.loadURI(Services.io.newURI(uriString), {
-    flags,
+    loadFlags,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
   });
 
   await BrowserTestUtils.browserStopped(gBrowser, uriString);
-  if (!(flags & Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY)) {
-    if (flags & Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY) {
+  if (!(loadFlags & Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY)) {
+    if (loadFlags & Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY) {
       gExpectedHistory.entries.pop();
     } else {
       gExpectedHistory.index++;

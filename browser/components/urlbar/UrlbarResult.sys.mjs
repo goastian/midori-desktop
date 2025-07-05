@@ -19,14 +19,28 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /**
+ * @typedef UrlbarAutofillData
+ * @property {string} value
+ *   The value to insert for autofill.
+ * @property {number} selectionStart
+ *   Where to start the selection for the autofill.
+ * @property {number} selectionEnd
+ *   Where to end the selection for the autofill.
+ * @property {string} [type]
+ *   The type of the autofill.
+ * @property {string} [adaptiveHistoryInput]
+ *   The input string associated with this autofill item.
+ */
+
+/**
  * Class used to create a single result.
  */
 export class UrlbarResult {
   /**
    * Creates a result.
    *
-   * @param {integer} resultType one of UrlbarUtils.RESULT_TYPE.* values
-   * @param {integer} resultSource one of UrlbarUtils.RESULT_SOURCE.* values
+   * @param {Values<typeof lazy.UrlbarUtils.RESULT_TYPE>} resultType
+   * @param {Values<typeof lazy.UrlbarUtils.RESULT_SOURCE>} resultSource
    * @param {object} payload data for this result. A payload should always
    *        contain a way to extract a final url to visit. The url getter
    *        should have a case for each of the types.
@@ -58,14 +72,8 @@ export class UrlbarResult {
     // source filters in the ProvidersManager, that otherwise may skip them.
     this.heuristic = false;
 
-    // Exposure specific properties. These allow us to track the exposure
-    // of a result through the query process.
-    // A non-zero value here indicates that this result's exposure should be
-    // recorded in the exposure event.
-    this.exposureResultType = "";
-
-    // Determines if the exposure result should be hidden from the view.
-    this.exposureResultHidden = false;
+    // Allows us to track the exposure of a result through the query process.
+    this.exposureTelemetry = lazy.UrlbarUtils.EXPOSURE_TELEMETRY.NONE;
 
     // The payload contains result data. Some of the data is common across
     // multiple types, but most of it will vary.
@@ -88,6 +96,69 @@ export class UrlbarResult {
       }
     }
   }
+
+  /**
+   * Autofill data associated with this result.
+   *
+   * @type {?UrlbarAutofillData}
+   */
+  autofill;
+
+  /**
+   * Used for tests to force the group returned by UrlbarUtils.getResultGroup.
+   *
+   * @type {Values<typeof lazy.UrlbarUtils.RESULT_GROUP>}
+   */
+  group;
+
+  /**
+   * Whether this is the best suggest match for a set of results.
+   */
+  isBestMatch = false;
+
+  /**
+   * Whether this suggestion should be displayed as a rich suggestion.
+   */
+  isRichSuggestion = false;
+
+  /**
+   * True if the suggested index is relative to the group.
+   */
+  isSuggestedIndexRelativeToGroup = false;
+
+  /**
+   * The name of the UrlbarProvider providing the result.
+   *
+   * @type {?string}
+   */
+  providerName;
+
+  /**
+   * The type of the UrlbarProvider providing the result.
+   *
+   * @type {?Values<typeof lazy.UrlbarUtils.PROVIDER_TYPE>}
+   */
+  providerType;
+
+  /**
+   * How many result lines this result should span.
+   *
+   * @type {?number}
+   */
+  resultSpan;
+
+  /**
+   * An optional hint to the muxer that can be set to suggest a specific
+   * position among the results.
+   *
+   * @type {?number}
+   */
+  suggestedIndex;
+
+  /**
+   * @type {?number}
+   */
+  userContextId;
 
   /**
    * Returns a title that could be used as a label for this result.
@@ -173,6 +244,17 @@ export class UrlbarResult {
    */
   get hasSuggestedIndex() {
     return typeof this.suggestedIndex == "number";
+  }
+
+  /**
+   * Convenience getter that returns whether the result's exposure telemetry
+   * indicates it should be hidden.
+   *
+   * @returns {boolean}
+   *   Whether the result should be hidden.
+   */
+  get isHiddenExposure() {
+    return this.exposureTelemetry == lazy.UrlbarUtils.EXPOSURE_TELEMETRY.HIDDEN;
   }
 
   /**
@@ -311,7 +393,7 @@ export class UrlbarResult {
    */
   static addDynamicResultType(name, type = {}) {
     if (/[^a-z0-9_-]/i.test(name)) {
-      this.logger.error(`Illegal dynamic type name: ${name}`);
+      console.error(`Illegal dynamic type name: ${name}`);
       return;
     }
     this._dynamicResultTypesByName.set(name, type);

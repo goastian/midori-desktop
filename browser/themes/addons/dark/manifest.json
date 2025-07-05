@@ -10,15 +10,15 @@
   "name": "Dark",
   "description": "A theme with a dark color scheme.",
   "author": "Mozilla",
-  "version": "1.2",
+  "version": "1.3.3",
 
   "icons": { "32": "icon.svg" },
 
   "theme": {
     "colors": {
       "tab_background_text": "#fbfbfe",
-      "tab_selected": "rgb(66,65,77)",
-      "tab_text": "rgb(251,251,254)",
+      "tab_selected": "rgba(106,106,120,0.7)",
+      "tab_text": "rgb(255,255,255)",
       "icons": "rgb(251,251,254)",
       "frame": "rgb(28, 27, 34)",
       "frame_inactive": "rgb(31, 30, 37)",
@@ -29,8 +29,8 @@
       "tab_line": "transparent",
       "toolbar": "rgb(43,42,51)",
       "toolbar_top_separator": "transparent",
-      "toolbar_bottom_separator": "hsl(240, 5%, 5%)",
-      "toolbar_field": "rgb(28,27,34)",
+      "toolbar_bottom_separator": "rgba(251, 251, 254, 0.10)",
+      "toolbar_field": "rgba(0, 0, 0, .3)",
       "toolbar_field_border": "transparent",
       "toolbar_field_text": "rgb(251,251,254)",
       "toolbar_field_focus": "rgb(66,65,77)",
@@ -38,9 +38,9 @@
       "ntp_background": "rgb(43, 42, 51)",
       "ntp_card_background": "rgb(66,65,77)",
       "ntp_text": "rgb(251, 251, 254)",
-      "sidebar": "#38383D",
+      "sidebar": "rgb(28, 27, 34)",
       "sidebar_text": "rgb(249, 249, 250)",
-      "sidebar_border": "rgba(255, 255, 255, 0.1)",
+      "sidebar_border": "rgba(251, 251, 254, 0.10)",
       "button": "rgba(0, 0, 0, .33)",
       "button_hover": "rgba(207, 207, 216, .20)",
       "button_active": "rgba(207, 207, 216, .40)",
@@ -50,9 +50,7 @@
       "button_primary_color": "rgb(43, 42, 51)",
       "input_background": "#42414D",
       "input_color": "rgb(251,251,254)",
-      "urlbar_popup_separator": "rgb(82,82,94)",
-      "tab_icon_overlay_stroke": "rgb(66,65,77)",
-      "tab_icon_overlay_fill": "rgb(251,251,254)"
+      "urlbar_popup_separator": "rgb(82,82,94)"
     },
     "properties": {
       "color_scheme": "dark",
@@ -65,19 +63,17 @@
   "theme_experiment": {
     "stylesheet": "experiment.css",
     "colors": {
-      "button": "--button-bgcolor",
-      "button_hover": "--button-hover-bgcolor",
-      "button_active": "--button-active-bgcolor",
-      "button_primary": "--button-primary-bgcolor",
-      "button_primary_hover": "--button-primary-hover-bgcolor",
-      "button_primary_active": "--button-primary-active-bgcolor",
-      "button_primary_color": "--button-primary-color",
+      "button": "--button-background-color",
+      "button_hover": "--button-background-color-hover",
+      "button_active": "--button-background-color-active",
+      "button_primary": "--color-accent-primary",
+      "button_primary_hover": "--color-accent-primary-hover",
+      "button_primary_active": "--color-accent-primary-active",
+      "button_primary_color": "--button-text-color-primary",
       "input_background": "--input-bgcolor",
       "input_color": "--input-color",
       "urlbar_popup_separator": "--urlbarView-separator-color",
-      "zoom_controls": "--zoom-controls-bgcolor",
-      "tab_icon_overlay_stroke": "--tab-icon-overlay-stroke",
-      "tab_icon_overlay_fill": "--tab-icon-overlay-fill"
+      "zoom_controls": "--zoom-controls-bgcolor"
     },
     "properties": {
       "panel_active": "--arrowpanel-dimmed-further",

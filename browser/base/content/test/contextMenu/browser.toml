@@ -4,7 +4,7 @@ support-files = [
   "test_contextmenu_links.html",
   "subtst_contextmenu.html",
   "subtst_contextmenu_input.html",
-  "subtst_contextmenu_keyword.html",
+  "subtst_contextmenu_add_search_engine.html",
   "subtst_contextmenu_xul.xhtml",
   "ctxmenu-image.png",
   "../general/head.js",
@@ -14,6 +14,7 @@ support-files = [
   "file_bug1798178.html",
   "bug1798178.sjs",
 ]
+tags = "os_integration"
 
 ["browser_bug1798178.js"]
 
@@ -34,6 +35,8 @@ skip-if = [
 
 ["browser_contextmenu_contenteditable.js"]
 
+["browser_contextmenu_cross_boundary_selection.js"]
+
 ["browser_contextmenu_iframe.js"]
 support-files = ["test_contextmenu_iframe.html"]
 skip-if = ["os == 'linux' && socketprocess_networking"]
@@ -44,7 +47,8 @@ skip-if = ["os == 'linux'"]
 ["browser_contextmenu_inspect.js"]
 skip-if = ["os == 'linux' && socketprocess_networking"]
 
-["browser_contextmenu_keyword.js"]
+["browser_contextmenu_add_search_engine.js"]
+support-files = ["subtst_contextmenu_add_search_engine.html"]
 skip-if = ["os == 'linux'"] # disabled on Linux due to bug 513558
 
 ["browser_contextmenu_linkopen.js"]
@@ -56,6 +60,9 @@ skip-if = ["os == 'linux' && socketprocess_networking"]
 
 ["browser_contextmenu_save_blocked.js"]
 skip-if = ["os == 'linux' && socketprocess_networking"]
+
+["browser_contextmenu_share_linux.js"]
+run-if = ["os == 'linux'"]
 
 ["browser_contextmenu_share_macosx.js"]
 https_first_disabled = true
@@ -85,6 +92,10 @@ support-files = [
 ]
 skip-if = ["os == 'linux' && socketprocess_networking"]
 
+["browser_copy_link_to_highlight.js"]
+
+["browser_save_image.js"]
+
 ["browser_strip_on_share_link.js"]
 
 ["browser_strip_on_share_nested_link.js"]
@@ -102,5 +113,3 @@ support-files = [
   "test_view_image_inline_svg.html",
 ]
 skip-if = ["os == 'linux' && socketprocess_networking"]
-
-["browser_contextmenu_cross_boundary_selection.js"]

@@ -6,13 +6,16 @@
 
 /**
  * @typedef {import("../../../../toolkit/components/translations/translations").SelectTranslationsPanelState} SelectTranslationsPanelState
+ * @typedef {import("../../../../toolkit/components/translations/translations").LanguagePair} LanguagePair
  */
 
 ChromeUtils.defineESModuleGetters(this, {
   LanguageDetector:
-    "resource://gre/modules/translation/LanguageDetector.sys.mjs",
+    "resource://gre/modules/translations/LanguageDetector.sys.mjs",
   TranslationsPanelShared:
     "chrome://browser/content/translations/TranslationsPanelShared.sys.mjs",
+  TranslationsUtils:
+    "chrome://global/content/translations/TranslationsUtils.mjs",
   Translator: "chrome://global/content/translations/Translator.mjs",
 });
 
@@ -201,8 +204,20 @@ var SelectTranslationsPanel = new (class {
    * Many of these are cases where the SelectTranslationsPanel is available
    * even though the FullPageTranslationsPanel is not, so this helps inform
    * whether the translate-full-page button should be allowed in this context.
+   *
+   * @type {boolean}
    */
   #isFullPageTranslationsRestrictedForPage = true;
+
+  /**
+   * The BCP-47 language tag of the active target language for Full-Page Translations,
+   * if available. This may not be available if Full-Page Translations is not currently
+   * active in the current tab of the current window, or if Full-Page Translations is
+   * restricted on the current page.
+   *
+   * @type { string | undefined }
+   */
+  #activeFullPageTranslationsTargetLanguage = undefined;
 
   /**
    * The internal state of the SelectTranslationsPanel.
@@ -297,15 +312,17 @@ var SelectTranslationsPanel = new (class {
     );
 
     // First see if any of the detected languages are supported and return it if so.
-    const { language, languages } = await LanguageDetector.detectLanguage(
-      textToTranslate
-    );
+    const { language, languages } =
+      await LanguageDetector.detectLanguage(textToTranslate);
+    const languagePairs = await TranslationsParent.getNonPivotLanguagePairs();
     for (const { languageCode } of languages) {
-      const isSupported = await TranslationsParent.isSupportedAsFromLang(
-        languageCode
-      );
-      if (isSupported) {
-        return languageCode;
+      const compatibleLangTag =
+        TranslationsParent.findCompatibleSourceLangTagSync(
+          languageCode,
+          languagePairs
+        );
+      if (compatibleLangTag) {
+        return compatibleLangTag;
       }
     }
 
@@ -334,6 +351,13 @@ var SelectTranslationsPanel = new (class {
       return this.#languageInfo;
     }
 
+    this.#isFullPageTranslationsRestrictedForPage =
+      TranslationsParent.isFullPageTranslationsRestrictedForPage(gBrowser);
+    this.#activeFullPageTranslationsTargetLanguage = this
+      .#isFullPageTranslationsRestrictedForPage
+      ? undefined
+      : this.#maybeGetActiveFullPageTranslationsTargetLanguage();
+
     this.#languageInfo = {
       docLangTag: undefined,
       isDocLangTagSupported: undefined,
@@ -350,7 +374,11 @@ var SelectTranslationsPanel = new (class {
       const preferredLanguages = TranslationsParent.getPreferredLanguages();
       const topPreferredLanguage = preferredLanguages?.[0];
       this.#languageInfo = {
-        docLangTag,
+        docLangTag:
+          // If Full-Page Translations (FPT) is active, we need to assume that the effective
+          // document language tag matches the language of the FPT target language, otherwise,
+          // if FPT is not active, we can take the real docLangTag value.
+          this.#activeFullPageTranslationsTargetLanguage ?? docLangTag,
         isDocLangTagSupported,
         topPreferredLanguage,
       };
@@ -382,8 +410,8 @@ var SelectTranslationsPanel = new (class {
    * based on user settings.
    *
    * @param {string} textToTranslate - The text for which the language detection and target language retrieval are performed.
-   * @returns {Promise<{fromLanguage?: string, toLanguage?: string}>} - An object containing the language pair for the translation.
-   *   The `fromLanguage` property is omitted if it is a language that is not currently supported by Firefox Translations.
+   * @returns {Promise<{sourceLanguage?: string, targetLanguage?: string}>} - An object containing the language pair for the translation.
+   *   The `sourceLanguage` property is omitted if it is a language that is not currently supported by Firefox Translations.
    */
   async getLangPairPromise(textToTranslate) {
     if (
@@ -396,15 +424,20 @@ var SelectTranslationsPanel = new (class {
       // we still need to ensure that the translate-selection menuitem in the context menu
       // is compatible with all code in other tests, so we will return "en" for the purpose
       // of being able to localize and display the context-menu item in other test cases.
-      return { toLang: "en" };
+      return { targetLanguage: "en" };
     }
 
-    const [fromLanguage, toLanguage] = await Promise.all([
-      SelectTranslationsPanel.getTopSupportedDetectedLanguage(textToTranslate),
-      TranslationsParent.getTopPreferredSupportedToLang(),
-    ]);
+    const sourceLanguage =
+      await SelectTranslationsPanel.getTopSupportedDetectedLanguage(
+        textToTranslate
+      );
+    const targetLanguage =
+      await TranslationsParent.getTopPreferredSupportedToLang({
+        // Avoid offering a same-language to same-language translation if we can.
+        excludeLangTags: [sourceLanguage],
+      });
 
-    return { fromLanguage, toLanguage };
+    return { sourceLanguage, targetLanguage };
   }
 
   /**
@@ -435,16 +468,16 @@ var SelectTranslationsPanel = new (class {
    * @returns {Promise<void>}
    */
   async #initializeLanguageMenuList(langTag, menuList) {
-    const isLangTagSupported =
+    const compatibleLangTag =
       menuList.id === this.elements.fromMenuList.id
-        ? await TranslationsParent.isSupportedAsFromLang(langTag)
-        : await TranslationsParent.isSupportedAsToLang(langTag);
+        ? await TranslationsParent.findCompatibleSourceLangTag(langTag)
+        : await TranslationsParent.findCompatibleTargetLangTag(langTag);
 
-    if (isLangTagSupported) {
+    if (compatibleLangTag) {
       // Remove the data-l10n-id because the menulist label will
       // be populated from the supported language's display name.
       menuList.removeAttribute("data-l10n-id");
-      menuList.value = langTag;
+      menuList.value = compatibleLangTag;
     } else {
       await this.#deselectLanguage(menuList);
     }
@@ -454,12 +487,12 @@ var SelectTranslationsPanel = new (class {
    * Initializes the selected values of the from-language and to-language menu
    * lists based on the result of the given language pair promise.
    *
-   * @param {Promise<{fromLanguage?: string, toLanguage?: string}>} langPairPromise
+   * @param {Promise<{sourceLanguage?: string, targetLanguage?: string}>} langPairPromise
    *
    * @returns {Promise<void>}
    */
   async #initializeLanguageMenuLists(langPairPromise) {
-    const { fromLanguage, toLanguage } = await langPairPromise;
+    const { sourceLanguage, targetLanguage } = await langPairPromise;
     const {
       fromMenuList,
       fromMenuPopup,
@@ -469,8 +502,8 @@ var SelectTranslationsPanel = new (class {
     } = this.elements;
 
     await Promise.all([
-      this.#initializeLanguageMenuList(fromLanguage, fromMenuList),
-      this.#initializeLanguageMenuList(toLanguage, toMenuList),
+      this.#initializeLanguageMenuList(sourceLanguage, fromMenuList),
+      this.#initializeLanguageMenuList(targetLanguage, toMenuList),
       this.#initializeLanguageMenuList(null, tryAnotherSourceMenuList),
     ]);
 
@@ -545,7 +578,7 @@ var SelectTranslationsPanel = new (class {
       return;
     }
 
-    const { fromLanguage, toLanguage } = await langPairPromise;
+    const { sourceLanguage, targetLanguage } = await langPairPromise;
     const { docLangTag, topPreferredLanguage } = this.#getLanguageInfo();
 
     TranslationsParent.telemetry()
@@ -553,16 +586,14 @@ var SelectTranslationsPanel = new (class {
       .onOpen({
         maintainFlow,
         docLangTag,
-        fromLanguage,
-        toLanguage,
+        sourceLanguage,
+        targetLanguage,
         topPreferredLanguage,
         textSource: isTextSelected ? "selection" : "hyperlink",
       });
 
     try {
       this.#sourceTextWordCount = undefined;
-      this.#isFullPageTranslationsRestrictedForPage =
-        TranslationsParent.isFullPageTranslationsRestrictedForPage(gBrowser);
       this.#initializeEventListeners();
       await this.#ensureLangListsBuilt();
       await Promise.all([
@@ -584,6 +615,25 @@ var SelectTranslationsPanel = new (class {
     }
 
     this.#openPopup(event, screenX, screenY);
+  }
+
+  /**
+   * Attempts to retrieve the language tag of the requested target language
+   * for Full Page Translations, if Full Page Translations is active on the page
+   * within the active tab of the active window.
+   *
+   * @returns {string | undefined} - The BCP-47 language tag.
+   */
+  #maybeGetActiveFullPageTranslationsTargetLanguage() {
+    try {
+      const { requestedLanguagePair } = TranslationsParent.getTranslationsActor(
+        gBrowser.selectedBrowser
+      ).languageState;
+      return requestedLanguagePair?.targetLanguage;
+    } catch {
+      this.console.warn("Failed to retrieve the TranslationsParent actor.");
+    }
+    return undefined;
   }
 
   /**
@@ -670,28 +720,27 @@ var SelectTranslationsPanel = new (class {
    * on the length of the text.
    *
    * @param {string} sourceText - The text to translate.
-   * @param {Promise<{fromLanguage?: string, toLanguage?: string}>} langPairPromise
+   * @param {Promise<{sourceLanguage?: string, targetLanguage?: string}>} langPairPromise
    *
    * @returns {Promise<void>}
    */
   async #registerSourceText(sourceText, langPairPromise) {
     const { textArea } = this.elements;
-    const { fromLanguage, toLanguage } = await langPairPromise;
-    const isFromLangSupported = await TranslationsParent.isSupportedAsFromLang(
-      fromLanguage
-    );
+    const { sourceLanguage, targetLanguage } = await langPairPromise;
+    const compatibleFromLang =
+      await TranslationsParent.findCompatibleSourceLangTag(sourceLanguage);
 
-    if (isFromLangSupported) {
+    if (compatibleFromLang) {
       this.#changeStateTo("idle", /* retainEntries */ false, {
         sourceText,
-        fromLanguage,
-        toLanguage,
+        sourceLanguage: compatibleFromLang,
+        targetLanguage,
       });
     } else {
       this.#changeStateTo("unsupported", /* retainEntries */ false, {
         sourceText,
-        detectedLanguage: fromLanguage,
-        toLanguage,
+        detectedLanguage: sourceLanguage,
+        targetLanguage,
       });
     }
 
@@ -1239,14 +1288,14 @@ var SelectTranslationsPanel = new (class {
    */
   onClickTranslateButton() {
     const { fromMenuList, tryAnotherSourceMenuList } = this.elements;
-    const { detectedLanguage, toLanguage } = this.#translationState;
+    const { detectedLanguage, targetLanguage } = this.#translationState;
 
     fromMenuList.value = tryAnotherSourceMenuList.value;
 
     TranslationsParent.telemetry().selectTranslationsPanel().onTranslateButton({
       detectedLanguage,
-      fromLanguage: fromMenuList.value,
-      toLanguage,
+      sourceLanguage: fromMenuList.value,
+      targetLanguage,
     });
 
     this.#maybeRequestTranslation();
@@ -1261,7 +1310,7 @@ var SelectTranslationsPanel = new (class {
       .onTranslateFullPageButton();
 
     const { panel } = this.elements;
-    const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
+    const languagePair = this.#getSelectedLanguagePair();
 
     try {
       const actor = TranslationsParent.getTranslationsActor(
@@ -1271,8 +1320,7 @@ var SelectTranslationsPanel = new (class {
         "popuphidden",
         () =>
           actor.translate(
-            fromLanguage,
-            toLanguage,
+            languagePair,
             false // reportAsAutoTranslate
           ),
         { once: true }
@@ -1421,27 +1469,36 @@ var SelectTranslationsPanel = new (class {
   /**
    * Checks if the given language pair matches the panel's currently selected language pair.
    *
-   * @param {string} fromLanguage - The from-language to compare.
-   * @param {string} toLanguage - The to-language to compare.
+   * @param {string} sourceLanguage - The from-language to compare.
+   * @param {string} targetLanguage - The to-language to compare.
    *
    * @returns {boolean} - True if the given language pair matches the selected languages in the panel UI, otherwise false.
    */
-  #isSelectedLangPair(fromLanguage, toLanguage) {
-    const { fromLanguage: selectedFromLang, toLanguage: selectedToLang } =
-      this.#getSelectedLanguagePair();
-    return fromLanguage === selectedFromLang && toLanguage === selectedToLang;
+  #isSelectedLangPair(sourceLanguage, targetLanguage) {
+    const selected = this.#getSelectedLanguagePair();
+    return (
+      TranslationsUtils.langTagsMatch(
+        sourceLanguage,
+        selected.sourceLanguage
+      ) &&
+      TranslationsUtils.langTagsMatch(targetLanguage, selected.targetLanguage)
+    );
   }
 
   /**
    * Retrieves the currently selected language pair from the menu lists.
    *
-   * @returns {{fromLanguage: string, toLanguage: string}} An object containing the selected languages.
+   * @returns {LanguagePair}
    */
   #getSelectedLanguagePair() {
     const { fromMenuList, toMenuList } = this.elements;
+    const [sourceLanguage, sourceVariant] = fromMenuList.value.split(",");
+    const [targetLanguage, targetVariant] = toMenuList.value.split(",");
     return {
-      fromLanguage: fromMenuList.value,
-      toLanguage: toMenuList.value,
+      sourceLanguage,
+      targetLanguage,
+      sourceVariant,
+      targetVariant,
     };
   }
 
@@ -1534,12 +1591,11 @@ var SelectTranslationsPanel = new (class {
       return;
     }
 
-    const { fromLanguage, toLanguage, detectedLanguage } =
+    const { sourceLanguage, targetLanguage, detectedLanguage } =
       this.#translationState;
-    const sourceLanguage = fromLanguage ? fromLanguage : detectedLanguage;
     this.console?.debug(
-      `SelectTranslationsPanel (${sourceLanguage ? sourceLanguage : "??"}-${
-        toLanguage ? toLanguage : "??"
+      `SelectTranslationsPanel (${sourceLanguage ?? detectedLanguage ?? "??"}-${
+        targetLanguage ? targetLanguage : "??"
       }) state change (${previousPhase} => ${phase})`
     );
 
@@ -1631,18 +1687,18 @@ var SelectTranslationsPanel = new (class {
    * Transitions the phase to "translatable" if the proper conditions are met,
    * otherwise retains the same phase as before.
    *
-   * @param {string} fromLanguage - The BCP-47 from-language tag.
-   * @param {string} toLanguage - The BCP-47 to-language tag.
+   * @param {string} sourceLanguage - The BCP-47 from-language tag.
+   * @param {string} targetLanguage - The BCP-47 to-language tag.
    */
-  #maybeChangeStateToTranslatable(fromLanguage, toLanguage) {
-    const {
-      fromLanguage: previousFromLanguage,
-      toLanguage: previousToLanguage,
-    } = this.#translationState;
+  #maybeChangeStateToTranslatable(sourceLanguage, targetLanguage) {
+    const previous = this.#translationState;
 
     const langSelectionChanged = () =>
-      previousFromLanguage !== fromLanguage ||
-      previousToLanguage !== toLanguage;
+      !TranslationsUtils.langTagsMatch(
+        previous.sourceLanguage,
+        sourceLanguage
+      ) ||
+      !TranslationsUtils.langTagsMatch(previous.targetLanguage, targetLanguage);
 
     const shouldTranslateEvenIfLangSelectionHasNotChanged = () => {
       const phase = this.phase();
@@ -1655,18 +1711,18 @@ var SelectTranslationsPanel = new (class {
     };
 
     if (
-      // A valid from-language is actively selected.
-      fromLanguage &&
-      // A valid to-language is actively selected.
-      toLanguage &&
+      // A valid source language is actively selected.
+      sourceLanguage &&
+      // A valid target language is actively selected.
+      targetLanguage &&
       // The language selection has changed, requiring a new translation.
       (langSelectionChanged() ||
         // We should try to translate even if the language selection has not changed.
         shouldTranslateEvenIfLangSelectionHasNotChanged())
     ) {
       this.#changeStateTo("translatable", /* retainEntries */ true, {
-        fromLanguage,
-        toLanguage,
+        sourceLanguage,
+        targetLanguage,
       });
     }
   }
@@ -1769,22 +1825,36 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
+   * Returns true if the translate-full-page button should be hidden in the current panel view.
+   *
+   * @returns {boolean}
+   */
+  #shouldHideTranslateFullPageButton() {
+    return (
+      // Do not offer to translate the full page if it is restricted on this page.
+      this.#isFullPageTranslationsRestrictedForPage ||
+      // Do not offer to translate the full page if Full-Page Translations is already active.
+      this.#activeFullPageTranslationsTargetLanguage
+    );
+  }
+
+  /**
    * Determines whether translation should continue based on panel state and language pair.
    *
    * @param {number} translationId - The id of the translation request to match.
-   * @param {string} fromLanguage - The from-language to analyze.
-   * @param {string} toLanguage - The to-language to analyze.
+   * @param {string} sourceLanguage - The source language to analyze.
+   * @param {string} targetLanguage - The target language to analyze.
    *
    * @returns {boolean} True if translation should continue with the given pair, otherwise false.
    */
-  #shouldContinueTranslation(translationId, fromLanguage, toLanguage) {
+  #shouldContinueTranslation(translationId, sourceLanguage, targetLanguage) {
     return (
       // Continue only if the panel is still open.
       this.#isOpen() &&
       // Continue only if the current translationId matches.
       translationId === this.#translationId &&
       // Continue only if the given language pair is still the actively selected pair.
-      this.#isSelectedLangPair(fromLanguage, toLanguage)
+      this.#isSelectedLangPair(sourceLanguage, targetLanguage)
     );
   }
 
@@ -1820,10 +1890,10 @@ var SelectTranslationsPanel = new (class {
   #displayTranslatedText() {
     this.#showMainContent();
 
-    const { toLanguage } = this.#getSelectedLanguagePair();
+    const { targetLanguage } = this.#getSelectedLanguagePair();
     const { textArea } = SelectTranslationsPanel.elements;
     textArea.value = this.getTranslatedText();
-    this.#updateTextDirection(toLanguage);
+    this.#updateTextDirection(targetLanguage);
     this.#updateConditionalUIEnabledState();
     this.#indicateTranslatedTextArea({ overflow: "auto" });
     this.#maybeEnableTextAreaResizer();
@@ -1856,7 +1926,7 @@ var SelectTranslationsPanel = new (class {
    * Enables or disables UI components that are conditional on a valid language pair being selected.
    */
   #updateConditionalUIEnabledState() {
-    const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
+    const { sourceLanguage, targetLanguage } = this.#getSelectedLanguagePair();
     const {
       copyButton,
       textArea,
@@ -1865,7 +1935,7 @@ var SelectTranslationsPanel = new (class {
       tryAnotherSourceMenuList,
     } = this.elements;
 
-    const invalidLangPairSelected = !fromLanguage || !toLanguage;
+    const invalidLangPairSelected = !sourceLanguage || !targetLanguage;
     const isTranslating = this.phase() === "translating";
 
     textArea.disabled = invalidLangPairSelected;
@@ -1873,8 +1943,8 @@ var SelectTranslationsPanel = new (class {
     translateButton.disabled = !tryAnotherSourceMenuList.value;
     translateFullPageButton.disabled =
       invalidLangPairSelected ||
-      fromLanguage === toLanguage ||
-      this.#isFullPageTranslationsRestrictedForPage;
+      TranslationsUtils.langTagsMatch(sourceLanguage, targetLanguage) ||
+      this.#shouldHideTranslateFullPageButton();
   }
 
   /**
@@ -1917,7 +1987,7 @@ var SelectTranslationsPanel = new (class {
         translationFailureMessageBar,
         tryAgainButton,
         unsupportedLanguageContent,
-        ...(this.#isFullPageTranslationsRestrictedForPage
+        ...(this.#shouldHideTranslateFullPageButton()
           ? [translateFullPageButton]
           : []),
       ],
@@ -1926,7 +1996,7 @@ var SelectTranslationsPanel = new (class {
         copyButton,
         doneButtonPrimary,
         textArea,
-        ...(this.#isFullPageTranslationsRestrictedForPage
+        ...(this.#shouldHideTranslateFullPageButton()
           ? []
           : [translateFullPageButton]),
       ],
@@ -2013,10 +2083,11 @@ var SelectTranslationsPanel = new (class {
    */
   #displayTranslationFailureMessage() {
     if (this.#mostRecentUIPhase !== "translation-failure") {
-      const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
+      const { sourceLanguage, targetLanguage } =
+        this.#getSelectedLanguagePair();
       TranslationsParent.telemetry()
         .selectTranslationsPanel()
-        .onTranslationFailureMessage({ fromLanguage, toLanguage });
+        .onTranslationFailureMessage({ sourceLanguage, targetLanguage });
     }
 
     const {
@@ -2074,11 +2145,10 @@ var SelectTranslationsPanel = new (class {
 
     const { unsupportedLanguageMessageBar, tryAnotherSourceMenuList } =
       this.elements;
-    const displayNames = new Services.intl.DisplayNames(undefined, {
-      type: "language",
-    });
+    const languageDisplayNames =
+      TranslationsParent.createLanguageDisplayNames();
     try {
-      const language = displayNames.of(detectedLanguage);
+      const language = languageDisplayNames.of(detectedLanguage);
       if (language) {
         document.l10n.setAttributes(
           unsupportedLanguageMessageBar,
@@ -2121,44 +2191,31 @@ var SelectTranslationsPanel = new (class {
   /**
    * Requests a translations port for a given language pair.
    *
-   * @param {string} fromLanguage - The from-language.
-   * @param {string} toLanguage - The to-language.
-   *
+   * @param {LanguagePair} languagePair
    * @returns {Promise<MessagePort | undefined>} The message port promise.
    */
-  async #requestTranslationsPort(fromLanguage, toLanguage) {
-    const innerWindowId =
-      gBrowser.selectedBrowser.browsingContext.top.embedderElement
-        .innerWindowID;
-    if (!innerWindowId) {
-      return undefined;
-    }
-    const port = await TranslationsParent.requestTranslationsPort(
-      innerWindowId,
-      fromLanguage,
-      toLanguage
-    );
-    return port;
+  async #requestTranslationsPort(languagePair) {
+    return TranslationsParent.requestTranslationsPort(languagePair);
   }
 
   /**
    * Retrieves the existing translator for the specified language pair if it matches,
    * otherwise creates a new translator.
    *
-   * @param {string} fromLanguage - The source language code.
-   * @param {string} toLanguage - The target language code.
+   * @param {LanguagePair} languagePair
    *
    * @returns {Promise<Translator>} A promise that resolves to a `Translator` instance for the given language pair.
    */
-  async #createTranslator(fromLanguage, toLanguage) {
+  async #createTranslator(languagePair) {
     this.console?.log(
-      `Creating new Translator (${fromLanguage}-${toLanguage})`
+      `Creating new Translator (${TranslationsUtils.serializeLanguagePair(languagePair)})`
     );
 
-    const translator = await Translator.create(fromLanguage, toLanguage, {
-      allowSameLanguage: true,
-      requestTranslationsPort: this.#requestTranslationsPort,
-    });
+    const translator = await Translator.create(
+      languagePair,
+      this.#requestTranslationsPort,
+      true /* allowSameLanguage */
+    );
     return translator;
   }
 
@@ -2171,8 +2228,9 @@ var SelectTranslationsPanel = new (class {
       return;
     }
 
-    const { fromLanguage, toLanguage } = this.#getSelectedLanguagePair();
-    this.#maybeChangeStateToTranslatable(fromLanguage, toLanguage);
+    const languagePair = this.#getSelectedLanguagePair();
+    const { sourceLanguage, targetLanguage } = languagePair;
+    this.#maybeChangeStateToTranslatable(sourceLanguage, targetLanguage);
 
     if (this.phase() !== "translatable") {
       return;
@@ -2182,13 +2240,15 @@ var SelectTranslationsPanel = new (class {
     const sourceText = this.getSourceText();
     const translationId = ++this.#translationId;
 
-    this.#createTranslator(fromLanguage, toLanguage)
+    TranslationsParent.storeMostRecentTargetLanguage(targetLanguage);
+
+    this.#createTranslator(languagePair)
       .then(translator => {
         if (
           this.#shouldContinueTranslation(
             translationId,
-            fromLanguage,
-            toLanguage
+            sourceLanguage,
+            targetLanguage
           )
         ) {
           this.#changeStateToTranslating();
@@ -2201,8 +2261,8 @@ var SelectTranslationsPanel = new (class {
           translatedText &&
           this.#shouldContinueTranslation(
             translationId,
-            fromLanguage,
-            toLanguage
+            sourceLanguage,
+            targetLanguage
           )
         ) {
           this.#changeStateToTranslated(translatedText);
@@ -2216,20 +2276,20 @@ var SelectTranslationsPanel = new (class {
     try {
       if (!this.#sourceTextWordCount) {
         this.#sourceTextWordCount = TranslationsParent.countWords(
-          fromLanguage,
+          sourceLanguage,
           sourceText
         );
       }
     } catch (error) {
-      // Failed to create an Intl.Segmenter for the fromLanguage.
+      // Failed to create an Intl.Segmenter for the sourceLanguage.
       // Continue on to report undefined to telemetry.
       this.console?.warn(error);
     }
 
     TranslationsParent.telemetry().onTranslate({
       docLangTag,
-      fromLanguage,
-      toLanguage,
+      sourceLanguage,
+      targetLanguage,
       topPreferredLanguage,
       autoTranslate: false,
       requestTarget: "select",
@@ -2239,34 +2299,38 @@ var SelectTranslationsPanel = new (class {
   }
 
   /**
-   * Reports to telemetry whether the from-language or the to-language has
+   * Reports to telemetry whether the source language or the target language has
    * changed based on whether the currently selected language is different
    * than the corresponding language that is stored in the panel's state.
    */
   #maybeReportLanguageChangeToTelemetry() {
-    const {
-      fromLanguage: previousFromLanguage,
-      toLanguage: previousToLanguage,
-    } = this.#translationState;
-    const {
-      fromLanguage: selectedFromLanguage,
-      toLanguage: selectedToLanguage,
-    } = this.#getSelectedLanguagePair();
+    const previous = this.#translationState;
+    const selected = this.#getSelectedLanguagePair();
 
-    if (selectedFromLanguage !== previousFromLanguage) {
+    if (
+      !TranslationsUtils.langTagsMatch(
+        selected.sourceLanguage,
+        previous.sourceLanguage
+      )
+    ) {
       const { docLangTag } = this.#getLanguageInfo();
       TranslationsParent.telemetry()
         .selectTranslationsPanel()
         .onChangeFromLanguage({
-          previousLangTag: previousFromLanguage,
-          currentLangTag: selectedFromLanguage,
+          previousLangTag: previous.sourceLanguage,
+          currentLangTag: selected.sourceLanguage,
           docLangTag,
         });
     }
-    if (selectedToLanguage !== previousToLanguage) {
+    if (
+      !TranslationsUtils.langTagsMatch(
+        selected.targetLanguage,
+        previous.targetLanguage
+      )
+    ) {
       TranslationsParent.telemetry()
         .selectTranslationsPanel()
-        .onChangeToLanguage(selectedToLanguage);
+        .onChangeToLanguage(selected.targetLanguage);
     }
   }
 

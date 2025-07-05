@@ -1,4 +1,5 @@
 [DEFAULT]
+subsuite = "translations"
 support-files = [
   "head.js",
   "!/toolkit/components/translations/tests/browser/shared-head.js",
@@ -9,13 +10,45 @@ support-files = [
 
 ["browser_translations_about_preferences_settings_always_translate_languages.js"]
 
+["browser_translations_about_preferences_settings_download_languages_all_ui.js"]
+
+["browser_translations_about_preferences_settings_download_languages_error_ui.js"]
+
+["browser_translations_about_preferences_settings_download_languages_ui.js"]
+
 ["browser_translations_about_preferences_settings_never_translate_languages.js"]
 
 ["browser_translations_about_preferences_settings_never_translate_sites.js"]
 
 ["browser_translations_about_preferences_settings_ui.js"]
 
+["browser_translations_about_preferences_settings_ui_keyboard_a11y.js"]
+
+["browser_translations_about_preferences_settings_ui_tab.js"]
+
+["browser_translations_e2e_full_page_translate_with_lexical_shortlist.js"]
+
+["browser_translations_e2e_full_page_translate_without_lexical_shortlist.js"]
+
+["browser_translations_full_page_intersection_content_eager.js"]
+
+["browser_translations_full_page_intersection_find_bar.js"]
+
+["browser_translations_full_page_intersection_find_bar_move_tab_to_new_window.js"]
+
+["browser_translations_full_page_intersection_find_bar_multi_tab.js"]
+
+["browser_translations_full_page_intersection_lazy.js"]
+
+["browser_translations_full_page_intersection_mutations_content_eager.js"]
+
+["browser_translations_full_page_intersection_mutations_lazy.js"]
+
+["browser_translations_full_page_language_id_behavior.js"]
+
 ["browser_translations_full_page_move_tab_to_new_window.js"]
+
+["browser_translations_full_page_moz_extension.js"]
 
 ["browser_translations_full_page_multiple_windows.js"]
 
@@ -61,6 +94,8 @@ support-files = [
 
 ["browser_translations_full_page_panel_firstrun_revisit.js"]
 
+["browser_translations_full_page_panel_flip_lexical_shortlist.js"]
+
 ["browser_translations_full_page_panel_fuzzing.js"]
 skip-if = ["true"]
 
@@ -79,13 +114,20 @@ skip-if = ["true"]
 ["browser_translations_full_page_panel_never_translate_site_manual.js"]
 
 ["browser_translations_full_page_panel_retry.js"]
-skip-if = ["os == 'linux' && !debug"] # Bug 1863227
+
+["browser_translations_full_page_panel_script_tags.js"]
 
 ["browser_translations_full_page_panel_settings_unsupported_lang.js"]
 
 ["browser_translations_full_page_panel_switch_languages.js"]
 
+["browser_translations_full_page_panel_switch_tabs_before_engine_ready.js"]
+
+["browser_translations_full_page_panel_target_language_persists_on_reopen.js"]
+
 ["browser_translations_full_page_panel_unsupported_lang.js"]
+
+["browser_translations_full_page_panel_weblanguage_differs_from_app.js"]
 
 ["browser_translations_full_page_reader_mode.js"]
 
@@ -99,6 +141,8 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1863227
 
 ["browser_translations_full_page_telemetry_panel_auto_offer_settings.js"]
 
+["browser_translations_full_page_telemetry_retranslate.js"]
+
 ["browser_translations_full_page_telemetry_switch_languages.js"]
 
 ["browser_translations_full_page_telemetry_translation_failure.js"]
@@ -107,9 +151,29 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1863227
 
 ["browser_translations_full_page_telemetry_unsupported_lang.js"]
 
+["browser_translations_recent_language_memory_auto_translate.js"]
+
+["browser_translations_recent_language_memory_full_page_and_select.js"]
+
+["browser_translations_recent_language_memory_full_page_and_select_multi_window.js"]
+
+["browser_translations_recent_language_memory_full_page_multi_window.js"]
+
+["browser_translations_recent_language_memory_full_page_multi_window_multi_tab.js"]
+
+["browser_translations_recent_language_memory_full_page_navigate.js"]
+
+["browser_translations_recent_language_memory_full_page_retranslate.js"]
+
 ["browser_translations_select_context_menu_engine_unsupported.js"]
 
 ["browser_translations_select_context_menu_feature_disabled.js"]
+
+["browser_translations_select_context_menu_preferred_app_locales.js"]
+
+["browser_translations_select_context_menu_preferred_language_edge_cases.js"]
+
+["browser_translations_select_context_menu_preferred_web_languages.js"]
 
 ["browser_translations_select_context_menu_with_full_page_translations_active.js"]
 
@@ -131,6 +195,8 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1863227
 
 ["browser_translations_select_panel_fallback_to_doc_language.js"]
 
+["browser_translations_select_panel_flip_lexical_shortlist.js"]
+
 ["browser_translations_select_panel_init_failure.js"]
 
 ["browser_translations_select_panel_modify_available_language_models.js"]
@@ -142,6 +208,8 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1863227
 ["browser_translations_select_panel_retranslate_on_change_language_directly.js"]
 
 ["browser_translations_select_panel_retranslate_on_change_language_from_dropdown_menu.js"]
+
+["browser_translations_select_panel_script_tags.js"]
 
 ["browser_translations_select_panel_select_current_language_directly.js"]
 
@@ -206,5 +274,9 @@ skip-if = ["os == 'linux' && !debug"] # Bug 1863227
 ["browser_translations_select_telemetry_translation_failure_ui_then_cancel.js"]
 
 ["browser_translations_select_telemetry_translation_failure_ui_then_succeed.js"]
+
+["browser_translations_select_telemetry_translation_failure_with_full_page_translations_active.js"]
+
+["browser_translations_select_telemetry_translation_success_with_full_page_translations_active.js"]
 
 ["browser_translations_select_telemetry_unsupported_language_ui.js"]

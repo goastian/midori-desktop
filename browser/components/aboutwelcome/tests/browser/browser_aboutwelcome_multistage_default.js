@@ -128,6 +128,26 @@ const TEST_AMO_CONTENT = [
   },
 ];
 
+const isMSIX =
+  AppConstants.platform === "win" &&
+  Services.sysinfo.getProperty("hasWinPackageId", false);
+
+const TEST_SET_DEFAULT_AND_PIN_CONTENT = [
+  {
+    id: "AW_EASY_SETUP_NEEDS_DEFAULT_AND_PIN",
+    content: {
+      position: "split",
+      split_narrow_bkg_position: "-60px",
+      progress_bar: true,
+      title: {
+        string_id: isMSIX
+          ? "mr2022-onboarding-pin-primary-button-label-msix"
+          : "mr2022-onboarding-pin-primary-button-label",
+      },
+    },
+  },
+];
+
 const TEST_DEFAULT_JSON = JSON.stringify(TEST_DEFAULT_CONTENT);
 
 async function openAboutWelcome() {
@@ -139,6 +159,10 @@ async function openAboutWelcome() {
     "about:welcome",
     true
   );
+  await ContentTask.spawn(gBrowser.selectedBrowser, {}, async function () {
+    // Mark the first entry as having been interacted with.
+    content.document.notifyUserGestureActivation();
+  });
   registerCleanupFunction(() => {
     BrowserTestUtils.removeTab(tab);
   });
@@ -229,7 +253,7 @@ add_task(async function test_multistage_aboutwelcome_default() {
       "main.AW_STEP3",
       "div.onboardingContainer",
       "div.section-main",
-      "div.tiles-theme-container",
+      "div.tiles-single-select-container",
       "div.steps",
       "div.indicator.current",
     ],
@@ -273,7 +297,7 @@ add_task(async function test_multistage_aboutwelcome_default() {
  * Test navigating back/forward between screens
  */
 add_task(async function test_Multistage_About_Welcome_navigation() {
-  let browser = await openAboutWelcome();
+  let browser = await openAboutWelcome(TEST_DEFAULT_JSON);
 
   await onButtonClick(browser, "button.primary");
   await TestUtils.waitForCondition(() => browser.canGoBack);
@@ -478,10 +502,10 @@ add_task(async function test_AWMultistage_Themes() {
 
   await ContentTask.spawn(browser, "Themes", async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.document.querySelector("label.theme"),
+      () => content.document.querySelector("label.select-item"),
       "Theme Icons"
     );
-    let themes = content.document.querySelectorAll("label.theme");
+    let themes = content.document.querySelectorAll("label.select-item");
     Assert.equal(themes.length, 2, "Two themes displayed");
   });
 
@@ -685,6 +709,7 @@ add_task(async function test_updatesPrefOnAWOpen() {
 });
 
 add_setup(async function () {
+  requestLongerTimeout(2);
   const sandbox = sinon.createSandbox();
   // This needs to happen before any about:welcome page opens
   sandbox.stub(FxAccounts.config, "promiseMetricsFlowURI").resolves("");
@@ -786,6 +811,49 @@ add_task(async function test_AMO_untranslated_strings() {
     //Unexpected selectors:
     ["main.AW_EASY_SETUP_NEEDS_DEFAULT"]
   );
+
+  registerCleanupFunction(async () => {
+    await popPrefs(); // for setAboutWelcomePref()
+    sandbox.restore();
+  });
+});
+
+add_task(async function test_set_default_pin_untranslated_strings() {
+  const sandbox = sinon.createSandbox();
+  await setAboutWelcomePref(true);
+  await setAboutWelcomeMultiStage(
+    JSON.stringify(TEST_SET_DEFAULT_AND_PIN_CONTENT)
+  );
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "about:welcome",
+    true
+  );
+  registerCleanupFunction(() => {
+    BrowserTestUtils.removeTab(tab);
+  });
+
+  let browser = tab.linkedBrowser;
+
+  if (
+    AppConstants.platform === "win" &&
+    Services.sysinfo.getProperty("hasWinPackageId", false)
+  ) {
+    await test_screen_content(
+      browser,
+      "Correct pin string is chosen based on MSIX",
+      ["h1[data-l10n-id='mr2022-onboarding-pin-primary-button-label-msix']"],
+      ["h1[data-l10n-id='mr2022-onboarding-pin-primary-button-label']"]
+    );
+  } else {
+    await test_screen_content(
+      browser,
+      "Correct pin string is chosen based on non-MSIX",
+      ["h1[data-l10n-id='mr2022-onboarding-pin-primary-button-label']"],
+      ["h1[data-l10n-id='mr2022-onboarding-pin-primary-button-label-msix']"]
+    );
+  }
 
   registerCleanupFunction(async () => {
     await popPrefs(); // for setAboutWelcomePref()

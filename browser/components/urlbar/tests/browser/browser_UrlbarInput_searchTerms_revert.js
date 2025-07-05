@@ -5,8 +5,6 @@
 // These tests check the behavior of the Urlbar when search terms are shown
 // and the user reverts the Urlbar.
 
-let defaultTestEngine;
-
 // The main search keyword used in tests
 const SEARCH_STRING = "chocolate cake";
 
@@ -14,60 +12,21 @@ add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.showSearchTerms.featureGate", true]],
   });
-
-  await SearchTestUtils.installSearchExtension(
-    {
-      name: "MozSearch",
-      search_url: "https://www.example.com/",
-      search_url_get_params: "q={searchTerms}&pc=fake_code",
-    },
-    { setAsDefault: true }
-  );
-  defaultTestEngine = Services.search.getEngineByName("MozSearch");
-
+  let cleanup = await installPersistTestEngines();
   registerCleanupFunction(async function () {
     await PlacesUtils.history.clear();
+    cleanup();
   });
 });
 
-async function searchWithTab(
-  searchString,
-  tab = null,
-  engine = defaultTestEngine
-) {
-  if (!tab) {
-    tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
-  }
-
-  let [expectedSearchUrl] = UrlbarUtils.getSearchQueryUrl(engine, searchString);
-  let browserLoadedPromise = BrowserTestUtils.browserLoaded(
-    tab.linkedBrowser,
-    false,
-    expectedSearchUrl
-  );
-
-  gURLBar.focus();
-  await UrlbarTestUtils.promiseAutocompleteResultPopup({
-    window,
-    waitForFocus,
-    value: searchString,
-    fireInputEvent: true,
-  });
-  EventUtils.synthesizeKey("KEY_Enter");
-  await browserLoadedPromise;
-
-  assertSearchStringIsInUrlbar(searchString);
-
-  return { tab, expectedSearchUrl };
-}
-
 function synthesizeRevert() {
   gURLBar.focus();
-  EventUtils.synthesizeKey("KEY_Escape", { repeat: 2 });
+  info("Escape to revert Urlbar.");
+  EventUtils.synthesizeKey("KEY_Escape");
 }
 
 // Users should be able to revert the URL bar
-add_task(async function revert() {
+add_task(async function double_escape_revert() {
   let { tab, expectedSearchUrl } = await searchWithTab(SEARCH_STRING);
   synthesizeRevert();
 
@@ -76,6 +35,24 @@ add_task(async function revert() {
     UrlbarTestUtils.trimURL(expectedSearchUrl),
     `Urlbar should have the reverted URI ${expectedSearchUrl} as its value.`
   );
+
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function click_revert() {
+  let { tab, expectedSearchUrl } = await searchWithTab(SEARCH_STRING);
+
+  info("Click on Revert button.");
+  let revertButton = gURLBar.querySelector(".urlbar-revert-button");
+  revertButton.click();
+
+  Assert.equal(
+    gURLBar.value,
+    UrlbarTestUtils.trimURL(expectedSearchUrl),
+    `Urlbar should have the reverted URI ${expectedSearchUrl} as its value.`
+  );
+
+  Assert.ok(gURLBar.focused, "Urlbar is focused.");
 
   BrowserTestUtils.removeTab(tab);
 });
@@ -122,8 +99,9 @@ add_task(async function revert_and_change_tab() {
   // Switch back to the original tab.
   await BrowserTestUtils.switchTab(gBrowser, tab);
 
-  // Because the urlbar is focused, the pageproxystate should be invalid.
-  assertSearchStringIsInUrlbar(SEARCH_STRING, { pageProxyState: "invalid" });
+  assertSearchStringIsInUrlbar(SEARCH_STRING, {
+    pageProxyState: "invalid",
+  });
 
   BrowserTestUtils.removeTab(tab);
   BrowserTestUtils.removeTab(tab2);
@@ -155,6 +133,7 @@ add_task(async function revert_when_using_content() {
     "pageshow"
   );
   tab.linkedBrowser.goBack();
+  Assert.ok(gURLBar.focused, "Address bar is focused.");
   await pageShowPromise;
   assertSearchStringIsInUrlbar(SEARCH_STRING);
 
@@ -164,6 +143,7 @@ add_task(async function revert_when_using_content() {
   );
   tab.linkedBrowser.goForward();
   await pageShowPromise;
+  Assert.ok(gURLBar.focused, "Address bar is focused.");
   assertSearchStringIsInUrlbar("another search string");
 
   BrowserTestUtils.removeTab(tab);

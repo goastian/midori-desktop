@@ -44,6 +44,7 @@ add_task(async function test_url_formatted_correctly_on_page_load() {
     // Check that whenever the value of the urlbar is changed, the correct
     // decoded punycode url is used.
     await BrowserTestUtils.browserLoaded(browser, false, null, true);
+
     ok(
       onValueChangeCalledAtLeastOnce,
       "OnValueChanged of UrlbarInput was called at least once."

@@ -7,11 +7,13 @@
 newtab-page-title = New Tab
 newtab-settings-button =
     .title = Customize your New Tab page
-newtab-personalize-icon-label =
-    .title = Personalize new tab
-    .aria-label = Personalize new tab
-newtab-personalize-dialog-label =
-    .aria-label = Personalize
+newtab-personalize-settings-icon-label =
+    .title = Personalize New Tab
+    .aria-label = Settings
+newtab-settings-dialog-label =
+    .aria-label = Settings
+newtab-logo-and-wordmark =
+    .aria-label = { -brand-full-name }
 
 ## Search box component.
 
@@ -44,7 +46,6 @@ newtab-search-box-input =
 
 newtab-topsites-add-search-engine-header = Add Search Engine
 newtab-topsites-add-shortcut-header = New Shortcut
-newtab-topsites-edit-topsites-header = Edit Top Site
 newtab-topsites-edit-shortcut-header = Edit Shortcut
 newtab-topsites-add-shortcut-label = Add Shortcut
 newtab-topsites-title-label = Title
@@ -96,10 +97,6 @@ newtab-dismiss-button-tooltip =
 newtab-menu-content-tooltip =
     .title = Open menu
     .aria-label = Open context menu for { $title }
-# Tooltip on an empty topsite box to open the New Top Site dialog.
-newtab-menu-topsites-placeholder-tooltip =
-    .title = Edit this site
-    .aria-label = Edit this site
 
 ## Context Menu: These strings are displayed in a context menu and are meant as a call to action for a given page.
 
@@ -114,6 +111,21 @@ newtab-menu-save-to-pocket = Save to { -pocket-brand-name }
 newtab-menu-delete-pocket = Delete from { -pocket-brand-name }
 newtab-menu-archive-pocket = Archive in { -pocket-brand-name }
 newtab-menu-show-privacy-info = Our sponsors & your privacy
+newtab-menu-about-fakespot = About { -fakespot-brand-name }
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Report
+# Context menu option to personalize New Tab recommended stories by blocking a section of stories,
+# e.g. "Sports". "Block" is a verb here.
+newtab-menu-section-block = Block
+# "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
+# e.g. Following the travel section of stories.
+newtab-menu-section-unfollow = Unfollow topic
+
+## Context menu options for sponsored stories and new ad formats on New Tab.
+
+newtab-menu-manage-sponsored-content = Manage sponsored content
+newtab-menu-our-sponsors-and-your-privacy = Our sponsors and your privacy
+newtab-menu-report-this-ad = Report this ad
 
 ## Message displayed in a modal window to explain privacy and provide context for sponsored content.
 
@@ -179,32 +191,21 @@ newtab-label-sponsored-by = Sponsored by { $sponsor }
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
 
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponsored
+
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
 
-newtab-section-menu-remove-section = Remove Section
-newtab-section-menu-collapse-section = Collapse Section
-newtab-section-menu-expand-section = Expand Section
-newtab-section-menu-manage-section = Manage Section
-newtab-section-menu-manage-webext = Manage Extension
-newtab-section-menu-add-topsite = Add Top Site
-newtab-section-menu-add-search-engine = Add Search Engine
-newtab-section-menu-move-up = Move Up
-newtab-section-menu-move-down = Move Down
 newtab-section-menu-privacy-notice = Privacy Notice
-
-## Section aria-labels
-
-newtab-section-collapse-section-label =
-    .aria-label = Collapse Section
-newtab-section-expand-section-label =
-    .aria-label = Expand Section
 
 ## Section Headers.
 
 newtab-section-header-topsites = Top Sites
 newtab-section-header-recent-activity = Recent activity
 newtab-section-header-stories = Thought-provoking stories
+# "picks" refers to recommended articles
+newtab-section-header-todays-picks = Today’s picks for you
 
 ## Empty Section States: These show when there are no more items in a section. Ex. When there are no more Pocket story recommendations, in the space where there would have been stories, this is shown instead.
 
@@ -222,20 +223,20 @@ newtab-discovery-empty-section-topstories-loading = Loading…
 # Displays when a layout in a section took too long to fetch articles.
 newtab-discovery-empty-section-topstories-timed-out = Oops! We almost loaded this section, but not quite.
 
-## Pocket Content Section.
+## Thumbs up and down buttons that shows over a newtab stories card thumbnail on hover.
 
-# This is shown at the bottom of the trending stories section and precedes a list of links to popular topics.
-newtab-pocket-read-more = Popular Topics:
-newtab-pocket-new-topics-title = Want even more stories? See these popular topics from { -pocket-brand-name }
-newtab-pocket-more-recommendations = More Recommendations
-newtab-pocket-learn-more = Learn more
-newtab-pocket-cta-button = Get { -pocket-brand-name }
-newtab-pocket-cta-text = Save the stories you love in { -pocket-brand-name }, and fuel your mind with fascinating reads.
-newtab-pocket-pocket-firefox-family = { -pocket-brand-name } is part of the { -brand-product-name } family
-
-# A save to Pocket button that shows over the card thumbnail on hover.
-newtab-pocket-save = Save
-newtab-pocket-saved = Saved
+# Clicking the thumbs up button for this story will result in more stories like this one being recommended
+newtab-pocket-thumbs-up-tooltip =
+    .title = More like this
+# Clicking the thumbs down button for this story informs us that the user does not feel like the story is interesting for them
+newtab-pocket-thumbs-down-tooltip =
+    .title = Not for me
+# Used to show the user a message upon clicking the thumbs up or down buttons
+newtab-toast-thumbs-up-or-down2 =
+    .message = Thanks. Your feedback will help us improve your feed.
+newtab-toast-dismiss-button =
+    .title = Dismiss
+    .aria-label = Dismiss
 
 ## Pocket content onboarding experience dialog and modal for new users seeing the Pocket section for the first time, shown as the first item in the Pocket section.
 
@@ -261,15 +262,10 @@ newtab-custom-row-selector =
             [one] { $num } row
            *[other] { $num } rows
         }
-newtab-custom-sponsored-sites = Sponsored shortcuts
 newtab-custom-stories-toggle =
   .label = Recommended stories
   .description = Exceptional content curated by the { -brand-product-name } family
-newtab-custom-pocket-sponsored = Sponsored stories
 newtab-custom-pocket-show-recent-saves = Show recent saves
-newtab-custom-recent-toggle =
-  .label = Recent activity
-  .description = A selection of recent sites and content
 newtab-custom-weather-toggle =
   .label = Weather
   .description = Today’s forecast at a glance
@@ -280,6 +276,12 @@ newtab-custom-settings = Manage more settings
 
 newtab-wallpaper-title = Wallpapers
 newtab-wallpaper-reset = Reset to default
+newtab-wallpaper-upload-image = Upload an image
+newtab-wallpaper-custom-color = Choose a color
+# Variables
+#   $file_size (number) - The number of the maximum image file size (in MB) that may be uploaded
+newtab-wallpaper-error-max-file-size = The image exceeded the file size limit of { $file_size }MB. Please try uploading a smaller file.
+newtab-wallpaper-error-file-type = We couldn’t upload your file. Please try again with different file type.
 newtab-wallpaper-light-red-panda = Red panda
 newtab-wallpaper-light-mountain = White mountain
 newtab-wallpaper-light-sky = Sky with purple and pink clouds
@@ -292,6 +294,8 @@ newtab-wallpaper-dark-panda = Red panda hidden in forest
 newtab-wallpaper-dark-sky = City landscape with a night sky
 newtab-wallpaper-dark-mountain = Landscape mountain
 newtab-wallpaper-dark-city = Purple city landscape
+newtab-wallpaper-dark-fox-anniversary = A fox on the pavement near a forest
+newtab-wallpaper-light-fox-anniversary = A fox in a grassy field with a misty mountain landscape
 
 ## Solid Colors
 
@@ -321,6 +325,10 @@ newtab-wallpaper-abstract-purple = Purple shapes
 newtab-wallpaper-abstract-orange = Orange shapes
 newtab-wallpaper-gradient-orange = Gradient orange and pink
 newtab-wallpaper-abstract-blue-purple = Blue and purple shapes
+newtab-wallpaper-abstract-white-curves = White with shaded curves
+newtab-wallpaper-abstract-purple-green = Purple and green light gradient
+newtab-wallpaper-abstract-blue-purple-waves = Blue and purple wavy shapes
+newtab-wallpaper-abstract-black-waves = Black wavy shapes
 
 ## Photographs
 
@@ -331,6 +339,26 @@ newtab-wallpaper-storm-sky = Storm sky
 newtab-wallpaper-sky-with-pink-clouds = Sky with pink clouds
 newtab-wallpaper-red-panda-yawns-in-a-tree = Red panda yawns in a tree
 newtab-wallpaper-white-mountains = White mountains
+newtab-wallpaper-hot-air-balloons = Assorted color of hot air balloons during daytime
+newtab-wallpaper-starry-canyon = Blue starry night
+newtab-wallpaper-suspension-bridge = Grey full-suspension bridge photography during daytime
+newtab-wallpaper-sand-dunes = White sand dunes
+newtab-wallpaper-palm-trees = Silhouette of coconut palm trees during golden hour
+newtab-wallpaper-blue-flowers = Closeup photography of blue-petaled flowers in bloom
+
+## Celestial
+
+# “Celestial” referring to astronomy; positioned in or relating to the sky,
+# or outer space as observed in astronomy.
+# Not to be confused with religious definition of the word.
+newtab-wallpaper-category-title-celestial = Celestial
+newtab-wallpaper-celestial-lunar-eclipse = Lunar eclipse
+newtab-wallpaper-celestial-earth-night = Night photo from low Earth orbit
+newtab-wallpaper-celestial-starry-sky = Starry sky
+newtab-wallpaper-celestial-eclipse-time-lapse = Lunar eclipse time lapse
+newtab-wallpaper-celestial-black-hole = Black hole galaxy illustration
+newtab-wallpaper-celestial-river = Satellite image of river
+
 
 # Variables
 #   $author_string (String) - The name of the creator of the photo.
@@ -357,7 +385,9 @@ newtab-weather-see-forecast =
 #   $provider (string) - Service provider for weather data
 newtab-weather-sponsored = { $provider } ∙ Sponsored
 newtab-weather-menu-change-location = Change location
-newtab-weather-change-location-search-input = Search location
+newtab-weather-change-location-search-input-placeholder =
+    .placeholder = Search location
+    .aria-label = Search location
 newtab-weather-menu-weather-display = Weather display
 # Display options are:
 # - Simple: Displays a current weather condition icon and the current temperature
@@ -375,3 +405,119 @@ newtab-weather-menu-hide-weather = Hide weather on New Tab
 newtab-weather-menu-learn-more = Learn more
 # This message is shown if user is working offline
 newtab-weather-error-not-available = Weather data is not available right now.
+
+## Topic Labels
+
+newtab-topic-label-business = Business
+newtab-topic-label-career = Career
+newtab-topic-label-education = Education
+newtab-topic-label-arts = Entertainment
+newtab-topic-label-food = Food
+newtab-topic-label-health = Health
+newtab-topic-label-hobbies = Gaming
+# ”Money” = “Personal Finance”, refers to articles and stories that help readers better manage
+# and understand their personal finances – from saving money to buying a home. See the
+# “Curated by our editors“ section at the top of https://getpocket.com/explore/personal-finance for more context
+newtab-topic-label-finance = Money
+newtab-topic-label-society-parenting = Parenting
+newtab-topic-label-government = Politics
+newtab-topic-label-education-science = Science
+# ”Life Hacks” = “Self Improvement”, refers to articles and stories aimed at helping readers improve various
+# aspects of their lives – from mental health to  productivity. See the “Curated by our editors“ section
+# at the top of https://getpocket.com/explore/self-improvement for more context.
+newtab-topic-label-society = Life Hacks
+newtab-topic-label-sports = Sports
+newtab-topic-label-tech = Tech
+newtab-topic-label-travel = Travel
+newtab-topic-label-home = Home & Garden
+
+## Topic Selection Modal
+
+# “fine-tune” refers to the process of making small adjustments to something to get
+# the best or desired experience or performance.
+newtab-topic-selection-title = Select topics to fine-tune your feed
+# “tailored” refers to process of (a tailor) making (clothes) to fit individual customers.
+# In other words, “Our expert curators prioritize stories to fit your selected interests”
+newtab-topic-selection-subtitle = Choose two or more topics. Our expert curators prioritize stories tailored to your interests. Update anytime.
+newtab-topic-selection-save-button = Save
+newtab-topic-selection-cancel-button = Cancel
+newtab-topic-selection-button-maybe-later = Maybe later
+newtab-topic-selection-privacy-link = Learn how we protect and manage data
+newtab-topic-selection-button-update-interests = Update your interests
+newtab-topic-selection-button-pick-interests = Pick your interests
+
+## Content Feed Sections
+## "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
+## e.g. Following the travel section of stories.
+
+newtab-section-follow-button = Follow
+newtab-section-following-button = Following
+newtab-section-unfollow-button = Unfollow
+
+## Button to block/unblock listed topics
+## "Block", "unblocked", and "blocked" are social media terms that refer to hiding a section of stories.
+## e.g. Blocked the politics section of stories.
+
+newtab-section-block-button = Block
+newtab-section-blocked-button = Blocked
+newtab-section-unblock-button = Unblock
+
+## Confirmation modal for blocking a section
+
+newtab-section-confirm-block-topic-p1 = Are you sure you want to block this topic?
+newtab-section-confirm-block-topic-p2 = Blocked topics will no longer appear in your feed.
+
+# Variables:
+#   $topic (string) - Name of topic that user is blocking
+newtab-section-block-topic-button = Block { $topic }
+newtab-section-cancel-button = Not now
+
+## Panel in the Customize menu section to manage followed and blocked topics
+
+newtab-section-mangage-topics-title = Topics
+newtab-section-manage-topics-button-v2 =
+    .label = Manage topics
+newtab-section-mangage-topics-followed-topics = Followed
+newtab-section-mangage-topics-followed-topics-empty-state = You have not followed any topics yet.
+newtab-section-mangage-topics-blocked-topics = Blocked
+newtab-section-mangage-topics-blocked-topics-empty-state = You have not blocked any topics yet.
+
+## Strings for custom wallpaper highlight
+
+newtab-custom-wallpaper-title = Custom wallpapers are here
+# 'Make firefox yours" means to customize or personalize
+newtab-custom-wallpaper-subtitle = Upload your own wallpaper or pick a custom color to make { -brand-product-name } yours.
+newtab-custom-wallpaper-cta = Try it
+
+## Strings for download mobile highlight
+
+newtab-download-mobile-highlight-title = Download { -brand-product-name } for mobile
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = Scan the code to securely browse on the go.
+newtab-download-mobile-highlight-body-variant-b = Pick up where you left off when you sync your tabs, passwords, and more.
+newtab-download-mobile-highlight-body-variant-c = Did you know you can take { -brand-product-name } on the go? Same browser. In your pocket.
+newtab-download-mobile-highlight-image =
+    .aria-label = QR code to download { -brand-product-name } for mobile
+
+## Strings for reporting ads and content
+
+newtab-report-content-why-reporting-this =
+  .label = Why are you reporting this?
+newtab-report-ads-reason-not-interested =
+  .label = I’m not interested
+newtab-report-ads-reason-inappropriate =
+  .label = It’s inappropriate
+newtab-report-ads-reason-seen-it-too-many-times =
+  .label = I’ve seen it too many times
+newtab-report-content-wrong-category =
+  .label = Wrong category
+newtab-report-content-outdated =
+  .label = Outdated
+newtab-report-content-inappropriate-offensive =
+  .label = Inappropriate or offensive
+newtab-report-content-spam-misleading =
+  .label = Spam or misleading
+newtab-report-cancel = Cancel
+newtab-report-submit = Submit
+newtab-toast-thanks-for-reporting =
+    .message = Thank you for reporting this.

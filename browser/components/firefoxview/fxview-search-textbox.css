@@ -3,8 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 .search-container {
-  border: 1px solid var(--fxview-border);
-  border-radius: var(--border-radius-small);
   color: var(--fxview-text-primary-color);
   display: inline-flex;
   overflow: hidden;
@@ -29,6 +27,7 @@
   bottom: 0;
   margin: auto 0;
   padding: 2px;
+  pointer-events: none;
 }
 
 .search-icon:dir(ltr) {
@@ -40,15 +39,14 @@
 }
 
 input {
-  border: none;
-  padding-block-start: 8px;
-  padding-block-end: 8px;
-  padding-inline-start: 32px;
-  padding-inline-end: 32px;
+  border: 1px solid var(--fxview-border-interactive);
+  border-radius: var(--border-radius-small);
+  padding: 8px 32px;
+  width: 100%;
 }
 
 .clear-icon {
-  background-image: url(chrome://global/skin/icons/close-12.svg);
+  background-image: url(resource://content-accessible/close-12.svg);
   background-position: center;
   background-repeat: no-repeat;
   background-size: 16px;

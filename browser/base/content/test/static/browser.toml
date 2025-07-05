@@ -13,6 +13,8 @@ support-files = ["head.js"]
 ["browser_all_files_referenced.js"]
 skip-if = ["verify && bits == 32"] # Causes OOMs when run repeatedly
 
+["browser_glean_metrics_exist.js"]
+
 ["browser_misused_characters_in_strings.js"]
 support-files = ["bug1262648_string_with_newlines.dtd"]
 skip-if = ["os == 'win' && msix"] # Permafail on MSIX packages due to it running on files it shouldn't.

@@ -4,7 +4,17 @@
 "use strict";
 
 const { DefaultBrowserCheck } = ChromeUtils.importESModule(
-  "resource:///modules/BrowserGlue.sys.mjs"
+  "moz-src:///browser/components/DefaultBrowserCheck.sys.mjs"
+);
+const { NimbusTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/NimbusTestUtils.sys.mjs"
+);
+const { ExperimentAPI } = ChromeUtils.importESModule(
+  "resource://nimbus/ExperimentAPI.sys.mjs"
+);
+
+const { SpecialMessageActions } = ChromeUtils.importESModule(
+  "resource://messaging-system/lib/SpecialMessageActions.sys.mjs"
 );
 const CHECK_PREF = "browser.shell.checkDefaultBrowser";
 
@@ -18,6 +28,31 @@ function showAndWaitForModal(callback) {
 }
 
 const TELEMETRY_NAMES = ["accept check", "accept", "cancel check", "cancel"];
+
+let testSetDefaultSpotlight = {
+  id: "TEST_MESSAGE",
+  template: "spotlight",
+  content: {
+    template: "multistage",
+    id: "SET_DEFAULT_SPOTLIGHT",
+    screens: [
+      {
+        id: "PROMPT_CLONE",
+        content: {
+          isSystemPromptStyleSpotlight: true,
+          title: {
+            fontSize: "13px",
+            raw: "Make Nightly your default browser?",
+          },
+          subtitle: {
+            fontSize: "13px",
+            raw: "Keep Nightly at your fingertips — make it your default browser and keep it in your Dock.",
+          },
+        },
+      },
+    ],
+  },
+};
 function AssertHistogram(histogram, name, expect = 1) {
   TelemetryTestUtils.assertHistogram(
     histogram,
@@ -81,7 +116,7 @@ add_task(async function stop_asking() {
 });
 
 add_task(async function primary_default() {
-  const mock = mockShell({ isPinned: true });
+  const mock = mockShell({ isPinned: true, isPinnedToStartMenu: true });
   const histogram = getHistogram();
 
   await showAndWaitForModal(win => {
@@ -95,6 +130,11 @@ add_task(async function primary_default() {
   );
   Assert.equal(
     mock.pinCurrentAppToTaskbarAsync.callCount,
+    0,
+    "Primary button doesn't pin if already pinned"
+  );
+  Assert.equal(
+    mock.pinCurrentAppToStartMenuAsync.callCount,
     0,
     "Primary button doesn't pin if already pinned"
   );
@@ -120,6 +160,123 @@ add_task(async function primary_pin() {
       1,
       "Primary button also pins"
     );
+    if (Services.sysinfo.getProperty("hasWinPackageId")) {
+      Assert.equal(
+        mock.pinCurrentAppToStartMenuAsync.callCount,
+        1,
+        "Primary button also pins to Windows start menu on MSIX"
+      );
+    }
   }
   AssertHistogram(histogram, "accept");
+});
+
+add_task(async function showDefaultPrompt() {
+  let sb = sinon.createSandbox();
+  const win2 = await BrowserTestUtils.openNewBrowserWindow();
+
+  const willPromptStub = sb
+    .stub(DefaultBrowserCheck, "willCheckDefaultBrowser")
+    .returns(true);
+  const promptSpy = sb.spy(DefaultBrowserCheck, "prompt");
+  await ExperimentAPI.ready();
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.setToDefaultPrompt.featureId,
+      value: {
+        showSpotlightPrompt: false,
+        message: {},
+      },
+    },
+    {
+      slug: "test-prompt-style-spotlight",
+    },
+    {
+      isRollout: true,
+    }
+  );
+
+  await BROWSER_GLUE._maybeShowDefaultBrowserPrompt();
+
+  Assert.equal(willPromptStub.callCount, 1, "willCheckDefaultBrowser called");
+  Assert.equal(promptSpy.callCount, 1, "default prompt should be called");
+
+  await sb.restore();
+
+  await doExperimentCleanup();
+  await BrowserTestUtils.closeWindow(win2);
+});
+
+add_task(async function promptStoresImpressionAndDisableTimestamps() {
+  await showAndWaitForModal(win => {
+    const dialog = win.document.querySelector("dialog");
+    dialog.querySelector("checkbox").click();
+    dialog.getButton("cancel").click();
+  });
+
+  const impressionTimestamp = Services.prefs.getCharPref(
+    "browser.shell.mostRecentDefaultPromptSeen"
+  );
+  const disabledTimestamp = Services.prefs.getCharPref(
+    "browser.shell.userDisabledDefaultCheck"
+  );
+
+  const now = Math.floor(Date.now() / 1000);
+  const oneHourInS = 60 * 60;
+
+  Assert.ok(
+    impressionTimestamp &&
+      now - parseInt(impressionTimestamp, 10) <= oneHourInS,
+    "Prompt impression timestamp is stored"
+  );
+
+  Assert.ok(
+    disabledTimestamp && now - parseInt(disabledTimestamp, 10) <= oneHourInS,
+    "Selecting checkbox stores timestamp of when user disabled the prompt"
+  );
+});
+
+add_task(async function showPromptStyleSpotlight() {
+  let sandbox = sinon.createSandbox();
+
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+
+  const willPromptStub = sandbox
+    .stub(DefaultBrowserCheck, "willCheckDefaultBrowser")
+    .returns(true);
+  const showSpotlightSpy = sandbox.spy(SpecialMessageActions, "handleAction");
+
+  await ExperimentAPI.ready();
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
+    {
+      featureId: NimbusFeatures.setToDefaultPrompt.featureId,
+      value: {
+        showSpotlightPrompt: true,
+        message: testSetDefaultSpotlight,
+      },
+    },
+    {
+      slug: "test-prompt-style-spotlight-2",
+    },
+    {
+      isRollout: true,
+    }
+  );
+
+  await BROWSER_GLUE._maybeShowDefaultBrowserPrompt();
+
+  Assert.equal(willPromptStub.callCount, 1, "willCheckDefaultBrowser called");
+  Assert.equal(showSpotlightSpy.callCount, 1, "handleAction should  be called");
+
+  ok(
+    showSpotlightSpy.calledWith({
+      type: "SHOW_SPOTLIGHT",
+      data: testSetDefaultSpotlight,
+    }),
+    "handleAction called with right args"
+  );
+
+  await doExperimentCleanup();
+  await sandbox.restore();
+  await BrowserTestUtils.closeWindow(win);
 });

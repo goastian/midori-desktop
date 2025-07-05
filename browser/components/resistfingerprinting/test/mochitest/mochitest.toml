@@ -1,12 +1,15 @@
 [DEFAULT]
-skip-if = ["os == 'android'"] # bug 1730213
+skip-if = [
+  "os == 'android'", # bug 1730213
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && ccov",
+]
 tags = "resistfingerprinting"
 
 support-files = [
   "file_animation_api.html",
   "worker_child.js",
   "worker_grandchild.js",
-  "!/dom/tests/mochitest/geolocation/network_geolocation.sjs",
+  "!/dom/geolocation/test/mochitest/network_geolocation.sjs",
 ]
 
 ["test_animation_api.html"]
@@ -17,6 +20,8 @@ support-files = [
 support-files = ["decode_error.mp4"]
 
 ["test_bug1382499_touch_api.html"]
+
+["test_bug1885101_screenwindow_sizes.html"]
 
 ["test_device_sensor_event.html"]
 
@@ -34,5 +39,3 @@ support-files = ["../../../../../dom/events/test/pointerevents/mochitest_support
 
 ["test_speech_synthesis.html"]
 skip-if = ["verify"]
-
-["test_bug1885101_screenwindow_sizes.html"]

@@ -27,7 +27,6 @@ export const ThemeVariableMap = [
     "--tab-loading-fill",
     {
       lwtProperty: "tab_loading",
-      optionalElementID: "tabbrowser-tabs",
     },
   ],
   [
@@ -80,18 +79,6 @@ export const ThemeVariableMap = [
     "--chrome-content-separator-color",
     {
       lwtProperty: "toolbar_bottom_separator",
-    },
-  ],
-  [
-    "--toolbarbutton-icon-fill",
-    {
-      lwtProperty: "icon_color",
-    },
-  ],
-  [
-    "--lwt-toolbarbutton-icon-fill-attention",
-    {
-      lwtProperty: "icon_attention_color",
     },
   ],
   [

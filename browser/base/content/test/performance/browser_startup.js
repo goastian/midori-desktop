@@ -29,6 +29,7 @@ const startupPhases = {
     allowlist: {
       modules: new Set([
         "resource:///modules/BrowserGlue.sys.mjs",
+        "moz-src:///browser/components/DesktopActorRegistry.sys.mjs",
         "resource:///modules/StartupRecorder.sys.mjs",
         "resource://gre/modules/AppConstants.sys.mjs",
         "resource://gre/modules/ActorManagerParent.sys.mjs",
@@ -86,8 +87,6 @@ const startupPhases = {
         "resource://gre/modules/ContextualIdentityService.sys.mjs",
         "resource://gre/modules/FxAccounts.sys.mjs",
         "resource://gre/modules/FxAccountsStorage.sys.mjs",
-        "resource://gre/modules/PlacesBackups.sys.mjs",
-        "resource://gre/modules/PlacesExpiration.sys.mjs",
         "resource://gre/modules/PlacesSyncUtils.sys.mjs",
         "resource://gre/modules/PushComponents.sys.mjs",
       ]),
@@ -109,6 +108,13 @@ const startupPhases = {
   },
 };
 
+if (AppConstants.platform == "win") {
+  // On Windows we call checkForLaunchOnLogin early in startup.
+  startupPhases["before profile selection"].allowlist.modules.add(
+    "moz-src:///browser/components/shell/StartupOSIntegration.sys.mjs"
+  );
+}
+
 if (
   Services.prefs.getBoolPref("browser.startup.blankWindow") &&
   Services.prefs.getCharPref(
@@ -124,6 +130,13 @@ if (
 if (AppConstants.MOZ_CRASHREPORTER) {
   startupPhases["before handling user events"].denylist.modules.add(
     "resource://gre/modules/CrashSubmit.sys.mjs"
+  );
+}
+// Bug 1798750
+if (AppConstants.platform != "linux") {
+  startupPhases["before handling user events"].denylist.modules.add(
+    "resource://gre/modules/PlacesBackups.sys.mjs",
+    "resource://gre/modules/PlacesExpiration.sys.mjs"
   );
 }
 

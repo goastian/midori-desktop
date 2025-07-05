@@ -52,6 +52,11 @@ clear-time-duration-value-last-2-hours =
 clear-time-duration-value-last-4-hours =
     .label = Last four hours
 
+# Variables:
+#   $midnightTime (String) - Time of midnight (00:00 hours) - to inform the user that history will be cleared after midnight
+clear-time-duration-value-since-midnight =
+    .label = Since { $midnightTime }
+
 clear-time-duration-value-today =
     .label = Today
 
@@ -70,11 +75,7 @@ item-history-and-downloads =
     .label = Browsing & download history
     .accesskey = B
 
-item-history-form-data-downloads =
-    .label = History
-    .accesskey = H
-
-item-history-form-data-downloads-description = Clears site and download history, saved form info, and searches
+item-history-and-downloads-description2 = Clears site and download history
 
 item-cookies =
     .label = Cookies
@@ -112,7 +113,7 @@ item-cached-content =
     .label = Temporary cached files and pages
     .accesskey = f
 
-item-cached-content-description = Clears items that helps sites load faster
+item-cached-content-description = Clears items that help sites load faster
 
 item-form-search-history =
     .label = Form & search history
@@ -121,6 +122,12 @@ item-form-search-history =
 item-site-prefs =
     .label = Site settings
     .accesskey = i
+
+item-formdata-prefs =
+    .label = Saved form info
+    .accesskey = o
+
+item-formdata-description = Clears things like names, emails, and other items you enter in forms
 
 item-site-prefs-description = Resets your permissions and site preferences to original settings
 

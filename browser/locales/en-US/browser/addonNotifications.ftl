@@ -72,11 +72,10 @@ webext-imported-addons = Finalize installing extensions imported to { -brand-sho
 # Variables:
 #  $name (String): The name of the add-on that will be removed.
 addon-removal-title = Remove { $name }?
-# Variables:
-#   $name (String): the name of the extension which is about to be removed.
-addon-removal-message = Remove { $name } from { -brand-shorter-name }?
 addon-removal-button = Remove
 addon-removal-abuse-report-checkbox = Report this extension to { -vendor-short-name }
+# "it" refers to the local AI model that is paired to the AI feature
+addon-mlmodel-removal-body = If you use the features or extensions that use this model, it will be re-added.
 
 # Variables:
 #   $addonCount (Number): the number of add-ons being downloaded
@@ -132,6 +131,7 @@ addon-local-install-error-not-signed = This add-on could not be installed becaus
 # Variables:
 #   $appVersion (String): the application version.
 addon-install-error-incompatible = { $addonName } could not be installed because it is not compatible with { -brand-short-name } { $appVersion }.
-addon-install-error-blocklisted = { $addonName } could not be installed because it has a high risk of causing stability or security problems.
+addon-install-error-hard-blocked = { $addonName } violates Mozilla’s policies and can’t be installed on { -brand-short-name }.
+addon-install-error-soft-blocked = { $addonName } violates Mozilla’s policies and can’t be installed on { -brand-short-name }.
 # Enterprise policies is a feature aimed at system administrators who want to deploy custom settings for Firefox.
 addon-install-error-admin-install-only = You cannot install { $addonName } as an end user, it can only be installed by an organization using enterprise policies.

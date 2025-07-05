@@ -14,7 +14,7 @@ add_task(async function test_uncheck_never_translate_site_shows_button() {
     languagePairs: LANGUAGE_PAIRS,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
   await FullPageTranslationsTestUtils.assertTranslationsButton(
     { button: true, circleArrows: false, locale: false, icon: true },
@@ -22,7 +22,9 @@ add_task(async function test_uncheck_never_translate_site_shows_button() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
   await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
 
@@ -37,8 +39,10 @@ add_task(async function test_uncheck_never_translate_site_shows_button() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
     openFromAppMenu: true,
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
   await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
 
@@ -74,13 +78,16 @@ add_task(
       downloadHandler: resolveDownloads,
     });
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
     });
     await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
@@ -103,9 +110,11 @@ add_task(
       { checked: true }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
       openFromAppMenu: true,
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
     });
@@ -129,10 +138,12 @@ add_task(
       { checked: false }
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await cleanup();

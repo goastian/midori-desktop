@@ -4,13 +4,6 @@
 
 "use strict";
 
-var FormAutofillHandler;
-add_task(async function () {
-  ({ FormAutofillHandler } = ChromeUtils.importESModule(
-    "resource://gre/modules/shared/FormAutofillHandler.sys.mjs"
-  ));
-});
-
 const DEFAULT_ADDRESS_RECORD = {
   guid: "123",
   "street-address": "2 Harrison St\nline2\nline3",
@@ -345,34 +338,6 @@ const TESTCASES = [
       {
         "address-level1": "option-address-level1-same2",
         country: "option-country-same2",
-      },
-    ],
-  },
-  {
-    description:
-      "Address form without matching options in select for address-level1 and country",
-    document: `<form>
-               <input autocomplete="given-name">
-               <select autocomplete="address-level1">
-                 <option id="option-address-level1-dummy1" value="">Dummy</option>
-                 <option id="option-address-level1-dummy2" value="">Dummy 2</option>
-               </select>
-               <select autocomplete="country">
-                 <option id="option-country-dummy1" value="">Dummy</option>
-                 <option id="option-country-dummy2" value="">Dummy 2</option>
-               </select>
-               </form>`,
-    profileData: [{ ...DEFAULT_ADDRESS_RECORD }],
-    expectedResult: [
-      {
-        guid: "123",
-        "street-address": "2 Harrison St\nline2\nline3",
-        "-moz-street-address-one-line": "2 Harrison St line2 line3",
-        "address-line1": "2 Harrison St",
-        "address-line2": "line2",
-        "address-line3": "line3",
-        tel: "+19876543210",
-        "tel-national": "9876543210",
       },
     ],
   },
@@ -1299,12 +1264,15 @@ for (let testcase of TESTCASES) {
     let formLike = FormLikeFactory.createFromForm(form);
     let handler = new FormAutofillHandler(formLike);
 
-    handler.collectFormFields();
-    handler.focusedInput = form.elements[0];
-
-    let adaptedRecords = handler.activeSection.getAdaptedProfiles(
-      testcase.profileData
+    const fieldDetails = FormAutofillHandler.collectFormFieldDetails(
+      handler.form
     );
+
+    // TODO: This test should be a browser test instead
+    FormAutofillHeuristics.parseAndUpdateFieldNamesParent(fieldDetails);
+    handler.setIdentifiedFieldDetails(fieldDetails);
+
+    let adaptedRecords = handler.getAdaptedProfiles(testcase.profileData);
     Assert.deepEqual(adaptedRecords, testcase.expectedResult);
 
     if (testcase.expectedOptionElements) {
@@ -1314,10 +1282,11 @@ for (let testcase of TESTCASES) {
           let expectedOption = doc.getElementById(expectedOptionElement[field]);
           Assert.notEqual(expectedOption, null);
 
-          let value = testcase.profileData[i][field];
-          let cache =
-            handler.activeSection._cacheValue.matchingSelectOption.get(select);
-          let targetOption = cache[value] && cache[value].deref();
+          let targetOption =
+            handler.matchSelectOptions(
+              { element: select, fieldName: field },
+              testcase.profileData[i]
+            ) ?? null;
           Assert.notEqual(targetOption, null);
 
           Assert.equal(targetOption, expectedOption);

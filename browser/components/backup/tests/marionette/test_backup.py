@@ -2,7 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import json
 import os
 import shutil
 import tempfile
@@ -18,129 +17,139 @@ class BackupTest(MarionetteTestCase):
 
     def setUp(self):
         MarionetteTestCase.setUp(self)
-        # We need to quit the browser and restart with the browser.backup.log
-        # pref already set to true in order for it to be displayed.
+
+        # We need to force the "browser.backup.log" pref already set to true
+        # before Firefox starts in order for it to be displayed.
+        self.marionette.enforce_gecko_prefs({"browser.backup.log": True})
+
+        self.marionette.set_context("chrome")
+
+    def tearDown(self):
+        # Restart Firefox with a new profile to get rid from all modifications.
         self.marionette.quit()
-        self.marionette.instance.prefs = {
-            "browser.backup.log": True,
-        }
-        # Now restart the browser.
         self.marionette.instance.switch_profile()
         self.marionette.start_session()
 
-    def test_backup(self):
-        self.marionette.set_context("chrome")
+        MarionetteTestCase.tearDown(self)
 
+    def test_backup(self):
         self.add_test_cookie()
         self.add_test_login()
         self.add_test_certificate()
         self.add_test_saved_address()
         self.add_test_identity_credential()
         self.add_test_form_history()
-        self.add_test_activity_stream_snippets_data()
+        self.add_test_asrouter_snippets_data()
         self.add_test_protections_data()
         self.add_test_bookmarks()
         self.add_test_history()
         self.add_test_preferences()
         self.add_test_permissions()
 
-        resourceKeys = self.marionette.execute_script(
-            """
-          const DefaultBackupResources = ChromeUtils.importESModule("resource:///modules/backup/BackupResources.sys.mjs");
-          let resourceKeys = [];
-          for (const resourceName in DefaultBackupResources) {
-            let resource = DefaultBackupResources[resourceName];
-            resourceKeys.push(resource.key);
-          }
-          return resourceKeys;
-        """
-        )
-
-        originalStagingPath = self.marionette.execute_async_script(
+        # We want to make sure that any payment methods in this testing profile
+        # are properly encrypted using OSKeyStore, and that the encrypted
+        # backup will properly extract and recover from the original OSKeyStore
+        # secret.
+        #
+        # What we _don't_ want to do is encrypt or extract the OSKeyStore secret
+        # used by this machine's _actual_ Firefox instance, if one exists
+        # (since they're all shared). We also definitely do not want to
+        # accidentally overwrite that secret.
+        #
+        # We solve this by poking a new STORE_LABEL value into the OSKeyStore
+        # module before we do the following:
+        #
+        # 1. Store payment methods
+        # 2. Enable encryption
+        #
+        # Once that'd one, we delete the temporary OSKeyStore row that we
+        # created. This technique is similar to the one used in
+        # OSKeyStoreTestUtils, which is unfortunately not a module that is
+        # available to Marionette tests.
+        backupOSKeyStoreLabel = self.marionette.execute_script(
             """
           const { OSKeyStore } = ChromeUtils.importESModule(
             "resource://gre/modules/OSKeyStore.sys.mjs"
           );
+
+          const BACKUP_OSKEYSTORE_LABEL = "test-" + Math.random().toString(36).substr(2);
+          OSKeyStore.STORE_LABEL = BACKUP_OSKEYSTORE_LABEL;
+          return BACKUP_OSKEYSTORE_LABEL;
+        """
+        )
+
+        # Now that we've got the fake OSKeyStore set up, we can insert our
+        # testing payment methods.
+        self.add_test_payment_methods()
+
+        # Restart the browser to force all of the test data we just added
+        # to be flushed to disk and to be made ready for backup
+        self.marionette.restart()
+
+        # Put the OSKeyStore label back, since it would have been cleared
+        # from memory during the restart.
+        self.marionette.execute_script(
+            """
+          const { OSKeyStore } = ChromeUtils.importESModule(
+            "resource://gre/modules/OSKeyStore.sys.mjs"
+          );
+
+          const BACKUP_OSKEYSTORE_LABEL = arguments[0];
+          OSKeyStore.STORE_LABEL = BACKUP_OSKEYSTORE_LABEL;
+        """,
+            script_args=[backupOSKeyStoreLabel],
+        )
+
+        archiveDestPath = os.path.join(tempfile.gettempdir(), "backup-dest")
+        recoveryCode = "This is a test password"
+        archivePath = self.marionette.execute_async_script(
+            """
+
           const { BackupService } = ChromeUtils.importESModule("resource:///modules/backup/BackupService.sys.mjs");
           let bs = BackupService.init();
           if (!bs) {
             throw new Error("Could not get initialized BackupService.");
           }
 
-          let [outerResolve] = arguments;
-          (async () => {
-            // This is some hackery to make it so that OSKeyStore doesn't kick
-            // off an OS authentication dialog in our test, and also to make
-            // sure we don't blow away the _real_ OSKeyStore key for the browser
-            // on the system that this test is running on. Normally, I'd use
-            // OSKeyStoreTestUtils.setup to do this, but apparently the
-            // testing-common modules aren't available in Marionette tests.
-            const ORIGINAL_STORE_LABEL = OSKeyStore.STORE_LABEL;
-            OSKeyStore.STORE_LABEL = "test-" + Math.random().toString(36).substr(2);
-            await bs.enableEncryption("This is a test password");
-            await OSKeyStore.cleanup();
-            OSKeyStore.STORE_LABEL = ORIGINAL_STORE_LABEL;
+          let [archiveDestPath, recoveryCode, outerResolve] = arguments;
+          bs.setParentDirPath(archiveDestPath);
 
-            let { stagingPath } = await bs.createBackup();
-            if (!stagingPath) {
+          (async () => {
+
+            await bs.enableEncryption(recoveryCode);
+
+            let { archivePath } = await bs.createBackup();
+            if (!archivePath) {
               throw new Error("Could not create backup.");
             }
-            return stagingPath;
+            return archivePath;
           })().then(outerResolve);
+        """,
+            script_args=[archiveDestPath, recoveryCode],
+        )
+
+        # Now we clean up our temporary OSKeyStore from the OS's secure storage.
+        # We won't need it anymore.
+        self.marionette.execute_async_script(
+            """
+           const { OSKeyStore } = ChromeUtils.importESModule(
+             "resource://gre/modules/OSKeyStore.sys.mjs"
+           );
+
+           let [outerResolve] = arguments;
+           (async () => {
+              await OSKeyStore.cleanup();
+           })().then(outerResolve);
         """
         )
 
-        # When we switch over to the recovered profile, the Marionette framework
-        # will blow away the profile directory of the one that we created the
-        # backup on, which ruins our ability to do postRecovery work, since
-        # that relies on the prior profile sticking around. We work around this
-        # by moving the staging folder we got back to the OS temporary
-        # directory, and telling the recovery method to use that instead of the
-        # one from the profile directory.
-        stagingPath = os.path.join(tempfile.gettempdir(), "staging-test")
-        # Delete the destination folder if it exists already
-        shutil.rmtree(stagingPath, ignore_errors=True)
-        shutil.move(originalStagingPath, stagingPath)
-
-        # First, ensure that the staging path exists
-        self.assertTrue(os.path.exists(stagingPath))
-        # Now, ensure that the backup-manifest.json file exists within it.
-        manifestPath = os.path.join(stagingPath, "backup-manifest.json")
-        self.assertTrue(os.path.exists(manifestPath))
-
-        # For now, we just do a cursory check to ensure that for the resources
-        # that are listed in the manifest as having been backed up, that we
-        # have at least one file in their respective staging directories.
-        # We don't check the contents of the files, just that they exist.
-
-        # Read the JSON manifest file
-        with open(manifestPath, "r") as f:
-            manifest = json.load(f)
-
-        # Ensure that the manifest has a "resources" key
-        self.assertIn("resources", manifest)
-        resources = manifest["resources"]
-        self.assertTrue(isinstance(resources, dict))
-        self.assertTrue(len(resources) > 0)
-
-        # We don't have encryption capabilities wired up yet, so we'll check
-        # that all default resources are represented in the manifest.
-        self.assertEqual(len(resources), len(resourceKeys))
-        for resourceKey in resourceKeys:
-            self.assertIn(resourceKey, resources)
-
-        # Iterate the resources dict keys
-        for resourceKey in resources:
-            print("Checking resource: %s" % resourceKey)
-            # Ensure that there are staging directories created for each
-            # resource that was backed up
-            resourceStagingDir = os.path.join(stagingPath, resourceKey)
-            self.assertTrue(os.path.exists(resourceStagingDir))
+        recoveryPath = os.path.join(tempfile.gettempdir(), "recovery")
+        shutil.rmtree(recoveryPath, ignore_errors=True)
 
         # Start a brand new profile, one without any of the data we created or
         # backed up. This is the one that we'll be starting recovery from.
         self.marionette.quit()
-        self.marionette.instance.profile = None
+        self.marionette.instance.switch_profile()
         self.marionette.start_session()
         self.marionette.set_context("chrome")
 
@@ -151,8 +160,10 @@ class BackupTest(MarionetteTestCase):
             newProfileName,
             newProfilePath,
             expectedClientID,
+            osKeyStoreLabel,
         ] = self.marionette.execute_async_script(
             """
+          const { OSKeyStore } = ChromeUtils.importESModule("resource://gre/modules/OSKeyStore.sys.mjs");
           const { ClientID } = ChromeUtils.importESModule("resource://gre/modules/ClientID.sys.mjs");
           const { BackupService } = ChromeUtils.importESModule("resource:///modules/backup/BackupService.sys.mjs");
           let bs = BackupService.get();
@@ -160,28 +171,40 @@ class BackupTest(MarionetteTestCase):
             throw new Error("Could not get initialized BackupService.");
           }
 
-          let [stagingPath, outerResolve] = arguments;
+          let [archivePath, recoveryCode, recoveryPath, outerResolve] = arguments;
           (async () => {
             let newProfileRootPath = await IOUtils.createUniqueDirectory(
               PathUtils.tempDir,
-              "recoverFromBackupTest-newProfileRoot"
+              "recoverFromBackupArchiveTest-newProfileRoot"
             );
-            let newProfile = await bs.recoverFromBackup(stagingPath, false, newProfileRootPath)
+
+            // This is some hackery to make it so that OSKeyStore doesn't kick
+            // off an OS authentication dialog in our test, and also to make
+            // sure we don't blow away the _real_ OSKeyStore key for the browser
+            // on the system that this test is running on. Normally, I'd use
+            // OSKeyStoreTestUtils.setup to do this, but apparently the
+            // testing-common modules aren't available in Marionette tests.
+            const ORIGINAL_STORE_LABEL = OSKeyStore.STORE_LABEL;
+            OSKeyStore.STORE_LABEL = "test-" + Math.random().toString(36).substr(2);
+
+            let newProfile = await bs.recoverFromBackupArchive(archivePath, recoveryCode, false, recoveryPath, newProfileRootPath);
+
             if (!newProfile) {
               throw new Error("Could not create recovery profile.");
             }
 
             let expectedClientID = await ClientID.getClientID();
 
-            return [newProfile.name, newProfile.rootDir.path, expectedClientID];
+            return [newProfile.name, newProfile.rootDir.path, expectedClientID, OSKeyStore.STORE_LABEL];
           })().then(outerResolve);
         """,
-            script_args=[stagingPath],
+            script_args=[archivePath, recoveryCode, recoveryPath],
         )
 
         print("Recovery name: %s" % newProfileName)
         print("Recovery path: %s" % newProfilePath)
         print("Expected clientID: %s" % expectedClientID)
+        print("Persisting fake OSKeyStore label: %s" % osKeyStoreLabel)
 
         self.marionette.quit()
         originalProfile = self.marionette.instance.profile
@@ -189,8 +212,9 @@ class BackupTest(MarionetteTestCase):
         self.marionette.start_session()
         self.marionette.set_context("chrome")
 
-        # Ensure that all postRecovery actions have completed.
-        self.marionette.execute_async_script(
+        # Ensure that all postRecovery actions have completed, and that
+        # encryption is enabled.
+        encryptionEnabled = self.marionette.execute_async_script(
             """
           const { BackupService } = ChromeUtils.importESModule("resource:///modules/backup/BackupService.sys.mjs");
           let bs = BackupService.get();
@@ -201,9 +225,13 @@ class BackupTest(MarionetteTestCase):
           let [outerResolve] = arguments;
           (async () => {
             await bs.postRecoveryComplete;
+
+            await bs.loadEncryptionState();
+            return bs.state.encryptionEnabled;
           })().then(outerResolve);
         """
         )
+        self.assertTrue(encryptionEnabled)
 
         self.verify_recovered_test_cookie()
         self.verify_recovered_test_login()
@@ -211,12 +239,28 @@ class BackupTest(MarionetteTestCase):
         self.verify_recovered_saved_address()
         self.verify_recovered_identity_credential()
         self.verify_recovered_form_history()
-        self.verify_recovered_activity_stream_snippets_data()
+        self.verify_recovered_asrouter_snippets_data()
         self.verify_recovered_protections_data()
         self.verify_recovered_bookmarks()
         self.verify_recovered_history()
         self.verify_recovered_preferences()
         self.verify_recovered_permissions()
+        self.verify_recovered_payment_methods(osKeyStoreLabel)
+
+        # Clean up the temporary OSKeyStore label
+        self.marionette.execute_async_script(
+            """
+          const { OSKeyStore } = ChromeUtils.importESModule("resource://gre/modules/OSKeyStore.sys.mjs");
+          let [osKeyStoreLabel, outerResolve] = arguments;
+
+          OSKeyStore.STORE_LABEL = osKeyStoreLabel;
+
+          (async () => {
+            await OSKeyStore.cleanup();
+          })().then(outerResolve);
+        """,
+            script_args=[osKeyStoreLabel],
+        )
 
         # Now also ensure that the recovered profile inherited the client ID
         # from the profile that initiated recovery.
@@ -231,27 +275,28 @@ class BackupTest(MarionetteTestCase):
         )
         self.assertEqual(recoveredClientID, expectedClientID)
 
-        # Try not to pollute the profile list by getting rid of the one we just
-        # created.
         self.marionette.quit()
         self.marionette.instance.profile = originalProfile
         self.marionette.start_session()
         self.marionette.set_context("chrome")
-        self.marionette.execute_script(
+
+        # Don't pollute the profile list by getting rid of the one we just created.
+        self.marionette.execute_async_script(
             """
-          let newProfileName = arguments[0];
+          let [newProfileName, outerResolve] = arguments;
           let profileSvc = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
             Ci.nsIToolkitProfileService
           );
           let profile = profileSvc.getProfileByName(newProfileName);
           profile.remove(true);
-          profileSvc.flush();
+          profileSvc.asyncFlush().then(outerResolve);
         """,
             script_args=[newProfileName],
         )
 
-        # Cleanup the staging path that we moved
-        mozfile.remove(stagingPath)
+        # Cleanup the archive we moved, and the recovery folder we decompressed to.
+        mozfile.remove(archivePath)
+        mozfile.remove(recoveryPath)
 
     def add_test_cookie(self):
         self.marionette.execute_async_script(
@@ -538,17 +583,17 @@ class BackupTest(MarionetteTestCase):
         )
         self.assertEqual(formHistoryResultsLength, 1)
 
-    def add_test_activity_stream_snippets_data(self):
+    def add_test_asrouter_snippets_data(self):
         self.marionette.execute_async_script(
             """
-          const { ActivityStreamStorage } = ChromeUtils.importESModule(
-            "resource://activity-stream/lib/ActivityStreamStorage.sys.mjs",
+          const { ASRouterStorage } = ChromeUtils.importESModule(
+            "resource:///modules/asrouter/ASRouterStorage.sys.mjs",
           );
           const SNIPPETS_TABLE_NAME = "snippets";
 
           let [outerResolve] = arguments;
           (async () => {
-            let storage = new ActivityStreamStorage({
+            let storage = new ASRouterStorage({
               storeNames: [SNIPPETS_TABLE_NAME],
             });
             let snippetsTable = await storage.getDbTable(SNIPPETS_TABLE_NAME);
@@ -557,17 +602,17 @@ class BackupTest(MarionetteTestCase):
         """
         )
 
-    def verify_recovered_activity_stream_snippets_data(self):
+    def verify_recovered_asrouter_snippets_data(self):
         snippetsResult = self.marionette.execute_async_script(
             """
-          const { ActivityStreamStorage } = ChromeUtils.importESModule(
-            "resource://activity-stream/lib/ActivityStreamStorage.sys.mjs",
+          const { ASRouterStorage } = ChromeUtils.importESModule(
+            "resource:///modules/asrouter/ASRouterStorage.sys.mjs",
           );
           const SNIPPETS_TABLE_NAME = "snippets";
 
           let [outerResolve] = arguments;
           (async () => {
-            let storage = new ActivityStreamStorage({
+            let storage = new ASRouterStorage({
               storeNames: [SNIPPETS_TABLE_NAME],
             });
             let snippetsTable = await storage.getDbTable(SNIPPETS_TABLE_NAME);
@@ -726,3 +771,82 @@ class BackupTest(MarionetteTestCase):
         """
         )
         self.assertTrue(permissionExists)
+
+    def add_test_payment_methods(self):
+        self.marionette.execute_async_script(
+            """
+          const { formAutofillStorage } = ChromeUtils.importESModule(
+            "resource://autofill/FormAutofillStorage.sys.mjs"
+          );
+
+          let [outerResolve] = arguments;
+          (async () => {
+            await formAutofillStorage.initialize();
+            await formAutofillStorage.creditCards.add({
+              "cc-name": "Foxy the Firefox",
+              "cc-number": "5555555555554444",
+              "cc-exp-month": 5,
+              "cc-exp-year": 2099,
+            });
+          })().then(outerResolve);
+        """
+        )
+
+    def verify_recovered_payment_methods(self, osKeyStoreLabel):
+        cardExists = self.marionette.execute_async_script(
+            """
+          const { formAutofillStorage } = ChromeUtils.importESModule(
+            "resource://autofill/FormAutofillStorage.sys.mjs"
+          );
+          let nativeOSKeyStore = Cc["@mozilla.org/security/oskeystore;1"].getService(
+            Ci.nsIOSKeyStore
+          );
+
+          let [osKeyStoreLabel, outerResolve] = arguments;
+
+          (async () => {
+            await formAutofillStorage.initialize();
+            let cards = await formAutofillStorage.creditCards.getAll();
+
+            if (cards.length != 1) {
+              return false;
+            }
+            let card = cards[0];
+            if (card["cc-name"] != "Foxy the Firefox") {
+              return false;
+            }
+
+            if (card["cc-exp-month"] != "5") {
+              return false;
+            }
+
+            if (card["cc-exp-year"] != "2099") {
+              return false;
+            }
+
+            if (!card["cc-number-encrypted"]) {
+              return false;
+            }
+
+            // Hack around OSKeyStore's insistence on asking for
+            // reauthentication by using the underlying nativeOSKeyStore
+            // to decrypt the credit card number to check it.
+            let plaintextCardBytes =
+              await nativeOSKeyStore.asyncDecryptBytes(
+                osKeyStoreLabel,
+                card["cc-number-encrypted"]
+              );
+            let plaintextCard = String.fromCharCode.apply(
+              String,
+              plaintextCardBytes
+            );
+            if (plaintextCard != "5555555555554444") {
+              return false;
+            }
+
+            return true;
+          })().then(outerResolve);
+        """,
+            script_args=[osKeyStoreLabel],
+        )
+        self.assertTrue(cardExists)

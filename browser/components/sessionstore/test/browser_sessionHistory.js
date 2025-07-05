@@ -122,7 +122,7 @@ add_task(async function test_subframes() {
     "data:text/html;charset=utf-8," +
     "<iframe src=http%3A//example.com/ name=t></iframe>" +
     "<a id=a1 href=http%3A//example.com/1 target=t>clickme</a>" +
-    "<a id=a2 href=http%3A//example.com/%23 target=t>clickme</a>";
+    "<a id=a2 href=http%3A//example.com/%23section target=t>clickme</a>";
 
   // Create a new tab.
   let tab = BrowserTestUtils.addTab(gBrowser, URL);
@@ -137,6 +137,7 @@ add_task(async function test_subframes() {
 
   // Navigate the subframe.
   await SpecialPowers.spawn(browser, [], async function () {
+    content.document.notifyUserGestureActivation();
     content.document.querySelector("#a1").click();
   });
   await promiseBrowserLoaded(
@@ -287,41 +288,6 @@ add_task(async function test_slow_subframe_load() {
   // Check URLs.
   ok(entries[0].url.startsWith("data:text/html"), "correct root url");
   is(entries[0].children[0].url, SLOW_URL, "correct url for subframe");
-
-  // Cleanup.
-  gBrowser.removeTab(tab);
-});
-
-/**
- * Ensure that document wireframes can be persisted when they're enabled.
- */
-add_task(async function test_wireframes() {
-  // Wireframes only works when Fission is enabled.
-  if (!Services.appinfo.fissionAutostart) {
-    ok(true, "Skipping test_wireframes when Fission is not enabled.");
-    return;
-  }
-
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.history.collectWireframes", true]],
-  });
-
-  let tab = BrowserTestUtils.addTab(gBrowser, "http://example.com");
-  let browser = tab.linkedBrowser;
-  await promiseBrowserLoaded(browser);
-
-  await TabStateFlusher.flush(browser);
-  let { entries } = JSON.parse(ss.getTabState(tab));
-
-  // Check the number of children.
-  is(entries.length, 1, "there is one shistory entry");
-
-  // Check for the wireframe
-  ok(entries[0].wireframe, "A wireframe was captured and serialized.");
-  ok(
-    entries[0].wireframe.rects.length,
-    "Several wireframe rects were captured."
-  );
 
   // Cleanup.
   gBrowser.removeTab(tab);

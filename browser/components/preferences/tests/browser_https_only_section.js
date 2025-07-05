@@ -36,20 +36,28 @@ add_task(async function httpsOnlyRadioGroupIsWorking() {
   check(radioGroup, HTTPS_ONLY_DISABLED);
 
   // Check if prefs change if clicked on radio button
+  let changePromise = BrowserTestUtils.waitForEvent(radioGroup, "change");
   enableAllRadio.click();
+  await changePromise;
   check(radioGroup, HTTPS_ONLY_ENABLED);
 
   // Check if prefs stay the same if clicked on same
   // radio button again (see bug 1671122)
   enableAllRadio.click();
+  await TestUtils.waitForTick(); // There shouldn't be a change so we cannot
+  // await it. This is just waiting a bit instead.
   check(radioGroup, HTTPS_ONLY_ENABLED);
 
   // Check if prefs are set correctly for PBM-only mode.
+  changePromise = BrowserTestUtils.waitForEvent(radioGroup, "change");
   enablePbmRadio.click();
+  await changePromise;
   check(radioGroup, HTTPS_ONLY_PBM_ONLY);
 
   // Check if prefs are set correctly when disabled again.
+  changePromise = BrowserTestUtils.waitForEvent(radioGroup, "change");
   disableRadio.click();
+  await changePromise;
   check(radioGroup, HTTPS_ONLY_DISABLED);
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
@@ -72,3 +80,49 @@ function check(radioGroupElement, expectedValue) {
     "HTTPS-Only PBM pref should match expected value."
   );
 }
+
+add_task(async function httpsOnlyCorrectLabels() {
+  registerCleanupFunction(async function () {
+    Services.prefs.clearUserPref("dom.security.https_first");
+  });
+
+  function ensureL10nIds(httpsFirstEnabled) {
+    return SpecialPowers.spawn(
+      gBrowser.selectedBrowser,
+      [httpsFirstEnabled],
+      _httpsFirstEnabled => {
+        function ensureL10nId(elementId, l10nId) {
+          const element = content.document.getElementById(elementId);
+          ok(element, `${elementId} should be on the settings page`);
+          is(
+            content.document.l10n.getAttributes(element).id,
+            l10nId,
+            `${elementId} should have the correct data-l10n-id attribute`
+          );
+        }
+
+        ensureL10nId("httpsOnlyRadioEnabled", "httpsonly-radio-enabled");
+        ensureL10nId("httpsOnlyRadioEnabledPBM", "httpsonly-radio-enabled-pbm");
+        ensureL10nId("httpsOnlyRadioDisabled", "httpsonly-radio-disabled3");
+      }
+    );
+  }
+
+  // Load the page with HTTPS-First disabled and then enable it while on the
+  // page
+  await SpecialPowers.setBoolPref("dom.security.https_first", false);
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+  await ensureL10nIds(false);
+  await SpecialPowers.setBoolPref("dom.security.https_first", true);
+  await ensureL10nIds(true);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  // Load the page with HTTPS-First enabled and then disable it while on the
+  // page
+  await SpecialPowers.setBoolPref("dom.security.https_first", true);
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+  await ensureL10nIds(true);
+  await SpecialPowers.setBoolPref("dom.security.https_first", false);
+  await ensureL10nIds(false);
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});

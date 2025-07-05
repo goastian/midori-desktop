@@ -243,14 +243,18 @@ class FaviconLoad {
       }
     }
 
-    // By default don't store icons added after "pageshow".
+    // By default we don't store icons added after the `pageshow` event as they
+    // may be used to show a badge, indicate a service status, or other form
+    // of icon animations.
     let canStoreIcon = this.icon.beforePageShow;
-    if (canStoreIcon) {
-      // Don't store icons responding with Cache-Control: no-store, but always
-      // allow root domain icons.
+    // We make an exception for root icons, as they are unlikely to be used
+    // as status indicators, and in general they are always usable.
+    if (this.icon.iconUri.filePath == "/favicon.ico") {
+      canStoreIcon = true;
+    } else {
+      // Do not store non-root icons if `Cache-Control: no-store` header is set.
       try {
         if (
-          this.icon.iconUri.filePath != "/favicon.ico" &&
           this.channel instanceof Ci.nsIHttpChannel &&
           this.channel.isNoStoreResponse()
         ) {
@@ -381,13 +385,9 @@ function extractIconSize(aSizes) {
 
   // Telemetry probes for measuring the sizes attribute
   // usage and available dimensions.
-  Services.telemetry
-    .getHistogramById("LINK_ICON_SIZES_ATTR_USAGE")
-    .add(sizesType);
+  Glean.linkIconSizesAttr.usage.accumulateSingleSample(sizesType);
   if (width > 0) {
-    Services.telemetry
-      .getHistogramById("LINK_ICON_SIZES_ATTR_DIMENSION")
-      .add(width);
+    Glean.linkIconSizesAttr.dimension.accumulateSingleSample(width);
   }
 
   return width;
@@ -525,6 +525,10 @@ class IconLoader {
 
   async load(iconInfo) {
     if (this._loader) {
+      // If we're already loading this icon, just let it finish.
+      if (this._loader.icon.iconUri.equals(iconInfo.iconUri)) {
+        return;
+      }
       this._loader.cancel();
     }
 
@@ -543,11 +547,12 @@ class IconLoader {
       this.actor.sendAsyncMessage("Link:SetIcon", {
         pageURL: iconInfo.pageUri.spec,
         originalURL: iconInfo.iconUri.spec,
-        canUseForTab: !iconInfo.isRichIcon,
         expiration: undefined,
         iconURL: iconInfo.iconUri.spec,
-        canStoreIcon: iconInfo.beforePageShow,
+        canStoreIcon:
+          iconInfo.beforePageShow && iconInfo.iconUri.schemeIs("data"),
         beforePageShow: iconInfo.beforePageShow,
+        isRichIcon: iconInfo.isRichIcon,
       });
       return;
     }
@@ -555,7 +560,7 @@ class IconLoader {
     // Let the main process that a tab icon is possibly coming.
     this.actor.sendAsyncMessage("Link:LoadingIcon", {
       originalURL: iconInfo.iconUri.spec,
-      canUseForTab: !iconInfo.isRichIcon,
+      isRichIcon: iconInfo.isRichIcon,
     });
 
     try {
@@ -565,11 +570,11 @@ class IconLoader {
       this.actor.sendAsyncMessage("Link:SetIcon", {
         pageURL: iconInfo.pageUri.spec,
         originalURL: iconInfo.iconUri.spec,
-        canUseForTab: !iconInfo.isRichIcon,
         expiration,
         iconURL: dataURL,
         canStoreIcon,
         beforePageShow: iconInfo.beforePageShow,
+        isRichIcon: iconInfo.isRichIcon,
       });
     } catch (e) {
       if (e.result != Cr.NS_BINDING_ABORTED) {
@@ -580,7 +585,7 @@ class IconLoader {
         // Used mainly for tests currently.
         this.actor.sendAsyncMessage("Link:SetFailedIcon", {
           originalURL: iconInfo.iconUri.spec,
-          canUseForTab: !iconInfo.isRichIcon,
+          isRichIcon: iconInfo.isRichIcon,
         });
       }
     } finally {
@@ -635,11 +640,11 @@ export class FaviconLoader {
     this.iconInfos = [];
 
     if (richIcon) {
-      this.richIconLoader.load(richIcon);
+      this.richIconLoader.load(richIcon).catch(console.error);
     }
 
     if (tabIcon) {
-      this.tabIconLoader.load(tabIcon);
+      this.tabIconLoader.load(tabIcon).catch(console.error);
     }
   }
 

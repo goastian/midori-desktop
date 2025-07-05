@@ -1,13 +1,10 @@
 [DEFAULT]
-skip-if = [
-  "os == 'linux' && ccov", # bug 1821945
-  "os == 'android'", # bug 1730213
-]
 firefox-appdir = "browser"
 head = "head.js"
 support-files = ["../fixtures/**"]
 prefs = [
   "extensions.formautofill.test.ignoreVisibilityCheck=true",
+  "extensions.formautofill.heuristics.detectDynamicFormChanges=false",
 ]
 
 ["test_activeStatus.js"]
@@ -42,24 +39,17 @@ head = "head_addressComponent.js"
 ["test_addressDataLoader.js"]
 
 ["test_addressRecords.js"]
-skip-if = ["apple_silicon"] # bug 1729554
 
 ["test_autofillFormFields.js"]
-skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
-]
 
-["test_clearPopulatedForm.js"]
-
-["test_collectFormFields.js"]
+["test_autofill_ios_library.js"]
 
 ["test_createRecords.js"]
 
 ["test_creditCardRecords.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
 ]
 
 ["test_extractLabelStrings.js"]
@@ -74,15 +64,15 @@ skip-if = [
 
 ["test_getCreditCardLogo.js"]
 
-["test_getFormInputDetails.js"]
-
 ["test_getInfo.js"]
 
 ["test_getRecords.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
 ]
+
+["test_inspectFields.js"]
 
 ["test_isAddressAutofillAvailable.js"]
 
@@ -94,10 +84,7 @@ skip-if = [
 
 ["test_known_strings.js"]
 
-["test_markAsAutofillField.js"]
-
 ["test_migrateRecords.js"]
-skip-if = ["tsan"] # Times out, bug 1612707
 
 ["test_nameUtils.js"]
 
@@ -107,35 +94,32 @@ skip-if = ["tsan"] # Times out, bug 1612707
 
 ["test_phoneNumber.js"]
 
-["test_previewFormFields.js"]
-
 ["test_profileAutocompleteResult.js"]
 
 ["test_reconcile.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
 ]
 
 ["test_savedFieldNames.js"]
 
 ["test_storage_remove.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
 ]
 
 ["test_storage_syncfields.js"]
 
 ["test_storage_tombstones.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
 ]
 
 ["test_sync.js"]
 head = "head.js ../../../../../services/sync/tests/unit/head_appinfo.js ../../../../../services/common/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_http_server.js"
-skip-if = ["tsan"] # Times out, bug 1612707
 
 ["test_sync_deprecate_address_x_name_fields.js"]
 head = "head.js ../../../../../services/sync/tests/unit/head_appinfo.js ../../../../../services/common/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_http_server.js"
@@ -143,14 +127,14 @@ head = "head.js ../../../../../services/sync/tests/unit/head_appinfo.js ../../..
 ["test_sync_deprecate_credit_card_v4.js"]
 head = "head.js ../../../../../services/sync/tests/unit/head_appinfo.js ../../../../../services/common/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_helpers.js ../../../../../services/sync/tests/unit/head_http_server.js"
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
 ]
 
 ["test_toOneLineAddress.js"]
 
 ["test_transformFields.js"]
 skip-if = [
-  "tsan", # Times out, bug 1612707
-  "apple_silicon", # bug 1729554
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1729554
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1729554
 ]

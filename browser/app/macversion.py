@@ -3,7 +3,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import io
 import re
 import sys
 from optparse import OptionParser
@@ -28,9 +27,7 @@ if not options.version:
 # builds), but also so that newly-built older versions (e.g. beta build) aren't
 # considered "newer" than previously-built newer versions (e.g. a trunk nightly)
 
-define, MOZ_BUILDID, buildid = (
-    io.open(options.buildid, "r", encoding="utf-8").read().split()
-)
+define, MOZ_BUILDID, buildid = open(options.buildid, encoding="utf-8").read().split()
 
 # extract only the major version (i.e. "14" from "14.0b1")
 majorVersion = re.match(r"^(\d+)[^\d].*", options.version).group(1)

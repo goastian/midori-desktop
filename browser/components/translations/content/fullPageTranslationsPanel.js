@@ -12,8 +12,8 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   PageActions: "resource:///modules/PageActions.sys.mjs",
-  TranslationsTelemetry:
-    "chrome://browser/content/translations/TranslationsTelemetry.sys.mjs",
+  TranslationsUtils:
+    "chrome://global/content/translations/TranslationsUtils.mjs",
   TranslationsPanelShared:
     "chrome://browser/content/translations/TranslationsPanelShared.sys.mjs",
 });
@@ -261,6 +261,11 @@ var FullPageTranslationsPanel = new (class {
       const panel = wrapper.content.firstElementChild;
       wrapper.replaceWith(wrapper.content);
 
+      panel.addEventListener("command", this);
+      panel.addEventListener("click", this);
+      panel.addEventListener("popupshown", this);
+      panel.addEventListener("popuphidden", this);
+
       const settingsButton = document.getElementById(
         "translations-panel-settings"
       );
@@ -292,8 +297,9 @@ var FullPageTranslationsPanel = new (class {
         errorMessage: "full-page-translations-panel-error-message",
         errorMessageHint: "full-page-translations-panel-error-message-hint",
         errorHintAction: "full-page-translations-panel-translate-hint-action",
-        fromMenuList: "full-page-translations-panel-from",
         fromLabel: "full-page-translations-panel-from-label",
+        fromMenuList: "full-page-translations-panel-from",
+        fromMenuPopup: "full-page-translations-panel-from-menupopup",
         header: "full-page-translations-panel-header",
         intro: "full-page-translations-panel-intro",
         introLearnMoreLink:
@@ -306,6 +312,7 @@ var FullPageTranslationsPanel = new (class {
         restoreButton: "full-page-translations-panel-restore-button",
         toLabel: "full-page-translations-panel-to-label",
         toMenuList: "full-page-translations-panel-to",
+        toMenuPopup: "full-page-translations-panel-to-menupopup",
         translateButton: "full-page-translations-panel-translate",
         unsupportedHeader:
           "full-page-translations-panel-unsupported-language-header",
@@ -433,13 +440,23 @@ var FullPageTranslationsPanel = new (class {
   ) {
     const { translateButton, toMenuList, fromMenuList, header, cancelButton } =
       this.elements;
-    const { requestedTranslationPair, isEngineReady } = languageState;
+    const { requestedLanguagePair, isEngineReady } = languageState;
+
+    // Remove the model variant. e.g. "ru,base" -> "ru"
+    const selectedFrom = fromMenuList.value.split(",")[0];
+    const selectedTo = toMenuList.value.split(",")[0];
 
     if (
-      requestedTranslationPair &&
+      requestedLanguagePair &&
       !isEngineReady &&
-      toMenuList.value === requestedTranslationPair.toLanguage &&
-      fromMenuList.value === requestedTranslationPair.fromLanguage
+      TranslationsUtils.langTagsMatch(
+        selectedFrom,
+        requestedLanguagePair.sourceLanguage
+      ) &&
+      TranslationsUtils.langTagsMatch(
+        selectedTo,
+        requestedLanguagePair.targetLanguage
+      )
     ) {
       // A translation has been requested, but is not ready yet.
       document.l10n.setAttributes(
@@ -455,29 +472,34 @@ var FullPageTranslationsPanel = new (class {
         "translations-panel-translate-button"
       );
       translateButton.disabled =
-        // The translation languages are the same, don't allow this translation.
-        toMenuList.value === fromMenuList.value ||
         // No "to" language was provided.
         !toMenuList.value ||
         // No "from" language was provided.
         !fromMenuList.value ||
-        // This is the requested translation pair.
-        (requestedTranslationPair &&
-          requestedTranslationPair.fromLanguage === fromMenuList.value &&
-          requestedTranslationPair.toLanguage === toMenuList.value);
+        // The translation languages are the same, don't allow this translation.
+        TranslationsUtils.langTagsMatch(selectedFrom, selectedTo) ||
+        // This is the requested language pair.
+        (requestedLanguagePair &&
+          TranslationsUtils.langTagsMatch(
+            requestedLanguagePair.sourceLanguage,
+            selectedFrom
+          ) &&
+          TranslationsUtils.langTagsMatch(
+            requestedLanguagePair.targetLanguage,
+            selectedTo
+          ));
     }
 
-    if (requestedTranslationPair && isEngineReady) {
-      const { fromLanguage, toLanguage } = requestedTranslationPair;
-      const displayNames = new Services.intl.DisplayNames(undefined, {
-        type: "language",
-      });
+    if (requestedLanguagePair && isEngineReady) {
+      const { sourceLanguage, targetLanguage } = requestedLanguagePair;
+      const languageDisplayNames =
+        TranslationsParent.createLanguageDisplayNames();
       cancelButton.hidden = true;
       this.updateUIForReTranslation(true /* isReTranslation */);
 
       document.l10n.setAttributes(header, "translations-panel-revisit-header", {
-        fromLanguage: displayNames.of(fromLanguage),
-        toLanguage: displayNames.of(toLanguage),
+        fromLanguage: languageDisplayNames.of(sourceLanguage),
+        toLanguage: languageDisplayNames.of(targetLanguage),
       });
     } else {
       document.l10n.setAttributes(header, "translations-panel-header");
@@ -568,19 +590,61 @@ var FullPageTranslationsPanel = new (class {
     fromMenuList.value = "";
     error.hidden = true;
     langSelection.hidden = false;
+    // Remove the model variant. e.g. "ru,base" -> "ru"
+    const selectedSource = fromMenuList.value.split(",")[0];
 
-    /** @type {null | LangTags} */
-    const langTags = await this.#fetchDetectedLanguages();
-    if (langTags?.isDocLangTagSupported || force) {
+    const { userLangTag, docLangTag, isDocLangTagSupported } =
+      await this.#fetchDetectedLanguages().then(langTags => langTags ?? {});
+
+    if (isDocLangTagSupported || force) {
       // Show the default view with the language selection
       const { cancelButton } = this.elements;
 
-      if (langTags?.isDocLangTagSupported) {
-        fromMenuList.value = langTags?.docLangTag ?? "";
+      if (isDocLangTagSupported) {
+        fromMenuList.value = docLangTag ?? "";
       } else {
         fromMenuList.value = "";
       }
-      toMenuList.value = langTags?.userLangTag ?? "";
+
+      if (
+        this.#manuallySelectedToLanguage &&
+        !TranslationsUtils.langTagsMatch(
+          docLangTag,
+          this.#manuallySelectedToLanguage
+        )
+      ) {
+        // Use the manually selected language if available
+        toMenuList.value = this.#manuallySelectedToLanguage;
+      } else if (
+        userLangTag &&
+        !TranslationsUtils.langTagsMatch(userLangTag, docLangTag)
+      ) {
+        // The userLangTag is specified and does not match the doc lang tag, so we should use it.
+        toMenuList.value = userLangTag;
+      } else {
+        // No userLangTag is specified in the cache and no #manuallySelectedToLanguage is available,
+        // so we will attempt to find a suitable one.
+        toMenuList.value =
+          await TranslationsParent.getTopPreferredSupportedToLang({
+            excludeLangTags: [
+              // Avoid offering to translate into the original source language.
+              docLangTag,
+              // Avoid same-language to same-language translations if possible.
+              selectedSource,
+            ],
+          });
+      }
+
+      const resolvedSource = fromMenuList.value.split(",")[0];
+      const resolvedTarget = toMenuList.value.split(",")[0];
+
+      if (TranslationsUtils.langTagsMatch(resolvedSource, resolvedTarget)) {
+        // The best possible user-preferred language tag that we were able to find for the
+        // toMenuList is the same as the fromMenuList, but same-language to same-language
+        // translations are not allowed in Full Page Translations, so we will just show the
+        // "Choose a language" option in this case.
+        toMenuList.value = "";
+      }
 
       this.onChangeLanguages();
 
@@ -591,19 +655,10 @@ var FullPageTranslationsPanel = new (class {
         "full-page-translations-panel-view-default"
       );
 
-      if (!this._hasShownPanel) {
-        actor.firstShowUriSpec = gBrowser.currentURI.spec;
-      }
-
-      if (
-        this._hasShownPanel &&
-        gBrowser.currentURI.spec !== actor.firstShowUriSpec
-      ) {
-        document.l10n.setAttributes(header, "translations-panel-header");
-        actor.firstShowUriSpec = null;
+      if (TranslationsParent.hasUserEverTranslated()) {
         intro.hidden = true;
+        document.l10n.setAttributes(header, "translations-panel-header");
       } else {
-        Services.prefs.setBoolPref("browser.translations.panelShown", true);
         intro.hidden = false;
         document.l10n.setAttributes(header, "translations-panel-intro-header");
       }
@@ -615,12 +670,12 @@ var FullPageTranslationsPanel = new (class {
         "full-page-translations-panel-view-unsupported-language"
       );
       let language;
-      if (langTags?.docLangTag) {
-        const displayNames = new Intl.DisplayNames(undefined, {
-          type: "language",
-          fallback: "none",
-        });
-        language = displayNames.of(langTags.docLangTag);
+      if (docLangTag) {
+        const languageDisplayNames =
+          TranslationsParent.createLanguageDisplayNames({
+            fallback: "none",
+          });
+        language = languageDisplayNames.of(docLangTag);
       }
       if (language) {
         document.l10n.setAttributes(
@@ -680,7 +735,8 @@ var FullPageTranslationsPanel = new (class {
     const shouldDisable =
       !docLangTag ||
       !isDocLangTagSupported ||
-      docLangTag === new Intl.Locale(Services.locale.appLocaleAsBCP47).language;
+      docLangTag ===
+        (await TranslationsParent.getTopPreferredSupportedToLang());
 
     for (const menuitem of alwaysOfferTranslationsMenuItems) {
       menuitem.setAttribute(
@@ -741,12 +797,12 @@ var FullPageTranslationsPanel = new (class {
     /** @type {string | undefined} */
     let docLangDisplayName;
     if (docLangTag) {
-      const displayNames = new Services.intl.DisplayNames(undefined, {
-        type: "language",
-        fallback: "none",
-      });
+      const languageDisplayNames =
+        TranslationsParent.createLanguageDisplayNames({
+          fallback: "none",
+        });
       // The display name will still be empty if the docLangTag is not known.
-      docLangDisplayName = displayNames.of(docLangTag);
+      docLangDisplayName = languageDisplayNames.of(docLangTag);
     }
 
     for (const menuitem of alwaysTranslateMenuItems) {
@@ -788,9 +844,9 @@ var FullPageTranslationsPanel = new (class {
   /**
    * Configures the panel for the user to reset the page after it has been translated.
    *
-   * @param {TranslationPair} translationPair
+   * @param {LanguagePair} languagePair
    */
-  async #showRevisitView({ fromLanguage, toLanguage }) {
+  async #showRevisitView({ sourceLanguage, targetLanguage, sourceVariant }) {
     const { fromMenuList, toMenuList, intro } = this.elements;
     if (!this.#isShowingDefaultView()) {
       await this.#showDefaultView(
@@ -798,8 +854,19 @@ var FullPageTranslationsPanel = new (class {
       );
     }
     intro.hidden = true;
-    fromMenuList.value = fromLanguage;
-    toMenuList.value = toLanguage;
+    if (sourceVariant) {
+      fromMenuList.value = `${sourceLanguage},${sourceVariant}`;
+    } else {
+      fromMenuList.value = sourceLanguage;
+    }
+    toMenuList.value = await TranslationsParent.getTopPreferredSupportedToLang({
+      excludeLangTags: [
+        // Avoid offering to translate into the original source language.
+        sourceLanguage,
+        // Avoid offering to translate into current active target language.
+        targetLanguage,
+      ],
+    });
     this.onChangeLanguages();
   }
 
@@ -840,6 +907,8 @@ var FullPageTranslationsPanel = new (class {
         .onChangeToLanguage(target.value);
     }
     this.onChangeLanguages();
+    // Update the manually selected language when the user changes the target language.
+    this.#manuallySelectedToLanguage = target.value;
   }
 
   /**
@@ -1088,6 +1157,14 @@ var FullPageTranslationsPanel = new (class {
   }
 
   /**
+   * The language tag that was manually selected by the user.
+   * This is used to remember the selection if the user happens to close and then reopen the panel prior to translating.
+   *
+   * @type {string | null}
+   */
+  #manuallySelectedToLanguage = null;
+
+  /**
    * Implementation function for opening the panel. Prefer FullPageTranslationsPanel.open.
    *
    * @param {Event} event
@@ -1106,15 +1183,14 @@ var FullPageTranslationsPanel = new (class {
 
     const { button } = this.buttonElements;
 
-    const { requestedTranslationPair } =
-      TranslationsParent.getTranslationsActor(
-        gBrowser.selectedBrowser
-      ).languageState;
+    const { requestedLanguagePair } = TranslationsParent.getTranslationsActor(
+      gBrowser.selectedBrowser
+    ).languageState;
 
     await this.#ensureLangListsBuilt();
 
-    if (requestedTranslationPair) {
-      await this.#showRevisitView(requestedTranslationPair).catch(error => {
+    if (requestedLanguagePair) {
+      await this.#showRevisitView(requestedLanguagePair).catch(error => {
         this.console?.error(error);
       });
     } else {
@@ -1138,7 +1214,7 @@ var FullPageTranslationsPanel = new (class {
     await this.#openPanelPopup(targetButton, {
       event,
       autoShow: reportAsAutoShow,
-      viewName: requestedTranslationPair ? "revisitView" : "defaultView",
+      viewName: requestedLanguagePair ? "revisitView" : "defaultView",
       maintainFlow: false,
     });
   }
@@ -1149,25 +1225,29 @@ var FullPageTranslationsPanel = new (class {
    * @returns {boolean}
    */
   #isTranslationsActive() {
-    const { requestedTranslationPair } =
-      TranslationsParent.getTranslationsActor(
-        gBrowser.selectedBrowser
-      ).languageState;
-    return requestedTranslationPair !== null;
+    const { requestedLanguagePair } = TranslationsParent.getTranslationsActor(
+      gBrowser.selectedBrowser
+    ).languageState;
+    return requestedLanguagePair !== null;
   }
 
   /**
    * Handle the translation button being clicked when there are two language options.
    */
   async onTranslate() {
+    this.#manuallySelectedToLanguage = null;
     PanelMultiView.hidePopup(this.elements.panel);
 
     const actor = TranslationsParent.getTranslationsActor(
       gBrowser.selectedBrowser
     );
+    const [sourceLanguage, sourceVariant] =
+      this.elements.fromMenuList.value.split(",");
+    const [targetLanguage, targetVariant] =
+      this.elements.toMenuList.value.split(",");
+
     actor.translate(
-      this.elements.fromMenuList.value,
-      this.elements.toMenuList.value,
+      { sourceLanguage, targetLanguage, sourceVariant, targetVariant },
       false // reportAsAutoTranslate
     );
   }
@@ -1361,11 +1441,9 @@ var FullPageTranslationsPanel = new (class {
   async #showEngineError(actor) {
     const { button } = this.buttonElements;
     await this.#ensureLangListsBuilt();
-    if (!this.#isShowingDefaultView()) {
-      await this.#showDefaultView(actor).catch(e => {
-        this.console?.error(e);
-      });
-    }
+    await this.#showDefaultView(actor).catch(e => {
+      this.console?.error(e);
+    });
     this.elements.error.hidden = false;
     this.#showError({
       message: "translations-panel-error-translating",
@@ -1386,7 +1464,60 @@ var FullPageTranslationsPanel = new (class {
    * @param {CustomEvent} event
    */
   handleEvent = event => {
+    const target = event.target;
+    let { id } = target;
+
+    // If a menuitem within a menulist is the target, it will not have an id,
+    // so we want to grab the closest relevant id.
+    if (!id) {
+      id = target.closest("[id]")?.id;
+    }
+
     switch (event.type) {
+      case "command": {
+        switch (id) {
+          case "translations-panel-settings":
+            this.openSettingsPopup(target);
+            break;
+          case "full-page-translations-panel-from-menupopup":
+            this.onChangeFromLanguage(event);
+            break;
+          case "full-page-translations-panel-to-menupopup":
+            this.onChangeToLanguage(event);
+            break;
+          case "full-page-translations-panel-restore-button":
+            this.onRestore(event);
+            break;
+          case "full-page-translations-panel-cancel":
+          case "full-page-translations-panel-dismiss-error":
+            this.onCancel(event);
+            break;
+          case "full-page-translations-panel-translate":
+            this.onTranslate(event);
+            break;
+          case "full-page-translations-panel-change-source-language":
+            this.onChangeSourceLanguage(event);
+            break;
+        }
+        break;
+      }
+      case "click": {
+        switch (id) {
+          case "full-page-translations-panel-intro-learn-more-link":
+          case "full-page-translations-panel-unsupported-learn-more-link":
+            this.onLearnMoreLink();
+            break;
+          default:
+            this.handlePanelButtonEvent(event);
+        }
+        break;
+      }
+      case "popupshown":
+        this.handlePanelPopupShownEvent(event);
+        break;
+      case "popuphidden":
+        this.handlePanelPopupHiddenEvent(event);
+        break;
       case "TranslationsParent:OfferTranslation": {
         if (Services.wm.getMostRecentBrowserWindow()?.gBrowser === gBrowser) {
           this.open(event, /* reportAsAutoShow */ true);
@@ -1394,10 +1525,33 @@ var FullPageTranslationsPanel = new (class {
         break;
       }
       case "TranslationsParent:LanguageState": {
-        const { actor } = event.detail;
+        const { actor, reason } = event.detail;
+
+        const innerWindowId =
+          gBrowser.selectedBrowser.browsingContext.top.embedderElement
+            .innerWindowID;
+
+        this.console?.debug("TranslationsParent:LanguageState", {
+          reason,
+          currentId: innerWindowId,
+          originatorId: actor.innerWindowId,
+        });
+
+        if (innerWindowId !== actor.innerWindowId) {
+          // The id of the currently active tab does not match the id of the tab that was active when the event was dispatched.
+          // This likely means that the tab was changed after the event was dispatched, but before it was received by this class.
+          //
+          // Keep in mind that there is only one instance of this class (FullPageTranslationsPanel) for each open Firefox window,
+          // but there is one instance of the TranslationsParent actor for each open tab within a Firefox window. As such, it is
+          // possible for a tab-specific actor to fire an event that is received by the window-global panel after switching tabs.
+          //
+          // Since the dispatched event did not originate in the currently active tab, we should not react to it any further.
+          return;
+        }
+
         const {
           detectedLanguages,
-          requestedTranslationPair,
+          requestedLanguagePair,
           error,
           isEngineReady,
         } = actor.languageState;
@@ -1414,6 +1568,8 @@ var FullPageTranslationsPanel = new (class {
           // Ensure the cached detected languages are up to date, for instance whenever
           // the user switches tabs.
           FullPageTranslationsPanel.detectedLanguages = detectedLanguages;
+          // Reset the manually selected language when the user switches tabs.
+          this.#manuallySelectedToLanguage = null;
         }
 
         if (this.#isPopupOpen) {
@@ -1425,7 +1581,7 @@ var FullPageTranslationsPanel = new (class {
 
         if (
           // We've already requested to translate this page, so always show the icon.
-          requestedTranslationPair ||
+          requestedLanguagePair ||
           // There was an error translating, so always show the icon. This can happen
           // when a user manually invokes the translation and we wouldn't normally show
           // the icon.
@@ -1438,30 +1594,30 @@ var FullPageTranslationsPanel = new (class {
           const wasButtonHidden = button.hidden;
 
           button.hidden = false;
-          if (requestedTranslationPair) {
+          if (requestedLanguagePair) {
             // The translation is active, update the urlbar button.
             button.setAttribute("translationsactive", true);
             if (isEngineReady) {
-              const displayNames = new Services.intl.DisplayNames(undefined, {
-                type: "language",
-              });
+              const languageDisplayNames =
+                TranslationsParent.createLanguageDisplayNames();
 
               document.l10n.setAttributes(
                 button,
                 "urlbar-translations-button-translated",
                 {
-                  fromLanguage: displayNames.of(
-                    requestedTranslationPair.fromLanguage
+                  fromLanguage: languageDisplayNames.of(
+                    requestedLanguagePair.sourceLanguage
                   ),
-                  toLanguage: displayNames.of(
-                    requestedTranslationPair.toLanguage
+                  toLanguage: languageDisplayNames.of(
+                    requestedLanguagePair.targetLanguage
                   ),
                 }
               );
-              // Show the locale of the page in the button.
+              // Show the language tag of translated the page in the button.
               buttonLocale.hidden = false;
               buttonCircleArrows.hidden = true;
-              buttonLocale.innerText = requestedTranslationPair.toLanguage;
+              buttonLocale.innerText =
+                requestedLanguagePair.targetLanguage.split("-")[0];
             } else {
               document.l10n.setAttributes(
                 button,
@@ -1480,10 +1636,7 @@ var FullPageTranslationsPanel = new (class {
 
             // Follow the same rules for displaying the first-run intro text for the
             // button's accessible tooltip label.
-            if (
-              this._hasShownPanel &&
-              gBrowser.currentURI.spec !== actor.firstShowUriSpec
-            ) {
+            if (TranslationsParent.hasUserEverTranslated()) {
               document.l10n.setAttributes(
                 button,
                 "urlbar-translations-button2"
@@ -1510,7 +1663,7 @@ var FullPageTranslationsPanel = new (class {
             break;
           case "engine-load-failure":
             this.#showEngineError(actor).catch(viewError =>
-              this.console.error(viewError)
+              this.console?.error(viewError)
             );
             break;
           default:
@@ -1521,10 +1674,3 @@ var FullPageTranslationsPanel = new (class {
     }
   };
 })();
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  FullPageTranslationsPanel,
-  "_hasShownPanel",
-  "browser.translations.panelShown",
-  false
-);

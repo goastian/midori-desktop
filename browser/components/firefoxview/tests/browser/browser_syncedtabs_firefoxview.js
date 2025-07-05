@@ -2,9 +2,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 add_setup(async function () {
+  Services.prefs.setBoolPref("identity.fxaccounts.oauth.enabled", false);
   registerCleanupFunction(() => {
     // reset internal state so it doesn't affect the next tests
     TabsSetupFlowManager.resetInternalState();
+    Services.prefs.clearUserPref("identity.fxaccounts.oauth.enabled");
   });
 
   // gSync.init() is called in a requestIdleCallback. Force its initialization.
@@ -104,6 +106,41 @@ add_task(async function test_signed_in() {
       "Add device message is shown"
     );
 
+    const mockConnectAdditionDevicesPath = "https://example.com/";
+    let expectedUrl =
+      "https://support.mozilla.org/kb/how-do-i-set-sync-my-computer#w_connect-additional-devices-to-sync";
+    let connectAdditionalDevicesLink =
+      emptyState?.shadowRoot.querySelector("a");
+    connectAdditionalDevicesLink.scrollIntoView();
+    await BrowserTestUtils.waitForMutationCondition(
+      emptyState.shadowRoot,
+      { subTree: true, childList: true },
+      () => BrowserTestUtils.isVisible(connectAdditionalDevicesLink)
+    );
+    ok(
+      BrowserTestUtils.isVisible(connectAdditionalDevicesLink),
+      "Support url is visible"
+    );
+    is(
+      connectAdditionalDevicesLink.href,
+      expectedUrl,
+      "Support link href is correct"
+    );
+    connectAdditionalDevicesLink.href = mockConnectAdditionDevicesPath;
+    info("Mock click on support link");
+    let tabPromise = BrowserTestUtils.waitForNewTab(
+      gBrowser,
+      mockConnectAdditionDevicesPath
+    );
+    connectAdditionalDevicesLink.click();
+    let tab = await tabPromise;
+    is(
+      tab.linkedBrowser.currentURI.spec,
+      mockConnectAdditionDevicesPath,
+      "Navigated to mock support link"
+    );
+
+    await openFirefoxViewTab(window);
     // Test telemetry for adding a device.
     await clearAllParentTelemetryEvents();
     EventUtils.synthesizeMouseAtCenter(
@@ -125,7 +162,10 @@ add_task(async function test_signed_in() {
       { category: "firefoxview_next" },
       { clear: true, process: "parent" }
     );
-    await BrowserTestUtils.removeTab(browser.ownerGlobal.gBrowser.selectedTab);
+    // clean up extra tabs
+    while (gBrowser.tabs.length > 1) {
+      await BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    }
   });
   await tearDown(sandbox);
 });
@@ -475,18 +515,20 @@ add_task(async function search_synced_tabs() {
     is(syncedTabsComponent.cardEls.length, 2, "There are two device cards.");
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls
-          .length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list")
+          .rowEls.length,
       "The tab list has loaded for the first two cards."
     );
-    let deviceOneTabs =
-      syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls;
-    let deviceTwoTabs =
-      syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls;
+    let deviceOneTabs = syncedTabsComponent.cardEls[0].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
+    let deviceTwoTabs = syncedTabsComponent.cardEls[1].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
 
     info("Input a search query.");
     EventUtils.synthesizeMouseAtCenter(
@@ -501,19 +543,20 @@ add_task(async function search_synced_tabs() {
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length,
       "The tab list has loaded for the first card."
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length === 1,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length === 1,
       "There is one matching search result for the first device."
     );
     await TestUtils.waitForCondition(
-      () => !syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list"),
+      () =>
+        !syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list"),
       "There are no matching search results for the second device."
     );
 
@@ -529,28 +572,30 @@ add_task(async function search_synced_tabs() {
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls
-          .length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list")
+          .rowEls.length,
       "The tab list has loaded for the first two cards."
     );
-    deviceOneTabs =
-      syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls;
-    deviceTwoTabs =
-      syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls;
+    deviceOneTabs = syncedTabsComponent.cardEls[0].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
+    deviceTwoTabs = syncedTabsComponent.cardEls[1].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length === deviceOneTabs.length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length === deviceOneTabs.length,
       "The original device's list is restored."
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls
-          .length === deviceTwoTabs.length,
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list")
+          .rowEls.length === deviceTwoTabs.length,
       "The new devices's list is restored."
     );
     syncedTabsComponent.searchTextbox.blur();
@@ -564,19 +609,20 @@ add_task(async function search_synced_tabs() {
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length,
       "The tab list has loaded for the first card."
     );
     await TestUtils.waitForCondition(() => {
       return (
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length === 1
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length === 1
       );
     }, "There is one matching search result for the first device.");
     await TestUtils.waitForCondition(
-      () => !syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list"),
+      () =>
+        !syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list"),
       "There are no matching search results for the second device."
     );
 
@@ -598,28 +644,30 @@ add_task(async function search_synced_tabs() {
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list") &&
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls
-          .length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list") &&
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list")
+          .rowEls.length,
       "The tab list has loaded for the first two cards."
     );
-    deviceOneTabs =
-      syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls;
-    deviceTwoTabs =
-      syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls;
+    deviceOneTabs = syncedTabsComponent.cardEls[0].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
+    deviceTwoTabs = syncedTabsComponent.cardEls[1].querySelector(
+      "syncedtabs-tab-list"
+    ).rowEls;
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[0].querySelector("fxview-tab-list").rowEls
-          .length === deviceOneTabs.length,
+        syncedTabsComponent.cardEls[0].querySelector("syncedtabs-tab-list")
+          .rowEls.length === deviceOneTabs.length,
       "The original device's list is restored."
     );
     await TestUtils.waitForCondition(
       () =>
-        syncedTabsComponent.cardEls[1].querySelector("fxview-tab-list").rowEls
-          .length === deviceTwoTabs.length,
+        syncedTabsComponent.cardEls[1].querySelector("syncedtabs-tab-list")
+          .rowEls.length === deviceTwoTabs.length,
       "The new devices's list is restored."
     );
   });
@@ -637,13 +685,17 @@ add_task(async function search_synced_tabs_recent_browsing() {
       type: "client",
       name: "My desktop",
       clientType: "desktop",
-      tabs: Array(NUMBER_OF_TABS).fill({
-        type: "tab",
-        title: "Internet for people, not profits - Mozilla",
-        url: "https://www.mozilla.org/",
-        icon: "https://www.mozilla.org/media/img/favicons/mozilla/favicon.d25d81d39065.ico",
-        client: 1,
-      }),
+      tabs: Array(NUMBER_OF_TABS)
+        .fill()
+        .map((_, i) => {
+          return {
+            type: "tab",
+            title: "Internet for people, not profits - Mozilla",
+            url: `https://www.mozilla.org/${i}`,
+            icon: "https://www.mozilla.org/media/img/favicons/mozilla/favicon.d25d81d39065.ico",
+            client: 1,
+          };
+        }),
     },
     {
       id: 2,

@@ -1,23 +1,51 @@
 [DEFAULT]
 head = "head.js"
 firefox-appdir = "browser"
-skip-if = ["os == 'android'"]
 prefs = [
   "browser.backup.log=true",
 ]
 
 ["test_AddonsBackupResource.js"]
 
+["test_ArchiveEncryption.js"]
+
 ["test_ArchiveEncryptionState.js"]
-skip-if = ["apple_silicon && automation"] # bug 1729538
+
+["test_ArchiveEncryption_nonce.js"]
+
+["test_ArchiveUtils_countReplacementCharacters.js"]
 
 ["test_BackupResource.js"]
 support-files = ["data/test_xulstore.json"]
 
 ["test_BackupService.js"]
+support-files = ["data/test_archive.template.html"]
+
+["test_BackupService_archive.js"]
+support-files = [
+  "data/corrupt.zip",
+  "data/break_over_unicode.html",
+  "data/missing_binary_block.html",
+  "data/missing_json_block.html",
+]
 
 ["test_BackupService_enable_disable_encryption.js"]
-skip-if = ["apple_silicon && automation"] # bug 1729538
+
+["test_BackupService_finalizeSingleFileArchive.js"]
+
+["test_BackupService_recoverFromSnapshotFolder.js"]
+
+["test_BackupService_regeneration.js"]
+
+["test_BackupService_renderTemplate.js"]
+
+["test_BackupService_resolveArchiveDestFolderPath.js"]
+
+["test_BackupService_resolveDownloadLink.js"]
+
+["test_BackupService_scheduler.js"]
+
+["test_BackupService_schema_versions.js"]
 
 ["test_BackupService_takeMeasurements.js"]
 
@@ -27,10 +55,14 @@ skip-if = ["apple_silicon && automation"] # bug 1729538
 
 ["test_FormHistoryBackupResource.js"]
 
+["test_MeasurementUtils_fuzzByteSize.js"]
+
 ["test_MiscDataBackupResource.js"]
 
 ["test_PlacesBackupResource.js"]
 
 ["test_PreferencesBackupResource.js"]
+
+["test_PreferencesBackupResource_searchEngines.js"]
 
 ["test_SessionStoreBackupResource.js"]

@@ -1,4 +1,4 @@
-import { GlobalOverrider } from "test/unit/utils";
+import { GlobalOverrider } from "tests/unit/utils";
 import { PanelTestProvider } from "modules/PanelTestProvider.sys.mjs";
 import { _MomentsPageHub } from "modules/MomentsPageHub.sys.mjs";
 const HOMEPAGE_OVERRIDE_PREF = "browser.startup.homepage_override.once";
@@ -39,8 +39,18 @@ describe("MomentsPageHub", () => {
           getStringPref: getStringPrefStub,
           setStringPref: setStringPrefStub,
         },
-        telemetry: {
-          recordEvent: () => {},
+      },
+      Glean: {
+        messagingExperiments: {
+          reachMomentsPage: {
+            record: () => {},
+          },
+        },
+        messagingSystem: {
+          messageRequestTime: {
+            start() {},
+            stopAndAccumulate() {},
+          },
         },
       },
     });
@@ -142,30 +152,22 @@ describe("MomentsPageHub", () => {
 
       assert.notCalled(setStringPrefStub);
     });
-    it("should record telemetry events", async () => {
-      const startTelemetryStopwatch = sandbox.stub(
-        global.TelemetryStopwatch,
-        "start"
-      );
-      const finishTelemetryStopwatch = sandbox.stub(
-        global.TelemetryStopwatch,
-        "finish"
+    it("should record a message request time", async () => {
+      const fakeTimerId = 42;
+      const start = sandbox
+        .stub(global.Glean.messagingSystem.messageRequestTime, "start")
+        .returns(fakeTimerId);
+      const stopAndAccumulate = sandbox.stub(
+        global.Glean.messagingSystem.messageRequestTime,
+        "stopAndAccumulate"
       );
 
       await instance.messageRequest({ triggerId: "trigger" });
 
-      assert.calledOnce(startTelemetryStopwatch);
-      assert.calledWithExactly(
-        startTelemetryStopwatch,
-        "MS_MESSAGE_REQUEST_TIME_MS",
-        { triggerId: "trigger" }
-      );
-      assert.calledOnce(finishTelemetryStopwatch);
-      assert.calledWithExactly(
-        finishTelemetryStopwatch,
-        "MS_MESSAGE_REQUEST_TIME_MS",
-        { triggerId: "trigger" }
-      );
+      assert.calledOnce(start);
+      assert.calledWithExactly(start);
+      assert.calledOnce(stopAndAccumulate);
+      assert.calledWithExactly(stopAndAccumulate, fakeTimerId);
     });
     it("should record Reach event for the Moments page experiment", async () => {
       const momentsMessages = (await PanelTestProvider.getMessages()).filter(
@@ -180,12 +182,14 @@ describe("MomentsPageHub", () => {
         ...momentsMessages,
       ];
       handleMessageRequestStub.resolves(messages);
-      sandbox.spy(global.Services.telemetry, "recordEvent");
+      sandbox.spy(global.Glean.messagingExperiments.reachMomentsPage, "record");
       sandbox.spy(instance, "executeAction");
 
       await instance.messageRequest({ triggerId: "trigger" });
 
-      assert.calledOnce(global.Services.telemetry.recordEvent);
+      assert.calledOnce(
+        global.Glean.messagingExperiments.reachMomentsPage.record
+      );
       assert.calledOnce(instance.executeAction);
     });
     it("should not record the Reach event if it's already sent", async () => {
@@ -197,11 +201,13 @@ describe("MomentsPageHub", () => {
         },
       ];
       handleMessageRequestStub.resolves(messages);
-      sandbox.spy(global.Services.telemetry, "recordEvent");
+      sandbox.spy(global.Glean.messagingExperiments.reachMomentsPage, "record");
 
       await instance.messageRequest({ triggerId: "trigger" });
 
-      assert.notCalled(global.Services.telemetry.recordEvent);
+      assert.notCalled(
+        global.Glean.messagingExperiments.reachMomentsPage.record
+      );
     });
     it("should not trigger the action if it's only for the Reach event", async () => {
       const messages = [
@@ -212,12 +218,14 @@ describe("MomentsPageHub", () => {
         },
       ];
       handleMessageRequestStub.resolves(messages);
-      sandbox.spy(global.Services.telemetry, "recordEvent");
+      sandbox.spy(global.Glean.messagingExperiments.reachMomentsPage, "record");
       sandbox.spy(instance, "executeAction");
 
       await instance.messageRequest({ triggerId: "trigger" });
 
-      assert.calledOnce(global.Services.telemetry.recordEvent);
+      assert.calledOnce(
+        global.Glean.messagingExperiments.reachMomentsPage.record
+      );
       assert.notCalled(instance.executeAction);
     });
   });

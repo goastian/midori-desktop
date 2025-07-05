@@ -3,8 +3,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const FXA_ENABLED_PREF = "identity.fxaccounts.enabled";
-const DISTRIBUTION_ID_PREF = "distribution.id";
-const DISTRIBUTION_ID_CHINA_REPACK = "MozillaOnline";
+const TOPIC_SELECTION_MODAL_LAST_DISPLAYED_PREF =
+  "browser.newtabpage.activity-stream.discoverystream.topicSelection.onboarding.lastDisplayed";
+const NOTIFICATION_INTERVAL_AFTER_TOPIC_MODAL_MS = 60000; // Assuming avoid notification up to 1 minute after newtab Topic Notification Modal
 
 // We use importESModule here instead of static import so that
 // the Karma test environment won't choke on this module. This
@@ -33,6 +34,11 @@ const { ShellService } = ChromeUtils.importESModule(
   "resource:///modules/ShellService.sys.mjs"
 );
 
+// eslint-disable-next-line mozilla/use-static-import
+const { ClientID } = ChromeUtils.importESModule(
+  "resource://gre/modules/ClientID.sys.mjs"
+);
+
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -41,12 +47,17 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ASRouterPreferences:
     "resource:///modules/asrouter/ASRouterPreferences.sys.mjs",
   AttributionCode: "resource:///modules/AttributionCode.sys.mjs",
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   ClientEnvironment: "resource://normandy/lib/ClientEnvironment.sys.mjs",
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
   HomePage: "resource:///modules/HomePage.sys.mjs",
   ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
+  // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+  SelectableProfileService:
+    "resource:///modules/profiles/SelectableProfileService.sys.mjs",
+  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   TargetingContext: "resource://messaging-system/targeting/Targeting.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
   TelemetrySession: "resource://gre/modules/TelemetrySession.sys.mjs",
@@ -147,10 +158,40 @@ XPCOMUtils.defineLazyPreferenceGetter(
     return behaviorString === "embedded";
   }
 );
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "totalSearches",
+  "browser.search.totalSearches",
+  0
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "newTabTopicModalLastSeen",
+  TOPIC_SELECTION_MODAL_LAST_DISPLAYED_PREF,
+  null,
+  lastSeenString => {
+    return Number.isInteger(parseInt(lastSeenString, 10))
+      ? parseInt(lastSeenString, 10)
+      : 0;
+  }
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "profilesCreated",
+  "browser.profiles.created",
+  false
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "didHandleCampaignAction",
+  "trailhead.firstrun.didHandleCampaignAction",
+  false
+);
 
 XPCOMUtils.defineLazyServiceGetters(lazy, {
   AUS: ["@mozilla.org/updates/update-service;1", "nsIApplicationUpdateService"],
   BrowserHandler: ["@mozilla.org/browser/clh;1", "nsIBrowserHandler"],
+  ScreenManager: ["@mozilla.org/gfx/screenmanager;1", "nsIScreenManager"],
   TrackingDBService: [
     "@mozilla.org/tracking-db-service;1",
     "nsITrackingDBService",
@@ -162,7 +203,6 @@ const FXA_USERNAME_PREF = "services.sync.username";
 
 const { activityStreamProvider: asProvider } = NewTabUtils;
 
-const FXA_ATTACHED_CLIENTS_UPDATE_INTERVAL = 4 * 60 * 60 * 1000; // Four hours
 const FRECENT_SITES_UPDATE_INTERVAL = 6 * 60 * 60 * 1000; // Six hours
 const FRECENT_SITES_IGNORE_BLOCKED = false;
 const FRECENT_SITES_NUM_ITEMS = 25;
@@ -202,7 +242,7 @@ export function CachedTargetingGetter(
   };
 }
 
-function CacheListAttachedOAuthClients() {
+function CacheUnhandledCampaignAction() {
   return {
     _lastUpdated: 0,
     _value: null,
@@ -212,15 +252,22 @@ function CacheListAttachedOAuthClients() {
     },
     get() {
       const now = Date.now();
-      if (now - this._lastUpdated >= FXA_ATTACHED_CLIENTS_UPDATE_INTERVAL) {
-        this._value = new Promise(resolve => {
-          lazy.fxAccounts
-            .listAttachedOAuthClients()
-            .then(clients => {
-              resolve(clients);
-            })
-            .catch(() => resolve([]));
-        });
+      // Don't get cached value until the action has been handled to ensure
+      // proper screen targeting in about:welcome
+      if (
+        now - this._lastUpdated >= FRECENT_SITES_UPDATE_INTERVAL ||
+        !lazy.didHandleCampaignAction
+      ) {
+        this._value = null;
+        if (!lazy.didHandleCampaignAction) {
+          const attributionData =
+            lazy.AttributionCode.getCachedAttributionData();
+          const ALLOWED_CAMPAIGN_ACTIONS = ["SET_DEFAULT_BROWSER"];
+          const campaign = attributionData?.campaign?.toUpperCase();
+          if (campaign && ALLOWED_CAMPAIGN_ACTIONS.includes(campaign)) {
+            this._value = campaign;
+          }
+        }
         this._lastUpdated = now;
       }
       return this._value;
@@ -294,8 +341,8 @@ export const QueryCache = {
     TotalBookmarksCount: new CachedTargetingGetter("getTotalBookmarksCount"),
     CheckBrowserNeedsUpdate: new CheckBrowserNeedsUpdate(),
     RecentBookmarks: new CachedTargetingGetter("getRecentBookmarks"),
-    ListAttachedOAuthClients: new CacheListAttachedOAuthClients(),
     UserMonthlyActivity: new CachedTargetingGetter("getUserMonthlyActivity"),
+    UnhandledCampaignAction: new CacheUnhandledCampaignAction(),
   },
   getters: {
     doesAppNeedPin: new CachedTargetingGetter(
@@ -307,6 +354,12 @@ export const QueryCache = {
     doesAppNeedPrivatePin: new CachedTargetingGetter(
       "doesAppNeedPin",
       true,
+      FRECENT_SITES_UPDATE_INTERVAL,
+      ShellService
+    ),
+    doesAppNeedStartMenuPin: new CachedTargetingGetter(
+      "doesAppNeedStartMenuPin",
+      null,
       FRECENT_SITES_UPDATE_INTERVAL,
       ShellService
     ),
@@ -339,6 +392,12 @@ export const QueryCache = {
       null,
       FRECENT_SITES_UPDATE_INTERVAL,
       ShellService
+    ),
+    profileGroupId: new CachedTargetingGetter(
+      "getCachedProfileGroupID",
+      null,
+      FRECENT_SITES_UPDATE_INTERVAL,
+      ClientID
     ),
   },
 };
@@ -523,6 +582,10 @@ function decodeAttributionValue(value) {
   return decodedValue;
 }
 
+async function getPinStatus() {
+  return await ShellService.doesAppNeedPin();
+}
+
 const TargetingGetters = {
   get locale() {
     return Services.locale.appLocaleAsBCP47;
@@ -545,6 +608,15 @@ const TargetingGetters = {
   },
   get currentDate() {
     return new Date();
+  },
+  get canCreateSelectableProfiles() {
+    if (!AppConstants.MOZ_SELECTABLE_PROFILES) {
+      return false;
+    }
+    return lazy.SelectableProfileService?.isEnabled ?? false;
+  },
+  get hasSelectableProfiles() {
+    return lazy.profilesCreated;
   },
   get profileAgeCreated() {
     return lazy.ProfileAge().then(times => times.created);
@@ -594,12 +666,15 @@ const TargetingGetters = {
     return lazy.AddonManager.getActiveAddons(["extension", "service"]).then(
       ({ addons, fullData }) => {
         const info = {};
+        let hasInstalledAddons = false;
         for (const addon of addons) {
           info[addon.id] = {
             version: addon.version,
             type: addon.type,
             isSystem: addon.isSystem,
             isWebExtension: addon.isWebExtension,
+            hidden: addon.hidden,
+            isBuiltin: addon.isBuiltin,
           };
           if (fullData) {
             Object.assign(info[addon.id], {
@@ -608,8 +683,21 @@ const TargetingGetters = {
               installDate: addon.installDate,
             });
           }
+          // special-powers and mochikit are addons installed in tests that
+          // are not "isSystem" or "isBuiltin"
+          const testAddons = [
+            "special-powers@mozilla.org",
+            "mochikit@mozilla.org",
+          ];
+          if (
+            !addon.isSystem &&
+            !addon.isBuiltin &&
+            !testAddons.includes(addon.id)
+          ) {
+            hasInstalledAddons = true;
+          }
         }
-        return { addons: info, isFullData: fullData };
+        return { addons: info, isFullData: fullData, hasInstalledAddons };
       }
     );
   },
@@ -636,6 +724,9 @@ const TargetingGetters = {
   },
   get isDefaultBrowser() {
     return QueryCache.getters.isDefaultBrowser.get().catch(() => null);
+  },
+  get isDefaultBrowserUncached() {
+    return ShellService.isDefaultBrowser();
   },
   get devToolsOpenedCount() {
     return lazy.devtoolsSelfXSSCount;
@@ -681,6 +772,18 @@ const TargetingGetters = {
   },
   get needsUpdate() {
     return QueryCache.queries.CheckBrowserNeedsUpdate.get();
+  },
+  get savedTabGroups() {
+    return lazy.SessionStore.getSavedTabGroups().length;
+  },
+  get currentTabGroups() {
+    let win = lazy.BrowserWindowTracker.getTopWindow();
+    // If there's no window, there can't be any current tab groups.
+    if (!win) {
+      return 0;
+    }
+    let totalTabGroups = win.gBrowser.getAllTabGroups().length;
+    return totalTabGroups;
   },
   get hasPinnedTabs() {
     for (let win of Services.wm.getEnumerator("navigator:browser")) {
@@ -735,19 +838,19 @@ const TargetingGetters = {
   },
   get attachedFxAOAuthClients() {
     return this.usesFirefoxSync
-      ? QueryCache.queries.ListAttachedOAuthClients.get()
+      ? new Promise(resolve =>
+          lazy.fxAccounts
+            .listAttachedOAuthClients()
+            .then(clients => resolve(clients))
+            .catch(() => resolve([]))
+        )
       : [];
   },
   get platformName() {
     return AppConstants.platform;
   },
   get isChinaRepack() {
-    return (
-      Services.prefs
-        .getDefaultBranch(null)
-        .getCharPref(DISTRIBUTION_ID_PREF, "default") ===
-      DISTRIBUTION_ID_CHINA_REPACK
-    );
+    return lazy.BrowserUtils.isChinaRepack();
   },
   get userId() {
     return lazy.ClientEnvironment.userId;
@@ -808,10 +911,14 @@ const TargetingGetters = {
       return true;
     }
 
+    let duration = Date.now() - lazy.newTabTopicModalLastSeen;
     if (
       window.gURLBar?.view.isOpen ||
       window.gNotificationBox?.currentNotification ||
-      window.gBrowser.getNotificationBox()?.currentNotification
+      window.gBrowser.readNotificationBox()?.currentNotification ||
+      // Avoid showing messages if the newtab Topic selection modal was shown in
+      // the past 1 minute
+      duration <= NOTIFICATION_INTERVAL_AFTER_TOPIC_MODAL_MS
     ) {
       return true;
     }
@@ -832,7 +939,16 @@ const TargetingGetters = {
   },
 
   get doesAppNeedPin() {
-    return QueryCache.getters.doesAppNeedPin.get();
+    return (async () => {
+      return (
+        (await QueryCache.getters.doesAppNeedPin.get()) ||
+        (await QueryCache.getters.doesAppNeedStartMenuPin.get())
+      );
+    })();
+  },
+
+  get doesAppNeedPinUncached() {
+    return getPinStatus();
   },
 
   get doesAppNeedPrivatePin() {
@@ -857,6 +973,22 @@ const TargetingGetters = {
     // disabled.
     // See Bug 1888263.
     return Services.sysinfo.getProperty("hasWinPackageId", false);
+  },
+
+  get packageFamilyName() {
+    if (AppConstants.platform !== "win") {
+      // PackageFamilyNames are an MSIX feature, so they won't be available on non-Windows platforms.
+      return null;
+    }
+
+    let packageFamilyName = Services.sysinfo.getProperty(
+      "winPackageFamilyName"
+    );
+    if (packageFamilyName === "") {
+      return null;
+    }
+
+    return packageFamilyName;
   },
 
   /**
@@ -886,8 +1018,7 @@ const TargetingGetters = {
   },
 
   get userPrefersReducedMotion() {
-    let window = Services.appShell.hiddenDOMWindow;
-    return window?.matchMedia("(prefers-reduced-motion: reduce)")?.matches;
+    return Services.appinfo.prefersReducedMotion;
   },
 
   /**
@@ -906,6 +1037,11 @@ const TargetingGetters = {
    */
   get fxViewButtonAreaType() {
     let button = lazy.CustomizableUI.getWidget("firefox-view-button");
+    return button.areaType;
+  },
+
+  get alltabsButtonAreaType() {
+    let button = lazy.CustomizableUI.getWidget("alltabs-button");
     return button.areaType;
   },
 
@@ -1001,21 +1137,40 @@ const TargetingGetters = {
   },
 
   /**
+   * Whether the user opted into a special message action represented by an
+   * installer attribution campaign and this choice still needs to be honored.
+   * @return {string} A special message action to be executed on first-run. For
+   * example, `"SET_DEFAULT_BROWSER"` when the user selected to set as default
+   * via the install marketing page and set default has not yet been
+   * automatically triggered, 'null' otherwise.
+   */
+  get unhandledCampaignAction() {
+    return QueryCache.queries.UnhandledCampaignAction.get();
+  },
+  /**
    * The values of the height and width available to the browser to display
    * web content. The available height and width are each calculated taking
    * into account the presence of menu bars, docks, and other similar OS elements
    * @returns {Object} resolution The resolution object containing width and height
-   * @returns {string} resolution.width The available width of the primary monitor
-   * @returns {string} resolution.height The available height of the primary monitor
+   * @returns {number} resolution.width The available width of the primary monitor
+   * @returns {number} resolution.height The available height of the primary monitor
    */
   get primaryResolution() {
-    // Using hidden dom window ensures that we have a window object
-    // to grab a screen from in certain edge cases such as targeting evaluation
-    // during first startup before the browser is available, and in MacOS
-    let window = Services.appShell.hiddenDOMWindow;
+    const { primaryScreen } = lazy.ScreenManager;
+    const { defaultCSSScaleFactor } = primaryScreen;
+    let availDeviceLeft = {};
+    let availDeviceTop = {};
+    let availDeviceWidth = {};
+    let availDeviceHeight = {};
+    primaryScreen.GetAvailRect(
+      availDeviceLeft,
+      availDeviceTop,
+      availDeviceWidth,
+      availDeviceHeight
+    );
     return {
-      width: window?.screen.availWidth,
-      height: window?.screen.availHeight,
+      width: Math.floor(availDeviceWidth.value / defaultCSSScaleFactor),
+      height: Math.floor(availDeviceHeight.value / defaultCSSScaleFactor),
     };
   },
 
@@ -1032,6 +1187,14 @@ const TargetingGetters = {
     return bits;
   },
 
+  get systemArch() {
+    try {
+      return Services.sysinfo.get("arch");
+    } catch (_e) {
+      return null;
+    }
+  },
+
   get memoryMB() {
     let memory = null;
     try {
@@ -1043,6 +1206,25 @@ const TargetingGetters = {
       memory = Number(memory) / 1024 / 1024;
     }
     return memory;
+  },
+
+  get totalSearches() {
+    return lazy.totalSearches;
+  },
+
+  get profileGroupId() {
+    return QueryCache.getters.profileGroupId.get();
+  },
+
+  get currentProfileId() {
+    if (!lazy.SelectableProfileService.currentProfile) {
+      return "";
+    }
+    return lazy.SelectableProfileService.currentProfile.id.toString();
+  },
+
+  get buildId() {
+    return parseInt(AppConstants.MOZ_BUILDID, 10);
   },
 };
 

@@ -11,8 +11,8 @@
  * page. We can unset the overflow to fix this.
  */
 
- @media (max-width: 767.98px) {
-    html {
-      overflow: auto;
-    }
+@media (max-width: 767.98px) {
+  html {
+    overflow: auto;
   }
+}

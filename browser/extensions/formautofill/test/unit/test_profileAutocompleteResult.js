@@ -58,7 +58,7 @@ function makeAddressComment({ primary, secondary, status, profile }) {
     status,
     ariaLabel: primary + " " + secondary + " " + status,
     fillMessageName: "FormAutofill:FillForm",
-    fillMessageData: profile,
+    fillMessageData: { profile },
   });
 }
 
@@ -75,7 +75,7 @@ function makeCreditCardComment({
     ariaLabel,
     image,
     fillMessageName: "FormAutofill:FillForm",
-    fillMessageData: profile,
+    fillMessageData: { profile },
   });
 }
 
@@ -84,9 +84,13 @@ let addressTestCases = [
     description: "Focus on an `organization` field",
     options: {},
     matchingProfiles,
+    filledCategories: [
+      ["address", "name", "tel"],
+      ["address", "name", "tel"],
+    ],
     allFieldNames,
     searchString: "",
-    fieldName: "organization",
+    fieldDetail: { fieldName: "organization" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -122,9 +126,14 @@ let addressTestCases = [
     description: "Focus on an `tel` field",
     options: {},
     matchingProfiles,
+    filledCategories: [
+      ["address", "name", "tel", "organization"],
+      ["address", "name", "tel", "organization"],
+      ["address", "tel"],
+    ],
     allFieldNames,
     searchString: "",
-    fieldName: "tel",
+    fieldDetail: { fieldName: "tel" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -172,9 +181,14 @@ let addressTestCases = [
     description: "Focus on an `street-address` field",
     options: {},
     matchingProfiles,
+    filledCategories: [
+      ["address", "name", "tel", "organization"],
+      ["address", "name", "tel", "organization"],
+      ["address", "tel"],
+    ],
     allFieldNames,
     searchString: "",
-    fieldName: "street-address",
+    fieldDetail: { fieldName: "street-address" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -222,9 +236,14 @@ let addressTestCases = [
     description: "Focus on an `address-line1` field",
     options: {},
     matchingProfiles,
+    filledCategories: [
+      ["address", "name", "tel", "organization"],
+      ["address", "name", "tel", "organization"],
+      ["address", "tel"],
+    ],
     allFieldNames,
     searchString: "",
-    fieldName: "address-line1",
+    fieldDetail: { fieldName: "address-line1" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -274,7 +293,7 @@ let addressTestCases = [
     matchingProfiles: [],
     allFieldNames,
     searchString: "",
-    fieldName: "",
+    fieldDetail: { fieldName: "" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_NOMATCH,
       defaultIndex: 0,
@@ -287,7 +306,7 @@ let addressTestCases = [
     matchingProfiles: [],
     allFieldNames,
     searchString: "",
-    fieldName: "",
+    fieldDetail: { fieldName: "" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_FAILURE,
       defaultIndex: 0,
@@ -330,7 +349,7 @@ let creditCardTestCases = [
     matchingProfiles,
     allFieldNames,
     searchString: "",
-    fieldName: "cc-name",
+    fieldDetail: { fieldName: "cc-name" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -370,7 +389,7 @@ let creditCardTestCases = [
     matchingProfiles,
     allFieldNames,
     searchString: "",
-    fieldName: "cc-number",
+    fieldDetail: { fieldName: "cc-number" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_SUCCESS,
       defaultIndex: 0,
@@ -423,7 +442,7 @@ let creditCardTestCases = [
     matchingProfiles: [],
     allFieldNames,
     searchString: "",
-    fieldName: "",
+    fieldDetail: { fieldName: "" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_NOMATCH,
       defaultIndex: 0,
@@ -436,7 +455,7 @@ let creditCardTestCases = [
     matchingProfiles: [],
     allFieldNames,
     searchString: "",
-    fieldName: "",
+    fieldDetail: { fieldName: "" },
     expected: {
       searchResult: Ci.nsIAutoCompleteResult.RESULT_FAILURE,
       defaultIndex: 0,
@@ -462,9 +481,10 @@ add_task(async function test_all_patterns() {
       info("Starting testcase: " + testCase.description);
       let actual = new collectionConstructor(
         testCase.searchString,
-        testCase.fieldName,
+        testCase.fieldDetail,
         testCase.allFieldNames,
         testCase.matchingProfiles,
+        testCase.filledCategories,
         testCase.options
       );
       let expectedValue = testCase.expected;
@@ -487,7 +507,10 @@ add_task(async function test_all_patterns() {
       equal(actual.matchCount, expectedItemLength);
       expectedValue.items.forEach((item, index) => {
         equal(actual.getValueAt(index), item.value);
-        equal(actual.getCommentAt(index), item.comment);
+        Assert.deepEqual(
+          JSON.parse(actual.getCommentAt(index)),
+          JSON.parse(item.comment)
+        );
         equal(actual.getLabelAt(index), item.label);
         equal(actual.getStyleAt(index), item.style);
         equal(actual.getImageAt(index), item.image);

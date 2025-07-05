@@ -4,6 +4,9 @@ ChromeUtils.defineESModuleGetters(this, {
     "resource://testing-common/FormHistoryTestUtils.sys.mjs",
 });
 
+const SEARCH_FORM =
+  "http://mochi.test:8888/browser/browser/components/search/test/browser/discovery.html";
+
 function expectedURL(aSearchTerms) {
   const ENGINE_HTML_BASE =
     "http://mochi.test:8888/browser/browser/components/search/test/browser/test.html";
@@ -40,7 +43,7 @@ function simulateClick(aEvent, aTarget) {
 
 // modified from toolkit/components/satchel/test/test_form_autocomplete.html
 function checkMenuEntries(expectedValues) {
-  let actualValues = getMenuEntries();
+  let actualValues = getMenuEntries().toSorted((a, b) => a.localeCompare(b));
   is(
     actualValues.length,
     expectedValues.length,
@@ -61,17 +64,27 @@ function getMenuEntries() {
 
 var searchBar;
 var searchButton;
-var searchEntries = ["test"];
+var searchEntries = [
+  "testAltReturn",
+  "testAltGrReturn",
+  "testLeftClick",
+  "testMiddleClick",
+  "testReturn",
+  "testShiftMiddleClick",
+].sort((a, b) => a.localeCompare(b));
 var preSelectedBrowser;
 var preTabNo;
 
-async function prepareTest() {
+async function prepareTest(searchBarValue = "test") {
+  searchBar.value = searchBarValue;
+  searchBar.updateGoButtonVisibility();
   preSelectedBrowser = gBrowser.selectedBrowser;
   preTabNo = gBrowser.tabs.length;
 
   await SimpleTest.promiseFocus();
 
   if (document.activeElement == searchBar) {
+    info("Search bar is already focused.");
     return;
   }
 
@@ -79,21 +92,19 @@ async function prepareTest() {
   gURLBar.focus();
   searchBar.focus();
   await focusPromise;
+  info("Search bar is now focused.");
 }
 
 add_setup(async function () {
   await Services.search.init();
 
-  await gCUITestUtils.addSearchBar();
+  searchBar = await gCUITestUtils.addSearchBar();
+  searchButton = searchBar.querySelector(".search-go-button");
 
   await SearchTestUtils.installOpenSearchEngine({
     url: "http://mochi.test:8888/browser/browser/components/search/test/browser/426329.xml",
     setAsDefault: true,
   });
-
-  searchBar = BrowserSearch.searchBar;
-  searchBar.value = "test";
-  searchButton = searchBar.querySelector(".search-go-button");
 
   registerCleanupFunction(() => {
     searchBar.value = "";
@@ -114,7 +125,7 @@ add_setup(async function () {
 });
 
 add_task(async function testReturn() {
-  await prepareTest();
+  await prepareTest("testReturn");
   EventUtils.synthesizeKey("KEY_Enter");
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 
@@ -126,8 +137,32 @@ add_task(async function testReturn() {
   );
 });
 
+add_task(async function testReturnEmpty() {
+  await prepareTest("");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await TestUtils.waitForTick();
+
+  is(
+    gBrowser.selectedBrowser.ownerDocument.activeElement,
+    searchBar.textbox,
+    "Focus stays in the searchbar"
+  );
+});
+
+add_task(async function testShiftReturn() {
+  await prepareTest("");
+  let promise = BrowserTestUtils.browserLoaded(
+    gBrowser.selectedBrowser,
+    false,
+    SEARCH_FORM
+  );
+  EventUtils.synthesizeKey("KEY_Enter", { shiftKey: true });
+  await promise;
+  info("testShiftReturn opened the search form page.");
+});
+
 add_task(async function testAltReturn() {
-  await prepareTest();
+  await prepareTest("testAltReturn");
   await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
     EventUtils.synthesizeKey("KEY_Enter", { altKey: true });
   });
@@ -140,8 +175,19 @@ add_task(async function testAltReturn() {
   );
 });
 
+add_task(async function testAltReturnEmpty() {
+  await prepareTest("");
+  EventUtils.synthesizeKey("KEY_Enter", { altKey: true });
+  await TestUtils.waitForTick();
+  is(
+    gBrowser.selectedBrowser.ownerDocument.activeElement,
+    searchBar.textbox,
+    "Focus stays in the searchbar"
+  );
+});
+
 add_task(async function testAltGrReturn() {
-  await prepareTest();
+  await prepareTest("testAltGrReturn");
   await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
     EventUtils.synthesizeKey("KEY_Enter", { altGraphKey: true });
   });
@@ -154,24 +200,36 @@ add_task(async function testAltGrReturn() {
   );
 });
 
-// Shift key has no effect for now, so skip it
-add_task(async function testShiftAltReturn() {
-  /*
-  yield* prepareTest();
+add_task(async function testAltGrReturnEmpty() {
+  await prepareTest("");
 
-  let url = expectedURL(searchBar.value);
+  EventUtils.synthesizeKey("KEY_Enter", { altGraphKey: true });
+  await TestUtils.waitForTick();
 
-  let newTabPromise = BrowserTestUtils.waitForNewTab(gBrowser, url);
-  EventUtils.synthesizeKey("VK_RETURN", { shiftKey: true, altKey: true });
-  yield newTabPromise;
+  is(
+    gBrowser.selectedBrowser.ownerDocument.activeElement,
+    searchBar.textbox,
+    "Focus stays in the searchbar"
+  );
+});
+
+add_task(async function testShiftAltReturnEmpty() {
+  await prepareTest("");
+
+  await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
+    EventUtils.synthesizeKey("KEY_Enter", { shiftKey: true, altKey: true });
+  });
 
   is(gBrowser.tabs.length, preTabNo + 1, "Shift+Alt+Return key added new tab");
-  is(gBrowser.currentURI.spec, url, "testShiftAltReturn opened correct search page");
-  */
+  is(
+    gBrowser.currentURI.spec,
+    SEARCH_FORM,
+    "testShiftAltReturn opened the search form page"
+  );
 });
 
 add_task(async function testLeftClick() {
-  await prepareTest();
+  await prepareTest("testLeftClick");
   simulateClick({ button: 0 }, searchButton);
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   is(gBrowser.tabs.length, preTabNo, "LeftClick did not open new tab");
@@ -183,7 +241,7 @@ add_task(async function testLeftClick() {
 });
 
 add_task(async function testMiddleClick() {
-  await prepareTest();
+  await prepareTest("testMiddleClick");
   await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
     simulateClick({ button: 1 }, searchButton);
   });
@@ -196,7 +254,7 @@ add_task(async function testMiddleClick() {
 });
 
 add_task(async function testShiftMiddleClick() {
-  await prepareTest();
+  await prepareTest("testShiftMiddleClick");
 
   let url = expectedURL(searchBar.value);
 

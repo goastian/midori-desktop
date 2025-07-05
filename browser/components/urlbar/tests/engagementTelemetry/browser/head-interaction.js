@@ -7,9 +7,10 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   CUSTOM_SEARCH_SHORTCUTS:
-    "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
+    "moz-src:///toolkit/components/search/SearchShortcuts.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
-  SEARCH_SHORTCUTS: "resource://activity-stream/lib/SearchShortcuts.sys.mjs",
+  SEARCH_SHORTCUTS:
+    "moz-src:///toolkit/components/search/SearchShortcuts.sys.mjs",
   SearchService: "resource://gre/modules/SearchService.sys.mjs",
 });
 

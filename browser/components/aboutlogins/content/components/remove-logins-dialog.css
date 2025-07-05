@@ -23,7 +23,9 @@
   margin: auto;
   background-color: var(--in-content-page-background);
   color: var(--in-content-text-color);
-  box-shadow: var(--shadow-30);
+  box-shadow: var(--logins-dialog-shadow);
+  border: var(--logins-dialog-border);
+  border-radius: var(--logins-dialog-border-radius);
   /* show a border in high contrast mode */
   outline: 1px solid transparent;
 }
@@ -61,8 +63,8 @@
 .warning-icon {
   -moz-context-properties: fill;
   fill: currentColor;
-  width: 32px;
-  height: 32px;
+  width: var(--icon-size-xlarge);
+  height: var(--icon-size-xlarge);
   margin: 8px;
 }
 

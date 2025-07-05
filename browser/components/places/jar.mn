@@ -10,6 +10,7 @@ browser.jar:
     content/browser/places/places.css                    (content/places.css)
 *   content/browser/places/bookmarkProperties.xhtml      (content/bookmarkProperties.xhtml)
     content/browser/places/bookmarkProperties.js         (content/bookmarkProperties.js)
+    content/browser/places/places-commands.js            (content/places-commands.js)
     content/browser/places/places-menupopup.js           (content/places-menupopup.js)
     content/browser/places/places-tree.js                (content/places-tree.js)
     content/browser/places/controller.js                 (content/controller.js)
@@ -19,9 +20,11 @@ browser.jar:
     content/browser/places/historySidebar.js             (content/historySidebar.js)
 *   content/browser/places/bookmarksSidebar.xhtml        (content/bookmarksSidebar.xhtml)
     content/browser/places/bookmarksSidebar.js           (content/bookmarksSidebar.js)
+    content/browser/places/clearDataForSite.xhtml        (content/clearDataForSite.xhtml)
+    content/browser/places/clearDataForSite.js           (content/clearDataForSite.js)
+    content/browser/places/clearDataForSite.css          (content/clearDataForSite.css)
     content/browser/places/editBookmark.js               (content/editBookmark.js)
-#ifdef NIGHTLY_BUILD
+    content/browser/places/placesContextMenu.js          (content/placesContextMenu.js)
     content/browser/places/interactionsViewer.css        (metadataViewer/interactionsViewer.css)
     content/browser/places/interactionsViewer.html       (metadataViewer/interactionsViewer.html)
     content/browser/places/interactionsViewer.js         (metadataViewer/interactionsViewer.js)
-#endif

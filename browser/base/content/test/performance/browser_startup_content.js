@@ -65,7 +65,7 @@ const intermittently_loaded_scripts = {
 
     // Translations code which may be preffed on.
     "resource://gre/actors/TranslationsChild.sys.mjs",
-    "resource://gre/modules/translation/LanguageDetector.sys.mjs",
+    "resource://gre/modules/translations/LanguageDetector.sys.mjs",
     "resource://gre/modules/ConsoleAPIStorage.sys.mjs", // Logging related.
 
     // Session store.
@@ -125,12 +125,6 @@ add_task(async function () {
         );
         let collectStacks = AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG;
         let modules = new Map();
-        for (let module of Cu.loadedJSModules) {
-          modules.set(
-            module,
-            collectStacks ? Cu.getModuleImportStack(module) : ""
-          );
-        }
         for (let module of Cu.loadedESModules) {
           modules.set(
             module,

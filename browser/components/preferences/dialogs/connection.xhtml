@@ -4,6 +4,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<?csp default-src chrome:; style-src chrome: 'unsafe-inline'; ?>
+
 <window
   type="child"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
@@ -11,13 +13,8 @@
   data-l10n-id="connection-window2"
   data-l10n-attrs="title, style"
   persist="lastSelected"
-  onload="gConnectionsDialog.checkForSystemProxy();"
 >
-  <dialog
-    id="ConnectionsDialog"
-    buttons="accept,cancel,help"
-    helpTopic="prefs-connection-settings"
-  >
+  <dialog id="ConnectionsDialog" buttons="accept,cancel">
     <!-- Used for extension-controlled lockdown message -->
     <linkset>
       <html:link rel="stylesheet" href="chrome://global/skin/global.css" />
@@ -40,9 +37,9 @@
 
     <keyset>
       <key
+        id="key_close"
         data-l10n-id="connection-close-key"
         modifiers="accel"
-        oncommand="Preferences.close(event)"
       />
     </keyset>
 
@@ -217,12 +214,10 @@
             type="text"
             style="flex: 1"
             preference="network.proxy.autoconfig_url"
-            oninput="gConnectionsDialog.updateReloadButton();"
           />
           <button
             id="autoReload"
             data-l10n-id="connection-proxy-reload"
-            oncommand="gConnectionsDialog.reloadPAC();"
             preference="pref.advanced.proxies.disable_button.reload"
           />
         </hbox>

@@ -105,6 +105,29 @@ const AVAILABLE_SHIMS = [
     ],
   },
   {
+    id: "EmbedTestShim",
+    platform: "desktop",
+    name: "Test shim for smartblock embed unblocking",
+    bug: "1892175",
+    runFirst: "embed-test-shim.js",
+    // Blank stub file just so we run the script above when the matched script
+    // files get blocked.
+    file: "empty-script.js",
+    matches: [
+      "https://itisatracker.org/browser/browser/extensions/webcompat/tests/browser/embed_test.js",
+    ],
+    // Use instagram logo as an example
+    logos: ["instagram.svg"],
+    needsShimHelpers: [
+      "embedClicked",
+      "smartblockEmbedReplaced",
+      "smartblockGetFluentString",
+    ],
+    isSmartblockEmbedShim: true,
+    onlyIfBlockedByETP: true,
+    unblocksOnOptIn: ["*://itisatracker.org/*"],
+  },
+  {
     id: "AddThis",
     platform: "all",
     name: "AddThis",
@@ -394,6 +417,7 @@ const AVAILABLE_SHIMS = [
           "*://portal.sds.ox.ac.uk/*",
           "*://curate.nd.edu/*",
           "*://kilthub.cmu.edu/*",
+          "*://publications.cispa.de/*",
         ],
         runAt: "document_start",
       },
@@ -458,6 +482,23 @@ const AVAILABLE_SHIMS = [
     name: "Google Publisher Tags",
     bug: "1713685",
     file: "google-publisher-tags.js",
+    notHosts: [
+      "13wham.com",
+      "wpde.com",
+      "krcrtv.com",
+      "nbcmontana.com",
+      "idahonews.com",
+      "wgme.com",
+      "wtov9.com",
+      "news3lv.com",
+      "devuploads.com",
+      "wjla.com",
+      "komonews.com",
+      "fox11online.com",
+      "cbs6albany.com",
+      "okcfox.co",
+      "turnto10.com",
+    ],
     matches: [
       "*://www.googletagservices.com/tag/js/gpt.js*",
       "*://pagead2.googlesyndication.com/tag/js/gpt.js*",
@@ -663,6 +704,34 @@ const AVAILABLE_SHIMS = [
         ],
         runAt: "document_start",
         allFrames: true,
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
+  {
+    id: "MessengerLogin",
+    platform: "desktop",
+    name: "Messenger Login",
+    bug: "1934814",
+    needsShimHelpers: ["checkFacebookLoginStatus"],
+    contentScripts: [
+      {
+        js: "messengerLogin.js",
+        matches: ["*://www.messenger.com/*"],
+        runAt: "document_start",
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
+  {
+    id: "MicrosoftIcon",
+    name: "Microsoft Account Icon",
+    bug: "1728111",
+    contentScripts: [
+      {
+        js: "microsoftAccountIcon.js",
+        matches: ["*://*.microsoft.com/*", "*://m365.cloud.microsoft/*"],
+        runAt: "document_start",
       },
     ],
     onlyIfDFPIActive: true,
@@ -879,6 +948,48 @@ const AVAILABLE_SHIMS = [
     onlyIfDFPIActive: true,
   },
   {
+    id: "StackOverflowLogin",
+    platform: "all",
+    name: "StackOverflow Login",
+    bug: "1949491",
+    contentScripts: [
+      {
+        js: "stackoverflow-login.js",
+        matches: ["*://stackoverflow.com/*"],
+        runAt: "document_start",
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
+  {
+    id: "JiraZendeskSupport",
+    platform: "all",
+    name: "Jira Zendesk Support",
+    bug: "1774592",
+    contentScripts: [
+      {
+        js: "jira-zendesk-support.js",
+        matches: ["*://*.atlassian.net/*"],
+        runAt: "document_start",
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
+  {
+    id: "ZendeskAsanaSupport",
+    platform: "all",
+    name: "Zendesk Asana Support",
+    bug: "1774567",
+    contentScripts: [
+      {
+        js: "zendesk-asana-support.js",
+        matches: ["*://*.zendesk.com/*"],
+        runAt: "document_start",
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
+  {
     id: "emeraude.my.salesforce.com",
     platform: "all",
     name: "Salesforce IndexedDB Script Access",
@@ -892,6 +1003,129 @@ const AVAILABLE_SHIMS = [
       },
     ],
   },
+  {
+    id: "InstagramEmbed",
+    platform: "desktop",
+    name: "Instagram embed placeholder",
+    bug: "1892173",
+    runFirst: "instagram-embed.js",
+    // Blank stub file just so we run the script above when the matched script
+    // files get blocked.
+    file: "empty-script.js",
+    matches: [
+      "https://www.instagram.com/embed.js",
+      "https://platform.instagram.com/*/embeds.js",
+    ],
+    logos: ["instagram.svg"],
+    webExposedShimHelpers: [],
+    needsShimHelpers: [
+      "embedClicked",
+      "smartblockEmbedReplaced",
+      "smartblockGetFluentString",
+    ],
+    isSmartblockEmbedShim: true,
+    onlyIfBlockedByETP: true,
+    unblocksOnOptIn: [
+      "*://www.instagram.com/*",
+      "*://platform.instagram.com/*",
+      "*://*.fbcdn.net/*",
+    ],
+  },
+  {
+    id: "TiktokEmbed",
+    platform: "desktop",
+    name: "Tiktok embed placeholder",
+    bug: "1892172",
+    runFirst: "tiktok-embed.js",
+    // Blank stub file just so we run the script above when the matched script
+    // files get blocked.
+    file: "empty-script.js",
+    matches: ["https://www.tiktok.com/embed.js"],
+    logos: ["tiktok.svg"],
+    webExposedShimHelpers: [],
+    needsShimHelpers: [
+      "embedClicked",
+      "smartblockEmbedReplaced",
+      "smartblockGetFluentString",
+    ],
+    isSmartblockEmbedShim: true,
+    onlyIfBlockedByETP: true,
+    unblocksOnOptIn: ["*://www.tiktok.com/*"],
+  },
+  {
+    id: "FingerpringJSBotd",
+    platform: "all",
+    name: "FingerprintJS Bot Detection",
+    bug: "1925995",
+    file: "botd.mjs",
+    matches: ["*://openfpcdn.io/botd/v1"],
+    onlyIfBlockedByETP: true,
+  },
+  {
+    id: "SteamLogin",
+    platform: "all",
+    name: "Steam Login Shim",
+    bug: "1938299",
+    requestStorageAccessForRedirect: [
+      // allow cookies for *.steampowered.com <-> steamcommunity.com
+      ["*://store.steampowered.com/*", "*://steamcommunity.com/*"],
+      ["*://steamcommunity.com/*", "*://store.steampowered.com/*"],
+      ["*://help.steampowered.com/*", "*://steamcommunity.com/*"],
+      ["*://steamcommunity.com/*", "*://help.steampowered.com/*"],
+      ["*://checkout.steampowered.com/*", "*://steamcommunity.com/*"],
+      ["*://steamcommunity.com/*", "*://checkout.steampowered.com/*"],
+      // allow cookies for *.steampowered.com <-> steam.tv
+      ["*://store.steampowered.com/*", "*://steam.tv/*"],
+      ["*://steam.tv/*", "*://store.steampowered.com/*"],
+      ["*://help.steampowered.com/*", "*://steam.tv/*"],
+      ["*://steam.tv/*", "*://help.steampowered.com/*"],
+      ["*://checkout.steampowered.com/*", "*://steam.tv/*"],
+      ["*://steam.tv/*", "*://checkout.steampowered.com/*"],
+    ],
+  },
+  {
+    id: "TwitterEmbed",
+    platform: "desktop",
+    name: "Twitter embed placeholder",
+    bug: "1901602",
+    runFirst: "twitter-embed.js",
+    // Blank stub file just so we run the script above when the matched script
+    // files get blocked.
+    file: "empty-script.js",
+    matches: ["https://platform.twitter.com/widgets.js"],
+    logos: ["x-logo.svg"],
+    needsShimHelpers: [
+      "embedClicked",
+      "smartblockEmbedReplaced",
+      "smartblockGetFluentString",
+    ],
+    isSmartblockEmbedShim: true,
+    onlyIfBlockedByETP: true,
+    unblocksOnOptIn: [
+      "*://platform.twitter.com/*",
+      "*://syndication.twitter.com/*",
+      "*://cdn.syndication.twimg.com/*",
+      "*://video.twimg.com/*",
+      "*://pbs.twimg.com/*",
+      "*://abs.twimg.com/*",
+      "*://abs-0.twimg.com/*",
+    ],
+  },
+  {
+    id: "AliExpressInternationalization",
+    name: "AliExpress Internationalization",
+    bug: "1912228",
+    contentScripts: [
+      {
+        js: "aliexpress-language.js",
+        matches: ["*://*.aliexpress.us/*"],
+        runAt: "document_start",
+      },
+    ],
+    onlyIfDFPIActive: true,
+  },
 ];
 
-module.exports = AVAILABLE_SHIMS;
+if (typeof module !== "undefined") {
+  module.exports = AVAILABLE_SHIMS;
+}

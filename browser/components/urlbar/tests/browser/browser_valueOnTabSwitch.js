@@ -98,7 +98,6 @@ add_task(async function () {
       "All text selected"
     );
 
-
     await BrowserTestUtils.switchTab(gBrowser, fullURLTab);
     is(
       gURLBar.value,

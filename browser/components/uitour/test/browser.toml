@@ -10,6 +10,7 @@ support-files = [
 ["browser_UITour.js"]
 skip-if = [
   "os == 'linux' && os_version == '18.04'", # Intermittent failures, bug 951965
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 951965
   "verify",
 ]
 
@@ -36,6 +37,7 @@ fail-if = ["a11y_checks"] # Bug 1854526 clicked UITourTooltipClose may not be fo
 
 ["browser_UITour_modalDialog.js"]
 run-if = ["os == 'mac'"] # modal dialog disabling only working on OS X.
+tags = "os_integration"
 
 ["browser_UITour_observe.js"]
 
@@ -54,16 +56,8 @@ skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
 skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
 
 ["browser_UITour_showProtectionReport.js"]
-skip-if = [
-  "os == 'linux' && os_version == '18.04' && asan", # Bug 1697217
-  "os == 'linux' && os_version == '18.04' && debug", # Bug 1697217
-  "os == 'linux' && os_version == '18.04' && tsan", # Bug 1697217
-]
 
 ["browser_UITour_sync.js"]
-skip-if = [
-  "os == 'linux' && os_version == '18.04'", # Bug 1678417
-]
 
 ["browser_UITour_toggleReaderMode.js"]
 skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
@@ -74,10 +68,10 @@ skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
 skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
 
 ["browser_fxa.js"]
+tags = "os_integration"
 
 ["browser_fxa_config.js"]
 
 ["browser_openPreferences.js"]
 
 ["browser_openSearchPanel.js"]
-skip-if = ["true"] # Bug 1113038 - Intermittent "Popup was opened"

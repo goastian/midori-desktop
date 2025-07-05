@@ -115,21 +115,13 @@ var TabStateCacheInternal = {
     }
 
     let history = data.history;
-    let toIdx = history.entries.length;
-    if ("toIdx" in change) {
-      toIdx = Math.min(toIdx, change.toIdx + 1);
-    }
-
     for (let key of Object.keys(change)) {
       if (key == "entries") {
         if (change.fromIdx != kLastIndex) {
           let start = change.fromIdx + 1;
-          history.entries.splice.apply(
-            history.entries,
-            [start, toIdx - start].concat(change.entries)
-          );
+          history.entries.splice(start, Infinity, ...change.entries);
         }
-      } else if (key != "fromIdx" && key != "toIdx") {
+      } else if (key != "fromIdx") {
         history[key] = change[key];
       }
     }
@@ -141,8 +133,7 @@ var TabStateCacheInternal = {
    * @param permanentKey (object)
    *        The tab or browser belonging to the given tab data.
    * @param newData (object)
-   *        The new data to be stored for the given |tab|
-   *        or associated |browser|.
+   *        The new data to be stored for the given permanent key.
    */
   update(permanentKey, newData) {
     let data = this._data.get(permanentKey) || {};

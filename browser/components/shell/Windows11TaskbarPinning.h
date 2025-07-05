@@ -19,6 +19,7 @@ enum class Win11PinToTaskBarResultStatus {
   Failed,
   NotCurrentlyAllowed,
   AlreadyPinned,
+  NotPinned,
   Success,
   NotSupported,
 };
@@ -29,7 +30,8 @@ struct Win11PinToTaskBarResult {
 };
 
 Win11PinToTaskBarResult PinCurrentAppToTaskbarWin11(
-    bool aCheckOnly, const nsAString& aAppUserModelId,
-    nsAutoString aShortcutPath);
+    bool aCheckOnly, const nsAString& aAppUserModelId);
+
+Win11PinToTaskBarResult IsCurrentAppPinnedToTaskbarWin11(bool aCheckOnly);
 
 #endif  // SHELL_WINDOWS11TASKBARPINNING_H__

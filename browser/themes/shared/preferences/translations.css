@@ -31,11 +31,16 @@
 }
 
 .translations-settings-languages-card {
-  display: flex;
   flex-direction: column;
-  max-height: calc( 7 * var(--space-xlarge));
-  overflow: auto;
+  max-height: calc( 14 * var(--space-xlarge));
   padding-inline: calc( 2 * var(--space-small));
+
+  &[hidden] {
+    display: none;
+  }
+  &:not([hidden]) {
+    display: flex;
+  }
 }
 
 .translations-settings-language-header {
@@ -44,20 +49,36 @@
   font-weight: var(--font-weight-bold);
 }
 
+.translations-settings-language-list {
+  overflow: auto;
+}
+
 .translations-settings-language {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   padding: var(--space-small) 0;
   border-top: 1px solid var(--in-content-border-color);
   label {
-    margin: 0px calc( 2 * var(--space-small));
+    margin: 0 calc( 2 * var(--space-small));
   }
 }
-
+.translations-settings-language-error {
+  display: inline-block;
+  flex: 0 1 100%;
+}
 .translations-settings-download-icon[type~="icon"]::part(button) {
   background-image: url(chrome://browser/skin/downloads/downloads.svg);
 }
 
-.translations-settings-delete-icon[type~="icon"]::part(button) {
+.translations-settings-remove-icon[type~="icon"]::part(button) {
   background-image: url(chrome://global/skin/icons/delete.svg);
+}
+
+.translations-settings-loading-icon[type~="icon"]::part(button) {
+  background-image: url(chrome://global/skin/icons/loading.svg);
+}
+
+.translations-settings-download-size {
+  color: var(--text-color-deemphasized);
 }

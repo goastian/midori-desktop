@@ -1,6 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+requestLongerTimeout(2);
+
 const { AddonTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
 );
@@ -441,6 +443,24 @@ add_task(async function testReorderingBrowserLanguages() {
     "The second dialog id is larger than the first"
   );
 
+  // Open the dialog yet again.
+  newDialog = await openDialog(doc);
+  dialog = newDialog.dialog;
+  dialogDoc = newDialog.dialogDoc;
+  let thirdDialogId = getDialogId(dialogDoc);
+  selected = newDialog.selected;
+
+  // Move pl to the top.
+  selectAddedLocale("pl", selected);
+  assertLocaleOrder(selected, "en-US,he,pl", "pl");
+  dialogDoc.getElementById("up").doCommand();
+  dialogDoc.getElementById("up").doCommand();
+  assertLocaleOrder(selected, "pl,en-US,he", "pl");
+
+  dialogClosed = BrowserTestUtils.waitForEvent(dialog, "dialogclosing");
+  dialog.acceptDialog();
+  await dialogClosed;
+
   await Promise.all(addons.map(addon => addon.uninstall()));
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
 
@@ -448,9 +468,14 @@ add_task(async function testReorderingBrowserLanguages() {
     ["manage", "main", firstDialogId],
     ["reorder", "dialog", firstDialogId],
     ["accept", "dialog", firstDialogId],
+    ["set_fallback", "dialog", firstDialogId],
     ["manage", "main", secondDialogId],
     ["reorder", "dialog", secondDialogId],
     ["accept", "dialog", secondDialogId],
+    ["manage", "main", thirdDialogId],
+    ["reorder", "dialog", thirdDialogId],
+    ["reorder", "dialog", thirdDialogId],
+    ["accept", "dialog", thirdDialogId],
   ]);
 });
 

@@ -5,7 +5,7 @@
 <box id="customization-content-container">
 <box id="customization-palette-container">
   <label id="customization-header" data-l10n-id="customize-mode-menu-and-toolbars-header"></label>
-  <vbox id="customization-palette" class="customization-palette" hidden="true"/>
+  <vbox id="customization-palette" hidden="true"/>
   <html:div id="customization-pong-arena" hidden="true"/>
   <spacer id="customization-spacer"/>
 </box>
@@ -25,12 +25,9 @@
 </vbox>
 </box>
 <hbox id="customization-footer">
-<checkbox id="customization-titlebar-visibility-checkbox" class="customization-checkbox"
-# NB: because oncommand fires after click, by the time we've fired, the checkbox binding
-#    will already have switched the button's state, so this is correct:
-          oncommand="gCustomizeMode.toggleTitlebar(this.checked)" data-l10n-id="customize-mode-titlebar"/>
+<checkbox id="customization-titlebar-visibility-checkbox" class="customization-checkbox" data-l10n-id="customize-mode-titlebar"/>
 <button id="customization-toolbar-visibility-button" class="footer-button" type="menu" data-l10n-id="customize-mode-toolbars">
-  <menupopup id="customization-toolbar-menu" onpopupshowing="onViewToolbarsPopupShowing(event)"/>
+  <menupopup id="customization-toolbar-menu"/>
 </button>
 <button id="customization-uidensity-button"
         data-l10n-id="customize-mode-uidensity"
@@ -39,7 +36,6 @@
         hidden="true">
   <panel type="arrow" id="customization-uidensity-menu"
          orient="vertical"
-         onpopupshowing="gCustomizeMode.onUIDensityMenuShowing();"
          position="topleft bottomleft"
          flip="none"
          role="menu">
@@ -47,52 +43,34 @@
               class="menuitem-iconic customization-uidensity-menuitem"
               role="menuitemradio"
               data-l10n-id="customize-mode-uidensity-menu-compact-unsupported"
-              tabindex="0"
-              onfocus="gCustomizeMode.updateUIDensity(this.mode);"
-              onmouseover="gCustomizeMode.updateUIDensity(this.mode);"
-              onblur="gCustomizeMode.resetUIDensity();"
-              onmouseout="gCustomizeMode.resetUIDensity();"
-              oncommand="gCustomizeMode.setUIDensity(this.mode);"/>
+              tabindex="0"/>
     <menuitem id="customization-uidensity-menuitem-normal"
               class="menuitem-iconic customization-uidensity-menuitem"
               role="menuitemradio"
               data-l10n-id="customize-mode-uidensity-menu-normal"
-              tabindex="0"
-              onfocus="gCustomizeMode.updateUIDensity(this.mode);"
-              onmouseover="gCustomizeMode.updateUIDensity(this.mode);"
-              onblur="gCustomizeMode.resetUIDensity();"
-              onmouseout="gCustomizeMode.resetUIDensity();"
-              oncommand="gCustomizeMode.setUIDensity(this.mode);"/>
+              tabindex="0"/>
 #ifndef XP_MACOSX
     <menuitem id="customization-uidensity-menuitem-touch"
               class="menuitem-iconic customization-uidensity-menuitem"
               role="menuitemradio"
               data-l10n-id="customize-mode-uidensity-menu-touch"
-              tabindex="0"
-              onfocus="gCustomizeMode.updateUIDensity(this.mode);"
-              onmouseover="gCustomizeMode.updateUIDensity(this.mode);"
-              onblur="gCustomizeMode.resetUIDensity();"
-              onmouseout="gCustomizeMode.resetUIDensity();"
-              oncommand="gCustomizeMode.setUIDensity(this.mode);">
+              tabindex="0">
     </menuitem>
     <spacer hidden="true" id="customization-uidensity-touch-spacer"/>
     <checkbox id="customization-uidensity-autotouchmode-checkbox"
               hidden="true"
-              data-l10n-id="customize-mode-uidensity-auto-touch-mode-checkbox"
-              oncommand="gCustomizeMode.updateAutoTouchMode(this.checked)"/>
+              data-l10n-id="customize-mode-uidensity-auto-touch-mode-checkbox"/>
 #endif
   </panel>
 </button>
 <label is="text-link"
        id="customization-lwtheme-link"
        class="customization-link"
-       data-l10n-id="customize-mode-lwthemes-link"
-       onclick="gCustomizeMode.openAddonsManagerThemes();" />
+       data-l10n-id="customize-mode-lwthemes-link" />
 
 <button id="whimsy-button"
         type="checkbox"
         class="footer-button"
-        oncommand="gCustomizeMode.togglePong(this.checked);"
         hidden="true"/>
 
 <spacer id="customization-footer-spacer"/>
@@ -100,21 +78,17 @@
     <button id="customization-touchbar-button"
         class="footer-button"
         hidden="true"
-        oncommand="gCustomizeMode.customizeTouchBar();"
         data-l10n-id="customize-mode-touchbar-cmd"/>
     <spacer hidden="true" id="customization-touchbar-spacer"/>
 #endif
 <button id="customization-undo-reset-button"
         class="footer-button"
         hidden="true"
-        oncommand="gCustomizeMode.undoReset();"
         data-l10n-id="customize-mode-undo-cmd"/>
 <button id="customization-reset-button"
-        oncommand="gCustomizeMode.reset();"
         data-l10n-id="customize-mode-restore-defaults"
         class="footer-button"/>
 <button id="customization-done-button"
-        oncommand="gCustomizeMode.exit();"
         data-l10n-id="customize-mode-done"
         default="true"
         class="footer-button"/>

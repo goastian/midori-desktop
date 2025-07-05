@@ -5,10 +5,13 @@
   <title>Tests for the turn-on-scheduled-backups component</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="head.js"></script>
   <script
   src="chrome://browser/content/backup/turn-on-scheduled-backups.mjs"
   type="module"
 ></script>
+  <link rel="localization" href="preview/backupSettings.ftl"/>
+  <link rel="localization" href="branding/brand.ftl"/>
   <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
   <script>
 
@@ -42,7 +45,7 @@
       ok(confirmButton, "Confirm button should be found");
 
       let content = document.getElementById("content");
-      let promise = BrowserTestUtils.waitForEvent(content, "scheduledBackupsConfirm");
+      let promise = BrowserTestUtils.waitForEvent(content, "BackupUI:EnableScheduledBackups");
 
       confirmButton.click()
 
@@ -60,7 +63,7 @@
       ok(cancelButton, "Cancel button should be found");
 
       let content = document.getElementById("content");
-      let promise = BrowserTestUtils.waitForEvent(content, "scheduledBackupsCancel");
+      let promise = BrowserTestUtils.waitForEvent(content, "dialogCancel");
 
       cancelButton.click()
 
@@ -83,6 +86,84 @@
       await turnOnScheduledBackups.updateComplete;
 
       ok(turnOnScheduledBackups.passwordOptionsExpandedEl, "Passwords expanded options should be found");
+
+      // Click again to verify collapse and reset checkbox state for suceeding tests
+      passwordsCheckbox.click();
+      await turnOnScheduledBackups.updateComplete;
+      ok(!turnOnScheduledBackups.passwordOptionsExpandedEl, "Passwords expanded options should be hidden again");
+    })
+
+    /**
+     * Tests that the Confirm button cannot be selected if password settings are shown and
+     * inputted passwords are invalid. Once passwords are valid, verifies that the Confirm
+     * button can be selected.
+     */
+     add_task(async function test_passwordValidityConfirmButton() {
+      let turnOnScheduledBackups = document.getElementById("test-turn-on-scheduled-backups");
+      let passwordsCheckbox = turnOnScheduledBackups.passwordOptionsCheckboxEl;
+
+      // First check that the confirm button is not disabled with password options collapsed
+      ok(passwordsCheckbox, "Passwords checkbox should be found");
+      ok(!turnOnScheduledBackups.passwordOptionsExpandedEl, "Passwords expanded options should not be found");
+
+      let confirmButton = turnOnScheduledBackups.confirmButtonEl;
+      ok(confirmButton, "Confirm button should be found");
+      ok(!confirmButton.disabled, "Confirm button should not be disabled since there are no passwords expanded options");
+
+      passwordsCheckbox.click();
+      await turnOnScheduledBackups.updateComplete;
+
+      // Now check that the confirm button is disabled
+      ok(turnOnScheduledBackups.passwordOptionsExpandedEl, "Passwords expanded options should be found");
+      ok(confirmButton.disabled, "Confirm button should now be disabled since there are passwords expanded options");
+
+      // Pretend that the password inputs dispatch an event indicating that we have valid passwords
+      let passwordOptionsExpanded = turnOnScheduledBackups.passwordOptionsExpandedEl;
+      let validPromise = createMockValidityPassEventPromise(turnOnScheduledBackups, passwordOptionsExpanded, "ValidPasswordsDetected");
+      await validPromise;
+
+      ok(!confirmButton.disabled, "Confirm button should no longer be disabled");
+
+      // Now pretend that passwords are no longer valid
+      let invalidPromise = createMockValidityPassEventPromise(turnOnScheduledBackups, passwordOptionsExpanded, "InvalidPasswordsDetected");
+      await invalidPromise;
+
+      ok(confirmButton.disabled, "Confirm button should be disabled again");
+    })
+
+    /**
+     * Tests that the dialog displays a default save location for backups and updates to a custom one
+     * if there is one selected.
+     */
+    add_task(async function test_locationInputs() {
+      let turnOnScheduledBackups = document.getElementById("test-turn-on-scheduled-backups");
+      let inputDefault = turnOnScheduledBackups.filePathInputDefaultEl;
+      ok(inputDefault, "Default input should be found");
+
+      let promise = BrowserTestUtils.waitForCondition(() => inputDefault.value);
+
+      /* Normally we would pass in the default attributes, but for this test, we will
+       * hardcode them since file paths vary across different platforms.
+       */
+      const defaultPathFilename = "testdefaultpath";
+      let defaultPath = PathUtils.join(PathUtils.tempDir, defaultPathFilename);
+      turnOnScheduledBackups.defaultPath = defaultPath;
+      turnOnScheduledBackups.defaultLabel = defaultPathFilename;
+      await turnOnScheduledBackups.updateComplete;
+      await promise;
+
+      is(inputDefault.value, `${defaultPathFilename} (recommended)`, "Default input should not be empty and should contain part of the default path");
+
+      // Now pretend a custom file path was selected
+      const newPathFilename = "testnewpath";
+      let newPath = PathUtils.join(PathUtils.tempDir, newPathFilename);
+      turnOnScheduledBackups._newPath = newPath;
+      turnOnScheduledBackups._newLabel = newPathFilename;
+      await turnOnScheduledBackups.updateComplete;
+
+      let inputCustom = turnOnScheduledBackups.filePathInputCustomEl;
+      ok(inputCustom, "Input should be updated");
+      is(inputCustom.value, newPathFilename, "Input value should be set to the new path");
     })
   </script>
 </head>

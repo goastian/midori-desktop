@@ -114,6 +114,7 @@ export class _ToolbarBadgeHub {
       .querySelector(".toolbarbutton-badge")
       .classList.remove("feature-callout");
     toolbarButton.removeAttribute("badged");
+    toolbarButton.removeAttribute("showing-callout");
     // Remove id used for for aria-label badge description
     const notificationDescription = toolbarButton.querySelector(
       "#toolbarbutton-notification-description"
@@ -132,6 +133,7 @@ export class _ToolbarBadgeHub {
       const badge = toolbarbutton.querySelector(".toolbarbutton-badge");
       badge.classList.add("feature-callout");
       toolbarbutton.setAttribute("badged", true);
+      toolbarbutton.setAttribute("showing-callout", true);
       // If we have additional aria-label information for the notification
       // we add this content to the hidden `toolbarbutton-text` node.
       // We then use `aria-labelledby` to link this description to the button
@@ -222,13 +224,12 @@ export class _ToolbarBadgeHub {
   }
 
   async messageRequest({ triggerId, template }) {
-    const telemetryObject = { triggerId };
-    TelemetryStopwatch.start("MS_MESSAGE_REQUEST_TIME_MS", telemetryObject);
+    const timerId = Glean.messagingSystem.messageRequestTime.start();
     const message = await this._handleMessageRequest({
       triggerId,
       template,
     });
-    TelemetryStopwatch.finish("MS_MESSAGE_REQUEST_TIME_MS", telemetryObject);
+    Glean.messagingSystem.messageRequestTime.stopAndAccumulate(timerId);
     if (message) {
       this.registerBadgeNotificationListener(message);
     }

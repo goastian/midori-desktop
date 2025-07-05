@@ -7,12 +7,12 @@
 class PictureInPictureVideoWrapper {
   setCaptionContainerObserver(video, updateCaptionsFunction) {
     // Handle Disney+ (US)
-    let container = document.querySelector(".dss-hls-subtitle-overlay");
+    let container = document.querySelector(".TimedTextOverlay");
 
     if (container) {
       const callback = () => {
         let textNodeList = container.querySelectorAll(
-          ".dss-subtitle-renderer-line"
+          ".hive-subtitle-renderer-line"
         );
 
         if (!textNodeList.length) {
@@ -28,8 +28,8 @@ class PictureInPictureVideoWrapper {
       // immediately invoke the callback function to add subtitles to the PiP window
       callback();
 
-      let captionsObserver = new MutationObserver(callback);
-      captionsObserver.observe(container, {
+      this.captionsObserver = new MutationObserver(callback);
+      this.captionsObserver.observe(container, {
         attributes: false,
         childList: true,
         subtree: true,
@@ -56,14 +56,18 @@ class PictureInPictureVideoWrapper {
       // immediately invoke the callback function to add subtitles to the PiP window
       callback([1], null);
 
-      let captionsObserver = new MutationObserver(callback);
+      this.captionsObserver = new MutationObserver(callback);
 
-      captionsObserver.observe(container, {
+      this.captionsObserver.observe(container, {
         attributes: false,
         childList: true,
         subtree: true,
       });
     }
+  }
+
+  removeCaptionContainerObserver() {
+    this.captionsObserver?.disconnect();
   }
 }
 

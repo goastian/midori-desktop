@@ -43,11 +43,6 @@ let gHasOpenedBefore = false;
  * the associated MigrationWizardChild.
  */
 export class MigrationWizardParent extends JSWindowActorParent {
-  constructor() {
-    super();
-    Services.telemetry.setEventRecordingEnabled("browser.migration", true);
-  }
-
   didDestroy() {
     Services.obs.notifyObservers(this, "MigrationWizard:Destroyed");
     MigrationUtils.finishMigration();
@@ -78,7 +73,9 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
     switch (message.name) {
       case "GetAvailableMigrators": {
-        let start = Cu.now();
+        if (!gHasOpenedBefore) {
+          Glean.migration.timeToProduceMigratorList.start();
+        }
 
         let availableMigrators = [];
         for (const key of MigrationUtils.availableMigratorKeys) {
@@ -103,13 +100,9 @@ export class MigrationWizardParent extends JSWindowActorParent {
             return b.lastModifiedDate - a.lastModifiedDate;
           });
 
-        let elapsed = Cu.now() - start;
         if (!gHasOpenedBefore) {
           gHasOpenedBefore = true;
-          Services.telemetry.scalarSet(
-            "migration.time_to_produce_migrator_list",
-            elapsed
-          );
+          Glean.migration.timeToProduceMigratorList.stop();
         }
 
         return filteredResults;
@@ -151,8 +144,8 @@ export class MigrationWizardParent extends JSWindowActorParent {
         );
       }
 
-      case "SelectSafariPasswordFile": {
-        return this.#selectSafariPasswordFile(
+      case "SelectManualPasswordFile": {
+        return this.#selectManualPasswordFile(
           this.browsingContext.topChromeWindow
         );
       }
@@ -191,14 +184,8 @@ export class MigrationWizardParent extends JSWindowActorParent {
    * @param {object} args
    *   The data to pass to telemetry when the event is recorded.
    */
-  #recordEvent(type, args = null) {
-    Services.telemetry.recordEvent(
-      "browser.migration",
-      type,
-      "wizard",
-      null,
-      args
-    );
+  #recordEvent(type, args) {
+    Glean.browserMigration[type + "Wizard"].record(args);
   }
 
   /**
@@ -292,16 +279,17 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
   /**
    * Handles a request to open a native file picker to get the path to a
-   * CSV file that contains passwords exported from Safari. The returned
-   * path is in the form of a string, or `null` if the user cancelled the
-   * native picker.
+   * CSV file that contains passwords exported from another browser. The
+   * returned path is in the form of a string, or `null` if the user cancelled
+   * the native picker. We use this for browsers or platforms that do not
+   * allow us to import passwords automatically.
    *
    * @param {DOMWindow} window
    *   The window that the native file picker should be associated with. This
    *   cannot be null. See nsIFilePicker.init for more details.
    * @returns {Promise<string|null>}
    */
-  async #selectSafariPasswordFile(window) {
+  async #selectManualPasswordFile(window) {
     let fileMigrator = MigrationUtils.getFileMigrator(
       lazy.PasswordFileMigrator.key
     );
@@ -352,9 +340,9 @@ export class MigrationWizardParent extends JSWindowActorParent {
    *   updated.
    */
   async #doBrowserMigration(migrationDetails, extraArgs) {
-    Services.telemetry
-      .getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
-      .add(MigrationUtils.getSourceIdForTelemetry(migrationDetails.key));
+    Glean.browserMigration.sourceBrowser.accumulateSingleSample(
+      MigrationUtils.getSourceIdForTelemetry(migrationDetails.key)
+    );
 
     let migrator = await MigrationUtils.getMigrator(migrationDetails.key);
     let availableResourceTypes = await migrator.getMigrateData(
@@ -362,8 +350,7 @@ export class MigrationWizardParent extends JSWindowActorParent {
     );
     let resourceTypesToMigrate = 0;
     let progress = {};
-    let migrationUsageHist =
-      Services.telemetry.getKeyedHistogramById("FX_MIGRATION_USAGE");
+    let gleanMigrationUsage = Glean.browserMigration.usage;
 
     for (let resourceTypeName of migrationDetails.resourceTypes) {
       let resourceType = MigrationUtils.resourceTypes[resourceTypeName];
@@ -375,18 +362,17 @@ export class MigrationWizardParent extends JSWindowActorParent {
         };
 
         if (!migrationDetails.autoMigration) {
-          migrationUsageHist.add(migrationDetails.key, Math.log2(resourceType));
+          gleanMigrationUsage[migrationDetails.key].accumulateSingleSample(
+            Math.log2(resourceType)
+          );
         }
       }
     }
 
-    if (
-      migrationDetails.key == lazy.SafariProfileMigrator?.key &&
-      migrationDetails.safariPasswordFilePath
-    ) {
-      // The caller supplied a password export file for Safari. We're going to
-      // pretend that there was a PASSWORDS resource for Safari to represent
-      // the state of importing from that file.
+    if (migrationDetails.manualPasswordFilePath) {
+      // The caller supplied a password export file for another browser. We're
+      // going to pretend that there was a PASSWORDS resource to represent the
+      // state of importing from that file.
       progress[
         lazy.MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS
       ] = {
@@ -401,9 +387,11 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
       try {
         let summary = await lazy.LoginCSVImport.importFromCSV(
-          migrationDetails.safariPasswordFilePath
+          migrationDetails.manualPasswordFilePath
         );
         let quantity = summary.filter(entry => entry.result == "added").length;
+
+        MigrationUtils.notifyLoginsManuallyImported(quantity);
 
         progress[
           lazy.MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS
@@ -436,7 +424,7 @@ export class MigrationWizardParent extends JSWindowActorParent {
     // It's possible that only a Safari password file path was sent up, and
     // there's nothing left to migrate, in which case we're done here.
     if (
-      migrationDetails.safariPasswordFilePath &&
+      migrationDetails.manualPasswordFilePath &&
       !migrationDetails.resourceTypes.length
     ) {
       return extraArgs;
@@ -468,9 +456,9 @@ export class MigrationWizardParent extends JSWindowActorParent {
             );
           } else {
             if (!success) {
-              Services.telemetry
-                .getKeyedHistogramById("FX_MIGRATION_ERRORS")
-                .add(migrationDetails.key, Math.log2(resourceTypeNum));
+              Glean.browserMigration.errors[
+                migrationDetails.key
+              ].accumulateSingleSample(Math.log2(resourceTypeNum));
             }
             if (
               foundResourceTypeName ==
@@ -619,11 +607,7 @@ export class MigrationWizardParent extends JSWindowActorParent {
           return null;
         }
 
-        Services.telemetry.keyedScalarAdd(
-          "migration.discovered_migrators",
-          key,
-          sourceProfiles.length
-        );
+        Glean.migration.discoveredMigrators[key].add(sourceProfiles.length);
 
         let result = [];
         for (let profile of sourceProfiles) {
@@ -634,11 +618,7 @@ export class MigrationWizardParent extends JSWindowActorParent {
         return result;
       }
 
-      Services.telemetry.keyedScalarAdd(
-        "migration.discovered_migrators",
-        key,
-        1
-      );
+      Glean.migration.discoveredMigrators[key].add(1);
       return this.#serializeMigratorAndProfile(migrator, sourceProfiles);
     } catch (e) {
       console.error(`Could not get migrator with key ${key}`, e);
@@ -691,21 +671,18 @@ export class MigrationWizardParent extends JSWindowActorParent {
     ) {
       for (let resourceType in MigrationUtils.resourceTypes) {
         // Normally, we check each possible resourceType to see if we have one or
-        // more corresponding resourceTypes in profileMigrationData. The exception
-        // is for Safari, where the migrator does not expose a PASSWORDS resource
-        // type, but we allow the user to express that they'd like to import
-        // passwords from it anyways. This is because the Safari migration flow is
-        // special, and allows the user to import passwords from a file exported
-        // from Safari.
+        // more corresponding resourceTypes in profileMigrationData.
+        //
+        // The exception is for passwords for Safari, and for Chrome on Windows,
+        // where we cannot import passwords automatically, but we allow the user
+        // to express that they'd like to import passwords from it anyways. We
+        // use this to determine whether or not to show guidance on how to
+        // manually import a passwords CSV file.
         if (
           profileMigrationData & MigrationUtils.resourceTypes[resourceType] ||
-          (migrator.constructor.key == lazy.SafariProfileMigrator?.key &&
-            MigrationUtils.resourceTypes[resourceType] ==
-              MigrationUtils.resourceTypes.PASSWORDS &&
-            Services.prefs.getBoolPref(
-              "signon.management.page.fileImport.enabled",
-              false
-            ))
+          (MigrationUtils.resourceTypes[resourceType] ==
+            MigrationUtils.resourceTypes.PASSWORDS &&
+            migrator.showsManualPasswordImport)
         ) {
           availableResourceTypes.push(resourceType);
         }

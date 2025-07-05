@@ -6,6 +6,7 @@ support-files = [
   "discovery.html",
   "head.js",
   "opensearch.html",
+  "test_windows1252.html",
   "test.html",
   "testEngine.xml",
   "testEngine_diacritics.xml",
@@ -16,8 +17,27 @@ support-files = [
 tags = "searchnontelem"
 
 ["browser_426329.js"]
+support-files = ["test.html", "discovery.html", "426329.xml"]
+
+["browser_aboutHome_search_POST.js"]
+support-files = ["POSTSearchEngine.xml", "print_postdata.sjs"]
+
+["browser_aboutHome_search_composing.js"]
+support-files = ["searchSuggestionEngine.xml", "searchSuggestionEngine.sjs"]
+
+["browser_aboutHome_search_suggestion.js"]
+support-files = ["searchSuggestionEngine.xml", "searchSuggestionEngine.sjs"]
+skip-if = [
+  "os == 'mac'",
+  "os == 'linux' && os_version == '18.04' && !debug",
+  "os == 'linux' && os_version == '18.04' && bits == 64",
+  "win10_2009 && bits == 64 && !debug", # Bug 1399648, bug 1402502
+]
 
 ["browser_addKeywordSearch.js"]
+
+["browser_addSearchEngineFromForm.js"]
+support-files = ["test.html", "test_windows1252.html"]
 
 ["browser_contentContextMenu.js"]
 support-files = ["browser_contentContextMenu.xhtml"]
@@ -46,16 +66,16 @@ support-files = [
 ["browser_contextmenu_whereToOpenLink.js"]
 
 ["browser_defaultPrivate_nimbus.js"]
-support-files = [
-  "search-engines/basic/manifest.json",
-  "search-engines/private/manifest.json",
-]
+
+["browser_displayNotification.js"]
 
 ["browser_google_behavior.js"]
 
 ["browser_hiddenOneOffs_diacritics.js"]
 
 ["browser_ime_composition.js"]
+
+["browser_oneOff.js"]
 
 ["browser_oneOffContextMenu.js"]
 
@@ -70,11 +90,11 @@ support-files = ["trendingSuggestionEngine.sjs"]
 
 ["browser_searchEngine_behaviors.js"]
 
+["browser_searchPanelHeader.js"]
+
 ["browser_search_annotation.js"]
 
 ["browser_search_discovery.js"]
-
-["browser_search_nimbus_reload.js"]
 
 ["browser_searchbar_addEngine.js"]
 
@@ -104,3 +124,5 @@ skip-if = [
 
 ["browser_trending_suggestions.js"]
 support-files = ["trendingSuggestionEngine.sjs"]
+
+["browser_webSearch.js"]

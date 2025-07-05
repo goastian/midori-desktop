@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { html, classMap } from "chrome://global/content/vendor/lit.all.mjs";
+import { html } from "chrome://global/content/vendor/lit.all.mjs";
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 import { editableFieldTemplate, stylesTemplate } from "./input-field.mjs";
 
@@ -10,18 +10,30 @@ class LoginPasswordField extends MozLitElement {
   static CONCEALED_PASSWORD_TEXT = " ".repeat(8);
 
   static properties = {
-    _value: { type: String, state: true },
-    readonly: { type: Boolean, reflect: true },
+    value: { type: String },
+    name: { type: String },
+    newPassword: { type: Boolean },
     visible: { type: Boolean, reflect: true },
+    required: { type: Boolean, reflect: true },
+    onRevealClick: { type: Function },
   };
 
   static queries = {
     input: "input",
-    button: "button",
+    label: "label",
+    button: "moz-button",
   };
 
-  set value(newValue) {
-    this._value = newValue;
+  constructor() {
+    super();
+    this.value = "";
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.addEventListener("input", e => {
+      this.value = e.composedTarget.value;
+    });
   }
 
   get #type() {
@@ -29,55 +41,70 @@ class LoginPasswordField extends MozLitElement {
   }
 
   get #password() {
-    return this.readonly && !this.visible
+    return !this.newPassword && !this.visible
       ? LoginPasswordField.CONCEALED_PASSWORD_TEXT
-      : this._value;
+      : this.value;
+  }
+
+  #revealIconSrc(concealed) {
+    return concealed
+      ? "chrome://global/skin/icons/eye-slash.svg"
+      : "chrome://global/skin/icons/eye.svg";
+  }
+
+  updated(changedProperties) {
+    if (changedProperties.has("visible") && !changedProperties.visible) {
+      this.input.selectionStart = this.value.length;
+    }
   }
 
   render() {
     return html`
       ${stylesTemplate()}
-      <label
-        class="field-label"
-        data-l10n-id="login-item-password-label"
-      ></label>
       ${editableFieldTemplate({
         type: this.#type,
         value: this.#password,
         labelId: "login-item-password-label",
         disabled: this.readonly,
+        required: this.required,
         onFocus: this.handleFocus,
         onBlur: this.handleBlur,
+        labelL10nId: "login-item-password-label",
+        noteL10nId: "contextual-manager-passwords-password-tooltip",
       })}
-      <button
-        class=${classMap({
-          revealed: this.visible,
-          "reveal-password-button": true,
-        })}
-        data-l10n-id="login-item-password-reveal-checkbox"
-        @click=${this.toggleVisibility}
-      ></button>
+      <moz-button
+        data-l10n-id=${this.visible
+          ? "login-item-password-conceal-checkbox"
+          : "login-item-password-reveal-checkbox"}
+        class="reveal-password-button"
+        type="icon ghost"
+        iconSrc=${this.#revealIconSrc(this.visible)}
+        @mousedown=${() => {
+          /* Programmatically focus the button on mousedown instead of waiting for focus on click
+           * because the blur event occurs before the click event.
+           */
+          this.button.focus();
+        }}
+        @click=${this.onRevealClick}
+      ></moz-button>
     `;
   }
 
-  handleFocus(ev) {
-    if (ev.relatedTarget !== this.button) {
-      this.visible = true;
+  handleFocus() {
+    if (this.visible) {
+      return;
     }
+    this.onRevealClick();
   }
 
   handleBlur(ev) {
-    if (ev.relatedTarget !== this.button) {
-      this.visible = false;
+    if (ev.relatedTarget === this.button || ev.relatedTarget === this.label) {
+      return;
     }
-  }
-
-  toggleVisibility() {
-    this.visible = !this.visible;
-    if (this.visible) {
-      this.onPasswordVisible?.();
+    if (!this.visible) {
+      return;
     }
-    this.input.focus();
+    this.onRevealClick();
   }
 }
 

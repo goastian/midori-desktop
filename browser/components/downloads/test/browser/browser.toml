@@ -7,6 +7,8 @@ support-files = ["head.js"]
 
 ["browser_confirm_unblock_download.js"]
 
+["browser_download_failed_msg.js"]
+
 ["browser_download_is_clickable.js"]
 
 ["browser_download_opens_on_click.js"]
@@ -22,12 +24,22 @@ support-files = [
 
 ["browser_download_spam_protection.js"]
 skip-if = [
-  "os == 'linux' && bits == 64", # bug 1743263 & Bug 1742678
-  "os == 'win'", # Bug 1775779
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && swgl", # Bug 1743263
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1775779
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1775779
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && socketprocess_networking", # Bug 1743263
+  "os == 'win' && os_version == '11.2009' && opt", # Bug 1775779
+  "os == 'win' && os_version == '11.2009' && processor == 'x86_64' && asan", # Bug 1775779
+  "os == 'win' && os_version == '11.2009' && processor == 'x86_64' && ccov", # Bug 1775779
+  "os == 'win' && os_version == '11.2009' && processor == 'x86_64' && debug && socketprocess_networking", # Bug 1775779
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && asan", # Bug 1775779
 ]
 support-files = ["test_spammy_page.html"]
 
 ["browser_download_starts_in_tmp.js"]
+
+["browser_download_succeeds_with_inaccessible_tmp.js"]
+run-if = ["os != 'win'"] # Due to chmod the test only makes sense on Unix-like.
 
 ["browser_downloads_autohide.js"]
 
@@ -37,14 +49,18 @@ support-files = ["test_spammy_page.html"]
 
 ["browser_downloads_context_menu_selection.js"]
 
+["browser_downloads_jsonview.js"]
+support-files = ["cookies-json.sjs"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && socketprocess_networking", # Bug 1929561
+]
+
 ["browser_downloads_keynav.js"]
 
 ["browser_downloads_panel_block.js"]
 
 ["browser_downloads_panel_context_menu.js"]
-skip-if = [
-  "win10_2009 && bits == 64 && !debug", # Bug 1719949
-]
+skip-if = ["os == 'win' && os_version == '11.2009' && processor == 'x86_64' && asan"] # Bug 1719949
 
 ["browser_downloads_panel_ctrl_click.js"]
 
@@ -61,7 +77,6 @@ support-files = [
 ["browser_downloads_panel_height.js"]
 
 ["browser_downloads_panel_opens.js"]
-skip-if = ["os == 'linux' && verify && !debug"] # For some reason linux opt verify builds time out.
 support-files = [
   "foo.txt",
   "foo.txt^headers^",
@@ -70,7 +85,6 @@ support-files = [
 ["browser_downloads_pauseResume.js"]
 
 ["browser_first_download_panel.js"]
-skip-if = ["os == 'linux'"] # Bug 949434
 
 ["browser_go_to_download_page.js"]
 
@@ -93,7 +107,6 @@ support-files = [
 ["browser_library_select_all.js"]
 
 ["browser_overflow_anchor.js"]
-skip-if = ["os == 'linux'"] # Bug 952422
 
 ["browser_pdfjs_preview.js"]
 

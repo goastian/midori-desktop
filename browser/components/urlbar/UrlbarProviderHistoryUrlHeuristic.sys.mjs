@@ -34,9 +34,7 @@ class ProviderHistoryUrlHeuristic extends UrlbarProvider {
   }
 
   /**
-   * Returns the type of this provider.
-   *
-   * @returns {integer} one of the types from UrlbarUtils.PROVIDER_TYPE.*
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
@@ -48,9 +46,8 @@ class ProviderHistoryUrlHeuristic extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  isActive(queryContext) {
+  async isActive(queryContext) {
     // For better performance, this provider tries to return a result only when
     // the input value can become a URL of the http(s) protocol and its length
     // is less than `MAX_TEXT_LENGTH`. That way its SQL query avoids calling
@@ -90,8 +87,9 @@ class ProviderHistoryUrlHeuristic extends UrlbarProvider {
     const connection = await lazy.PlacesUtils.promiseLargeCacheDBConnection();
     const resultSet = await connection.executeCached(
       `
-      SELECT url, title, frecency
-      FROM moz_places
+      SELECT url, IIF(last_visit_date NOTNULL, h.title, b.title) AS _title, frecency
+      FROM moz_places h
+      LEFT JOIN moz_bookmarks b ON b.fk = h.id
       WHERE
         url_hash IN (
           hash('https://' || :strippedURL),
@@ -101,11 +99,11 @@ class ProviderHistoryUrlHeuristic extends UrlbarProvider {
         )
         AND frecency <> 0
       ORDER BY
-        title IS NOT NULL DESC,
-        title || '/' <> :strippedURL DESC,
-        url = :inputedURL DESC,
-        frecency DESC,
-        id DESC
+        _title NOTNULL DESC,
+        _title || '/' <> :strippedURL DESC,
+        h.url = :inputedURL DESC,
+        h.frecency DESC,
+        h.id DESC
       LIMIT 1
       `,
       { inputedURL, strippedURL }
@@ -115,7 +113,7 @@ class ProviderHistoryUrlHeuristic extends UrlbarProvider {
       return null;
     }
 
-    const title = resultSet[0].getResultByName("title");
+    const title = resultSet[0].getResultByName("_title");
     if (!title) {
       return null;
     }

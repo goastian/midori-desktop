@@ -1,11 +1,5 @@
 "use strict";
 
-let EventUtils = {};
-Services.scriptloader.loadSubScript(
-  "chrome://mochikit/content/tests/SimpleTest/EventUtils.js",
-  EventUtils
-);
-
 /**
  * Dragging an URL to a tab without userContextId set.
  */
@@ -21,7 +15,7 @@ add_task(async function () {
   );
 
   // A drop type of "link" onto an existing tab would normally trigger a
-  // load in that same tab, but tabbrowser code in _getDragTargetTab treats
+  // load in that same tab, but tabbrowser code in #getDragTargetTab treats
   // drops on the outer edges of a tab differently (loading a new tab
   // instead). Make events created by synthesizeDrop have all of their
   // coordinates set to 0 (screenX/screenY), so they're treated as drops
@@ -86,7 +80,7 @@ add_task(async function () {
   );
 
   // A drop type of "link" onto an existing tab would normally trigger a
-  // load in that same tab, but tabbrowser code in _getDragTargetTab treats
+  // load in that same tab, but tabbrowser code in #getDragTargetTab treats
   // drops on the outer edges of a tab differently (loading a new tab
   // instead). Make events created by synthesizeDrop have all of their
   // coordinates set to 0 (screenX/screenY), so they're treated as drops

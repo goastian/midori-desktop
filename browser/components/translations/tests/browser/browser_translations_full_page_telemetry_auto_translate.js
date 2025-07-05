@@ -11,7 +11,6 @@ add_task(async function test_translations_telemetry_auto_translate() {
   const { cleanup, resolveDownloads, runInPage } = await loadTestPage({
     page: SPANISH_PAGE_URL,
     languagePairs: LANGUAGE_PAIRS,
-    prefs: [["browser.translations.panelShown", false]],
   });
 
   await FullPageTranslationsTestUtils.assertTranslationsButton(
@@ -19,21 +18,23 @@ add_task(async function test_translations_telemetry_auto_translate() {
     "The button is available."
   );
 
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewFirstShow,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
   await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
   await FullPageTranslationsTestUtils.clickAlwaysTranslateLanguage({
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "en",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "en",
+    runInPage,
+  });
 
   await TestTranslationsTelemetry.assertEvent(Glean.translationsPanel.open, {
     expectedEventCount: 1,
@@ -82,6 +83,7 @@ add_task(async function test_translations_telemetry_auto_translate() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
+    expectedToLanguage: "en",
     onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
   });
 
@@ -115,7 +117,11 @@ add_task(async function test_translations_telemetry_auto_translate() {
     { button: true },
     "The button is available."
   );
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
+
+  await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+    expectedEventCount: 1,
+  });
 
   await cleanup();
 });

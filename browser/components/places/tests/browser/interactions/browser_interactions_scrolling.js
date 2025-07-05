@@ -160,3 +160,93 @@ add_task(async function test_window_scrollTo() {
     ]);
   });
 });
+
+add_task(async function test_window_scroll_switch_tabs() {
+  await Interactions.reset();
+
+  let tab1 = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    url: TEST_URL,
+  });
+
+  info("Scroll some distance on first tab");
+  let browser = gBrowser.selectedBrowser;
+  await SpecialPowers.spawn(browser, [], function () {
+    const heading = content.document.getElementById("heading");
+    heading.focus();
+  });
+  await waitForScrollEvent(browser, () =>
+    EventUtils.synthesizeKey("KEY_ArrowDown")
+  );
+
+  let tab2 = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    url: TEST_URL2,
+  });
+
+  await assertDatabaseValues([
+    {
+      url: TEST_URL,
+      scrollingDistanceIsGreaterThan: 0,
+      scrollingTimeIsGreaterThan: 0,
+    },
+  ]);
+
+  info("Switch to first tab");
+  await BrowserTestUtils.switchTab(gBrowser, tab1);
+
+  await assertDatabaseValues([
+    {
+      url: TEST_URL,
+      scrollingDistanceIsGreaterThan: 0,
+      scrollingTimeIsGreaterThan: 0,
+    },
+    {
+      url: TEST_URL2,
+      exactscrollingDistance: 0,
+      exactscrollingTime: 0,
+    },
+  ]);
+
+  info("Scroll some distance on first tab");
+  browser = gBrowser.selectedBrowser;
+  await SpecialPowers.spawn(browser, [], function () {
+    const heading = content.document.getElementById("heading");
+    heading.focus();
+  });
+  await waitForScrollEvent(browser, () =>
+    EventUtils.synthesizeKey("KEY_ArrowDown")
+  );
+
+  info("Switch to second tab");
+  await BrowserTestUtils.switchTab(gBrowser, tab2);
+
+  await assertDatabaseValues([
+    {
+      url: TEST_URL,
+      scrollingDistanceIsGreaterThan: 0,
+      scrollingTimeIsGreaterThan: 0,
+    },
+    {
+      url: TEST_URL2,
+      exactscrollingDistance: 0,
+      exactscrollingTime: 0,
+    },
+  ]);
+
+  BrowserTestUtils.removeTab(tab1);
+  BrowserTestUtils.removeTab(tab2);
+
+  await assertDatabaseValues([
+    {
+      url: TEST_URL,
+      scrollingDistanceIsGreaterThan: 0,
+      scrollingTimeIsGreaterThan: 0,
+    },
+    {
+      url: TEST_URL2,
+      exactscrollingDistance: 0,
+      exactscrollingTime: 0,
+    },
+  ]);
+});

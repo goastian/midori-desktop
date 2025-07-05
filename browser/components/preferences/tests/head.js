@@ -1,9 +1,26 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+const { NimbusTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/NimbusTestUtils.sys.mjs"
+);
 const { PermissionTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/PermissionTestUtils.sys.mjs"
 );
+
+ChromeUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
+  const { QuickSuggestTestUtils: module } = ChromeUtils.importESModule(
+    "resource://testing-common/QuickSuggestTestUtils.sys.mjs"
+  );
+  module.init(this);
+  return module;
+});
+
+ChromeUtils.defineESModuleGetters(this, {
+  ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
+});
+
+NimbusTestUtils.init(this);
 
 const kDefaultWait = 2000;
 
@@ -98,7 +115,9 @@ async function openPreferencesViaOpenPreferencesAPI(aPane, aOptions) {
     ? "sync-pane-loaded"
     : "privacy-pane-loaded";
   let finalPrefPaneLoaded = TestUtils.topicObserved(finalPaneEvent, () => true);
-  gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank");
+  gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, "about:blank", {
+    allowInheritPrincipal: true,
+  });
   openPreferences(aPane, aOptions);
   let newTabBrowser = gBrowser.selectedBrowser;
 
@@ -164,59 +183,6 @@ function waitForMutation(target, opts, cb) {
     });
     observer.observe(target, opts);
   });
-}
-
-// Used to add sample experimental features for testing. To use, create
-// a DefinitionServer, then call addDefinition as needed.
-class DefinitionServer {
-  constructor(definitionOverrides = []) {
-    let { HttpServer } = ChromeUtils.importESModule(
-      "resource://testing-common/httpd.sys.mjs"
-    );
-
-    this.server = new HttpServer();
-    this.server.registerPathHandler("/definitions.json", this);
-    this.definitions = {};
-
-    for (const override of definitionOverrides) {
-      this.addDefinition(override);
-    }
-
-    this.server.start();
-    registerCleanupFunction(
-      () => new Promise(resolve => this.server.stop(resolve))
-    );
-  }
-
-  // for nsIHttpRequestHandler
-  handle(request, response) {
-    response.write(JSON.stringify(this.definitions));
-  }
-
-  get definitionsUrl() {
-    const { primaryScheme, primaryHost, primaryPort } = this.server.identity;
-    return `${primaryScheme}://${primaryHost}:${primaryPort}/definitions.json`;
-  }
-
-  addDefinition(overrides = {}) {
-    const definition = {
-      id: "test-feature",
-      // These l10n IDs are just random so we have some text to display
-      title: "experimental-features-media-jxl",
-      description: "pane-experimental-description2",
-      restartRequired: false,
-      type: "boolean",
-      preference: "test.feature",
-      defaultValue: false,
-      isPublic: false,
-      ...overrides,
-    };
-    // convert targeted values, used by fromId
-    definition.isPublic = { default: definition.isPublic };
-    definition.defaultValue = { default: definition.defaultValue };
-    this.definitions[definition.id] = definition;
-    return definition;
-  }
 }
 
 /**
@@ -331,4 +297,251 @@ async function mockDefaultFxAInstance() {
   registerCleanupFunction(unmock);
 
   return { mock, unmock };
+}
+
+/**
+ * Runs a test that checks the visibility of the Firefox Suggest preferences UI.
+ * An initial Suggest enabled status is set and visibility is checked. Then a
+ * Nimbus experiment is installed that enables or disables Suggest and
+ * visibility is checked again. Finally the page is reopened and visibility is
+ * checked again.
+ *
+ * @param {boolean} initialSuggestEnabled
+ *   Whether Suggest should be enabled initially.
+ * @param {object} initialExpected
+ *   The expected visibility after setting the initial enabled status. It should
+ *   be an object that can be passed to `assertSuggestVisibility()`.
+ * @param {object} nimbusVariables
+ *   An object mapping Nimbus variable names to values.
+ * @param {object} newExpected
+ *   The expected visibility after installing the Nimbus experiment. It should
+ *   be an object that can be passed to `assertSuggestVisibility()`.
+ * @param {string} pane
+ *   The pref pane to open.
+ */
+async function doSuggestVisibilityTest({
+  initialSuggestEnabled,
+  initialExpected,
+  nimbusVariables,
+  newExpected = initialExpected,
+  pane = "search",
+}) {
+  info(
+    "Running Suggest visibility test: " +
+      JSON.stringify(
+        {
+          initialSuggestEnabled,
+          initialExpected,
+          nimbusVariables,
+          newExpected,
+        },
+        null,
+        2
+      )
+  );
+
+  // Set the initial enabled status.
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.urlbar.quicksuggest.enabled", initialSuggestEnabled]],
+  });
+
+  // Open prefs and check the initial visibility.
+  await openPreferencesViaOpenPreferencesAPI(pane, { leaveOpen: true });
+  await assertSuggestVisibility(initialExpected);
+
+  // Install a Nimbus experiment.
+  await QuickSuggestTestUtils.withExperiment({
+    valueOverrides: nimbusVariables,
+    callback: async () => {
+      // Check visibility again.
+      await assertSuggestVisibility(newExpected);
+
+      // To make sure visibility is properly updated on load, close the tab,
+      // open the prefs again, and check visibility.
+      gBrowser.removeCurrentTab();
+      await openPreferencesViaOpenPreferencesAPI(pane, { leaveOpen: true });
+      await assertSuggestVisibility(newExpected);
+    },
+  });
+
+  gBrowser.removeCurrentTab();
+  await SpecialPowers.popPrefEnv();
+}
+
+/**
+ * Checks the visibility of the Suggest UI.
+ *
+ * @param {object} expectedByElementId
+ *   An object that maps IDs of elements in the current tab to objects with the
+ *   following properties:
+ *
+ *   {bool} isVisible
+ *     Whether the element is expected to be visible.
+ *   {string} l10nId
+ *     The expected l10n ID of the element. Optional.
+ */
+async function assertSuggestVisibility(expectedByElementId) {
+  let doc = gBrowser.selectedBrowser.contentDocument;
+  for (let [elementId, { isVisible, l10nId }] of Object.entries(
+    expectedByElementId
+  )) {
+    let element = doc.getElementById(elementId);
+    await TestUtils.waitForCondition(
+      () => BrowserTestUtils.isVisible(element) == isVisible,
+      "Waiting for element visbility: " +
+        JSON.stringify({ elementId, isVisible })
+    );
+    Assert.strictEqual(
+      BrowserTestUtils.isVisible(element),
+      isVisible,
+      "Element should have expected visibility: " + elementId
+    );
+    if (l10nId) {
+      Assert.equal(
+        element.dataset.l10nId,
+        l10nId,
+        "The l10n ID should be correct for element: " + elementId
+      );
+    }
+  }
+}
+
+const DEFAULT_LABS_RECIPES = [
+  NimbusTestUtils.factories.recipe("nimbus-qa-1", {
+    targeting: "true",
+    isRollout: true,
+    isFirefoxLabsOptIn: true,
+    firefoxLabsTitle: "experimental-features-auto-pip",
+    firefoxLabsDescription: "experimental-features-auto-pip-description",
+    firefoxLabsDescriptionLinks: null,
+    firefoxLabsGroup: "experimental-features-group-customize-browsing",
+    requiresRestart: false,
+    branches: [
+      {
+        slug: "control",
+        ratio: 1,
+        features: [
+          {
+            featureId: "nimbus-qa-1",
+            value: {
+              value: "recipe-value-1",
+            },
+          },
+        ],
+      },
+    ],
+  }),
+
+  NimbusTestUtils.factories.recipe("nimbus-qa-2", {
+    targeting: "true",
+    isRollout: true,
+    isFirefoxLabsOptIn: true,
+    firefoxLabsTitle: "experimental-features-media-jxl",
+    firefoxLabsDescription: "experimental-features-media-jxl-description",
+    firefoxLabsDescriptionLinks: {
+      bugzilla: "https://example.com",
+    },
+    firefoxLabsGroup: "experimental-features-group-webpage-display",
+    branches: [
+      {
+        slug: "control",
+        ratio: 1,
+        features: [
+          {
+            featureId: "nimbus-qa-2",
+            value: {
+              value: "recipe-value-2",
+            },
+          },
+        ],
+      },
+    ],
+  }),
+
+  NimbusTestUtils.factories.recipe("targeting-false", {
+    targeting: "false",
+    isRollout: true,
+    isFirefoxLabsOptIn: true,
+    firefoxLabsTitle: "experimental-features-ime-search",
+    firefoxLabsDescription: "experimental-features-ime-search-description",
+    firefoxLabsDescriptionLinks: null,
+    firefoxLabsGroup: "experimental-features-group-developer-tools",
+    requiresRestart: false,
+  }),
+
+  NimbusTestUtils.factories.recipe("bucketing-false", {
+    bucketConfig: {
+      ...NimbusTestUtils.factories.recipe.bucketConfig,
+      count: 0,
+    },
+    isRollout: true,
+    targeting: "true",
+    isFirefoxLabsOptIn: true,
+    firefoxLabsTitle: "experimental-features-ime-search",
+    firefoxLabsDescription: "experimental-features-ime-search-description",
+    firefoxLabsDescriptionLinks: null,
+    firefoxLabsGroup: "experimental-features-group-developer-tools",
+    requiresRestart: false,
+  }),
+];
+
+async function setupLabsTest(recipes) {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["app.normandy.run_interval_seconds", 0],
+      ["app.shield.optoutstudies.enabled", true],
+      ["datareporting.healthreport.uploadEnabled", true],
+      ["messaging-system.log", "debug"],
+    ],
+    clear: [
+      ["browser.preferences.experimental"],
+      ["browser.preferences.experimental.hidden"],
+    ],
+  });
+  // Initialize Nimbus and wait for the RemoteSettingsExperimentLoader to finish
+  // updating (with no recipes).
+  await ExperimentAPI.ready();
+  await ExperimentAPI._rsLoader.finishedUpdating();
+
+  // Inject some recipes into the Remote Settings client and call
+  // updateRecipes() so that we have available opt-ins.
+  await ExperimentAPI._rsLoader.remoteSettingsClients.experiments.db.importChanges(
+    {},
+    Date.now(),
+    recipes ?? DEFAULT_LABS_RECIPES,
+    { clear: true }
+  );
+
+  await ExperimentAPI._rsLoader.updateRecipes("test");
+
+  return async function cleanup() {
+    await NimbusTestUtils.removeStore(ExperimentAPI.manager.store);
+    await SpecialPowers.popPrefEnv();
+  };
+}
+
+function promiseNimbusStoreUpdate(wantedSlug, wantedActive) {
+  const deferred = Promise.withResolvers();
+  const listener = (_event, { slug, active }) => {
+    info(
+      `promiseNimbusStoreUpdate: received update for ${slug} active=${active}`
+    );
+    if (slug === wantedSlug && active === wantedActive) {
+      ExperimentAPI._manager.store.off("update", listener);
+      deferred.resolve();
+    }
+  };
+
+  ExperimentAPI._manager.store.on("update", listener);
+  return deferred.promise;
+}
+
+function enrollByClick(el, wantedActive) {
+  const slug = el.dataset.nimbusSlug;
+
+  info(`Enrolling in ${slug}:${el.dataset.nimbusBranchSlug}...`);
+
+  const promise = promiseNimbusStoreUpdate(slug, wantedActive);
+  EventUtils.synthesizeMouseAtCenter(el.inputEl, {}, gBrowser.contentWindow);
+  return promise;
 }

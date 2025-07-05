@@ -13,7 +13,9 @@ const { PromiseTestUtils } = ChromeUtils.importESModule(
 const searchService = Services.search.wrappedJSObject;
 
 add_setup(async function setup() {
-  searchService.errorToThrowInTest = "Settings";
+  UrlbarPrefs.set("suggest.quickactions", false);
+
+  searchService.errorToThrowInTest.type = "Settings";
 
   // When search service fails, we want the promise rejection to be uncaught
   // so we can continue running the test.
@@ -22,7 +24,7 @@ add_setup(async function setup() {
   );
 
   registerCleanupFunction(async () => {
-    searchService.errorToThrowInTest = null;
+    searchService.errorToThrowInTest.type = null;
     await cleanupPlaces();
   });
 });

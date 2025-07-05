@@ -205,7 +205,7 @@ moz-button-group,
 
 .reveal-password-checkbox {
   appearance: none;
-  background-image: url("resource://gre-resources/password.svg");
+  background-image: url("chrome://global/skin/icons/eye.svg");
   margin-inline: 10px 0;
   cursor: pointer;
   -moz-context-properties: fill;
@@ -222,14 +222,14 @@ moz-button-group,
   }
 
   &:checked {
-    background-image: url("resource://gre-resources/password-hide.svg");
+    background-image: url("chrome://global/skin/icons/eye-slash.svg");
   }
 }
 
 .login-item-favicon {
   margin-inline-end: 12px;
-  height: 24px;
-  width: 24px;
+  height: var(--icon-size-large);
+  width: var(--icon-size-large);
   flex-shrink: 0;
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
@@ -275,7 +275,7 @@ login-command-button {
   inset-inline-start: 32px;
   -moz-context-properties: fill;
   fill: currentColor;
-  width: 24px;
+  width: var(--icon-size-large);
 }
 
 .alert-learn-more-link:hover,

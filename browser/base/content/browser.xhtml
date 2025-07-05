@@ -11,21 +11,17 @@
         xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns="http://www.w3.org/1999/xhtml"
 #ifdef XP_MACOSX
-        data-l10n-id="browser-main-window-mac-window-titles"
+        data-l10n-id="browser-main-window-titles-mac"
 #else
-        data-l10n-id="browser-main-window-window-titles"
+        data-l10n-id="browser-main-window-titles"
 #endif
-        data-l10n-args="{&quot;content-title&quot;:&quot;CONTENTTITLE&quot;}"
-        data-l10n-attrs="data-content-title-default, data-content-title-private, data-title-default, data-title-private"
-#ifdef XP_WIN
-        chromemargin="0,2,2,2"
-#else
-        chromemargin="0,-1,-1,-1"
-#endif
-        tabsintitlebar="true"
+        data-l10n-args="{&quot;content-title&quot;:&quot;CONTENTTITLE&quot;,&quot;profile-name&quot;:&quot;PROFILENAME&quot;}"
+        data-l10n-attrs="data-content-title-default, data-content-title-private, data-title-default, data-title-private, data-content-title-default-with-profile, data-content-title-private-with-profile, data-title-default-with-profile, data-title-private-with-profile"
+        customtitlebar="true"
         windowtype="navigator:browser"
         macanimationtype="document"
         macnativefullscreen="true"
+        windowsmica="true"
         screenX="4" screenY="4"
         sizemode="normal"
         retargetdocumentfocus="urlbar-input"
@@ -33,12 +29,14 @@
         persist="screenX screenY width height sizemode"
         data-l10n-sync="true">
 <head>
+  <!-- CSP might be disabled by C++ code. -->
+  <meta http-equiv="Content-Security-Policy" content="script-src chrome: moz-src: resource: 'report-sample'" />
+
   <!-- The "global.css" stylesheet is imported first to allow other stylesheets to
       override rules using selectors with the same specificity. This applies to
       both "content" and "skin" packages, which bug 1385444 will unify later. -->
   <link rel="stylesheet" href="chrome://global/skin/global.css" />
 
-  <link rel="stylesheet" href="chrome://browser/content/browser.css" />
   <link
     rel="stylesheet"
     href="chrome://browser/content/downloads/downloads.css"
@@ -59,6 +57,10 @@
   <link rel="stylesheet" href="chrome://browser/skin/translations/panel.css" />
   <link rel="stylesheet" href="chrome://browser/skin/places/tree-icons.css" />
   <link rel="stylesheet" href="chrome://browser/skin/places/editBookmark.css" />
+  <link
+    rel="stylesheet"
+    href="chrome://global/content/resistfingerprinting/letterboxing.css"
+  />
 
   <link rel="localization" href="branding/brand.ftl"/>
   <link rel="localization" href="browser/allTabsMenu.ftl"/>
@@ -66,7 +68,9 @@
   <link rel="localization" href="browser/browser.ftl"/>
   <link rel="localization" href="browser/browserContext.ftl"/>
   <link rel="localization" href="browser/browserSets.ftl"/>
+  <link rel="localization" href="browser/firefoxRelay.ftl"/>
   <link rel="localization" href="browser/firefoxView.ftl"/>
+  <link rel="localization" href="browser/genai.ftl"/>
   <link rel="localization" href="browser/identityCredentialNotification.ftl" />
   <link rel="localization" href="browser/menubar.ftl"/>
   <link rel="localization" href="browser/originControls.ftl"/>
@@ -87,61 +91,19 @@
   <link rel="localization" href="toolkit/global/textActions.ftl"/>
   <link rel="localization" href="toolkit/printing/printUI.ftl"/>
   <!-- Untranslated FTL files -->
+  <link rel="localization" href="preview/credentialChooser.ftl" />
   <link rel="localization" href="preview/enUS-searchFeatures.ftl" />
   <link rel="localization" href="preview/interventions.ftl" />
-  <link rel="localization" href="browser/shopping.ftl"/>
-  <link rel="localization" href="preview/shopping.ftl"/>
-  <link rel="localization" href="preview/sidebar.ftl"/>
-  <link rel="localization" href="preview/profiles.ftl"/>
+  <link rel="localization" href="browser/sidebar.ftl"/>
+  <link rel="localization" href="browser/profiles.ftl"/>
   <link rel="localization" href="preview/onboarding.ftl"/>
-  <link rel="localization" href="browser/floorp.ftl"/>
+  <link rel="localization" href="preview/smartTabGroups.ftl"/>
+  <link rel="localization" href="preview/taskbartabs.ftl"/>
 
-  <title data-l10n-id="browser-main-window-title"></title>
+  <title data-l10n-id="browser-main-window-default-title"></title>
 
-# All JS files which are needed by browser.xhtml and other top level windows to
-# support MacOS specific features *must* go into the global-scripts.inc file so
-# that they can be shared with macWindow.inc.xhtml.
-#include global-scripts.inc
-#include ../../../floorp/browser/base/content/floorp-scripts.inc
-
-<script>
-  /* eslint-env mozilla/browser-window */
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-init.js", this);
-  Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-captivePortal.js", this);
-  if (AppConstants.MOZ_DATA_REPORTING) {
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-data-submission-info-bar.js", this);
-  }
-  if (!AppConstants.MOZILLA_OFFICIAL) {
-    Services.scriptloader.loadSubScript("chrome://browser/content/browser-development-helpers.js", this);
-  }
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-pageActions.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/sidebar/browser-sidebar.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-tabsintitlebar.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-unified-extensions.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/tab.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/tabbrowser.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/tabgroup.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/tabbrowser/tabs.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/places/places-menupopup.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/search/autocomplete-popup.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/search/searchbar.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/shopping/shopping-sidebar.js", this);
-
-  window.onload = gBrowserInit.onLoad.bind(gBrowserInit);
-  window.onunload = gBrowserInit.onUnload.bind(gBrowserInit);
-  window.onclose = WindowIsClosing;
-
-  window.addEventListener("MozBeforeInitialXULLayout",
-    gBrowserInit.onBeforeInitialXULLayout.bind(gBrowserInit), { once: true });
-
-  // The listener of DOMContentLoaded must be set on window, rather than
-  // document, because the window can go away before the event is fired.
-  // In that case, we don't want to initialize anything, otherwise we
-  // may be leaking things because they will never be destroyed after.
-  window.addEventListener("DOMContentLoaded",
-    gBrowserInit.onDOMContentLoaded.bind(gBrowserInit), { once: true });
-</script>
+  <script src="chrome://browser/content/global-scripts.js"></script>
+  <script src="chrome://browser/content/browser-main.js"></script>
 </head>
 <html:body xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
 # All sets except for popupsets (commands, keys, and stringbundles)

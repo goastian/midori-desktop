@@ -4,6 +4,7 @@ tags = "resistfingerprinting"
 support-files = [
   "coop_header.sjs",
   "file_dummy.html",
+  "file_pdf.pdf",
   "file_keyBoardEvent.sjs",
   "file_navigator.html",
   "file_navigator.worker.js",
@@ -80,6 +81,8 @@ https_first_disabled = true
 
 ["browser_canvascompare_popups_data.js"]
 
+["browser_color_scheme.js"]
+
 ["browser_cross_origin_isolated_animation_api.js"]
 
 ["browser_cross_origin_isolated_performance_api.js"]
@@ -89,9 +92,14 @@ https_first_disabled = true
 ["browser_dynamical_window_rounding.js"]
 https_first_disabled = true
 skip-if = [
-  "os == 'mac'", # Bug 1570812
-  "os == 'linux'", # Bug 1570812, Bug 1775698
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1775698
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt", # Bug 1775698
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1775698
 ]
+
+["browser_exslt_time_precision.js"]
+
+["browser_exslt_timezone_load.js"]
 
 ["browser_hwconcurrency_etp_iframes.js"]
 
@@ -152,10 +160,5 @@ https_first_disabled = true
 ["browser_roundedWindow_open_min_inner.js"]
 
 ["browser_spoofing_keyboard_event.js"]
-skip-if = ["(debug || asan) && os == 'linux' && bits == 64"] #Bug 1518179
 
 ["browser_timezone.js"]
-
-["browser_exslt_timezone_load.js"]
-
-["browser_exslt_time_precision.js"]

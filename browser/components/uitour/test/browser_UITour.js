@@ -8,11 +8,12 @@ var gContentAPI;
 
 ChromeUtils.defineESModuleGetters(this, {
   ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
-  TelemetryArchiveTesting:
-    "resource://testing-common/TelemetryArchiveTesting.sys.mjs",
-  TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
+  CustomizableUITestUtils:
+    "resource://testing-common/CustomizableUITestUtils.sys.mjs",
 });
+
+let gCUITestUtils = new CustomizableUITestUtils(window);
 
 function test() {
   UITourTest();
@@ -74,23 +75,6 @@ var tests = [
       );
 
       done();
-    }, "http://example.org/");
-  },
-  function test_unsecure_host_override(done) {
-    Services.prefs.setBoolPref("browser.uitour.requireSecure", false);
-    loadUITourTestPage(function () {
-      let highlight = document.getElementById("UITourHighlight");
-      is_element_hidden(highlight, "Highlight should initially be hidden");
-
-      gContentAPI.showHighlight("urlbar").then(() => {
-        waitForElementToBeVisible(
-          highlight,
-          done,
-          "Highlight should be shown on a unsecure host when override pref is set"
-        );
-
-        Services.prefs.setBoolPref("browser.uitour.requireSecure", true);
-      });
     }, "http://example.org/");
   },
   function test_disabled(done) {
@@ -476,9 +460,7 @@ var tests = [
     is(buttons.hasChildNodes(), false, "Popup should have no buttons");
 
     // Place the search bar in the navigation toolbar temporarily.
-    await SpecialPowers.pushPrefEnv({
-      set: [["browser.search.widget.inNavBar", true]],
-    });
+    await gCUITestUtils.addSearchBar();
 
     await showInfoPromise("search", "search title", "search text");
 
@@ -494,7 +476,7 @@ var tests = [
       "Popup should have correct description text"
     );
 
-    await SpecialPowers.popPrefEnv();
+    gCUITestUtils.removeSearchBar();
   }),
   function test_getConfigurationVersion(done) {
     function callback(result) {
@@ -679,24 +661,6 @@ var tests = [
       .getSubmission("dummy")
       .uri.spec.replace("dummy", "");
 
-    TelemetryTestUtils.assertEvents(
-      [
-        {
-          object: "change_default",
-          value: "uitour",
-          extra: {
-            prev_id: defaultEngine.telemetryId,
-            new_id: engine.telemetryId,
-            new_name: engine.name,
-            new_load_path: engine.wrappedJSObject._loadPath,
-            // Telemetry has a limit of 80 characters.
-            new_sub_url: submissionUrl.slice(0, 80),
-          },
-        },
-      ],
-      { category: "search", method: "engine" }
-    );
-
     let snapshot = await Glean.searchEngineDefault.changed.testGetValue();
     delete snapshot[0].timestamp;
     Assert.deepEqual(
@@ -705,7 +669,7 @@ var tests = [
         category: "search.engine.default",
         name: "changed",
         extra: {
-          change_source: "uitour",
+          change_reason: "uitour",
           previous_engine_id: defaultEngine.telemetryId,
           new_engine_id: engine.telemetryId,
           new_display_name: engine.name,
@@ -718,33 +682,9 @@ var tests = [
     );
   }),
   taskify(async function test_treatment_tag() {
-    let ac = new TelemetryArchiveTesting.Checker();
-    await ac.promiseInit();
     await gContentAPI.setTreatmentTag("foobar", "baz");
-    // Wait until the treatment telemetry is sent before looking in the archive.
-    await BrowserTestUtils.waitForContentEvent(
-      gTestTab.linkedBrowser,
-      "mozUITourNotification",
-      false,
-      event => event.detail.event === "TreatmentTag:TelemetrySent"
-    );
-    await new Promise(resolve => {
-      gContentAPI.getTreatmentTag("foobar", data => {
-        is(data.value, "baz", "set and retrieved treatmentTag");
-        ac.promiseFindPing("uitour-tag", [
-          [["payload", "tagName"], "foobar"],
-          [["payload", "tagValue"], "baz"],
-        ]).then(
-          found => {
-            ok(found, "Telemetry ping submitted for setTreatmentTag");
-            resolve();
-          },
-          err => {
-            ok(false, "Exception finding uitour telemetry ping: " + err);
-            resolve();
-          }
-        );
-      });
+    await gContentAPI.getTreatmentTag("foobar", data => {
+      is(data.value, "baz", "set and retrieved treatmentTag");
     });
   }),
 

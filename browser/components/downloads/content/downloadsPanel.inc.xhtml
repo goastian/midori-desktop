@@ -4,7 +4,6 @@
 
 <!-- The commands are handled by DownloadsPanel.handleEvent -->
 <commandset commandupdater="true" events="richlistbox-select"
-            oncommandupdate="goUpdateCommand('cmd_delete');"
             id="downloadPanelCommands">
   <command id="downloadsCmd_doDefault" />
   <command id="downloadsCmd_pauseResume" />
@@ -38,8 +37,6 @@
        role="group"
        type="arrow"
        orient="vertical"
-       onpopupshown="DownloadsPanel.onPopupShown(event);"
-       onpopuphidden="DownloadsPanel.onPopupHidden(event);"
        hidden="true">
 
   <linkset>
@@ -108,11 +105,7 @@
         <richlistbox id="downloadsListBox"
                      data-l10n-id="downloads-panel-items"
                      data-l10n-attrs="style"
-                     context="downloadsContextMenu"
-                     onmouseover="DownloadsView.onDownloadMouseOver(event);"
-                     onmouseout="DownloadsView.onDownloadMouseOut(event);"
-                     oncontextmenu="DownloadsView.onDownloadContextMenu(event);"
-                     ondragstart="DownloadsView.onDownloadDragStart(event);"/>
+                     context="downloadsContextMenu"/>
         <description id="emptyDownloads"
                      data-l10n-id="downloads-panel-empty"/>
       </vbox>
@@ -120,9 +113,7 @@
         <stack>
           <hbox id="downloadsSummary"
                 align="center"
-                orient="horizontal"
-                onkeydown="DownloadsSummary.onKeyDown(event);"
-                onclick="DownloadsSummary.onClick(event);">
+                orient="horizontal">
             <image class="downloadTypeIcon" />
             <vbox pack="center"
                   flex="1"
@@ -141,7 +132,6 @@
                     data-l10n-id="downloads-history"
                     class="downloadsPanelFooterButton subviewbutton panel-subview-footer-button toolbarbutton-1"
                     flex="1"
-                    oncommand="DownloadsPanel.showDownloadsHistory();"
                     pack="start"/>
           </vbox>
         </stack>
@@ -166,7 +156,6 @@
                 command="downloadsCmd_unblockAndOpen"/>
         <button id="downloadsPanel-blockedSubview-deleteButton"
                 class="footer-button"
-                oncommand="DownloadsBlockedSubview.confirmBlock();"
                 default="true"/>
       </html:moz-button-group>
     </panelview>

@@ -16,8 +16,19 @@ add_setup(async function () {
   });
 
   await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.suggest.quickactions", false]],
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
   });
+  if (UrlbarPrefs.getScotchBonnetPref("searchRestrictKeywords.featureGate")) {
+    await SpecialPowers.pushPrefEnv({
+      set: [
+        // Restrict keyword results adds 4 rows to the result panel, reaching
+        // the maximum number of results displayed.
+        // We need to increase the result limit to ensure the installed engines
+        // in the test are visible and not hidden.
+        ["browser.urlbar.maxRichResults", 99],
+      ],
+    });
+  }
 
   registerCleanupFunction(async () => {
     await PlacesUtils.history.clear();
@@ -57,30 +68,50 @@ add_task(async function tokenAlias() {
     value: "@",
   });
 
-  let result;
+  let details;
   while (gURLBar.searchMode?.engineName != TEST_ENGINE_NAME) {
     EventUtils.synthesizeKey("KEY_ArrowDown");
     let index = UrlbarTestUtils.getSelectedRowIndex(window);
-    result = await UrlbarTestUtils.getDetailsOfResultAt(window, index);
-    let expectedSearchMode = {
-      engineName: result.searchParams.engine,
-      isPreview: true,
-      entry: "keywordoffer",
-    };
-    let engine = Services.search.getEngineByName(result.searchParams.engine);
-    if (engine.isGeneralPurposeEngine) {
-      expectedSearchMode.source = UrlbarUtils.RESULT_SOURCE.SEARCH;
+    details = await UrlbarTestUtils.getDetailsOfResultAt(window, index);
+
+    let expectedSearchMode =
+      details.type === UrlbarUtils.RESULT_TYPE.RESTRICT
+        ? UrlbarUtils.searchModeForToken(details.result.payload.keyword)
+        : {
+            engineName: details.searchParams.engine,
+            isPreview: true,
+            entry: "keywordoffer",
+          };
+
+    expectedSearchMode.isPreview = true;
+    expectedSearchMode.entry = "keywordoffer";
+
+    if (details.type !== UrlbarUtils.RESULT_TYPE.RESTRICT) {
+      let engine = Services.search.getEngineByName(details.searchParams.engine);
+      if (engine.isGeneralPurposeEngine) {
+        expectedSearchMode.source = UrlbarUtils.RESULT_SOURCE.SEARCH;
+      }
     }
     await UrlbarTestUtils.assertSearchMode(window, expectedSearchMode);
   }
+
   let searchPromise = UrlbarTestUtils.promiseSearchComplete(window);
   EventUtils.synthesizeKey("KEY_Enter");
   await searchPromise;
+
   // Test that we are in confirmed search mode.
-  await UrlbarTestUtils.assertSearchMode(window, {
-    engineName: result.searchParams.engine,
-    entry: "keywordoffer",
-  });
+  let searchMode;
+  if (details.type === UrlbarUtils.RESULT_TYPE.RESTRICT) {
+    searchMode = UrlbarUtils.searchModeForToken(details.result.payload.keyword);
+  } else {
+    searchMode = {
+      engineName: details.searchParams.engine,
+    };
+  }
+
+  searchMode.entry = "keywordoffer";
+
+  await UrlbarTestUtils.assertSearchMode(window, searchMode);
   await UrlbarTestUtils.exitSearchMode(window);
 });
 

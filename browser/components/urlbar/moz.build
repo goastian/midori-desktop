@@ -5,8 +5,6 @@
 with Files("**"):
     BUG_COMPONENT = ("Firefox", "Address Bar")
 
-JAR_MANIFESTS += ["jar.mn"]
-
 DIRS += [
     "unitconverters",
 ]
@@ -15,20 +13,24 @@ EXTRA_JS_MODULES += [
     "ActionsProvider.sys.mjs",
     "ActionsProviderContextualSearch.sys.mjs",
     "ActionsProviderQuickActions.sys.mjs",
+    "ActionsProviderTabGroups.sys.mjs",
     "MerinoClient.sys.mjs",
     "QuickActionsLoaderDefault.sys.mjs",
     "QuickSuggest.sys.mjs",
+    "SearchModeSwitcher.sys.mjs",
     "UrlbarController.sys.mjs",
     "UrlbarEventBufferer.sys.mjs",
     "UrlbarInput.sys.mjs",
     "UrlbarMuxerUnifiedComplete.sys.mjs",
     "UrlbarPrefs.sys.mjs",
     "UrlbarProviderAboutPages.sys.mjs",
+    "UrlbarProviderActionsSearchMode.sys.mjs",
     "UrlbarProviderAliasEngines.sys.mjs",
     "UrlbarProviderAutofill.sys.mjs",
     "UrlbarProviderBookmarkKeywords.sys.mjs",
     "UrlbarProviderCalculator.sys.mjs",
     "UrlbarProviderClipboard.sys.mjs",
+    "UrlbarProviderGlobalActions.sys.mjs",
     "UrlbarProviderHeuristicFallback.sys.mjs",
     "UrlbarProviderHistoryUrlHeuristic.sys.mjs",
     "UrlbarProviderInputHistory.sys.mjs",
@@ -41,14 +43,16 @@ EXTRA_JS_MODULES += [
     "UrlbarProviderQuickSuggestContextualOptIn.sys.mjs",
     "UrlbarProviderRecentSearches.sys.mjs",
     "UrlbarProviderRemoteTabs.sys.mjs",
+    "UrlbarProviderRestrictKeywords.sys.mjs",
+    "UrlbarProviderRestrictKeywordsAutofill.sys.mjs",
     "UrlbarProviderSearchSuggestions.sys.mjs",
     "UrlbarProviderSearchTips.sys.mjs",
+    "UrlbarProviderSemanticHistorySearch.sys.mjs",
     "UrlbarProvidersManager.sys.mjs",
     "UrlbarProviderTabToSearch.sys.mjs",
     "UrlbarProviderTokenAliasEngines.sys.mjs",
     "UrlbarProviderTopSites.sys.mjs",
     "UrlbarProviderUnitConversion.sys.mjs",
-    "UrlbarProviderWeather.sys.mjs",
     "UrlbarResult.sys.mjs",
     "UrlbarSearchOneOffs.sys.mjs",
     "UrlbarSearchTermsPersistence.sys.mjs",
@@ -61,15 +65,19 @@ EXTRA_JS_MODULES += [
 
 EXTRA_JS_MODULES["urlbar/private"] += [
     "private/AddonSuggestions.sys.mjs",
-    "private/AdmWikipedia.sys.mjs",
-    "private/BaseFeature.sys.mjs",
-    "private/BlockedSuggestions.sys.mjs",
+    "private/AmpSuggestions.sys.mjs",
+    "private/DynamicSuggestions.sys.mjs",
+    "private/FakespotSuggestions.sys.mjs",
+    "private/GeolocationUtils.sys.mjs",
     "private/ImpressionCaps.sys.mjs",
     "private/MDNSuggestions.sys.mjs",
-    "private/PocketSuggestions.sys.mjs",
-    "private/SuggestBackendJs.sys.mjs",
+    "private/MLSuggest.sys.mjs",
+    "private/OfflineWikipediaSuggestions.sys.mjs",
+    "private/SuggestBackendMerino.sys.mjs",
+    "private/SuggestBackendMl.sys.mjs",
     "private/SuggestBackendRust.sys.mjs",
-    "private/Weather.sys.mjs",
+    "private/SuggestFeature.sys.mjs",
+    "private/WeatherSuggestions.sys.mjs",
     "private/YelpSuggestions.sys.mjs",
 ]
 
@@ -84,6 +92,7 @@ BROWSER_CHROME_MANIFESTS += [
     "tests/browser-tips/suppress-tips/browser.toml",
     "tests/browser-updateResults/browser.toml",
     "tests/browser/browser.toml",
+    "tests/browser/browserSidebarRevamp.toml",
     "tests/engagementTelemetry/browser/browser.toml",
     "tests/quicksuggest/browser/browser.toml",
 ]

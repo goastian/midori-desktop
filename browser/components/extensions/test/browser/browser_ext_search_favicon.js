@@ -15,7 +15,7 @@ const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
 const { AppProvidedSearchEngine } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppProvidedSearchEngine.sys.mjs"
+  "moz-src:///toolkit/components/search/AppProvidedSearchEngine.sys.mjs"
 );
 
 AddonTestUtils.initMochitest(this);
@@ -26,52 +26,25 @@ SearchTestUtils.init(this);
 const FAKE_ICON_DATA = "RmFrZSBpY29uIGRhdGE=";
 
 // Base64-encoded "HTTP icon data".
-const HTTP_ICON_DATA = "SFRUUCBpY29uIGRhdGE=";
+const HTTP_ICON_DATA =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAX+Av7czFnnAAAAAElFTkSuQmCC";
 const HTTP_ICON_URL = "http://example.org/ico.png";
 
 const IMAGE_DATA_URI =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAX+Av7czFnnAAAAAElFTkSuQmCC";
-
-const CONFIG = [
-  {
-    recordType: "engine",
-    identifier: "appEngineWithIcon",
-    base: {
-      name: "appEngineWithIcon",
-      urls: {
-        search: {
-          base: "https://example.com/",
-          searchTermParamName: "q",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "defaultEngines",
-    globalDefault: "appEngineWithIcon",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
-];
 
 add_setup(async () => {
   const server = XPCShellContentUtils.createHttpServer({
     hosts: ["example.org"],
   });
   server.registerPathHandler("/ico.png", (request, response) => {
+    response.setHeader("Content-Type", "image/png");
     response.write(atob(HTTP_ICON_DATA));
   });
 
-  SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.updateRemoteSettingsConfig(CONFIG);
+  await SearchTestUtils.updateRemoteSettingsConfig([
+    { identifier: "appEngineWithIcon" },
+  ]);
 
   let createdBlobURLs = [];
 

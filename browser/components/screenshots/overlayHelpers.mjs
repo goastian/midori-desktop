@@ -92,6 +92,15 @@ export async function getElementFromPoint(x, y, doc) {
           bottom: rect.bottom - ele.ownerGlobal.mozInnerScreenY,
         };
       }
+    } else if (ele.openOrClosedShadowRoot) {
+      while (ele.openOrClosedShadowRoot) {
+        let shadowEle = ele.openOrClosedShadowRoot.elementFromPoint(x, y);
+        if (shadowEle) {
+          ele = shadowEle;
+        } else {
+          break;
+        }
+      }
     }
   } catch (e) {
     console.error(e);

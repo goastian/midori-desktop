@@ -22,7 +22,7 @@ add_task(
       "The button is available."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
       runInPage,
@@ -36,17 +36,21 @@ add_task(
     );
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
 
     await FullPageTranslationsTestUtils.clickTranslateButton({
       downloadHandler: resolveDownloads,
     });
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
@@ -54,18 +58,20 @@ add_task(
       {
         selectSpanishSentence: true,
         openAtSpanishSentence: true,
-        expectMenuItemVisible: false,
+        expectMenuItemVisible: true,
+        expectedTargetLanguage: "en",
       },
-      "The translate-selection context menu item should be unavailable while full-page translations is active."
+      "The translate-selection context menu item should be available even while full-page translations is active."
     );
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
     });
 
     await FullPageTranslationsTestUtils.clickRestoreButton();
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
       runInPage,
@@ -101,7 +107,7 @@ add_task(
       "The button is available."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
       runInPage,
@@ -115,17 +121,21 @@ add_task(
     );
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
 
     await FullPageTranslationsTestUtils.clickTranslateButton({
       downloadHandler: resolveDownloads,
     });
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+      }
     );
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
@@ -133,18 +143,20 @@ add_task(
       {
         selectSpanishSentence: false,
         openAtSpanishHyperlink: true,
-        expectMenuItemVisible: false,
+        expectMenuItemVisible: true,
+        expectedTargetLanguage: "en",
       },
-      "The translate-selection context menu item should be unavailable while full-page translations is active."
+      "The translate-selection context menu item should be available even while full-page translations is active."
     );
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
     });
 
     await FullPageTranslationsTestUtils.clickRestoreButton();
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await SelectTranslationsTestUtils.assertContextMenuTranslateSelectionItem(
       runInPage,

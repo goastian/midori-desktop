@@ -155,7 +155,20 @@ var gSitePermissionsManager = {
       this._isObserving = true;
     }
 
-    document.addEventListener("dialogaccept", () => this.onApplyChanges());
+    document.addEventListener("command", this);
+    document.addEventListener("dialogaccept", this);
+    window.addEventListener("unload", this);
+
+    document
+      .getElementById("siteCol")
+      .addEventListener("click", event =>
+        this.buildPermissionsList(event.target)
+      );
+    document
+      .getElementById("statusCol")
+      .addEventListener("click", event =>
+        this.buildPermissionsList(event.target)
+      );
 
     this._type = params.permissionType;
     this._list = document.getElementById("permissionsBox");
@@ -170,6 +183,11 @@ var gSitePermissionsManager = {
       "permissionsDisableDescription"
     );
     this._setAutoplayPref = document.getElementById("setAutoplayPref");
+
+    this._list.addEventListener("keypress", event =>
+      this.onPermissionKeyPress(event)
+    );
+    this._list.addEventListener("select", () => this.onPermissionSelect());
 
     let permissionsText = document.getElementById("permissionsText");
 
@@ -258,6 +276,33 @@ var gSitePermissionsManager = {
       }
     }
     this.buildPermissionsList();
+  },
+
+  handleEvent(event) {
+    switch (event.type) {
+      case "command":
+        switch (event.target.id) {
+          case "key_close":
+            window.close();
+            break;
+          case "searchBox":
+            this.buildPermissionsList();
+            break;
+          case "removePermission":
+            this.onPermissionDelete();
+            break;
+          case "removeAllPermissions":
+            this.onAllPermissionsDelete();
+            break;
+        }
+        break;
+      case "dialogaccept":
+        this.onApplyChanges();
+        break;
+      case "unload":
+        this.uninit();
+        break;
+    }
   },
 
   _handleCheckboxUIUpdates() {
@@ -677,3 +722,5 @@ var gSitePermissionsManager = {
     column.setAttribute("data-last-sortDirection", sortDirection);
   },
 };
+
+window.addEventListener("load", () => gSitePermissionsManager.onLoad());

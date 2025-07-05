@@ -32,7 +32,7 @@ export var ControlCenter = {
     about: {
       selectors: CC_SELECTORS,
       async applyConfig() {
-        await loadPage("about:rights");
+        await loadPage("about:policies");
         await openIdentityPopup();
       },
     },
@@ -175,40 +175,6 @@ export var ControlCenter = {
       selectors: CC_SELECTORS,
       async applyConfig() {
         await loadPage(MIXED_ACTIVE_CONTENT_URL);
-        await openIdentityPopup(true);
-      },
-    },
-
-    mixedActiveUnblocked: {
-      selectors: CC_SELECTORS,
-      async applyConfig() {
-        let browserWindow =
-          Services.wm.getMostRecentWindow("navigator:browser");
-        let gBrowser = browserWindow.gBrowser;
-        await loadPage(MIXED_ACTIVE_CONTENT_URL);
-        gBrowser.ownerGlobal.gIdentityHandler.disableMixedContentProtection();
-        await BrowserTestUtils.browserLoaded(
-          gBrowser.selectedBrowser,
-          false,
-          MIXED_ACTIVE_CONTENT_URL
-        );
-        await openIdentityPopup();
-      },
-    },
-
-    mixedActiveUnblockedSubView: {
-      selectors: CC_SELECTORS,
-      async applyConfig() {
-        let browserWindow =
-          Services.wm.getMostRecentWindow("navigator:browser");
-        let gBrowser = browserWindow.gBrowser;
-        await loadPage(MIXED_ACTIVE_CONTENT_URL);
-        gBrowser.ownerGlobal.gIdentityHandler.disableMixedContentProtection();
-        await BrowserTestUtils.browserLoaded(
-          gBrowser.selectedBrowser,
-          false,
-          MIXED_ACTIVE_CONTENT_URL
-        );
         await openIdentityPopup(true);
       },
     },

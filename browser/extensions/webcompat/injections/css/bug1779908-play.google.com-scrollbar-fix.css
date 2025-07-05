@@ -10,6 +10,6 @@
  * They are hiding the scrollbar with ::webkit-scrollbar, but not the standards-
  * compliant method `scrollbar-width:none`.
  */
- .aoJE7e {
-    scrollbar-width: none;
-  }
+.aoJE7e {
+  scrollbar-width: none;
+}

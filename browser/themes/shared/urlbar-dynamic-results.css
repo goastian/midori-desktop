@@ -164,66 +164,25 @@
 }
 
 /**
- * Quick actions
+ * Actions
  */
 
-.urlbarView-dynamic-quickactions-buttons {
-  display: flex;
-  flex-grow: 1;
-  gap: 0.9em 1.8em;
-  max-width: 100%;
-
-  &[data-is-quickactions-searchmode] {
-    flex-wrap: wrap;
-  }
+.urlbarView-row[dynamicType=actions] > .urlbarView-row-inner {
+  /* Reduce the padding to 2px so the outline does not get
+     cropped and the actions + outline are aligned with the
+     rest of the results */
+  padding-inline: 2px;
 }
 
-.urlbarView-quickaction-button {
+.urlbarView-dynamic-actions-buttons {
+  display: inline-flex;
+}
+
+.urlbarView-press-tab-label {
+  margin-inline-end: var(--space-medium);
   font-size: var(--urlbarView-small-font-size);
-  font-weight: var(--font-weight-bold);
-  box-shadow: 0 0 1px rgba(128, 128, 142, 0.9), 0 0 4px rgba(128, 128, 142, 0.5);
-  border-radius: 4px;
-  display: flex;
-  padding: .5em;
-  margin-top: 2px;
-  position: relative;
-  overflow: hidden;
-  min-width: 16px;
-
-  &[disabled] {
-    opacity: var(--toolbarbutton-disabled-opacity);
-  }
-
-  &:hover:not([disabled]):not([selected]) {
-    background-color: var(--urlbarView-hover-background);
-  }
-
-  &[selected] {
-    background-color: var(--urlbarView-highlight-background);
-    color: var(--urlbarView-highlight-color);
-  }
-
-  > .urlbarView-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  > .urlbarView-favicon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-inline: 0 .5em;
-
-    > .urlbarView-favicon-img {
-      width: 16px;
-      height: 16px;
-    }
-  }
-}
-
-.urlbarView-row[dynamicType=quickactions][label]::before {
-  top: -1em;
-  margin-inline-start: 6px;
+  color: var(--urlbarView-secondary-text-color);
+  align-self: center;
 }
 
 /**
@@ -285,108 +244,6 @@
     -moz-context-properties: fill, stroke;
     fill: currentColor;
     stroke: currentColor;
-  }
-
-  &[iconId="1"] {
-    content: url("chrome://browser/skin/weather/sunny.svg");
-    height: 22px;
-  }
-
-  &[iconId="2"] {
-    content: url("chrome://browser/skin/weather/mostly-sunny.svg");
-    height: 22px;
-  }
-
-  &:is([iconId="3"], [iconId="4"], [iconId="6"]) {
-    content: url("chrome://browser/skin/weather/partly-sunny.svg");
-    height: 22px;
-  }
-
-  &[iconId="5"] {
-    content: url("chrome://browser/skin/weather/hazy-sunshine.svg");
-    height: 22px;
-  }
-
-  &:is([iconId="7"], [iconId="8"]) {
-    content: url("chrome://browser/skin/weather/cloudy.svg");
-  }
-
-  &[iconId="11"] {
-    content: url("chrome://browser/skin/weather/fog.svg");
-  }
-
-  &[iconId="12"] {
-    content: url("chrome://browser/skin/weather/showers.svg");
-  }
-
-  &:is([iconId="13"], [iconId="14"]) {
-    content: url("chrome://browser/skin/weather/mostly-cloudy-with-showers.svg");
-    height: 22px;
-  }
-
-  &[iconId="15"] {
-    content: url("chrome://browser/skin/weather/thunderstorms.svg");
-  }
-
-  &:is([iconId="16"], [iconId="17"]) {
-    content: url("chrome://browser/skin/weather/mostly-cloudy-with-thunderstorms.svg");
-  }
-
-  &[iconId="18"] {
-    content: url("chrome://browser/skin/weather/rain.svg");
-  }
-
-  &:is([iconId="19"], [iconId="20"], [iconId="25"]) {
-    content: url("chrome://browser/skin/weather/flurries.svg");
-  }
-
-  &[iconId="21"] {
-    content: url("chrome://browser/skin/weather/partly-sunny-with-flurries.svg");
-  }
-
-  &:is([iconId="22"], [iconId="23"]) {
-    content: url("chrome://browser/skin/weather/snow.svg");
-  }
-
-  &:is([iconId="24"], [iconId="31"]) {
-    content: url("chrome://browser/skin/weather/ice.svg");
-  }
-
-  &:is([iconId="26"], [iconId="29"]) {
-    content: url("chrome://browser/skin/weather/freezing-rain.svg");
-  }
-
-  &[iconId="30"] {
-    content: url("chrome://browser/skin/weather/hot.svg");
-  }
-
-  &[iconId="32"] {
-    content: url("chrome://browser/skin/weather/windy.svg");
-  }
-
-  &[iconId="33"] {
-    content: url("chrome://browser/skin/weather/night-clear.svg");
-  }
-
-  &:is([iconId="34"], [iconId="35"], [iconId="36"], [iconId="38"]) {
-    content: url("chrome://browser/skin/weather/night-mostly-clear.svg");
-  }
-
-  &[iconId="37"] {
-    content: url("chrome://browser/skin/weather/night-hazy-moonlight.svg");
-  }
-
-  &:is([iconId="39"], [iconId="40"]) {
-    content: url("chrome://browser/skin/weather/night-partly-cloudy-with-showers.svg");
-    height: 22px;
-  }
-
-  &:is([iconId="41"], [iconId="42"]) {
-    content: url("chrome://browser/skin/weather/night-partly-cloudy-with-thunderstorms.svg");
-  }
-
-  &:is([iconId="43"], [iconId="44"]) {
-    content: url("chrome://browser/skin/weather/night-mostly-cloudy-with-flurries.svg");
   }
 }
 
@@ -459,5 +316,92 @@
 
   .urlbarView-row[dynamicType=weather]:not([selected]) > .urlbarView-row-inner > .urlbarView-dynamic-weather-summary > & {
     opacity: 0.6;
+  }
+}
+
+/**
+ * Fakespot suggestions
+ */
+
+.urlbarView-results[wrap] > .urlbarView-row[dynamicType=fakespot] > .urlbarView-row-inner {
+  flex-wrap: nowrap;
+}
+
+.urlbarView-dynamic-fakespot-body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.urlbarView-dynamic-fakespot-description {
+  display: flex;
+  align-items: baseline;
+  font-size: var(--urlbarView-small-font-size);
+  margin-block: 0.18em;
+}
+
+.urlbarView-dynamic-fakespot-rating-five-stars {
+  --icon-color: currentColor;
+}
+
+.urlbarView-dynamic-fakespot-rating-and-total-reviews {
+  margin-inline: 0.25em 1.23em;
+}
+
+.urlbarView-dynamic-fakespot-badge {
+  display: flex;
+  align-items: center;
+  color: #15141A;
+  font-size: 0.75em;
+  padding-inline: 0 1em;
+  padding-block: 0.27em;
+  border-radius: var(--border-radius-small);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+
+  &::before {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #000000;
+    font-weight: var(--font-weight-bold);
+    padding: 0.27em 0.5em;
+    margin-inline: -1px 1em;
+    margin-block: calc(-0.27em - 1px);
+    border-start-start-radius: var(--border-radius-small);
+    border-end-start-radius: var(--border-radius-small);
+    border-block-start-style: solid;
+    border-block-end-style: solid;
+    border-inline-start-style: solid;
+    border-inline-end-style: none;
+    border-color: rgba(0, 0, 0, 0.15);
+    border-width: 1px;
+  }
+
+  &[grade=A] {
+    background-color: rgba(231, 255, 246, 0.7);
+    &::before {
+      content: "A";
+      background-color: rgb(179, 255, 227);
+    }
+  }
+  &[grade=B] {
+    background-color: rgba(222, 250, 255, 0.7);
+    &::before {
+      content: "B";
+      background-color: rgb(128, 235, 255);
+    }
+  }
+}
+
+.urlbarView-dynamic-fakespot-footer {
+  font-size: var(--urlbarView-small-font-size);
+}
+
+.urlbarView-row:not([selected]) > .urlbarView-row-inner > .urlbarView-dynamic-fakespot-body {
+  > .urlbarView-dynamic-fakespot-description,
+  > .urlbarView-dynamic-fakespot-footer {
+    color: var(--urlbarView-secondary-text-color);
   }
 }

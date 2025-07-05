@@ -15,9 +15,13 @@ import {
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ActionsProviderContextualSearch:
+    "resource:///modules/ActionsProviderContextualSearch.sys.mjs",
   UrlbarView: "resource:///modules/UrlbarView.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderAutofill: "resource:///modules/UrlbarProviderAutofill.sys.mjs",
+  UrlbarProviderGlobalActions:
+    "resource:///modules/UrlbarProviderGlobalActions.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
@@ -111,9 +115,7 @@ class ProviderTabToSearch extends UrlbarProvider {
   }
 
   /**
-   * Returns the type of this provider.
-   *
-   * @returns {integer} one of the types from UrlbarUtils.PROVIDER_TYPE.*
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.PROFILE;
@@ -125,14 +127,17 @@ class ProviderTabToSearch extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
   async isActive(queryContext) {
     return (
       queryContext.searchString &&
       queryContext.tokens.length == 1 &&
       !queryContext.searchMode &&
-      lazy.UrlbarPrefs.get("suggest.engines")
+      lazy.UrlbarPrefs.get("suggest.engines") &&
+      !(
+        (await lazy.UrlbarProviderGlobalActions.isActive(queryContext)) &&
+        lazy.ActionsProviderContextualSearch.isActive(queryContext)
+      )
     );
   }
 
@@ -235,54 +240,6 @@ class ProviderTabToSearch extends UrlbarProvider {
     }
   }
 
-  onImpression(state, queryContext, controller, providerVisibleResults) {
-    try {
-      let regularResultCount = 0;
-      let onboardingResultCount = 0;
-      providerVisibleResults.forEach(({ result }) => {
-        if (result.type === UrlbarUtils.RESULT_TYPE.DYNAMIC) {
-          let scalarKey = lazy.UrlbarSearchUtils.getSearchModeScalarKey({
-            engineName: result?.payload.engine,
-          });
-          Services.telemetry.keyedScalarAdd(
-            "urlbar.tabtosearch.impressions_onboarding",
-            scalarKey,
-            1
-          );
-          onboardingResultCount += 1;
-        } else if (result.type === UrlbarUtils.RESULT_TYPE.SEARCH) {
-          let scalarKey = lazy.UrlbarSearchUtils.getSearchModeScalarKey({
-            engineName: result?.payload.engine,
-          });
-          Services.telemetry.keyedScalarAdd(
-            "urlbar.tabtosearch.impressions",
-            scalarKey,
-            1
-          );
-          regularResultCount += 1;
-        }
-      });
-      Services.telemetry.keyedScalarAdd(
-        "urlbar.tips",
-        "tabtosearch-shown",
-        regularResultCount
-      );
-      Services.telemetry.keyedScalarAdd(
-        "urlbar.tips",
-        "tabtosearch_onboard-shown",
-        onboardingResultCount
-      );
-    } catch (ex) {
-      // If your test throws this error or causes another test to throw it, it
-      // is likely because your test showed a tab-to-search result but did not
-      // start and end the engagement in which it was shown. Be sure to fire an
-      // input event to start an engagement and blur the Urlbar to end it.
-      this.logger.error(
-        `Exception while recording TabToSearch telemetry: ${ex})`
-      );
-    }
-  }
-
   /**
    * Defines whether the view should defer user selection events while waiting
    * for the first result from this provider.
@@ -375,17 +332,15 @@ class ProviderTabToSearch extends UrlbarProvider {
         partialMatchEnginesByHost.set(engine.searchUrlDomain, engine);
         // Don't continue here, we are looking for more partial matches.
       }
-      // We also try to match the searchForm domain, because otherwise for an
-      // engine like ebay, we'd check rover.ebay.com, when the user is likely
-      // to visit ebay.LANG. The searchForm URL often points to the main host.
-      let searchFormHost;
-      try {
-        searchFormHost = new URL(engine.searchForm).host;
-      } catch (ex) {
-        // Invalid url or no searchForm.
-      }
-      if (searchFormHost?.includes("." + searchStr)) {
-        partialMatchEnginesByHost.set(searchFormHost, engine);
+      // We also try to match the base domain of the searchUrlDomain,
+      // because otherwise for an engine like rakuten, we'd check pt.afl.rakuten.co.jp
+      // which redirects and is thus not saved in the history resulting in a low score.
+
+      let baseDomain = Services.eTLD.getBaseDomainFromHost(
+        engine.searchUrlDomain
+      );
+      if (baseDomain.startsWith(searchStr)) {
+        partialMatchEnginesByHost.set(baseDomain, engine);
       }
     }
     if (partialMatchEnginesByHost.size) {
@@ -406,16 +361,12 @@ class ProviderTabToSearch extends UrlbarProvider {
 }
 
 function makeOnboardingResult(engine, satisfiesAutofillThreshold = false) {
-  let [url] = UrlbarUtils.stripPrefixAndTrim(engine.searchUrlDomain, {
-    stripWww: true,
-  });
-  url = url.substr(0, url.length - engine.searchUrlPublicSuffix.length);
   let result = new lazy.UrlbarResult(
     UrlbarUtils.RESULT_TYPE.DYNAMIC,
     UrlbarUtils.RESULT_SOURCE.SEARCH,
     {
       engine: engine.name,
-      url,
+      searchUrlDomainWithoutSuffix: searchUrlDomainWithoutSuffix(engine),
       providesSearchMode: true,
       icon: UrlbarUtils.ICON.SEARCH_GLASS,
       dynamicType: DYNAMIC_RESULT_TYPE,
@@ -428,17 +379,13 @@ function makeOnboardingResult(engine, satisfiesAutofillThreshold = false) {
 }
 
 function makeResult(context, engine, satisfiesAutofillThreshold = false) {
-  let [url] = UrlbarUtils.stripPrefixAndTrim(engine.searchUrlDomain, {
-    stripWww: true,
-  });
-  url = url.substr(0, url.length - engine.searchUrlPublicSuffix.length);
   let result = new lazy.UrlbarResult(
     UrlbarUtils.RESULT_TYPE.SEARCH,
     UrlbarUtils.RESULT_SOURCE.SEARCH,
     ...lazy.UrlbarResult.payloadAndSimpleHighlights(context.tokens, {
       engine: engine.name,
       isGeneralPurposeEngine: engine.isGeneralPurposeEngine,
-      url,
+      searchUrlDomainWithoutSuffix: searchUrlDomainWithoutSuffix(engine),
       providesSearchMode: true,
       icon: UrlbarUtils.ICON.SEARCH_GLASS,
       query: "",
@@ -447,6 +394,13 @@ function makeResult(context, engine, satisfiesAutofillThreshold = false) {
   );
   result.suggestedIndex = 1;
   return result;
+}
+
+function searchUrlDomainWithoutSuffix(engine) {
+  let [value] = UrlbarUtils.stripPrefixAndTrim(engine.searchUrlDomain, {
+    stripWww: true,
+  });
+  return value.substr(0, value.length - engine.searchUrlPublicSuffix.length);
 }
 
 export var UrlbarProviderTabToSearch = new ProviderTabToSearch();

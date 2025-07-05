@@ -17,21 +17,8 @@ add_task(async function test_translations_telemetry_manual_translation() {
     "The button is available."
   );
 
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
-  await TestTranslationsTelemetry.assertCounter(
-    "RequestCount",
-    Glean.translations.requestsCount,
-    0
-  );
-  await TestTranslationsTelemetry.assertRate(
-    "ErrorRate",
-    Glean.translations.errorRate,
-    {
-      expectedNumerator: 0,
-      expectedDenominator: 0,
-    }
-  );
   await TestTranslationsTelemetry.assertEvent(
     Glean.translations.translationRequest,
     {
@@ -40,32 +27,21 @@ add_task(async function test_translations_telemetry_manual_translation() {
   );
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickTranslateButton({
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "en",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "en",
+    runInPage,
+  });
 
-  await TestTranslationsTelemetry.assertCounter(
-    "RequestCount",
-    Glean.translations.requestsCount,
-    1
-  );
-  await TestTranslationsTelemetry.assertRate(
-    "ErrorRate",
-    Glean.translations.errorRate,
-    {
-      expectedNumerator: 0,
-      expectedDenominator: 1,
-    }
-  );
   await TestTranslationsTelemetry.assertEvent(Glean.translationsPanel.open, {
     expectedEventCount: 1,
     expectNewFlowId: true,
@@ -104,11 +80,15 @@ add_task(async function test_translations_telemetry_manual_translation() {
         to_language: "en",
         auto_translate: false,
         document_language: "es",
-        top_preferred_language: "en",
+        top_preferred_language: "en-US",
         request_target: "full_page",
       },
     }
   );
+
+  await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+    expectedEventCount: 1,
+  });
 
   await cleanup();
 });
@@ -128,25 +108,12 @@ add_task(async function test_translations_telemetry_auto_translation() {
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "en",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "en",
+    runInPage,
+  });
 
-  await TestTranslationsTelemetry.assertCounter(
-    "RequestCount",
-    Glean.translations.requestsCount,
-    1
-  );
-  await TestTranslationsTelemetry.assertRate(
-    "ErrorRate",
-    Glean.translations.errorRate,
-    {
-      expectedNumerator: 0,
-      expectedDenominator: 1,
-    }
-  );
   await TestTranslationsTelemetry.assertEvent(Glean.translationsPanel.open, {
     expectedEventCount: 0,
   });
@@ -176,11 +143,15 @@ add_task(async function test_translations_telemetry_auto_translation() {
         to_language: "en",
         auto_translate: true,
         document_language: "es",
-        top_preferred_language: "en",
+        top_preferred_language: "en-US",
         request_target: "full_page",
       },
     }
   );
+
+  await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+    expectedEventCount: 1,
+  });
 
   await cleanup();
 });

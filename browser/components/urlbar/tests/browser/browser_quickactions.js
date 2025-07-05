@@ -26,14 +26,28 @@ const assertAction = async name => {
   Assert.ok(true, `We found action "${name}`);
 };
 
+const assertAccessibilityWhenSelected = name => {
+  let button = document.querySelector(
+    `.urlbarView-action-btn[data-action=${name}]`
+  );
+  Assert.ok(button.id);
+  Assert.equal(
+    gURLBar.inputField.getAttribute("aria-activedescendant"),
+    button.id
+  );
+};
+
 const hasQuickActions = win =>
   !!win.document.querySelector(".urlbarView-action-btn");
+
+const onboardingLabelShown = win =>
+  !!win.document.querySelector(".urlbarView-press-tab-label");
 
 add_setup(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.quickactions.enabled", true],
-      ["browser.urlbar.secondaryActions.featureGate", true],
+      ["browser.urlbar.scotchBonnet.enableOverride", true],
     ],
   });
 
@@ -42,9 +56,15 @@ add_setup(async function setup() {
     label: "quickactions-downloads2",
     onPick: () => testActionCalled++,
   });
+  ActionsProviderQuickActions.addAction("othertestaction", {
+    commands: ["othertestaction"],
+    label: "quickactions-downloads2",
+    onPick: () => {},
+  });
 
   registerCleanupFunction(() => {
     ActionsProviderQuickActions.removeAction("testaction");
+    ActionsProviderQuickActions.removeAction("othertestaction");
   });
 });
 
@@ -70,6 +90,7 @@ add_task(async function basic() {
 
   info("The callback of the action is fired when selected");
   EventUtils.synthesizeKey("KEY_Tab", {}, window);
+  assertAccessibilityWhenSelected("testaction");
   EventUtils.synthesizeKey("KEY_Enter", {}, window);
   Assert.equal(testActionCalled, 1, "Test action was called");
 });
@@ -110,6 +131,8 @@ add_task(async function test_viewsource() {
     "view-source:https://example.com/"
   );
   EventUtils.synthesizeKey("KEY_Tab", {}, window);
+  EventUtils.synthesizeKey("KEY_Tab", {}, window);
+  assertAccessibilityWhenSelected("viewsource");
   EventUtils.synthesizeKey("KEY_Enter", {}, window);
   const viewSourceTab = await onLoad;
 
@@ -120,14 +143,45 @@ add_task(async function test_viewsource() {
   });
 
   Assert.equal(
-    hasQuickActions(window),
-    false,
+    window.document.querySelector(
+      `.urlbarView-action-btn[data-action=viewsource]`
+    ),
+    null,
     "Result for quick actions is hidden"
   );
 
   // Clean up.
   BrowserTestUtils.removeTab(viewSourceTab);
   BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function testAfterTabSwitch() {
+  let tab1 = gBrowser.selectedTab;
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "testaction",
+  });
+  await assertAction("testaction");
+
+  let tab2 = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    opening: "https://example.com",
+    waitForLoad: true,
+  });
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "othertestaction",
+  });
+  await assertAction("othertestaction");
+
+  await BrowserTestUtils.switchTab(gBrowser, tab1);
+  info("Testing if quick action in tab 1 still works.");
+  EventUtils.synthesizeKey("KEY_Tab", {}, window);
+  assertAccessibilityWhenSelected("testaction");
+  EventUtils.synthesizeKey("KEY_Enter", {}, window);
+  Assert.equal(testActionCalled, 2, "Test action was called");
+
+  BrowserTestUtils.removeTab(tab2);
 });
 
 async function doAlertDialogTest({ input, dialogContentURI }) {
@@ -238,14 +292,14 @@ add_task(async function test_whitespace() {
     value: "",
   });
   const countForEmpty = window.document.querySelectorAll(
-    ".urlbarView-quickaction-button"
+    ".urlbarView-action-btn"
   ).length;
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: " ",
   });
   const countForWhitespace = window.document.querySelectorAll(
-    ".urlbarView-quickaction-button"
+    ".urlbarView-action-btn"
   ).length;
   Assert.equal(
     countForEmpty,
@@ -267,3 +321,84 @@ async function clickQuickActionOneoffButton() {
     entry: "oneoff",
   });
 }
+
+add_task(async function test_searchMode() {
+  const tab = await BrowserTestUtils.openNewForegroundTab({
+    gBrowser,
+    opening: "about:home",
+    waitForLoad: true,
+  });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "@act",
+  });
+
+  EventUtils.synthesizeKey("KEY_Tab");
+
+  await UrlbarTestUtils.assertSearchMode(window, {
+    source: UrlbarUtils.RESULT_SOURCE.ACTIONS,
+    entry: "keywordoffer",
+    restrictType: "keyword",
+  });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "sour",
+  });
+
+  const onLoad = BrowserTestUtils.waitForNewTab(
+    gBrowser,
+    "view-source:about:home"
+  );
+  EventUtils.synthesizeKey("KEY_Tab");
+  EventUtils.synthesizeKey("KEY_Enter");
+  const viewSourceTab = await onLoad;
+
+  await BrowserTestUtils.switchTab(gBrowser, tab);
+
+  Assert.equal(window.gURLBar.searchMode, null);
+
+  BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(viewSourceTab);
+});
+
+let showAction = async testFun => {
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "testact",
+  });
+  await assertAction("testaction");
+  await testFun();
+  await UrlbarTestUtils.promisePopupClose(window, () => {
+    // We need to fully blur the urlbar for `onSearchSessionEnd`
+    // to trigger.
+    EventUtils.synthesizeKey("KEY_Escape");
+    EventUtils.synthesizeKey("KEY_Escape");
+    EventUtils.synthesizeKey("KEY_Escape");
+  });
+};
+
+add_task(async function test_label_shown() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.quickactions.timesShownOnboardingLabel", 0],
+      ["browser.urlbar.quickactions.timesToShowOnboardingLabel", 3],
+    ],
+  });
+  await showAction(() => {
+    Assert.ok(onboardingLabelShown(window), "Onboarding label is shown once");
+  });
+  await showAction(() => {
+    Assert.ok(onboardingLabelShown(window), "Onboarding label is shown twice");
+  });
+  await showAction(() => {
+    Assert.ok(
+      onboardingLabelShown(window),
+      "Onboarding label is shown third time"
+    );
+  });
+  await showAction(() => {
+    Assert.ok(!onboardingLabelShown(window), "Onboarding label is not shown");
+  });
+});

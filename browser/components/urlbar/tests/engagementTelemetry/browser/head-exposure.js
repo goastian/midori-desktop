@@ -7,41 +7,66 @@
 
 async function doExposureTest({
   prefs,
-  query,
-  trigger,
-  assert,
-  select = defaultSelect,
+  queries,
+  expectedEvents,
+  trigger = doBlur,
 }) {
-  const cleanupQuickSuggest = await ensureQuickSuggestInit();
-  await SpecialPowers.pushPrefEnv({
-    set: prefs,
-  });
+  const cleanupQuickSuggest = await ensureQuickSuggestInit({ prefs });
 
   await doTest(async () => {
-    await openPopup(query);
-    await select(query);
+    for (let {
+      query,
+      expectedVisible = [],
+      expectedNotVisible = [],
+    } of queries) {
+      info("doExposureTest performing query: " + JSON.stringify(query));
+      await openPopup(query);
+
+      for (let type of expectedVisible) {
+        let row = await getRowByType(suggestResultType(type));
+        Assert.ok(!!row, "The result should be in the view: " + type);
+        Assert.ok(
+          BrowserTestUtils.isVisible(row),
+          "The result's row should be visible: " + type
+        );
+      }
+      for (let type of expectedNotVisible) {
+        Assert.ok(
+          !(await getRowByType(suggestResultType(type))),
+          "The result should not be in the view: " + type
+        );
+      }
+    }
 
     await trigger();
-    await assert();
+
+    assertExposureTelemetry(
+      expectedEvents.map(e => ({
+        ...e,
+        results: e.results
+          .split(",")
+          .map(r => suggestResultType(r))
+          .join(","),
+      }))
+    );
   });
 
-  await SpecialPowers.popPrefEnv();
   await cleanupQuickSuggest();
 }
 
-async function defaultSelect(query) {
-  await selectRowByURL(`https://example.com/${query}`);
-}
-
-async function getResultByType(provider) {
+async function getRowByType(type) {
   for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
     const detail = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
     const telemetryType = UrlbarUtils.searchEngagementTelemetryType(
       detail.result
     );
-    if (telemetryType === provider) {
-      return detail.result;
+    if (telemetryType === type) {
+      return detail.element.row;
     }
   }
   return null;
+}
+
+function suggestResultType(typeWithoutSource) {
+  return `rust_${typeWithoutSource}`;
 }

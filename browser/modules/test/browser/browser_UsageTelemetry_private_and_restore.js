@@ -12,9 +12,9 @@ const UNIQUE_DOMAINS_COUNT = "browser.engagement.unique_domains_count";
 const TOTAL_URI_COUNT_NORMAL_AND_PRIVATE_MODE =
   "browser.engagement.total_uri_count_normal_and_private_mode";
 
-BrowserUsageTelemetry._onTabsOpenedTask._timeoutMs = 0;
+BrowserUsageTelemetry._onTabsOpenedTask._idleTimeoutMs = 0;
 registerCleanupFunction(() => {
-  BrowserUsageTelemetry._onTabsOpenedTask._timeoutMs = undefined;
+  BrowserUsageTelemetry._onTabsOpenedTask._idleTimeoutMs = undefined;
 });
 
 function promiseBrowserStateRestored() {
@@ -29,10 +29,17 @@ function promiseBrowserStateRestored() {
   });
 }
 
-add_task(async function test_privateMode() {
-  // Let's reset the counts.
+function resetTelemetry() {
   Services.telemetry.clearScalars();
   Services.fog.testResetFOG();
+  BrowserUsageTelemetry.maxTabCount = 0;
+  BrowserUsageTelemetry.maxTabPinnedCount = 0;
+  BrowserUsageTelemetry.maxWindowCount = 0;
+}
+
+add_task(async function test_privateMode() {
+  // Let's reset the counts.
+  resetTelemetry();
 
   // Open a private window and load a website in it.
   let privateWin = await BrowserTestUtils.openNewBrowserWindow({
@@ -107,7 +114,7 @@ add_task(async function test_sessionRestore() {
   });
 
   // Let's reset the counts.
-  Services.telemetry.clearScalars();
+  resetTelemetry();
 
   // The first window will be put into the already open window and the second
   // window will be opened with _openWindowWithState, which is the source of the problem.

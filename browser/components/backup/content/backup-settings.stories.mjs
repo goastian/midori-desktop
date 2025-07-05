@@ -19,20 +19,55 @@ const Template = ({ backupServiceState }) => html`
   <backup-settings .backupServiceState=${backupServiceState}></backup-settings>
 `;
 
-export const BackingUpNotInProgress = Template.bind({});
-BackingUpNotInProgress.args = {
+export const ScheduledBackupsDisabled = Template.bind({});
+ScheduledBackupsDisabled.args = {
   backupServiceState: {
-    backupFilePath: "Documents",
-    backupInProgress: false,
+    backupDirPath: "/Some/User/Documents",
+    defaultParent: {
+      path: "/Some/User/Documents",
+      fileName: "Documents",
+    },
     scheduledBackupsEnabled: false,
   },
 };
 
-export const BackingUpInProgress = Template.bind({});
-BackingUpInProgress.args = {
+export const ScheduledBackupsEnabled = Template.bind({});
+ScheduledBackupsEnabled.args = {
   backupServiceState: {
-    backupFilePath: "Documents",
-    backupInProgress: true,
-    scheduledBackupsEnabled: false,
+    backupDirPath: "/Some/User/Documents",
+    defaultParent: {
+      path: "/Some/User/Documents",
+      fileName: "Documents",
+    },
+    scheduledBackupsEnabled: true,
+  },
+};
+
+export const ExistingBackup = Template.bind({});
+ExistingBackup.args = {
+  backupServiceState: {
+    backupDirPath: "/Some/User/Documents",
+    defaultParent: {
+      path: "/Some/User/Documents",
+      fileName: "Documents",
+    },
+    scheduledBackupsEnabled: true,
+    lastBackupDate: 1719625747,
+    lastBackupFileName: "FirefoxBackup_default_123123123.html",
+  },
+};
+
+export const EncryptionEnabled = Template.bind({});
+EncryptionEnabled.args = {
+  backupServiceState: {
+    backupDirPath: "/Some/User/Documents",
+    defaultParent: {
+      path: "/Some/User/Documents",
+      fileName: "Documents",
+    },
+    scheduledBackupsEnabled: true,
+    encryptionEnabled: true,
+    lastBackupDate: 1719625747,
+    lastBackupFileName: "FirefoxBackup_default_123123123.html",
   },
 };

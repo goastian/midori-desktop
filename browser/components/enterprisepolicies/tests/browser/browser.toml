@@ -1,5 +1,6 @@
 [DEFAULT]
 support-files = [
+  "favicon.svg",
   "head.js",
   "opensearch.html",
   "opensearchEngine.xml",
@@ -17,7 +18,6 @@ support-files = [
 ]
 
 ["browser_policies_getActivePolicies.js"]
-skip-if = ["os != 'mac'"]
 
 ["browser_policies_notice_in_aboutpreferences.js"]
 
@@ -26,13 +26,13 @@ skip-if = ["os != 'mac'"]
 ["browser_policy_allowfileselectiondialogs.js"]
 
 ["browser_policy_app_auto_update.js"]
-skip-if = ["os == 'win' && msix"] # Updater is disabled in MSIX builds
+run-if = ["!msix"] # Updater is disabled in MSIX builds
 
 ["browser_policy_app_update.js"]
-skip-if = ["os == 'win' && msix"] # Updater is disabled in MSIX builds
+run-if = ["!msix"] # Updater is disabled in MSIX builds
 
 ["browser_policy_background_app_update.js"]
-skip-if = ["os == 'win' && msix"] # Updater is disabled in MSIX builds
+run-if = ["!msix"] # Updater is disabled in MSIX builds
 
 ["browser_policy_block_about.js"]
 
@@ -41,6 +41,7 @@ skip-if = ["os == 'win' && msix"] # Updater is disabled in MSIX builds
 ["browser_policy_block_set_desktop_background.js"]
 
 ["browser_policy_bookmarks.js"]
+support-files = "favicon.svg"
 
 ["browser_policy_cookie_settings.js"]
 https_first_disabled = true
@@ -53,8 +54,6 @@ skip-if = ["verify && debug && os == 'mac'"]
 ["browser_policy_disable_masterpassword.js"]
 
 ["browser_policy_disable_password_reveal.js"]
-
-["browser_policy_disable_pocket.js"]
 
 ["browser_policy_disable_popup_blocker.js"]
 
@@ -106,6 +105,8 @@ https_first_disabled = true
 ["browser_policy_pageinfo_permissions.js"]
 
 ["browser_policy_passwordmanager.js"]
+
+["browser_policy_pdfviewer.js"]
 
 ["browser_policy_privatebrowsingmodeavailability.js"]
 

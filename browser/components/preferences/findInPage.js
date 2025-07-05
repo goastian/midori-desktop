@@ -35,15 +35,21 @@ var gSearchResultsPane = {
 
   searchResultsHighlighted: false,
 
+  searchableNodes: new Set([
+    "button",
+    "label",
+    "description",
+    "menulist",
+    "menuitem",
+    "checkbox",
+  ]),
+
   init() {
     if (this.inited) {
       return;
     }
     this.inited = true;
     this.searchInput = document.getElementById("searchInput");
-    this.searchInput.hidden = !Services.prefs.getBoolPref(
-      "browser.preferences.search"
-    );
 
     window.addEventListener("resize", () => {
       this._recomputeTooltipPositions();
@@ -264,11 +270,6 @@ var gSearchResultsPane = {
     // this next search.
     this.removeAllSearchIndicators(window, !query.length);
 
-    // Clear telemetry request if user types very frequently.
-    if (this.telemetryTimer) {
-      clearTimeout(this.telemetryTimer);
-    }
-
     let srHeader = document.getElementById("header-searchResults");
     let noResultsEl = document.getElementById("no-results-message");
     if (this.query) {
@@ -331,7 +332,8 @@ var gSearchResultsPane = {
           child.classList.remove("visually-hidden");
 
           // Show the preceding search-header if one exists.
-          let groupbox = child.closest("groupbox");
+          let groupbox =
+            child.closest("groupbox") || child.closest("[data-category]");
           let groupHeader =
             groupbox && groupbox.querySelector(".search-header");
           if (groupHeader) {
@@ -364,17 +366,6 @@ var gSearchResultsPane = {
         // Creating tooltips for all the instances found
         for (let anchorNode of this.listSearchTooltips) {
           this.createSearchTooltip(anchorNode, this.query);
-        }
-
-        // Implant search telemetry probe after user stops typing for a while
-        if (this.query.length >= 2) {
-          this.telemetryTimer = setTimeout(() => {
-            Services.telemetry.keyedScalarAdd(
-              "preferences.search_query",
-              this.query,
-              1
-            );
-          }, 1000);
         }
       }
     } else {
@@ -414,13 +405,9 @@ var gSearchResultsPane = {
     let matchesFound = false;
     if (
       nodeObject.childElementCount == 0 ||
-      nodeObject.localName == "button" ||
-      nodeObject.localName == "label" ||
-      nodeObject.localName == "description" ||
-      nodeObject.localName == "menulist" ||
-      nodeObject.localName == "menuitem" ||
-      nodeObject.localName == "checkbox" ||
-      nodeObject.localName == "moz-toggle"
+      this.searchableNodes.has(nodeObject.localName) ||
+      (nodeObject.localName?.startsWith("moz-") &&
+        nodeObject.localName !== "moz-input-box")
     ) {
       let simpleTextNodes = this.textNodeDescendants(nodeObject);
       if (nodeObject.shadowRoot) {
@@ -447,7 +434,8 @@ var gSearchResultsPane = {
 
       if (
         nodeObject.localName == "label" ||
-        nodeObject.localName == "description"
+        nodeObject.localName == "description" ||
+        nodeObject.localName.startsWith("moz-")
       ) {
         accessKeyTextNodes.push(...simpleTextNodes);
       }

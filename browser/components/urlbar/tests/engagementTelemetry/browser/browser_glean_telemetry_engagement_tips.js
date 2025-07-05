@@ -14,7 +14,7 @@ add_setup(async function () {
   makeProfileResettable();
 
   await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.quickactions.enabled", false]],
+    set: [["browser.urlbar.scotchBonnet.enableOverride", false]],
   });
 
   registerCleanupFunction(async function () {
@@ -27,10 +27,6 @@ add_task(async function selected_result_tip() {
     {
       type: "searchTip_onboard",
       expected: "tip_onboard",
-    },
-    {
-      type: "searchTip_persist",
-      expected: "tip_persist",
     },
     {
       type: "searchTip_redirect",

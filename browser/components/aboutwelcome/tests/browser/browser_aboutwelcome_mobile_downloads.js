@@ -11,31 +11,13 @@ const BASE_CONTENT = {
           alt_text: "Test alt",
         },
         email: {
-          link_text: {
-            string_id: "spotlight-focus-promo-email-link",
-          },
+          link_text: "Email yourself a link",
         },
         marketplace_buttons: ["ios", "android"],
       },
     },
   },
 };
-
-async function openAboutWelcome(json) {
-  if (json) {
-    await setAboutWelcomeMultiStage(json);
-  }
-
-  let tab = await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    "about:welcome",
-    true
-  );
-  registerCleanupFunction(() => {
-    BrowserTestUtils.removeTab(tab);
-  });
-  return tab.linkedBrowser;
-}
 
 const ALT_TEXT = BASE_CONTENT.content.tiles.data.QR_code.alt_text;
 

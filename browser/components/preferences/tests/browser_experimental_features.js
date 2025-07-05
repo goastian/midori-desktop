@@ -3,6 +3,11 @@
 
 "use strict";
 
+add_setup(async function setup() {
+  const cleanup = await setupLabsTest();
+  registerCleanupFunction(cleanup);
+});
+
 add_task(async function testPrefRequired() {
   await SpecialPowers.pushPrefEnv({
     set: [["browser.preferences.experimental", false]],
@@ -16,6 +21,8 @@ add_task(async function testPrefRequired() {
   ok(experimentalCategory.hidden, "The category is hidden");
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function testCanOpenWithPref() {
@@ -46,6 +53,8 @@ add_task(async function testCanOpenWithPref() {
   );
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function testSearchFindsExperiments() {
@@ -61,48 +70,16 @@ add_task(async function testSearchFindsExperiments() {
   ok(!experimentalCategory.hidden, "The category is not hidden");
 
   await TestUtils.waitForCondition(
-    () => doc.getElementById("firefoxExperimentalCategory"),
+    () => doc.querySelector("#pane-experimental-featureGates > .featureGate"),
     "Waiting for experimental features category to get initialized"
   );
   await evaluateSearchResults(
-    "advanced configuration",
+    "in development and evolving",
     ["pane-experimental-featureGates"],
     /* include experiments */ true
   );
 
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
-});
 
-add_task(async function testExtraTemplate() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.preferences.experimental", true]],
-  });
-
-  // Pretend a feature has id of "featureGate" to reuse that template
-  const server = new DefinitionServer();
-  server.addDefinition({
-    id: "featureGate",
-    isPublicJexl: "true",
-    preference: "test.feature",
-  });
-  await BrowserTestUtils.openNewForegroundTab(
-    gBrowser,
-    `about:preferences?definitionsUrl=${encodeURIComponent(
-      server.definitionsUrl
-    )}#paneExperimental`
-  );
-
-  const doc = gBrowser.contentDocument;
-  const checkbox = await TestUtils.waitForCondition(
-    () => doc.getElementById("featureGate"),
-    "wait for feature to get added to the DOM"
-  );
-
-  is(
-    checkbox.parentNode.querySelectorAll("checkbox").length,
-    2,
-    "extra template added another checkbox"
-  );
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  await SpecialPowers.popPrefEnv();
 });

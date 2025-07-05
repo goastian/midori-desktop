@@ -88,6 +88,10 @@ with Files("SitePermissions.sys.mjs"):
 with Files("TransientPrefs.sys.mjs"):
     BUG_COMPONENT = ("Firefox", "Settings UI")
 
+with Files("FilePickerCrashed.sys.mjs"):
+    BUG_COMPONENT = ("Core", "Widget: Win32")
+    SCHEDULES.exclusive = ["windows"]
+
 with Files("WindowsJumpLists.sys.mjs"):
     BUG_COMPONENT = ("Firefox", "Shell Integration")
     SCHEDULES.exclusive = ["windows"]
@@ -104,29 +108,36 @@ with Files("ZoomUI.sys.mjs"):
 
 BROWSER_CHROME_MANIFESTS += [
     "test/browser/browser.toml",
+    "test/browser/browserSidebarRevamp.toml",
     "test/browser/formValidation/browser.toml",
 ]
 XPCSHELL_TESTS_MANIFESTS += ["test/unit/xpcshell.toml"]
 
 EXTRA_JS_MODULES += [
     "AboutNewTab.sys.mjs",
+    "BrowserDOMWindow.sys.mjs",
     "BrowserUIUtils.sys.mjs",
     "BrowserUsageTelemetry.sys.mjs",
     "BrowserWindowTracker.sys.mjs",
     "ContentCrashHandlers.sys.mjs",
+    "Dedupe.sys.mjs",
     "Discovery.sys.mjs",
     "EveryWindow.sys.mjs",
     "ExtensionsUI.sys.mjs",
     "FaviconLoader.sys.mjs",
+    "FilterAdult.sys.mjs",
     "FirefoxBridgeExtensionUtils.sys.mjs",
     "HomePage.sys.mjs",
     "LaterRun.sys.mjs",
+    "LinksCache.sys.mjs",
     "PageActions.sys.mjs",
     "PartnerLinkAttribution.sys.mjs",
     "PermissionUI.sys.mjs",
+    "PopupBlockerObserver.sys.mjs",
     "ProcessHangMonitor.sys.mjs",
     "Sanitizer.sys.mjs",
     "SelectionChangedMenulist.sys.mjs",
+    "SharingUtils.sys.mjs",
     "SiteDataManager.sys.mjs",
     "SitePermissions.sys.mjs",
     "TransientPrefs.sys.mjs",
@@ -135,8 +146,13 @@ EXTRA_JS_MODULES += [
     "ZoomUI.sys.mjs",
 ]
 
+MOZ_SRC_FILES += [
+    "ContextId.sys.mjs",
+]
+
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     EXTRA_JS_MODULES += [
+        "FilePickerCrashed.sys.mjs",
         "WindowsJumpLists.sys.mjs",
         "WindowsPreviewPerTab.sys.mjs",
     ]

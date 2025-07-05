@@ -1,5 +1,5 @@
 import { _ToolbarBadgeHub } from "modules/ToolbarBadgeHub.sys.mjs";
-import { GlobalOverrider } from "test/unit/utils";
+import { GlobalOverrider } from "tests/unit/utils";
 import { OnboardingMessageProvider } from "modules/OnboardingMessageProvider.sys.mjs";
 
 describe("ToolbarBadgeHub", () => {
@@ -163,31 +163,23 @@ describe("ToolbarBadgeHub", () => {
 
       assert.notCalled(instance.registerBadgeNotificationListener);
     });
-    it("should record telemetry events", async () => {
-      const startTelemetryStopwatch = sandbox.stub(
-        global.TelemetryStopwatch,
-        "start"
-      );
-      const finishTelemetryStopwatch = sandbox.stub(
-        global.TelemetryStopwatch,
-        "finish"
+    it("should record a message request time", async () => {
+      const fakeTimerId = 42;
+      const start = sandbox
+        .stub(global.Glean.messagingSystem.messageRequestTime, "start")
+        .returns(fakeTimerId);
+      const stopAndAccumulate = sandbox.stub(
+        global.Glean.messagingSystem.messageRequestTime,
+        "stopAndAccumulate"
       );
       handleMessageRequestStub.returns(null);
 
       await instance.messageRequest({ triggerId: "trigger" });
 
-      assert.calledOnce(startTelemetryStopwatch);
-      assert.calledWithExactly(
-        startTelemetryStopwatch,
-        "MS_MESSAGE_REQUEST_TIME_MS",
-        { triggerId: "trigger" }
-      );
-      assert.calledOnce(finishTelemetryStopwatch);
-      assert.calledWithExactly(
-        finishTelemetryStopwatch,
-        "MS_MESSAGE_REQUEST_TIME_MS",
-        { triggerId: "trigger" }
-      );
+      assert.calledOnce(start);
+      assert.calledWithExactly(start);
+      assert.calledOnce(stopAndAccumulate);
+      assert.calledWithExactly(stopAndAccumulate, fakeTimerId);
     });
   });
   describe("addToolbarNotification", () => {
@@ -226,8 +218,13 @@ describe("ToolbarBadgeHub", () => {
     it("should show a notification", () => {
       instance.addToolbarNotification(target, fxaMessage);
 
-      assert.calledOnce(fakeElement.setAttribute);
+      assert.calledTwice(fakeElement.setAttribute);
       assert.calledWithExactly(fakeElement.setAttribute, "badged", true);
+      assert.calledWithExactly(
+        fakeElement.setAttribute,
+        "showing-callout",
+        true
+      );
       assert.calledWithExactly(fakeElement.classList.add, "feature-callout");
     });
     it("should attach a cb on the notification", () => {
@@ -307,10 +304,11 @@ describe("ToolbarBadgeHub", () => {
     it("should remove the notification", () => {
       instance.removeToolbarNotification(fakeElement);
 
-      assert.calledThrice(fakeElement.removeAttribute);
+      assert.callCount(fakeElement.removeAttribute, 4);
       assert.calledWithExactly(fakeElement.removeAttribute, "badged");
       assert.calledWithExactly(fakeElement.removeAttribute, "aria-labelledby");
       assert.calledWithExactly(fakeElement.removeAttribute, "aria-describedby");
+      assert.calledWithExactly(fakeElement.removeAttribute, "showing-callout");
       assert.calledOnce(fakeElement.classList.remove);
       assert.calledWithExactly(fakeElement.classList.remove, "feature-callout");
       assert.calledOnce(fakeElement.remove);

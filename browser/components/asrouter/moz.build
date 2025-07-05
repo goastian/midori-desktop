@@ -21,14 +21,18 @@ EXTRA_JS_MODULES.asrouter += [
     "modules/ASRouterNewTabHook.sys.mjs",
     "modules/ASRouterParentProcessMessageHandler.sys.mjs",
     "modules/ASRouterPreferences.sys.mjs",
+    "modules/ASRouterStorage.sys.mjs",
     "modules/ASRouterTargeting.sys.mjs",
+    "modules/ASRouterTelemetry.sys.mjs",
     "modules/ASRouterTriggerListeners.sys.mjs",
+    "modules/BookmarksBarButton.sys.mjs",
     "modules/CFRMessageProvider.sys.mjs",
     "modules/CFRPageActions.sys.mjs",
     "modules/FeatureCallout.sys.mjs",
     "modules/FeatureCalloutBroker.sys.mjs",
     "modules/FeatureCalloutMessages.sys.mjs",
     "modules/InfoBar.sys.mjs",
+    "modules/MenuMessage.sys.mjs",
     "modules/MessagingExperimentConstants.sys.mjs",
     "modules/MomentsPageHub.sys.mjs",
     "modules/OnboardingMessageProvider.sys.mjs",
@@ -40,8 +44,11 @@ EXTRA_JS_MODULES.asrouter += [
     "modules/ToolbarBadgeHub.sys.mjs",
 ]
 
+MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]
+
 BROWSER_CHROME_MANIFESTS += [
     "tests/browser/browser.toml",
+    "tests/browser/messages/browser.toml",
 ]
 
 XPCSHELL_TESTS_MANIFESTS += [
@@ -53,6 +60,9 @@ TESTING_JS_MODULES += [
     "content-src/templates/CFR/templates/CFRUrlbarChiclet.schema.json",
     "content-src/templates/CFR/templates/ExtensionDoorhanger.schema.json",
     "content-src/templates/CFR/templates/InfoBar.schema.json",
+    "content-src/templates/OnboardingMessage/BookmarksBarButton.schema.json",
+    "content-src/templates/OnboardingMessage/MenuMessage.schema.json",
+    "content-src/templates/OnboardingMessage/NewtabMessage.schema.json",
     "content-src/templates/OnboardingMessage/Spotlight.schema.json",
     "content-src/templates/OnboardingMessage/ToolbarBadgeMessage.schema.json",
     "content-src/templates/OnboardingMessage/UpdateAction.schema.json",

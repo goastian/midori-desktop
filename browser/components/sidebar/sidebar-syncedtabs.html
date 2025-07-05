@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -11,10 +11,17 @@
       content="default-src resource: chrome:; object-src 'none'; img-src data: chrome:;"
     />
     <meta name="color-scheme" content="light dark" />
+    <title data-l10n-id="sidebar-syncedtabs-title"></title>
     <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/sidebar.ftl" />
     <link rel="localization" href="browser/firefoxView.ftl" />
     <link rel="localization" href="toolkit/branding/brandings.ftl" />
+    <link rel="localization" href="toolkit/global/textActions.ftl" />
     <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/sidebar/sidebar.css"
+    />
     <script
       type="module"
       src="chrome://global/content/elements/moz-card.mjs"
@@ -26,6 +33,10 @@
     <script
       type="module"
       src="chrome://browser/content/firefoxview/fxview-search-textbox.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://browser/content/sidebar/sidebar-tab-list.mjs"
     ></script>
     <script
       type="module"

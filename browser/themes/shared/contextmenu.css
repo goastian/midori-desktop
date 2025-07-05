@@ -10,25 +10,20 @@
   flex: 1;
   justify-content: center;
   align-items: center;
+  margin: 0;
+  padding: 0;
 
-  > .menu-iconic-text,
-  > .menu-accel-container {
+  > .menu-text {
     display: none;
   }
 
-  > .menu-iconic-left {
-    appearance: none;
+  > .menu-icon {
+    width: auto;
+    height: auto;
+    padding: 7px;
     margin: 0;
-    padding: 0;
-
-    > .menu-iconic-icon {
-      width: auto;
-      height: auto;
-      padding: 7px;
-      margin: 0;
-      -moz-context-properties: fill;
-      fill: currentColor;
-    }
+    -moz-context-properties: fill;
+    fill: currentColor;
   }
 }
 

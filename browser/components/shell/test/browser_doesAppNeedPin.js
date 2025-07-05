@@ -2,13 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 ChromeUtils.defineESModuleGetters(this, {
-  ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
-  ExperimentFakes: "resource://testing-common/NimbusTestUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
-});
-
-registerCleanupFunction(() => {
-  ExperimentAPI._store._deleteForTests("shellService");
+  NimbusTestUtils: "resource://testing-common/NimbusTestUtils.sys.mjs",
 });
 
 let defaultValue;
@@ -24,7 +19,7 @@ add_task(async function remote_disable() {
     return;
   }
 
-  let doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+  let doCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
     {
       featureId: NimbusFeatures.shellService.featureId,
       value: { disablePin: true, enabled: true },
@@ -38,7 +33,7 @@ add_task(async function remote_disable() {
     "Pinning disabled via nimbus"
   );
 
-  doCleanup();
+  await doCleanup();
 });
 
 add_task(async function restore_default() {
@@ -46,8 +41,6 @@ add_task(async function restore_default() {
     info("No default pin value set, so nothing to test");
     return;
   }
-
-  ExperimentAPI._store._deleteForTests("shellService");
 
   Assert.equal(
     await ShellService.doesAppNeedPin(),

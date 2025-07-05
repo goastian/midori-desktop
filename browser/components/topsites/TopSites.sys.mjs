@@ -2,27 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { TippyTopProvider } from "resource://activity-stream/lib/TippyTopProvider.sys.mjs";
 import {
-  insertPinned,
-  TOP_SITES_MAX_SITES_PER_ROW,
-} from "resource://activity-stream/common/Reducers.sys.mjs";
-import { Dedupe } from "resource://activity-stream/common/Dedupe.sys.mjs";
-import { shortURL } from "resource://activity-stream/lib/ShortURL.sys.mjs";
-
+  getDomain,
+  TippyTopProvider,
+} from "resource:///modules/topsites/TippyTopProvider.sys.mjs";
+import { Dedupe } from "resource:///modules/Dedupe.sys.mjs";
+import { TOP_SITES_MAX_SITES_PER_ROW } from "resource:///modules/topsites/constants.mjs";
 import {
   CUSTOM_SEARCH_SHORTCUTS,
   checkHasSearchEngine,
   getSearchProvider,
-  getSearchFormURL,
-} from "resource://activity-stream/lib/SearchShortcuts.sys.mjs";
+} from "moz-src:///toolkit/components/search/SearchShortcuts.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  FaviconFeed: "resource://activity-stream/lib/FaviconFeed.sys.mjs",
-  FilterAdult: "resource://activity-stream/lib/FilterAdult.sys.mjs",
-  LinksCache: "resource://activity-stream/lib/LinksCache.sys.mjs",
+  FilterAdult: "resource:///modules/FilterAdult.sys.mjs",
+  LinksCache: "resource:///modules/LinksCache.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
@@ -37,6 +34,7 @@ ChromeUtils.defineLazyGetter(lazy, "log", () => {
 });
 
 export const DEFAULT_TOP_SITES = [];
+
 const FRECENCY_THRESHOLD = 100 + 1; // 1 visit (skip first-run/one-time pages)
 const MIN_FAVICON_SIZE = 96;
 const PINNED_FAVICON_PROPS_TO_MIGRATE = [
@@ -72,13 +70,21 @@ const DEFAULT_SITES_OVERRIDE_PREF =
   "browser.newtabpage.activity-stream.default.sites";
 const DEFAULT_SITES_EXPERIMENTS_PREF_BRANCH = "browser.topsites.experiment.";
 
-function getShortURLForCurrentSearch() {
-  const url = shortURL({ url: Services.search.defaultEngine.searchForm });
+function getShortHostnameForCurrentSearch() {
+  const url = lazy.NewTabUtils.shortHostname(
+    Services.search.defaultEngine.searchUrlDomain
+  );
   return url;
 }
 
 class _TopSites {
-  #inited = false;
+  #hasObservers = false;
+  /**
+   * A Promise used to determine if initialization is complete.
+   *
+   * @type {Promise}
+   */
+  #initPromise = null;
   #searchShortcuts = [];
   #sites = [];
 
@@ -87,7 +93,7 @@ class _TopSites {
     ChromeUtils.defineLazyGetter(
       this,
       "_currentSearchHostname",
-      getShortURLForCurrentSearch
+      getShortHostnameForCurrentSearch
     );
     this.dedupe = new Dedupe(this._dedupeKey);
     this.frecentCache = new lazy.LinksCache(
@@ -103,34 +109,46 @@ class _TopSites {
       "links",
       [...PINNED_FAVICON_PROPS_TO_MIGRATE]
     );
-    this.faviconFeed = new lazy.FaviconFeed();
+    this._faviconProvider = new FaviconProvider();
     this.handlePlacesEvents = this.handlePlacesEvents.bind(this);
   }
 
+  /**
+   * Initializes the TopSites module.
+   *
+   * @returns {Promise}
+   */
   async init() {
-    if (this.#inited) {
-      return;
+    if (this.#initPromise) {
+      return this.#initPromise;
     }
-    this.#inited = true;
-    lazy.log.debug("Initializing TopSites.");
-    this.#addObservers();
-    await this._readDefaults({ isStartup: true });
+    this.#initPromise = (async () => {
+      lazy.log.debug("Initializing TopSites.");
+      this.#addObservers();
+      await this._readDefaults({ isStartup: true });
+      // TopSites was initialized by the store calling the initialization
+      // function and then updating custom search shortcuts. Since
+      // initialization now happens upon the first retrieval of sites, we move
+      // the update custom search shortcuts here.
+      await this.updateCustomSearchShortcuts(true);
+    })();
+    return this.#initPromise;
   }
 
   uninit() {
-    if (!this.#inited) {
-      return;
-    }
     lazy.log.debug("Un-initializing TopSites.");
     this.#removeObservers();
     this.#searchShortcuts = [];
     this.#sites = [];
-    this.#inited = false;
+    this.#initPromise = null;
     this.frecentCache.expire();
     this.pinnedCache.expire();
   }
 
   #addObservers() {
+    if (this.#hasObservers) {
+      return;
+    }
     // If the feed was previously disabled PREFS_INITIAL_VALUES was never received
     Services.obs.addObserver(this, "browser-search-engine-modified");
     Services.obs.addObserver(this, "browser-region-updated");
@@ -146,9 +164,13 @@ class _TopSites {
       ["bookmark-added", "bookmark-removed", "history-cleared", "page-removed"],
       this.handlePlacesEvents
     );
+    this.#hasObservers = true;
   }
 
   #removeObservers() {
+    if (!this.#hasObservers) {
+      return;
+    }
     Services.obs.removeObserver(this, "browser-search-engine-modified");
     Services.obs.removeObserver(this, "browser-region-updated");
     Services.obs.removeObserver(this, "newtab-linkBlocked");
@@ -163,6 +185,7 @@ class _TopSites {
       ["bookmark-added", "bookmark-removed", "history-cleared", "page-removed"],
       this.handlePlacesEvents
     );
+    this.#hasObservers = false;
   }
 
   _reset() {
@@ -184,7 +207,7 @@ class _TopSites {
           Services.prefs.getBoolPref(NO_DEFAULT_SEARCH_TILE_PREF, true)
         ) {
           delete this._currentSearchHostname;
-          this._currentSearchHostname = getShortURLForCurrentSearch();
+          this._currentSearchHostname = getShortHostnameForCurrentSearch();
         }
         this.refresh({ broadcast: true });
         break;
@@ -296,26 +319,12 @@ class _TopSites {
    *   A list of Top Sites.
    */
   async getSites() {
-    if (!this.#inited) {
-      await this.init();
-      // TopSites was initialized by the store calling the initialization
-      // function and then updating custom search shortcuts. Since
-      // initialization now happens upon the first get, we move the update
-      // custom search shortcuts here.
-      await this.updateCustomSearchShortcuts(true);
-    }
+    await this.init();
     return structuredClone(this.#sites);
   }
 
   async getSearchShortcuts() {
-    if (!this.#inited) {
-      await this.init();
-      // TopSites was initialized by the store calling the initialization
-      // function and then updating custom search shortcuts. Since
-      // initialization now happens upon the first get, we move the update
-      // custom search shortcuts here.
-      await this.updateCustomSearchShortcuts(true);
-    }
+    await this.init();
     return structuredClone(this.#searchShortcuts);
   }
 
@@ -355,7 +364,7 @@ class _TopSites {
     let remoteSettingData = await this._getRemoteConfig();
 
     for (let siteData of remoteSettingData) {
-      let hostname = shortURL(siteData);
+      let hostname = lazy.NewTabUtils.shortURL(siteData);
       let link = {
         isDefault: true,
         url: siteData.url,
@@ -388,7 +397,7 @@ class _TopSites {
           isDefault: true,
           url,
         };
-        site.hostname = shortURL(site);
+        site.hostname = lazy.NewTabUtils.shortURL(site);
         DEFAULT_TOP_SITES.push(site);
       }
     }
@@ -549,7 +558,9 @@ class _TopSites {
         // haven't previously inserted it, there's space to pin it, and the
         // search engine is available in Firefox
         if (
-          !pinnedSites.find(s => s && shortURL(s) === shortcut.shortURL) &&
+          !pinnedSites.find(
+            s => s && lazy.NewTabUtils.shortURL(s) === shortcut.shortURL
+          ) &&
           !prevInsertedShortcuts.includes(shortcut.shortURL) &&
           nextAvailable > -1 &&
           (await checkHasSearchEngine(shortcut.keyword))
@@ -619,7 +630,7 @@ class _TopSites {
       if (!link) {
         continue;
       }
-      const hostname = shortURL(link);
+      const hostname = lazy.NewTabUtils.shortURL(link);
       if (!this.shouldFilterSearchTile(hostname)) {
         frecent.push({
           ...(searchShortcutsExperiment
@@ -646,7 +657,7 @@ class _TopSites {
       }
       // If we've previously blocked a search shortcut, remove the default top site
       // that matches the hostname
-      const searchProvider = getSearchProvider(shortURL(link));
+      const searchProvider = getSearchProvider(lazy.NewTabUtils.shortURL(link));
       if (
         searchProvider &&
         lazy.NewTabUtils.blockedLinks.isBlocked({ url: searchProvider.url })
@@ -679,7 +690,9 @@ class _TopSites {
 
         // Drop pinned search shortcuts when their engine has been removed / hidden.
         if (link.searchTopSite) {
-          const searchProvider = getSearchProvider(shortURL(link));
+          const searchProvider = getSearchProvider(
+            lazy.NewTabUtils.shortURL(link)
+          );
           if (
             !searchProvider ||
             !(await checkHasSearchEngine(searchProvider.keyword))
@@ -698,7 +711,7 @@ class _TopSites {
           {},
           frecentSite || { isDefault: !!notBlockedDefaultSites.find(finder) },
           link,
-          { hostname: shortURL(link) },
+          { hostname: lazy.NewTabUtils.shortURL(link) },
           { searchTopSite: !!link.searchTopSite }
         );
 
@@ -741,7 +754,7 @@ class _TopSites {
     for (const link of withPinned) {
       if (link) {
         if (link.searchTopSite && !link.isDefault) {
-          await this._attachTippyTopIconForSearchShortcut(link, link.label);
+          this._tippyTopProvider.processSite(link);
         } else {
           this._fetchIcon(link);
         }
@@ -757,30 +770,6 @@ class _TopSites {
     this.#sites = withPinned;
 
     return withPinned;
-  }
-
-  /**
-   * Attach TippyTop icon to the given search shortcut
-   *
-   * Note that it queries the search form URL from search service For Yandex,
-   * and uses it to choose the best icon for its shortcut variants.
-   *
-   * @param {object} link A link object with a `url` property
-   * @param {string} keyword Search keyword
-   */
-  async _attachTippyTopIconForSearchShortcut(link, keyword) {
-    if (
-      ["@\u044F\u043D\u0434\u0435\u043A\u0441", "@yandex"].includes(keyword)
-    ) {
-      let site = { url: link.url };
-      site.url = (await getSearchFormURL(keyword)) || site.url;
-      this._tippyTopProvider.processSite(site);
-      link.tippyTopIcon = site.tippyTopIcon;
-      link.smallFavicon = site.smallFavicon;
-      link.backgroundColor = site.backgroundColor;
-    } else {
-      this._tippyTopProvider.processSite(link);
-    }
   }
 
   /**
@@ -832,7 +821,7 @@ class _TopSites {
       );
       if (shortcut) {
         let clone = { ...shortcut };
-        await this._attachTippyTopIconForSearchShortcut(clone, clone.keyword);
+        this._tippyTopProvider.processSite(clone);
         searchShortcuts.push(clone);
       }
     }
@@ -848,7 +837,7 @@ class _TopSites {
   }
 
   async topSiteToSearchTopSite(site) {
-    const searchProvider = getSearchProvider(shortURL(site));
+    const searchProvider = getSearchProvider(lazy.NewTabUtils.shortURL(site));
     if (
       !searchProvider ||
       !(await checkHasSearchEngine(searchProvider.keyword))
@@ -882,7 +871,7 @@ class _TopSites {
   }
 
   _requestRichIcon(url) {
-    this.faviconFeed.fetchIcon(url);
+    this._faviconProvider.fetchIcon(url);
   }
 
   /**
@@ -960,7 +949,7 @@ class _TopSites {
       if (
         pinnedLink &&
         pinnedLink.searchTopSite &&
-        shortURL(pinnedLink) === vendor
+        lazy.NewTabUtils.shortURL(pinnedLink) === vendor
       ) {
         lazy.NewTabUtils.pinnedLinks.unpin(pinnedLink);
         this.pinnedCache.expire();
@@ -1098,6 +1087,293 @@ class _TopSites {
     });
 
     this._broadcastPinnedSitesUpdated();
+  }
+}
+
+/**
+ * insertPinned - Inserts pinned links in their specified slots
+ *
+ * @param {Array} links list of links
+ * @param {Array} pinned list of pinned links
+ * @returns {Array} resulting list of links with pinned links inserted
+ */
+export function insertPinned(links, pinned) {
+  // Remove any pinned links
+  const pinnedUrls = pinned.map(link => link && link.url);
+  let newLinks = links.filter(link =>
+    link ? !pinnedUrls.includes(link.url) : false
+  );
+  newLinks = newLinks.map(link => {
+    if (link && link.isPinned) {
+      delete link.isPinned;
+      delete link.pinIndex;
+    }
+    return link;
+  });
+
+  // Then insert them in their specified location
+  pinned.forEach((val, index) => {
+    if (!val) {
+      return;
+    }
+    let link = Object.assign({}, val, { isPinned: true, pinIndex: index });
+    if (index > newLinks.length) {
+      newLinks[index] = link;
+    } else {
+      newLinks.splice(index, 0, link);
+    }
+  });
+
+  return newLinks;
+}
+
+/**
+ * FaviconProvider class handles the retrieval and management of favicons
+ * for TopSites.
+ */
+export class FaviconProvider {
+  constructor() {
+    this._queryForRedirects = new Set();
+  }
+
+  /**
+   * fetchIcon attempts to fetch a rich icon for the given url from two sources.
+   * First, it looks up the tippy top feed, if it's still missing, then it queries
+   * the places for rich icon with its most recent visit in order to deal with
+   * the redirected visit. See Bug 1421428 for more details.
+   */
+  async fetchIcon(url) {
+    // Avoid initializing and fetching icons if prefs are turned off
+    if (!this.shouldFetchIcons) {
+      return;
+    }
+
+    const site = await this.getSite(getDomain(url));
+    if (!site) {
+      if (!this._queryForRedirects.has(url)) {
+        this._queryForRedirects.add(url);
+        Services.tm.idleDispatchToMainThread(() =>
+          this.fetchIconFromRedirects(url)
+        );
+      }
+      return;
+    }
+
+    let iconUri = Services.io.newURI(site.image_url);
+    // The #tippytop is to be able to identify them for telemetry.
+    iconUri = iconUri.mutate().setRef("tippytop").finalize();
+    await this.#setFaviconForPage(Services.io.newURI(url), iconUri);
+  }
+
+  /**
+   * Get the site tippy top data from Remote Settings.
+   */
+  async getSite(domain) {
+    const sites = await this.tippyTop.get({
+      filters: { domain },
+      syncIfEmpty: false,
+    });
+    return sites.length ? sites[0] : null;
+  }
+
+  /**
+   * Get the tippy top collection from Remote Settings.
+   */
+  get tippyTop() {
+    if (!this._tippyTop) {
+      this._tippyTop = lazy.RemoteSettings("tippytop");
+    }
+    return this._tippyTop;
+  }
+
+  /**
+   * Determine if we should be fetching and saving icons.
+   */
+  get shouldFetchIcons() {
+    return Services.prefs.getBoolPref("browser.chrome.site_icons");
+  }
+
+  /**
+   * Get favicon info (uri and size) for a uri from Places.
+   *
+   * @param {nsIURI} uri
+   *        Page to check for favicon data
+   * @returns {object}
+   *        Favicon info object. If there is no data in DB, return null.
+   */
+  async getFaviconInfo(uri) {
+    let favicon = await lazy.PlacesUtils.favicons.getFaviconForPage(
+      uri,
+      lazy.NewTabUtils.activityStreamProvider.THUMB_FAVICON_SIZE
+    );
+    return favicon
+      ? { iconUri: favicon.uri, faviconSize: favicon.width }
+      : null;
+  }
+
+  /**
+   * Fetch favicon for a url by following its redirects in Places.
+   *
+   * This can improve the rich icon coverage for Top Sites since Places only
+   * associates the favicon to the final url if the original one gets redirected.
+   * Note this is not an urgent request, hence it is dispatched to the main
+   * thread idle handler to avoid any possible performance impact.
+   */
+  async fetchIconFromRedirects(url) {
+    const visitPaths = await this.#fetchVisitPaths(url);
+    if (visitPaths.length > 1) {
+      const lastVisit = visitPaths.pop();
+      const redirectedUri = Services.io.newURI(lastVisit.url);
+      const iconInfo = await this.getFaviconInfo(redirectedUri);
+      if (iconInfo?.faviconSize >= MIN_FAVICON_SIZE) {
+        try {
+          lazy.PlacesUtils.favicons.copyFavicons(
+            redirectedUri,
+            Services.io.newURI(url),
+            lazy.PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE
+          );
+        } catch (ex) {
+          console.error(`Failed to copy favicon [${ex}]`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Get favicon data for given URL from network.
+   *
+   * @param {nsIURI} faviconURI
+   *        nsIURI for the favicon.
+   * @returns {nsIURI} data URL
+   */
+  async getFaviconDataURLFromNetwork(faviconURI) {
+    let channel = lazy.NetUtil.newChannel({
+      uri: faviconURI,
+      loadingPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      securityFlags:
+        Ci.nsILoadInfo.SEC_REQUIRE_CORS_INHERITS_SEC_CONTEXT |
+        Ci.nsILoadInfo.SEC_ALLOW_CHROME |
+        Ci.nsILoadInfo.SEC_DISALLOW_SCRIPT,
+      contentPolicyType: Ci.nsIContentPolicy.TYPE_INTERNAL_IMAGE_FAVICON,
+    });
+
+    let resolver = Promise.withResolvers();
+
+    lazy.NetUtil.asyncFetch(channel, async (input, status, request) => {
+      if (!Components.isSuccessCode(status)) {
+        resolver.resolve();
+        return;
+      }
+
+      try {
+        let data = lazy.NetUtil.readInputStream(input, input.available());
+        let { contentType } = request.QueryInterface(Ci.nsIChannel);
+        input.close();
+
+        let buffer = new Uint8ClampedArray(data);
+        let blob = new Blob([buffer], { type: contentType });
+        let dataURL = await new Promise((resolve, reject) => {
+          let reader = new FileReader();
+          reader.addEventListener("load", () => resolve(reader.result));
+          reader.addEventListener("error", reject);
+          reader.readAsDataURL(blob);
+        });
+        resolver.resolve(Services.io.newURI(dataURL));
+      } catch (e) {
+        resolver.reject(e);
+      }
+    });
+
+    return resolver.promise;
+  }
+
+  /**
+   * Set favicon for page.
+   *
+   * @param {nsIURI} pageURI
+   * @param {nsIURI} faviconURI
+   */
+  async #setFaviconForPage(pageURI, faviconURI) {
+    try {
+      // If the given faviconURI is data URL, set it as is.
+      if (faviconURI.schemeIs("data")) {
+        lazy.PlacesUtils.favicons
+          .setFaviconForPage(pageURI, faviconURI, faviconURI)
+          .catch(console.error);
+        return;
+      }
+
+      // Try to find the favicon data from DB.
+      const faviconInfo = await this.getFaviconInfo(pageURI);
+      if (faviconInfo?.faviconSize) {
+        // As valid favicon data is already stored for the page,
+        // we don't have to update.
+        return;
+      }
+
+      // Otherwise, fetch from network.
+      lazy.PlacesUtils.favicons
+        .setFaviconForPage(
+          pageURI,
+          faviconURI,
+          await this.getFaviconDataURLFromNetwork(faviconURI)
+        )
+        .catch(console.error);
+    } catch (ex) {
+      console.error(`Failed to set favicon for page:${ex}`);
+    }
+  }
+
+  /**
+   * Fetches visit paths for a given URL from its most recent visit in Places.
+   *
+   * Note that this includes the URL itself as well as all the following
+   * permenent&temporary redirected URLs if any.
+   *
+   * @param {string} url
+   *        a URL string
+   *
+   * @returns {Array} Returns an array containing objects as
+   *   {int}    visit_id: ID of the visit in moz_historyvisits.
+   *   {String} url: URL of the redirected URL.
+   */
+  async #fetchVisitPaths(url) {
+    const query = `
+    WITH RECURSIVE path(visit_id)
+    AS (
+      SELECT v.id
+      FROM moz_places h
+      JOIN moz_historyvisits v
+        ON v.place_id = h.id
+      WHERE h.url_hash = hash(:url) AND h.url = :url
+        AND v.visit_date = h.last_visit_date
+
+      UNION
+
+      SELECT id
+      FROM moz_historyvisits
+      JOIN path
+        ON visit_id = from_visit
+      WHERE visit_type IN
+        (${lazy.PlacesUtils.history.TRANSITIONS.REDIRECT_PERMANENT},
+         ${lazy.PlacesUtils.history.TRANSITIONS.REDIRECT_TEMPORARY})
+    )
+    SELECT visit_id, (
+      SELECT (
+        SELECT url
+        FROM moz_places
+        WHERE id = place_id)
+      FROM moz_historyvisits
+      WHERE id = visit_id) AS url
+    FROM path
+  `;
+
+    const visits =
+      await lazy.NewTabUtils.activityStreamProvider.executePlacesQuery(query, {
+        columns: ["visit_id", "url"],
+        params: { url },
+      });
+    return visits;
   }
 }
 

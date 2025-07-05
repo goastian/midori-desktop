@@ -7,8 +7,6 @@
 
 const TP_PREF = "privacy.trackingprotection.enabled";
 const TP_PB_PREF = "privacy.trackingprotection.pbmode.enabled";
-const APS_PREF =
-  "privacy.partition.always_partition_third_party_non_cookie_storage";
 const NCB_PREF = "network.cookie.cookieBehavior";
 const BENIGN_PAGE =
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
@@ -19,19 +17,15 @@ const TRACKING_PAGE =
 const COOKIE_PAGE =
   // eslint-disable-next-line @microsoft/sdl/no-insecure-url
   "http://tracking.example.org/browser/browser/base/content/test/protectionsUI/cookiePage.html";
-const DTSCBN_PREF = "dom.testing.sync-content-blocking-notifications";
 
 registerCleanupFunction(function () {
   UrlClassifierTestUtils.cleanupTestTrackers();
   Services.prefs.clearUserPref(TP_PREF);
   Services.prefs.clearUserPref(TP_PB_PREF);
   Services.prefs.clearUserPref(NCB_PREF);
-  Services.prefs.clearUserPref(DTSCBN_PREF);
 });
 
 async function testTrackingProtectionIconState(tabbrowser) {
-  Services.prefs.setBoolPref(DTSCBN_PREF, true);
-
   info("Load a test page not containing tracking elements");
   let benignTab = await BrowserTestUtils.openNewForegroundTab(
     tabbrowser,
@@ -150,8 +144,6 @@ async function testTrackingProtectionIconState(tabbrowser) {
 }
 
 add_task(async function testNormalBrowsing() {
-  await SpecialPowers.pushPrefEnv({ set: [[APS_PREF, false]] });
-
   await UrlClassifierTestUtils.addTestTrackers();
 
   let gProtectionsHandler = gBrowser.ownerGlobal.gProtectionsHandler;
@@ -183,10 +175,7 @@ add_task(async function testNormalBrowsing() {
 
 add_task(async function testPrivateBrowsing() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [APS_PREF, false],
-      ["dom.security.https_first_pbm", false],
-    ],
+    set: [["dom.security.https_first_pbm", false]],
   });
 
   let privateWin = await BrowserTestUtils.openNewBrowserWindow({

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -46,28 +45,29 @@ class TestPingSubmitted(MarionetteTestCase):
         # Record an event for the ping to eventually submit.
         self.marionette.execute_script(
             """
-        Glean.serp.categorization.record({
-            organic_category: "3",
-            organic_num_domains: "1",
-            organic_num_inconclusive: "0",
-            organic_num_unknown: "0",
-            sponsored_category: "4",
-            sponsored_num_domains: "2",
-            sponsored_num_inconclusive: "0",
-            sponsored_num_unknown: "0",
-            mappings_version: "1",
-            app_version: "124",
-            channel: "nightly",
-            region: "US",
-            partner_code: "ff",
-            provider: "example",
-            tagged: "true",
-            num_ads_clicked: "0",
-            num_ads_hidden: "0",
-            num_ads_loaded: "2",
-            num_ads_visible: "2",
-        });
-            """
+            const { SERPCategorizationRecorder } = ChromeUtils.importESModule("moz-src:///browser/components/search/SERPCategorization.sys.mjs");
+            SERPCategorizationRecorder.recordCategorizationTelemetry({
+                organic_category: "3",
+                organic_num_domains: "1",
+                organic_num_inconclusive: "0",
+                organic_num_unknown: "0",
+                sponsored_category: "4",
+                sponsored_num_domains: "2",
+                sponsored_num_inconclusive: "0",
+                sponsored_num_unknown: "0",
+                mappings_version: "1",
+                app_version: "124",
+                channel: "nightly",
+                region: "US",
+                partner_code: "ff",
+                provider: "example",
+                tagged: "true",
+                num_ads_clicked: "0",
+                num_ads_hidden: "0",
+                num_ads_loaded: "2",
+                num_ads_visible: "2",
+            });
+                """
         )
 
         Wait(self.marionette, timeout=60).until(

@@ -20,10 +20,12 @@ add_task(
       "The translations button is visible."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await FullPageTranslationsTestUtils.openPanel({
-      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
+      onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
     });
     await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
 
@@ -37,26 +39,30 @@ add_task(
       checked: true,
     });
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage,
-      "The page should be automatically translated."
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+        message: "The page should be automatically translated.",
+      }
     );
 
     await navigate("Navigate to a different Spanish page", {
       url: SPANISH_PAGE_URL_DOT_ORG,
-      downloadHandler: resolveDownloads,
     });
 
-    await FullPageTranslationsTestUtils.assertPageIsTranslated(
-      "es",
-      "en",
-      runInPage,
-      "The page should be automatically translated."
+    await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated(
+      {
+        fromLanguage: "es",
+        toLanguage: "en",
+        runInPage,
+        message: "The page should be automatically translated.",
+      }
     );
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewRevisit,
     });
 
@@ -67,9 +73,11 @@ add_task(
       "The button is reverted to have an icon."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await FullPageTranslationsTestUtils.openPanel({
+      expectedFromLanguage: "es",
+      expectedToLanguage: "en",
       onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
     });
     await FullPageTranslationsTestUtils.openTranslationsSettingsMenu();
@@ -94,7 +102,7 @@ add_task(
       "The button shows only the icon."
     );
 
-    await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+    await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
     await cleanup();
   }

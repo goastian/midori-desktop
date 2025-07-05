@@ -4,7 +4,6 @@ prefs = [
   "browser.sessionstore.closedTabsFromAllWindows=true",
   "browser.sessionstore.closedTabsFromClosedWindows=true",
   "dom.ipc.keepProcessesAlive.extension=1", # We don't want to reset this at the end of the test, so that we don't have to spawn a new extension child process for each test unit.
-  "javascript.options.asyncstack_capture_debuggee_only=false",
 ]
 support-files = [
   "head.js",
@@ -60,8 +59,6 @@ skip-if = [
 
 ["browser_ext_activeScript.js"]
 
-["browser_ext_addon_debugging_netmonitor.js"]
-
 ["browser_ext_autocompletepopup.js"]
 disabled = "bug 1438663 # same focus issue as Bug 1438663"
 
@@ -75,13 +72,8 @@ disabled = "bug 1438663 # same focus issue as Bug 1438663"
 
 ["browser_ext_browserAction_context.js"]
 https_first_disabled = true
-skip-if = [
-  "os == 'linux' && os_version == '18.04' && debug", # Bug 1504096
-  "os == 'linux' && os_version == '18.04' && socketprocess_networking",
-]
 
 ["browser_ext_browserAction_contextMenu.js"]
-skip-if = ["os == 'linux' && os_version == '18.04'"] # bug 1369197
 
 ["browser_ext_browserAction_disabled.js"]
 
@@ -102,18 +94,12 @@ skip-if = ["os == 'linux' && os_version == '18.04'"] # bug 1369197
 ["browser_ext_browserAction_popup_port.js"]
 
 ["browser_ext_browserAction_popup_preload.js"]
-skip-if = [
-  "os == 'win' && !debug",
-  "verify && debug && os == 'mac'", # bug 1352668
-]
 
 ["browser_ext_browserAction_popup_preload_smoketest.js"]
-skip-if = ["debug"] # Bug 1746047
 
 ["browser_ext_browserAction_popup_resize.js"]
 
 ["browser_ext_browserAction_popup_resize_bottom.js"]
-skip-if = ["debug"] # Bug 1522164
 
 ["browser_ext_browserAction_simple.js"]
 
@@ -127,6 +113,9 @@ skip-if = ["debug"] # Bug 1522164
 
 ["browser_ext_browsingData_history.js"]
 
+["browser_ext_canOpenModalPicker.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1949651
+
 ["browser_ext_chrome_settings_overrides_home.js"]
 
 ["browser_ext_commands_execute_browser_action.js"]
@@ -134,8 +123,8 @@ skip-if = ["debug"] # Bug 1522164
 ["browser_ext_commands_execute_page_action.js"]
 skip-if = [
   "os == 'linux' && os_version == '18.04' && verify",
-  "apple_catalina && verify",
-  "apple_silicon && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && verify",
 ]
 
 ["browser_ext_commands_execute_sidebar_action.js"]
@@ -145,7 +134,8 @@ skip-if = [
 ["browser_ext_commands_onChanged.js"]
 
 ["browser_ext_commands_onCommand.js"]
-skip-if = ["debug"] # bug 1553577
+
+["browser_ext_commands_openShortcutSettings.js"]
 
 ["browser_ext_commands_update.js"]
 
@@ -170,7 +160,12 @@ https_first_disabled = true
 ["browser_ext_contentscript_nontab_connect.js"]
 
 ["browser_ext_contentscript_sender_url.js"]
-skip-if = ["debug"] # The nature of the reduced STR test triggers an unrelated debug assertion in DOM IPC code, see bug 1736590.
+skip-if = [
+  "debug", # The nature of the reduced STR test triggers an unrelated debug assertion in DOM IPC code, see bug 1736590.
+  "os == 'win' && os_version == '11.26100' && processor == 'x86' && opt", # Bug 1933435
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && opt", # Bug 1933435
+]
+tags = "bleedover"
 
 ["browser_ext_contextMenus.js"]
 support-files = [ "!/browser/components/places/tests/browser/head.js"]
@@ -192,7 +187,11 @@ https_first_disabled = true
 ["browser_ext_contextMenus_srcUrl_redirect.js"]
 
 ["browser_ext_contextMenus_targetUrlPatterns.js"]
-skip-if = ["apple_silicon"] # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+skip-if = [
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+]
+tags = "bleedover"
 
 ["browser_ext_contextMenus_uninstall.js"]
 
@@ -224,6 +223,8 @@ https_first_disabled = true
 
 ["browser_ext_devtools_panel.js"]
 
+["browser_ext_devtools_panel_zoom.js"]
+
 ["browser_ext_devtools_panels_elements.js"]
 
 ["browser_ext_devtools_panels_elements_sidebar.js"]
@@ -233,8 +234,8 @@ support-files = ["../../../../../devtools/client/inspector/extensions/test/head_
 https_first_disabled = true
 skip-if = [
   "os == 'linux' && os_version == '18.04' && verify",
-  "apple_catalina && verify",
-  "apple_silicon && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && verify",
 ]
 
 ["browser_ext_getViews.js"]
@@ -247,8 +248,9 @@ skip-if = [
 
 ["browser_ext_incognito_views.js"]
 skip-if = [
-  "apple_silicon && !fission", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && !fission", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
 ]
+tags = "bleedover"
 
 ["browser_ext_lastError.js"]
 
@@ -276,9 +278,9 @@ https_first_disabled = true
 ["browser_ext_menus_incognito.js"]
 
 ["browser_ext_menus_refresh.js"]
-skip-if = ["a11y_checks"] # Bug 1858041 and 1835079 for causing intermittent crashes
 
 ["browser_ext_menus_replace_menu.js"]
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1775561
 
 ["browser_ext_menus_replace_menu_context.js"]
 https_first_disabled = true
@@ -290,12 +292,20 @@ https_first_disabled = true
 ["browser_ext_menus_targetElement.js"]
 
 ["browser_ext_menus_targetElement_extension.js"]
-skip-if = ["apple_silicon"] # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+skip-if = [
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+]
+tags = "bleedover"
 
 ["browser_ext_menus_targetElement_shadow.js"]
 
 ["browser_ext_menus_viewType.js"]
-skip-if = ["apple_silicon"] # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+skip-if = [
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+]
+tags = "bleedover"
 
 ["browser_ext_menus_visible.js"]
 
@@ -309,8 +319,9 @@ https_first_disabled = true
 ["browser_ext_openPanel.js"]
 skip-if = [
   "os == 'linux' && os_version == '18.04' && !debug && verify",
-  "apple_catalina && !debug && verify",
-  "apple_silicon && !debug && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && !debug && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && !debug && verify",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1775565
 ]
 
 ["browser_ext_optionsPage_activity.js"]
@@ -327,8 +338,9 @@ skip-if = [
 https_first_disabled = true
 
 ["browser_ext_originControls.js"]
+# skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug TBD
 
-["browser_ext_overflow_underflow_events.js"]
+["browser_ext_originControls_internals.js"]
 
 ["browser_ext_pageAction_activeTab.js"]
 
@@ -344,8 +356,8 @@ skip-if = ["os == 'linux' && os_version == '18.04' && !debug && verify"]
 
 ["browser_ext_pageAction_popup_resize.js"]
 skip-if = [
-  "apple_catalina && debug && verify",
-  "apple_silicon && debug && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && debug && verify",
 ]
 
 ["browser_ext_pageAction_show_matches.js"]
@@ -374,10 +386,7 @@ https_first_disabled = true
 ["browser_ext_popup_requestPermission.js"]
 
 ["browser_ext_popup_select.js"]
-skip-if = [
-  "debug", # FIXME: re-enable on debug build (bug 1442822)
-  "os != 'win'",
-]
+run-if = ["os == 'win'"] # disabled on macos/linux in bug 1379508 due to frequent failures; see browser_ext_popup_select_in_oopif.js instead
 
 ["browser_ext_popup_select_in_oopif.js"]
 skip-if = ["os == 'linux' && swgl && fission && tsan"] # high frequency intermittent
@@ -438,7 +447,6 @@ https_first_disabled = true
 
 ["browser_ext_sessions_window_tab_value.js"]
 https_first_disabled = true
-skip-if = ["debug"] # Bug 1394984 disable debug builds on all platforms
 
 ["browser_ext_settings_overrides_default_search.js"]
 
@@ -451,7 +459,8 @@ skip-if = ["debug"] # Bug 1394984 disable debug builds on all platforms
 ["browser_ext_sidebarAction_context.js"]
 
 ["browser_ext_sidebarAction_contextMenu.js"]
-skip-if = ["apple_silicon"] # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+skip-if = ["os == 'mac' && os_version == '11.20' && arch == 'aarch64'"] # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
+tags = "bleedover"
 
 ["browser_ext_sidebarAction_httpAuth.js"]
 support-files = ["authenticate.sjs"]
@@ -471,11 +480,20 @@ skip-if = ["true"] # Bug 1575369
 
 ["browser_ext_slow_script.js"]
 https_first_disabled = true
-skip-if = [
-  "debug",
-  "asan",
-  "tsan" # Bug 1874317
-]
+
+["browser_ext_tabGroups.js"]
+
+["browser_ext_tabGroups_collapsed.js"]
+
+["browser_ext_tabGroups_move.js"]
+
+["browser_ext_tabGroups_move_event_order.js"]
+
+["browser_ext_tabGroups_move_onMoved.js"]
+
+["browser_ext_tabGroups_private.js"]
+
+["browser_ext_tabGroups_query.js"]
 
 ["browser_ext_tab_runtimeConnect.js"]
 
@@ -501,11 +519,6 @@ https_first_disabled = true
 
 ["browser_ext_tabs_discard_reversed.js"]
 https_first_disabled = true
-skip-if = [
-  "apple_silicon", # Bug 1722607
-  "apple_catalina", # Bug 1722607
-  "os == 'linux' && os_version == '18.04' && debug", #Bug 1722607
-]
 
 ["browser_ext_tabs_discarded.js"]
 https_first_disabled = true
@@ -514,6 +527,10 @@ https_first_disabled = true
 https_first_disabled = true
 
 ["browser_ext_tabs_events.js"]
+skip-if = [
+  "os == 'win' && os_version == '11.26100' && processor == 'x86' && debug", # Bug 1786601
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1786601
+]
 
 ["browser_ext_tabs_events_order.js"]
 https_first_disabled = true
@@ -539,6 +556,12 @@ https_first_disabled = true
 
 ["browser_ext_tabs_goBack_goForward.js"]
 
+["browser_ext_tabs_groupId.js"]
+
+["browser_ext_tabs_group_ungroup.js"]
+
+["browser_ext_tabs_group_windowId.js"]
+
 ["browser_ext_tabs_hide.js"]
 https_first_disabled = true
 
@@ -560,11 +583,13 @@ https_first_disabled = true
 https_first_disabled = true
 
 ["browser_ext_tabs_move_array_multiple_windows.js"]
+skip-if = [
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov", # Bug 1786601
+]
 
 ["browser_ext_tabs_move_discarded.js"]
 
 ["browser_ext_tabs_move_window.js"]
-skip-if = ["win10_2009 && debug"] # Bug 1730374
 
 ["browser_ext_tabs_move_window_multiple.js"]
 
@@ -577,6 +602,8 @@ skip-if = ["win10_2009 && debug"] # Bug 1730374
 ["browser_ext_tabs_onUpdated.js"]
 
 ["browser_ext_tabs_onUpdated_filter.js"]
+
+["browser_ext_tabs_onUpdated_groupId.js"]
 
 ["browser_ext_tabs_opener.js"]
 
@@ -628,6 +655,11 @@ skip-if = [
   "os == 'linux' && os_version == '18.04'", # Bug 1651261
   "win11_2009 && asan", # Bug 1797751
   "win11_2009 && debug", # Bug 1797751
+  "os == 'win' && os_version == '11.26100' && processor == 'x86' && debug", # Bug 1797751
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && asan", # Bug 1797751
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && debug", # Bug 1797751
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov", # Bug 1797751
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1869793
 ]
 
 ["browser_ext_user_events.js"]
@@ -658,8 +690,10 @@ https_first_disabled = true
 
 ["browser_ext_webrtc.js"]
 skip-if = [
-  "apple_catalina", # Bug 1565738
-  "apple_silicon", # Bug 1565738
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1565738
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1565738
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1565738
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1565738
 ]
 
 ["browser_ext_windows.js"]
@@ -670,8 +704,8 @@ https_first_disabled = true
 
 ["browser_ext_windows_create.js"]
 skip-if = [
-  "apple_catalina && verify",
-  "apple_silicon && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && verify",
 ]
 tags = "fullscreen"
 
@@ -692,19 +726,21 @@ https_first_disabled = true
 
 ["browser_ext_windows_size.js"]
 skip-if = [
-  "apple_catalina",
-  "apple_silicon",
-  "os == 'linux' && os_version == '18.04' && debug", # Fails when windows are randomly opened in fullscreen mode, Bug 1638027
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1869793
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
 ]
 
 ["browser_ext_windows_update.js"]
+tags = "fullscreen"
 skip-if = [
-  "apple_catalina && verify",
-  "apple_silicon && verify",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && verify",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && verify",
   "os == 'mac' && os_version == '10.15' && debug", # Bug 1780998
   "os == 'linux' && os_version == '18.04'", # Bug 1533982 for linux1804
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1869793
 ]
-tags = "fullscreen"
 
 ["browser_toolbar_prefers_color_scheme.js"]
 
@@ -712,14 +748,30 @@ tags = "fullscreen"
 
 ["browser_unified_extensions_accessibility.js"]
 
+["browser_unified_extensions_appmenu_item.js"]
+
+["browser_unified_extensions_button_visibility.js"]
+
+["browser_unified_extensions_button_visibility_attention.js"]
+
+["browser_unified_extensions_button_visibility_browserAction.js"]
+
 ["browser_unified_extensions_context_menu.js"]
-skip-if = ["true"]  #Bug 1800712
 
 ["browser_unified_extensions_cui.js"]
 
 ["browser_unified_extensions_doorhangers.js"]
 
+["browser_unified_extensions_doorhangers_install.js"]
+support-files = ["!/toolkit/mozapps/extensions/test/xpinstall/amosigned.xpi"]
+
+["browser_unified_extensions_doorhangers_postinstall.js"]
+
+["browser_unified_extensions_item_messagebar.js"]
+
 ["browser_unified_extensions_messages.js"]
 
 ["browser_unified_extensions_overflowable_toolbar.js"]
 tags = "overflowable-toolbar"
+
+["browser_unified_extensions_vertical_tabs.js"]

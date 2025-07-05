@@ -3,7 +3,7 @@ http://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
-const { ExperimentFakes } = ChromeUtils.importESModule(
+const { NimbusTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 const { ExperimentAPI } = ChromeUtils.importESModule(
@@ -26,7 +26,7 @@ async function forceMajorUpgrade() {
     set: [["browser.startup.homepage_override.mstone", "88.0"]],
   });
 
-  void BrowserHandler.defaultArgs;
+  void BrowserHandler.getFirstWindowArgs();
 
   return async () => {
     await SpecialPowers.popPrefEnv();
@@ -47,7 +47,7 @@ add_task(async function not_major_upgrade() {
 
 add_task(async function remote_disabled() {
   await ExperimentAPI.ready();
-  let doCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+  let doCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
     {
       featureId: NimbusFeatures.upgradeDialog.featureId,
       value: {
@@ -68,7 +68,7 @@ add_task(async function remote_disabled() {
     "disabled",
   ]);
 
-  doCleanup();
+  await doCleanup();
   await cleanupUpgrade();
 });
 

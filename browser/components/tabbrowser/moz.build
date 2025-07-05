@@ -7,15 +7,26 @@ with Files("**"):
 
 JAR_MANIFESTS += ["jar.mn"]
 
-EXTRA_JS_MODULES += [
+MOZ_SRC_FILES += [
     "AsyncTabSwitcher.sys.mjs",
+    "GroupsList.sys.mjs",
     "NewTabPagePreloading.sys.mjs",
     "OpenInTabsUtils.sys.mjs",
+    "SmartTabGrouping.sys.mjs",
+    "TabMetrics.sys.mjs",
     "TabsList.sys.mjs",
     "TabUnloader.sys.mjs",
 ]
 
+TESTING_JS_MODULES += [
+    "test/TabGroupTestUtils.sys.mjs",
+]
+
 BROWSER_CHROME_MANIFESTS += [
+    "test/browser/smarttabgrouping/browser.toml",
     "test/browser/statuspanel/browser.toml",
+    "test/browser/tabMediaIndicator/browser.toml",
     "test/browser/tabs/browser.toml",
 ]
+
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/smarttabgrouping/xpcshell.toml"]

@@ -107,8 +107,8 @@ add_task(async function testMoveStartDisabledFromFirstVisibleTab() {
   updateTabContextMenu(tab2);
   is(menuItemMoveStartTab.disabled, true, "Move Tab to Start is disabled");
 
-  BrowserTestUtils.removeTab(tab2);
   gBrowser.showTab(tab);
+  BrowserTestUtils.removeTab(tab2);
 });
 
 add_task(async function testMoveEndEnabledClickedFromNonSelectedTab() {
@@ -165,8 +165,8 @@ add_task(async function testMoveEndDisabledFromLastVisibleTab() {
   updateTabContextMenu(tab);
   is(menuItemMoveEndTab.disabled, true, "Move Tab to End is disabled");
 
-  BrowserTestUtils.removeTab(tab2);
   gBrowser.showTab(tab);
+  BrowserTestUtils.removeTab(tab2);
 });
 
 add_task(async function testMoveEndDisabledFromOnlyTab() {
@@ -189,4 +189,41 @@ add_task(async function testMoveEndDisabledFromOnlyPinnedTab() {
   is(menuItemMoveEndTab.disabled, true, "Move Tab to End is disabled");
 
   gBrowser.unpinTab(tab);
+});
+
+add_task(async function testMoveStartEnabledWithCollapsedGroupAtStart() {
+  let tab = gBrowser.selectedTab;
+
+  let menuItemMoveStartTab = document.getElementById("context_moveToStart");
+
+  let tab2 = await addTab();
+  let group = gBrowser.addTabGroup([tab2]);
+  group.collapsed = true;
+
+  gBrowser.moveTabToEnd(tab);
+  is(group.tabs[0]._tPos, 0, "Collapsed group is first element on strip");
+  is(tab._tPos, 1, "Selected tab is second element on strip");
+
+  updateTabContextMenu(tab);
+  is(menuItemMoveStartTab.disabled, false, "Move Tab to Start is enabled");
+
+  BrowserTestUtils.removeTab(tab2);
+});
+
+add_task(async function testMoveStartEnabledWithCollapsedGroupAtEnd() {
+  let tab = gBrowser.selectedTab;
+
+  let menuItemMoveEndTab = document.getElementById("context_moveToEnd");
+
+  let tab2 = await addTab();
+  let group = gBrowser.addTabGroup([tab2]);
+  group.collapsed = true;
+
+  is(tab._tPos, 0, "Selected tab is first element on strip");
+  is(group.tabs[0]._tPos, 1, "Collapsed group is second element on strip");
+
+  updateTabContextMenu(tab);
+  is(menuItemMoveEndTab.disabled, false, "Move Tab to End is enabled");
+
+  BrowserTestUtils.removeTab(tab2);
 });

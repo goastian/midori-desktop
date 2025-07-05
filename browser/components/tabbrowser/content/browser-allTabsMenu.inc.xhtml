@@ -8,19 +8,25 @@
       <toolbarbutton id="allTabsMenu-searchTabs"
                      class="subviewbutton"
                      data-l10n-id="all-tabs-menu-search-tabs"/>
+      <toolbarbutton id="allTabsMenu-syncedTabs"
+                     class="subviewbutton"
+                     data-l10n-id="all-tabs-menu-synced-tabs"/>
       <toolbarbutton id="allTabsMenu-closeDuplicateTabs"
                      class="subviewbutton"
-                     data-l10n-id="all-tabs-menu-close-duplicate-tabs"/>
+                     data-l10n-id="all-tabs-menu-close-all-duplicate-tabs"/>
       <toolbarbutton id="allTabsMenu-containerTabsButton"
                      class="subviewbutton subviewbutton-nav"
                      closemenu="none"
                      data-l10n-id="all-tabs-menu-new-user-context"/>
-      <toolbarseparator id="allTabsMenu-hiddenTabsSeparator"/>
+      <toolbarseparator/>
+      <vbox id="allTabsMenu-groupsView"/>
+      <toolbarseparator id="allTabsMenu-groupsSeparator"/>
+      <html:h2 class="subview-subheader" data-l10n-id="all-tabs-menu-current-window-header"/>
       <toolbarbutton id="allTabsMenu-hiddenTabsButton"
                      class="subviewbutton subviewbutton-nav"
                      closemenu="none"
                      data-l10n-id="all-tabs-menu-hidden-tabs"/>
-      <toolbarseparator id="allTabsMenu-tabsSeparator"/>
+      <toolbarseparator id="allTabsMenu-hiddenTabsSeparator"/>
       <vbox id="allTabsMenu-dropIndicatorHolder">
         <vbox id="allTabsMenu-dropIndicator" collapsed="true"/>
       </vbox>
@@ -39,5 +45,11 @@
                      data-l10n-id="user-context-manage-containers"
                      command="Browser:OpenAboutContainers"/>
     </vbox>
+  </panelview>
+
+  <panelview id="allTabsMenu-groupsSubView"
+             class="PanelUI-subView"
+             data-l10n-id="all-tabs-menu-tab-groups-sub-view">
+    <vbox id="allTabsMenu-groupsSubView-body" class="panel-subview-body"/>
   </panelview>
 </html:template>

@@ -40,6 +40,7 @@
   --urlbarView-favicon-margin-end: var(--urlbarView-icon-margin-end);
 
   --urlbarView-rich-suggestion-default-icon-size: 28px;
+  --urlbarView-top-pick-large-icon-box-size: 52px;
 
   --urlbarView-result-button-size: 24px;
   --urlbarView-result-button-background-opacity: 60%;
@@ -52,9 +53,8 @@
   --urlbarView-labeled-row-label-top: calc(-1.27em - 2px);
   --urlbarView-labeled-tip-margin-top-extra: 8px;
 
-  --urlbarView-action-button-background-color: light-dark(white, #1C1B22);
-  --urlbarView-action-button-hover-color: light-dark(#5B5B66, var(--buttons-destructive-color));
-  --urlbarView-action-button-selected-color: light-dark(#1C1B22, var(--urlbarView-action-button-background-color));
+  --urlbarView-action-button-background-color: color-mix(in srgb, var(--urlbarView-hover-background) 50%, transparent);
+  --urlbarView-action-button-hover-background-color: var(--urlbarView-hover-background);
 
   &:-moz-locale-dir(rtl) {
     --urlbarView-action-slide-in-distance: -200px;
@@ -73,7 +73,7 @@
   }
 
   /* stylelint-disable-next-line media-query-no-invalid */
-  @media (-moz-bool-pref: "browser.urlbar.richSuggestions.featureGate") {
+  @media -moz-pref("browser.urlbar.richSuggestions.featureGate") {
     --urlbarView-favicon-margin-start: calc((var(--urlbarView-rich-suggestion-default-icon-size) - var(--urlbarView-favicon-width)) / 2);
     --urlbarView-favicon-margin-end: calc(var(--urlbar-icon-padding) + var(--identity-box-margin-inline) + ((var(--urlbarView-rich-suggestion-default-icon-size) - var(--urlbarView-favicon-width)) / 2));
     }
@@ -117,7 +117,7 @@
   /* Align icons that are smaller than the default rich suggestion icon size
     (28px) with default-size rich suggestion icons. */
   /* stylelint-disable-next-line media-query-no-invalid */
-  @media (-moz-bool-pref: "browser.urlbar.richSuggestions.featureGate") {
+  @media -moz-pref("browser.urlbar.richSuggestions.featureGate") {
     &:not([rich-suggestion]),
     &[rich-suggestion][icon-size="16"] {
       --urlbarView-icon-margin-start: var(--urlbarView-favicon-margin-start);
@@ -388,7 +388,7 @@
 
 .urlbarView-button-menu {
   background-image: url("chrome://global/skin/icons/more.svg");
-  background-color: var(--button-bgcolor);
+  background-color: var(--button-background-color);
 
   .urlbarView-results:not([disable-resultmenu-autohide]) > .urlbarView-row:not(:hover, [selected]) > .urlbarView-row-inner + &:not([open]):empty {
     display: none;
@@ -433,21 +433,21 @@
   flex-shrink: 0;
 
   &:not(:hover) {
-    background-color: var(--button-bgcolor);
+    background-color: var(--button-background-color);
   }
 
   &:is([selected], [primary]) {
-    color: var(--button-primary-color);
-    background-color: var(--button-primary-bgcolor);
-    outline-color: var(--button-primary-bgcolor);
+    color: var(--button-text-color-primary);
+    background-color: var(--color-accent-primary);
+    outline-color: var(--color-accent-primary);
     outline-offset: var(--focus-outline-offset);
 
     &:hover {
-      background-color: var(--button-primary-hover-bgcolor);
+      background-color: var(--color-accent-primary-hover);
     }
 
     &:hover:active {
-      background-color: var(--button-primary-active-bgcolor);
+      background-color: var(--color-accent-primary-active);
     }
   }
 }
@@ -665,12 +665,17 @@
 /* Action labels */
 
 .urlbarView-action {
+  white-space: nowrap;
+
   .urlbarView-title:not(:empty) ~ & {
     font-size: var(--urlbarView-small-font-size);
 
-    /* This targets both rich and non-rich results, so not using the child selector here. */
-    .urlbarView-row:not(:hover, [selected], [sponsored]) & {
-      color: var(--urlbarView-action-color);
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media not -moz-pref("browser.urlbar.scotchBonnet.enableOverride") {
+      /* This targets both rich and non-rich results, so not using the child selector here. */
+      .urlbarView-row:not(:hover, [selected], [sponsored]) & {
+        color: var(--urlbarView-action-color);
+      }
     }
 
     &[slide-in] {
@@ -686,12 +691,20 @@
     opacity: .6;
   }
 
+  .urlbarView-row:not([has-action], [has-url], [restyled-search]) > .urlbarView-row-inner > .urlbarView-no-wrap > & {
+    display: none;
+  }
+
+  /* If action visibility can be toggled the height should always stay the same. */
   .urlbarView-row[has-url]:is([type=remotetab], [sponsored]):is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > &,
   /* This targets both rich and non-rich results, so not using the child selector here. */
   .urlbarView-row:is([type=search], [restyled-search]):not([selected], [show-action-text], :hover) &,
-  .urlbarView-row:not([has-action], [has-url], [restyled-search]) > .urlbarView-row-inner > .urlbarView-no-wrap > &,
   .urlbarView[action-override] .urlbarView-row[type=switchtab] > .urlbarView-row-inner > .urlbarView-no-wrap > & {
-    display: none;
+    visibility: hidden;
+    width: 0;
+    margin-inline: 0;
+    padding-inline: 0;
+    border-inline: 0;
   }
 }
 
@@ -710,27 +723,58 @@
 }
 
 /* Switch-to-tab and Clipboard action text is styled as a chiclet. */
-.urlbarView-row:is([type=switchtab], [type=remotetab], [type=clipboard]) {
+.urlbarView-row[has-action]:is([type=switchtab], [type=remotetab], [type=clipboard]) {
   > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-    color: var(--urlbar-box-text-color);
-    background-color: var(--urlbar-box-focus-bgcolor);
     border-radius: var(--toolbarbutton-border-radius);
     padding: 4px 8px;
     margin-block: -2px;
     margin-inline-start: 8px;
 
     :root[uidensity=compact] & {
-      padding: 3px 6px;
+      padding-block: 3px;
+
+      &.urlbarView-userContext {
+        border-block-start-width: 3px;
+      }
     }
 
-    &.urlbarView-userContext {
-      padding-top: 0;
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media not -moz-pref("browser.urlbar.scotchBonnet.enableOverride") {
+      color: var(--urlbar-box-text-color);
+      background-color: var(--urlbar-box-focus-bgcolor);
+
+      &.urlbarView-userContext {
+        padding-top: 0;
+      }
+    }
+
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media -moz-pref("browser.urlbar.scotchBonnet.enableOverride") {
+      -moz-context-properties: fill, fill-opacity;
+      padding-inline-start: calc(var(--urlbarView-favicon-width) + 8px);
+      background-image: url("chrome://browser/content/firefoxview/view-opentabs.svg");
+      background-repeat: no-repeat;
+      background-position: 4px center;
+      background-size: var(--urlbarView-favicon-width);
+
+      border-inline: 1px solid var(--border-color-deemphasized);
+      border-block-end: 1px solid var(--border-color-deemphasized);
+      &:not(.urlbarView-userContext) {
+        border-block-start: 1px solid var(--border-color-deemphasized);
+      }
+
+      &:-moz-locale-dir(rtl) {
+        background-position-x: right 4px;
+      }
     }
   }
 
-  &:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
-    color: var(--urlbarView-result-button-selected-color);
-    background-color: var(--urlbarView-result-button-selected-background-color);
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("browser.urlbar.scotchBonnet.enableOverride") {
+    &:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-action {
+      color: var(--urlbarView-result-button-selected-color);
+      background-color: var(--urlbarView-result-button-selected-background-color);
+    }
   }
 }
 
@@ -815,6 +859,12 @@
     flex-basis: 24px;
   }
 
+  &[icon-size="32"] {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
   &[icon-size="38"] {
     width: 38px;
     height: 38px;
@@ -888,20 +938,187 @@
 
 /* Other Firefox Suggest rows */
 
-.urlbarView-row[type$=_pocket] > .urlbarView-row-inner > .urlbarView-favicon,
-.urlbarView-row[type$=_pocket] > .urlbarView-row-inner > .urlbarView-no-wrap > .urlbarView-favicon {
-  fill: var(--pocket-icon-fill);
-  fill-opacity: 1;
-}
-
-.urlbarView-row:is([type$=_amo], [type$=_pocket])[icon-size="24"] > .urlbarView-row-inner > .urlbarView-favicon {
-  padding: calc((52px - 24px) / 2);
+.urlbarView-row[type$=_amo][icon-size="24"] > .urlbarView-row-inner > .urlbarView-favicon {
+  padding: calc((var(--urlbarView-top-pick-large-icon-box-size) - 24px) / 2);
   background-color: var(--urlbar-box-focus-bgcolor);
   border-radius: 2px;
 }
 
-.urlbarView-row:is([type$=_amo], [type$=_pocket])[icon-size="24"]:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-favicon {
+.urlbarView-row[type$=_amo][icon-size="24"]:is([selected], :hover) > .urlbarView-row-inner > .urlbarView-favicon {
   background-color: var(--urlbarView-result-button-selected-background-color);
+}
+
+.urlbarView-row[type$=_vpn][icon-size="32"] > .urlbarView-row-inner > .urlbarView-favicon {
+  padding: calc((var(--urlbarView-top-pick-large-icon-box-size) - 32px) / 2);
+}
+
+.urlbarView-row[dynamicType=weather],
+.urlbarView-row[type=weather] {
+  /* Use the colors in the icon SVG files except in HCM and when the row is
+     selected. Note that the SVG uses light or dark colors as appropriate. */
+  &:not([selected]) > .urlbarView-row-inner > .urlbarView-favicon {
+    @media not (prefers-contrast) {
+      -moz-context-properties: unset;
+    }
+  }
+
+  /* Map AccuWeather icon IDs to our icons. These IDs come straight from the
+     AccuWeather API response via Merino. These rules apply to both the older
+     weather UI treatments ("simpler" and "full", which use a dynamic result)
+     and the new treatment ("simplest", which is a standard rich suggestion). */
+  > .urlbarView-row-inner > .urlbarView-dynamic-weather-currentConditions > .urlbarView-dynamic-weather-currentTemperature > .urlbarView-dynamic-weather-weatherIcon,
+  > .urlbarView-row-inner > .urlbarView-favicon {
+    /* icon-variation="1" is "Sunny", which we'll use as the default to ensure an
+       image is always visible. We don't expect AccuWeather to ever include an
+       invalid icon ID, but they may add new ones that aren't recognized by this
+       version of Firefox for example. */
+    content: url("chrome://browser/skin/weather/sunny.svg");
+    &[icon-variation="2"] {
+      content: url("chrome://browser/skin/weather/mostly-sunny.svg");
+    }
+    &:is([icon-variation="3"], [icon-variation="4"], [icon-variation="6"]) {
+      content: url("chrome://browser/skin/weather/partly-sunny.svg");
+    }
+    &[icon-variation="5"] {
+      content: url("chrome://browser/skin/weather/hazy-sunshine.svg");
+    }
+    &:is([icon-variation="7"], [icon-variation="8"]) {
+      content: url("chrome://browser/skin/weather/cloudy.svg");
+    }
+    &[icon-variation="11"] {
+      content: url("chrome://browser/skin/weather/fog.svg");
+    }
+    &[icon-variation="12"] {
+      content: url("chrome://browser/skin/weather/showers.svg");
+    }
+    &:is([icon-variation="13"], [icon-variation="14"]) {
+      content: url("chrome://browser/skin/weather/mostly-cloudy-with-showers.svg");
+    }
+    &[icon-variation="15"] {
+      content: url("chrome://browser/skin/weather/thunderstorms.svg");
+    }
+    &:is([icon-variation="16"], [icon-variation="17"]) {
+      content: url("chrome://browser/skin/weather/mostly-cloudy-with-thunderstorms.svg");
+    }
+    &[icon-variation="18"] {
+      content: url("chrome://browser/skin/weather/rain.svg");
+    }
+    &:is([icon-variation="19"], [icon-variation="20"], [icon-variation="25"]) {
+      content: url("chrome://browser/skin/weather/flurries.svg");
+    }
+    &[icon-variation="21"] {
+      content: url("chrome://browser/skin/weather/partly-sunny-with-flurries.svg");
+    }
+    &:is([icon-variation="22"], [icon-variation="23"]) {
+      content: url("chrome://browser/skin/weather/snow.svg");
+    }
+    &:is([icon-variation="24"], [icon-variation="31"]) {
+      content: url("chrome://browser/skin/weather/ice.svg");
+    }
+    &:is([icon-variation="26"], [icon-variation="29"]) {
+      content: url("chrome://browser/skin/weather/freezing-rain.svg");
+    }
+    &[icon-variation="30"] {
+      content: url("chrome://browser/skin/weather/hot.svg");
+    }
+    &[icon-variation="32"] {
+      content: url("chrome://browser/skin/weather/windy.svg");
+    }
+    &[icon-variation="33"] {
+      content: url("chrome://browser/skin/weather/night-clear.svg");
+    }
+    &:is([icon-variation="34"], [icon-variation="35"], [icon-variation="36"], [icon-variation="38"]) {
+      content: url("chrome://browser/skin/weather/night-mostly-clear.svg");
+    }
+    &[icon-variation="37"] {
+      content: url("chrome://browser/skin/weather/night-hazy-moonlight.svg");
+    }
+    &:is([icon-variation="39"], [icon-variation="40"]) {
+      content: url("chrome://browser/skin/weather/night-partly-cloudy-with-showers.svg");
+    }
+    &:is([icon-variation="41"], [icon-variation="42"]) {
+      content: url("chrome://browser/skin/weather/night-partly-cloudy-with-thunderstorms.svg");
+    }
+    &:is([icon-variation="43"], [icon-variation="44"]) {
+      content: url("chrome://browser/skin/weather/night-mostly-cloudy-with-flurries.svg");
+    }
+  }
+}
+
+/* Actions */
+.urlbarView-results[actionmode] {
+  white-space: wrap;
+
+  > .urlbarView-row {
+    display: inline-flex;
+  }
+}
+
+/* To align the label and action button */
+.urlbarView-row[secondary-action] {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.urlbarView-actions-container {
+  margin-inline-start: calc(var(--urlbarView-item-inline-padding) + var(--urlbarView-favicon-margin-start) + var(--urlbarView-favicon-width) + var(--urlbarView-icon-margin-end));
+  margin-block-end: var(--urlbarView-item-block-padding);
+}
+
+.urlbarView-action-btn {
+  font-size: smaller;
+  font-weight: var(--font-weight-bold);
+  border-radius: var(--toolbarbutton-border-radius);
+  border: 1px solid transparent;
+  padding: .4em .6em;
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--urlbarView-action-button-background-color);
+  margin-inline-end: var(--space-large);
+
+  > img {
+    width: 16px;
+    height: 16px;
+    margin-inline-end: .4em;
+    -moz-context-properties: fill, fill-opacity;
+  }
+
+  &:hover {
+    background-color: var(--urlbarView-action-button-hover-background-color);
+  }
+
+  &[selected],
+  &:hover:active {
+    outline: var(--focus-outline);
+  }
+
+  &.urlbarView-userContext {
+    border-top-color: var(--identity-tab-color);
+  }
+
+  .urlbarView[action-override] &[data-action=tabswitch] {
+    display: none;
+  }
+
+  &[data-action^=tabgroup-] {
+    color: light-dark(var(--tab-group-color-pale), var(--tab-group-label-text-dark));
+    background-color: light-dark(var(--tab-group-color), var(--tab-group-color-invert));
+    max-width: 30%;
+
+    /* Add offset to the focus / selection indicator as the outline color could
+       be close to the group color. */
+    outline-offset: 1px;
+    margin-inline-start: 1px;
+
+    &:hover {
+      opacity: 0.8;
+    }
+
+    > .urlbarView-action-btn-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
 }
 
 /* Search one-offs */
@@ -1026,44 +1243,4 @@
 #PopupSearchAutoComplete .autocomplete-richlistitem[selected] {
   background: var(--urlbarView-highlight-background);
   color: var(--urlbarView-highlight-color);
-}
-
-.urlbarView-row:has(.urlbarView-actions-container:not(:empty)) {
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.urlbarView-actions-container {
-  margin-inline-start: calc(var(--urlbarView-item-inline-padding) + var(--urlbarView-favicon-margin-start) + var(--urlbarView-favicon-width) + var(--urlbarView-icon-margin-end));
-  margin-block-end: var(--urlbarView-item-block-padding);
-}
-
-.urlbarView-action-btn {
-  font-size: smaller;
-  color: var(--toolbar-field-focus-color);
-  border-radius: var(--toolbarbutton-border-radius);
-  border: 1px solid transparent;
-  padding: .4em .6em;
-  display: inline-flex;
-  align-items: center;
-  background-color: var(--urlbarView-action-button-background-color);
-  box-shadow: 0 0px 4px rgba(0, 0, 0, 0.23);
-}
-
-.urlbarView-action-btn img {
-  width: 16px;
-  height: 16px;
-  margin-inline-end: .4em;
-  -moz-context-properties: fill, fill-opacity;
-}
-
-.urlbarView-action-btn:hover {
-  color: var(--urlbarView-result-button-hover-color);
-  background-color: var(--urlbarView-action-button-hover-color);
-}
-
-.urlbarView-action-btn[selected] {
-  color: light-dark(var(--urlbarView-result-button-hover-color), var(--toolbar-field-focus-color));
-  background-color: var(--urlbarView-action-button-selected-color);
-  border-color: light-dark(transparent, white);
 }

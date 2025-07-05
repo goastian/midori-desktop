@@ -77,12 +77,6 @@ function PlacesController(aView) {
     return Services.dirsvc.get("ProfD", Ci.nsIFile).leafName;
   });
 
-  XPCOMUtils.defineLazyPreferenceGetter(
-    this,
-    "forgetSiteClearByBaseDomain",
-    "places.forgetThisSite.clearByBaseDomain",
-    false
-  );
   ChromeUtils.defineESModuleGetters(this, {
     ForgetAboutSite: "resource://gre/modules/ForgetAboutSite.sys.mjs",
   });
@@ -217,15 +211,15 @@ PlacesController.prototype = {
           ) &&
           (PlacesUtils.nodeIsTagQuery(selectedNode) ||
             PlacesUtils.nodeIsBookmark(selectedNode) ||
-            (PlacesUtils.nodeIsFolder(selectedNode) &&
-              !PlacesUtils.isQueryGeneratedFolder(selectedNode)))
+            (PlacesUtils.nodeIsFolderOrShortcut(selectedNode) &&
+              !PlacesUtils.nodeIsQueryGeneratedFolder(selectedNode)))
         );
       }
       case "placesCmd_sortBy:name": {
         let selectedNode = this._view.selectedNode;
         return (
           selectedNode &&
-          PlacesUtils.nodeIsFolder(selectedNode) &&
+          PlacesUtils.nodeIsFolderOrShortcut(selectedNode) &&
           !PlacesUIUtils.isFolderReadOnly(selectedNode) &&
           this._view.result.sortingMode ==
             Ci.nsINavHistoryQueryOptions.SORT_BY_NONE
@@ -465,17 +459,7 @@ PlacesController.prototype = {
    *          and the item can be displayed, false otherwise.
    */
   _shouldShowMenuItem(aMenuItem, aMetaData) {
-    if (
-      aMenuItem.hasAttribute("hide-if-private-browsing") &&
-      !PrivateBrowsingUtils.enabled
-    ) {
-      return false;
-    }
-
-    if (
-      aMenuItem.hasAttribute("hide-if-usercontext-disabled") &&
-      !Services.prefs.getBoolPref("privacy.userContext.enabled", false)
-    ) {
+    if (PlacesUIUtils.shouldHideOpenMenuItem(aMenuItem)) {
       return false;
     }
 
@@ -566,8 +550,12 @@ PlacesController.prototype = {
    *     menuitem when there's no insertion point. An insertion point represents
    *     a point in the view where a new item can be inserted.
    *  9) The boolean `hide-if-private-browsing` attribute may be set to hide a
-   *     menuitem in private browsing mode
-   * 10) The boolean `hide-if-single-click-opens` attribute may be set to hide a
+   *     menuitem in private browsing mode.
+   * 10) The boolean `hide-if-disabled-private-browsing` attribute may be set to
+   *     hide a menuitem if private browsing is not enabled.
+   * 11) The boolean `hide-if-usercontext-disabled` attribute may be set to
+   *     hide a menuitem if containers are disabled.
+   * 12) The boolean `hide-if-single-click-opens` attribute may be set to hide a
    *     menuitem in views opening entries with a single click.
    *
    * @param {object} aPopup
@@ -593,9 +581,6 @@ PlacesController.prototype = {
           item.getAttribute("hide-if-no-insertion-point") == "true" &&
           noIp &&
           !(ip && ip.isTag && item.id == "placesContext_paste");
-        let hideIfPrivate =
-          item.getAttribute("hide-if-private-browsing") == "true" &&
-          PrivateBrowsingUtils.isWindowPrivate(window);
         // Hide `Open` if the primary action on click is opening.
         let hideIfSingleClickOpens =
           item.getAttribute("hide-if-single-click-opens") == "true" &&
@@ -610,7 +595,6 @@ PlacesController.prototype = {
 
         let shouldHideItem =
           hideIfNoIP ||
-          hideIfPrivate ||
           hideIfSingleClickOpens ||
           hideIfNotSearch ||
           !this._shouldShowMenuItem(item, metadata);
@@ -906,7 +890,7 @@ PlacesController.prototype = {
         // History deletes are not undoable, so we don't have a transaction.
       } else {
         // This is a common bookmark item.
-        if (PlacesUtils.nodeIsFolder(node)) {
+        if (PlacesUtils.nodeIsFolderOrShortcut(node)) {
           // If this is a folder we add it to our array of folders, used
           // to skip nodes that are children of an already removed folder.
           removedFolders.push(node);
@@ -1039,7 +1023,7 @@ PlacesController.prototype = {
 
     var root = this._view.result.root;
 
-    if (PlacesUtils.nodeIsFolder(root)) {
+    if (PlacesUtils.nodeIsFolderOrShortcut(root)) {
       await this._removeRowsFromBookmarks();
     } else if (PlacesUtils.nodeIsQuery(root)) {
       var queryType = PlacesUtils.asQuery(root).queryOptions.queryType;
@@ -1170,7 +1154,7 @@ PlacesController.prototype = {
       if (this._shouldSkipNode(node, copiedFolders)) {
         return;
       }
-      if (PlacesUtils.nodeIsFolder(node)) {
+      if (PlacesUtils.nodeIsFolderOrShortcut(node)) {
         copiedFolders.push(node);
       }
 
@@ -1299,22 +1283,24 @@ PlacesController.prototype = {
     Services.clipboard.getData(xferable, Ci.nsIClipboard.kGlobalClipboard);
 
     // Now get the clipboard contents, in the best available flavor.
-    let data = {},
-      type = {},
-      items = [];
+    let validNodes, invalidNodes;
+
     try {
+      let data = {},
+        type = {};
       xferable.getAnyTransferData(type, data);
-      data = data.value.QueryInterface(Ci.nsISupportsString).data;
-      type = type.value;
-      items = PlacesUtils.unwrapNodes(data, type);
+      ({ validNodes, invalidNodes } = PlacesUtils.unwrapNodes(
+        data.value.QueryInterface(Ci.nsISupportsString).data,
+        type.value
+      ));
     } catch (ex) {
-      // No supported data exists or nodes unwrap failed, just bail out.
+      // No supported data exists, just bail out.
       return;
     }
 
     let doCopy = action == "copy";
     let itemsToSelect = await PlacesUIUtils.handleTransferItems(
-      items,
+      validNodes,
       ip,
       doCopy,
       this._view
@@ -1327,6 +1313,34 @@ PlacesController.prototype = {
 
     if (itemsToSelect.length) {
       this._view.selectItems(itemsToSelect, false);
+    }
+
+    if (invalidNodes.length) {
+      let [title, body] = PlacesUIUtils.promptLocalization.formatValuesSync([
+        "places-bookmarks-paste-error-title",
+        "places-bookmarks-paste-error-message-header",
+      ]);
+
+      const MAX_URI_LENGTH = 100;
+      const MAX_URI_COUNT = 20;
+
+      let invalidUrlList = invalidNodes
+        .slice(0, MAX_URI_COUNT)
+        .map(item => {
+          let encodedUri = encodeURI(item.uri);
+          if (encodedUri.length > MAX_URI_LENGTH) {
+            encodedUri = encodedUri.slice(0, MAX_URI_LENGTH) + "…";
+          }
+          return "\n  • " + encodedUri;
+        })
+        .join("");
+
+      if (invalidNodes.length > MAX_URI_COUNT) {
+        invalidUrlList += "\n  • …";
+      }
+
+      body = `${body}${invalidUrlList}`;
+      Services.prompt.alert(window, title, body);
     }
   },
 
@@ -1344,7 +1358,7 @@ PlacesController.prototype = {
     // Allow dropping into Tag containers and editable folders.
     return (
       !PlacesUtils.nodeIsTagQuery(container) &&
-      (!PlacesUtils.nodeIsFolder(container) ||
+      (!PlacesUtils.nodeIsFolderOrShortcut(container) ||
         PlacesUIUtils.isFolderReadOnly(container))
     );
   },
@@ -1376,7 +1390,7 @@ PlacesController.prototype = {
     }
 
     return (
-      (PlacesUtils.nodeIsFolder(parentNode) &&
+      (PlacesUtils.nodeIsFolderOrShortcut(parentNode) &&
         !PlacesUIUtils.isFolderReadOnly(parentNode)) ||
       PlacesUtils.nodeIsQuery(parentNode)
     );
@@ -1394,40 +1408,19 @@ PlacesController.prototype = {
     } catch (e) {
       // If there is no baseDomain we fall back to host
     }
-    const [title, body, forget] = await document.l10n.formatValues([
-      { id: "places-forget-about-this-site-confirmation-title" },
-      {
-        id: "places-forget-about-this-site-confirmation-msg",
-        args: { hostOrBaseDomain: baseDomain ?? host },
-      },
-      { id: "places-forget-about-this-site-forget" },
-    ]);
-
-    const flags =
-      Services.prompt.BUTTON_TITLE_IS_STRING * Services.prompt.BUTTON_POS_0 +
-      Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
-      Services.prompt.BUTTON_POS_1_DEFAULT;
-
-    let bag = await Services.prompt.asyncConfirmEx(
-      window.browsingContext,
-      Services.prompt.MODAL_TYPE_INTERNAL_WINDOW,
-      title,
-      body,
-      flags,
-      forget,
-      null,
-      null,
-      null,
-      false
-    );
-    if (bag.getProperty("buttonNumClicked") !== 0) {
-      return;
-    }
-
-    if (this.forgetSiteClearByBaseDomain) {
-      await this.ForgetAboutSite.removeDataFromBaseDomain(host);
+    let params = { host, hostOrBaseDomain: baseDomain ?? host };
+    if (window.gDialogBox) {
+      await window.gDialogBox.open(
+        "chrome://browser/content/places/clearDataForSite.xhtml",
+        params
+      );
     } else {
-      await this.ForgetAboutSite.removeDataFromDomain(host);
+      await window.openDialog(
+        "chrome://browser/content/places/clearDataForSite.xhtml",
+        null,
+        "modal,centerscreen",
+        params
+      );
     }
   },
 
@@ -1557,14 +1550,14 @@ var PlacesControllerDragHelper = {
       }
 
       let data = dt.mozGetDataAt(flavor, i);
-      let nodes;
+      let validNodes;
       try {
-        nodes = PlacesUtils.unwrapNodes(data, flavor);
+        ({ validNodes } = PlacesUtils.unwrapNodes(data, flavor));
       } catch (e) {
         return false;
       }
 
-      for (let dragged of nodes) {
+      for (let dragged of validNodes) {
         // Only bookmarks and urls can be dropped into tag containers.
         if (
           ip.isTag &&
@@ -1615,8 +1608,8 @@ var PlacesControllerDragHelper = {
         // a javascript: bookmarklet
         if (
           !flavor.startsWith("text/x-moz-place") &&
-          (nodes.length > 1 || dropCount > 1) &&
-          nodes.some(n => n.uri?.startsWith("javascript:"))
+          (validNodes.length > 1 || dropCount > 1) &&
+          validNodes.some(n => n.uri?.startsWith("javascript:"))
         ) {
           return false;
         }
@@ -1670,7 +1663,7 @@ var PlacesControllerDragHelper = {
       }
 
       if (flavor != TAB_DROP_TYPE) {
-        nodes = [...nodes, ...PlacesUtils.unwrapNodes(data, flavor)];
+        nodes = [...nodes, ...PlacesUtils.unwrapNodes(data, flavor).validNodes];
       } else if (
         XULElement.isInstance(data) &&
         data.localName == "tab" &&

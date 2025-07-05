@@ -135,6 +135,49 @@ global.replaceUrlInTab = (gBrowser, tab, uri) => {
   return loaded;
 };
 
+// The tabs.Tab.groupId type in the public extension API is an integer,
+// but tabbrowser's tab group ID are strings. This handles the conversion.
+//
+// tabbrowser.addTabGroup() generates the internal tab group ID as follows:
+// internal group id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
+// After dropping the hyphen ("-"), the result can be coerced into a safe
+// integer.
+//
+// As a safeguard, in case the format changes, we fall back to maintaining
+// an internal mapping (that never gets cleaned up).
+// This may change in https://bugzilla.mozilla.org/show_bug.cgi?id=1960104
+const fallbackTabGroupIdMap = new Map();
+let nextFallbackTabGroupId = 1;
+global.getExtTabGroupIdForInternalTabGroupId = groupIdStr => {
+  const parsedTabId = /^(\d{13})-(\d{1,3})$/.exec(groupIdStr);
+  if (parsedTabId) {
+    const groupId = parsedTabId[1] * 1000 + parseInt(parsedTabId[2], 10);
+    if (Number.isSafeInteger(groupId)) {
+      return groupId;
+    }
+  }
+  // Fall back.
+  let fallbackGroupId = fallbackTabGroupIdMap.get(groupIdStr);
+  if (!fallbackGroupId) {
+    fallbackGroupId = nextFallbackTabGroupId++;
+    fallbackTabGroupIdMap.set(groupIdStr, fallbackGroupId);
+  }
+  return fallbackGroupId;
+};
+global.getInternalTabGroupIdForExtTabGroupId = groupId => {
+  if (Number.isSafeInteger(groupId) && groupId >= 1e15) {
+    // 16 digits - this inverts getExtTabGroupIdForInternalTabGroupId.
+    const groupIdStr = `${Math.floor(groupId / 1000)}-${groupId % 1000}`;
+    return groupIdStr;
+  }
+  for (let [groupIdStr, fallbackGroupId] of fallbackTabGroupIdMap) {
+    if (fallbackGroupId === groupId) {
+      return groupIdStr;
+    }
+  }
+  return null;
+};
+
 /**
  * Manages tab-specific and window-specific context data, and dispatches
  * tab select events across all windows.
@@ -429,17 +472,29 @@ class TabTracker extends TabTrackerBase {
   }
 
   /**
-   * Sets the opener of `tab` to the ID `openerTab`. Both tabs must be in the
-   * same window, or this function will throw a type error.
+   * Sets the opener of `tab` to the ID `openerTabId`. Both tabs must be in the
+   * same window, or this function will throw an error. if `openerTabId` is `-1`
+   * the opener tab is cleared.
    *
-   * @param {Element} tab The tab for which to set the owner.
-   * @param {Element} openerTab The opener of <tab>.
+   * @param {Element} nativeTab The tab for which to set the owner.
+   * @param {number} openerTabId The openerTabId of <tab>.
    */
-  setOpener(tab, openerTab) {
-    if (tab.ownerDocument !== openerTab.ownerDocument) {
-      throw new Error("Tab must be in the same window as its opener");
+  setOpener(nativeTab, openerTabId) {
+    let nativeOpenerTab = null;
+
+    if (openerTabId > -1) {
+      nativeOpenerTab = tabTracker.getTab(openerTabId);
+      if (nativeTab.ownerDocument !== nativeOpenerTab.ownerDocument) {
+        throw new ExtensionError(
+          "Opener tab must be in the same window as the tab being updated"
+        );
+      }
     }
-    tab.openerTab = openerTab;
+
+    if (nativeTab.openerTab !== nativeOpenerTab) {
+      nativeTab.openerTab = nativeOpenerTab;
+      this.emit("tab-openerTabId", { nativeTab, openerTabId });
+    }
   }
 
   deferredForTabOpen(nativeTab) {
@@ -866,6 +921,11 @@ class Tab extends TabBase {
     return successor ? tabTracker.getId(successor) : -1;
   }
 
+  get groupId() {
+    const { group } = this.nativeTab;
+    return group ? getExtTabGroupIdForInternalTabGroupId(group.id) : -1;
+  }
+
   /**
    * Converts session store data to an object compatible with the return value
    * of the convert() method, representing that data.
@@ -996,7 +1056,8 @@ class Window extends WindowBase {
   }
 
   get alwaysOnTop() {
-    return this.appWindow.zLevel >= Ci.nsIAppWindow.raisedZ;
+    // We never create alwaysOnTop browser windows.
+    return false;
   }
 
   get isLastFocused() {

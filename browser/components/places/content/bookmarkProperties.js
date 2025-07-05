@@ -211,7 +211,7 @@ var BookmarkPropertiesPanel = {
       // edit
       this._node = dialogInfo.node;
       this._title = this._node.title;
-      if (PlacesUtils.nodeIsFolder(this._node)) {
+      if (PlacesUtils.nodeIsFolderOrShortcut(this._node)) {
         this._itemType = BOOKMARK_FOLDER;
       } else if (PlacesUtils.nodeIsURI(this._node)) {
         this._itemType = BOOKMARK_ITEM;
@@ -224,12 +224,9 @@ var BookmarkPropertiesPanel = {
    * dialog to initialize the state of the panel.
    */
   async onDialogLoad() {
-    document.addEventListener("dialogaccept", function () {
-      BookmarkPropertiesPanel.onDialogAccept();
-    });
-    document.addEventListener("dialogcancel", function () {
-      BookmarkPropertiesPanel.onDialogCancel();
-    });
+    document.addEventListener("dialogaccept", () => this.onDialogAccept());
+    document.addEventListener("dialogcancel", () => this.onDialogCancel());
+    window.addEventListener("unload", () => this.onDialogUnload());
 
     // Disable the buttons until we have all the information required.
     let acceptButton = document
@@ -307,7 +304,7 @@ var BookmarkPropertiesPanel = {
     });
 
     switch (this._action) {
-      case ACTION_EDIT:
+      case ACTION_EDIT: {
         await gEditItemOverlay.initPanel({
           node: this._node,
           hiddenRows: this._hiddenRows,
@@ -315,14 +312,17 @@ var BookmarkPropertiesPanel = {
         });
         acceptButtonDisabled = gEditItemOverlay.readOnly;
         break;
-      case ACTION_ADD:
+      }
+      case ACTION_ADD: {
         this._node = await this._promiseNewItem();
+
         // Edit the new item
         await gEditItemOverlay.initPanel({
           node: this._node,
           hiddenRows: this._hiddenRows,
           postData: this._postData,
           focusedElement: "first",
+          addedMultipleBookmarks: this._node.children?.length > 1,
         });
 
         // Empty location field if the uri is about:blank, this way inserting a new
@@ -339,6 +339,7 @@ var BookmarkPropertiesPanel = {
           acceptButtonDisabled = !this._inputIsValid();
         }
         break;
+      }
     }
 
     if (!gEditItemOverlay.readOnly) {
@@ -456,8 +457,9 @@ var BookmarkPropertiesPanel = {
    * [New Item Mode] Get the insertion point details for the new item, given
    * dialog state and opening arguments.
    *
-   * The container-identifier and insertion-index are returned separately in
-   * the form of [containerIdentifier, insertionIndex]
+   * @returns {Array}
+   *   The container-identifier and insertion-index are returned separately in
+   *   the form of [containerIdentifier, insertionIndex]
    */
   async _getInsertionPointDetails() {
     return [

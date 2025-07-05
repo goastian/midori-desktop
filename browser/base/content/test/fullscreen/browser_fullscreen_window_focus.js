@@ -8,12 +8,6 @@ async function pause() {
   return new Promise(resolve => setTimeout(resolve, 500));
 }
 
-// This test tends to trigger a race in the fullscreen time telemetry,
-// where the fullscreen enter and fullscreen exit events (which use the
-// same histogram ID) overlap. That causes TelemetryStopwatch to log an
-// error.
-SimpleTest.ignoreAllUncaughtExceptions(true);
-
 const IFRAME_ID = "testIframe";
 
 async function testWindowFocus(isPopup, iframeID) {
@@ -27,7 +21,7 @@ async function testWindowFocus(isPopup, iframeID) {
   await waitForFocus(tab.linkedBrowser);
 
   info("Entering full-screen");
-  await changeFullscreen(tab.linkedBrowser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, true);
 
   await testExpectFullScreenExit(
     tab.linkedBrowser,
@@ -67,7 +61,7 @@ async function testWindowElementFocus(isPopup) {
   await waitForFocus(tab.linkedBrowser);
 
   info("Entering full-screen");
-  await changeFullscreen(tab.linkedBrowser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, true);
 
   await testExpectFullScreenExit(
     tab.linkedBrowser,
@@ -93,7 +87,7 @@ async function testWindowElementFocus(isPopup) {
   );
 
   // Cleanup
-  await changeFullscreen(tab.linkedBrowser, false);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, false);
   if (isPopup) {
     openedWindow.close();
   } else {

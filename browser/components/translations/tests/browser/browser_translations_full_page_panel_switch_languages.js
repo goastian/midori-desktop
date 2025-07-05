@@ -17,42 +17,51 @@ add_task(async function test_translations_panel_switch_language() {
     "The button is available."
   );
 
-  await FullPageTranslationsTestUtils.assertPageIsUntranslated(runInPage);
+  await FullPageTranslationsTestUtils.assertPageIsNotTranslated(runInPage);
 
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   const { translateButton } = FullPageTranslationsPanel.elements;
 
   ok(!translateButton.disabled, "The translate button starts as enabled");
 
-  FullPageTranslationsTestUtils.assertSelectedFromLanguage({ langTag: "es" });
-  FullPageTranslationsTestUtils.assertSelectedToLanguage({ langTag: "en" });
-
-  FullPageTranslationsTestUtils.changeSelectedFromLanguage("en");
+  await FullPageTranslationsTestUtils.changeSelectedFromLanguage({
+    langTag: "en",
+  });
 
   ok(
     translateButton.disabled,
     "The translate button is disabled when the languages are the same"
   );
 
-  FullPageTranslationsTestUtils.changeSelectedFromLanguage("es");
+  await FullPageTranslationsTestUtils.changeSelectedFromLanguage({
+    langTag: "es",
+  });
 
   ok(
     !translateButton.disabled,
     "When the languages are different it can be translated"
   );
 
-  FullPageTranslationsTestUtils.changeSelectedFromLanguage("");
+  await FullPageTranslationsTestUtils.changeSelectedFromLanguage({
+    langTag: "",
+  });
 
   ok(
     translateButton.disabled,
     "The translate button is disabled nothing is selected."
   );
 
-  FullPageTranslationsTestUtils.changeSelectedFromLanguage("en");
-  FullPageTranslationsTestUtils.changeSelectedToLanguage("fr");
+  await FullPageTranslationsTestUtils.changeSelectedFromLanguage({
+    langTag: "en",
+  });
+  await FullPageTranslationsTestUtils.changeSelectedToLanguage({
+    langTag: "fr",
+  });
 
   ok(!translateButton.disabled, "The translate button can now be used");
 
@@ -60,11 +69,11 @@ add_task(async function test_translations_panel_switch_language() {
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "en",
-    "fr",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "en",
+    toLanguage: "fr",
+    runInPage,
+  });
 
   await cleanup();
 });

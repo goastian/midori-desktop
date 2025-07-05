@@ -39,6 +39,10 @@ async function openMRAboutWelcome() {
     "about:welcome",
     true
   );
+  await ContentTask.spawn(gBrowser.selectedBrowser, {}, async function () {
+    // Mark the first entry as having been interacted with.
+    content.document.notifyUserGestureActivation();
+  });
 
   return {
     browser: tab.linkedBrowser,
@@ -47,6 +51,24 @@ async function openMRAboutWelcome() {
       await popPrefs(); // for setAboutWelcomePref()
     },
   };
+}
+
+async function openAboutWelcome(json) {
+  await setAboutWelcomePref(true);
+
+  if (json) {
+    await setAboutWelcomeMultiStage(json);
+  }
+
+  let tab = await BrowserTestUtils.openNewForegroundTab(
+    gBrowser,
+    "about:welcome",
+    true
+  );
+  registerCleanupFunction(() => {
+    BrowserTestUtils.removeTab(tab);
+  });
+  return tab.linkedBrowser;
 }
 
 async function onButtonClick(browser, elementId) {

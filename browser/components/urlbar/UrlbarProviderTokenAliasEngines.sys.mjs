@@ -39,9 +39,7 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
   }
 
   /**
-   * Returns the type of this provider.
-   *
-   * @returns {integer} one of the types from UrlbarUtils.PROVIDER_TYPE.*
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
@@ -58,7 +56,6 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
   async isActive(queryContext) {
     let instance = this.queryInstance;
@@ -139,6 +136,7 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
           ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
             engine: [engine.name, UrlbarUtils.HIGHLIGHT.TYPED],
             keyword: [tokenAliases[0], UrlbarUtils.HIGHLIGHT.TYPED],
+            keywords: tokenAliases.join(", "),
             query: ["", UrlbarUtils.HIGHLIGHT.TYPED],
             icon: await engine.getIconURL(),
             providesSearchMode: true,
@@ -206,6 +204,7 @@ class ProviderTokenAliasEngines extends UrlbarProvider {
               {
                 engine: [engine.name, UrlbarUtils.HIGHLIGHT.TYPED],
                 keyword: [aliasPreservingUserCase, UrlbarUtils.HIGHLIGHT.TYPED],
+                keywords: tokenAliases.join(", "),
                 query: ["", UrlbarUtils.HIGHLIGHT.TYPED],
                 icon: await engine.getIconURL(),
                 providesSearchMode: true,

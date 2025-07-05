@@ -28,49 +28,83 @@ XPCOMUtils.defineLazyScriptGetter(
 /* End Shared Places Import */
 var gCumulativeSearches = 0;
 
-function init() {
+window.addEventListener("load", () => {
   let uidensity = window.top.document.documentElement.getAttribute("uidensity");
   if (uidensity) {
     document.documentElement.setAttribute("uidensity", uidensity);
   }
 
-  document.getElementById("bookmarks-view").place =
+  let view = document.getElementById("bookmarks-view");
+  view.place =
     "place:type=" + Ci.nsINavHistoryQueryOptions.RESULTS_AS_ROOTS_QUERY;
-}
+  view.addEventListener("keypress", event =>
+    PlacesUIUtils.onSidebarTreeKeyPress(event)
+  );
+  view.addEventListener("click", event =>
+    PlacesUIUtils.onSidebarTreeClick(event)
+  );
+  view.addEventListener("mousemove", event =>
+    PlacesUIUtils.onSidebarTreeMouseMove(event)
+  );
+  view.addEventListener("mouseout", () =>
+    PlacesUIUtils.setMouseoverURL("", window)
+  );
 
-function searchBookmarks(aSearchString) {
+  document
+    .getElementById("search-box")
+    .addEventListener("command", searchBookmarks);
+
+  let bhTooltip = document.getElementById("bhTooltip");
+  bhTooltip.addEventListener("popupshowing", event => {
+    window.top.BookmarksEventHandler.fillInBHTooltip(bhTooltip, event);
+  });
+  bhTooltip.addEventListener("popuphiding", () =>
+    bhTooltip.removeAttribute("position")
+  );
+
+  document
+    .getElementById("sidebar-panel-close")
+    .addEventListener("click", closeSidebarPanel);
+});
+
+function searchBookmarks(event) {
+  let { value } = event.currentTarget;
+
   var tree = document.getElementById("bookmarks-view");
-  if (!aSearchString) {
+  if (!value) {
     // eslint-disable-next-line no-self-assign
     tree.place = tree.place;
   } else {
-    Services.telemetry.keyedScalarAdd("sidebar.search", "bookmarks", 1);
+    Glean.sidebar.search.bookmarks.add(1);
     gCumulativeSearches++;
-    tree.applyFilter(aSearchString, PlacesUtils.bookmarks.userContentRoots);
+    tree.applyFilter(value, PlacesUtils.bookmarks.userContentRoots);
   }
 }
 
 function updateTelemetry(urlsOpened = []) {
-  let searchesHistogram = Services.telemetry.getHistogramById(
-    "PLACES_BOOKMARKS_SEARCHBAR_CUMULATIVE_SEARCHES"
+  Glean.bookmarksSidebar.cumulativeSearches.accumulateSingleSample(
+    gCumulativeSearches
   );
-  searchesHistogram.add(gCumulativeSearches);
   clearCumulativeCounter();
 
-  Services.telemetry.keyedScalarAdd(
-    "sidebar.link",
-    "bookmarks",
-    urlsOpened.length
-  );
+  Glean.sidebar.link.bookmarks.add(urlsOpened.length);
 }
 
 function clearCumulativeCounter() {
   gCumulativeSearches = 0;
 }
 
-function unloadBookmarksSidebar() {
+window.addEventListener("unload", () => {
   clearCumulativeCounter();
   PlacesUIUtils.setMouseoverURL("", window);
+});
+
+function closeSidebarPanel(e) {
+  e.preventDefault();
+  let view = e.target.getAttribute("view");
+  window.browsingContext.embedderWindowGlobal.browsingContext.window.SidebarController.toggle(
+    view
+  );
 }
 
 window.addEventListener("SidebarFocused", () =>

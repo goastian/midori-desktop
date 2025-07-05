@@ -17,30 +17,39 @@ add_task(async function test_translations_engine_destroy() {
     "The button is available."
   );
   await FullPageTranslationsTestUtils.openPanel({
-    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewDefault,
+    expectedFromLanguage: "es",
+    expectedToLanguage: "en",
+    onOpenPanel: FullPageTranslationsTestUtils.assertPanelViewIntro,
   });
 
   await FullPageTranslationsTestUtils.clickTranslateButton({
     downloadHandler: resolveDownloads,
   });
 
-  await FullPageTranslationsTestUtils.assertPageIsTranslated(
-    "es",
-    "en",
-    runInPage
-  );
+  await FullPageTranslationsTestUtils.assertOnlyIntersectingNodesAreTranslated({
+    fromLanguage: "es",
+    toLanguage: "en",
+    runInPage,
+  });
 
   info("Destroy the engine process");
   await EngineProcess.destroyTranslationsEngine();
 
   info("Mutate the page's content to re-trigger a translation.");
+  const { promise: animationPromise, resolve } = Promise.withResolvers();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(resolve);
+  });
+
   await runInPage(async TranslationsTest => {
     const { getH1 } = TranslationsTest.getSelectors();
     getH1().innerText = "New text for the H1";
   });
 
+  await animationPromise;
+
   info("The engine downloads should be requested again.");
-  resolveDownloads(1);
+  await resolveDownloads(1);
 
   await runInPage(async TranslationsTest => {
     const { getH1 } = TranslationsTest.getSelectors();

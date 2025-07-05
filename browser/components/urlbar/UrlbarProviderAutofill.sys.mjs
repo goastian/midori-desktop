@@ -301,9 +301,7 @@ class ProviderAutofill extends UrlbarProvider {
   }
 
   /**
-   * Returns the type of this provider.
-   *
-   * @returns {integer} one of the types from UrlbarUtils.PROVIDER_TYPE.*
+   * @returns {Values<typeof UrlbarUtils.PROVIDER_TYPE>}
    */
   get type() {
     return UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
@@ -315,7 +313,6 @@ class ProviderAutofill extends UrlbarProvider {
    * with this provider, to save on resources.
    *
    * @param {UrlbarQueryContext} queryContext The query context object
-   * @returns {boolean} Whether this provider should be invoked for the search.
    */
   async isActive(queryContext) {
     let instance = this.queryInstance;
@@ -497,6 +494,12 @@ class ProviderAutofill extends UrlbarProvider {
     }
     return rows[0].getResultByName("host");
   }
+
+  /**
+   * @type {string}
+   *   The search string with the prefix stripped.
+   */
+  _searchString;
 
   /**
    * Obtains the query to search for autofill origin results.
@@ -847,7 +850,7 @@ class ProviderAutofill extends UrlbarProvider {
     if (title) {
       payload.title = [title, UrlbarUtils.HIGHLIGHT.TYPED];
     } else {
-      let trimHttps = lazy.UrlbarPrefs.get("trimHttps");
+      let trimHttps = lazy.UrlbarPrefs.getScotchBonnetPref("trimHttps");
       let displaySpec = UrlbarUtils.prepareUrlForDisplay(finalCompleteValue, {
         trimURL: false,
       });

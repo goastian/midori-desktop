@@ -34,7 +34,7 @@ add_task(
           document_language: "es",
           from_language: "es",
           to_language: "en",
-          top_preferred_language: "en",
+          top_preferred_language: "en-US",
           text_source: "selection",
         },
       }
@@ -78,7 +78,7 @@ add_task(
           document_language: "es",
           from_language: "es",
           to_language: "en",
-          top_preferred_language: "en",
+          top_preferred_language: "en-US",
           text_source: "selection",
         },
       }
@@ -127,7 +127,7 @@ add_task(
           document_language: "es",
           from_language: "fr",
           to_language: "en",
-          top_preferred_language: "en",
+          top_preferred_language: "en-US",
           request_target: "select",
           auto_translate: false,
           source_text_code_units:
@@ -152,6 +152,10 @@ add_task(
         expectedEventCount: 2,
       }
     );
+
+    await TestTranslationsTelemetry.assertTranslationsEnginePerformance({
+      expectedEventCount: 1,
+    });
 
     await cleanup();
   }

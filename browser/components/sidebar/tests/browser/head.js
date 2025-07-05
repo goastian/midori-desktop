@@ -14,6 +14,26 @@ function imageBufferFromDataURI(encodedImageData) {
   return Uint8Array.from(decodedImageData, byte => byte.charCodeAt(0)).buffer;
 }
 
+const SIDEBAR_VISIBILITY_PREF = "sidebar.visibility";
+const POSITION_SETTING_PREF = "sidebar.position_start";
+const VERTICAL_TABS_PREF = "sidebar.verticalTabs";
+const kPrefCustomizationState = "browser.uiCustomization.state";
+const kPrefCustomizationHorizontalTabstrip =
+  "browser.uiCustomization.horizontalTabstrip";
+const kPrefCustomizationNavBarWhenVerticalTabs =
+  "browser.uiCustomization.navBarWhenVerticalTabs";
+
+const MODIFIED_PREFS = Object.freeze([
+  kPrefCustomizationState,
+  kPrefCustomizationHorizontalTabstrip,
+  kPrefCustomizationNavBarWhenVerticalTabs,
+]);
+
+// Ensure we clear any previous pref values
+for (const pref of MODIFIED_PREFS) {
+  Services.prefs.clearUserPref(pref);
+}
+
 /* global browser */
 const extData = {
   manifest: {
@@ -75,6 +95,20 @@ const extData = {
   },
 };
 
+// Ensure each test leaves the sidebar in its initial state when it completes
+const initialSidebarState = { ...SidebarController.getUIState(), command: "" };
+async function resetSidebarToInitialState() {
+  info(
+    `Restoring sidebar state from: ${JSON.stringify(SidebarController.getUIState())}, back to: ${JSON.stringify(initialSidebarState)}`
+  );
+  await SidebarController.initializeUIState(initialSidebarState);
+}
+registerCleanupFunction(async () => {
+  await resetSidebarToInitialState();
+  // Reset the Glean events after each test.
+  Services.fog.testResetFOG();
+});
+
 function waitForBrowserWindowActive(win) {
   // eslint-disable-next-line consistent-return
   return new Promise(resolve => {
@@ -86,24 +120,13 @@ function waitForBrowserWindowActive(win) {
   });
 }
 
-function openAndWaitForContextMenu(popup, button, onShown, onHidden) {
+function openAndWaitForContextMenu(popup, button, onShown) {
   return new Promise(resolve => {
     function onPopupShown() {
       info("onPopupShown");
       popup.removeEventListener("popupshown", onPopupShown);
 
       onShown && onShown();
-
-      // Use setTimeout() to get out of the popupshown event.
-      popup.addEventListener("popuphidden", onPopupHidden);
-      setTimeout(() => popup.hidePopup(), 0);
-    }
-    function onPopupHidden() {
-      info("onPopupHidden");
-      popup.removeEventListener("popuphidden", onPopupHidden);
-
-      onHidden && onHidden();
-
       resolve(popup);
     }
 
@@ -113,10 +136,8 @@ function openAndWaitForContextMenu(popup, button, onShown, onHidden) {
 
     button.scrollIntoView();
     const eventDetails = { type: "contextmenu", button: 2 };
-    EventUtils.synthesizeMouse(
+    EventUtils.synthesizeMouseAtCenter(
       button,
-      5,
-      2,
       eventDetails,
       // eslint-disable-next-line mozilla/use-ownerGlobal
       button.ownerDocument.defaultView
@@ -126,4 +147,51 @@ function openAndWaitForContextMenu(popup, button, onShown, onHidden) {
 
 function isActiveElement(el) {
   return el.getRootNode().activeElement == el;
+}
+
+async function toggleSidebarPanel(win, commandID) {
+  const promiseFocused = BrowserTestUtils.waitForEvent(win, "SidebarFocused");
+  win.SidebarController.toggle(commandID);
+  await promiseFocused;
+}
+
+async function waitForTabstripOrientation(
+  toOrientation = "vertical",
+  win = window
+) {
+  await win.SidebarController.promiseInitialized;
+  // We use the orient attribute on the tabstrip element as a reliable signal that
+  // tabstrip orientation has changed/is settled into the given orientation
+  info(
+    `waitForTabstripOrientation: waiting for orient attribute to be "${toOrientation}"`
+  );
+  await BrowserTestUtils.waitForMutationCondition(
+    win.gBrowser.tabContainer,
+    { attributes: true, attributeFilter: ["orient"] },
+    () => win.gBrowser.tabContainer.getAttribute("orient") == toOrientation
+  );
+  // This change is followed by a update/render step for the lit elements.
+  // We need to wait for that too
+  await win.SidebarController.sidebarMain?.updateComplete;
+}
+
+/**
+ * Wait until Style and Layout information have been calculated and the paint
+ * has occurred.
+ *
+ * @see https://firefox-source-docs.mozilla.org/performance/bestpractices.html
+ */
+async function waitForRepaint() {
+  await SidebarController.waitUntilStable();
+  return new Promise(resolve =>
+    requestAnimationFrame(() => {
+      Services.tm.dispatchToMainThread(resolve);
+    })
+  );
+}
+
+function cleanUpExtraTabs() {
+  while (window.gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(window.gBrowser.tabs.at(-1));
+  }
 }

@@ -28,10 +28,12 @@ browser.engagement:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1741674
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1755050
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781578
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1545172#c8
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781578
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1811152#c5
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
     data_sensitivity:
       - interaction
     notification_emails:
@@ -40,6 +42,8 @@ browser.engagement:
     send_in_pings:
       - baseline
       - metrics
+      - usage-reporting
+    telemetry_mirror: BROWSER_ENGAGEMENT_ACTIVE_TICKS
     no_lint:
       - BASELINE_PING
 
@@ -57,10 +61,12 @@ browser.engagement:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1741674
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1755050
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781578
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1535169#c14
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781578
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1811152#c5
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
     data_sensitivity:
       - interaction
     notification_emails:
@@ -69,8 +75,31 @@ browser.engagement:
     send_in_pings:
       - baseline
       - metrics
+      - usage-reporting
     no_lint:
       - BASELINE_PING
+    telemetry_mirror: BROWSER_ENGAGEMENT_TOTAL_URI_COUNT_NORMAL_AND_PRIVATE_MODE
+
+  uri_count_normal_mode:
+    type: counter
+    description: >
+      The count of the total non-unique http(s) URIs visited in a
+      subsession, including page reloads, after the session has been
+      restored. URIs on minimized or background tabs may also be counted
+      towards this. Private browsing is not included in this count.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.total_uri_count.
+    bugs:
+      - https://bugzil.la/1271313
+      - https://bugzil.la/1529232
+    data_reviews:
+      - https://bugzil.la/1271313
+      - https://bugzil.la/1529232
+    notification_emails:
+      - rweiss@mozilla.com
+      - loines@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_TOTAL_URI_COUNT
 
   profile_count:
     type: quantity
@@ -93,6 +122,271 @@ browser.engagement:
     send_in_pings:
       - metrics
     expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_PROFILE_COUNT
+
+  max_concurrent_tab_count:
+    type: quantity
+    description: >
+      The count of maximum number of tabs open during a subsession, across
+      all windows, including tabs in private windows and restored at
+      startup.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.max_concurrent_tab_count.
+    bugs:
+      - https://bugzil.la/1271304
+    data_reviews:
+      - https://bugzil.la/1271304
+    notification_emails:
+      - rweiss@mozilla.com
+    expires: never
+    unit: tabs
+    telemetry_mirror: BROWSER_ENGAGEMENT_MAX_CONCURRENT_TAB_COUNT
+
+  max_concurrent_vertical_tab_count:
+    type: quantity
+    description: >
+      The count of maximum number of tabs with vertical tabs enabled.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.max_concurrent_vertical_tab_count.
+    bugs:
+      - https://bugzil.la/1899352
+    data_reviews:
+      - https://bugzil.la/1899352
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    unit: vertical tabs
+    telemetry_mirror: BROWSER_ENGAGEMENT_MAX_CONCURRENT_VERTICAL_TAB_COUNT
+
+  max_concurrent_window_count:
+    type: quantity
+    description: >
+      The count of maximum number of browser windows open during a
+      subsession. This includes private windows and the ones opened when
+      starting the browser.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.max_concurrent_window_count.
+    bugs:
+      - https://bugzil.la/1271304
+    data_reviews:
+      - https://bugzil.la/1271304
+    notification_emails:
+      - rweiss@mozilla.com
+    expires: never
+    unit: windows
+    telemetry_mirror: BROWSER_ENGAGEMENT_MAX_CONCURRENT_WINDOW_COUNT
+
+  max_concurrent_tab_pinned_count:
+    type: quantity
+    description: >
+      The count of maximum number of pinned tabs open during a subsession.
+      This includes private windows and the ones opened when starting the
+      browser. Starting Firefox 85 this includes number of restored pinned
+      tabs at startup.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.max_concurrent_tab_pinned_count.
+    bugs:
+      - https://bugzil.la/1505535
+    data_reviews:
+      - https://bugzil.la/1505535
+    notification_emails:
+      - bmiroglio@mozilla.com
+      - aoprea@mozilla.com
+    expires: never
+    unit: pinned tabs
+    telemetry_mirror: BROWSER_ENGAGEMENT_MAX_CONCURRENT_TAB_PINNED_COUNT
+
+  max_concurrent_vertical_tab_pinned_count:
+    type: quantity
+    description: >
+      The count of maximum number of pinned tabs with vertical tabs
+      enabled.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.max_concurrent_vertical_tab_pinned_count.
+    bugs:
+      - https://bugzil.la/1899352
+    data_reviews:
+      - https://bugzil.la/1899352
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    unit: vertical pinned tabs
+    telemetry_mirror: BROWSER_ENGAGEMENT_MAX_CONCURRENT_VERTICAL_TAB_PINNED_COUNT
+
+  tab_open_event_count:
+    type: counter
+    description: >
+      The count of tab open events per subsession, across all windows,
+      after the session has been restored. This includes tab open events
+      from private windows and from manual session restorations (i.e.
+      after crashes and from about:home), but excludes tabs opened vertically.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.tab_open_event_count.
+    bugs:
+      - https://bugzil.la/1271304
+    data_reviews:
+      - https://bugzil.la/1271304
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_TAB_OPEN_EVENT_COUNT
+
+  vertical_tab_open_event_count:
+    type: counter
+    description: >
+      The count of tab open events with vertical tabs enabled.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.vertical_tab_open_event_count.
+    bugs:
+      - https://bugzil.la/1899352
+    data_reviews:
+      - https://bugzil.la/1899352
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_VERTICAL_TAB_OPEN_EVENT_COUNT
+
+  window_open_event_count:
+    type: counter
+    description: >
+      The count of browser window open events per subsession, after the
+      session has been restored. The count includes private windows and
+      the ones from manual session restorations (i.e. after crashes and
+      from about:home).
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.window_open_event_count.
+    bugs:
+      - https://bugzil.la/1271304
+    data_reviews:
+      - https://bugzil.la/1271304
+    notification_emails:
+      - rweiss@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_WINDOW_OPEN_EVENT_COUNT
+
+  tab_pinned_event_count:
+    type: counter
+    description: >
+      The count of tab pinned events per subsession, across all windows,
+      after the session has been restored. This includes tab pinned events
+      from private windows.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.tab_pinned_event_count.
+    bugs:
+      - https://bugzil.la/1505535
+    data_reviews:
+      - https://bugzil.la/1505535
+    notification_emails:
+      - bmiroglio@mozilla.com
+      - aoprea@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_TAB_PINNED_EVENT_COUNT
+
+  vertical_tab_pinned_event_count:
+    type: counter
+    description: >
+      The count of tab pinned events with vertical tabs enabled.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.vertical_tab_pinned_event_count.
+    bugs:
+      - https://bugzil.la/1899352
+    data_reviews:
+      - https://bugzil.la/1899352
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_VERTICAL_TAB_PINNED_EVENT_COUNT
+
+  unfiltered_uri_count:
+    type: counter
+    description: >
+      The count of the total non-unique URIs visited in a subsession, not
+      restricted to a specific protocol, including page reloads and
+      about:* pages (other than initial pages such as about:blank, ...),
+      after the session has been restored. This does not include
+      background page requests and URIs from embedded pages or private
+      browsing.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.unfiltered_uri_count.
+    bugs:
+      - https://bugzil.la/1304647
+    data_reviews:
+      - https://bugzil.la/1304647
+    notification_emails:
+      - bcolloran@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_UNFILTERED_URI_COUNT
+
+  unique_domains_count:
+    type: quantity
+    description: >
+      The count of the unique domains visited in a subsession, after the
+      session has been restored. Subdomains under eTLD are aggregated
+      after the first level (i.e. test.example.com and other.example.com
+      are only counted once). This does not include background page
+      requests and domains from embedded pages or private browsing. The
+      count is limited to 100 unique domains.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.unique_domains_count.
+    bugs:
+      - https://bugzil.la/1271310
+    data_reviews:
+      - https://bugzil.la/1271310
+    notification_emails:
+      - rweiss@mozilla.com
+    expires: never
+    unit: domains
+    telemetry_mirror: BROWSER_ENGAGEMENT_UNIQUE_DOMAINS_COUNT
+
+  tab_count:
+    type: custom_distribution
+    description: >
+      Number of tabs opened across all windows, collected at most every 5
+      minutes whenever the user interacts with the browser in the following
+      ways: open tab/window, page load.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TAB_COUNT.
+    range_min: 1
+    range_max: 1000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: tabs
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1361855
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1488945
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1361855
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1488945
+    notification_emails:
+      - gijs@mozilla.com
+    expires: never
+    telemetry_mirror: TAB_COUNT
+
+  loaded_tab_count:
+    type: custom_distribution
+    description: >
+      Number of fully loaded (i.e., not pending from session restore) tabs
+      opened across all windows, collected at most every 5 minutes whenever the
+      user interacts with the browser in the following ways: open tab/window,
+      page load, restoring a pending tab.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram LOADED_TAB_COUNT.
+    range_min: 1
+    range_max: 1000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: tabs
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1634508
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1634508
+    notification_emails:
+      - beth@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: LOADED_TAB_COUNT
 
 installation.first_seen:
   failure_reason:
@@ -310,9 +604,11 @@ browser.usage:
       Could be via mouse or keyboard, could be a command or a UI element.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1889111
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1912172
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1889111
-    expires: 132
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1912172
+    expires: never
     data_sensitivity: [interaction]
     notification_emails:
       - chutten@mozilla.com
@@ -347,3 +643,1043 @@ browser.usage:
           e.g. "Browser:Reload", "key-newNavigatorTab", "PanelUI-Bookmarks".
     send_in_pings:
       - prototype-no-code-events
+
+browser.ui:
+  toolbar_widgets:
+    type: object
+    description: >
+      What widgets are in which toolbars.
+      Not dissimilar from Telemetry's `browser.ui.toolbar_widgets`,
+      but in a friendlier format.
+      See https://firefox-source-docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      for how widget ids and positions are determined.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1913362
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1940641
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1913362
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1940641
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+      - chutten@mozilla.com
+    expires: never
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          position:
+            type: string
+          widgetId:
+            type: string
+
+  mirror_for_toolbar_widgets:
+    type: labeled_boolean
+    description: >
+      The widgets in the toolbars. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.toolbar_widgets.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_TOOLBAR_WIDGETS
+
+  customized_widgets:
+    type: labeled_counter
+    description: >
+      Records when widgets are added, removed or moved in the UI. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.customized_widgets.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_CUSTOMIZED_WIDGETS
+
+homepage:
+  preference_ignore:
+    type: event
+    description: >
+      This is recorded whenever the homepage preference is either reset
+      due to being on the ignore list, or setting is blocked due to being
+      on the same list. The value field records the reason for the ignore.
+      "saved_reset" for when a saved preference value is reset.
+      "set_blocked" for when the setting was blocked and
+      "set_blocked_extension" for when we know a WebExtension attempting
+      to set it was blocked.
+      This event was generated to correspond to the Legacy Telemetry event
+      homepage.preference#ignore.
+    bugs:
+      - https://bugzil.la/1535049
+    data_reviews:
+      - https://bugzil.la/1535049
+    notification_emails:
+      - mdeboer@mozilla.com
+      - rharter@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+      webExtensionId:
+        description: >
+          The identifier of the webextension, if known.
+        type: string
+    telemetry_mirror: Homepage_Preference_Ignore
+
+installation:
+  first_seen_full:
+    type: event
+    description: >
+      Recorded after the application has been installed or reinstalled,
+      the first time that a profile sees that there was a new
+      installation. This includes information about how the installer was
+      run.
+      This event was generated to correspond to the Legacy Telemetry event
+      installation.first_seen#full.
+    bugs: &installation_first_seen_bugs
+      - https://bugzil.la/1660198
+      - https://bugzil.la/1725295
+      - https://bugzil.la/1743465
+      - https://bugzil.la/1754638
+    data_reviews: &installation_first_seen_data_reviews
+      - https://bugzil.la/1660198
+      - https://bugzil.la/1725295
+      - https://bugzil.la/1743465
+      - https://bugzil.la/1754638
+    notification_emails: &installation_first_seen_emails
+      - application-update-telemetry-alerts@mozilla.com
+      - rtestard@mozilla.com
+    expires: never
+    extra_keys: &installation_first_seen_extra
+      version:
+        description: >
+          The application version installed by the installer (not necessarily the current version)
+        type: string
+      build_id:
+        description: >
+          The build ID of the application installed by the installer (not necessarily the current version)
+        type: string
+      admin_user:
+        description: >
+          Whether the installer is running from an elevated admin user
+        type: string
+      install_existed:
+        description: >
+          Whether there was already an install in this location
+        type: string
+      other_inst:
+        description: >
+          Whether there was already any non-MSIX install on this system
+        type: string
+      other_msix_inst:
+        description: >
+          Whether there was already any MSIX install on this system
+        type: string
+      profdir_existed:
+        description: >
+          Whether the top-level profile directory existed
+        type: string
+      silent:
+        description: >
+          (optional, present if object is "full") Whether this was a silent install
+        type: string
+      from_msi:
+        description: >
+          (optional, present if object is "full") Whether this was an MSI install
+        type: string
+      default_path:
+        description: >
+          (optional, present if object is "full") Whether the default path was used
+        type: string
+    telemetry_mirror: Installation_FirstSeen_Full
+    no_lint:
+      - COMMON_PREFIX
+
+  first_seen_stub:
+    type: event
+    description: >
+      Recorded after the application has been installed or reinstalled,
+      the first time that a profile sees that there was a new
+      installation. This includes information about how the installer was
+      run.
+      This event was generated to correspond to the Legacy Telemetry event
+      installation.first_seen#stub.
+    bugs: *installation_first_seen_bugs
+    data_reviews: *installation_first_seen_data_reviews
+    notification_emails: *installation_first_seen_emails
+    expires: never
+    extra_keys: *installation_first_seen_extra
+    telemetry_mirror: Installation_FirstSeen_Stub
+    no_lint:
+      - COMMON_PREFIX
+
+  first_seen_msix:
+    type: event
+    description: >
+      Recorded after the application has been installed or reinstalled,
+      the first time that a profile sees that there was a new
+      installation. This includes information about how the installer was
+      run.
+      This event was generated to correspond to the Legacy Telemetry event
+      installation.first_seen#msix.
+    bugs: *installation_first_seen_bugs
+    data_reviews: *installation_first_seen_data_reviews
+    notification_emails: *installation_first_seen_emails
+    expires: never
+    extra_keys: *installation_first_seen_extra
+    telemetry_mirror: Installation_FirstSeen_Msix
+    no_lint:
+      - COMMON_PREFIX
+
+partner_link:
+  click_newtab:
+    type: event
+    description: >
+      This is recorded when clicking a partner link. The value is the
+      partner.
+      This event was generated to correspond to the Legacy Telemetry event
+      partner_link.click#newtab.
+    bugs: &partner_link_click_bugs
+      - https://bugzil.la/1637217
+      - https://bugzil.la/1644442
+      - https://bugzil.la/1643426
+    data_reviews: &partner_link_click_data_reviews
+      - https://bugzil.la/1637217
+      - https://bugzil.la/1644442
+      - https://bugzil.la/1643426
+    notification_emails: &partner_link_click_emails
+      - dao@mozilla.com
+    expires: never
+    extra_keys: &partner_link_click_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: Partner_link_Click_Newtab
+
+  click_urlbar:
+    type: event
+    description: >
+      This is recorded when clicking a partner link. The value is the
+      partner.
+      This event was generated to correspond to the Legacy Telemetry event
+      partner_link.click#urlbar.
+    bugs: *partner_link_click_bugs
+    data_reviews: *partner_link_click_data_reviews
+    notification_emails: *partner_link_click_emails
+    expires: never
+    extra_keys: *partner_link_click_extra
+    telemetry_mirror: Partner_link_Click_Urlbar
+
+  attribution_success:
+    type: event
+    description: >
+      This is recorded when sending an attribution request for a partner
+      link. The value is the partner.
+      This event was generated to correspond to the Legacy Telemetry event
+      partner_link.attribution#success.
+    bugs: &partner_link_attribution_bugs
+      - https://bugzil.la/1637217
+      - https://bugzil.la/1644442
+      - https://bugzil.la/1643426
+    data_reviews: &partner_link_attribution_data_reviews
+      - https://bugzil.la/1637217
+      - https://bugzil.la/1644442
+      - https://bugzil.la/1643426
+    notification_emails: &partner_link_attribution_emails
+      - dao@mozilla.com
+    expires: never
+    extra_keys: &partner_link_attribution_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: Partner_link_Attribution_Success
+
+  attribution_failure:
+    type: event
+    description: >
+      This is recorded when sending an attribution request for a partner
+      link. The value is the partner.
+      This event was generated to correspond to the Legacy Telemetry event
+      partner_link.attribution#failure.
+    bugs: *partner_link_attribution_bugs
+    data_reviews: *partner_link_attribution_data_reviews
+    notification_emails: *partner_link_attribution_emails
+    expires: never
+    extra_keys: *partner_link_attribution_extra
+    telemetry_mirror: Partner_link_Attribution_Failure
+
+  attribution_abort:
+    type: event
+    description: >
+      This is recorded when sending an attribution request for a partner
+      link. The value is the partner.
+      This event was generated to correspond to the Legacy Telemetry event
+      partner_link.attribution#abort.
+    bugs: *partner_link_attribution_bugs
+    data_reviews: *partner_link_attribution_data_reviews
+    notification_emails: *partner_link_attribution_emails
+    expires: never
+    extra_keys: *partner_link_attribution_extra
+    telemetry_mirror: Partner_link_Attribution_Abort
+
+browser.ui.interaction:
+  menu_bar:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the menu bar. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.menu_bar.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_MENU_BAR
+
+  tabs_bar:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the tab bar. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.tabs_bar.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_TABS_BAR
+
+  vertical_tabs_container:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the vertical tab bar.
+      See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.vertical_tabs_container.
+    bugs:
+      - https://bugzil.la/1921789
+    data_reviews:
+      - https://bugzil.la/1921789
+    notification_emails:
+      - vsabino@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_VERTICAL_TABS_CONTAINER
+
+  nav_bar:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the nav bar. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.nav_bar.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_NAV_BAR
+
+  bookmarks_bar:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the bookmarks bar. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.bookmarks_bar.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_BOOKMARKS_BAR
+
+  app_menu:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the app menu. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.app_menu.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_APP_MENU
+
+  tabs_context:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the tab context menu.
+      See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.tabs_context.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_TABS_CONTEXT
+
+  tabs_context_entrypoint:
+    type: labeled_counter
+    description: >
+      Records a count for each entrypoint (the container of the trigger
+      node) when an item from the tabs context menu is selected. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.tabs_context_entrypoint.
+    bugs:
+      - https://bugzil.la/1804722
+    data_reviews:
+      - https://bugzil.la/1804722
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_TABS_CONTEXT_ENTRYPOINT
+
+  content_context:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the content context
+      menu. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.content_context.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_CONTENT_CONTEXT
+
+  overflow_menu:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the overflow menu. See
+      https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.overflow_menu.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_OVERFLOW_MENU
+
+  unified_extensions_area:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the Unified Extensions
+      area. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.unified_extensions_area.
+    bugs:
+      - https://bugzil.la/1800114
+    data_reviews:
+      - https://bugzil.la/1800114
+    notification_emails:
+      - dtownsend@mozilla.com
+      - mconley@mozilla.com
+      - wdurand@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_UNIFIED_EXTENSIONS_AREA
+
+  pinned_overflow_menu:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with items in the pinned area of the
+      overflow menu. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.pinned_overflow_menu.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PINNED_OVERFLOW_MENU
+
+  pageaction_urlbar:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with page action items in the url
+      bar. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.pageaction_urlbar.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PAGEACTION_URLBAR
+
+  pageaction_panel:
+    type: labeled_counter
+    description: >
+      Records a count of interactions with page action items in the panel.
+      See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.pageaction_panel.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PAGEACTION_PANEL
+
+  preferences_pane_home:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Home section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneHome.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEHOME
+
+  preferences_pane_general:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the General section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneGeneral.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEGENERAL
+
+  preferences_pane_privacy:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Privacy section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_panePrivacy.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEPRIVACY
+
+  preferences_pane_search:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Search section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneSearch.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANESEARCH
+
+  preferences_pane_search_results:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Search results section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneSearchResults.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANESEARCHRESULTS
+
+  preferences_pane_sync:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Sync section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneSync.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANESYNC
+
+  preferences_pane_containers:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Containers section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneContainers.
+    bugs:
+      - https://bugzil.la/1620358
+    data_reviews:
+      - https://bugzil.la/1620358
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANECONTAINERS
+
+  preferences_pane_experimental:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the Experimental section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneExperimental.
+    bugs:
+      - https://bugzil.la/1620358
+      - https://bugzil.la/1651986
+    data_reviews:
+      - https://bugzil.la/1620358
+      - https://bugzil.la/1651986
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEEXPERIMENTAL
+
+  preferences_pane_more_from_mozilla:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in the More From Mozilla section
+      of preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneMoreFromMozilla.
+    bugs:
+      - https://bugzil.la/1738187
+    data_reviews:
+      - https://bugzil.la/1738187
+    notification_emails:
+      - shong@mozilla.com
+      - pdahiya@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEMOREFROMMOZILLA
+
+  preferences_pane_unknown:
+    type: labeled_counter
+    description: >
+      Records the items interacted with in any other section of
+      preferences. See https://firefox-source-
+      docs.mozilla.org/browser/BrowserUsageTelemetry.html
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.preferences_paneUnknown.
+    bugs:
+      - https://bugzil.la/1620358
+      - https://bugzil.la/1651986
+    data_reviews:
+      - https://bugzil.la/1620358
+      - https://bugzil.la/1651986
+    notification_emails:
+      - shong@mozilla.com
+      - dtownsend@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_PREFERENCES_PANEUNKNOWN
+
+timestamps:
+  about_home_topsites_first_paint:
+    type: quantity
+    description: >
+      Record the timestamp of when the first about:home's Topsites are
+      painted. Only records if about:home is set as the default homepage,
+      and if sessions are not being restored by default.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar timestamps.about_home_topsites_first_paint.
+    bugs:
+      - https://bugzil.la/1518521
+    data_reviews:
+      - https://bugzil.la/1518521
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    unit: ms
+    telemetry_mirror: TIMESTAMPS_ABOUT_HOME_TOPSITES_FIRST_PAINT
+
+browser.sanitizer:
+  total:
+    type: timing_distribution
+    description: >
+      Sanitize: Total time it takes to sanitize (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_TOTAL.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_TOTAL
+
+  cache:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize the cache (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_CACHE.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_CACHE
+
+  cookies:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize firefox cookies (ms). A subset of
+      FX_SANITIZE_COOKIES.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_COOKIES_2.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_COOKIES_2
+
+  history:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize history (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_HISTORY.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_HISTORY
+
+  formdata:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize stored form data (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_FORMDATA.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_FORMDATA
+
+  downloads:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize recent downloads (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_DOWNLOADS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_DOWNLOADS
+
+  sessions:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize saved sessions (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_SESSIONS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_SESSIONS
+
+  sitesettings:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize site-specific settings (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_SITESETTINGS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_SITESETTINGS
+
+  openwindows:
+    type: timing_distribution
+    description: >
+      Sanitize: Time it takes to sanitize the open windows list (ms). On
+      Android, this is the time it takes to close all open tabs (ms).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SANITIZE_OPENWINDOWS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - mbonardo@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SANITIZE_OPENWINDOWS
+
+glam_experiment:
+  active_ticks:
+    type: counter
+    disabled: true
+    description: |
+      Duplicate of:
+      `browser.engagement.active_ticks`
+
+      Intended for the purpose of testing client side sampling of data. This
+      metric is disabled by default and will be enabled only for the purpose
+      of the experiment. See Bug 1947604 for more information.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1947604
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1545172#c8
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1781578
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1811152#c5
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - tlong@mozilla.com
+      - efilho@mozilla.com
+    expires: 146
+
+browser.content_crash:
+  dump_unavailable:
+    type: counter
+    description: >
+      Counts the number of times that about:tabcrashed was unable to find a
+      crash dump.
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram FX_CONTENT_CRASH_DUMP_UNAVAILABLE.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1269961
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1269961
+    notification_emails:
+      - wmccloskey@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_CONTENT_CRASH_DUMP_UNAVAILABLE
+
+  not_submitted:
+    type: counter
+    description: >
+      Counts the number of times that about:tabcrashed was unloaded without
+      submitting.
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram FX_CONTENT_CRASH_NOT_SUBMITTED.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1269961
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1269961
+    notification_emails:
+      - wmccloskey@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_CONTENT_CRASH_NOT_SUBMITTED
+
+link_icon_sizes_attr:
+  usage:
+    type: custom_distribution
+    description: >
+      The possible types of the 'sizes' attribute for <link rel=icon>. 0:
+      Attribute not specified, 1: 'any', 2: Integer dimensions, 3: Invalid
+      value.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram LINK_ICON_SIZES_ATTR_USAGE.
+    range_min: 0
+    range_max: 4
+    bucket_count: 5
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1053467
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1053467
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    expires: never
+    telemetry_mirror: LINK_ICON_SIZES_ATTR_USAGE
+
+  dimension:
+    type: custom_distribution
+    description: >
+      The width dimension of the 'sizes' attribute for <link rel=icon>.
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram LINK_ICON_SIZES_ATTR_DIMENSION.
+    range_min: 1
+    range_max: 513
+    bucket_count: 64
+    histogram_type: linear
+    unit: pixel
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1053467
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1053467
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    expires: never
+    telemetry_mirror: LINK_ICON_SIZES_ATTR_DIMENSION
+
+contextual_services:
+  context_id:
+    type: uuid
+    description: >
+      An identifier for Contextual Services user interaction pings. This is
+      used internally for counting unique users as well as for anti-fraud. It
+      is shared with other Contextual Services.
+
+      Does not need to be sent in the Glean "deletion-request" ping. It is sent
+      in its own "context-id-deletion-request" ping.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1952316
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1952316
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    send_in_pings:
+      - context-id-deletion-request

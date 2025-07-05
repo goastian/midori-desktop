@@ -55,6 +55,13 @@ add_heuristic_tests(
           invalid: true,
           fields: [
             { fieldName: "address-line1", reason:"regex-heuristic" },
+            { fieldName: "address-line2", reason:"update-heuristic" },
+          ],
+        },
+        {
+          invalid: true,
+          fields: [
+            { fieldName: "postal-code", reason: "regex-heuristic" },
           ],
         },
         {
@@ -77,7 +84,7 @@ add_heuristic_tests(
             { fieldName: "cc-number", reason: "fathom" }, // ac-off
             { fieldName: "cc-exp-month" },
             { fieldName: "cc-exp-year" },
-            // { fieldName: "cc-csc"}, // ac-off
+            { fieldName: "cc-csc"}, // ac-off
             { fieldName: "cc-name", reason: "fathom" }, // ac-off
           ],
         },
@@ -135,6 +142,12 @@ add_heuristic_tests(
           invalid: true,
           fields: [
             { fieldName: "address-line1", reason:"regex-heuristic" },
+          ],
+        },
+        {
+          invalid: true,
+          fields: [
+            { fieldName: "postal-code", reason: "regex-heuristic" },
           ],
         },
         {

@@ -513,6 +513,113 @@ add_task(async function test_devtools_page_panels_create() {
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function test_devtools_close() {
+  const newWin = await BrowserTestUtils.openNewBrowserWindow();
+  const tab = newWin.gBrowser.selectedTab;
+
+  async function devtools_page() {
+    try {
+      await browser.devtools.panels.create(
+        "Test Panel Create",
+        "fake-icon.png",
+        "devtools_panel.html"
+      );
+
+      browser.test.sendMessage("devtools_panel_created");
+    } catch (err) {
+      // Make the test able to fail fast when it is going to be a failure.
+      browser.test.sendMessage("devtools_panel_created");
+      throw err;
+    }
+  }
+
+  async function devtools_panel() {
+    browser.test.onMessage.addListener(msg => {
+      if (msg === "devtools_panel_call_window_close") {
+        window.close();
+      }
+    });
+
+    browser.test.sendMessage("devtools_panel_ready");
+  }
+
+  const EXTENSION_ID = "devtools-panel-window-close@test-extension";
+
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: {
+      devtools_page: "devtools_page.html",
+      browser_specific_settings: {
+        gecko: { id: EXTENSION_ID },
+      },
+    },
+    files: {
+      "devtools_page.html": createPage("devtools_page.js"),
+      "devtools_page.js": devtools_page,
+      "devtools_panel.html": createPage(
+        "devtools_panel.js",
+        "Test Panel Create"
+      ),
+      "devtools_panel.js": devtools_panel,
+    },
+  });
+
+  await extension.startup();
+
+  let toolbox = await openToolboxForTab(tab);
+  await extension.awaitMessage("devtools_panel_created");
+  let toolboxAdditionalTools = toolbox.getAdditionalTools();
+  is(
+    toolboxAdditionalTools.length,
+    1,
+    "Got the expected number of toolbox specific panel registered."
+  );
+  let panelInfo = toolboxAdditionalTools[0];
+  is(
+    panelInfo.extensionId,
+    EXTENSION_ID,
+    "DevTools panel belongs to the expected extension"
+  );
+
+  const extPolicy = WebExtensionPolicy.getByID(EXTENSION_ID);
+  const promiseContextParentCreated = new Promise(resolve =>
+    extPolicy.extension.once("extension-proxy-context-load", resolve)
+  );
+  await gDevTools.showToolboxForTab(tab, { toolId: panelInfo.id });
+  await Promise.all([
+    extension.awaitMessage("devtools_panel_ready"),
+    promiseContextParentCreated,
+  ]);
+
+  const devtoolsPanelExtContext = Array.from(extPolicy.extension.views)
+    .filter(extContext => extContext.viewType === "devtools_panel")
+    .pop();
+  ok(
+    devtoolsPanelExtContext,
+    "Found extension devtools panel ExtensionPageContextParent instance"
+  );
+  const devtoolsPanelBrowser =
+    devtoolsPanelExtContext.browsingContext.embedderElement;
+  ok(
+    devtoolsPanelExtContext,
+    "Found extension devtools panel MozBrowser element"
+  );
+
+  info("Test window.close call originated from the devtools panel");
+  const promiseWindowClose = BrowserTestUtils.waitForEvent(
+    devtoolsPanelBrowser,
+    "DOMWindowClose"
+  );
+
+  extension.sendMessage("devtools_panel_call_window_close");
+  await promiseWindowClose;
+  is(newWin.closed, false, "Expect the browser window to not be closed");
+
+  await closeToolboxForTab(tab);
+  await extension.unload();
+  await BrowserTestUtils.closeWindow(newWin);
+});
+
 add_task(async function test_devtools_page_panels_switch_toolbox_host() {
   let tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,
@@ -744,9 +851,10 @@ add_task(async function test_devtools_page_invalid_panel_urls() {
             });
 
             // Ask the privileged code to select the last created panel.
-            const done = valid_panels_length === 0;
-            browser.test.sendMessage("select-devtools-panel", done);
+            browser.test.sendMessage("select-devtools-panel");
             await oncePanelLoaded;
+            const done = valid_panels_length === 0;
+            browser.test.sendMessage("select-devtools-panel-loaded", done);
           } catch (err) {
             browser.test.fail(
               "Unexpected failure on creating a devtools panel with " +
@@ -793,13 +901,33 @@ add_task(async function test_devtools_page_invalid_panel_urls() {
 
   while (!done) {
     info("Waiting test extension request to select the last created panel");
-    done = await extension.awaitMessage("select-devtools-panel");
+    await extension.awaitMessage("select-devtools-panel");
 
     const toolboxAdditionalTools = toolbox.getAdditionalTools();
     const lastTool = toolboxAdditionalTools[toolboxAdditionalTools.length - 1];
 
-    gDevTools.showToolboxForTab(tab, { toolId: lastTool.id });
+    await gDevTools.showToolboxForTab(tab, { toolId: lastTool.id });
     info("Last created panel selected");
+
+    done = await extension.awaitMessage("select-devtools-panel-loaded");
+    let panelFrame = toolbox.doc.getElementById(
+      "toolbox-panel-iframe-" + lastTool.id
+    );
+    ok(
+      !toolbox.win.browsingContext.isUnderHiddenEmbedderElement,
+      "Toolbox shouldn't be hidden"
+    );
+    ok(
+      !panelFrame.browsingContext.isUnderHiddenEmbedderElement,
+      "Panel shouldn't be hidden"
+    );
+    let browser = panelFrame.contentDocument.getElementById(
+      "webext-panels-browser"
+    );
+    ok(
+      !browser.browsingContext.isUnderHiddenEmbedderElement,
+      "Nested browser shouldn't be hidden"
+    );
   }
 
   await extension.awaitMessage("test_invalid_devtools_panel_urls_done");

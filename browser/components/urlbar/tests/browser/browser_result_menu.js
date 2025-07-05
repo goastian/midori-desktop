@@ -191,7 +191,6 @@ add_task(async function firefoxSuggest() {
         {
           url,
           isBlockable: true,
-          blockL10n: { id: "urlbar-result-menu-dismiss-firefox-suggest" },
           helpUrl,
           helpL10n: {
             id: "urlbar-result-menu-learn-more-about-firefox-suggest",
@@ -247,7 +246,7 @@ add_task(async function firefoxSuggest() {
   Assert.greater(
     onEngagementCallCount,
     0,
-    "onLegacyEngagement() should have been called"
+    "onEngagement() should have been called"
   );
   Assert.equal(
     UrlbarTestUtils.getResultCount(window),

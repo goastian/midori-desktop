@@ -2,9 +2,30 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+@import url("chrome://browser/skin/browser-colors.css");
+
 .sidebar-panel {
   appearance: none;
+  /* Background color comes from the embedder */
   background-color: transparent;
+  color: var(--sidebar-text-color);
+}
+
+#sidebar-panel-header {
+  justify-content: space-between;
+  padding-inline: var(--space-large);
+  padding-block-start: var(--space-large);
+
+  > h4 {
+    margin-block: var(--space-large);
+    font-weight: var(--font-weight-bold);
+    font-size: 15px;
+  }
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("sidebar.revamp") {
+    display: none;
+  }
 }
 
 /* Themed sidebars */
@@ -29,11 +50,11 @@
   color-scheme: dark;
 }
 
-.sidebar-panel[lwt-sidebar] .sidebar-placesTreechildren::-moz-tree-row(selected) {
-  background-color: light-dark(hsla(0,0%,80%,.3), rgba(249,249,250,.1));
-}
+.sidebar-panel[lwt-sidebar] .sidebar-placesTreechildren {
+  &::-moz-tree-row(selected) {
+    background-color: light-dark(hsla(0,0%,80%,.3), rgba(249,249,250,.1));
+  }
 
-.sidebar-panel[lwt-sidebar="dark"] .sidebar-placesTreechildren {
   &::-moz-tree-image(selected),
   &::-moz-tree-twisty(selected),
   &::-moz-tree-cell-text(selected) {
@@ -42,7 +63,7 @@
 }
 
 .sidebar-panel[lwt-sidebar-highlight] .sidebar-placesTreechildren {
-  &::-moz-tree-row(selected,focus) {
+  &::-moz-tree-row(selected, focus) {
     background-color: var(--lwt-sidebar-highlight-background-color);
   }
 

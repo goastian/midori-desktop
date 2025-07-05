@@ -7,8 +7,6 @@ ChromeUtils.defineESModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
-  TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
 });
 
 const EXTENSION1_ID = "extension1@mozilla.com";
@@ -22,27 +20,62 @@ SearchTestUtils.init(this);
 const DEFAULT_ENGINE = {
   id: "basic",
   name: "basic",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]basic@search.mozilla.org"
-    : "[addon]basic@search.mozilla.org",
-  submissionUrl: SearchUtils.newSearchConfigEnabled
-    ? "https://mochi.test:8888/browser/browser/components/search/test/browser/?foo=1&search="
-    : "https://mochi.test:8888/browser/browser/components/search/test/browser/?search=&foo=1",
+  loadPath: "[app]basic",
+  submissionUrl:
+    "https://mochi.test:8888/browser/browser/components/search/test/browser/?foo=1&search=",
 };
 const ALTERNATE_ENGINE = {
   id: "simple",
   name: "Simple Engine",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]simple@search.mozilla.org"
-    : "[addon]simple@search.mozilla.org",
+  loadPath: "[app]simple",
   submissionUrl: "https://example.com/?sourceId=Mozilla-search&search=",
 };
 const ALTERNATE2_ENGINE = {
-  id: "simple",
+  id: "another",
   name: "another",
   loadPath: "",
   submissionUrl: "",
 };
+
+const CONFIG = [
+  {
+    identifier: DEFAULT_ENGINE.id,
+    base: {
+      urls: {
+        search: {
+          base: "https://mochi.test:8888/browser/browser/components/search/test/browser/",
+          params: [
+            {
+              name: "foo",
+              value: "1",
+            },
+          ],
+          searchTermParamName: "search",
+        },
+      },
+    },
+  },
+  {
+    identifier: ALTERNATE_ENGINE.id,
+    base: {
+      name: ALTERNATE_ENGINE.name,
+      urls: {
+        search: {
+          base: "https://example.com",
+          params: [
+            {
+              name: "sourceId",
+              value: "Mozilla-search",
+            },
+          ],
+          searchTermParamName: "search",
+        },
+      },
+    },
+  },
+  { identifier: ALTERNATE2_ENGINE.id },
+  { globalDefault: DEFAULT_ENGINE.id },
+];
 
 async function restoreDefaultEngine() {
   let engine = Services.search.getEngineByName(DEFAULT_ENGINE.name);
@@ -58,24 +91,6 @@ function clearTelemetry() {
 }
 
 async function checkTelemetry(source, prevEngine, newEngine) {
-  TelemetryTestUtils.assertEvents(
-    [
-      {
-        object: "change_default",
-        value: source,
-        extra: {
-          prev_id: prevEngine.id,
-          new_id: newEngine.id,
-          new_name: newEngine.name,
-          new_load_path: newEngine.loadPath,
-          // Telemetry has a limit of 80 characters.
-          new_sub_url: newEngine.submissionUrl.slice(0, 80),
-        },
-      },
-    ],
-    { category: "search", method: "engine" }
-  );
-
   let snapshot = await Glean.searchEngineDefault.changed.testGetValue();
   delete snapshot[0].timestamp;
   Assert.deepEqual(
@@ -84,7 +99,7 @@ async function checkTelemetry(source, prevEngine, newEngine) {
       category: "search.engine.default",
       name: "changed",
       extra: {
-        change_source: source,
+        change_reason: source,
         previous_engine_id: prevEngine.id,
         new_engine_id: newEngine.id,
         new_display_name: newEngine.name,
@@ -97,27 +112,7 @@ async function checkTelemetry(source, prevEngine, newEngine) {
 }
 
 add_setup(async function () {
-  let searchExtensions = getChromeDir(getResolvedURI(gTestPath));
-  searchExtensions.append("search-engines");
-
-  await SearchTestUtils.useMochitestEngines(searchExtensions);
-
-  SearchTestUtils.useMockIdleService();
-  let response = await fetch(
-    SearchUtils.newSearchConfigEnabled
-      ? `resource://search-extensions/search-config-v2.json`
-      : `resource://search-extensions/engines.json`
-  );
-  let json = await response.json();
-  await SearchTestUtils.updateRemoteSettingsConfig(json.data);
-
-  registerCleanupFunction(async () => {
-    let settingsWritten = SearchTestUtils.promiseSearchNotification(
-      "write-settings-to-disk-complete"
-    );
-    await SearchTestUtils.updateRemoteSettingsConfig();
-    await settingsWritten;
-  });
+  await SearchTestUtils.updateRemoteSettingsConfig(CONFIG);
 });
 
 /* This tests setting a default engine. */

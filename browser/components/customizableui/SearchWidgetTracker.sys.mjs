@@ -2,100 +2,56 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*
- * Keeps the "browser.search.widget.inNavBar" preference synchronized,
- * and ensures persisted widths are updated if the search bar is removed.
- */
-
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { CustomizableUI } from "resource:///modules/CustomizableUI.sys.mjs";
 
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
-});
-
 const WIDGET_ID = "search-container";
-const PREF_NAME = "browser.search.widget.inNavBar";
 
+/**
+ * Updates persisted widths when the search bar is removed from any
+ * customizable area and put into the palette. Also automatically removes the
+ * search bar if it has not been used in a long time.
+ */
 export const SearchWidgetTracker = {
+  /**
+   * Main entrypoint to initializing the SearchWidgetTracker.
+   */
   init() {
-    this.onWidgetReset = this.onWidgetUndoMove = node => {
-      if (node.id == WIDGET_ID) {
-        this.syncPreferenceWithWidget();
-        this.removePersistedWidths();
-      }
-    };
     CustomizableUI.addListener(this);
-    Services.prefs.addObserver(PREF_NAME, () =>
-      this.syncWidgetWithPreference()
-    );
     this._updateSearchBarVisibilityBasedOnUsage();
   },
 
-  onWidgetAdded(widgetId, area) {
-    if (widgetId == WIDGET_ID && area == CustomizableUI.AREA_NAVBAR) {
-      this.syncPreferenceWithWidget();
-    }
-  },
-
-  onWidgetRemoved(aWidgetId, aArea) {
-    if (aWidgetId == WIDGET_ID && aArea == CustomizableUI.AREA_NAVBAR) {
-      this.syncPreferenceWithWidget();
+  /**
+   * The callback for when a widget is moved via CustomizableUI. We use this
+   * to detect movement of the search bar.
+   *
+   * @param {Element} node
+   *   The DOM node that was acted upon.
+   * @param {Element|null} _nextNode
+   *   The DOM node (if any) that the widget was inserted before.
+   * @param {Element} _container
+   *   The *actual* DOM container for the widget (could be an overflow panel in
+   *   case of an overflowable toolbar).
+   * @param {boolean} wasRemoval
+   *   True iff the action that happened was the removal of the DOM node.
+   */
+  onWidgetAfterDOMChange(node, _nextNode, _container, wasRemoval) {
+    if (wasRemoval && node.id == WIDGET_ID) {
       this.removePersistedWidths();
     }
   },
 
-  onAreaNodeRegistered(aArea) {
-    // The placement of the widget always takes priority, and the preference
-    // should always match the actual placement when the browser starts up - i.e.
-    // once the navigation bar has been registered.
-    if (aArea == CustomizableUI.AREA_NAVBAR) {
-      this.syncPreferenceWithWidget();
-    }
-  },
-
-  onCustomizeEnd() {
-    // onWidgetUndoMove does not fire when the search container is moved back to
-    // the customization palette as a result of an undo, so we sync again here.
-    this.syncPreferenceWithWidget();
-  },
-
-  syncPreferenceWithWidget() {
-    Services.prefs.setBoolPref(PREF_NAME, this.widgetIsInNavBar);
-  },
-
-  syncWidgetWithPreference() {
-    let newValue = Services.prefs.getBoolPref(PREF_NAME);
-    if (newValue == this.widgetIsInNavBar) {
+  /**
+   * If the search bar is in the navigation toolbar, this method will check
+   * the lastUsed preference to see when the last time the search bar was
+   * actually used. If the number of days since it was last used exceeds a
+   * certain threshold, the widget is moved back into the customization
+   * palette.
+   */
+  _updateSearchBarVisibilityBasedOnUsage() {
+    if (!this._widgetIsInNavBar) {
       return;
     }
-
-    if (newValue) {
-      // The URL bar widget is always present in the navigation toolbar, so we
-      // can simply read its position to place the search bar right after it.
-      CustomizableUI.addWidgetToArea(
-        WIDGET_ID,
-        CustomizableUI.AREA_NAVBAR,
-        CustomizableUI.getPlacementOfWidget("urlbar-container").position + 1
-      );
-      lazy.BrowserUsageTelemetry.recordWidgetChange(
-        WIDGET_ID,
-        CustomizableUI.AREA_NAVBAR,
-        "searchpref"
-      );
-    } else {
-      CustomizableUI.removeWidgetFromArea(WIDGET_ID);
-      lazy.BrowserUsageTelemetry.recordWidgetChange(
-        WIDGET_ID,
-        null,
-        "searchpref"
-      );
-    }
-  },
-
-  _updateSearchBarVisibilityBasedOnUsage() {
     let searchBarLastUsed = Services.prefs.getStringPref(
       "browser.search.widget.lastUsed",
       ""
@@ -107,11 +63,17 @@ export const SearchWidgetTracker = {
       let saerchBarUnusedThreshold =
         removeAfterDaysUnused * 24 * 60 * 60 * 1000;
       if (new Date() - new Date(searchBarLastUsed) > saerchBarUnusedThreshold) {
-        Services.prefs.setBoolPref("browser.search.widget.inNavBar", false);
+        CustomizableUI.removeWidgetFromArea(WIDGET_ID);
       }
     }
   },
 
+  /**
+   * Removes any widget customization on the search bar (which can be created
+   * with the resizer that appears if the search bar is placed immediately after
+   * the URL bar). Goes through each open browser window and removes the width
+   * property / style on each existant search bar.
+   */
   removePersistedWidths() {
     Services.xulStore.removeValue(
       AppConstants.BROWSER_CHROME_URL,
@@ -127,7 +89,12 @@ export const SearchWidgetTracker = {
     }
   },
 
-  get widgetIsInNavBar() {
+  /**
+   * True if the search bar is currently in the navigation toolbar area.
+   *
+   * @type {boolean}
+   */
+  get _widgetIsInNavBar() {
     let placement = CustomizableUI.getPlacementOfWidget(WIDGET_ID);
     return placement?.area == CustomizableUI.AREA_NAVBAR;
   },

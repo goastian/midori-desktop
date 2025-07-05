@@ -96,9 +96,13 @@ var DownloadsPanel = {
     this._initialized = true;
 
     window.addEventListener("unload", this.onWindowUnload);
-    document
-      .getElementById("downloadPanelCommands")
-      .addEventListener("command", this);
+    const downloadPanelCommands = document.getElementById(
+      "downloadPanelCommands"
+    );
+    downloadPanelCommands.addEventListener("command", this);
+    downloadPanelCommands.addEventListener("commandupdate", () => {
+      goUpdateCommand("cmd_delete");
+    });
 
     // Load and resume active downloads if required.  If there are downloads to
     // be shown in the panel, they will be loaded asynchronously.
@@ -180,7 +184,13 @@ var DownloadsPanel = {
    * only when data is ready.
    */
   showPanel(openedManually = false, isKeyPress = false) {
-    Services.telemetry.scalarAdd("downloads.panel_shown", 1);
+    Glean.downloads.panelShown.add(1);
+    // GLAM EXPERIMENT
+    // This metric is temporary, disabled by default, and will be enabled only
+    // for the purpose of experimenting with client-side sampling of data for
+    // GLAM use. See Bug 1947604 for more information.
+    Glean.glamExperiment.panelShown.add(1);
+
     DownloadsCommon.log("Opening the downloads panel.");
 
     this._openedManually = openedManually;
@@ -232,7 +242,22 @@ var DownloadsPanel = {
 
   handleEvent(aEvent) {
     switch (aEvent.type) {
+      case "click":
+        DownloadsPanel.showDownloadsHistory();
+        break;
       case "command":
+        if (aEvent.currentTarget == DownloadsView.downloadsHistory) {
+          DownloadsPanel.showDownloadsHistory();
+          return;
+        }
+
+        if (
+          aEvent.currentTarget == DownloadsBlockedSubview.elements.deleteButton
+        ) {
+          DownloadsBlockedSubview.confirmBlock();
+          return;
+        }
+
         // Handle the commands defined in downloadsPanel.inc.xhtml.
         // Every command "id" is also its corresponding command.
         goDoCommand(aEvent.target.id);
@@ -251,7 +276,30 @@ var DownloadsPanel = {
           this._focusPanel();
         }
         break;
+      case "mouseover":
+        DownloadsView._onDownloadMouseOver(aEvent);
+        break;
+      case "mouseout":
+        DownloadsView._onDownloadMouseOut(aEvent);
+        break;
+      case "contextmenu":
+        DownloadsView._onDownloadContextMenu(aEvent);
+        break;
+      case "dragstart":
+        DownloadsView._onDownloadDragStart(aEvent);
+        break;
+      case "mousedown":
+        if (DownloadsView.richListBox.hasAttribute("disabled")) {
+          this._handlePotentiallySpammyDownloadActivation(aEvent);
+        }
+        break;
+
       case "keydown":
+        if (aEvent.currentTarget == DownloadsSummary._summaryNode) {
+          DownloadsSummary._onKeyDown(aEvent);
+          return;
+        }
+
         this._onKeyDown(aEvent);
         break;
       case "keypress":
@@ -260,6 +308,12 @@ var DownloadsPanel = {
       case "focus":
       case "select":
         this._onSelect(aEvent);
+        break;
+      case "popupshown":
+        this._onPopupShown(aEvent);
+        break;
+      case "popuphidden":
+        this._onPopupHidden(aEvent);
         break;
     }
   },
@@ -280,9 +334,9 @@ var DownloadsPanel = {
     DownloadsPanel.terminate();
   },
 
-  onPopupShown(aEvent) {
+  _onPopupShown(aEvent) {
     // Ignore events raised by nested popups.
-    if (aEvent.target != aEvent.currentTarget) {
+    if (aEvent.target != this.panel) {
       return;
     }
 
@@ -300,9 +354,9 @@ var DownloadsPanel = {
     this._focusPanel();
   },
 
-  onPopupHidden(aEvent) {
+  _onPopupHidden(aEvent) {
     // Ignore events raised by nested popups.
-    if (aEvent.target != aEvent.currentTarget) {
+    if (aEvent.target != this.panel) {
       return;
     }
 
@@ -352,9 +406,25 @@ var DownloadsPanel = {
     // Handle keypress to be able to preventDefault() events before they reach
     // the richlistbox, for keyboard navigation.
     this.panel.addEventListener("keypress", this);
+    // Handle mousedown to be able to notice clicks on disabled items.
+    this.panel.addEventListener("mousedown", this);
     this.panel.addEventListener("mousemove", this);
+    this.panel.addEventListener("popupshown", this);
+    this.panel.addEventListener("popuphidden", this);
     DownloadsView.richListBox.addEventListener("focus", this);
     DownloadsView.richListBox.addEventListener("select", this);
+    DownloadsView.richListBox.addEventListener("mouseover", this);
+    DownloadsView.richListBox.addEventListener("mouseout", this);
+    DownloadsView.richListBox.addEventListener("contextmenu", this);
+    DownloadsView.richListBox.addEventListener("dragstart", this);
+
+    DownloadsView.downloadsHistory.addEventListener("command", this);
+    DownloadsBlockedSubview.elements.deleteButton.addEventListener(
+      "command",
+      this
+    );
+    DownloadsSummary._summaryNode.addEventListener("click", this);
+    DownloadsSummary._summaryNode.addEventListener("keydown", this);
   },
 
   /**
@@ -364,9 +434,23 @@ var DownloadsPanel = {
   _unattachEventListeners() {
     this.panel.removeEventListener("keydown", this);
     this.panel.removeEventListener("keypress", this);
+    this.panel.removeEventListener("mousedown", this);
     this.panel.removeEventListener("mousemove", this);
+    this.panel.removeEventListener("popupshown", this);
+    this.panel.removeEventListener("popuphidden", this);
     DownloadsView.richListBox.removeEventListener("focus", this);
     DownloadsView.richListBox.removeEventListener("select", this);
+    DownloadsView.richListBox.removeEventListener("mouseover", this);
+    DownloadsView.richListBox.removeEventListener("mouseout", this);
+    DownloadsView.richListBox.removeEventListener("contextmenu", this);
+    DownloadsView.richListBox.removeEventListener("dragstart", this);
+    DownloadsView.downloadsHistory.removeEventListener("command", this);
+    DownloadsBlockedSubview.elements.deleteButton.removeEventListener(
+      "command",
+      this
+    );
+    DownloadsSummary._summaryNode.removeEventListener("click", this);
+    DownloadsSummary._summaryNode.removeEventListener("keydown", this);
   },
 
   _onKeyPress(aEvent) {
@@ -545,7 +629,11 @@ var DownloadsPanel = {
 
   _lastBeepTime: 0,
   _handlePotentiallySpammyDownloadActivation(aEvent) {
-    if (aEvent.key == "Enter" || aEvent.key == " ") {
+    let isSpammyKey =
+      aEvent.type.startsWith("key") &&
+      (aEvent.key == "Enter" || aEvent.key == " ");
+    let isSpammyMouse = aEvent.type.startsWith("mouse") && aEvent.button == 0;
+    if (isSpammyKey || isSpammyMouse) {
       // Throttle our beeping to a maximum of once per second, otherwise it
       // appears on Win10 that beeps never make it through at all.
       if (Date.now() - this._lastBeepTime > 1000) {
@@ -863,9 +951,10 @@ var DownloadsView = {
   onDownloadClick(aEvent) {
     // Handle primary clicks in the main area only:
     if (aEvent.button == 0 && aEvent.target.closest(".downloadMainArea")) {
-      let target = aEvent.target;
-      while (target.nodeName != "richlistitem") {
-        target = target.parentNode;
+      let target = aEvent.target.closest("richlistitem");
+      // Ignore clicks if the box is disabled.
+      if (target.closest("richlistbox").hasAttribute("disabled")) {
+        return;
       }
       let download = DownloadsView.itemForElement(target).download;
       if (download.succeeded) {
@@ -953,7 +1042,7 @@ var DownloadsView = {
   /**
    * Mouse listeners to handle selection on hover.
    */
-  onDownloadMouseOver(aEvent) {
+  _onDownloadMouseOver(aEvent) {
     let item = aEvent.target.closest("richlistitem,richlistbox");
     if (item.localName != "richlistitem") {
       return;
@@ -973,7 +1062,7 @@ var DownloadsView = {
     }
   },
 
-  onDownloadMouseOut(aEvent) {
+  _onDownloadMouseOut(aEvent) {
     let item = aEvent.target.closest("richlistitem,richlistbox");
     if (item.localName != "richlistitem") {
       return;
@@ -990,7 +1079,7 @@ var DownloadsView = {
     }
   },
 
-  onDownloadContextMenu(aEvent) {
+  _onDownloadContextMenu(aEvent) {
     let element = aEvent.originalTarget.closest("richlistitem");
     if (!element) {
       aEvent.preventDefault();
@@ -1010,7 +1099,7 @@ var DownloadsView = {
       !element._shell.download.source?.url;
   },
 
-  onDownloadDragStart(aEvent) {
+  _onDownloadDragStart(aEvent) {
     let element = aEvent.target.closest("richlistitem");
     if (!element) {
       return;
@@ -1458,23 +1547,13 @@ var DownloadsSummary = {
    * @param aEvent
    *        The keydown event being handled.
    */
-  onKeyDown(aEvent) {
+  _onKeyDown(aEvent) {
     if (
       aEvent.charCode == " ".charCodeAt(0) ||
       aEvent.keyCode == KeyEvent.DOM_VK_RETURN
     ) {
       DownloadsPanel.showDownloadsHistory();
     }
-  },
-
-  /**
-   * Respond to click events on the Downloads Summary node.
-   *
-   * @param aEvent
-   *        The click event being handled.
-   */
-  onClick() {
-    DownloadsPanel.showDownloadsHistory();
   },
 
   /**

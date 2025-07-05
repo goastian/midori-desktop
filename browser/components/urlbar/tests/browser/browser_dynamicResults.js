@@ -460,7 +460,7 @@ add_task(async function pick() {
 // Tests picking elements in a dynamic result.
 add_task(async function shouldNavigate() {
   /**
-   * A dummy provider that providers results with a `shouldNavigate` property.
+   * A dummy provider that providers results with a `url` property.
    */
   class TestShouldNavigateProvider extends TestProvider {
     /**
@@ -470,7 +470,6 @@ add_task(async function shouldNavigate() {
     async startQuery(context, addCallback) {
       for (let result of this.results) {
         result.payload.searchString = context.searchString;
-        result.payload.shouldNavigate = true;
         result.payload.url = DUMMY_PAGE;
         addCallback(this, result);
       }
@@ -572,7 +571,7 @@ add_task(async function highlighting() {
           UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           ...UrlbarResult.payloadAndSimpleHighlights(context.tokens, {
             dynamicType: DYNAMIC_TYPE_NAME,
-            text: ["Test title", UrlbarUtils.HIGHLIGHT.SUGGESTED],
+            text: ["Test title", UrlbarUtils.HIGHLIGHT.TYPED],
           })
         ),
         { suggestedIndex: 1 }
@@ -580,8 +579,13 @@ add_task(async function highlighting() {
       addCallback(this, result);
     }
 
-    getViewUpdate(_result, _idsByName) {
-      return {};
+    getViewUpdate(result, _idsByName) {
+      return {
+        text: {
+          textContent: result.payload.text,
+          highlights: result.payloadHighlights.text,
+        },
+      };
     }
   }
 
@@ -589,7 +593,7 @@ add_task(async function highlighting() {
   await withDynamicTypeProvider(async () => {
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
-      value: "test",
+      value: "title",
       waitForFocus: SimpleTest.waitForFocus,
     });
 
@@ -605,12 +609,41 @@ add_task(async function highlighting() {
     let highlightedTextNode = row.querySelector(
       `.urlbarView-dynamic-${DYNAMIC_TYPE_NAME}-text > strong`
     );
-    Assert.equal(parentTextNode.firstChild.textContent, "Test");
+    Assert.equal(parentTextNode.firstChild.textContent, "Test ");
     Assert.equal(
       highlightedTextNode.textContent,
-      " title",
+      "title",
       "The highlighting was applied successfully."
     );
+
+    // Do two more searches using search strings that don't appear in the title.
+    // Nothing should be highlighted. The first search will reuse the row from
+    // the search above. After that, we'll close the view and revert the urlbar
+    // so that the second search will use an entirely new row.
+    for (let value of ["yyyyy", "zzzzz"]) {
+      await UrlbarTestUtils.promiseAutocompleteResultPopup({
+        window,
+        value,
+        waitForFocus: SimpleTest.waitForFocus,
+      });
+      row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 1);
+      Assert.equal(
+        row.result.type,
+        UrlbarUtils.RESULT_TYPE.DYNAMIC,
+        "row.result.type"
+      );
+      parentTextNode = row.querySelector(
+        `.urlbarView-dynamic-${DYNAMIC_TYPE_NAME}-text`
+      );
+      highlightedTextNode = row.querySelector(
+        `.urlbarView-dynamic-${DYNAMIC_TYPE_NAME}-text > strong`
+      );
+      Assert.equal(parentTextNode.firstChild.textContent, "Test title");
+      Assert.ok(!highlightedTextNode, "The <strong> child node was deleted.");
+
+      await UrlbarTestUtils.promisePopupClose(window);
+      gURLBar.handleRevert();
+    }
   }, new TestHighlightProvider());
 
   /**
@@ -758,6 +791,49 @@ add_task(async function hasActionDescendant() {
       "has-action": true,
     },
   });
+});
+
+// Tests whether 'dynamicType' attribute is cleared.
+add_task(async function clear_dynamicType_attribute() {
+  /**
+   * A dummy provider that providers results with a `url` property.
+   */
+  class TestIndex0Provider extends TestProvider {
+    /**
+     * @param {object} context - Data regarding the context of the query.
+     * @param {Function} addCallback - Function to add a result to the query.
+     */
+    async startQuery(context, addCallback) {
+      for (let result of this.results) {
+        result.suggestedIndex = 0;
+        addCallback(this, result);
+      }
+    }
+  }
+
+  await withDynamicTypeProvider(async provider => {
+    // Do a search.
+    await UrlbarTestUtils.promiseAutocompleteResultPopup({
+      window,
+      value: "test",
+      waitForFocus: SimpleTest.waitForFocus,
+    });
+    // Check the dynamicType.
+    let row = await UrlbarTestUtils.waitForAutocompleteResultAt(window, 0);
+    Assert.equal(row.getAttribute("dynamicType"), "test");
+
+    // Unregister the provider to show normal result.
+    UrlbarProvidersManager.unregisterProvider(provider);
+    // Do a search again.
+    await UrlbarTestUtils.promiseAutocompleteResultPopup({
+      window,
+      value: "test",
+      waitForFocus: SimpleTest.waitForFocus,
+    });
+    Assert.ok(!row.hasAttribute("dynamicType"));
+
+    await UrlbarTestUtils.promisePopupClose(window);
+  }, new TestIndex0Provider());
 });
 
 // View templates that contain descendant `.urlbarView-url` and

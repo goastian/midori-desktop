@@ -11,7 +11,10 @@
 ChromeUtils.defineESModuleGetters(this, {
   BackgroundUpdate: "resource://gre/modules/BackgroundUpdate.sys.mjs",
   UpdateListener: "resource://gre/modules/UpdateListener.sys.mjs",
+  LinkPreview: "moz-src:///browser/components/genai/LinkPreview.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
+  SelectableProfileService:
+    "resource:///modules/profiles/SelectableProfileService.sys.mjs",
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
   WindowsLaunchOnLogin: "resource://gre/modules/WindowsLaunchOnLogin.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -28,7 +31,6 @@ const PREF_CONTAINERS_EXTENSION = "privacy.userContext.extension";
 // Strings to identify ExtensionSettingsStore overrides
 const CONTAINERS_KEY = "privacy.containers";
 
-const PREF_USE_SYSTEM_COLORS = "browser.display.use_system_colors";
 const PREF_CONTENT_APPEARANCE =
   "layout.css.prefers-color-scheme.content-override";
 const FORCED_COLORS_QUERY = matchMedia("(forced-colors)");
@@ -52,6 +54,12 @@ Preferences.addAll([
   // Startup
   { id: "browser.startup.page", type: "int" },
   { id: "browser.privatebrowsing.autostart", type: "bool" },
+
+  // Downloads
+  { id: "browser.download.useDownloadDir", type: "bool", inverted: true },
+  { id: "browser.download.always_ask_before_handling_new_types", type: "bool" },
+  { id: "browser.download.folderList", type: "int" },
+  { id: "browser.download.dir", type: "file" },
 
   /* Tab preferences
   Preferences:
@@ -83,6 +91,10 @@ Preferences.addAll([
   { id: "browser.ctrlTab.sortByRecentlyUsed", type: "bool" },
   { id: "browser.tabs.hoverPreview.enabled", type: "bool" },
   { id: "browser.tabs.hoverPreview.showThumbnails", type: "bool" },
+  { id: "browser.tabs.groups.smart.userEnabled", type: "bool" },
+
+  { id: "sidebar.verticalTabs", type: "bool" },
+  { id: "sidebar.revamp", type: "bool" },
 
   // CFR
   {
@@ -93,6 +105,9 @@ Preferences.addAll([
     id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
     type: "bool",
   },
+
+  // High Contrast
+  { id: "browser.display.document_color_use", type: "int" },
 
   // Fonts
   { id: "font.language.group", type: "wstring" },
@@ -130,6 +145,11 @@ Preferences.addAll([
   { id: "layout.css.always_underline_links", type: "bool" },
   { id: "layout.spellcheckDefault", type: "int" },
   { id: "accessibility.tabfocus", type: "int" },
+  { id: "browser.ml.linkPreview.enabled", type: "bool" },
+  { id: "browser.ml.linkPreview.optin", type: "bool" },
+  { id: "browser.ml.linkPreview.shift", type: "bool" },
+  { id: "browser.ml.linkPreview.shiftAlt", type: "bool" },
+  { id: "browser.ml.linkPreview.longPress", type: "bool" },
 
   {
     id: "browser.preferences.defaultPerformanceSettings.enabled",
@@ -138,6 +158,9 @@ Preferences.addAll([
   { id: "dom.ipc.processCount", type: "int" },
   { id: "dom.ipc.processCount.web", type: "int" },
   { id: "layers.acceleration.disabled", type: "bool", inverted: true },
+
+  // Files and Applications
+  { id: "pref.downloads.disable_button.edit_actions", type: "bool" },
 
   // DRM content
   { id: "media.eme.enabled", type: "bool" },
@@ -183,6 +206,221 @@ if (AppConstants.MOZ_UPDATER) {
 
   if (AppConstants.NIGHTLY_BUILD) {
     Preferences.addAll([{ id: "app.update.suppressPrompts", type: "bool" }]);
+  }
+}
+
+Preferences.addSetting({
+  id: "useAutoScroll",
+  pref: "general.autoScroll",
+});
+Preferences.addSetting({
+  id: "useSmoothScrolling",
+  pref: "general.smoothScroll",
+});
+Preferences.addSetting({
+  id: "useOverlayScrollbars",
+  pref: "widget.gtk.overlay-scrollbars.enabled",
+  visible: () => AppConstants.MOZ_WIDGET_GTK,
+});
+Preferences.addSetting({
+  id: "useOnScreenKeyboard",
+  pref: "ui.osk.enabled",
+  visible: () => AppConstants.platform == "win",
+});
+Preferences.addSetting({
+  id: "useCursorNavigation",
+  pref: "accessibility.browsewithcaret",
+});
+Preferences.addSetting({
+  id: "useFullKeyboardNavigation",
+  pref: "accessibility.tabfocus",
+  visible: () => AppConstants.platform == "macosx",
+  /**
+   * Returns true if any full keyboard nav is enabled and false otherwise, caching
+   * the current value to enable proper pref restoration if the checkbox is
+   * never changed.
+   *
+   * accessibility.tabfocus
+   * - an integer controlling the focusability of:
+   *     1  text controls
+   *     2  form elements
+   *     4  links
+   *     7  all of the above
+   */
+  get(prefVal) {
+    this._storedFullKeyboardNavigation = prefVal;
+    return prefVal == 7;
+  },
+  /**
+   * Returns the value of the full keyboard nav preference represented by UI,
+   * preserving the preference's "hidden" value if the preference is
+   * unchanged and represents a value not strictly allowed in UI.
+   */
+  set(checked) {
+    if (checked) {
+      return 7;
+    }
+    if (this._storedFullKeyboardNavigation != 7) {
+      // 1/2/4 values set via about:config should persist
+      return this._storedFullKeyboardNavigation;
+    }
+    // When the checkbox is unchecked, default to just text controls.
+    return 1;
+  },
+});
+Preferences.addSetting({
+  id: "linkPreviewEnabled",
+  pref: "browser.ml.linkPreview.enabled",
+  visible: () => LinkPreview.canShowPreferences,
+});
+Preferences.addSetting({
+  id: "linkPreviewKeyPoints",
+  pref: "browser.ml.linkPreview.optin",
+  visible: () => LinkPreview.canShowKeyPoints,
+});
+Preferences.addSetting({
+  id: "linkPreviewShift",
+  pref: "browser.ml.linkPreview.shift",
+});
+Preferences.addSetting({
+  id: "linkPreviewShiftAlt",
+  pref: "browser.ml.linkPreview.shiftAlt",
+  visible: () => LinkPreview.canShowLegacy,
+});
+Preferences.addSetting({
+  id: "linkPreviewLongPress",
+  pref: "browser.ml.linkPreview.longPress",
+});
+Preferences.addSetting({
+  id: "alwaysUnderlineLinks",
+  pref: "layout.css.always_underline_links",
+});
+Preferences.addSetting({
+  id: "searchStartTyping",
+  pref: "accessibility.typeaheadfind",
+});
+Preferences.addSetting({
+  id: "pictureInPictureToggleEnabled",
+  pref: "media.videocontrols.picture-in-picture.video-toggle.enabled",
+  visible: () =>
+    Services.prefs.getBoolPref(
+      "media.videocontrols.picture-in-picture.enabled"
+    ),
+  onUserChange(checked) {
+    if (!checked) {
+      Glean.pictureinpictureSettings.disableSettings.record();
+    }
+  },
+});
+Preferences.addSetting({
+  id: "mediaControlToggleEnabled",
+  pref: "media.hardwaremediakeys.enabled",
+  // For media control toggle button, we support it on Windows, macOS and
+  // gtk-based Linux.
+  visible: () =>
+    AppConstants.platform == "win" ||
+    AppConstants.platform == "macosx" ||
+    AppConstants.MOZ_WIDGET_GTK,
+});
+Preferences.addSetting({
+  id: "cfrRecommendations",
+  pref: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
+});
+Preferences.addSetting({
+  id: "cfrRecommendations-features",
+  pref: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
+});
+
+let SETTINGS_CONFIG = {
+  browsing: {
+    l10nId: "browsing-group-label",
+    items: [
+      {
+        id: "useAutoScroll",
+        l10nId: "browsing-use-autoscroll",
+      },
+      {
+        id: "useSmoothScrolling",
+        l10nId: "browsing-use-smooth-scrolling",
+      },
+      {
+        id: "useOverlayScrollbars",
+        l10nId: "browsing-gtk-use-non-overlay-scrollbars",
+      },
+      {
+        id: "useOnScreenKeyboard",
+        l10nId: "browsing-use-onscreen-keyboard",
+      },
+      {
+        id: "useCursorNavigation",
+        l10nId: "browsing-use-cursor-navigation",
+      },
+      {
+        id: "useFullKeyboardNavigation",
+        l10nId: "browsing-use-full-keyboard-navigation",
+      },
+      {
+        id: "alwaysUnderlineLinks",
+        l10nId: "browsing-always-underline-links",
+      },
+      {
+        id: "searchStartTyping",
+        l10nId: "browsing-search-on-start-typing",
+      },
+      {
+        id: "pictureInPictureToggleEnabled",
+        l10nId: "browsing-picture-in-picture-toggle-enabled",
+        supportPage: "picture-in-picture",
+      },
+      {
+        id: "mediaControlToggleEnabled",
+        l10nId: "browsing-media-control",
+        supportPage: "media-keyboard-control",
+      },
+      {
+        id: "cfrRecommendations",
+        l10nId: "browsing-cfr-recommendations",
+        supportPage: "extensionrecommendations",
+        subcategory: "cfraddons",
+      },
+      {
+        id: "cfrRecommendations-features",
+        l10nId: "browsing-cfr-features",
+        supportPage: "extensionrecommendations",
+        subcategory: "cfrfeatures",
+      },
+      {
+        id: "linkPreviewEnabled",
+        l10nId: "link-preview-settings-enable",
+        subcategory: "link-preview",
+        items: [
+          {
+            id: "linkPreviewKeyPoints",
+            l10nId: "link-preview-settings-key-points",
+          },
+          {
+            id: "linkPreviewShift",
+            l10nId: "link-preview-settings-shift",
+          },
+          {
+            id: "linkPreviewShiftAlt",
+            l10nId: "link-preview-settings-shift-alt",
+          },
+          {
+            id: "linkPreviewLongPress",
+            l10nId: "link-preview-settings-long-press",
+          },
+        ],
+      },
+    ],
+  },
+};
+
+function initSettingGroup(id) {
+  let group = document.querySelector(`setting-group[groupid=${id}]`);
+  if (group && SETTINGS_CONFIG[id]) {
+    group.config = SETTINGS_CONFIG[id];
+    group.getSetting = Preferences.getSetting.bind(Preferences);
   }
 }
 
@@ -280,9 +518,16 @@ var gMainPane = {
         }
 
         // approximately a "requestIdleInterval"
-        window.setTimeout(() => {
-          window.requestIdleCallback(pollForDefaultBrowser);
-        }, backoffTimes[this._backoffIndex + 1 < backoffTimes.length ? this._backoffIndex++ : backoffTimes.length - 1]);
+        window.setTimeout(
+          () => {
+            window.requestIdleCallback(pollForDefaultBrowser);
+          },
+          backoffTimes[
+            this._backoffIndex + 1 < backoffTimes.length
+              ? this._backoffIndex++
+              : backoffTimes.length - 1
+          ]
+        );
       };
 
       window.setTimeout(() => {
@@ -317,26 +562,7 @@ var gMainPane = {
 
     gMainPane.initTranslations();
 
-    if (
-      Services.prefs.getBoolPref(
-        "media.videocontrols.picture-in-picture.enabled"
-      )
-    ) {
-      document.getElementById("pictureInPictureBox").hidden = false;
-      setEventListener(
-        "pictureInPictureToggleEnabled",
-        "command",
-        function (event) {
-          if (!event.target.checked) {
-            Services.telemetry.recordEvent(
-              "pictureinpicture.settings",
-              "disable",
-              "settings"
-            );
-          }
-        }
-      );
-    }
+    initSettingGroup("browsing");
 
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
@@ -356,6 +582,15 @@ var gMainPane = {
     cardPreviewEnabledPref.on("change", maybeShowThumbsCheckbox);
     maybeShowThumbsCheckbox();
 
+    const tabGroupSuggestionsCheckbox = document.getElementById(
+      "tabGroupSuggestions"
+    );
+    const smartTabGroupFeatureEnabled = Services.prefs.getBoolPref(
+      "browser.tabs.groups.smart.enabled",
+      false
+    );
+    tabGroupSuggestionsCheckbox.hidden = !smartTabGroupFeatureEnabled;
+
     // The "opening multiple tabs might slow down Firefox" warning provides
     // an option for not showing this warning again. When the user disables it,
     // we provide checkboxes to re-enable the warning.
@@ -372,7 +607,7 @@ var gMainPane = {
         let quitKey = ShortcutUtils.prettifyShortcut(quitKeyElement);
         document.l10n.setAttributes(
           document.getElementById("warnOnQuitKey"),
-          "confirm-on-quit-with-key",
+          "ask-on-quit-with-key",
           { quitKey }
         );
       } else {
@@ -422,28 +657,16 @@ var gMainPane = {
         "command",
         gMainPane.onWindowsLaunchOnLoginChange
       );
-      // We do a check here for startWithLastProfile as we could
-      // have disabled the pref for the user before they're ever
-      // exposed to the experiment on a new profile.
-      // If we're using MSIX, we don't show the checkbox as MSIX
-      // can't write to the registry.
       if (
-        Cc["@mozilla.org/toolkit/profile-service;1"].getService(
-          Ci.nsIToolkitProfileService
-        ).startWithLastProfile
+        Services.prefs.getBoolPref(
+          "browser.startup.windowsLaunchOnLogin.enabled",
+          false
+        )
       ) {
+        document.getElementById("windowsLaunchOnLoginBox").hidden = false;
         NimbusFeatures.windowsLaunchOnLogin.recordExposureEvent({
           once: true,
         });
-
-        if (
-          Services.prefs.getBoolPref(
-            "browser.startup.windowsLaunchOnLogin.enabled",
-            false
-          )
-        ) {
-          document.getElementById("windowsLaunchOnLoginBox").hidden = false;
-        }
       }
     }
     gMainPane.updateBrowserStartupUI =
@@ -486,6 +709,12 @@ var gMainPane = {
       gMainPane._rebuildFonts.bind(gMainPane)
     );
     setEventListener("advancedFonts", "command", gMainPane.configureFonts);
+    setEventListener("colors", "command", gMainPane.configureColors);
+    Preferences.get("browser.display.document_color_use").on(
+      "change",
+      gMainPane.updateColorsButton.bind(gMainPane)
+    );
+    gMainPane.updateColorsButton();
     Preferences.get("layers.acceleration.disabled").on(
       "change",
       gMainPane.updateHardwareAcceleration.bind(gMainPane)
@@ -525,18 +754,17 @@ var gMainPane = {
       Services.prefs.getBoolPref("browser.backup.preferences.ui.enabled", false)
     ) {
       let backupGroup = document.getElementById("dataBackupGroup");
-      backupGroup.hidden = false;
       backupGroup.removeAttribute("data-hidden-from-search");
     }
 
-    // For media control toggle button, we support it on Windows, macOS and
-    // gtk-based Linux.
-    if (
-      AppConstants.platform == "win" ||
-      AppConstants.platform == "macosx" ||
-      AppConstants.MOZ_WIDGET_GTK
-    ) {
-      document.getElementById("mediaControlBox").hidden = false;
+    if (!SelectableProfileService.isEnabled) {
+      // Don't want to rely on .hidden for the toplevel groupbox because
+      // of the pane hiding/showing code potentially interfering:
+      document
+        .getElementById("profilesGroup")
+        .setAttribute("style", "display: none !important");
+    } else {
+      setEventListener("manage-profiles", "command", gMainPane.manageProfiles);
     }
 
     // Initializes the fonts dropdowns displayed in this pane.
@@ -682,16 +910,33 @@ var gMainPane = {
         let launchOnLoginCheckbox = document.getElementById(
           "windowsLaunchOnLogin"
         );
-        WindowsLaunchOnLogin.getLaunchOnLoginEnabled().then(enabled => {
-          launchOnLoginCheckbox.checked = enabled;
-        });
-        WindowsLaunchOnLogin.getLaunchOnLoginApproved().then(
-          approvedByWindows => {
-            launchOnLoginCheckbox.disabled = !approvedByWindows;
-            document.getElementById("windowsLaunchOnLoginDisabledBox").hidden =
-              approvedByWindows;
-          }
-        );
+
+        let startWithLastProfile = Cc[
+          "@mozilla.org/toolkit/profile-service;1"
+        ].getService(Ci.nsIToolkitProfileService).startWithLastProfile;
+
+        // Grey out the launch on login checkbox if startWithLastProfile is false
+        document.getElementById(
+          "windowsLaunchOnLoginDisabledProfileBox"
+        ).hidden = startWithLastProfile;
+        launchOnLoginCheckbox.disabled = !startWithLastProfile;
+
+        if (!startWithLastProfile) {
+          launchOnLoginCheckbox.checked = false;
+        } else {
+          WindowsLaunchOnLogin.getLaunchOnLoginEnabled().then(enabled => {
+            launchOnLoginCheckbox.checked = enabled;
+          });
+
+          WindowsLaunchOnLogin.getLaunchOnLoginApproved().then(
+            approvedByWindows => {
+              launchOnLoginCheckbox.disabled = !approvedByWindows;
+              document.getElementById(
+                "windowsLaunchOnLoginDisabledBox"
+              ).hidden = approvedByWindows;
+            }
+          );
+        }
 
         // On Windows, the Application Update setting is an installation-
         // specific preference, not a profile-specific one. Show a warning to
@@ -700,9 +945,8 @@ var gMainPane = {
           "updateSettingsContainer"
         );
         updateContainer.classList.add("updateSettingCrossUserWarningContainer");
-        document.getElementById(
-          "updateSettingCrossUserWarningDesc"
-        ).hidden = false;
+        document.getElementById("updateSettingCrossUserWarningDesc").hidden =
+          false;
       }
     }
 
@@ -713,8 +957,36 @@ var gMainPane = {
     Services.obs.addObserver(this, AUTO_UPDATE_CHANGED_TOPIC);
     Services.obs.addObserver(this, BACKGROUND_UPDATE_CHANGED_TOPIC);
 
+    setEventListener("filter", "command", gMainPane.filter);
+    setEventListener("typeColumn", "click", gMainPane.sort);
+    setEventListener("actionColumn", "click", gMainPane.sort);
+    setEventListener("chooseFolder", "command", gMainPane.chooseFolder);
+    Preferences.get("browser.download.folderList").on(
+      "change",
+      gMainPane.displayDownloadDirPref.bind(gMainPane)
+    );
+    Preferences.get("browser.download.dir").on(
+      "change",
+      gMainPane.displayDownloadDirPref.bind(gMainPane)
+    );
+    gMainPane.displayDownloadDirPref();
+
     // Listen for window unload so we can remove our preference observers.
     window.addEventListener("unload", this);
+
+    // Figure out how we should be sorting the list.  We persist sort settings
+    // across sessions, so we can't assume the default sort column/direction.
+    // XXX should we be using the XUL sort service instead?
+    if (document.getElementById("actionColumn").hasAttribute("sortDirection")) {
+      this._sortColumn = document.getElementById("actionColumn");
+      // The typeColumn element always has a sortDirection attribute,
+      // either because it was persisted or because the default value
+      // from the xul file was used.  If we are sorting on the other
+      // column, we should remove it.
+      document.getElementById("typeColumn").removeAttribute("sortDirection");
+    } else {
+      this._sortColumn = document.getElementById("typeColumn");
+    }
 
     appendSearchKeywords(
       "browserContainersSettings",
@@ -726,6 +998,8 @@ var gMainPane = {
       ].map(ContextualIdentityService.formatContextLabel)
     );
 
+    AppearanceChooser.init();
+
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "main-pane-loaded");
 
@@ -733,18 +1007,6 @@ var gMainPane = {
       document.getElementById("defaultFont"),
       element => FontBuilder.readFontSelection(element)
     );
-    if (AppConstants.platform == "macosx") {
-      // We only expose this control on macOS, so don't try
-      // to add listeners if it doesn't exist.
-      Preferences.addSyncFromPrefListener(
-        document.getElementById("useFullKeyboardNavigation"),
-        () => this.readUseFullKeyboardNavigation()
-      );
-      Preferences.addSyncToPrefListener(
-        document.getElementById("useFullKeyboardNavigation"),
-        () => this.writeUseFullKeyboardNavigation()
-      );
-    }
     Preferences.addSyncFromPrefListener(
       document.getElementById("checkSpelling"),
       () => this.readCheckSpelling()
@@ -752,6 +1014,10 @@ var gMainPane = {
     Preferences.addSyncToPrefListener(
       document.getElementById("checkSpelling"),
       () => this.writeCheckSpelling()
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("alwaysAsk"),
+      () => this.readUseDownloadDir()
     );
     Preferences.addSyncFromPrefListener(
       document.getElementById("linkTargeting"),
@@ -769,7 +1035,7 @@ var gMainPane = {
     this.setInitialized();
   },
 
-  preInit() {/*
+  preInit() {
     promiseLoadHandlersList = new Promise((resolve, reject) => {
       // Load the data and build the list of handlers for applications pane.
       // By doing this after pageshow, we ensure it doesn't delay painting
@@ -792,7 +1058,6 @@ var gMainPane = {
         { once: true }
       );
     });
-    */
   },
 
   handleSubcategory(subcategory) {
@@ -878,9 +1143,8 @@ var gMainPane = {
     if (!(await FxAccounts.canConnectAccount())) {
       return;
     }
-    let url = await FxAccounts.config.promiseConnectAccountURI(
-      "dev-edition-setup"
-    );
+    let url =
+      await FxAccounts.config.promiseConnectAccountURI("dev-edition-setup");
     let accountsTab = win.gBrowser.addWebTab(url);
     win.gBrowser.selectedTab = accountsTab;
   },
@@ -980,6 +1244,11 @@ var gMainPane = {
     document.getElementById("zoomBox").hidden = false;
   },
 
+  updateColorsButton() {
+    document.getElementById("colors").disabled =
+      Preferences.get("browser.display.document_color_use").value != 2;
+  },
+
   /**
    * Initialize the translations view.
    */
@@ -1020,9 +1289,8 @@ var gMainPane = {
           await TranslationsParent.getSupportedLanguages();
         const languageList =
           TranslationsParent.getLanguageList(supportedLanguages);
-        const downloadPhases = await TranslationsState.createDownloadPhases(
-          languageList
-        );
+        const downloadPhases =
+          await TranslationsState.createDownloadPhases(languageList);
 
         if (supportedLanguages.languagePairs.length === 0) {
           throw new Error(
@@ -1099,6 +1367,12 @@ var gMainPane = {
           "command",
           this.handleDeleteAll
         );
+
+        Services.obs.addObserver(this, "intl:app-locales-changed");
+      }
+
+      destroy() {
+        Services.obs.removeObserver(this, "intl:app-locales-changed");
       }
 
       handleInstallAll = async () => {
@@ -1182,6 +1456,7 @@ var gMainPane = {
         for (const { langTag, displayName } of this.state.languageList) {
           const hboxRow = document.createXULElement("hbox");
           hboxRow.classList.add("translations-manage-language");
+          hboxRow.setAttribute("data-lang-tag", langTag);
 
           const languageLabel = document.createXULElement("label");
           languageLabel.textContent = displayName; // The display name is already localized.
@@ -1220,7 +1495,6 @@ var gMainPane = {
         }
         this.updateAllButtons();
         this.elements.installList.appendChild(listFragment);
-        this.elements.installList.hidden = false;
       }
 
       /**
@@ -1344,11 +1618,41 @@ var gMainPane = {
       hideError() {
         this.elements.error.hidden = true;
       }
+
+      observe(_subject, topic, _data) {
+        if (topic === "intl:app-locales-changed") {
+          this.refreshLanguageListDisplay();
+        }
+      }
+
+      refreshLanguageListDisplay() {
+        try {
+          const languageDisplayNames =
+            TranslationsParent.createLanguageDisplayNames();
+
+          for (const row of this.elements.installList.children) {
+            const rowLangTag = row.getAttribute("data-lang-tag");
+            if (!rowLangTag) {
+              continue;
+            }
+
+            const label = row.querySelector("label");
+            if (label) {
+              const newDisplayName = languageDisplayNames.of(rowLangTag);
+              if (label.textContent !== newDisplayName) {
+                label.textContent = newDisplayName;
+              }
+            }
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
     }
 
     TranslationsState.create().then(
       state => {
-        new TranslationsView(state);
+        this._translationsView = new TranslationsView(state);
       },
       error => {
         // This error can happen when a user is not connected to the internet, or
@@ -1359,12 +1663,6 @@ var gMainPane = {
   },
 
   initPrimaryBrowserLanguageUI() {
-    // Enable telemetry.
-    Services.telemetry.setEventRecordingEnabled(
-      "intl.ui.browserLanguage",
-      true
-    );
-
     // This will register the "command" listener.
     let menulist = document.getElementById("primaryBrowserLocale");
     new SelectionChangedMenulist(menulist, event => {
@@ -1688,11 +1986,8 @@ var gMainPane = {
       let shellSvc = getShellService();
       let defaultBrowserBox = document.getElementById("defaultBrowserBox");
       let isInFlatpak = gGIOService?.isRunningUnderFlatpak;
-      const xreDirProvider = Cc[
-        "@mozilla.org/xre/directory-provider;1"
-      ].getService(Ci.nsIXREDirProvider);
       // Flatpak does not support setting nor detection of default browser
-      if (!shellSvc || isInFlatpak || xreDirProvider.isPortableMode) {
+      if (!shellSvc || isInFlatpak) {
         defaultBrowserBox.hidden = true;
         return;
       }
@@ -1747,6 +2042,15 @@ var gMainPane = {
   },
 
   /**
+   *  Shows a subdialog containing the profile selector page.
+   */
+  manageProfiles() {
+    SelectableProfileService.maybeSetupDataStore().then(() => {
+      gSubDialog.open("about:profilemanager");
+    });
+  },
+
+  /**
    * Shows a dialog in which the preferred language for web content may be set.
    */
   showLanguages() {
@@ -1756,11 +2060,8 @@ var gMainPane = {
   },
 
   recordBrowserLanguagesTelemetry(method, value = null) {
-    Services.telemetry.recordEvent(
-      "intl.ui.browserLanguage",
-      method,
-      "main",
-      value
+    Glean.intlUiBrowserLanguage[method + "Main"].record(
+      value ? { value } : undefined
     );
   },
 
@@ -1836,6 +2137,18 @@ var gMainPane = {
     if (!selected) {
       // No locales were selected. Cancel the operation.
       return;
+    }
+
+    // Track how often locale fallback order is changed.
+    // Drop the first locale and filter to only include the overlapping set
+    const prevLocales = Services.locale.requestedLocales.filter(
+      lc => selected.indexOf(lc) > 0
+    );
+    const newLocales = selected.filter(
+      (lc, i) => i > 0 && prevLocales.includes(lc)
+    );
+    if (prevLocales.some((lc, i) => newLocales[i] != lc)) {
+      this.gBrowserLanguagesDialog.recordTelemetry("setFallback");
     }
 
     switch (gMainPane.getLanguageSwitchTransitionType(selected)) {
@@ -2184,49 +2497,6 @@ var gMainPane = {
   },
 
   /**
-   * Stores the original value of the tabfocus preference to enable proper
-   * restoration if unchanged (since we're mapping an int pref onto a checkbox).
-   */
-  _storedFullKeyboardNavigation: Preferences.get("accessibility.tabfocus"),
-
-  /**
-   * Returns true if any full keyboard nav is enabled and false otherwise, caching
-   * the current value to enable proper pref restoration if the checkbox is
-   * never changed.
-   *
-   * accessibility.tabfocus
-   * - an integer controlling the focusability of:
-   *     1  text controls
-   *     2  form elements
-   *     4  links
-   *     7  all of the above
-   */
-  readUseFullKeyboardNavigation() {
-    var pref = Preferences.get("accessibility.tabfocus");
-    this._storedFullKeyboardNavigation = pref.value;
-
-    return pref.value == 7;
-  },
-
-  /**
-   * Returns the value of the full keyboard nav preference represented by UI,
-   * preserving the preference's "hidden" value if the preference is
-   * unchanged and represents a value not strictly allowed in UI.
-   */
-  writeUseFullKeyboardNavigation() {
-    var checkbox = document.getElementById("useFullKeyboardNavigation");
-    if (checkbox.checked) {
-      return 7;
-    }
-    if (this._storedFullKeyboardNavigation != 7) {
-      // 1/2/4 values set via about:config should persist
-      return this._storedFullKeyboardNavigation;
-    }
-    // When the checkbox is unchecked, default to just text controls.
-    return 1;
-  },
-
-  /**
    * Stores the original value of the spellchecking preference to enable proper
    * restoration if unchanged (since we're mapping a tristate onto a checkbox).
    */
@@ -2301,12 +2571,10 @@ var gMainPane = {
     if (Services.appinfo.fissionAutostart) {
       document.getElementById("limitContentProcess").hidden = true;
       document.getElementById("contentProcessCount").hidden = true;
-      document.getElementById(
-        "contentProcessCountEnabledDescription"
-      ).hidden = true;
-      document.getElementById(
-        "contentProcessCountDisabledDescription"
-      ).hidden = true;
+      document.getElementById("contentProcessCountEnabledDescription").hidden =
+        true;
+      document.getElementById("contentProcessCountDisabledDescription").hidden =
+        true;
       return;
     }
     if (Services.appinfo.browserTabsRemoteAutostart) {
@@ -2325,21 +2593,17 @@ var gMainPane = {
 
       document.getElementById("limitContentProcess").disabled = false;
       document.getElementById("contentProcessCount").disabled = false;
-      document.getElementById(
-        "contentProcessCountEnabledDescription"
-      ).hidden = false;
-      document.getElementById(
-        "contentProcessCountDisabledDescription"
-      ).hidden = true;
+      document.getElementById("contentProcessCountEnabledDescription").hidden =
+        false;
+      document.getElementById("contentProcessCountDisabledDescription").hidden =
+        true;
     } else {
       document.getElementById("limitContentProcess").disabled = true;
       document.getElementById("contentProcessCount").disabled = true;
-      document.getElementById(
-        "contentProcessCountEnabledDescription"
-      ).hidden = true;
-      document.getElementById(
-        "contentProcessCountDisabledDescription"
-      ).hidden = false;
+      document.getElementById("contentProcessCountEnabledDescription").hidden =
+        true;
+      document.getElementById("contentProcessCountDisabledDescription").hidden =
+        false;
     }
   },
 
@@ -2562,6 +2826,13 @@ var gMainPane = {
     Services.prefs.removeObserver(PREF_CONTAINERS_EXTENSION, this);
     Services.obs.removeObserver(this, AUTO_UPDATE_CHANGED_TOPIC);
     Services.obs.removeObserver(this, BACKGROUND_UPDATE_CHANGED_TOPIC);
+
+    // Clean up the TranslationsView instance if it exists
+    if (this._translationsView) {
+      this._translationsView.destroy();
+      this._translationsView = null;
+    }
+
     AppearanceChooser.destroy();
   },
 
@@ -2804,6 +3075,9 @@ var gMainPane = {
 
     if (aHandlerApp instanceof Ci.nsIGIOMimeApp) {
       return aHandlerApp.command;
+    }
+    if (aHandlerApp instanceof Ci.nsIGIOHandlerApp) {
+      return aHandlerApp.id;
     }
 
     return false;
@@ -3343,8 +3617,16 @@ var gMainPane = {
       return this._getIconURLForWebApp(aHandlerApp.uriTemplate);
     }
 
+    if (aHandlerApp instanceof Ci.nsIGIOHandlerApp) {
+      return this._getIconURLForAppId(aHandlerApp.id);
+    }
+
     // We know nothing about other kinds of handler apps.
     return "";
+  },
+
+  _getIconURLForAppId(aAppId) {
+    return "moz-icon://" + aAppId + "?size=16";
   },
 
   _getIconURLForFile(aFile) {
@@ -3525,8 +3807,7 @@ var gMainPane = {
     }
     // note: downloadFolder.value is not read elsewhere in the code, its only purpose is to display to the user
     downloadFolder.value = folderDisplayName;
-    downloadFolder.style.backgroundImage =
-      "url(moz-icon://" + iconUrlSpec + "?size=16)";
+    downloadFolder.style.backgroundImage = `image-set("moz-icon://${iconUrlSpec}?size=16&scale=1" 1x, "moz-icon://${iconUrlSpec}?size=16&scale=2" 2x, "moz-icon://${iconUrlSpec}?size=16&scale=3" 3x)`;
   },
 
   async _getSystemDownloadFolderDetails(folderIndex) {
@@ -3566,46 +3847,73 @@ var gMainPane = {
         ]);
       }
     }
-    if (firefoxLocalizedName) {
-      let folderDisplayName, leafName;
-      // Either/both of these can throw, so check for failures in both cases
-      // so we don't just break display of the download pref:
-      try {
-        folderDisplayName = file.displayName;
-      } catch (ex) {
-        /* ignored */
-      }
-      try {
-        leafName = file.leafName;
-      } catch (ex) {
-        /* ignored */
-      }
 
-      // If we found a localized name that's different from the leaf name,
-      // use that:
-      if (folderDisplayName && folderDisplayName != leafName) {
-        return { file, folderDisplayName };
-      }
+    if (file) {
+      let displayName = file.path;
 
-      // Otherwise, check if we've got a localized name ourselves.
-      if (firefoxLocalizedName) {
-        // You can't move the system download or desktop dir on macOS,
-        // so if those are in use just display them. On other platforms
-        // only do so if the folder matches the localized name.
-        if (
-          AppConstants.platform == "macosx" ||
-          leafName == firefoxLocalizedName
-        ) {
-          return { file, folderDisplayName: firefoxLocalizedName };
+      // Attempt to translate path to the path as exists on the host
+      // in case the provided path comes from the document portal
+      if (AppConstants.platform == "linux") {
+        try {
+          displayName = await file.hostPath();
+        } catch (error) {
+          /* ignored */
+        }
+
+        if (displayName) {
+          if (displayName == downloadsDir.path) {
+            firefoxLocalizedName = await document.l10n.formatValues([
+              { id: "downloads-folder-name" },
+            ]);
+          } else if (displayName == desktopDir.path) {
+            firefoxLocalizedName = await document.l10n.formatValues([
+              { id: "desktop-folder-name" },
+            ]);
+          }
         }
       }
-    }
-    // If we get here, attempts to use a "pretty" name failed. Just display
-    // the full path:
-    if (file) {
+
+      if (firefoxLocalizedName) {
+        let folderDisplayName, leafName;
+        // Either/both of these can throw, so check for failures in both cases
+        // so we don't just break display of the download pref:
+        try {
+          folderDisplayName = file.displayName;
+        } catch (ex) {
+          /* ignored */
+        }
+        try {
+          leafName = file.leafName;
+        } catch (ex) {
+          /* ignored */
+        }
+
+        // If we found a localized name that's different from the leaf name,
+        // use that:
+        if (folderDisplayName && folderDisplayName != leafName) {
+          return { file, folderDisplayName };
+        }
+
+        // Otherwise, check if we've got a localized name ourselves.
+        if (firefoxLocalizedName) {
+          // You can't move the system download or desktop dir on macOS,
+          // so if those are in use just display them. On other platforms
+          // only do so if the folder matches the localized name.
+          if (
+            AppConstants.platform == "macosx" ||
+            leafName == firefoxLocalizedName
+          ) {
+            return { file, folderDisplayName: firefoxLocalizedName };
+          }
+        }
+      }
+
+      // If we get here, attempts to use a "pretty" name failed. Just display
+      // the full path:
       // Force the left-to-right direction when displaying a custom path.
-      return { file, folderDisplayName: `\u2066${file.path}\u2069` };
+      return { file, folderDisplayName: `\u2066${displayName}\u2069` };
     }
+
     // Don't even have a file - fall back to desktop directory for the
     // use of the icon, and an empty label:
     file = desktopDir;
@@ -3625,9 +3933,10 @@ var gMainPane = {
     switch (aFolder) {
       case "Desktop":
         return Services.dirsvc.get("Desk", Ci.nsIFile);
-      case "Downloads":
+      case "Downloads": {
         let downloadsDir = await Downloads.getSystemDownloadsDirectory();
         return new FileUtils.File(downloadsDir);
+      }
     }
     throw new Error(
       "ASSERTION FAILED: folder type should be 'Desktop' or 'Downloads'"
@@ -3712,12 +4021,11 @@ function getLocalHandlerApp(aFile) {
 let gHandlerListItemFragment = MozXULElement.parseXULToFragment(`
   <richlistitem>
     <hbox class="typeContainer" flex="1" align="center">
-      <image class="typeIcon" width="16" height="16"
-              src="moz-icon://goat?size=16"/>
+      <html:img class="typeIcon" width="16" height="16" />
       <label class="typeDescription" flex="1" crop="end"/>
     </hbox>
     <hbox class="actionContainer" flex="1" align="center">
-      <image class="actionIcon" width="16" height="16"/>
+      <html:img class="actionIcon" width="16" height="16"/>
       <label class="actionDescription" flex="1" crop="end"/>
     </hbox>
     <hbox class="actionsMenuContainer" flex="1">
@@ -3767,7 +4075,7 @@ class HandlerListItem {
     let typeDescription = this.handlerInfoWrapper.typeDescription;
     this.setOrRemoveAttributes([
       [null, "type", this.handlerInfoWrapper.type],
-      [".typeIcon", "src", this.handlerInfoWrapper.smallIcon],
+      [".typeIcon", "srcset", this.handlerInfoWrapper.iconSrcSet],
     ]);
     localizeElement(
       this.node.querySelector(".typeDescription"),
@@ -3782,8 +4090,8 @@ class HandlerListItem {
       [null, APP_ICON_ATTR_NAME, actionIconClass],
       [
         ".actionIcon",
-        "src",
-        actionIconClass ? null : this.handlerInfoWrapper.actionIcon,
+        "srcset",
+        actionIconClass ? null : this.handlerInfoWrapper.actionIconSrcset,
       ],
     ]);
     const selectedItem = this.node.querySelector("[selected=true]");
@@ -3792,8 +4100,17 @@ class HandlerListItem {
       return;
     }
     const { id, args } = document.l10n.getAttributes(selectedItem);
+    const messageIDs = {
+      "applications-action-save": "applications-action-save-label",
+      "applications-always-ask": "applications-always-ask-label",
+      "applications-open-inapp": "applications-open-inapp-label",
+      "applications-use-app-default": "applications-use-app-default-label",
+      "applications-use-app": "applications-use-app-label",
+      "applications-use-os-default": "applications-use-os-default-label",
+      "applications-use-other": "applications-use-other-label",
+    };
     localizeElement(this.node.querySelector(".actionDescription"), {
-      id: id + "-label",
+      id: messageIDs[id],
       args,
     });
     localizeElement(this.node.querySelector(".actionsMenu"), { id, args });
@@ -3909,17 +4226,31 @@ class HandlerInfoWrapper {
     return "";
   }
 
+  get actionIconSrcset() {
+    let icon = this.actionIcon;
+    if (!icon || !icon.startsWith("moz-icon:")) {
+      return icon;
+    }
+    // We rely on the icon already having the ?size= parameter.
+    let srcset = [];
+    for (let scale of [1, 2, 3]) {
+      let scaledIcon = icon + "&scale=" + scale;
+      srcset.push(`${scaledIcon} ${scale}x`);
+    }
+    return srcset.join(", ");
+  }
+
   get actionIcon() {
     switch (this.preferredAction) {
       case Ci.nsIHandlerInfo.useSystemDefault:
         return this.iconURLForSystemDefault;
 
-      case Ci.nsIHandlerInfo.useHelperApp:
+      case Ci.nsIHandlerInfo.useHelperApp: {
         let preferredApp = this.preferredApplicationHandler;
         if (gMainPane.isValidHandlerApp(preferredApp)) {
           return gMainPane._getIconURLForHandlerApp(preferredApp);
         }
-
+      }
       // This should never happen, but if preferredAction is set to some weird
       // value, then fall back to the generic application icon.
       // Explicit fall-through
@@ -4070,17 +4401,25 @@ class HandlerInfoWrapper {
     gHandlerService.store(this.wrappedHandlerInfo);
   }
 
-  get smallIcon() {
-    return this._getIcon(16);
+  get iconSrcSet() {
+    let srcset = [];
+    for (let scale of [1, 2]) {
+      let icon = this._getIcon(16, scale);
+      if (!icon) {
+        return null;
+      }
+      srcset.push(`${icon} ${scale}x`);
+    }
+    return srcset.join(", ");
   }
 
-  _getIcon(aSize) {
+  _getIcon(aSize, aScale = 1) {
     if (this.primaryExtension) {
-      return "moz-icon://goat." + this.primaryExtension + "?size=" + aSize;
+      return `moz-icon://goat.${this.primaryExtension}?size=${aSize}&scale=${aScale}`;
     }
 
     if (this.wrappedHandlerInfo instanceof Ci.nsIMIMEInfo) {
-      return "moz-icon://goat?size=" + aSize + "&contentType=" + this.type;
+      return `moz-icon://goat?size=${aSize}&scale=${aScale}&contentType=${this.type}`;
     }
 
     // FIXME: consider returning some generic icon when we can't get a URL for
@@ -4170,7 +4509,6 @@ const AppearanceChooser = {
     this.warning = document.getElementById("web-appearance-override-warning");
 
     FORCED_COLORS_QUERY.addEventListener("change", this);
-    Services.prefs.addObserver(PREF_USE_SYSTEM_COLORS, this);
     Services.obs.addObserver(this, "look-and-feel-changed");
     this._update();
   },
@@ -4183,11 +4521,6 @@ const AppearanceChooser = {
   handleEvent(e) {
     if (e.type == "click") {
       switch (e.target.id) {
-        // Forward the click to the "colors" button.
-        case "web-appearance-manage-colors-button":
-          document.getElementById("colors").click();
-          e.preventDefault();
-          break;
         case "web-appearance-manage-themes-link":
           window.browsingContext.topChromeWindow.BrowserAddonUI.openAddonsMgr(
             "addons://list/theme"
@@ -4206,7 +4539,6 @@ const AppearanceChooser = {
   },
 
   destroy() {
-    Services.prefs.removeObserver(PREF_USE_SYSTEM_COLORS, this);
     Services.obs.removeObserver(this, "look-and-feel-changed");
     FORCED_COLORS_QUERY.removeEventListener("change", this);
   },
@@ -4241,10 +4573,6 @@ const AppearanceChooser = {
   },
 
   _updateWarning() {
-    let forcingColorsAndNoColorSchemeSupport =
-      FORCED_COLORS_QUERY.matches &&
-      (AppConstants.platform == "win" ||
-        !Services.prefs.getBoolPref(PREF_USE_SYSTEM_COLORS));
-    this.warning.hidden = !forcingColorsAndNoColorSchemeSupport;
+    this.warning.hidden = !FORCED_COLORS_QUERY.matches;
   },
 };

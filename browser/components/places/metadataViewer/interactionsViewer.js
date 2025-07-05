@@ -4,6 +4,10 @@
 
 /* eslint-env module */
 
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
+);
+
 const { Interactions } = ChromeUtils.importESModule(
   "resource:///modules/Interactions.sys.mjs"
 );
@@ -13,6 +17,36 @@ const { PlacesUtils } = ChromeUtils.importESModule(
 const { PlacesDBUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PlacesDBUtils.sys.mjs"
 );
+
+const lazy = {};
+
+ChromeUtils.defineLazyGetter(lazy, "PlacesFrecencyRecalculator", () => {
+  return Cc["@mozilla.org/places/frecency-recalculator;1"].getService(
+    Ci.nsIObserver
+  ).wrappedJSObject;
+});
+
+/**
+ * Methods of sorting.
+ *
+ * @readonly
+ * @enum {SortingType}
+ */
+const SortingType = {
+  ASCENDING: "ASC",
+  DESCENDING: "DESC",
+};
+
+/**
+ * How to sort a table of values.
+ *
+ * @typedef SortSetting
+ *
+ * @property {string} column
+ *   Which column the table should be sorted by.
+ * @property {SortingType} order
+ *   How order the sorting.
+ */
 
 /**
  * Base class for the table display. Handles table layout and updates.
@@ -53,6 +87,15 @@ class TableViewer {
    * @type {number}
    */
   #timer;
+
+  /**
+   * How the table should be sorted. If not provided, the view will not allow
+   * sorting and default to the initial way the rows were pulled from the data
+   * source.
+   *
+   * @type {SortSetting}
+   */
+  sortSetting = null;
 
   /**
    * Starts the display of the table. Setting up the table display and doing
@@ -111,7 +154,7 @@ class TableViewer {
       numColumns * 2
     }):nth-child(${numColumns * 2}n+${numColumns * 2})\n
 {
-  background: var(--in-content-box-background-odd);
+  background: var(--table-row-background-color-alternate);
 }`;
     existingStyle.innerText = styleText;
 
@@ -119,8 +162,10 @@ class TableViewer {
     // create and delete rows all the time.
     let tableBody = document.createDocumentFragment();
     let header = document.createDocumentFragment();
-    for (let details of this.columnMap.values()) {
+    for (let [key, details] of this.columnMap.entries()) {
       let columnDiv = document.createElement("div");
+      columnDiv.classList.add("column-title");
+      columnDiv.setAttribute("data-column-title", key);
       columnDiv.textContent = details.header;
       header.appendChild(columnDiv);
     }
@@ -181,6 +226,45 @@ class TableViewer {
       }
     }
     this.#lastFilledRows = numRows;
+
+    this.updateDisplayedSort();
+  }
+
+  updateDisplayedSort() {
+    if (this.sortable) {
+      let viewer = document.getElementById("tableViewer");
+      let element = viewer.querySelector(
+        `[data-column-title="${this.sortSetting.column}"]`
+      );
+      let symbolHolder = document.getElementById("column-title-sort-indicator");
+      if (!symbolHolder) {
+        symbolHolder = document.createElement("span");
+        symbolHolder.style.marginLeft = "5px";
+        // Let the column header receive the click.
+        symbolHolder.style.pointerEvents = "none";
+        symbolHolder.id = "column-title-sort-indicator";
+      }
+      element.appendChild(symbolHolder);
+      symbolHolder.textContent =
+        this.sortSetting.order == SortingType.DESCENDING
+          ? "\u2B07\uFE0F"
+          : "\u2B06\uFE0F";
+    }
+  }
+
+  changeSort(column) {
+    if (this.sortSetting.column == column) {
+      this.sortSetting.order =
+        this.sortSetting.order == SortingType.DESCENDING
+          ? SortingType.ASCENDING
+          : SortingType.DESCENDING;
+    } else {
+      this.sortSetting = { column, order: SortingType.DESCENDING };
+    }
+  }
+
+  get sortable() {
+    return !!this.sortSetting;
   }
 }
 
@@ -231,6 +315,8 @@ const metadataHandler = new (class extends TableViewer {
     ["referrer", { header: "Referrer", includeTitle: true }],
   ]);
 
+  sortSetting = { column: "updated_at", order: SortingType.DESCENDING };
+
   /**
    * A reference to the database connection.
    *
@@ -262,29 +348,28 @@ const metadataHandler = new (class extends TableViewer {
        FROM moz_places_metadata m
        JOIN moz_places h ON h.id = m.place_id
        LEFT JOIN moz_places h2 ON h2.id = m.referrer_place_id
-       ORDER BY updated_at DESC
+       ORDER BY ${this.sortSetting.column} ${this.sortSetting.order}
        LIMIT ${this.maxRows}`
     );
     this.displayData(rows);
   }
 
-  export() {
-    // Export all data. We only export place_id and not url so users can share their exports
-    // without revealing the sites they have been visiting.
+  export(includeUrlAndTitle = false) {
     return this.#getRows(
       `SELECT
       m.id,
-      m.place_id,
-      m.referrer_place_id,
-      h.origin_id,
+      ${includeUrlAndTitle ? "h.title," : ""}
+      ${includeUrlAndTitle ? "h.url" : "m.place_id"},
       m.updated_at,
-      m.total_view_time,
-      h.visit_count,
       h.frecency,
+      m.total_view_time,
       m.typing_time,
       m.key_presses,
       m.scrolling_time,
       m.scrolling_distance,
+      ${includeUrlAndTitle ? "r.url AS referrer_url" : "m.referrer_place_id"},
+      ${includeUrlAndTitle ? "o.host" : "h.origin_id"},
+      h.visit_count,
       vall.visit_dates,
       vall.visit_types
   FROM moz_places_metadata m
@@ -298,21 +383,25 @@ const metadataHandler = new (class extends TableViewer {
       GROUP BY place_id
       ORDER BY visit_date DESC
       ) vall ON vall.place_id = m.place_id
+  JOIN moz_origins o ON h.origin_id = o.id
+  LEFT JOIN moz_places r ON m.referrer_place_id = r.id
+
   ORDER BY m.place_id DESC
      `,
       [
         "id",
-        "place_id",
-        "referrer_place_id",
-        "origin_id",
+        ...(includeUrlAndTitle ? ["title"] : []),
+        includeUrlAndTitle ? "url" : "place_id",
         "updated_at",
-        "total_view_time",
-        "visit_count",
         "frecency",
+        "total_view_time",
         "typing_time",
         "key_presses",
         "scrolling_time",
         "scrolling_distance",
+        includeUrlAndTitle ? "referrer_url" : "referrer_place_id",
+        includeUrlAndTitle ? "host" : "origin_id",
+        "visit_count",
         "visit_dates",
         "visit_types",
       ]
@@ -369,6 +458,88 @@ const placesStatsHandler = new (class extends TableViewer {
   }
 })();
 
+/**
+ * Places database with frecency scores.
+ */
+const placesViewerHandler = new (class extends TableViewer {
+  title = "Places Viewer";
+  cssGridTemplateColumns = "fit-content(100%) repeat(6, min-content);";
+  #db = null;
+  #maxRows = 100;
+
+  /**
+   * @see TableViewer.columnMap
+   */
+  columnMap = new Map([
+    ["url", { header: "URL" }],
+    ["title", { header: "Title" }],
+    [
+      "last_visit_date",
+      {
+        header: "Last Visit Date",
+        modifier: lastVisitDate =>
+          new Date(lastVisitDate / 1000).toLocaleString(),
+      },
+    ],
+    ["frecency", { header: "Frecency" }],
+    [
+      "recalc_frecency",
+      {
+        header: "Recalc Frecency",
+      },
+    ],
+    [
+      "alt_frecency",
+      {
+        header: "Alt Frecency",
+      },
+    ],
+    [
+      "recalc_alt_frecency",
+      {
+        header: "Recalc Alt Frecency",
+      },
+    ],
+  ]);
+
+  sortSetting = { column: "last_visit_date", order: SortingType.DESCENDING };
+
+  async #getRows(query, columns = [...this.columnMap.keys()]) {
+    if (!this.#db) {
+      this.#db = await PlacesUtils.promiseDBConnection();
+    }
+    let rows = await this.#db.executeCached(query);
+    return rows.map(r => {
+      let result = {};
+      for (let column of columns) {
+        result[column] = r.getResultByName(column);
+      }
+      return result;
+    });
+  }
+
+  /**
+   * Loads the current metadata from the database and updates the display.
+   */
+  async updateDisplay() {
+    let rows = await this.#getRows(
+      `
+        SELECT
+          url,
+          title,
+          last_visit_date,
+          frecency,
+          recalc_frecency,
+          alt_frecency,
+          recalc_alt_frecency
+        FROM moz_places
+        ORDER BY ${this.sortSetting.column} ${this.sortSetting.order}
+        LIMIT ${this.#maxRows}`
+    );
+    this.displayData(rows);
+  }
+})();
+
 function checkPrefs() {
   if (
     !Services.prefs.getBoolPref("browser.places.interactions.enabled", false)
@@ -395,7 +566,47 @@ function show(selectedButton) {
     case "places-stats":
       (gCurrentHandler = placesStatsHandler).start();
       break;
+    case "places-viewer":
+      (gCurrentHandler = placesViewerHandler).start();
+      break;
   }
+}
+
+function createObjectURL(data, type) {
+  // Downloading the Blob will throw errors in debug mode because the
+  // principal is system and nsUrlClassifierDBService::lookup does not expect
+  // a caller from this principal. Thus, we use the null principal. However, in
+  // non-debug mode we'd rather not run eval and use the Javascript API.
+  if (AppConstants.DEBUG) {
+    let escapedData = data.replaceAll("'", "\\'").replaceAll("\n", "\\n");
+    let sb = new Cu.Sandbox(null, { wantGlobalProperties: ["Blob", "URL"] });
+    return Cu.evalInSandbox(
+      `URL.createObjectURL(new Blob(['${escapedData}'], {type: '${type}'}))`,
+      sb,
+      "",
+      null,
+      0,
+      false
+    );
+  }
+  let blob = new Blob([data], {
+    type,
+  });
+  return window.URL.createObjectURL(blob);
+}
+
+function downloadFile(data, blobType, fileType) {
+  const a = document.createElement("a");
+  a.setAttribute("download", `places-${Date.now()}.${fileType}`);
+  a.setAttribute("href", createObjectURL(data, blobType));
+  a.click();
+  a.remove();
+}
+
+async function getData() {
+  let includeUrlAndTitle =
+    document.getElementById("include-place-data").checked;
+  return await metadataHandler.export(includeUrlAndTitle);
 }
 
 function setupListeners() {
@@ -405,23 +616,59 @@ function setupListeners() {
       show(e.target);
     }
   });
-  document.getElementById("export").addEventListener("click", async e => {
-    e.preventDefault();
-    const data = await metadataHandler.export();
 
-    const blob = new Blob([JSON.stringify(data)], {
-      type: "text/json;charset=utf-8",
+  document.getElementById("export-json").addEventListener("click", async e => {
+    e.preventDefault();
+    const data = await getData();
+    downloadFile(JSON.stringify(data), "text/json;charset=utf-8", "json");
+  });
+
+  document.getElementById("export-csv").addEventListener("click", async e => {
+    e.preventDefault();
+    const data = await getData();
+
+    // Convert Javascript to CSV string.
+    let headers = Object.keys(data.at(0));
+    let rows = [
+      headers.join(","),
+      ...data.map(obj =>
+        headers.map(field => JSON.stringify(obj[field] ?? "")).join(",")
+      ),
+    ];
+    rows = rows.join("\n");
+
+    downloadFile(rows, "text/csv", "csv");
+  });
+
+  // Allow users to force frecency to update instead of waiting for an idle
+  // event.
+  document
+    .getElementById("recalc-alt-frecency")
+    .addEventListener("click", async e => {
+      e.preventDefault();
+      lazy.PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     });
-    const a = document.createElement("a");
-    a.setAttribute("download", `places-${Date.now()}.json`);
-    a.setAttribute("href", window.URL.createObjectURL(blob));
-    a.click();
-    a.remove();
+
+  document.getElementById("tableViewer").addEventListener("click", e => {
+    if (gCurrentHandler.sortable && e.target.dataset.columnTitle) {
+      gCurrentHandler.changeSort(e.target.dataset.columnTitle);
+      gCurrentHandler.updateDisplay();
+    }
   });
 }
 
-checkPrefs();
-// Set the initial handler here.
-let gCurrentHandler = metadataHandler;
-gCurrentHandler.start().catch(console.error);
-setupListeners();
+let gCurrentHandler;
+if (
+  Services.prefs.getBoolPref(
+    "browser.places.interactions.viewer.enabled",
+    false
+  )
+) {
+  document.body.classList.remove("hidden");
+
+  checkPrefs();
+  // Set the initial handler here.
+  gCurrentHandler = metadataHandler;
+  gCurrentHandler.start().catch(console.error);
+  setupListeners();
+}

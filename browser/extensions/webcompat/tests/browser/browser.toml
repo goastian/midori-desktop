@@ -8,10 +8,33 @@ support-files = [
   "shims_test.html",
   "shims_test_2.html",
   "shims_test_3.html",
+  "smartblock_embed_test.html",
+  "embed_test.js",
 ]
 
 ["browser_aboutcompat.js"]
+skip-if = ["debug"] # disabled until bug 1961939 is fixed.
+
+["browser_custom_functions.js"]
+support-files = ["download_server.sjs"]
+
+["browser_intervention_gating.js"]
+skip-if = ["debug"] # disabled until bug 1961939 is fixed.
+
+["browser_interventions.js"]
+
+["browser_pref_check.js"]
 
 ["browser_shims.js"]
 https_first_disabled = true
 skip-if = ["verify"]
+
+["browser_smartblockembeds.js"]
+
+["browser_smartblockembeds_mutation.js"]
+skip-if = [
+  "os == 'linux' && asan", # Bug 1858919
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug", # Bug 1858919
+]
+
+["browser_ua_helpers.js"]

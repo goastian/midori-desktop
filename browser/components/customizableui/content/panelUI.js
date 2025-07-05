@@ -4,8 +4,11 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
+  MenuMessage: "resource:///modules/asrouter/MenuMessage.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
+  updateZoomUI: "resource:///modules/ZoomUI.sys.mjs",
 });
 
 /**
@@ -17,6 +20,12 @@ const PanelUI = {
   get kEvents() {
     return ["popupshowing", "popupshown", "popuphiding", "popuphidden"];
   },
+
+  /// Notification events used for overwriting notification actions
+  get kNotificationEvents() {
+    return ["buttoncommand", "secondarybuttoncommand", "learnmoreclick"];
+  },
+
   /**
    * Used for lazily getting and memoizing elements from the document. Lazy
    * getters are set in init, and memoizing happens after the first retrieval.
@@ -128,16 +137,16 @@ const PanelUI = {
       this.panel.addEventListener(event, this);
     }
 
+    let helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
+    helpView.addEventListener("ViewShowing", this._onHelpViewShow);
+    helpView.addEventListener("command", this._onHelpCommand);
     this._onLibraryCommand = this._onLibraryCommand.bind(this);
-    PanelMultiView.getViewNode(document, "PanelUI-helpView").addEventListener(
-      "ViewShowing",
-      this._onHelpViewShow
-    );
     PanelMultiView.getViewNode(
       document,
       "appMenu-libraryView"
     ).addEventListener("command", this._onLibraryCommand);
     this.mainView.addEventListener("command", this);
+    this.mainView.addEventListener("ViewShowing", this._onMainViewShow);
     this._eventListenersAdded = true;
   },
 
@@ -145,10 +154,9 @@ const PanelUI = {
     for (let event of this.kEvents) {
       this.panel.removeEventListener(event, this);
     }
-    PanelMultiView.getViewNode(
-      document,
-      "PanelUI-helpView"
-    ).removeEventListener("ViewShowing", this._onHelpViewShow);
+    let helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
+    helpView.removeEventListener("ViewShowing", this._onHelpViewShow);
+    helpView.removeEventListener("command", this._onHelpCommand);
     PanelMultiView.getViewNode(
       document,
       "appMenu-libraryView"
@@ -162,6 +170,9 @@ const PanelUI = {
 
     if (this._notificationPanel) {
       for (let event of this.kEvents) {
+        this.notificationPanel.removeEventListener(event, this);
+      }
+      for (let event of this.kNotificationEvents) {
         this.notificationPanel.removeEventListener(event, this);
       }
     }
@@ -216,6 +227,14 @@ const PanelUI = {
         document.documentElement.hasAttribute("customizing")
       ) {
         return;
+      }
+
+      if (ASRouter.initialized) {
+        await ASRouter.sendTriggerMessage({
+          browser: gBrowser.selectedBrowser,
+          id: "menuOpened",
+          context: { source: MenuMessage.SOURCES.APP_MENU },
+        });
       }
 
       let domEvent = null;
@@ -286,6 +305,7 @@ const PanelUI = {
         this._updatePanelButton(aEvent.target);
         if (aEvent.type == "popuphidden") {
           CustomizableUI.removePanelCloseListeners(this.panel);
+          MenuMessage.hideAppMenuMessage(gBrowser.selectedBrowser);
         }
         break;
       case "mousedown":
@@ -313,6 +333,16 @@ const PanelUI = {
       case "command":
         this.onCommand(aEvent);
         break;
+      case "buttoncommand":
+        this._onNotificationButtonEvent(aEvent, "buttoncommand");
+        break;
+      case "secondarybuttoncommand":
+        this._onNotificationButtonEvent(aEvent, "secondarybuttoncommand");
+        break;
+      case "learnmoreclick":
+        // Don't fall back to PopupNotifications.
+        aEvent.preventDefault();
+        break;
     }
   },
 
@@ -330,9 +360,6 @@ const PanelUI = {
       case "appMenu-fxa-label2":
         gSync.toggleAccountPanel(target, aEvent);
         break;
-      case "appMenu-profiles-button":
-        gProfiles.updateView(target);
-        break;
       case "appMenu-bookmarks-button":
         BookmarkingUI.showSubView(target);
         break;
@@ -340,7 +367,7 @@ const PanelUI = {
         this.showSubView("PanelUI-history", target);
         break;
       case "appMenu-passwords-button":
-        LoginHelper.openPasswordManager(window, { entryPoint: "mainmenu" });
+        LoginHelper.openPasswordManager(window, { entryPoint: "Mainmenu" });
         break;
       case "appMenu-fullscreen-button2":
         // Note that we're custom-handling the hiding of the panel to make
@@ -621,21 +648,30 @@ const PanelUI = {
     }
   },
 
+  _onMainViewShow(event) {
+    let panelview = event.target;
+    let messageId = panelview.getAttribute(
+      MenuMessage.SHOWING_FXA_MENU_MESSAGE_ATTR
+    );
+    if (messageId) {
+      MenuMessage.recordMenuMessageTelemetry(
+        "IMPRESSION",
+        MenuMessage.SOURCES.APP_MENU,
+        messageId
+      );
+      let message = ASRouter.getMessageById(messageId);
+      ASRouter.addImpression(message);
+    }
+    updateZoomUI(gBrowser.selectedBrowser);
+  },
+
   _onHelpViewShow() {
     // Call global menu setup function
     buildHelpMenu();
 
     let helpMenu = document.getElementById("menu_HelpPopup");
     let items = this.getElementsByTagName("vbox")[0];
-    let attrs = [
-      "command",
-      "oncommand",
-      "onclick",
-      "key",
-      "disabled",
-      "accesskey",
-      "label",
-    ];
+    let attrs = ["command", "onclick", "key", "disabled", "accesskey", "label"];
 
     // Remove all buttons from the view
     while (items.firstChild) {
@@ -689,6 +725,47 @@ const PanelUI = {
     }
 
     items.appendChild(fragment);
+  },
+
+  _onHelpCommand(aEvent) {
+    switch (aEvent.target.id) {
+      case "appMenu_menu_openHelp":
+        openHelpLink("firefox-help");
+        break;
+      case "appMenu_menu_layout_debugger":
+        toOpenWindowByType(
+          "mozapp:layoutdebug",
+          "chrome://layoutdebug/content/layoutdebug.xhtml"
+        );
+        break;
+      case "appMenu_feedbackPage":
+        openFeedbackPage();
+        break;
+      case "appMenu_helpSafeMode":
+        safeModeRestart();
+        break;
+      case "appMenu_troubleShooting":
+        openTroubleshootingPage();
+        break;
+      case "appMenu_menu_HelpPopup_reportPhishingtoolmenu":
+        openUILink(gSafeBrowsing.getReportURL("Phish"), aEvent, {
+          triggeringPrincipal:
+            Services.scriptSecurityManager.createNullPrincipal({}),
+        });
+        break;
+      case "appMenu_menu_HelpPopup_reportPhishingErrortoolmenu":
+        gSafeBrowsing.reportFalseDeceptiveSite();
+        break;
+      case "appMenu_helpSwitchDevice":
+        openSwitchingDevicesPage();
+        break;
+      case "appMenu_aboutName":
+        openAboutDialog();
+        break;
+      case "appMenu_helpPolicySupport":
+        openTrustedLinkIn(Services.policies.getSupportMenu().URL.href, "tab");
+        break;
+    }
   },
 
   _onLibraryCommand(aEvent) {
@@ -909,6 +986,9 @@ const PanelUI = {
       for (let event of this.kEvents) {
         this._notificationPanel.addEventListener(event, this);
       }
+      for (let event of this.kNotificationEvents) {
+        this._notificationPanel.addEventListener(event, this);
+      }
     }
     return this._notificationPanel;
   },
@@ -947,14 +1027,6 @@ const PanelUI = {
     let popupnotification = document.getElementById(popupnotificationID);
 
     popupnotification.setAttribute("id", popupnotificationID);
-    popupnotification.setAttribute(
-      "buttoncommand",
-      "PanelUI._onNotificationButtonEvent(event, 'buttoncommand');"
-    );
-    popupnotification.setAttribute(
-      "secondarybuttoncommand",
-      "PanelUI._onNotificationButtonEvent(event, 'secondarybuttoncommand');"
-    );
 
     if (notification.options.message) {
       let desc = this._formatDescriptionMessage(notification);
@@ -1003,8 +1075,18 @@ const PanelUI = {
       this._panelBannerItem = this.mainView.querySelector(".panel-banner-item");
     }
 
-    let l10nId = "appmenuitem-banner-" + notification.id;
-    document.l10n.setAttributes(this._panelBannerItem, l10nId);
+    const messageIDs = {
+      "update-downloading": "appmenuitem-banner-update-downloading",
+      "update-available": "appmenuitem-banner-update-available",
+      "update-manual": "appmenuitem-banner-update-manual",
+      "update-unsupported": "appmenuitem-banner-update-unsupported",
+      "update-restart": "appmenuitem-banner-update-restart",
+    };
+
+    document.l10n.setAttributes(
+      this._panelBannerItem,
+      messageIDs[notification.id]
+    );
 
     this._panelBannerItem.setAttribute("notificationid", notification.id);
     this._panelBannerItem.hidden = false;
@@ -1023,6 +1105,8 @@ const PanelUI = {
   },
 
   _onNotificationButtonEvent(event, type) {
+    event.preventDefault();
+
     let notificationEl = getNotificationFromElement(event.originalTarget);
 
     if (!notificationEl) {

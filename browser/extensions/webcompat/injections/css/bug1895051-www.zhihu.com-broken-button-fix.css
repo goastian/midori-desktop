@@ -11,6 +11,6 @@
  * overlap with text differently on Firefox and Safari than in Chromium,
  * making them unclickable. This fixes the issue.
  */
- .css-376mun {
-    display: block;
-  }
+.css-376mun {
+  display: block;
+}

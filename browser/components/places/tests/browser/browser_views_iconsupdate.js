@@ -8,7 +8,7 @@
  */
 
 add_task(async function () {
-  const PAGE_URI = NetUtil.newURI("http://places.test/");
+  const PAGE_URI = NetUtil.newURI("https://places.test/");
   const ICON_URI = NetUtil.newURI(
     "http://mochi.test:8888/browser/browser/components/places/tests/browser/favicon-normal16.png"
   );
@@ -41,7 +41,8 @@ add_task(async function () {
     parentGuid: PlacesUtils.bookmarks.toolbarGuid,
   });
   registerCleanupFunction(async function () {
-    await PlacesUtils.bookmarks.remove(bm);
+    await PlacesUtils.bookmarks.eraseEverything();
+    await PlacesUtils.history.clear();
   });
 
   // The icon is read asynchronously from the network, we don't have an easy way
@@ -58,17 +59,10 @@ add_task(async function () {
   info("Toolbar: " + toolbarShot1);
   info("Sidebar: " + sidebarShot1);
 
-  let iconURI = await new Promise(resolve => {
-    PlacesUtils.favicons.setAndFetchFaviconForPage(
-      PAGE_URI,
-      ICON_URI,
-      true,
-      PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-      resolve,
-      Services.scriptSecurityManager.getSystemPrincipal()
-    );
-  });
-  Assert.ok(iconURI.equals(ICON_URI), "Succesfully set the icon");
+  let dataURL = await PlacesTestUtils.getFaviconDataURLFromNetwork(ICON_URI);
+  await PlacesTestUtils.setFaviconForPage(PAGE_URI, ICON_URI, dataURL);
+  let dataURLInDB = await PlacesTestUtils.getFaviconDataURLFromDB(ICON_URI);
+  Assert.ok(dataURLInDB.equals(dataURL), "Succesfully set the icon");
 
   // The icon is read asynchronously from the network, we don't have an easy way
   // to wait for that, thus we must poll.

@@ -74,7 +74,7 @@ this.formautofill = class extends ExtensionAPI {
 
     if (!addressAutofillAvailable && !creditCardAutofillAvailable) {
       Services.prefs.clearUserPref("dom.forms.autocomplete.formautofill");
-      Services.telemetry.scalarSet("formautofill.availability", false);
+      Glean.formautofill.availability.set(false);
       return;
     }
 
@@ -82,7 +82,7 @@ this.formautofill = class extends ExtensionAPI {
     // When it's true, "element.autocomplete" will return tokens we currently
     // support -- otherwise it'll return an empty string.
     Services.prefs.setBoolPref("dom.forms.autocomplete.formautofill", true);
-    Services.telemetry.scalarSet("formautofill.availability", true);
+    Glean.formautofill.availability.set(true);
 
     // These "*.available" prefs determines whether the "addresses"/"creditcards" sync engine is
     // available (ie, whether it is shown in any UI etc) - it *does not* determine
@@ -122,37 +122,14 @@ this.formautofill = class extends ExtensionAPI {
       this.extension.rootURI
     );
     this.chromeHandle = aomStartup.registerChrome(manifestURI, [
-      ["content", "formautofill", "chrome/content/"],
+      ["content", "formautofill", "content/"],
     ]);
 
-    // Until we move to fluent (bug 1446164), we're stuck with
-    // chrome.manifest for handling localization since its what the
-    // build system can handle for localized repacks.
-    if (this.extension.rootURI instanceof Ci.nsIJARURI) {
-      this.autofillManifest = this.extension.rootURI.JARFile.QueryInterface(
-        Ci.nsIFileURL
-      ).file;
-    } else if (this.extension.rootURI instanceof Ci.nsIFileURL) {
-      this.autofillManifest = this.extension.rootURI.file;
-    }
-
-    if (this.autofillManifest) {
-      Components.manager.addBootstrappedManifestLocation(this.autofillManifest);
-    } else {
-      console.error(
-        "Cannot find formautofill chrome.manifest for registring translated strings"
-      );
-    }
-    let addressAutofillAvailable = FormAutofill.isAutofillAddressesAvailable;
-    let creditCardAutofillAvailable =
-      FormAutofill.isAutofillCreditCardsAvailable;
     this.adjustAndCheckFormAutofillPrefs(
-      addressAutofillAvailable,
-      creditCardAutofillAvailable
+      FormAutofill.isAutofillAddressesAvailable,
+      FormAutofill.isAutofillCreditCardsAvailable
     );
-    if (!creditCardAutofillAvailable && !addressAutofillAvailable) {
-      return;
-    }
+
     // Listen for the autocomplete popup message
     // or the form submitted message (which may trigger a
     // doorhanger) to lazily append our stylesheets related
@@ -171,6 +148,7 @@ this.formautofill = class extends ExtensionAPI {
         esModuleURI: "resource://autofill/FormAutofillChild.sys.mjs",
         events: {
           focusin: {},
+          "form-changed": { createActor: false },
           "form-submission-detected": { createActor: false },
         },
       },
@@ -187,12 +165,6 @@ this.formautofill = class extends ExtensionAPI {
 
     this.chromeHandle.destruct();
     this.chromeHandle = null;
-
-    if (this.autofillManifest) {
-      Components.manager.removeBootstrappedManifestLocation(
-        this.autofillManifest
-      );
-    }
 
     ChromeUtils.unregisterWindowActor("FormAutofill");
 

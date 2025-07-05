@@ -368,7 +368,7 @@ export var TestRunner = {
 
       this.mochitestScope.info("called " + config.name);
       // Add a default timeout of 700ms to avoid conflicts when configurations
-      // try to apply at the same time. e.g WindowSize and TabsInTitlebar
+      // try to apply at the same time. e.g WindowSize and CustomTitlebar
       return Promise.race([applyPromise, timeoutPromise]).then(result => {
         return new Promise(resolve => {
           setTimeout(() => resolve(result), 700);
@@ -490,6 +490,7 @@ export var TestRunner = {
   },
 
   async _cropImage(window, srcPath, bounds, rects, targetPath) {
+    // eslint-disable-next-line no-shadow
     const { document, Image } = window;
     const promise = new Promise((resolve, reject) => {
       const img = new Image();

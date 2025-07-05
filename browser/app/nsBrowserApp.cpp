@@ -5,6 +5,7 @@
 
 #include "nsXULAppAPI.h"
 #include "mozilla/XREAppData.h"
+#include "XREChildData.h"
 #include "XREShellData.h"
 #include "application.ini.h"
 #include "mozilla/Bootstrap.h"
@@ -38,9 +39,12 @@
 #  include "mozilla/WindowsProcessMitigations.h"
 
 #  define XRE_WANT_ENVIRON
+#  include "nsWindowsWMain.cpp"
+
 #  define strcasecmp _stricmp
 #  ifdef MOZ_SANDBOX
 #    include "mozilla/sandboxing/SandboxInitialization.h"
+#    include "mozilla/sandboxing/sandboxLogging.h"
 #  endif
 #endif
 #include "BinaryPath.h"
@@ -88,8 +92,7 @@ __attribute__((constructor)) static void SSE2Check() {
   // Using write() in order to avoid jemalloc-based buffering. Ignoring return
   // values, since there isn't much we could do on failure and there is no
   // point in trying to recover from errors.
-  MOZ_UNUSED(
-      write(STDERR_FILENO, sSSE2Message, MOZ_ARRAY_LENGTH(sSSE2Message) - 1));
+  MOZ_UNUSED(write(STDERR_FILENO, sSSE2Message, std::size(sSSE2Message) - 1));
   // _exit() instead of exit() to avoid running the usual "at exit" code.
   _exit(255);
 }
@@ -97,7 +100,6 @@ __attribute__((constructor)) static void SSE2Check() {
 
 #if !defined(MOZ_WIDGET_COCOA) && !defined(MOZ_WIDGET_ANDROID)
 #  define MOZ_BROWSER_CAN_BE_CONTENTPROC
-#  include "../../ipc/contentproc/plugin-container.cpp"
 #endif
 
 using namespace mozilla;
@@ -156,7 +158,7 @@ static bool IsArg(const char* arg, const char* s) {
   return false;
 }
 
-Bootstrap::UniquePtr gBootstrap;
+MOZ_RUNINIT Bootstrap::UniquePtr gBootstrap;
 
 static int do_main(int argc, char* argv[], char* envp[]) {
   // Allow firefox.exe to launch XULRunner apps via -app <application.ini>
@@ -264,7 +266,7 @@ uint32_t gBlocklistInitFlags = eDllBlocklistInitFlagDefault;
 #if defined(XP_UNIX)
 static void ReserveDefaultFileDescriptors() {
   // Reserve the lower positions of the file descriptors to make sure
-  // we don't reuse stdin/stdout/stderr in case they we closed
+  // we don't reuse stdin/stdout/stderr in case they were closed
   // before launch.
   // Otherwise code explicitly writing to fd 1 or 2 might accidentally
   // write to something else, like in bug 1820896 where FD 1 is
@@ -280,30 +282,38 @@ int main(int argc, char* argv[], char* envp[]) {
 #if defined(XP_UNIX)
   ReserveDefaultFileDescriptors();
 #endif
-#if defined(MOZ_ENABLE_FORKSERVER)
-  if (strcmp(argv[argc - 1], "forkserver") == 0) {
-    nsresult rv = InitXPCOMGlue(LibLoadingStrategy::NoReadAhead);
-    if (NS_FAILED(rv)) {
-      return 255;
-    }
 
-    // Run a fork server in this process, single thread.  When it
-    // returns, it means the fork server have been stopped or a new
-    // content process is created.
-    //
-    // For the later case, XRE_ForkServer() will return false, running
-    // in a content process just forked from the fork server process.
-    // argc & argv will be updated with the values passing from the
-    // chrome process.  With the new values, this function
-    // continues the reset of the code acting as a content process.
-    if (gBootstrap->XRE_ForkServer(&argc, &argv)) {
-      // Return from the fork server in the fork server process.
-      // Stop the fork server.
-      gBootstrap->NS_LogTerm();
-      return 0;
+#ifdef MOZ_BROWSER_CAN_BE_CONTENTPROC
+  if (argc > 1 && IsArg(argv[1], "contentproc")) {
+    // Set the process type and gecko child id.
+    SetGeckoProcessType(argv[--argc]);
+    SetGeckoChildID(argv[--argc]);
+
+#  if defined(MOZ_ENABLE_FORKSERVER)
+    if (GetGeckoProcessType() == GeckoProcessType_ForkServer) {
+      nsresult rv = InitXPCOMGlue(LibLoadingStrategy::NoReadAhead);
+      if (NS_FAILED(rv)) {
+        return 255;
+      }
+
+      // Run a fork server in this process, single thread. When it returns, it
+      // means the fork server have been stopped or a new child process is
+      // created.
+      //
+      // For the latter case, XRE_ForkServer() will return false, running in a
+      // child process just forked from the fork server process. argc & argv
+      // will be updated with the values passing from the chrome process, as
+      // will GeckoProcessType and GeckoChildID. With the new values, this
+      // function continues the reset of the code acting as a child process.
+      if (gBootstrap->XRE_ForkServer(&argc, &argv)) {
+        // Return from the fork server in the fork server process.
+        // Stop the fork server.
+        // InitXPCOMGlue calls NS_LogInit, so we need to balance it here.
+        gBootstrap->NS_LogTerm();
+        return 0;
+      }
     }
-    // In a content process forked from the fork server.
-    // Start acting as a content process.
+#  endif
   }
 #endif
 
@@ -312,24 +322,19 @@ int main(int argc, char* argv[], char* envp[]) {
   AUTO_BASE_PROFILER_INIT;
   AUTO_BASE_PROFILER_LABEL("nsBrowserApp main", OTHER);
 
+  // Register an external module to report on otherwise uncatchable exceptions.
+  // Note that in child processes this must be called after Gecko process type
+  // has been set.
+  CrashReporter::RegisterRuntimeExceptionModule();
+
   // Make sure we unregister the runtime exception module before returning.
-  // We do this here to cover both registers for child and main processes.
   auto unregisterRuntimeExceptionModule =
       MakeScopeExit([] { CrashReporter::UnregisterRuntimeExceptionModule(); });
 
 #ifdef MOZ_BROWSER_CAN_BE_CONTENTPROC
   // We are launching as a content process, delegate to the appropriate
   // main
-  if (argc > 1 && IsArg(argv[1], "contentproc")) {
-    // Set the process type. We don't remove the arg here as that will be done
-    // later in common code.
-    SetGeckoProcessType(argv[argc - 1]);
-
-    // Register an external module to report on otherwise uncatchable
-    // exceptions. Note that in child processes this must be called after Gecko
-    // process type has been set.
-    CrashReporter::RegisterRuntimeExceptionModule();
-
+  if (GetGeckoProcessType() != GeckoProcessType_Default) {
 #  if defined(XP_WIN) && defined(MOZ_SANDBOX)
     // We need to set whether our process is supposed to have win32k locked down
     // from the command line setting before DllBlocklist_Initialize,
@@ -375,7 +380,21 @@ int main(int argc, char* argv[], char* envp[]) {
       return 255;
     }
 
-    int result = content_process_main(gBootstrap.get(), argc, argv);
+    XREChildData childData;
+
+#  if defined(XP_WIN) && defined(MOZ_SANDBOX)
+    if (IsSandboxedProcess()) {
+      childData.sandboxTargetServices =
+          mozilla::sandboxing::GetInitializedTargetServices();
+      if (!childData.sandboxTargetServices) {
+        return 1;
+      }
+
+      childData.ProvideLogFunction = mozilla::sandboxing::ProvideLogFunction;
+    }
+#  endif
+
+    rv = gBootstrap->XRE_InitChildProcess(argc, argv, &childData);
 
 #  if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
     DllBlocklist_Shutdown();
@@ -384,12 +403,9 @@ int main(int argc, char* argv[], char* envp[]) {
     // InitXPCOMGlue calls NS_LogInit, so we need to balance it here.
     gBootstrap->NS_LogTerm();
 
-    return result;
+    return NS_FAILED(rv) ? 1 : 0;
   }
 #endif
-
-  // Register an external module to report on otherwise uncatchable exceptions.
-  CrashReporter::RegisterRuntimeExceptionModule();
 
 #ifdef HAS_DLL_BLOCKLIST
   DllBlocklist_Initialize(gBlocklistInitFlags);

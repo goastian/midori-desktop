@@ -71,7 +71,7 @@ add_task(async function test() {
         makeSearchResult(context, {
           engineName: "TestEngine",
           engineIconUri: UrlbarUtils.ICON.SEARCH_GLASS,
-          uri: "en.example.",
+          searchUrlDomainWithoutSuffix: "en.example.",
           providesSearchMode: true,
           query: "",
           providerName: "TabToSearch",
@@ -114,7 +114,7 @@ add_task(async function test() {
         makeSearchResult(context, {
           engineName: engine2.name,
           engineIconUri: UrlbarUtils.ICON.SEARCH_GLASS,
-          uri: "www.it.mochi.",
+          searchUrlDomainWithoutSuffix: "www.it.mochi.",
           providesSearchMode: true,
           query: "",
           providerName: "TabToSearch",
@@ -123,6 +123,50 @@ add_task(async function test() {
         makeBookmarkResult(context, {
           uri: url2,
           title: "bookmark",
+        }),
+      ],
+    });
+  }
+
+  info("Test only base domain gets autofilled");
+  let url3 = "https://search.foo.com/";
+  await SearchTestUtils.installSearchExtension(
+    {
+      name: "TestEngine3",
+      search_url: url3,
+    },
+    { setAsDefault: true }
+  );
+
+  // Make sure the base domain will be autofilled.
+  await PlacesUtils.bookmarks.insert({
+    url: "https://foo.com/",
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    title: "bookmark",
+  });
+
+  for (let searchStr of ["fo", "foo.c"]) {
+    info("Searching for " + searchStr);
+    let context = createContext(searchStr, { isPrivate: false });
+    await check_results({
+      context,
+      autofilled: "foo.com/",
+      completed: "https://foo.com/",
+      matches: [
+        makeVisitResult(context, {
+          uri: "https://foo.com/",
+          title: "bookmark",
+          heuristic: true,
+          providerName: "Autofill",
+        }),
+        makeSearchResult(context, {
+          engineName: "TestEngine3",
+          engineIconUri: UrlbarUtils.ICON.SEARCH_GLASS,
+          searchUrlDomainWithoutSuffix: "search.foo.",
+          providesSearchMode: true,
+          query: "",
+          providerName: "TabToSearch",
+          satisfiesAutofillThreshold: true,
         }),
       ],
     });

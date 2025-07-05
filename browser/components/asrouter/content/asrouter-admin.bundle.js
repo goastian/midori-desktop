@@ -17,11 +17,9 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   ASRouterUtils: () => (/* binding */ ASRouterUtils)
 /* harmony export */ });
 /* harmony import */ var _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(2);
-/* harmony import */ var _newtab_common_Actions_mjs__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(3);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 
 
 
@@ -66,6 +64,26 @@ const ASRouterUtils = {
       data: { id },
     });
   },
+  unblockAll() {
+    return ASRouterUtils.sendMessage({
+      type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.UNBLOCK_ALL,
+    });
+  },
+  resetGroupImpressions() {
+    return ASRouterUtils.sendMessage({
+      type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.RESET_GROUPS_STATE,
+    });
+  },
+  resetMessageImpressions() {
+    return ASRouterUtils.sendMessage({
+      type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.RESET_MESSAGE_STATE,
+    });
+  },
+  resetScreenImpressions() {
+    return ASRouterUtils.sendMessage({
+      type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.RESET_SCREEN_IMPRESSIONS,
+    });
+  },
   blockBundle(bundle) {
     return ASRouterUtils.sendMessage({
       type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.BLOCK_BUNDLE,
@@ -90,8 +108,17 @@ const ASRouterUtils = {
       data: { [key]: value },
     });
   },
+  openPBWindow(content) {
+    ASRouterUtils.sendMessage({
+      type: "FORCE_PRIVATE_BROWSING_WINDOW",
+      data: { message: { content } },
+    });
+  },
   sendTelemetry(ping) {
-    return ASRouterUtils.sendMessage(_newtab_common_Actions_mjs__WEBPACK_IMPORTED_MODULE_1__.actionCreators.ASRouterUserEvent(ping));
+    return ASRouterUtils.sendMessage({
+      type: _modules_ActorConstants_mjs__WEBPACK_IMPORTED_MODULE_0__.MESSAGE_TYPE_HASH.AS_ROUTER_TELEMETRY_USER_EVENT,
+      data: ping,
+    });
   },
   getPreviewEndpoint() {
     return null;
@@ -126,6 +153,8 @@ const MESSAGE_TYPE_LIST = [
   "INFOBAR_TELEMETRY",
   "SPOTLIGHT_TELEMETRY",
   "TOAST_NOTIFICATION_TELEMETRY",
+  "MENU_MESSAGE_TELEMETRY",
+  "NEWTAB_MESSAGE_TELEMETRY",
   "AS_ROUTER_TELEMETRY_USER_EVENT",
 
   // Admin types
@@ -158,522 +187,25 @@ const MESSAGE_TYPE_HASH = MESSAGE_TYPE_LIST.reduce((hash, value) => {
 
 /***/ }),
 /* 3 */
-/***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
-
-__webpack_require__.r(__webpack_exports__);
-/* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   BACKGROUND_PROCESS: () => (/* binding */ BACKGROUND_PROCESS),
-/* harmony export */   CONTENT_MESSAGE_TYPE: () => (/* binding */ CONTENT_MESSAGE_TYPE),
-/* harmony export */   MAIN_MESSAGE_TYPE: () => (/* binding */ MAIN_MESSAGE_TYPE),
-/* harmony export */   PRELOAD_MESSAGE_TYPE: () => (/* binding */ PRELOAD_MESSAGE_TYPE),
-/* harmony export */   UI_CODE: () => (/* binding */ UI_CODE),
-/* harmony export */   actionCreators: () => (/* binding */ actionCreators),
-/* harmony export */   actionTypes: () => (/* binding */ actionTypes),
-/* harmony export */   actionUtils: () => (/* binding */ actionUtils),
-/* harmony export */   globalImportContext: () => (/* binding */ globalImportContext)
-/* harmony export */ });
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-// This file is accessed from both content and system scopes.
-
-const MAIN_MESSAGE_TYPE = "ActivityStream:Main";
-const CONTENT_MESSAGE_TYPE = "ActivityStream:Content";
-const PRELOAD_MESSAGE_TYPE = "ActivityStream:PreloadedBrowser";
-const UI_CODE = 1;
-const BACKGROUND_PROCESS = 2;
-
-/**
- * globalImportContext - Are we in UI code (i.e. react, a dom) or some kind of background process?
- *                       Use this in action creators if you need different logic
- *                       for ui/background processes.
- */
-const globalImportContext =
-  typeof Window === "undefined" ? BACKGROUND_PROCESS : UI_CODE;
-
-// Create an object that avoids accidental differing key/value pairs:
-// {
-//   INIT: "INIT",
-//   UNINIT: "UNINIT"
-// }
-const actionTypes = {};
-
-for (const type of [
-  "ABOUT_SPONSORED_TOP_SITES",
-  "ADDONS_INFO_REQUEST",
-  "ADDONS_INFO_RESPONSE",
-  "ARCHIVE_FROM_POCKET",
-  "AS_ROUTER_INITIALIZED",
-  "AS_ROUTER_PREF_CHANGED",
-  "AS_ROUTER_TARGETING_UPDATE",
-  "AS_ROUTER_TELEMETRY_USER_EVENT",
-  "BLOCK_URL",
-  "BOOKMARK_URL",
-  "CLEAR_PREF",
-  "COPY_DOWNLOAD_LINK",
-  "DELETE_BOOKMARK_BY_ID",
-  "DELETE_FROM_POCKET",
-  "DELETE_HISTORY_URL",
-  "DIALOG_CANCEL",
-  "DIALOG_OPEN",
-  "DISABLE_SEARCH",
-  "DISCOVERY_STREAM_COLLECTION_DISMISSIBLE_TOGGLE",
-  "DISCOVERY_STREAM_CONFIG_CHANGE",
-  "DISCOVERY_STREAM_CONFIG_RESET",
-  "DISCOVERY_STREAM_CONFIG_RESET_DEFAULTS",
-  "DISCOVERY_STREAM_CONFIG_SETUP",
-  "DISCOVERY_STREAM_CONFIG_SET_VALUE",
-  "DISCOVERY_STREAM_DEV_EXPIRE_CACHE",
-  "DISCOVERY_STREAM_DEV_IDLE_DAILY",
-  "DISCOVERY_STREAM_DEV_SYNC_RS",
-  "DISCOVERY_STREAM_DEV_SYSTEM_TICK",
-  "DISCOVERY_STREAM_EXPERIMENT_DATA",
-  "DISCOVERY_STREAM_FEEDS_UPDATE",
-  "DISCOVERY_STREAM_FEED_UPDATE",
-  "DISCOVERY_STREAM_IMPRESSION_STATS",
-  "DISCOVERY_STREAM_LAYOUT_RESET",
-  "DISCOVERY_STREAM_LAYOUT_UPDATE",
-  "DISCOVERY_STREAM_LINK_BLOCKED",
-  "DISCOVERY_STREAM_LOADED_CONTENT",
-  "DISCOVERY_STREAM_PERSONALIZATION_INIT",
-  "DISCOVERY_STREAM_PERSONALIZATION_LAST_UPDATED",
-  "DISCOVERY_STREAM_PERSONALIZATION_OVERRIDE",
-  "DISCOVERY_STREAM_PERSONALIZATION_RESET",
-  "DISCOVERY_STREAM_PERSONALIZATION_TOGGLE",
-  "DISCOVERY_STREAM_PERSONALIZATION_UPDATED",
-  "DISCOVERY_STREAM_POCKET_STATE_INIT",
-  "DISCOVERY_STREAM_POCKET_STATE_SET",
-  "DISCOVERY_STREAM_PREFS_SETUP",
-  "DISCOVERY_STREAM_RECENT_SAVES",
-  "DISCOVERY_STREAM_RETRY_FEED",
-  "DISCOVERY_STREAM_SPOCS_CAPS",
-  "DISCOVERY_STREAM_SPOCS_ENDPOINT",
-  "DISCOVERY_STREAM_SPOCS_PLACEMENTS",
-  "DISCOVERY_STREAM_SPOCS_UPDATE",
-  "DISCOVERY_STREAM_SPOC_BLOCKED",
-  "DISCOVERY_STREAM_SPOC_IMPRESSION",
-  "DISCOVERY_STREAM_USER_EVENT",
-  "DOWNLOAD_CHANGED",
-  "FAKE_FOCUS_SEARCH",
-  "FILL_SEARCH_TERM",
-  "HANDOFF_SEARCH_TO_AWESOMEBAR",
-  "HIDE_PERSONALIZE",
-  "HIDE_PRIVACY_INFO",
-  "INIT",
-  "NEW_TAB_INIT",
-  "NEW_TAB_INITIAL_STATE",
-  "NEW_TAB_LOAD",
-  "NEW_TAB_REHYDRATED",
-  "NEW_TAB_STATE_REQUEST",
-  "NEW_TAB_UNLOAD",
-  "OPEN_DOWNLOAD_FILE",
-  "OPEN_LINK",
-  "OPEN_NEW_WINDOW",
-  "OPEN_PRIVATE_WINDOW",
-  "OPEN_WEBEXT_SETTINGS",
-  "PARTNER_LINK_ATTRIBUTION",
-  "PLACES_BOOKMARKS_REMOVED",
-  "PLACES_BOOKMARK_ADDED",
-  "PLACES_HISTORY_CLEARED",
-  "PLACES_LINKS_CHANGED",
-  "PLACES_LINKS_DELETED",
-  "PLACES_LINK_BLOCKED",
-  "PLACES_SAVED_TO_POCKET",
-  "POCKET_CTA",
-  "POCKET_LINK_DELETED_OR_ARCHIVED",
-  "POCKET_LOGGED_IN",
-  "POCKET_WAITING_FOR_SPOC",
-  "PREFS_INITIAL_VALUES",
-  "PREF_CHANGED",
-  "PREVIEW_REQUEST",
-  "PREVIEW_REQUEST_CANCEL",
-  "PREVIEW_RESPONSE",
-  "REMOVE_DOWNLOAD_FILE",
-  "RICH_ICON_MISSING",
-  "SAVE_SESSION_PERF_DATA",
-  "SAVE_TO_POCKET",
-  "SCREENSHOT_UPDATED",
-  "SECTION_DEREGISTER",
-  "SECTION_DISABLE",
-  "SECTION_ENABLE",
-  "SECTION_MOVE",
-  "SECTION_OPTIONS_CHANGED",
-  "SECTION_REGISTER",
-  "SECTION_UPDATE",
-  "SECTION_UPDATE_CARD",
-  "SETTINGS_CLOSE",
-  "SETTINGS_OPEN",
-  "SET_PREF",
-  "SHOW_DOWNLOAD_FILE",
-  "SHOW_FIREFOX_ACCOUNTS",
-  "SHOW_PERSONALIZE",
-  "SHOW_PRIVACY_INFO",
-  "SHOW_SEARCH",
-  "SKIPPED_SIGNIN",
-  "SOV_UPDATED",
-  "SUBMIT_EMAIL",
-  "SUBMIT_SIGNIN",
-  "SYSTEM_TICK",
-  "TELEMETRY_IMPRESSION_STATS",
-  "TELEMETRY_USER_EVENT",
-  "TOP_SITES_CANCEL_EDIT",
-  "TOP_SITES_CLOSE_SEARCH_SHORTCUTS_MODAL",
-  "TOP_SITES_EDIT",
-  "TOP_SITES_INSERT",
-  "TOP_SITES_OPEN_SEARCH_SHORTCUTS_MODAL",
-  "TOP_SITES_ORGANIC_IMPRESSION_STATS",
-  "TOP_SITES_PIN",
-  "TOP_SITES_PREFS_UPDATED",
-  "TOP_SITES_SPONSORED_IMPRESSION_STATS",
-  "TOP_SITES_UNPIN",
-  "TOP_SITES_UPDATED",
-  "TOTAL_BOOKMARKS_REQUEST",
-  "TOTAL_BOOKMARKS_RESPONSE",
-  "UNINIT",
-  "UPDATE_PINNED_SEARCH_SHORTCUTS",
-  "UPDATE_SEARCH_SHORTCUTS",
-  "UPDATE_SECTION_PREFS",
-  "WALLPAPERS_CATEGORY_SET",
-  "WALLPAPERS_FEATURE_HIGHLIGHT_COUNTER_INCREMENT",
-  "WALLPAPERS_FEATURE_HIGHLIGHT_CTA_CLICKED",
-  "WALLPAPERS_FEATURE_HIGHLIGHT_DISMISSED",
-  "WALLPAPERS_FEATURE_HIGHLIGHT_SEEN",
-  "WALLPAPERS_SET",
-  "WALLPAPER_CATEGORY_CLICK",
-  "WALLPAPER_CLICK",
-  "WEATHER_IMPRESSION",
-  "WEATHER_LOAD_ERROR",
-  "WEATHER_LOCATION_DATA_UPDATE",
-  "WEATHER_LOCATION_SEARCH_UPDATE",
-  "WEATHER_LOCATION_SUGGESTIONS_UPDATE",
-  "WEATHER_OPEN_PROVIDER_URL",
-  "WEATHER_QUERY_UPDATE",
-  "WEATHER_SEARCH_ACTIVE",
-  "WEATHER_UPDATE",
-  "WEBEXT_CLICK",
-  "WEBEXT_DISMISS",
-]) {
-  actionTypes[type] = type;
-}
-
-// Helper function for creating routed actions between content and main
-// Not intended to be used by consumers
-function _RouteMessage(action, options) {
-  const meta = action.meta ? { ...action.meta } : {};
-  if (!options || !options.from || !options.to) {
-    throw new Error(
-      "Routed Messages must have options as the second parameter, and must at least include a .from and .to property."
-    );
-  }
-  // For each of these fields, if they are passed as an option,
-  // add them to the action. If they are not defined, remove them.
-  ["from", "to", "toTarget", "fromTarget", "skipMain", "skipLocal"].forEach(
-    o => {
-      if (typeof options[o] !== "undefined") {
-        meta[o] = options[o];
-      } else if (meta[o]) {
-        delete meta[o];
-      }
-    }
-  );
-  return { ...action, meta };
-}
-
-/**
- * AlsoToMain - Creates a message that will be dispatched locally and also sent to the Main process.
- *
- * @param  {object} action Any redux action (required)
- * @param  {object} options
- * @param  {bool}   skipLocal Used by OnlyToMain to skip the main reducer
- * @param  {string} fromTarget The id of the content port from which the action originated. (optional)
- * @return {object} An action with added .meta properties
- */
-function AlsoToMain(action, fromTarget, skipLocal) {
-  return _RouteMessage(action, {
-    from: CONTENT_MESSAGE_TYPE,
-    to: MAIN_MESSAGE_TYPE,
-    fromTarget,
-    skipLocal,
-  });
-}
-
-/**
- * OnlyToMain - Creates a message that will be sent to the Main process and skip the local reducer.
- *
- * @param  {object} action Any redux action (required)
- * @param  {object} options
- * @param  {string} fromTarget The id of the content port from which the action originated. (optional)
- * @return {object} An action with added .meta properties
- */
-function OnlyToMain(action, fromTarget) {
-  return AlsoToMain(action, fromTarget, true);
-}
-
-/**
- * BroadcastToContent - Creates a message that will be dispatched to main and sent to ALL content processes.
- *
- * @param  {object} action Any redux action (required)
- * @return {object} An action with added .meta properties
- */
-function BroadcastToContent(action) {
-  return _RouteMessage(action, {
-    from: MAIN_MESSAGE_TYPE,
-    to: CONTENT_MESSAGE_TYPE,
-  });
-}
-
-/**
- * AlsoToOneContent - Creates a message that will be will be dispatched to the main store
- *                    and also sent to a particular Content process.
- *
- * @param  {object} action Any redux action (required)
- * @param  {string} target The id of a content port
- * @param  {bool} skipMain Used by OnlyToOneContent to skip the main process
- * @return {object} An action with added .meta properties
- */
-function AlsoToOneContent(action, target, skipMain) {
-  if (!target) {
-    throw new Error(
-      "You must provide a target ID as the second parameter of AlsoToOneContent. If you want to send to all content processes, use BroadcastToContent"
-    );
-  }
-  return _RouteMessage(action, {
-    from: MAIN_MESSAGE_TYPE,
-    to: CONTENT_MESSAGE_TYPE,
-    toTarget: target,
-    skipMain,
-  });
-}
-
-/**
- * OnlyToOneContent - Creates a message that will be sent to a particular Content process
- *                    and skip the main reducer.
- *
- * @param  {object} action Any redux action (required)
- * @param  {string} target The id of a content port
- * @return {object} An action with added .meta properties
- */
-function OnlyToOneContent(action, target) {
-  return AlsoToOneContent(action, target, true);
-}
-
-/**
- * AlsoToPreloaded - Creates a message that dispatched to the main reducer and also sent to the preloaded tab.
- *
- * @param  {object} action Any redux action (required)
- * @return {object} An action with added .meta properties
- */
-function AlsoToPreloaded(action) {
-  return _RouteMessage(action, {
-    from: MAIN_MESSAGE_TYPE,
-    to: PRELOAD_MESSAGE_TYPE,
-  });
-}
-
-/**
- * UserEvent - A telemetry ping indicating a user action. This should only
- *                   be sent from the UI during a user session.
- *
- * @param  {object} data Fields to include in the ping (source, etc.)
- * @return {object} An AlsoToMain action
- */
-function UserEvent(data) {
-  return AlsoToMain({
-    type: actionTypes.TELEMETRY_USER_EVENT,
-    data,
-  });
-}
-
-/**
- * DiscoveryStreamUserEvent - A telemetry ping indicating a user action from Discovery Stream. This should only
- *                     be sent from the UI during a user session.
- *
- * @param  {object} data Fields to include in the ping (source, etc.)
- * @return {object} An AlsoToMain action
- */
-function DiscoveryStreamUserEvent(data) {
-  return AlsoToMain({
-    type: actionTypes.DISCOVERY_STREAM_USER_EVENT,
-    data,
-  });
-}
-
-/**
- * ASRouterUserEvent - A telemetry ping indicating a user action from AS router. This should only
- *                     be sent from the UI during a user session.
- *
- * @param  {object} data Fields to include in the ping (source, etc.)
- * @return {object} An AlsoToMain action
- */
-function ASRouterUserEvent(data) {
-  return AlsoToMain({
-    type: actionTypes.AS_ROUTER_TELEMETRY_USER_EVENT,
-    data,
-  });
-}
-
-/**
- * ImpressionStats - A telemetry ping indicating an impression stats.
- *
- * @param  {object} data Fields to include in the ping
- * @param  {int} importContext (For testing) Override the import context for testing.
- * #return {object} An action. For UI code, a AlsoToMain action.
- */
-function ImpressionStats(data, importContext = globalImportContext) {
-  const action = {
-    type: actionTypes.TELEMETRY_IMPRESSION_STATS,
-    data,
-  };
-  return importContext === UI_CODE ? AlsoToMain(action) : action;
-}
-
-/**
- * DiscoveryStreamImpressionStats - A telemetry ping indicating an impression stats in Discovery Stream.
- *
- * @param  {object} data Fields to include in the ping
- * @param  {int} importContext (For testing) Override the import context for testing.
- * #return {object} An action. For UI code, a AlsoToMain action.
- */
-function DiscoveryStreamImpressionStats(
-  data,
-  importContext = globalImportContext
-) {
-  const action = {
-    type: actionTypes.DISCOVERY_STREAM_IMPRESSION_STATS,
-    data,
-  };
-  return importContext === UI_CODE ? AlsoToMain(action) : action;
-}
-
-/**
- * DiscoveryStreamLoadedContent - A telemetry ping indicating a content gets loaded in Discovery Stream.
- *
- * @param  {object} data Fields to include in the ping
- * @param  {int} importContext (For testing) Override the import context for testing.
- * #return {object} An action. For UI code, a AlsoToMain action.
- */
-function DiscoveryStreamLoadedContent(
-  data,
-  importContext = globalImportContext
-) {
-  const action = {
-    type: actionTypes.DISCOVERY_STREAM_LOADED_CONTENT,
-    data,
-  };
-  return importContext === UI_CODE ? AlsoToMain(action) : action;
-}
-
-function SetPref(prefName, value, importContext = globalImportContext) {
-  const action = {
-    type: actionTypes.SET_PREF,
-    data: { name: prefName, value },
-  };
-  return importContext === UI_CODE ? AlsoToMain(action) : action;
-}
-
-function WebExtEvent(type, data, importContext = globalImportContext) {
-  if (!data || !data.source) {
-    throw new Error(
-      'WebExtEvent actions should include a property "source", the id of the webextension that should receive the event.'
-    );
-  }
-  const action = { type, data };
-  return importContext === UI_CODE ? AlsoToMain(action) : action;
-}
-
-const actionCreators = {
-  BroadcastToContent,
-  UserEvent,
-  DiscoveryStreamUserEvent,
-  ASRouterUserEvent,
-  ImpressionStats,
-  AlsoToOneContent,
-  OnlyToOneContent,
-  AlsoToMain,
-  OnlyToMain,
-  AlsoToPreloaded,
-  SetPref,
-  WebExtEvent,
-  DiscoveryStreamImpressionStats,
-  DiscoveryStreamLoadedContent,
-};
-
-// These are helpers to test for certain kinds of actions
-const actionUtils = {
-  isSendToMain(action) {
-    if (!action.meta) {
-      return false;
-    }
-    return (
-      action.meta.to === MAIN_MESSAGE_TYPE &&
-      action.meta.from === CONTENT_MESSAGE_TYPE
-    );
-  },
-  isBroadcastToContent(action) {
-    if (!action.meta) {
-      return false;
-    }
-    if (action.meta.to === CONTENT_MESSAGE_TYPE && !action.meta.toTarget) {
-      return true;
-    }
-    return false;
-  },
-  isSendToOneContent(action) {
-    if (!action.meta) {
-      return false;
-    }
-    if (action.meta.to === CONTENT_MESSAGE_TYPE && action.meta.toTarget) {
-      return true;
-    }
-    return false;
-  },
-  isSendToPreloaded(action) {
-    if (!action.meta) {
-      return false;
-    }
-    return (
-      action.meta.to === PRELOAD_MESSAGE_TYPE &&
-      action.meta.from === MAIN_MESSAGE_TYPE
-    );
-  },
-  isFromMain(action) {
-    if (!action.meta) {
-      return false;
-    }
-    return (
-      action.meta.from === MAIN_MESSAGE_TYPE &&
-      action.meta.to === CONTENT_MESSAGE_TYPE
-    );
-  },
-  getPortIdOfSender(action) {
-    return (action.meta && action.meta.fromTarget) || null;
-  },
-  _RouteMessage,
-};
-
-
-/***/ }),
-/* 4 */
 /***/ ((module) => {
 
 module.exports = React;
 
 /***/ }),
-/* 5 */
+/* 4 */
 /***/ ((module) => {
 
 module.exports = ReactDOM;
 
 /***/ }),
-/* 6 */
+/* 5 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   SimpleHashRouter: () => (/* binding */ SimpleHashRouter)
 /* harmony export */ });
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(4);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(3);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -711,16 +243,16 @@ class SimpleHashRouter extends (react__WEBPACK_IMPORTED_MODULE_0___default().Pur
 }
 
 /***/ }),
-/* 7 */
+/* 6 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   CopyButton: () => (/* binding */ CopyButton)
 /* harmony export */ });
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(4);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(3);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
-function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -753,15 +285,15 @@ const CopyButton = ({
 };
 
 /***/ }),
-/* 8 */
+/* 7 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   ImpressionsSection: () => (/* binding */ ImpressionsSection)
 /* harmony export */ });
-/* harmony import */ var _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(4);
+/* harmony import */ var _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(3);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -776,26 +308,26 @@ const ImpressionsSection = ({
   screenImpressions
 }) => {
   const handleSaveMessageImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(newImpressions => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("messageImpressions", newImpressions);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("messageImpressions", newImpressions);
   }, []);
   const handleSaveGroupImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(newImpressions => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("groupImpressions", newImpressions);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("groupImpressions", newImpressions);
   }, []);
   const handleSaveScreenImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(newImpressions => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("screenImpressions", newImpressions);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.editState("screenImpressions", newImpressions);
   }, []);
   const handleResetMessageImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(() => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "RESET_MESSAGE_STATE"
     });
   }, []);
   const handleResetGroupImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(() => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "RESET_GROUPS_STATE"
     });
   }, []);
   const handleResetScreenImpressions = (0,react__WEBPACK_IMPORTED_MODULE_1__.useCallback)(() => {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "RESET_SCREEN_IMPRESSIONS"
     });
   }, []);
@@ -881,7 +413,7 @@ const ImpressionsItem = ({
   }, "Reset")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
     className: "impressions-editor"
   }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
-    className: "general-textarea",
+    rows: "15",
     value: json,
     onChange: handleChange
   }))));
@@ -969,27 +501,24 @@ const ImpressionsItem = ({
 /******/ 	
 /************************************************************************/
 var __webpack_exports__ = {};
-// This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
+// This entry needs to be wrapped in an IIFE because it needs to be isolated against other modules in the chunk.
 (() => {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   ASRouterAdmin: () => (/* binding */ ASRouterAdmin),
 /* harmony export */   ASRouterAdminInner: () => (/* binding */ ASRouterAdminInner),
 /* harmony export */   ToggleMessageJSON: () => (/* binding */ ToggleMessageJSON),
-/* harmony export */   TogglePrefCheckbox: () => (/* binding */ TogglePrefCheckbox),
-/* harmony export */   ToggleStoryButton: () => (/* binding */ ToggleStoryButton),
 /* harmony export */   renderASRouterAdmin: () => (/* binding */ renderASRouterAdmin),
 /* harmony export */   toBinary: () => (/* binding */ toBinary)
 /* harmony export */ });
-/* harmony import */ var _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
-/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(4);
+/* harmony import */ var _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(3);
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_1__);
-/* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(5);
+/* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(4);
 /* harmony import */ var react_dom__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(react_dom__WEBPACK_IMPORTED_MODULE_2__);
-/* harmony import */ var _SimpleHashRouter__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(6);
-/* harmony import */ var _CopyButton__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(7);
-/* harmony import */ var _ImpressionsSection__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(8);
-function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
+/* harmony import */ var _SimpleHashRouter__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(5);
+/* harmony import */ var _CopyButton__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(6);
+/* harmony import */ var _ImpressionsSection__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(7);
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -1000,9 +529,6 @@ function _extends() { _extends = Object.assign ? Object.assign.bind() : function
 
 
 
-const Row = props => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", _extends({
-  className: "message-item"
-}, props), props.children);
 
 // Convert a UTF-8 string to a string in which only one byte of each
 // 16-bit unit is occupied. This is necessary to comply with `btoa` API constraints.
@@ -1030,20 +556,6 @@ function relativeTime(timestamp) {
   }
   return new Date(timestamp).toLocaleString();
 }
-class ToggleStoryButton extends (react__WEBPACK_IMPORTED_MODULE_1___default().PureComponent) {
-  constructor(props) {
-    super(props);
-    this.handleClick = this.handleClick.bind(this);
-  }
-  handleClick() {
-    this.props.onClick(this.props.story);
-  }
-  render() {
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      onClick: this.handleClick
-    }, "collapse/open");
-  }
-}
 class ToggleMessageJSON extends (react__WEBPACK_IMPORTED_MODULE_1___default().PureComponent) {
   constructor(props) {
     super(props);
@@ -1053,30 +565,13 @@ class ToggleMessageJSON extends (react__WEBPACK_IMPORTED_MODULE_1___default().Pu
     this.props.toggleJSON(this.props.msgId);
   }
   render() {
-    let iconName = this.props.isCollapsed ? "icon icon-arrowhead-forward-small" : "icon icon-arrowhead-down-small";
+    let direction = this.props.isCollapsed ? "forward" : "down";
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
       className: "clearButton",
       onClick: this.handleClick
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
-      className: iconName
+      className: `icon small icon-arrowhead-${direction}`
     }));
-  }
-}
-class TogglePrefCheckbox extends (react__WEBPACK_IMPORTED_MODULE_1___default().PureComponent) {
-  constructor(props) {
-    super(props);
-    this.onChange = this.onChange.bind(this);
-  }
-  onChange(event) {
-    this.props.onChange(this.props.pref, event.target.checked);
-  }
-  render() {
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "checkbox",
-      checked: this.props.checked,
-      onChange: this.onChange,
-      disabled: this.props.disabled
-    }), " ", this.props.pref, " ");
   }
 }
 class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().PureComponent) {
@@ -1084,32 +579,31 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     super(props);
     this.handleEnabledToggle = this.handleEnabledToggle.bind(this);
     this.handleUserPrefToggle = this.handleUserPrefToggle.bind(this);
-    this.onChangeMessageFilter = this.onChangeMessageFilter.bind(this);
-    this.onChangeMessageGroupsFilter = this.onChangeMessageGroupsFilter.bind(this);
+    this.onChangeFilters = this.onChangeFilters.bind(this);
+    this.onClearFilters = this.onClearFilters.bind(this);
     this.unblockAll = this.unblockAll.bind(this);
-    this.handleClearAllImpressionsByProvider = this.handleClearAllImpressionsByProvider.bind(this);
+    this.resetAllJSON = this.resetAllJSON.bind(this);
     this.handleExpressionEval = this.handleExpressionEval.bind(this);
     this.onChangeTargetingParameters = this.onChangeTargetingParameters.bind(this);
     this.onChangeAttributionParameters = this.onChangeAttributionParameters.bind(this);
     this.setAttribution = this.setAttribution.bind(this);
     this.onCopyTargetingParams = this.onCopyTargetingParams.bind(this);
     this.onNewTargetingParams = this.onNewTargetingParams.bind(this);
-    this.handleOpenPB = this.handleOpenPB.bind(this);
-    this.selectPBMessage = this.selectPBMessage.bind(this);
-    this.resetPBJSON = this.resetPBJSON.bind(this);
-    this.resetPBMessageState = this.resetPBMessageState.bind(this);
+    this.resetMessageState = this.resetMessageState.bind(this);
     this.toggleJSON = this.toggleJSON.bind(this);
     this.toggleAllMessages = this.toggleAllMessages.bind(this);
-    this.resetGroups = this.resetGroups.bind(this);
+    this.resetGroupImpressions = this.resetGroupImpressions.bind(this);
     this.onMessageFromParent = this.onMessageFromParent.bind(this);
     this.setStateFromParent = this.setStateFromParent.bind(this);
     this.setState = this.setState.bind(this);
     this.state = {
-      messageFilter: "all",
-      messageGroupsFilter: "all",
+      filterGroups: [],
+      filterProviders: [],
+      filterTemplates: [],
+      filtersCollapsed: true,
       collapsedMessages: [],
       modifiedMessages: [],
-      selectedPBMessage: "",
+      messageBlockList: [],
       evaluationStatus: {},
       stringTargetingParameters: null,
       newStringTargetingParameters: null,
@@ -1139,22 +633,22 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         }
     }
   }
-  setStateFromParent(data) {
-    this.setState(data);
+  async setStateFromParent(data) {
+    await this.setState(data);
     if (!this.state.stringTargetingParameters) {
       const stringTargetingParameters = {};
       for (const param of Object.keys(data.targetingParameters)) {
         stringTargetingParameters[param] = JSON.stringify(data.targetingParameters[param], null, 2);
       }
-      this.setState({
+      await this.setState({
         stringTargetingParameters
       });
     }
   }
   componentWillMount() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.addListener(this.onMessageFromParent);
-    const endpoint = _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.getPreviewEndpoint();
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.addListener(this.onMessageFromParent);
+    const endpoint = _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.getPreviewEndpoint();
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "ADMIN_CONNECT_STATE",
       data: {
         endpoint
@@ -1162,70 +656,71 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     }).then(this.setStateFromParent);
   }
   componentWillUnmount() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.removeListener(this.onMessageFromParent);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.removeListener(this.onMessageFromParent);
   }
   handleBlock(msg) {
-    return () => _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.blockById(msg.id);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.blockById(msg.id);
   }
   handleUnblock(msg) {
-    return () => _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.unblockById(msg.id);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.unblockById(msg.id);
   }
   resetJSON(msg) {
     // reset the displayed JSON for the given message
-    document.getElementById(`${msg.id}-textarea`).value = JSON.stringify(msg, null, 2);
+    let textarea = document.getElementById(`${msg.id}-textarea`);
+    textarea.value = JSON.stringify(msg, null, 2);
+    textarea.classList.remove("errorState");
     // remove the message from the list of modified IDs
     let index = this.state.modifiedMessages.indexOf(msg.id);
     this.setState(prevState => ({
       modifiedMessages: [...prevState.modifiedMessages.slice(0, index), ...prevState.modifiedMessages.slice(index + 1)]
     }));
   }
-  handleOverride(id) {
-    return () => _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.overrideMessage(id).then(state => {
-      this.setStateFromParent(state);
-    });
-  }
-  resetPBMessageState() {
-    // Iterate over Private Browsing messages and block/unblock each one to clear impressions
-    const PBMessages = this.state.messages.filter(message => message.template === "pb_newtab"); // messages from state go here
-
-    PBMessages.forEach(message => {
-      if (message?.id) {
-        _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.blockById(message.id);
-        _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.unblockById(message.id);
+  resetAllJSON() {
+    // reset the displayed JSON for each modified message
+    for (const msgId of this.state.modifiedMessages) {
+      const msg = this.state.messages.find(m => m.id === msgId);
+      const textarea = document.getElementById(`${msgId}-textarea`);
+      if (textarea) {
+        textarea.value = JSON.stringify(msg, null, 2);
+        textarea.classList.remove("errorState");
       }
+    }
+    this.setState({
+      modifiedMessages: []
     });
-    // Clear the selected messages & radio buttons
-    document.getElementById("clear radio").checked = true;
-    this.selectPBMessage("clear");
   }
-  resetPBJSON(msg) {
-    // reset the displayed JSON for the given message
-    document.getElementById(`${msg.id}-textarea`).value = JSON.stringify(msg, null, 2);
+  showMessage(msg) {
+    if (msg.template === "pb_newtab") {
+      _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.openPBWindow(msg.content);
+    } else {
+      _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.overrideMessage(msg.id).then(state => this.setStateFromParent(state));
+    }
   }
-  handleOpenPB() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-      type: "FORCE_PRIVATE_BROWSING_WINDOW",
+  async resetMessageState() {
+    await Promise.all([_asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.resetMessageImpressions(), _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.resetGroupImpressions(), _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.resetScreenImpressions(), _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.unblockAll()]);
+    let data = await _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+      type: "ADMIN_CONNECT_STATE",
       data: {
-        message: {
-          content: this.state.selectedPBMessage
-        }
+        endpoint: _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.getPreviewEndpoint()
       }
     });
+    await this.setStateFromParent(data);
   }
   expireCache() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "EXPIRE_QUERY_CACHE"
     });
   }
   resetPref() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "RESET_PROVIDER_PREF"
     });
   }
-  resetGroups() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-      type: "RESET_GROUPS_STATE"
-    }).then(this.setStateFromParent);
+  resetGroupImpressions() {
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.resetGroupImpressions().then(this.setStateFromParent);
+  }
+  resetMessageImpressions() {
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.resetMessageImpressions().then(this.setStateFromParent);
   }
   handleExpressionEval() {
     const context = {};
@@ -1233,37 +728,39 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       const value = this.state.stringTargetingParameters[param];
       context[param] = value ? JSON.parse(value) : null;
     }
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "EVALUATE_JEXL_EXPRESSION",
       data: {
-        expression: this.refs.expressionInput.value,
+        expression: this.refs.expressionInput.value || "undefined",
         context
       }
     }).then(this.setStateFromParent);
   }
   onChangeTargetingParameters(event) {
     const {
-      name
+      name: eventName
     } = event.target;
     const {
       value
     } = event.target;
+    let targetingParametersError = null;
+    try {
+      JSON.parse(value);
+      event.target.classList.remove("errorState");
+    } catch (e) {
+      console.error(`Error parsing value of parameter ${eventName}`);
+      event.target.classList.add("errorState");
+      targetingParametersError = {
+        id: eventName
+      };
+    }
     this.setState(({
       stringTargetingParameters
     }) => {
-      let targetingParametersError = null;
       const updatedParameters = {
         ...stringTargetingParameters
       };
-      updatedParameters[name] = value;
-      try {
-        JSON.parse(value);
-      } catch (e) {
-        console.error(`Error parsing value of parameter ${name}`);
-        targetingParametersError = {
-          id: name
-        };
-      }
+      updatedParameters[eventName] = value;
       return {
         copiedToClipboard: false,
         evaluationStatus: {},
@@ -1273,36 +770,9 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     });
   }
   unblockAll() {
-    return _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-      type: "UNBLOCK_ALL"
-    }).then(this.setStateFromParent);
+    return _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.unblockAll().then(this.setStateFromParent);
   }
-  handleClearAllImpressionsByProvider() {
-    const providerId = this.state.messageFilter;
-    if (!providerId) {
-      return;
-    }
-    const userPrefInfo = this.state.userPrefs;
-    const isUserEnabled = providerId in userPrefInfo ? userPrefInfo[providerId] : true;
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-      type: "DISABLE_PROVIDER",
-      data: providerId
-    });
-    if (!isUserEnabled) {
-      _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-        type: "SET_PROVIDER_USER_PREF",
-        data: {
-          id: providerId,
-          value: true
-        }
-      });
-    }
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
-      type: "ENABLE_PROVIDER",
-      data: providerId
-    });
-  }
-  handleEnabledToggle(event) {
+  async handleEnabledToggle(event) {
     const provider = this.state.providerPrefs.find(p => p.id === event.target.dataset.provider);
     const userPrefInfo = this.state.userPrefs;
     const isUserEnabled = provider.id in userPrefInfo ? userPrefInfo[provider.id] : true;
@@ -1310,7 +780,7 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     const isEnabling = event.target.checked;
     if (isEnabling) {
       if (!isUserEnabled) {
-        _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+        await _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
           type: "SET_PROVIDER_USER_PREF",
           data: {
             id: provider.id,
@@ -1319,19 +789,19 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         });
       }
       if (!isSystemEnabled) {
-        _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+        await _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
           type: "ENABLE_PROVIDER",
           data: provider.id
         });
       }
     } else {
-      _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+      await _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
         type: "DISABLE_PROVIDER",
         data: provider.id
       });
     }
     this.setState({
-      messageFilter: "all"
+      filterProviders: []
     });
   }
   handleUserPrefToggle(event) {
@@ -1342,19 +812,49 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         value: event.target.checked
       }
     };
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage(action);
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage(action);
     this.setState({
-      messageFilter: "all"
+      filterProviders: []
     });
   }
-  onChangeMessageFilter(event) {
-    this.setState({
-      messageFilter: event.target.value
+  onChangeFilters(event) {
+    // this function handles both provider filter and group filter. the checkbox
+    // will have dataset.provider if it's a provider checkbox, and dataset.group
+    // if it's a group checkbox.
+    let stateKey;
+    let itemValue;
+    let {
+      checked
+    } = event.target;
+    if (event.target.dataset.provider) {
+      stateKey = "filterProviders";
+      itemValue = event.target.dataset.provider;
+    } else if (event.target.dataset.group) {
+      stateKey = "filterGroups";
+      itemValue = event.target.dataset.group;
+    } else if (event.target.dataset.template) {
+      stateKey = "filterTemplates";
+      itemValue = event.target.dataset.template;
+    } else {
+      return;
+    }
+    this.setState(prevState => {
+      let newValue;
+      if (checked) {
+        newValue = prevState[stateKey].includes(itemValue) ? prevState[stateKey] : prevState[stateKey].concat(itemValue);
+      } else {
+        newValue = prevState[stateKey].filter(item => item !== itemValue);
+      }
+      return {
+        [stateKey]: newValue
+      };
     });
   }
-  onChangeMessageGroupsFilter(event) {
+  onClearFilters() {
     this.setState({
-      messageGroupsFilter: event.target.value
+      filterProviders: [],
+      filterGroups: [],
+      filterTemplates: []
     });
   }
 
@@ -1408,7 +908,7 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       }));
     }
   }
-  handleChange(msgId) {
+  onMessageChanged(msgId) {
     if (!this.state.modifiedMessages.includes(msgId)) {
       this.setState(prevState => ({
         modifiedMessages: prevState.modifiedMessages.concat(msgId)
@@ -1424,120 +924,90 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     const impressions = this.state.messageImpressions[msg.id] ? this.state.messageImpressions[msg.id].length : 0;
     const isCollapsed = this.state.collapsedMessages.includes(msg.id);
     const isModified = this.state.modifiedMessages.includes(msg.id);
-    const aboutMessagePreviewSupported = ["infobar", "spotlight", "cfr_doorhanger"].includes(msg.template);
+    const aboutMessagePreviewSupported = ["infobar", "spotlight", "cfr_doorhanger", "feature_callout", "pb_newtab"].includes(msg.template);
     let itemClassName = "message-item";
     if (isBlocked) {
       itemClassName += " blocked";
     }
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
+    let messageStats = [];
+    let messageStatsString;
+    if (impressions) {
+      messageStats.push(`${impressions} impressions`);
+    }
+    if (isMessageBlocked) {
+      messageStats.push("message blocked");
+    } else if (isBlockedByGroup) {
+      messageStats.push("message group blocked");
+    } else if (isProviderExcluded) {
+      messageStats.push("excluded by provider");
+    }
+    if (messageStats.length) {
+      messageStatsString = `(${messageStats.join(", ")})`;
+    }
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
       className: itemClassName,
       key: `${msg.id}-${msg.provider}`
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "message-id"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, msg.id, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ToggleMessageJSON, {
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "button-box baseline"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: "message-id monospace"
+    }, msg.id), " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: "message-stats small-text"
+    }, messageStatsString)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "button-box"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ToggleMessageJSON, {
       msgId: `${msg.id}`,
       toggleJSON: this.toggleJSON,
       isCollapsed: isCollapsed
-    })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "button-column"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: `button ${isBlocked ? "" : " primary"}`,
-      onClick: isBlocked ? this.handleUnblock(msg) : this.handleBlock(msg)
-    }, isBlocked ? "Unblock" : "Block"),
+    }),
     // eslint-disable-next-line no-nested-ternary
     isBlocked ? null : isModified ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "button restore",
+      className: "restore",
       onClick: () => this.resetJSON(msg)
     }, "Reset") : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "button show",
-      onClick: this.handleOverride(msg.id)
-    }, "Show"), isBlocked ? null : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "button modify",
+      className: "primary show",
+      onClick: () => this.showMessage(msg)
+    }, "Show"), isBlocked || !isModified ? null : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "primary modify",
       onClick: () => this.modifyJson(msg)
     }, "Modify"), aboutMessagePreviewSupported ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(_CopyButton__WEBPACK_IMPORTED_MODULE_4__.CopyButton, {
       transformer: text => `about:messagepreview?json=${encodeURIComponent(toBinary(text))}`,
       label: "Share",
       copiedLabel: "Copied!",
       inputSelector: `#${msg.id}-textarea`,
-      className: "button share"
-    }) : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), "(", impressions, " impressions)"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "message-summary"
-    }, isBlocked && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, "Block reason:", isBlockedByGroup && " Blocked by group", isProviderExcluded && " Excluded by provider", isMessageBlocked && " Message blocked"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("pre", {
+      className: "share"
+    }) : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: `button${isBlocked ? " primary" : ""}`,
+      onClick: () => isBlocked ? this.handleUnblock(msg) : this.handleBlock(msg)
+    }, isBlocked ? "Unblock" : "Block")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("pre", {
       className: isCollapsed ? "collapsed" : "expanded"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
       id: `${msg.id}-textarea`,
       name: msg.id,
-      className: "general-textarea",
+      className: "message-textarea",
       disabled: isBlocked,
-      onChange: () => this.handleChange(msg.id)
-    }, JSON.stringify(msg, null, 2))))));
-  }
-  selectPBMessage(msgId) {
-    if (msgId === "clear") {
-      this.setState({
-        selectedPBMessage: ""
-      });
-    } else {
-      let selected = document.getElementById(`${msgId} radio`);
-      let msg = JSON.parse(document.getElementById(`${msgId}-textarea`).value);
-      if (selected.checked) {
-        this.setState({
-          selectedPBMessage: msg?.content
-        });
-      } else {
-        this.setState({
-          selectedPBMessage: ""
-        });
-      }
-    }
+      rows: "30",
+      onChange: event => {
+        try {
+          JSON.parse(event.target.value);
+          event.target.classList.remove("errorState");
+        } catch (e) {
+          event.target.classList.add("errorState");
+        }
+        this.onMessageChanged(msg.id);
+      },
+      spellCheck: "false"
+    }, JSON.stringify(msg, null, 2))));
   }
   modifyJson(content) {
     const message = JSON.parse(document.getElementById(`${content.id}-textarea`).value);
-    return _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.modifyMessageJson(message).then(state => {
-      this.setStateFromParent(state);
-    });
-  }
-  renderPBMessageItem(msg) {
-    const isBlocked = this.state.messageBlockList.includes(msg.id) || this.state.messageBlockList.includes(msg.campaign);
-    const impressions = this.state.messageImpressions[msg.id] ? this.state.messageImpressions[msg.id].length : 0;
-    const isCollapsed = this.state.collapsedMessages.includes(msg.id);
-    let itemClassName = "message-item";
-    if (isBlocked) {
-      itemClassName += " blocked";
+    if (message.template === "pb_newtab") {
+      _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.openPBWindow(message.content);
+    } else {
+      _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.modifyMessageJson(message).then(state => {
+        this.setStateFromParent(state);
+      });
     }
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
-      className: itemClassName,
-      key: `${msg.id}-${msg.provider}`
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "message-id"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, msg.id, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), "(", impressions, " impressions)")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ToggleMessageJSON, {
-      msgId: `${msg.id}`,
-      toggleJSON: this.toggleJSON,
-      isCollapsed: isCollapsed
-    })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "radio",
-      id: `${msg.id} radio`,
-      name: "PB_message_radio",
-      style: {
-        marginBottom: 20
-      },
-      onClick: () => this.selectPBMessage(msg.id),
-      disabled: isBlocked
-    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: `button ${isBlocked ? "" : " primary"}`,
-      onClick: isBlocked ? this.handleUnblock(msg) : this.handleBlock(msg)
-    }, isBlocked ? "Unblock" : "Block"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton slim button",
-      onClick: () => this.resetPBJSON(msg)
-    }, "Reset JSON")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: `message-summary`
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("pre", {
-      className: isCollapsed ? "collapsed" : "expanded"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
-      id: `${msg.id}-textarea`,
-      className: "wnp-textarea",
-      name: msg.id
-    }, JSON.stringify(msg, null, 2)))));
   }
   toggleAllMessages(messagesToShow) {
     if (this.state.collapsedMessages.length) {
@@ -1552,86 +1022,114 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       });
     }
   }
+  filterMessages() {
+    let messages = [...this.state.messages];
+    if (this.state.filterProviders.length) {
+      messages = messages.filter(msg => this.state.filterProviders.includes(msg.provider));
+    }
+    if (this.state.filterGroups.length) {
+      messages = messages.filter(msg => msg.groups?.some(group => this.state.filterGroups.includes(group)) || !msg.groups?.length && this.state.filterGroups.includes("none"));
+    }
+    if (this.state.filterTemplates.length) {
+      messages = messages.filter(msg => this.state.filterTemplates.includes(msg.template));
+    }
+    return messages;
+  }
   renderMessages() {
     if (!this.state.messages) {
       return null;
     }
-    const messagesToShow = this.state.messageFilter === "all" ? this.state.messages : this.state.messages.filter(message => message.provider === this.state.messageFilter && message.template !== "pb_newtab");
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton slim",
-      onClick: () => this.toggleAllMessages(messagesToShow)
-    }, "Collapse/Expand All"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", {
+    const messagesToShow = this.filterMessages();
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", {
       className: "helpLink"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
       className: "icon icon-small-spacer icon-info"
-    }), " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "To modify a message, change the JSON and click 'Modify' to see your changes. Click 'Reset' to restore the JSON to the original. Click 'Share' to copy a link to the clipboard that can be used to preview the message by opening the link in Nightly/local builds.")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, messagesToShow.map(msg => this.renderMessageItem(msg)))));
-  }
-  renderMessagesByGroup() {
-    if (!this.state.messages) {
-      return null;
-    }
-    const messagesToShow = this.state.messageGroupsFilter === "all" ? this.state.messages.filter(m => m.groups.length) : this.state.messages.filter(message => message.groups.includes(this.state.messageGroupsFilter));
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, messagesToShow.map(msg => this.renderMessageItem(msg))));
-  }
-  renderPBMessages() {
-    if (!this.state.messages) {
-      return null;
-    }
-    const messagesToShow = this.state.messages.filter(message => message.template === "pb_newtab");
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, messagesToShow.map(msg => this.renderPBMessageItem(msg))));
-  }
-  renderMessageFilter() {
-    if (!this.state.providers) {
-      return null;
-    }
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "unblock-all ASRouterButton test-only",
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("ul", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, "To modify a message, change the JSON and click 'Modify' to see your changes."), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, "Click \"Reset\" to restore the JSON to the original."), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, "Click \"Share\" to copy a link to the clipboard that can be used to preview the message by opening the link in Nightly/local builds."))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "button-box"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins",
+      onClick: () => this.toggleAllMessages(messagesToShow)
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: `icon small icon-small-spacer icon-arrowhead-${this.state.collapsedMessages.length ? "forward" : "down"}`
+    }), this.state.collapsedMessages.length ? "Expand all" : "Collapse all"), this.state.modifiedMessages.length ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins messages-reset",
+      onClick: this.resetAllJSON
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: "icon small icon-small-spacer icon-undo"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Reset all JSON")) : null, this.state.messageBlockList.length ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins unblock-all",
       onClick: this.unblockAll
-    }, "Unblock All Snippets"), "Show messages from", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("select", {
-      value: this.state.messageFilter,
-      onChange: this.onChangeMessageFilter
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("option", {
-      value: "all"
-    }, "all providers"), this.state.providers.map(provider => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("option", {
-      key: provider.id,
-      value: provider.id
-    }, provider.id))), this.state.messageFilter !== "all" && !this.state.messageFilter.includes("_local_testing") ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "button messages-reset",
-      onClick: this.handleClearAllImpressionsByProvider
-    }, "Reset All") : null);
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Unblock all")) : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins",
+      onClick: this.resetMessageState
+    }, "Reset FxMS state")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "messages-list"
+    }, messagesToShow.map(msg => this.renderMessageItem(msg))));
   }
-  renderMessageGroupsFilter() {
-    if (!this.state.groups) {
-      return null;
-    }
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, "Show messages from ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("select", {
-      value: this.state.messageGroupsFilter,
-      onChange: this.onChangeMessageGroupsFilter
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("option", {
-      value: "all"
-    }, "all groups"), this.state.groups.map(group => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("option", {
-      key: group.id,
-      value: group.id
-    }, group.id))));
-  }
-  renderTableHead() {
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
-      className: "message-item"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "min"
-    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "min"
-    }, "Provider ID"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Source"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "min"
-    }, "Cohort"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-      className: "min"
-    }, "Last Updated")));
+  renderFilters() {
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "filters"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "button-box"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins",
+      onClick: () => this.setState(prevState => ({
+        filtersCollapsed: !prevState.filtersCollapsed
+      }))
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: `icon small icon-small-spacer icon-arrowhead-${this.state.filtersCollapsed ? "forward" : "down"}`
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Filters")), this.state.filterProviders.length || this.state.filterGroups.length || this.state.filterTemplates.length ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "small no-margins",
+      onClick: this.onClearFilters
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: "icon small icon-small-spacer icon-dismiss"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Clear")) : null), this.state.filtersCollapsed ? null : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "row"
+    }, this.state.messages ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h3", null, "Templates"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "col"
+    }, this.state.messages.map(message => message.template).filter(
+    // eslint-disable-next-line no-shadow
+    (value, index, self) => self.indexOf(value) === index).map(template => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("label", {
+      key: template
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      type: "checkbox",
+      "data-template": template,
+      checked: this.state.filterTemplates.includes(template),
+      onChange: this.onChangeFilters
+    }), template)))) : null, this.state.groups ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h3", null, "Groups"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "col"
+    }, this.state.groups.map(group => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("label", {
+      key: group.id
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      type: "checkbox",
+      "data-group": group.id,
+      checked: this.state.filterGroups.includes(group.id),
+      onChange: this.onChangeFilters
+    }), group.id)))) : null, this.state.providers ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h3", null, "Providers"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "col"
+    }, this.state.providers.map(provider => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("label", {
+      key: provider.id
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      type: "checkbox",
+      "data-provider": provider.id,
+      checked: this.state.filterProviders.includes(provider.id),
+      onChange: this.onChangeFilters
+    }), provider.id)))) : null));
   }
   renderProviders() {
     const providersConfig = this.state.providerPrefs;
     const providerInfo = this.state.providers;
     const userPrefInfo = this.state.userPrefs;
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, this.renderTableHead(), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, providersConfig.map((provider, i) => {
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", {
+      className: "bordered-table",
+      id: "providers-table"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "fixed-width"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "no-wrap"
+    }, "Provider"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Source"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "no-wrap"
+    }, "Last Updated"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, providersConfig.map((provider, i) => {
       const isTestProvider = provider.id.includes("_local_testing");
       const info = providerInfo.find(p => p.id === provider.id) || {};
       const isUserEnabled = provider.id in userPrefInfo ? userPrefInfo[provider.id] : true;
@@ -1639,16 +1137,21 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       let label = "local";
       if (provider.type === "remote") {
         label = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "endpoint (", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-          className: "providerUrl",
+          className: "small-text",
           target: "_blank",
           href: info.url,
           rel: "noopener noreferrer"
         }, info.url), ")");
       } else if (provider.type === "remote-settings") {
-        label = `remote settings (${provider.collection})`;
+        label = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "remote settings (", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
+          className: "small-text",
+          target: "_blank",
+          href: `https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/${provider.collection}/records`,
+          rel: "noopener noreferrer"
+        }, provider.collection), ")");
       } else if (provider.type === "remote-experiments") {
         label = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "remote settings (", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-          className: "providerUrl",
+          className: "small-text",
           target: "_blank",
           href: "https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/nimbus-desktop-experiments/records",
           rel: "noopener noreferrer"
@@ -1665,7 +1168,6 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         label = `disabled via ${reasonsDisabled.join(", ")}`;
       }
       return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
-        className: "message-item",
         key: i
       }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, isTestProvider ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
         type: "checkbox",
@@ -1679,56 +1181,214 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         onChange: this.handleEnabledToggle
       })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, provider.id), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
         className: `sourceLabel${isUserEnabled && isSystemEnabled ? "" : " isDisabled"}`
-      }, label)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, provider.cohort), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
-        style: {
-          whiteSpace: "nowrap"
+      }, label)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+        className: "no-wrap"
+      }, info.lastUpdated ? relativeTime(info.lastUpdated) : ""));
+    })));
+  }
+  renderMessageGroups() {
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", {
+      className: "bordered-table",
+      id: "groups-table"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "fixed-width"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "no-wrap"
+    }, "Group"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      className: "no-wrap"
+    }, "Impressions"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Frequency caps"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "User preferences"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, this.state.groups && this.state.groups.map(({
+      id,
+      enabled,
+      frequency,
+      userPreferences = []
+    }) => {
+      let frequencyCaps = [];
+      if (!frequency) {
+        frequencyCaps.push("n/a");
+      } else {
+        if (frequency.custom) {
+          for (let f of frequency.custom) {
+            let {
+              period
+            } = f;
+            let periodString = "";
+            if (period >= 2419200000 && period % 2419200000 < 604800000) {
+              let months = Math.round(period / 2419200000);
+              periodString = months === 1 ? "/month" : ` in ${months}mos`;
+            } else if (period >= 604800000 && period % 604800000 < 86400000) {
+              let weeks = Math.round(period / 604800000);
+              periodString = weeks === 1 ? "/week" : ` in ${weeks}wks`;
+            } else if (period >= 86400000 && period % 86400000 < 3600000) {
+              let days = Math.round(period / 86400000);
+              periodString = days === 1 ? "/day" : ` in ${days}d`;
+            } else {
+              periodString = ` in ${period}ms`;
+            }
+            frequencyCaps.push(`${f.cap}${periodString}`);
+          }
         }
-      }, info.lastUpdated ? new Date(info.lastUpdated).toLocaleString() : ""));
+        if ("lifetime" in frequency) {
+          frequencyCaps.push(`${frequency.lifetime}/lifetime`);
+        }
+      }
+      return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
+        key: id
+      }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+        className: "fixed-width"
+      }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+        type: "checkbox",
+        checked: enabled,
+        disabled: true
+      })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+        className: "no-wrap"
+      }, id), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+        className: "no-wrap"
+      }, this._getGroupImpressionsCount(id, frequency)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, frequencyCaps.join(", "))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+        className: "monospace small-text"
+      }, userPreferences.join(", "))));
     })));
   }
   renderTargetingParameters() {
     // There was no error and the result is truthy
     const success = this.state.evaluationStatus.success && !!this.state.evaluationStatus.result;
-    const result = JSON.stringify(this.state.evaluationStatus.result, null, 2) || "(Empty result)";
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Evaluate JEXL expression"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
+    const result = JSON.stringify(this.state.evaluationStatus.result, null, 2) || "";
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", {
+      className: "targeting-table"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Evaluate JEXL expression"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
+      className: "jexl-evaluator-row"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "jexl-evaluator"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "jexl-evaluator-textareas"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "jexl-evaluator-input"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
+      className: "monospace no-margins",
       ref: "expressionInput",
       rows: "10",
       cols: "60",
-      placeholder: "Evaluate JEXL expressions and mock parameters by changing their values below"
-    })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, "Status:", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
-      ref: "evaluationStatus"
-    }, success ? "✅" : "❌", ", Result: ", result))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton secondary",
+      placeholder: "Evaluate JEXL expressions and mock parameters by changing their values below",
+      spellCheck: "false"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "primary no-margins",
       onClick: this.handleExpressionEval
-    }, "Evaluate"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Modify targeting parameters"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton secondary",
+    }, "Evaluate")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+      className: "jexl-evaluator-output"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
+      className: "monospace no-margins",
+      readOnly: true,
+      rows: "10",
+      cols: "40",
+      placeholder: "<evaluation result>",
+      value: result,
+      spellCheck: "false"
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
+      className: "jexl-status"
+    }, "Status: ", success ? "✅" : "❌")))))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Modify targeting parameters"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "no-margins",
       onClick: this.onCopyTargetingParams,
       disabled: this.state.copiedToClipboard
     }, this.state.copiedToClipboard ? "Parameters copied!" : "Copy parameters"))), this.state.stringTargetingParameters && Object.keys(this.state.stringTargetingParameters).map((param, i) => {
       const value = this.state.stringTargetingParameters[param];
       const errorState = this.state.targetingParametersError && this.state.targetingParametersError.id === param;
-      const className = errorState ? "errorState" : "";
-      const inputComp = (value && value.length) > 30 ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
+      const largeEditor = value?.length > 30 || value?.match(/[\nR]/);
+      const className = `monospace no-margins targeting-editor${errorState ? " errorState" : ""}${largeEditor ? " large" : " small"}`;
+      const inputComp = /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("textarea", {
         name: param,
         className: className,
         value: value,
-        rows: "10",
-        cols: "60",
-        onChange: this.onChangeTargetingParameters
-      }) : /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-        name: param,
-        className: className,
-        value: value,
-        onChange: this.onChangeTargetingParameters
+        rows: largeEditor ? "10" : "1",
+        cols: largeEditor ? "60" : "28",
+        onChange: this.onChangeTargetingParameters,
+        spellCheck: "false"
       });
       return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
         key: i
       }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, param), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, inputComp));
-    })));
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Attribution parameters"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, "This forces the browser to set some attribution parameters, useful for testing the Return To AMO feature. Clicking on 'Force Attribution', with the default values in each field, will demo the Return To AMO flow with the addon called 'uBlock Origin'. If you wish to try different attribution parameters, enter them in the text boxes. If you wish to try a different addon with the Return To AMO flow, make sure the 'content' text box has a string that is 'rta:base64(addonID)', the base64 string of the addonID prefixed with 'rta:'. The addon must currently be a recommended addon on AMO. Then click 'Force Attribution'. Clicking on 'Force Attribution' with blank text boxes reset attribution data."))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Source"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "source",
+      placeholder: "addons.mozilla.org",
+      value: this.state.attributionParameters.source,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Medium"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "medium",
+      placeholder: "referral",
+      value: this.state.attributionParameters.medium,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Campaign"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "campaign",
+      placeholder: "non-fx-button",
+      value: this.state.attributionParameters.campaign,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Content"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "content",
+      placeholder: `rta:${btoa("uBlock0@raymondhill.net")}`,
+      value: this.state.attributionParameters.content,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Experiment"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "experiment",
+      placeholder: "ua-onboarding",
+      value: this.state.attributionParameters.experiment,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Variation"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "variation",
+      placeholder: "chrome",
+      value: this.state.attributionParameters.variation,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "User Agent"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "ua",
+      placeholder: "Google Chrome 123",
+      value: this.state.attributionParameters.ua,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Download Token"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
+      className: "monospace no-margins",
+      type: "text",
+      size: "36",
+      name: "dltoken",
+      placeholder: "00000000-0000-0000-0000-000000000000",
+      value: this.state.attributionParameters.dltoken,
+      onChange: this.onChangeAttributionParameters
+    }))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", {
+      colSpan: "2"
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+      className: "primary no-margins",
+      onClick: this.setAttribution
+    }, "Force attribution")))));
   }
   onChangeAttributionParameters(event) {
     const {
-      name,
+      name: eventName,
       value
     } = event.target;
     this.setState(({
@@ -1737,14 +1397,14 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       const updatedParameters = {
         ...attributionParameters
       };
-      updatedParameters[name] = value;
+      updatedParameters[eventName] = value;
       return {
         attributionParameters: updatedParameters
       };
     });
   }
   setAttribution() {
-    _asrouter_utils__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
+    _asrouter_utils_mjs__WEBPACK_IMPORTED_MODULE_0__.ASRouterUtils.sendMessage({
       type: "FORCE_ATTRIBUTION",
       data: this.state.attributionParameters
     }).then(this.setStateFromParent);
@@ -1754,60 +1414,6 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
       return this.state.groupImpressions[id] ? this.state.groupImpressions[id].length : 0;
     }
     return "n/a";
-  }
-  renderAttributionParamers() {
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, " Attribution Parameters "), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, " ", "This forces the browser to set some attribution parameters, useful for testing the Return To AMO feature. Clicking on 'Force Attribution', with the default values in each field, will demo the Return To AMO flow with the addon called 'uBlock Origin'. If you wish to try different attribution parameters, enter them in the text boxes. If you wish to try a different addon with the Return To AMO flow, make sure the 'content' text box has a string that is 'rta:base64(addonID)', the base64 string of the addonID prefixed with 'rta:'. The addon must currently be a recommended addon on AMO. Then click 'Force Attribution'. Clicking on 'Force Attribution' with blank text boxes reset attribution data."), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Source ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "source",
-      placeholder: "addons.mozilla.org",
-      value: this.state.attributionParameters.source,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Medium ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "medium",
-      placeholder: "referral",
-      value: this.state.attributionParameters.medium,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Campaign ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "campaign",
-      placeholder: "non-fx-button",
-      value: this.state.attributionParameters.campaign,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Content ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "content",
-      placeholder: `rta:${btoa("uBlock0@raymondhill.net")}`,
-      value: this.state.attributionParameters.content,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Experiment ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "experiment",
-      placeholder: "ua-onboarding",
-      value: this.state.attributionParameters.experiment,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Variation ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "variation",
-      placeholder: "chrome",
-      value: this.state.attributionParameters.variation,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " User Agent ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "ua",
-      placeholder: "Google Chrome 123",
-      value: this.state.attributionParameters.ua,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("b", null, " Download Token ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "text",
-      name: "dltoken",
-      placeholder: "00000000-0000-0000-0000-000000000000",
-      value: this.state.attributionParameters.dltoken,
-      onChange: this.onChangeAttributionParameters
-    }), " ")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton primary button",
-      onClick: this.setAttribution
-    }, " ", "Force Attribution", " "), " "))));
   }
   renderErrorMessage({
     id,
@@ -1829,69 +1435,21 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
     if (providersWithErrors && providersWithErrors.length) {
       return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", {
         className: "errorReporting"
-      }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Provider ID"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Message"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Timestamp"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, providersWithErrors.map(this.renderErrorMessage)));
+      }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Provider"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Message"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("th", null, "Timestamp"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, providersWithErrors.map(this.renderErrorMessage)));
     }
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", null, "No errors");
   }
-  renderPBTab() {
-    if (!this.state.messages) {
-      return null;
-    }
-    let messagesToShow = this.state.messages.filter(message => message.template === "pb_newtab");
-    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", {
-      className: "helpLink"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
-      className: "icon icon-small-spacer icon-info"
-    }), " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "To view an available message, select its radio button and click \"Open a Private Browsing Window\".", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), "To modify a message, make changes to the JSON first, then select the radio button. (To make new changes, click \"Reset Message State\", make your changes, and reselect the radio button.)", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), "Click \"Reset Message State\" to clear all message impressions and view messages in a clean state.", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), "Note that ContentSearch functions do not work in debug mode.")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton primary button",
-      onClick: this.handleOpenPB
-    }, "Open a Private Browsing Window"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton primary button",
-      style: {
-        marginInlineStart: 12
-      },
-      onClick: this.resetPBMessageState
-    }, "Reset Message State"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("br", null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("input", {
-      type: "radio",
-      id: `clear radio`,
-      name: "PB_message_radio",
-      value: "clearPBMessage",
-      style: {
-        display: "none"
-      }
-    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Messages"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-      className: "ASRouterButton slim button",
-      onClick: () => this.toggleAllMessages(messagesToShow)
-    }, "Collapse/Expand All"), this.renderPBMessages()));
-  }
-  getSection() {
+  renderSection() {
     const [section] = this.props.location.routes;
     switch (section) {
-      case "private":
-        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Private Browsing Messages"), this.renderPBTab());
       case "targeting":
-        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Targeting Utilities"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-          className: "button",
-          onClick: this.expireCache
-        }, "Expire Cache"), " ", "(This expires the cache in ASR Targeting for bookmarks and top sites)", this.renderTargetingParameters(), this.renderAttributionParamers());
-      case "groups":
-        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Message Groups"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
-          className: "button",
-          onClick: this.resetGroups
-        }, "Reset group impressions"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("table", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("thead", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tr", {
-          className: "message-item"
-        }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Enabled"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Impressions count"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "Custom frequency"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, "User preferences"))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("tbody", null, this.state.groups && this.state.groups.map(({
-          id,
-          enabled,
-          frequency,
-          userPreferences = []
-        }) => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(Row, {
-          key: id
-        }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(TogglePrefCheckbox, {
-          checked: enabled,
-          pref: id,
-          disabled: true
-        })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, this._getGroupImpressionsCount(id, frequency)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, JSON.stringify(frequency, null, 2)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("td", null, userPreferences.join(", ")))))), this.renderMessageGroupsFilter(), this.renderMessagesByGroup());
+        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Targeting utilities"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
+          className: "button-box"
+        }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+          className: "no-margins",
+          onClick: this.expireCache,
+          title: "Values are cached for some targeting attributes (see ASRouterTargeting). This expires the query cache."
+        }, "Expire cache")), this.renderTargetingParameters());
       case "impressions":
         return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Impressions"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(_ImpressionsSection__WEBPACK_IMPORTED_MODULE_5__.ImpressionsSection, {
           messageImpressions: this.state.messageImpressions,
@@ -1899,13 +1457,19 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
           screenImpressions: this.state.screenImpressions
         }));
       case "errors":
-        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "ASRouter Errors"), this.renderErrors());
+        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "ASRouter errors"), this.renderErrors());
       default:
-        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Message Providers", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+        return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement((react__WEBPACK_IMPORTED_MODULE_1___default().Fragment), null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Message providers", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+          className: "small",
           title: "Restore all provider settings that ship with Firefox",
-          className: "button",
           onClick: this.resetPref
-        }, "Restore default prefs")), this.state.providers ? this.renderProviders() : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Messages"), this.renderMessageFilter(), this.renderMessages());
+        }, "Restore default prefs")), this.state.providers ? this.renderProviders() : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Message groups", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+          className: "small",
+          onClick: this.resetGroupImpressions
+        }, "Reset group impressions")), this.state.groups ? this.renderMessageGroups() : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h2", null, "Messages", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("button", {
+          className: "small",
+          onClick: this.resetMessageImpressions
+        }, "Reset message impressions")), this.renderFilters(), this.renderMessages());
     }
   }
   render() {
@@ -1914,37 +1478,42 @@ class ASRouterAdminInner extends (react__WEBPACK_IMPORTED_MODULE_1___default().P
         className: "asrouter-admin"
       }, "You must enable the ASRouter Admin page by setting", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("code", null, "browser.newtabpage.activity-stream.asrouter.devtoolsEnabled"), " ", "to ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("code", null, "true"), " and then reloading this page.");
     }
+    const [section] = this.props.location.routes;
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("div", {
-      className: `asrouter-admin ${this.props.collapsed ? "collapsed" : "expanded"}`
+      className: "asrouter-admin"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("aside", {
       className: "sidebar"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("ul", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools"
+      href: "#devtools",
+      className: "category",
+      "data-selected": section ? null : ""
     }, "General")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools-private"
-    }, "Private Browsing")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools-targeting"
+      href: "#devtools-targeting",
+      className: "category",
+      "data-selected": section === "targeting" ? "" : null
     }, "Targeting")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools-groups"
-    }, "Message Groups")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools-impressions"
+      href: "#devtools-impressions",
+      className: "category",
+      "data-selected": section === "impressions" ? "" : null
     }, "Impressions")), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("li", null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
-      href: "#devtools-errors"
+      href: "#devtools-errors",
+      className: "category",
+      "data-selected": section === "errors" ? "" : null
     }, "Errors")))), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("main", {
       className: "main-panel"
-    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h1", null, "AS Router Admin"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", {
+    }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("h1", null, "ASRouter Admin"), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("p", {
       className: "helpLink"
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", {
       className: "icon icon-small-spacer icon-info"
-    }), " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Need help using these tools? Check out our", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
+    }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("span", null, "Need help using these tools? Check out our", " ", /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement("a", {
       target: "blank",
       href: "https://firefox-source-docs.mozilla.org/browser/components/asrouter/docs/debugging-docs.html"
-    }, "documentation"))), this.getSection()));
+    }, "documentation"))), this.renderSection()));
   }
 }
 const ASRouterAdmin = props => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(_SimpleHashRouter__WEBPACK_IMPORTED_MODULE_3__.SimpleHashRouter, null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ASRouterAdminInner, props));
 function renderASRouterAdmin() {
-  react_dom__WEBPACK_IMPORTED_MODULE_2___default().render( /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ASRouterAdmin, null), document.getElementById("root"));
+  react_dom__WEBPACK_IMPORTED_MODULE_2___default().render(/*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_1___default().createElement(ASRouterAdmin, null), document.getElementById("root"));
 }
 })();
 

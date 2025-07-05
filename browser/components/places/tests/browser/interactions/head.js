@@ -9,6 +9,7 @@ const { Interactions } = ChromeUtils.importESModule(
 ChromeUtils.defineESModuleGetters(this, {
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -173,6 +174,8 @@ async function assertDatabaseValues(expected, { dontFlush = false } = {}) {
  *
  * @param {string} url The url to query.
  * @param {string} property The property to extract.
+ * @returns {*}
+ *   Returns the selected database value.
  */
 async function getDatabaseValue(url, property) {
   await Interactions.store.flush();
@@ -195,7 +198,72 @@ async function getDatabaseValue(url, property) {
       `,
         { url }
       );
-      return rows?.[0].getResultByName(property);
+      return rows?.[0]?.getResultByName(property);
+    }
+  );
+}
+
+async function insertIntoMozPlacesMetadata(
+  place_id,
+  {
+    referrer_place_id = null,
+    created_at = Date.now(),
+    updated_at = Date.now(),
+    total_view_time = 0,
+    typing_time = 0,
+    key_presses = 0,
+    scrolling_time = 0,
+    scrolling_distance = 0,
+    document_type = 0,
+    search_query_id = null,
+  }
+) {
+  info("Inserting interaction into moz_places_metadata.");
+  await PlacesUtils.withConnectionWrapper(
+    "interactions::insertIntoMozPlacesMetadata",
+    async db => {
+      await db.execute(
+        `
+        INSERT INTO moz_places_metadata (
+          place_id,
+          referrer_place_id,
+          created_at,
+          updated_at,
+          total_view_time,
+          typing_time,
+          key_presses,
+          scrolling_time,
+          scrolling_distance,
+          document_type,
+          search_query_id
+        ) VALUES (
+         :place_id,
+         :referrer_place_id,
+         :created_at,
+         :updated_at,
+         :total_view_time,
+         :typing_time,
+         :key_presses,
+         :scrolling_time,
+         :scrolling_distance,
+         :document_type,
+         :search_query_id
+        )
+      `,
+        {
+          place_id,
+          referrer_place_id,
+          created_at,
+          updated_at,
+          total_view_time,
+          typing_time,
+          key_presses,
+          scrolling_time,
+          scrolling_distance,
+          document_type,
+          search_query_id,
+        }
+      );
     }
   );
 }
