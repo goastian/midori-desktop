@@ -1,10 +1,15 @@
+use alloc::vec::Vec;
+use core::hash::Hash;
+
+use crate::diagnostic_filter::DiagnosticFilterNode;
+use crate::front::wgsl::parse::directive::enable_extension::EnableExtensions;
 use crate::front::wgsl::parse::number::Number;
 use crate::front::wgsl::Scalar;
 use crate::{Arena, FastIndexSet, Handle, Span};
-use std::hash::Hash;
 
 #[derive(Debug, Default)]
 pub struct TranslationUnit<'a> {
+    pub enable_extensions: EnableExtensions,
     pub decls: Arena<GlobalDecl<'a>>,
     /// The common expressions arena for the entire translation unit.
     ///
@@ -24,6 +29,17 @@ pub struct TranslationUnit<'a> {
     /// These are referred to by `Handle<ast::Type<'a>>` values.
     /// User-defined types are referred to by name until lowering.
     pub types: Arena<Type<'a>>,
+
+    /// Arena for all diagnostic filter rules parsed in this module, including those in functions.
+    ///
+    /// See [`DiagnosticFilterNode`] for details on how the tree is represented and used in
+    /// validation.
+    pub diagnostic_filters: Arena<DiagnosticFilterNode>,
+    /// The leaf of all `diagnostic(…)` directives in this module.
+    ///
+    /// See [`DiagnosticFilterNode`] for details on how the tree is represented and used in
+    /// validation.
+    pub diagnostic_filter_leaf: Option<Handle<DiagnosticFilterNode>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +70,7 @@ pub struct Dependency<'a> {
 }
 
 impl Hash for Dependency<'_> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.ident.hash(state);
     }
 }
@@ -85,6 +101,7 @@ pub enum GlobalDeclKind<'a> {
     Override(Override<'a>),
     Struct(Struct<'a>),
     Type(TypeAlias<'a>),
+    ConstAssert(Handle<Expression<'a>>),
 }
 
 #[derive(Debug)]
@@ -99,6 +116,7 @@ pub struct FunctionArgument<'a> {
 pub struct FunctionResult<'a> {
     pub ty: Handle<Type<'a>>,
     pub binding: Option<Binding<'a>>,
+    pub must_use: bool,
 }
 
 #[derive(Debug)]
@@ -109,7 +127,7 @@ pub struct EntryPoint<'a> {
 }
 
 #[cfg(doc)]
-use crate::front::wgsl::lower::{RuntimeExpressionContext, StatementContext};
+use crate::front::wgsl::lower::{LocalExpressionContext, StatementContext};
 
 #[derive(Debug)]
 pub struct Function<'a> {
@@ -117,34 +135,8 @@ pub struct Function<'a> {
     pub name: Ident<'a>,
     pub arguments: Vec<FunctionArgument<'a>>,
     pub result: Option<FunctionResult<'a>>,
-
-    /// Local variable and function argument arena.
-    ///
-    /// Note that the `Local` here is actually a zero-sized type. The AST keeps
-    /// all the detailed information about locals - names, types, etc. - in
-    /// [`LocalDecl`] statements. For arguments, that information is kept in
-    /// [`arguments`]. This `Arena`'s only role is to assign a unique `Handle`
-    /// to each of them, and track their definitions' spans for use in
-    /// diagnostics.
-    ///
-    /// In the AST, when an [`Ident`] expression refers to a local variable or
-    /// argument, its [`IdentExpr`] holds the referent's `Handle<Local>` in this
-    /// arena.
-    ///
-    /// During lowering, [`LocalDecl`] statements add entries to a per-function
-    /// table that maps `Handle<Local>` values to their Naga representations,
-    /// accessed via [`StatementContext::local_table`] and
-    /// [`RuntimeExpressionContext::local_table`]. This table is then consulted when
-    /// lowering subsequent [`Ident`] expressions.
-    ///
-    /// [`LocalDecl`]: StatementKind::LocalDecl
-    /// [`arguments`]: Function::arguments
-    /// [`Ident`]: Expression::Ident
-    /// [`StatementContext::local_table`]: StatementContext::local_table
-    /// [`RuntimeExpressionContext::local_table`]: RuntimeExpressionContext::local_table
-    pub locals: Arena<Local>,
-
     pub body: Block<'a>,
+    pub diagnostic_filter_leaf: Option<Handle<DiagnosticFilterNode>>,
 }
 
 #[derive(Debug)]
@@ -152,9 +144,9 @@ pub enum Binding<'a> {
     BuiltIn(crate::BuiltIn),
     Location {
         location: Handle<Expression<'a>>,
-        second_blend_source: bool,
         interpolation: Option<crate::Interpolation>,
         sampling: Option<crate::Sampling>,
+        blend_src: Option<Handle<Expression<'a>>>,
     },
 }
 
@@ -169,7 +161,7 @@ pub struct GlobalVariable<'a> {
     pub name: Ident<'a>,
     pub space: crate::AddressSpace,
     pub binding: Option<ResourceBinding<'a>>,
-    pub ty: Handle<Type<'a>>,
+    pub ty: Option<Handle<Type<'a>>>,
     pub init: Option<Handle<Expression<'a>>>,
 }
 
@@ -225,12 +217,14 @@ pub enum Type<'a> {
     Scalar(Scalar),
     Vector {
         size: crate::VectorSize,
-        scalar: Scalar,
+        ty: Handle<Type<'a>>,
+        ty_span: Span,
     },
     Matrix {
         columns: crate::VectorSize,
         rows: crate::VectorSize,
-        width: crate::Bytes,
+        ty: Handle<Type<'a>>,
+        ty_span: Span,
     },
     Atomic(Scalar),
     Pointer {
@@ -249,8 +243,12 @@ pub enum Type<'a> {
     Sampler {
         comparison: bool,
     },
-    AccelerationStructure,
-    RayQuery,
+    AccelerationStructure {
+        vertex_return: bool,
+    },
+    RayQuery {
+        vertex_return: bool,
+    },
     RayDesc,
     RayIntersection,
     BindingArray {
@@ -308,7 +306,8 @@ pub enum StatementKind<'a> {
     },
     Increment(Handle<Expression<'a>>),
     Decrement(Handle<Expression<'a>>),
-    Ignore(Handle<Expression<'a>>),
+    Phony(Handle<Expression<'a>>),
+    ConstAssert(Handle<Expression<'a>>),
 }
 
 #[derive(Debug)]
@@ -357,7 +356,8 @@ pub enum ConstructorType<'a> {
     /// `vec3<f32>(1.0)`.
     Vector {
         size: crate::VectorSize,
-        scalar: Scalar,
+        ty: Handle<Type<'a>>,
+        ty_span: Span,
     },
 
     /// A matrix construction whose component type is inferred from the
@@ -372,7 +372,8 @@ pub enum ConstructorType<'a> {
     Matrix {
         columns: crate::VectorSize,
         rows: crate::VectorSize,
-        width: crate::Bytes,
+        ty: Handle<Type<'a>>,
+        ty_span: Span,
     },
 
     /// An array whose component type and size are inferred from the arguments:
@@ -488,13 +489,22 @@ pub struct Let<'a> {
 }
 
 #[derive(Debug)]
+pub struct LocalConst<'a> {
+    pub name: Ident<'a>,
+    pub ty: Option<Handle<Type<'a>>>,
+    pub init: Handle<Expression<'a>>,
+    pub handle: Handle<Local>,
+}
+
+#[derive(Debug)]
 pub enum LocalDecl<'a> {
     Var(LocalVariable<'a>),
     Let(Let<'a>),
+    Const(LocalConst<'a>),
 }
 
 #[derive(Debug)]
 /// A placeholder for a local variable declaration.
 ///
-/// See [`Function::locals`] for more information.
+/// See [`super::ExpressionContext::locals`] for more information.
 pub struct Local;

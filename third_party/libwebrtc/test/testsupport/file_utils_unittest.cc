@@ -14,12 +14,12 @@
 
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 
@@ -45,7 +45,7 @@ std::string Path(absl::string_view path) {
 void CleanDir(absl::string_view dir, size_t* num_deleted_entries) {
   RTC_DCHECK(num_deleted_entries);
   *num_deleted_entries = 0;
-  absl::optional<std::vector<std::string>> dir_content = ReadDirectory(dir);
+  std::optional<std::vector<std::string>> dir_content = ReadDirectory(dir);
   EXPECT_TRUE(dir_content);
   for (const auto& entry : *dir_content) {
     if (DirExists(entry)) {
@@ -271,13 +271,37 @@ TEST_F(FileUtilsTest, WriteReadDeleteFilesAndDirs) {
   EXPECT_TRUE(DirExists(temp_subdir));
 
   // Checks.
-  absl::optional<std::vector<std::string>> dir_content =
+  std::optional<std::vector<std::string>> dir_content =
       ReadDirectory(temp_directory);
   EXPECT_TRUE(dir_content);
   EXPECT_EQ(2u, dir_content->size());
   EXPECT_NO_FATAL_FAILURE(CleanDir(temp_directory, &num_deleted_entries));
   EXPECT_EQ(2u, num_deleted_entries);
   EXPECT_TRUE(RemoveDir(temp_directory));
+  EXPECT_FALSE(DirExists(temp_directory));
+}
+
+TEST_F(FileUtilsTest, DeleteNonEmptyDirectory) {
+  const std::string temp_directory =
+      OutputPathWithRandomDirectory() + Path("TempFileUtilsTestReadDirectory/");
+  CreateDir(temp_directory);
+  EXPECT_TRUE(DirExists(temp_directory));
+
+  // Add a file.
+  const std::string temp_filename = temp_directory + "TempFilenameTest";
+  WriteStringInFile("test\n", temp_filename);
+  EXPECT_TRUE(FileExists(temp_filename));
+
+  // Add a directory with one file.
+  const std::string temp_subdir = temp_directory + Path("subdir/");
+  EXPECT_TRUE(CreateDir(temp_subdir));
+  EXPECT_TRUE(DirExists(temp_subdir));
+  const std::string temp_filename2 = temp_subdir + "TempFilenameTest2";
+  WriteStringInFile("test2\n", temp_filename2);
+  EXPECT_TRUE(FileExists(temp_filename2));
+
+  // Checks.
+  EXPECT_TRUE(RemoveNonEmptyDir(temp_directory));
   EXPECT_FALSE(DirExists(temp_directory));
 }
 

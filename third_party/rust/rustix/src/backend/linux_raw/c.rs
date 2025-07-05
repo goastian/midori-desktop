@@ -8,7 +8,8 @@
 
 pub(crate) type size_t = usize;
 pub(crate) use linux_raw_sys::ctypes::*;
-pub(crate) use linux_raw_sys::errno::EINVAL;
+pub(crate) use linux_raw_sys::errno::{EBADF, EINVAL};
+pub(crate) use linux_raw_sys::general::{__kernel_fd_set as fd_set, __FD_SETSIZE as FD_SETSIZE};
 pub(crate) use linux_raw_sys::ioctl::{FIONBIO, FIONREAD};
 // Import the kernel's `uid_t` and `gid_t` if they're 32-bit.
 #[cfg(not(any(target_arch = "arm", target_arch = "sparc", target_arch = "x86")))]
@@ -42,6 +43,10 @@ pub(crate) use linux_raw_sys::general::{
 };
 
 pub(crate) use linux_raw_sys::ioctl::{BLKPBSZGET, BLKSSZGET, FICLONE};
+#[cfg(target_pointer_width = "32")]
+pub(crate) use linux_raw_sys::ioctl::{FS_IOC32_GETFLAGS, FS_IOC32_SETFLAGS};
+#[cfg(target_pointer_width = "64")]
+pub(crate) use linux_raw_sys::ioctl::{FS_IOC_GETFLAGS, FS_IOC_SETFLAGS};
 
 #[cfg(feature = "io_uring")]
 pub(crate) use linux_raw_sys::{general::open_how, io_uring::*};
@@ -58,7 +63,7 @@ pub(crate) use linux_raw_sys::{
         AF_ASH, AF_ATMPVC, AF_ATMSVC, AF_AX25, AF_BLUETOOTH, AF_BRIDGE, AF_CAN, AF_ECONET,
         AF_IEEE802154, AF_INET, AF_INET6, AF_IPX, AF_IRDA, AF_ISDN, AF_IUCV, AF_KEY, AF_LLC,
         AF_NETBEUI, AF_NETLINK, AF_NETROM, AF_PACKET, AF_PHONET, AF_PPPOX, AF_RDS, AF_ROSE,
-        AF_RXRPC, AF_SECURITY, AF_SNA, AF_TIPC, AF_UNIX, AF_UNSPEC, AF_WANPIPE, AF_X25,
+        AF_RXRPC, AF_SECURITY, AF_SNA, AF_TIPC, AF_UNIX, AF_UNSPEC, AF_WANPIPE, AF_X25, AF_XDP,
         IP6T_SO_ORIGINAL_DST, IPPROTO_FRAGMENT, IPPROTO_ICMPV6, IPPROTO_MH, IPPROTO_ROUTING,
         IPV6_ADD_MEMBERSHIP, IPV6_DROP_MEMBERSHIP, IPV6_FREEBIND, IPV6_MULTICAST_HOPS,
         IPV6_MULTICAST_LOOP, IPV6_RECVTCLASS, IPV6_TCLASS, IPV6_UNICAST_HOPS, IPV6_V6ONLY,
@@ -67,14 +72,25 @@ pub(crate) use linux_raw_sys::{
         MSG_CMSG_CLOEXEC, MSG_CONFIRM, MSG_DONTROUTE, MSG_DONTWAIT, MSG_EOR, MSG_ERRQUEUE,
         MSG_MORE, MSG_NOSIGNAL, MSG_OOB, MSG_PEEK, MSG_TRUNC, MSG_WAITALL, SCM_CREDENTIALS,
         SCM_RIGHTS, SHUT_RD, SHUT_RDWR, SHUT_WR, SOCK_DGRAM, SOCK_RAW, SOCK_RDM, SOCK_SEQPACKET,
-        SOCK_STREAM, SOL_SOCKET, SO_ACCEPTCONN, SO_BROADCAST, SO_COOKIE, SO_DOMAIN, SO_ERROR,
-        SO_INCOMING_CPU, SO_KEEPALIVE, SO_LINGER, SO_OOBINLINE, SO_ORIGINAL_DST, SO_PASSCRED,
-        SO_PROTOCOL, SO_RCVBUF, SO_RCVTIMEO_NEW, SO_RCVTIMEO_NEW as SO_RCVTIMEO, SO_RCVTIMEO_OLD,
-        SO_REUSEADDR, SO_REUSEPORT, SO_SNDBUF, SO_SNDTIMEO_NEW, SO_SNDTIMEO_NEW as SO_SNDTIMEO,
-        SO_SNDTIMEO_OLD, SO_TYPE, TCP_CONGESTION, TCP_CORK, TCP_KEEPCNT, TCP_KEEPIDLE,
-        TCP_KEEPINTVL, TCP_NODELAY, TCP_QUICKACK, TCP_THIN_LINEAR_TIMEOUTS, TCP_USER_TIMEOUT,
+        SOCK_STREAM, SOL_SOCKET, SOL_XDP, SO_ACCEPTCONN, SO_BROADCAST, SO_COOKIE, SO_DOMAIN,
+        SO_ERROR, SO_INCOMING_CPU, SO_KEEPALIVE, SO_LINGER, SO_OOBINLINE, SO_ORIGINAL_DST,
+        SO_PASSCRED, SO_PROTOCOL, SO_RCVBUF, SO_RCVBUFFORCE, SO_RCVTIMEO_NEW,
+        SO_RCVTIMEO_NEW as SO_RCVTIMEO, SO_RCVTIMEO_OLD, SO_REUSEADDR, SO_REUSEPORT, SO_SNDBUF,
+        SO_SNDTIMEO_NEW, SO_SNDTIMEO_NEW as SO_SNDTIMEO, SO_SNDTIMEO_OLD, SO_TYPE, TCP_CONGESTION,
+        TCP_CORK, TCP_KEEPCNT, TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_NODELAY, TCP_QUICKACK,
+        TCP_THIN_LINEAR_TIMEOUTS, TCP_USER_TIMEOUT,
     },
     netlink::*,
+    xdp::{
+        sockaddr_xdp, xdp_desc, xdp_mmap_offsets, xdp_mmap_offsets_v1, xdp_options,
+        xdp_ring_offset, xdp_ring_offset_v1, xdp_statistics, xdp_statistics_v1, xdp_umem_reg,
+        xdp_umem_reg_v1, XDP_COPY, XDP_MMAP_OFFSETS, XDP_OPTIONS, XDP_OPTIONS_ZEROCOPY,
+        XDP_PGOFF_RX_RING, XDP_PGOFF_TX_RING, XDP_PKT_CONTD, XDP_RING_NEED_WAKEUP, XDP_RX_RING,
+        XDP_SHARED_UMEM, XDP_STATISTICS, XDP_TX_RING, XDP_UMEM_COMPLETION_RING, XDP_UMEM_FILL_RING,
+        XDP_UMEM_PGOFF_COMPLETION_RING, XDP_UMEM_PGOFF_FILL_RING, XDP_UMEM_REG,
+        XDP_UMEM_UNALIGNED_CHUNK_FLAG, XDP_USE_NEED_WAKEUP, XDP_USE_SG, XDP_ZEROCOPY,
+        XSK_UNALIGNED_BUF_ADDR_MASK, XSK_UNALIGNED_BUF_OFFSET_SHIFT,
+    },
 };
 
 // Cast away bindgen's `enum` type to make these consistent with the other
@@ -175,21 +191,11 @@ pub(crate) use linux_raw_sys::{
         VKILL, VLNEXT, VMIN, VQUIT, VREPRINT, VSTART, VSTOP, VSUSP, VSWTC, VT0, VT1, VTDLY, VTIME,
         VWERASE, XCASE, XTABS,
     },
-    ioctl::{TCGETS2, TCSETS2, TCSETSF2, TCSETSW2, TIOCEXCL, TIOCNXCL},
+    ioctl::{
+        TCFLSH, TCGETS, TCGETS2, TCSBRK, TCSETS, TCSETS2, TCSETSF2, TCSETSW2, TCXONC, TIOCEXCL,
+        TIOCGPGRP, TIOCGSID, TIOCGWINSZ, TIOCNXCL, TIOCSPGRP, TIOCSWINSZ,
+    },
 };
-
-// On MIPS, `TCSANOW` et al have `TCSETS` added to them, so we need it to
-// subtract it out.
-#[cfg(all(
-    feature = "termios",
-    any(
-        target_arch = "mips",
-        target_arch = "mips32r6",
-        target_arch = "mips64",
-        target_arch = "mips64r6"
-    )
-))]
-pub(crate) use linux_raw_sys::ioctl::TCSETS;
 
 // Define our own `uid_t` and `gid_t` if the kernel's versions are not 32-bit.
 #[cfg(any(target_arch = "arm", target_arch = "sparc", target_arch = "x86"))]
@@ -302,3 +308,9 @@ mod reboot_symbols {
 }
 #[cfg(feature = "system")]
 pub(crate) use reboot_symbols::*;
+
+// TODO: This is new in Linux 6.11; remove when linux-raw-sys is updated.
+pub(crate) const MAP_DROPPABLE: u32 = 0x8;
+
+// TODO: This is new in Linux 6.5; remove when linux-raw-sys is updated.
+pub(crate) const MOVE_MOUNT_BENEATH: u32 = 0x200;

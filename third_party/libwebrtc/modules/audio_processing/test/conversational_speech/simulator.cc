@@ -165,7 +165,7 @@ void ScaleSignal(rtc::ArrayView<const int16_t> source_samples,
   RTC_DCHECK_EQ(source_samples.size(), output_samples.size());
   std::transform(source_samples.begin(), source_samples.end(),
                  output_samples.begin(), [gain_linear](int16_t x) -> int16_t {
-                   return rtc::saturated_cast<int16_t>(x * gain_linear);
+                   return saturated_cast<int16_t>(x * gain_linear);
                  });
 }
 
@@ -186,13 +186,6 @@ std::unique_ptr<std::map<std::string, SpeakerOutputFilePaths>> Simulate(
   // Preload all the input audio tracks.
   const auto& audiotrack_readers = multiend_call.audiotrack_readers();
   auto audiotracks = PreloadAudioTracks(audiotrack_readers);
-
-  // TODO(alessiob): When speaker_names.size() == 2, near-end and far-end
-  // across the 2 speakers are symmetric; hence, the code below could be
-  // replaced by only creating the near-end or the far-end. However, this would
-  // require to split the unit tests and document the behavior in README.md.
-  // In practice, it should not be an issue since the files are not expected to
-  // be signinificant.
 
   // Write near-end and far-end output tracks.
   for (const auto& speaking_turn : multiend_call.speaking_turns()) {

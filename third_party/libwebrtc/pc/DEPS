@@ -14,13 +14,5 @@ include_rules = [
   "+net/dcsctp",
   "+p2p",
   "+system_wrappers",
+  "+absl/strings/str_cat.h",
 ]
-
-specific_include_rules = {
-  "androidtestinitializer\.cc": [
-    "+base/android",  # Allowed only for Android tests.
-  ],
-  "srtpfilter_unittest\.cc": [
-    "+crypto",
-  ],
-}

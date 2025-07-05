@@ -57,8 +57,12 @@ class RtpPacketizerAv1 : public RtpPacketizer {
   // Returns the number of additional bytes needed to store the previous OBU
   // element if an additonal OBU element is added to the packet.
   static int AdditionalBytesForPreviousObuElement(const Packet& packet);
+  static std::vector<Packet> PacketizeInternal(rtc::ArrayView<const Obu> obus,
+                                               PayloadSizeLimits limits);
+  // Packetize and try to distribute the payload evenly across packets.
   static std::vector<Packet> Packetize(rtc::ArrayView<const Obu> obus,
                                        PayloadSizeLimits limits);
+
   uint8_t AggregationHeader() const;
 
   const VideoFrameType frame_type_;

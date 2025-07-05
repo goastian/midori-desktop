@@ -21,7 +21,7 @@
 //
 // Example usage:
 //
-// class TestInterface : public rtc::RefCountInterface {
+// class TestInterface : public RefCountInterface {
 //  public:
 //   std::string FooA() = 0;
 //   std::string FooB(bool arg1) const = 0;
@@ -64,6 +64,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "api/make_ref_counted.h"
 #include "api/scoped_refptr.h"
 #include "api/task_queue/task_queue_base.h"
 #include "rtc_base/event.h"

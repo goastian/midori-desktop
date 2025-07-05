@@ -11,8 +11,8 @@
 #import <Foundation/Foundation.h>
 
 #import "RTCNativeVideoEncoder.h"
-#import "base/RTCMacros.h"
 #include "rtc_base/checks.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 @implementation RTC_OBJC_TYPE (RTCNativeVideoEncoder)
 
@@ -20,7 +20,8 @@
   RTC_DCHECK_NOTREACHED();
 }
 
-- (NSInteger)startEncodeWithSettings:(RTC_OBJC_TYPE(RTCVideoEncoderSettings) *)settings
+- (NSInteger)startEncodeWithSettings:
+                 (RTC_OBJC_TYPE(RTCVideoEncoderSettings) *)settings
                        numberOfCores:(int)numberOfCores {
   RTC_DCHECK_NOTREACHED();
   return 0;

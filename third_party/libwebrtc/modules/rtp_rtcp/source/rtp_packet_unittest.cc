@@ -249,7 +249,8 @@ TEST(RtpPacketTest, CreateWith2Extensions) {
   packet.SetTimestamp(kTimestamp);
   packet.SetSsrc(kSsrc);
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
-  packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel);
+  packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel));
   EXPECT_THAT(kPacketWithTOAndAL,
               ElementsAreArray(packet.data(), packet.size()));
 }
@@ -269,7 +270,8 @@ TEST(RtpPacketTest, CreateWithTwoByteHeaderExtensionFirst) {
                                   TimeDelta::Millis(340));
   ASSERT_TRUE(packet.SetExtension<PlayoutDelayLimits>(playout_delay));
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
-  packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel);
+  packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel));
   EXPECT_THAT(kPacketWithTwoByteExtensionIdFirst,
               ElementsAreArray(packet.data(), packet.size()));
 }
@@ -286,7 +288,8 @@ TEST(RtpPacketTest, CreateWithTwoByteHeaderExtensionLast) {
   packet.SetTimestamp(kTimestamp);
   packet.SetSsrc(kSsrc);
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
-  packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel);
+  packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel));
   EXPECT_THAT(kPacketWithTOAndAL,
               ElementsAreArray(packet.data(), packet.size()));
   // Set extension that requires two-byte header.
@@ -346,8 +349,8 @@ TEST(RtpPacketTest, TryToCreateTwoByteHeaderNotSupported) {
   extensions.Register<AudioLevelExtension>(kTwoByteExtensionId);
   RtpPacketToSend packet(&extensions);
   // Set extension that requires two-byte header.
-  EXPECT_FALSE(
-      packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel));
+  EXPECT_FALSE(packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel)));
 }
 
 TEST(RtpPacketTest, CreateTwoByteHeaderSupportedIfExtmapAllowMixed) {
@@ -355,8 +358,8 @@ TEST(RtpPacketTest, CreateTwoByteHeaderSupportedIfExtmapAllowMixed) {
   extensions.Register<AudioLevelExtension>(kTwoByteExtensionId);
   RtpPacketToSend packet(&extensions);
   // Set extension that requires two-byte header.
-  EXPECT_TRUE(
-      packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel));
+  EXPECT_TRUE(packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel)));
 }
 
 TEST(RtpPacketTest, CreateWithMaxSizeHeaderExtension) {
@@ -408,7 +411,7 @@ TEST(RtpPacketTest, FailsToSetUnregisteredExtension) {
   EXPECT_FALSE(packet.SetExtension<TransportSequenceNumber>(42));
 
   EXPECT_FALSE(packet.HasExtension<TransportSequenceNumber>());
-  EXPECT_EQ(packet.GetExtension<TransportSequenceNumber>(), absl::nullopt);
+  EXPECT_EQ(packet.GetExtension<TransportSequenceNumber>(), std::nullopt);
 }
 
 TEST(RtpPacketTest, CreateWithDynamicSizedExtensionCsrcAudioLevel) {
@@ -439,8 +442,8 @@ TEST(RtpPacketTest, SetReservedExtensionsAfterPayload) {
   EXPECT_TRUE(packet.ReserveExtension<TransmissionOffset>());
   packet.SetPayloadSize(kPayloadSize);
   // Can't set extension after payload.
-  EXPECT_FALSE(
-      packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel));
+  EXPECT_FALSE(packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel)));
   // Unless reserved.
   EXPECT_TRUE(packet.SetExtension<TransmissionOffset>(kTimeOffset));
 }
@@ -632,7 +635,7 @@ TEST(RtpPacketTest, GetExtensionWithoutParametersReturnsOptionalValue) {
   auto time_offset = packet.GetExtension<TransmissionOffset>();
   static_assert(
       std::is_same<decltype(time_offset),
-                   absl::optional<TransmissionOffset::value_type>>::value,
+                   std::optional<TransmissionOffset::value_type>>::value,
       "");
   EXPECT_EQ(time_offset, kTimeOffset);
   EXPECT_FALSE(packet.GetExtension<RtpStreamId>().has_value());
@@ -718,12 +721,10 @@ TEST(RtpPacketTest, ParseWith2Extensions) {
   int32_t time_offset;
   EXPECT_TRUE(packet.GetExtension<TransmissionOffset>(&time_offset));
   EXPECT_EQ(kTimeOffset, time_offset);
-  bool voice_active;
-  uint8_t audio_level;
-  EXPECT_TRUE(
-      packet.GetExtension<AudioLevelExtension>(&voice_active, &audio_level));
-  EXPECT_EQ(kVoiceActive, voice_active);
-  EXPECT_EQ(kAudioLevel, audio_level);
+  AudioLevel audio_level;
+  EXPECT_TRUE(packet.GetExtension<AudioLevelExtension>(&audio_level));
+  EXPECT_EQ(kVoiceActive, audio_level.voice_activity());
+  EXPECT_EQ(kAudioLevel, audio_level.level());
 }
 
 TEST(RtpPacketTest, ParseSecondPacketWithFewerExtensions) {
@@ -751,10 +752,8 @@ TEST(RtpPacketTest, ParseWith2ExtensionsInvalidPadding) {
   int32_t time_offset;
   EXPECT_TRUE(packet.GetExtension<TransmissionOffset>(&time_offset));
   EXPECT_EQ(kTimeOffset, time_offset);
-  bool voice_active;
-  uint8_t audio_level;
-  EXPECT_FALSE(
-      packet.GetExtension<AudioLevelExtension>(&voice_active, &audio_level));
+  AudioLevel audio_level;
+  EXPECT_FALSE(packet.GetExtension<AudioLevelExtension>(&audio_level));
 }
 
 TEST(RtpPacketTest, ParseWith2ExtensionsReservedExtensionId) {
@@ -767,10 +766,8 @@ TEST(RtpPacketTest, ParseWith2ExtensionsReservedExtensionId) {
   int32_t time_offset;
   EXPECT_TRUE(packet.GetExtension<TransmissionOffset>(&time_offset));
   EXPECT_EQ(kTimeOffset, time_offset);
-  bool voice_active;
-  uint8_t audio_level;
-  EXPECT_FALSE(
-      packet.GetExtension<AudioLevelExtension>(&voice_active, &audio_level));
+  AudioLevel audio_level;
+  EXPECT_FALSE(packet.GetExtension<AudioLevelExtension>(&audio_level));
 }
 
 TEST(RtpPacketTest, ParseWithAllFeatures) {
@@ -822,12 +819,10 @@ TEST(RtpPacketTest, ParseTwoByteHeaderExtensionWithPadding) {
   int32_t time_offset;
   EXPECT_TRUE(packet.GetExtension<TransmissionOffset>(&time_offset));
   EXPECT_EQ(kTimeOffset, time_offset);
-  bool voice_active;
-  uint8_t audio_level;
-  EXPECT_TRUE(
-      packet.GetExtension<AudioLevelExtension>(&voice_active, &audio_level));
-  EXPECT_EQ(kVoiceActive, voice_active);
-  EXPECT_EQ(kAudioLevel, audio_level);
+  AudioLevel audio_level;
+  EXPECT_TRUE(packet.GetExtension<AudioLevelExtension>(&audio_level));
+  EXPECT_EQ(kVoiceActive, audio_level.voice_activity());
+  EXPECT_EQ(kAudioLevel, audio_level.level());
 }
 
 TEST(RtpPacketTest, ParseWithExtensionDelayed) {
@@ -909,13 +904,13 @@ struct UncopyableExtension {
   static constexpr RTPExtensionType kId = kRtpExtensionDependencyDescriptor;
   static constexpr absl::string_view Uri() { return "uri"; }
 
-  static size_t ValueSize(const UncopyableValue& value) { return 1; }
-  static bool Write(rtc::ArrayView<uint8_t> data,
-                    const UncopyableValue& value) {
+  static size_t ValueSize(const UncopyableValue& /* value */) { return 1; }
+  static bool Write(rtc::ArrayView<uint8_t> /* data */,
+                    const UncopyableValue& /* value */) {
     return true;
   }
-  static bool Parse(rtc::ArrayView<const uint8_t> data,
-                    UncopyableValue* value) {
+  static bool Parse(rtc::ArrayView<const uint8_t> /* data */,
+                    UncopyableValue* /* value */) {
     return true;
   }
 };
@@ -944,7 +939,9 @@ struct ParseByReferenceExtension {
   static constexpr RTPExtensionType kId = kRtpExtensionDependencyDescriptor;
   static constexpr absl::string_view Uri() { return "uri"; }
 
-  static size_t ValueSize(uint8_t value1, uint8_t value2) { return 2; }
+  static size_t ValueSize(uint8_t /* value1 */, uint8_t /* value2 */) {
+    return 2;
+  }
   static bool Write(rtc::ArrayView<uint8_t> data,
                     uint8_t value1,
                     uint8_t value2) {
@@ -1078,7 +1075,7 @@ TEST(RtpPacketTest,
 
   constexpr AbsoluteCaptureTime kAbsoluteCaptureTime{
       /*absolute_capture_timestamp=*/9876543210123456789ULL,
-      /*estimated_capture_clock_offset=*/absl::nullopt};
+      /*estimated_capture_clock_offset=*/std::nullopt};
   ASSERT_TRUE(send_packet.SetExtension<AbsoluteCaptureTimeExtension>(
       kAbsoluteCaptureTime));
 
@@ -1134,7 +1131,7 @@ TEST(RtpPacketTest, CreateAndParseTransportSequenceNumberV2) {
 
   constexpr int kTransportSequenceNumber = 12345;
   send_packet.SetExtension<TransportSequenceNumberV2>(kTransportSequenceNumber,
-                                                      absl::nullopt);
+                                                      std::nullopt);
   EXPECT_EQ(send_packet.GetRawExtension<TransportSequenceNumberV2>().size(),
             2u);
 
@@ -1143,7 +1140,7 @@ TEST(RtpPacketTest, CreateAndParseTransportSequenceNumberV2) {
   EXPECT_TRUE(receive_packet.Parse(send_packet.Buffer()));
 
   uint16_t received_transport_sequeunce_number;
-  absl::optional<FeedbackRequest> received_feedback_request;
+  std::optional<FeedbackRequest> received_feedback_request;
   EXPECT_TRUE(receive_packet.GetExtension<TransportSequenceNumberV2>(
       &received_transport_sequeunce_number, &received_feedback_request));
   EXPECT_EQ(received_transport_sequeunce_number, kTransportSequenceNumber);
@@ -1165,7 +1162,7 @@ TEST(RtpPacketTest, CreateAndParseTransportSequenceNumberV2Preallocated) {
   send_packet.SetSsrc(kSsrc);
 
   constexpr int kTransportSequenceNumber = 12345;
-  constexpr absl::optional<FeedbackRequest> kNoFeedbackRequest =
+  constexpr std::optional<FeedbackRequest> kNoFeedbackRequest =
       FeedbackRequest{/*include_timestamps=*/false, /*sequence_count=*/0};
   send_packet.ReserveExtension<TransportSequenceNumberV2>();
   send_packet.SetExtension<TransportSequenceNumberV2>(kTransportSequenceNumber,
@@ -1178,7 +1175,7 @@ TEST(RtpPacketTest, CreateAndParseTransportSequenceNumberV2Preallocated) {
   EXPECT_TRUE(receive_packet.Parse(send_packet.Buffer()));
 
   uint16_t received_transport_sequeunce_number;
-  absl::optional<FeedbackRequest> received_feedback_request;
+  std::optional<FeedbackRequest> received_feedback_request;
   EXPECT_TRUE(receive_packet.GetExtension<TransportSequenceNumberV2>(
       &received_transport_sequeunce_number, &received_feedback_request));
   EXPECT_EQ(received_transport_sequeunce_number, kTransportSequenceNumber);
@@ -1198,7 +1195,7 @@ TEST(RtpPacketTest,
   send_packet.SetSsrc(kSsrc);
 
   constexpr int kTransportSequenceNumber = 12345;
-  constexpr absl::optional<FeedbackRequest> kFeedbackRequest =
+  constexpr std::optional<FeedbackRequest> kFeedbackRequest =
       FeedbackRequest{/*include_timestamps=*/true, /*sequence_count=*/3};
   send_packet.SetExtension<TransportSequenceNumberV2>(kTransportSequenceNumber,
                                                       kFeedbackRequest);
@@ -1209,7 +1206,7 @@ TEST(RtpPacketTest,
 
   // Parse transport sequence number and feedback request.
   uint16_t received_transport_sequeunce_number;
-  absl::optional<FeedbackRequest> received_feedback_request;
+  std::optional<FeedbackRequest> received_feedback_request;
   EXPECT_TRUE(receive_packet.GetExtension<TransportSequenceNumberV2>(
       &received_transport_sequeunce_number, &received_feedback_request));
   EXPECT_EQ(received_transport_sequeunce_number, kTransportSequenceNumber);
@@ -1251,7 +1248,8 @@ TEST(RtpPacketTest, RemoveMultipleExtensions) {
   packet.SetTimestamp(kTimestamp);
   packet.SetSsrc(kSsrc);
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
-  packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel);
+  packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel));
 
   EXPECT_THAT(kPacketWithTOAndAL,
               ElementsAreArray(packet.data(), packet.size()));
@@ -1279,7 +1277,8 @@ TEST(RtpPacketTest, RemoveExtensionPreservesOtherUnregisteredExtensions) {
   packet.SetTimestamp(kTimestamp);
   packet.SetSsrc(kSsrc);
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
-  packet.SetExtension<AudioLevelExtension>(kVoiceActive, kAudioLevel);
+  packet.SetExtension<AudioLevelExtension>(
+      AudioLevel(kVoiceActive, kAudioLevel));
 
   EXPECT_THAT(kPacketWithTOAndAL,
               ElementsAreArray(packet.data(), packet.size()));

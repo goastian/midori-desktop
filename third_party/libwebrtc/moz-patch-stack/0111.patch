@@ -1,31 +1,82 @@
 From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Mon, 6 May 2024 07:28:00 +0000
-Subject: Bug 1892329 - Fix threading issues in VideoCaptureModuleV4L2 once and
- for all. r=webrtc-reviewers,mjf
+Date: Tue, 27 Aug 2024 10:01:00 +0000
+Subject: Bug 1914835 - With ScreenCaptureKit embed the mouse cursor directly.
+ r=webrtc-reviewers,ng
 
-Differential Revision: https://phabricator.services.mozilla.com/D208187
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/65e120a9c1dcb9c8f1c8930e808b03aa149eaf40
+The MouseCursorMonitor on macOS is rather expensive, as for every pulled frame
+it compares all pixels of the cursors used for the current and last frames.
+Getting to the pixels may also incur a conversion.
+
+Note that this comparison happens even if the backend reports it had embedded
+the cursor already, as the embedding only affects composing the monitored cursor
+into a captured frame.
+
+Differential Revision: https://phabricator.services.mozilla.com/D220092
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/8ca7b371646d8aa40b2c3faf54570fcd1331a677
 ---
- modules/video_capture/linux/video_capture_v4l2.cc | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ .../desktop_capture/mac/screen_capturer_sck.h   |  3 +++
+ .../desktop_capture/mac/screen_capturer_sck.mm  | 17 ++++++++++++++---
+ 2 files changed, 17 insertions(+), 3 deletions(-)
 
-diff --git a/modules/video_capture/linux/video_capture_v4l2.cc b/modules/video_capture/linux/video_capture_v4l2.cc
-index 29ca864e19..b6e7e79a2a 100644
---- a/modules/video_capture/linux/video_capture_v4l2.cc
-+++ b/modules/video_capture/linux/video_capture_v4l2.cc
-@@ -300,7 +300,6 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
-   _requestedCapability = capability;
-   _captureStarted = true;
-   _streaming = true;
--  }
+diff --git a/modules/desktop_capture/mac/screen_capturer_sck.h b/modules/desktop_capture/mac/screen_capturer_sck.h
+index 2c5241d33e..105cbf0783 100644
+--- a/modules/desktop_capture/mac/screen_capturer_sck.h
++++ b/modules/desktop_capture/mac/screen_capturer_sck.h
+@@ -18,6 +18,9 @@
  
-   // start capture thread;
-   if (!_captureThread.empty()) {
-@@ -308,6 +307,7 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
-   }
+ namespace webrtc {
  
-   quit_ = false;
++// Returns true if the ScreenCaptureKit capturer is available.
++bool ScreenCapturerSckAvailable();
++
+ // A DesktopCapturer implementation that uses ScreenCaptureKit.
+ std::unique_ptr<DesktopCapturer> CreateScreenCapturerSck(
+     const DesktopCaptureOptions& options);
+diff --git a/modules/desktop_capture/mac/screen_capturer_sck.mm b/modules/desktop_capture/mac/screen_capturer_sck.mm
+index fbec429ffe..707199cd9e 100644
+--- a/modules/desktop_capture/mac/screen_capturer_sck.mm
++++ b/modules/desktop_capture/mac/screen_capturer_sck.mm
+@@ -24,6 +24,8 @@
+ 
+ using webrtc::DesktopFrameIOSurface;
+ 
++#define SCK_AVAILABLE @available(macOS 14.0, *)
++
+ namespace webrtc {
+ class ScreenCapturerSck;
+ }  // namespace webrtc
+@@ -49,6 +51,14 @@ API_AVAILABLE(macos(14.0))
+ 
+ namespace webrtc {
+ 
++bool ScreenCapturerSckAvailable() {
++  bool sonomaOrHigher = false;
++  if (SCK_AVAILABLE) {
++    sonomaOrHigher = true;
 +  }
++  return sonomaOrHigher;
++}
++
+ class API_AVAILABLE(macos(14.0)) ScreenCapturerSck final
+     : public DesktopCapturer {
+  public:
+@@ -376,11 +386,10 @@ void ScreenCapturerSck::StartOrReconfigureCapturer() {
  
-   _captureThread = rtc::PlatformThread::SpawnJoinable(
-       [self = scoped_refptr(this)] {
+ std::unique_ptr<DesktopCapturer> CreateScreenCapturerSck(
+     const DesktopCaptureOptions& options) {
+-  if (@available(macOS 14.0, *)) {
++  if (SCK_AVAILABLE) {
+     return std::make_unique<ScreenCapturerSck>(options);
+-  } else {
+-    return nullptr;
+   }
++  return nullptr;
+ }
+ 
+ }  // namespace webrtc
+@@ -442,3 +451,5 @@ std::unique_ptr<DesktopCapturer> CreateScreenCapturerSck(
+ }
+ 
+ @end
++
++#undef SCK_AVAILABLE

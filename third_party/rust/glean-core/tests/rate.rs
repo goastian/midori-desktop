@@ -16,7 +16,7 @@ fn rate_smoke() {
     let metric: RateMetric = RateMetric::new(CommonMetricData {
         name: "rate".into(),
         category: "test".into(),
-        send_in_pings: vec!["test1".into()],
+        send_in_pings: vec!["store1".into()],
         ..Default::default()
     });
 
@@ -52,7 +52,7 @@ fn numerator_smoke() {
     let metric: NumeratorMetric = NumeratorMetric::new(CommonMetricData {
         name: "rate".into(),
         category: "test".into(),
-        send_in_pings: vec!["test1".into()],
+        send_in_pings: vec!["store1".into()],
         ..Default::default()
     });
 
@@ -89,14 +89,14 @@ fn denominator_smoke() {
     let meta1 = CommonMetricData {
         name: "rate1".into(),
         category: "test".into(),
-        send_in_pings: vec!["test1".into()],
+        send_in_pings: vec!["store1".into()],
         ..Default::default()
     };
 
     let meta2 = CommonMetricData {
         name: "rate2".into(),
         category: "test".into(),
-        send_in_pings: vec!["test1".into()],
+        send_in_pings: vec!["store1".into()],
         ..Default::default()
     };
 
@@ -105,7 +105,7 @@ fn denominator_smoke() {
         CommonMetricData {
             name: "counter".into(),
             category: "test".into(),
-            send_in_pings: vec!["test1".into()],
+            send_in_pings: vec!["store1".into()],
             ..Default::default()
         },
         vec![meta1.clone(), meta2.clone()],
@@ -123,7 +123,7 @@ fn denominator_smoke() {
     assert!(test_get_num_recorded_errors(&glean, num1.meta(), ErrorType::InvalidValue).is_err());
     assert!(test_get_num_recorded_errors(&glean, num2.meta(), ErrorType::InvalidValue).is_err());
 
-    // Getting the value returns 0s if that's all we have.
+    // Getting the value returns what is stored
     let data = num1.get_value(&glean, None).unwrap();
     assert_eq!(3, data.numerator);
     assert_eq!(7, data.denominator);

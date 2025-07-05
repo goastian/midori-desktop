@@ -11,10 +11,10 @@
 
 #import <Foundation/Foundation.h>
 
-#import "RTCMacros.h"
 #import "RTCNativeVideoDecoder.h"
 #import "RTCNativeVideoDecoderBuilder+Native.h"
 #import "RTCVideoDecoderVP9.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
 
@@ -24,7 +24,8 @@
 
     @implementation RTC_OBJC_TYPE (RTCVideoDecoderVP9Builder)
 
-    - (std::unique_ptr<webrtc::VideoDecoder>)build:(const webrtc::Environment&)env {
+    - (std::unique_ptr<webrtc::VideoDecoder>)build:
+        (const webrtc::Environment&)env {
       return webrtc::VP9Decoder::Create();
     }
 

@@ -27,17 +27,16 @@
 #![warn(unreachable_pub)]
 #![warn(clippy::use_self)]
 
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 #[cfg(unix)]
 use std::os::unix::io::AsFd;
 #[cfg(windows)]
 use std::os::windows::io::AsSocket;
+#[cfg(not(wasm_browser))]
 use std::{
-    net::{IpAddr, Ipv6Addr, SocketAddr},
     sync::Mutex,
     time::{Duration, Instant},
 };
-
-use tracing::warn;
 
 #[cfg(any(unix, windows))]
 mod cmsg;
@@ -51,14 +50,42 @@ mod imp;
 mod imp;
 
 // No ECN support
-#[cfg(not(any(unix, windows)))]
+#[cfg(not(any(wasm_browser, unix, windows)))]
 #[path = "fallback.rs"]
 mod imp;
 
+#[allow(unused_imports, unused_macros)]
+mod log {
+    #[cfg(all(feature = "direct-log", not(feature = "tracing")))]
+    pub(crate) use log::{debug, error, info, trace, warn};
+
+    #[cfg(feature = "tracing")]
+    pub(crate) use tracing::{debug, error, info, trace, warn};
+
+    #[cfg(not(any(feature = "direct-log", feature = "tracing")))]
+    mod no_op {
+        macro_rules! trace    ( ($($tt:tt)*) => {{}} );
+        macro_rules! debug    ( ($($tt:tt)*) => {{}} );
+        macro_rules! info     ( ($($tt:tt)*) => {{}} );
+        macro_rules! log_warn ( ($($tt:tt)*) => {{}} );
+        macro_rules! error    ( ($($tt:tt)*) => {{}} );
+
+        pub(crate) use {debug, error, info, log_warn as warn, trace};
+    }
+
+    #[cfg(not(any(feature = "direct-log", feature = "tracing")))]
+    pub(crate) use no_op::*;
+}
+
+#[cfg(not(wasm_browser))]
 pub use imp::UdpSocketState;
 
 /// Number of UDP packets to send/receive at a time
+#[cfg(not(wasm_browser))]
 pub const BATCH_SIZE: usize = imp::BATCH_SIZE;
+/// Number of UDP packets to send/receive at a time
+#[cfg(wasm_browser)]
+pub const BATCH_SIZE: usize = 1;
 
 /// Metadata for a single buffer filled with bytes received from the network
 ///
@@ -84,6 +111,9 @@ pub struct RecvMeta {
     /// The Explicit Congestion Notification bits for the datagram(s) in the buffer
     pub ecn: Option<EcnCodepoint>,
     /// The destination IP address which was encoded in this datagram
+    ///
+    /// Populated on platforms: Windows, Linux, Android (API level > 25),
+    /// FreeBSD, OpenBSD, NetBSD, macOS, and iOS.
     pub dst_ip: Option<IpAddr>,
 }
 
@@ -117,12 +147,14 @@ pub struct Transmit<'a> {
 }
 
 /// Log at most 1 IO error per minute
+#[cfg(not(wasm_browser))]
 const IO_ERROR_LOG_INTERVAL: Duration = std::time::Duration::from_secs(60);
 
 /// Logs a warning message when sendmsg fails
 ///
 /// Logging will only be performed if at least [`IO_ERROR_LOG_INTERVAL`]
 /// has elapsed since the last error was logged.
+#[cfg(all(not(wasm_browser), any(feature = "tracing", feature = "direct-log")))]
 fn log_sendmsg_error(
     last_send_error: &Mutex<Instant>,
     err: impl core::fmt::Debug,
@@ -132,17 +164,28 @@ fn log_sendmsg_error(
     let last_send_error = &mut *last_send_error.lock().expect("poisend lock");
     if now.saturating_duration_since(*last_send_error) > IO_ERROR_LOG_INTERVAL {
         *last_send_error = now;
-        warn!(
-        "sendmsg error: {:?}, Transmit: {{ destination: {:?}, src_ip: {:?}, enc: {:?}, len: {:?}, segment_size: {:?} }}",
-            err, transmit.destination, transmit.src_ip, transmit.ecn, transmit.contents.len(), transmit.segment_size);
+        log::warn!(
+            "sendmsg error: {:?}, Transmit: {{ destination: {:?}, src_ip: {:?}, ecn: {:?}, len: {:?}, segment_size: {:?} }}",
+            err,
+            transmit.destination,
+            transmit.src_ip,
+            transmit.ecn,
+            transmit.contents.len(),
+            transmit.segment_size
+        );
     }
 }
 
+// No-op
+#[cfg(not(any(wasm_browser, feature = "tracing", feature = "direct-log")))]
+fn log_sendmsg_error(_: &Mutex<Instant>, _: impl core::fmt::Debug, _: &Transmit) {}
+
 /// A borrowed UDP socket
 ///
-/// On Unix, constructible via `From<T: AsRawFd>`. On Windows, constructible via `From<T:
-/// AsRawSocket>`.
+/// On Unix, constructible via `From<T: AsFd>`. On Windows, constructible via `From<T:
+/// AsSocket>`.
 // Wrapper around socket2 to avoid making it a public dependency and incurring stability risk
+#[cfg(not(wasm_browser))]
 pub struct UdpSockRef<'a>(socket2::SockRef<'a>);
 
 #[cfg(unix)]
@@ -169,18 +212,18 @@ where
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum EcnCodepoint {
-    #[doc(hidden)]
+    /// The ECT(0) codepoint, indicating that an endpoint is ECN-capable
     Ect0 = 0b10,
-    #[doc(hidden)]
+    /// The ECT(1) codepoint, indicating that an endpoint is ECN-capable
     Ect1 = 0b01,
-    #[doc(hidden)]
+    /// The CE codepoint, signalling that congestion was experienced
     Ce = 0b11,
 }
 
 impl EcnCodepoint {
     /// Create new object from the given bits
     pub fn from_bits(x: u8) -> Option<Self> {
-        use self::EcnCodepoint::*;
+        use EcnCodepoint::*;
         Some(match x & 0b11 {
             0b10 => Ect0,
             0b01 => Ect1,

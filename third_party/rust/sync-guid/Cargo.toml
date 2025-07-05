@@ -14,7 +14,27 @@ edition = "2021"
 name = "sync-guid"
 version = "0.1.0"
 authors = ["Thom Chiovoloni <tchiovoloni@mozilla.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+readme = false
 license = "MPL-2.0"
+
+[features]
+default = ["serde_support"]
+random = [
+    "rand",
+    "base64",
+]
+rusqlite_support = ["rusqlite"]
+serde_support = ["serde"]
+
+[lib]
+name = "sync_guid"
+path = "src/lib.rs"
 
 [dependencies.base64]
 version = "0.21"
@@ -25,7 +45,7 @@ version = "0.8"
 optional = true
 
 [dependencies.rusqlite]
-version = "0.31.0"
+version = "0.33.0"
 features = ["bundled"]
 optional = true
 
@@ -35,12 +55,3 @@ optional = true
 
 [dev-dependencies]
 serde_test = "1"
-
-[features]
-default = ["serde_support"]
-random = [
-    "rand",
-    "base64",
-]
-rusqlite_support = ["rusqlite"]
-serde_support = ["serde"]

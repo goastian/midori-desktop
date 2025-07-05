@@ -5,8 +5,8 @@ use std::str;
 use bitflags::bitflags;
 
 // Define a flags type outside of the `bitflags` macro as a newtype
-// It can accept custom derives for libaries `bitflags` doesn't support natively
-#[derive(zerocopy::AsBytes, zerocopy::FromBytes)]
+// It can accept custom derives for libraries `bitflags` doesn't support natively
+#[derive(zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable)]
 #[repr(transparent)]
 pub struct ManualFlags(u32);
 

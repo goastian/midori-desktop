@@ -97,38 +97,38 @@ bool IsForcedFallbackPossible(const CodecSpecificInfo* codec_info,
           codec_info->codecSpecific.VP8.temporalIdx == kNoTemporalIdx);
 }
 
-absl::optional<int> GetFallbackMaxPixels(const std::string& group) {
+std::optional<int> GetFallbackMaxPixels(const std::string& group) {
   if (group.empty())
-    return absl::nullopt;
+    return std::nullopt;
 
   int min_pixels;
   int max_pixels;
   int min_bps;
   if (sscanf(group.c_str(), "-%d,%d,%d", &min_pixels, &max_pixels, &min_bps) !=
       3) {
-    return absl::optional<int>();
+    return std::optional<int>();
   }
 
   if (min_pixels <= 0 || max_pixels <= 0 || max_pixels < min_pixels)
-    return absl::optional<int>();
+    return std::optional<int>();
 
-  return absl::optional<int>(max_pixels);
+  return std::optional<int>(max_pixels);
 }
 
-absl::optional<int> GetFallbackMaxPixelsIfFieldTrialEnabled(
+std::optional<int> GetFallbackMaxPixelsIfFieldTrialEnabled(
     const webrtc::FieldTrialsView& field_trials) {
   std::string group = field_trials.Lookup(kVp8ForcedFallbackEncoderFieldTrial);
   return (absl::StartsWith(group, "Enabled"))
              ? GetFallbackMaxPixels(group.substr(7))
-             : absl::optional<int>();
+             : std::optional<int>();
 }
 
-absl::optional<int> GetFallbackMaxPixelsIfFieldTrialDisabled(
+std::optional<int> GetFallbackMaxPixelsIfFieldTrialDisabled(
     const webrtc::FieldTrialsView& field_trials) {
   std::string group = field_trials.Lookup(kVp8ForcedFallbackEncoderFieldTrial);
   return (absl::StartsWith(group, "Disabled"))
              ? GetFallbackMaxPixels(group.substr(8))
-             : absl::optional<int>();
+             : std::optional<int>();
 }
 }  // namespace
 
@@ -306,7 +306,7 @@ void SendStatisticsProxy::UmaSamplesContainer::UpdateHistograms(
   const int kIndex = uma_prefix_ == kScreenPrefix ? 1 : 0;
   const int kMinRequiredPeriodicSamples = 6;
   char log_stream_buf[8 * 1024];
-  rtc::SimpleStringBuilder log_stream(log_stream_buf);
+  SimpleStringBuilder log_stream(log_stream_buf);
   int in_width = input_width_counter_.Avg(kMinRequiredMetricsSamples);
   int in_height = input_height_counter_.Avg(kMinRequiredMetricsSamples);
   if (in_width != -1) {
@@ -978,7 +978,7 @@ void SendStatisticsProxy::OnSendEncodedImage(
   stats->total_encode_time_ms += encoded_image.timing_.encode_finish_ms -
                                  encoded_image.timing_.encode_start_ms;
   stats->scalability_mode =
-      codec_info ? codec_info->scalability_mode : absl::nullopt;
+      codec_info ? codec_info->scalability_mode : std::nullopt;
   // Report resolution of the top spatial layer.
   bool is_top_spatial_layer =
       codec_info == nullptr || codec_info->end_of_picture;
@@ -1040,7 +1040,7 @@ void SendStatisticsProxy::OnSendEncodedImage(
     track.encoded_frame_rate.AddSamples(1);
   }
 
-  absl::optional<int> downscales =
+  std::optional<int> downscales =
       adaptation_limitations_.MaskedQualityCounts().resolution_adaptations;
   stats_.bw_limited_resolution |=
       (downscales.has_value() && downscales.value() > 0);
@@ -1063,7 +1063,7 @@ void SendStatisticsProxy::OnEncoderImplementationChanged(
   // Clear cached scalability mode values, they may no longer be accurate.
   for (auto& pair : stats_.substreams) {
     VideoSendStream::StreamStats& stream_stats = pair.second;
-    stream_stats.scalability_mode = absl::nullopt;
+    stream_stats.scalability_mode = std::nullopt;
   }
 }
 
@@ -1241,6 +1241,26 @@ void SendStatisticsProxy::OnBitrateAllocationUpdated(
   bw_limited_layers_ = allocation.is_bw_limited();
   UpdateAdaptationStats();
 
+  // Store target bitrates per substream stats.
+  for (auto& [ssrc, substream] : stats_.substreams) {
+    std::optional<size_t> simulcast_index;
+    for (size_t i = 0; i < rtp_config_.ssrcs.size(); ++i) {
+      if (rtp_config_.ssrcs[i] == ssrc) {
+        simulcast_index = i;
+        break;
+      }
+    }
+    if (!simulcast_index.has_value()) {
+      substream.target_bitrate = std::nullopt;
+      continue;
+    }
+    substream.target_bitrate =
+        DataRate::BitsPerSec(allocation.GetSpatialLayerSum(*simulcast_index));
+    if (substream.target_bitrate == DataRate::Zero()) {
+      substream.target_bitrate = std::nullopt;
+    }
+  }
+
   if (spatial_layers != last_spatial_layer_use_) {
     // If the number of spatial layers has changed, the resolution change is
     // not due to quality limitations, it is because the configuration
@@ -1271,8 +1291,8 @@ void SendStatisticsProxy::OnInitialQualityResolutionAdaptDown() {
 }
 
 void SendStatisticsProxy::TryUpdateInitialQualityResolutionAdaptUp(
-    absl::optional<int> old_quality_downscales,
-    absl::optional<int> updated_quality_downscales) {
+    std::optional<int> old_quality_downscales,
+    std::optional<int> updated_quality_downscales) {
   if (uma_container_->initial_quality_changes_.down == 0)
     return;
 

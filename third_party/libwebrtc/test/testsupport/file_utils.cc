@@ -20,7 +20,6 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <codecvt>
 #include <locale>
 
 #include "Shlwapi.h"
@@ -43,8 +42,11 @@
 #include <stdlib.h>
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #if defined(WEBRTC_IOS)
 #include "test/testsupport/ios_file_utils.h"
@@ -54,7 +56,7 @@
 
 #include "absl/strings/string_view.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/string_utils.h"
 #include "rtc_base/strings/string_builder.h"
 #include "test/testsupport/file_utils_override.h"
@@ -98,8 +100,8 @@ std::string OutputPath() {
 std::string OutputPathWithRandomDirectory() {
   std::string path = webrtc::test::internal::OutputPath();
   std::string rand_dir = path + rtc::CreateRandomUuid();
-
-  return CreateDir(rand_dir) ? rand_dir + std::string(kPathDelimiter) : path;
+  RTC_CHECK(CreateDir(rand_dir)) << "Failed to create dir: " << rand_dir;
+  return rand_dir + std::string(kPathDelimiter);
 }
 
 std::string WorkingDir() {
@@ -117,7 +119,7 @@ std::string TempFilename(absl::string_view dir, absl::string_view prefix) {
   RTC_DCHECK_NOTREACHED();
   return "";
 #else
-  rtc::StringBuilder os;
+  StringBuilder os;
   os << dir << "/" << prefix << "XXXXXX";
   std::string tempname = os.Release();
 
@@ -139,9 +141,9 @@ std::string GenerateTempFilename(absl::string_view dir,
   return filename;
 }
 
-absl::optional<std::vector<std::string>> ReadDirectory(absl::string_view path) {
+std::optional<std::vector<std::string>> ReadDirectory(absl::string_view path) {
   if (path.length() == 0)
-    return absl::optional<std::vector<std::string>>();
+    return std::optional<std::vector<std::string>>();
 
   std::string path_str(path);
 
@@ -154,7 +156,7 @@ absl::optional<std::vector<std::string>> ReadDirectory(absl::string_view path) {
   WIN32_FIND_DATAW data;
   HANDLE handle = ::FindFirstFileW(rtc::ToUtf16(path_str + '*').c_str(), &data);
   if (handle == INVALID_HANDLE_VALUE)
-    return absl::optional<std::vector<std::string>>();
+    return std::optional<std::vector<std::string>>();
 
   // Populate output.
   std::vector<std::string> found_entries;
@@ -175,7 +177,7 @@ absl::optional<std::vector<std::string>> ReadDirectory(absl::string_view path) {
   // Init.
   DIR* dir = ::opendir(path_str.c_str());
   if (dir == nullptr)
-    return absl::optional<std::vector<std::string>>();
+    return std::optional<std::vector<std::string>>();
 
   // Populate output.
   std::vector<std::string> found_entries;
@@ -189,7 +191,7 @@ absl::optional<std::vector<std::string>> ReadDirectory(absl::string_view path) {
   closedir(dir);
 #endif
 
-  return absl::optional<std::vector<std::string>>(std::move(found_entries));
+  return std::optional<std::vector<std::string>>(std::move(found_entries));
 }
 
 bool CreateDir(absl::string_view directory_name) {
@@ -222,6 +224,26 @@ bool RemoveDir(absl::string_view directory_name) {
 #endif
 }
 
+bool RemoveNonEmptyDir(absl::string_view directory_name) {
+  std::optional<std::vector<std::string>> dir_content =
+      ReadDirectory(directory_name);
+  if (dir_content.has_value()) {
+    for (const std::string& entry : *dir_content) {
+      if (DirExists(entry)) {
+        if (!RemoveNonEmptyDir(entry)) {
+          return false;
+        }
+      } else if (FileExists(entry)) {
+        if (!RemoveFile(entry)) {
+          return false;
+        }
+      }
+    }
+  }
+  // Directory should be emptied.
+  return RemoveDir(directory_name);
+}
+
 bool RemoveFile(absl::string_view file_name) {
 #ifdef WIN32
   return DeleteFileA(std::string(file_name).c_str()) != FALSE;
@@ -236,7 +258,7 @@ std::string ResourcePath(absl::string_view name, absl::string_view extension) {
 
 std::string JoinFilename(absl::string_view dir, absl::string_view name) {
   RTC_CHECK(!dir.empty()) << "Special cases not implemented.";
-  rtc::StringBuilder os;
+  StringBuilder os;
   os << dir;
   // If the directory path already ends with a path delimiter don't append it
   if (dir.back() != kPathDelimiter.back()) {

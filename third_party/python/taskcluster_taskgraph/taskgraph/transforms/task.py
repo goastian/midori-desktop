@@ -8,7 +8,6 @@ transformations is generic to any kind of task, but abstracts away some of the
 complexities of worker implementations, scopes, and treeherder annotations.
 """
 
-
 import functools
 import hashlib
 import os
@@ -72,6 +71,15 @@ task_description_schema = Schema(
                 ),
             ): object,
         },
+        Optional("priority"): Any(
+            "highest",
+            "very-high",
+            "high",
+            "medium",
+            "low",
+            "very-low",
+            "lowest",
+        ),
         # Soft dependencies of this task, as a list of tasks labels
         Optional("soft-dependencies"): [str],
         # Dependencies that must be scheduled in order for this task to run.
@@ -196,7 +204,7 @@ TC_TREEHERDER_SCHEMA_URL = (
 
 
 UNKNOWN_GROUP_NAME = (
-    "Treeherder group {} (from {}) has no name; " "add it to taskcluster/config.yml"
+    "Treeherder group {} (from {}) has no name; add it to taskcluster/config.yml"
 )
 
 V2_ROUTE_TEMPLATES = [
@@ -245,7 +253,7 @@ def payload_builder(name, schema):
 
     def wrap(func):
         assert name not in payload_builders, f"duplicate payload builder name {name}"
-        payload_builders[name] = PayloadBuilder(schema, func)
+        payload_builders[name] = PayloadBuilder(schema, func)  # type: ignore
         return func
 
     return wrap
@@ -330,8 +338,9 @@ def verify_index(config, index):
         # artifacts to extract from the task image after completion
         Optional("artifacts"): [
             {
-                # type of artifact -- simple file, or recursive directory
-                "type": Any("file", "directory"),
+                # type of artifact -- simple file, or recursive directory,
+                # or a volume mounted directory.
+                "type": Any("file", "directory", "volume"),
                 # task image path from which to read artifact
                 "path": str,
                 # name of the produced artifact (root of the names for
@@ -363,10 +372,10 @@ def build_docker_worker_payload(config, task, task_def):
     if isinstance(image, dict):
         if "in-tree" in image:
             name = image["in-tree"]
-            docker_image_task = "build-docker-image-" + image["in-tree"]
-            assert "docker-image" not in task.get(
-                "dependencies", ()
-            ), "docker-image key in dependencies object is reserved"
+            docker_image_task = "docker-image-" + image["in-tree"]
+            assert "docker-image" not in task.get("dependencies", ()), (
+                "docker-image key in dependencies object is reserved"
+            )
             task.setdefault("dependencies", {})["docker-image"] = docker_image_task
 
             image = {
@@ -556,7 +565,7 @@ def build_docker_worker_payload(config, task, task_def):
     if run_task and worker.get("volumes"):
         payload["env"]["TASKCLUSTER_VOLUMES"] = ";".join(sorted(worker["volumes"]))
 
-    if payload.get("cache") and skip_untrusted:
+    if payload.get("cache") and skip_untrusted:  # type: ignore
         payload["env"]["TASKCLUSTER_UNTRUSTED_CACHES"] = "1"
 
     if features:
@@ -577,7 +586,8 @@ def build_docker_worker_payload(config, task, task_def):
         # on Windows, each command is a string, on OS X and Linux, each command is
         # a string array
         Required("command"): Any(
-            [taskref_or_string], [[taskref_or_string]]  # Windows  # Linux / OS X
+            [taskref_or_string],
+            [[taskref_or_string]],  # Windows  # Linux / OS X
         ),
         # artifacts to extract from the task image after completion; note that artifacts
         # for the generic worker cannot have names
@@ -640,6 +650,8 @@ def build_docker_worker_payload(config, task, task_def):
         Optional("os-groups"): [str],
         # feature for test task to run as administarotr
         Optional("run-as-administrator"): bool,
+        # feature for task to run as current OS user
+        Optional("run-task-as-current-user"): bool,
         # optional features
         Required("chain-of-trust"): bool,
         Optional("taskcluster-proxy"): bool,
@@ -746,6 +758,12 @@ def build_generic_worker_payload(config, task, task_def):
         features["runAsAdministrator"] = True
         task_def["scopes"].append(
             "generic-worker:run-as-administrator:{}".format(task["worker-type"]),
+        )
+
+    if worker.get("run-task-as-current-user", False):
+        features["runTaskAsCurrentUser"] = True
+        task_def["scopes"].append(
+            "generic-worker:run-task-as-current-user:{}".format(task["worker-type"]),
         )
 
     if features:
@@ -1105,6 +1123,8 @@ def build_task(config, tasks):
                 "createdForUser": config.params["owner"],
                 "kind": config.kind,
                 "label": task["label"],
+                "project": config.params["project"],
+                "trust-domain": config.graph_config["trust-domain"],
             }
         )
 
@@ -1151,9 +1171,9 @@ def build_task(config, tasks):
                     config.params["project"] + th_project_suffix, branch_rev
                 )
             )
-            task_def["metadata"][
-                "description"
-            ] += f" ([Treeherder push]({th_push_link}))"
+            task_def["metadata"]["description"] += (
+                f" ([Treeherder push]({th_push_link}))"
+            )
 
         # add the payload and adjust anything else as required (e.g., scopes)
         payload_builders[task["worker"]["implementation"]].builder(

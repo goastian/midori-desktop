@@ -10,6 +10,7 @@ These transforms are useful when follow-up tasks are needed for some
 indeterminate subset of existing tasks. For example, running a signing task
 after each build task, whatever builds may exist.
 """
+
 from copy import deepcopy
 from textwrap import dedent
 
@@ -47,6 +48,7 @@ FROM_DEPS_SCHEMA = Schema(
                 ),
             ): Any(
                 None,
+                False,
                 *SET_NAME_MAP,
                 {Any(*SET_NAME_MAP): object},
             ),
@@ -199,9 +201,9 @@ def from_deps(config, tasks):
             else:
                 raise Exception("Could not detect primary kind!")
 
-            new_task.setdefault("attributes", {})[
-                "primary-kind-dependency"
-            ] = primary_kind
+            new_task.setdefault("attributes", {})["primary-kind-dependency"] = (
+                primary_kind
+            )
 
             primary_dep = [dep for dep in group if dep.kind == primary_kind][0]
 

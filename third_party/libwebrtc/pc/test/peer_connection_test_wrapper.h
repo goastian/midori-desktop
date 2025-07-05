@@ -19,6 +19,7 @@
 #include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/audio_options.h"
 #include "api/data_channel_interface.h"
+#include "api/field_trials_view.h"
 #include "api/jsep.h"
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
@@ -28,13 +29,14 @@
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
 #include "api/video/resolution.h"
+#include "api/video_codecs/video_decoder_factory.h"
+#include "api/video_codecs/video_encoder_factory.h"
 #include "pc/test/fake_audio_capture_module.h"
 #include "pc/test/fake_periodic_video_source.h"
 #include "pc/test/fake_periodic_video_track_source.h"
 #include "pc/test/fake_video_track_renderer.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
-#include "test/scoped_key_value_config.h"
 
 class PeerConnectionTestWrapper
     : public webrtc::PeerConnectionObserver,
@@ -53,7 +55,15 @@ class PeerConnectionTestWrapper
   bool CreatePc(
       const webrtc::PeerConnectionInterface::RTCConfiguration& config,
       rtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory,
-      rtc::scoped_refptr<webrtc::AudioDecoderFactory> audio_decoder_factory);
+      rtc::scoped_refptr<webrtc::AudioDecoderFactory> audio_decoder_factory,
+      std::unique_ptr<webrtc::FieldTrialsView> field_trials = nullptr);
+  bool CreatePc(
+      const webrtc::PeerConnectionInterface::RTCConfiguration& config,
+      rtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory,
+      rtc::scoped_refptr<webrtc::AudioDecoderFactory> audio_decoder_factory,
+      std::unique_ptr<webrtc::VideoEncoderFactory> video_encoder_factory,
+      std::unique_ptr<webrtc::VideoDecoderFactory> video_decoder_factory,
+      std::unique_ptr<webrtc::FieldTrialsView> field_trials = nullptr);
 
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> pc_factory()
       const {
@@ -65,7 +75,7 @@ class PeerConnectionTestWrapper
       const std::string& label,
       const webrtc::DataChannelInit& init);
 
-  absl::optional<webrtc::RtpCodecCapability> FindFirstSendCodecWithName(
+  std::optional<webrtc::RtpCodecCapability> FindFirstSendCodecWithName(
       cricket::MediaType media_type,
       const std::string& name) const;
 
@@ -100,10 +110,10 @@ class PeerConnectionTestWrapper
   void AddIceCandidate(const std::string& sdp_mid,
                        int sdp_mline_index,
                        const std::string& candidate);
-  void WaitForCallEstablished();
-  void WaitForConnection();
-  void WaitForAudio();
-  void WaitForVideo();
+  bool WaitForCallEstablished();
+  bool WaitForConnection();
+  bool WaitForAudio();
+  bool WaitForVideo();
   void GetAndAddUserMedia(bool audio,
                           const cricket::AudioOptions& audio_options,
                           bool video);
@@ -130,7 +140,6 @@ class PeerConnectionTestWrapper
   bool CheckForAudio();
   bool CheckForVideo();
 
-  webrtc::test::ScopedKeyValueConfig field_trials_;
   std::string name_;
   rtc::SocketServer* const socket_server_;
   rtc::Thread* const network_thread_;

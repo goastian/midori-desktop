@@ -1,36 +1,74 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Mon, 4 Dec 2023 12:57:00 -0600
-Subject: Bug 1867099 - (fix-66b7275561) disable wgc capture yellow-line
- removal. r?ng!
+From: Dan Baker <dbaker@mozilla.com>
+Date: Thu, 14 Mar 2024 10:51:00 -0600
+Subject: Bug 1883116 - (fix-e79e722834) add enviroment_factory to libwebrtc
+ build and enforce providing clock and task_queue when creating Environment
 
-This code won't build until we support building with
-Win 10 SDK v10.0.20348.0 or newer.
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/0aac94794aad2ddb637f5076bc08706a11866737
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/2185cab977988fd4ab03b38dc67f9b06162444da
 ---
- modules/desktop_capture/win/wgc_capture_session.cc | 6 ++++++
- 1 file changed, 6 insertions(+)
+ BUILD.gn                               |  1 +
+ api/environment/environment_factory.cc | 10 ++++++++++
+ api/task_queue/BUILD.gn                |  5 +++++
+ 3 files changed, 16 insertions(+)
 
-diff --git a/modules/desktop_capture/win/wgc_capture_session.cc b/modules/desktop_capture/win/wgc_capture_session.cc
-index 8c74c2bf24..86afc52411 100644
---- a/modules/desktop_capture/win/wgc_capture_session.cc
-+++ b/modules/desktop_capture/win/wgc_capture_session.cc
-@@ -188,6 +188,11 @@ HRESULT WgcCaptureSession::StartCapture(const DesktopCaptureOptions& options) {
-     }
-   }
+diff --git a/BUILD.gn b/BUILD.gn
+index a760062978..b5b4ca9a01 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -609,6 +609,7 @@ if (!build_with_chromium) {
  
-+// Until Mozilla builds with Win 10 SDK v10.0.20348.0 or newer, this
-+// code will not build.  Once we support the newer SDK, Bug 1868198
-+// exists to decide if we ever want to use this code since it is
-+// removing an indicator that capture is happening.
-+#if !defined(WEBRTC_MOZILLA_BUILD)
-   // By default, the WGC capture API adds a yellow border around the captured
-   // window or display to indicate that a capture is in progress. The section
-   // below is an attempt to remove this yellow border to make the capture
-@@ -199,6 +204,7 @@ HRESULT WgcCaptureSession::StartCapture(const DesktopCaptureOptions& options) {
-           &session3))) {
-     session3->put_IsBorderRequired(false);
+     if (build_with_mozilla) {
+       deps += [
++        "api/environment:environment_factory",
+         "api/video:video_frame",
+         "api/video:video_rtp_headers",
+         "test:rtp_test_utils",
+diff --git a/api/environment/environment_factory.cc b/api/environment/environment_factory.cc
+index 293ef6cf8a..b9cb6b4f53 100644
+--- a/api/environment/environment_factory.cc
++++ b/api/environment/environment_factory.cc
+@@ -102,12 +102,22 @@ Environment EnvironmentFactory::CreateWithDefaults() && {
+   if (field_trials_ == nullptr) {
+     Set(std::make_unique<FieldTrialBasedConfig>());
+   }
++#if defined(WEBRTC_MOZILLA_BUILD)
++  // We want to use our clock, not GetRealTimeClockRaw, and we avoid
++  // building the code under third_party/libwebrtc/task_queue.  To
++  // ensure we're setting up things correctly, namely providing an
++  // Environment object with a preset task_queue_factory and clock,
++  // we'll do a release assert here.
++  RTC_CHECK(clock_);
++  RTC_CHECK(task_queue_factory_);
++#else
+   if (clock_ == nullptr) {
+     Set(Clock::GetRealTimeClock());
+   }
+   if (task_queue_factory_ == nullptr) {
+     Set(CreateDefaultTaskQueueFactory(field_trials_));
    }
 +#endif
+   if (event_log_ == nullptr) {
+     Set(std::make_unique<RtcEventLogNull>());
+   }
+diff --git a/api/task_queue/BUILD.gn b/api/task_queue/BUILD.gn
+index de937ccf7e..15b0878bbb 100644
+--- a/api/task_queue/BUILD.gn
++++ b/api/task_queue/BUILD.gn
+@@ -83,6 +83,10 @@ rtc_library("task_queue_test") {
+ }
  
-   allow_zero_hertz_ = options.allow_wgc_zero_hertz();
+ rtc_library("default_task_queue_factory") {
++# Mozilla - disable this entire target to avoid inclusion of code we want
++# to avoid.  Better here than trying to wack-a-mole for places that list
++# it as a dependency.
++if (!build_with_mozilla) {
+   visibility = [ "*" ]
+   if (!is_ios && !is_android) {
+     # Internally webrtc shouldn't rely on any specific TaskQueue implementation
+@@ -107,6 +111,7 @@ rtc_library("default_task_queue_factory") {
+     sources += [ "default_task_queue_factory_stdlib.cc" ]
+     deps += [ "../../rtc_base:rtc_task_queue_stdlib" ]
+   }
++} # of if (!build_with_mozilla) {
+ }
  
+ rtc_library("pending_task_safety_flag") {

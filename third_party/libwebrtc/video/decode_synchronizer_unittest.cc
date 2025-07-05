@@ -39,7 +39,7 @@ class MockMetronome : public Metronome {
               RequestCallOnNextTick,
               (absl::AnyInvocable<void() &&> callback),
               (override));
-  MOCK_METHOD(TimeDelta, TickPeriod, (), (const override));
+  MOCK_METHOD(TimeDelta, TickPeriod, (), (const, override));
 };
 
 class DecodeSynchronizerTest : public ::testing::Test {
@@ -239,7 +239,7 @@ TEST(DecodeSynchronizerStandaloneTest,
                                           time_controller.GetMainThread());
   absl::AnyInvocable<void() &&> callback;
   EXPECT_CALL(metronome, RequestCallOnNextTick)
-      .WillOnce(Invoke([&callback](absl::AnyInvocable<void() &&> cb) {
+      .WillOnce(Invoke([&callback](absl::AnyInvocable<void()&&> cb) {
         callback = std::move(cb);
       }));
   auto scheduler = decode_synchronizer_.CreateSynchronizedFrameScheduler();

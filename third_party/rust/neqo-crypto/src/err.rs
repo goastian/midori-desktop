@@ -4,30 +4,33 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(dead_code)]
-#![allow(clippy::upper_case_acronyms)]
-
-use std::{os::raw::c_char, str::Utf8Error};
+use std::{
+    fmt::{self, Display, Formatter},
+    os::raw::c_char,
+    str::Utf8Error,
+};
 
 use crate::ssl::{SECStatus, SECSuccess};
 
 include!(concat!(env!("OUT_DIR"), "/nspr_error.rs"));
+#[expect(non_snake_case, dead_code, reason = "Code is bindgen-generated.")]
 mod codes {
-    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/nss_secerr.rs"));
     include!(concat!(env!("OUT_DIR"), "/nss_sslerr.rs"));
 }
 pub use codes::{SECErrorCodes as sec, SSLErrorCodes as ssl};
+#[expect(dead_code, reason = "Code is bindgen-generated.")]
 pub mod nspr {
     include!(concat!(env!("OUT_DIR"), "/nspr_err.rs"));
 }
 
+#[expect(dead_code, reason = "Some constants are not used.")]
 pub mod mozpkix {
     // These are manually extracted from the many bindings generated
     // by bindgen when provided with the simple header:
     // #include "mozpkix/pkixnss.h"
 
-    #[allow(non_camel_case_types)]
+    #[expect(non_camel_case_types, reason = "Code is bindgen-generated.")]
     pub type mozilla_pkix_ErrorCode = ::std::os::raw::c_int;
     pub const MOZILLA_PKIX_ERROR_KEY_PINNING_FAILURE: mozilla_pkix_ErrorCode = -16384;
     pub const MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY: mozilla_pkix_ErrorCode = -16383;
@@ -84,30 +87,26 @@ impl Error {
 }
 
 impl std::error::Error for Error {
-    #[must_use]
     fn cause(&self) -> Option<&dyn std::error::Error> {
         None
     }
-    #[must_use]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
     }
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Error: {self:?}")
     }
 }
 
 impl From<std::num::TryFromIntError> for Error {
-    #[must_use]
     fn from(_: std::num::TryFromIntError) -> Self {
         Self::IntegerOverflow
     }
 }
 impl From<std::ffi::NulError> for Error {
-    #[must_use]
     fn from(_: std::ffi::NulError) -> Self {
         Self::InternalError
     }
@@ -151,7 +150,7 @@ pub fn secstatus_to_res(rv: SECStatus) -> Res<()> {
     }
 }
 
-pub fn is_blocked(result: &Res<()>) -> bool {
+pub const fn is_blocked(result: &Res<()>) -> bool {
     match result {
         Err(Error::NssError { code, .. }) => *code == nspr::PR_WOULD_BLOCK_ERROR,
         _ => false,

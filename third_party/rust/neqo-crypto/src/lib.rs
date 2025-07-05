@@ -4,9 +4,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(clippy::module_name_repetitions)] // This lint doesn't work here.
-#![allow(clippy::unseparated_literal_suffix, clippy::used_underscore_binding)] // For bindgen code.
-
 mod aead;
 #[cfg(feature = "disable-encryption")]
 pub mod aead_null;
@@ -31,7 +28,7 @@ pub mod selfencrypt;
 mod ssl;
 mod time;
 
-use std::{ffi::CString, path::PathBuf, ptr::null, sync::OnceLock};
+use std::{env, ffi::CString, path::PathBuf, ptr::null, sync::OnceLock};
 
 #[cfg(not(feature = "disable-encryption"))]
 pub use self::aead::RealAead as Aead;
@@ -61,17 +58,16 @@ pub use self::{
 
 mod min_version;
 use min_version::MINIMUM_NSS_VERSION;
+use neqo_common::qerror;
 
-#[allow(non_upper_case_globals, clippy::redundant_static_lifetimes)]
-#[allow(clippy::upper_case_acronyms)]
-#[allow(unknown_lints, clippy::borrow_as_ptr)]
+#[expect(non_upper_case_globals, reason = "Code is bindgen-generated.")]
 mod nss {
     include!(concat!(env!("OUT_DIR"), "/nss_init.rs"));
 }
 
 // Need to map the types through.
 fn secstatus_to_res(code: nss::SECStatus) -> Res<()> {
-    crate::err::secstatus_to_res(code as crate::ssl::SECStatus)
+    err::secstatus_to_res(code)
 }
 
 enum NssLoaded {
@@ -92,47 +88,13 @@ impl Drop for NssLoaded {
 
 static INITIALIZED: OnceLock<Res<NssLoaded>> = OnceLock::new();
 
-fn already_initialized() -> bool {
-    unsafe { nss::NSS_IsInitialized() != 0 }
-}
-
-fn version_check() {
-    let min_ver = CString::new(MINIMUM_NSS_VERSION).unwrap();
-    assert_ne!(
-        unsafe { nss::NSS_VersionCheck(min_ver.as_ptr()) },
-        0,
-        "Minimum NSS version of {MINIMUM_NSS_VERSION} not supported",
-    );
-}
-
-/// Initialize NSS.  This only executes the initialization routines once, so if there is any chance
-/// that
-///
-/// # Errors
-///
-/// When NSS initialization fails.
-pub fn init() -> Res<()> {
-    // Set time zero.
-    time::init();
-    let res = INITIALIZED.get_or_init(|| {
-        version_check();
-        if already_initialized() {
-            return Ok(NssLoaded::External);
-        }
-
-        secstatus_to_res(unsafe { nss::NSS_NoDB_Init(null()) })?;
-        secstatus_to_res(unsafe { nss::NSS_SetDomesticPolicy() })?;
-        secstatus_to_res(unsafe {
-            p11::NSS_SetAlgorithmPolicy(
-                p11::SECOidTag::SEC_OID_XYBER768D00,
-                p11::NSS_USE_ALG_IN_SSL_KX,
-                0,
-            )
-        })?;
-
-        Ok(NssLoaded::NoDb)
-    });
-    res.as_ref().map(|_| ()).map_err(Clone::clone)
+fn version_check() -> Res<()> {
+    let min_ver = CString::new(MINIMUM_NSS_VERSION)?;
+    if unsafe { nss::NSS_VersionCheck(min_ver.as_ptr()) } == 0 {
+        qerror!("Minimum NSS version of {MINIMUM_NSS_VERSION} not supported");
+        return Err(Error::UnsupportedVersion);
+    }
+    Ok(())
 }
 
 /// This enables SSLTRACE by calling a simple, harmless function to trigger its
@@ -141,25 +103,20 @@ pub fn init() -> Res<()> {
 /// This allows us to use SSLTRACE in all of our unit tests and programs.
 #[cfg(debug_assertions)]
 fn enable_ssl_trace() -> Res<()> {
-    let opt = ssl::Opt::Locking.as_int();
+    let opt = Opt::Locking.as_int();
     let mut v: ::std::os::raw::c_int = 0;
     secstatus_to_res(unsafe { ssl::SSL_OptionGetDefault(opt, &mut v) })
 }
 
-/// Initialize with a database.
-///
-/// # Errors
-///
-/// If NSS cannot be initialized.
-pub fn init_db<P: Into<PathBuf>>(dir: P) -> Res<()> {
+fn init_once(db: Option<PathBuf>) -> Res<NssLoaded> {
+    // Set time zero.
     time::init();
-    let res = INITIALIZED.get_or_init(|| {
-        version_check();
-        if already_initialized() {
-            return Ok(NssLoaded::External);
-        }
+    version_check()?;
+    if unsafe { nss::NSS_IsInitialized() != 0 } {
+        return Ok(NssLoaded::External);
+    }
 
-        let path = dir.into();
+    let state = if let Some(path) = db {
         if !path.is_dir() {
             return Err(Error::InternalError);
         }
@@ -176,23 +133,44 @@ pub fn init_db<P: Into<PathBuf>>(dir: P) -> Res<()> {
             )
         })?;
 
-        secstatus_to_res(unsafe { nss::NSS_SetDomesticPolicy() })?;
-        secstatus_to_res(unsafe {
-            p11::NSS_SetAlgorithmPolicy(
-                p11::SECOidTag::SEC_OID_XYBER768D00,
-                p11::NSS_USE_ALG_IN_SSL_KX,
-                0,
-            )
-        })?;
         secstatus_to_res(unsafe {
             ssl::SSL_ConfigServerSessionIDCache(1024, 0, 0, dircstr.as_ptr())
         })?;
+        NssLoaded::Db
+    } else {
+        secstatus_to_res(unsafe { nss::NSS_NoDB_Init(null()) })?;
+        NssLoaded::NoDb
+    };
 
-        #[cfg(debug_assertions)]
-        enable_ssl_trace()?;
+    secstatus_to_res(unsafe { nss::NSS_SetDomesticPolicy() })?;
 
-        Ok(NssLoaded::Db)
-    });
+    #[cfg(debug_assertions)]
+    enable_ssl_trace()?;
+
+    Ok(state)
+}
+
+/// Initialize NSS.  This only executes the initialization routines once, so if there is any chance
+/// that this is invoked twice, that's OK.
+///
+/// # Errors
+///
+/// When NSS initialization fails.
+pub fn init() -> Res<()> {
+    let res = INITIALIZED.get_or_init(|| init_once(None));
+    res.as_ref().map(|_| ()).map_err(Clone::clone)
+}
+
+/// Initialize with a database.
+///
+/// # Errors
+///
+/// If NSS cannot be initialized.
+pub fn init_db<P: Into<PathBuf>>(dir: P) -> Res<()> {
+    // Allow overriding the NSS database path with an environment variable.
+    let dir = env::var("NSS_DB_PATH")
+        .unwrap_or(dir.into().to_str().ok_or(Error::InternalError)?.to_string());
+    let res = INITIALIZED.get_or_init(|| init_once(Some(dir.into())));
     res.as_ref().map(|_| ()).map_err(Clone::clone)
 }
 
@@ -215,16 +193,15 @@ pub fn assert_initialized() {
 /// # Safety
 /// The caller must adhere to the safety constraints of `std::slice::from_raw_parts`,
 /// except that this will accept a null value for `data`.
-unsafe fn null_safe_slice<'a, T>(data: *const u8, len: T) -> &'a [u8]
+unsafe fn null_safe_slice<'a, T, L>(data: *const T, len: L) -> &'a [T]
 where
-    usize: TryFrom<T>,
+    usize: TryFrom<L>,
 {
-    if data.is_null() {
+    let len = usize::try_from(len).unwrap_or_else(|_| panic!("null_safe_slice: size overflow"));
+    if data.is_null() || len == 0 {
         &[]
-    } else if let Ok(len) = usize::try_from(len) {
-        #[allow(clippy::disallowed_methods)]
-        std::slice::from_raw_parts(data, len)
     } else {
-        panic!("null_safe_slice: size overflow");
+        #[expect(clippy::disallowed_methods, reason = "This is non-null.")]
+        std::slice::from_raw_parts(data, len)
     }
 }

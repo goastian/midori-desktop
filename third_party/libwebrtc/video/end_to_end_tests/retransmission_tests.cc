@@ -16,7 +16,6 @@
 #include "api/test/video/function_video_encoder_factory.h"
 #include "api/units/time_delta.h"
 #include "call/fake_network_pipe.h"
-#include "call/simulated_network.h"
 #include "modules/rtp_rtcp/source/rtp_packet.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "rtc_base/event.h"
@@ -25,6 +24,7 @@
 #include "test/call_test.h"
 #include "test/field_trial.h"
 #include "test/gtest.h"
+#include "test/network/simulated_network.h"
 #include "test/rtcp_packet_parser.h"
 #include "test/video_test_constants.h"
 
@@ -191,7 +191,7 @@ TEST_F(RetransmissionEndToEndTest, ReceivesNackAndRetransmitsAudio) {
     uint32_t local_ssrc_;
     uint32_t remote_ssrc_;
     Transport* receive_transport_;
-    absl::optional<uint16_t> sequence_number_to_retransmit_;
+    std::optional<uint16_t> sequence_number_to_retransmit_;
   } test;
 
   RunBaseTest(&test);
@@ -372,7 +372,10 @@ void RetransmissionEndToEndTest::DecodesRetransmittedFrame(bool enable_rtx,
               enable_rtx ? test::VideoTestConstants::kSendRtxSsrcs[0]
                          : test::VideoTestConstants::kVideoSendSsrcs[0]),
           retransmission_payload_type_(GetPayloadType(enable_rtx, enable_red)),
-          encoder_factory_([]() { return VP8Encoder::Create(); }),
+          encoder_factory_(
+              [](const Environment& env, const SdpVideoFormat& format) {
+                return CreateVp8Encoder(env);
+              }),
           marker_bits_observed_(0),
           retransmitted_timestamp_(0) {}
 

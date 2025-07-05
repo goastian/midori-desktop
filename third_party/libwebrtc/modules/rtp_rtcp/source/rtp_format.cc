@@ -10,9 +10,14 @@
 
 #include "modules/rtp_rtcp/source/rtp_format.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/types/variant.h"
+#include "api/array_view.h"
+#include "api/video/video_codec_type.h"
 #include "modules/rtp_rtcp/source/rtp_format_h264.h"
 #include "modules/rtp_rtcp/source/rtp_format_video_generic.h"
 #include "modules/rtp_rtcp/source/rtp_format_vp8.h"
@@ -29,7 +34,7 @@
 namespace webrtc {
 
 std::unique_ptr<RtpPacketizer> RtpPacketizer::Create(
-    absl::optional<VideoCodecType> type,
+    std::optional<VideoCodecType> type,
     rtc::ArrayView<const uint8_t> payload,
     PayloadSizeLimits limits,
     // Codec-specific details.

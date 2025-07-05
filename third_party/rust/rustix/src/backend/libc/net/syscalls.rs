@@ -2,10 +2,16 @@
 
 #[cfg(unix)]
 use super::addr::SocketAddrUnix;
+#[cfg(target_os = "linux")]
+use super::msghdr::with_xdp_msghdr;
+#[cfg(target_os = "linux")]
+use super::write_sockaddr::encode_sockaddr_xdp;
 use crate::backend::c;
 use crate::backend::conv::{borrowed_fd, ret, ret_owned_fd, ret_send_recv, send_recv_len};
 use crate::fd::{BorrowedFd, OwnedFd};
 use crate::io;
+#[cfg(target_os = "linux")]
+use crate::net::xdp::SocketAddrXdp;
 use crate::net::{SocketAddrAny, SocketAddrV4, SocketAddrV6};
 use crate::utils::as_ptr;
 use core::mem::{size_of, MaybeUninit};
@@ -145,6 +151,25 @@ pub(crate) fn sendto_unix(
     }
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn sendto_xdp(
+    fd: BorrowedFd<'_>,
+    buf: &[u8],
+    flags: SendFlags,
+    addr: &SocketAddrXdp,
+) -> io::Result<usize> {
+    unsafe {
+        ret_send_recv(c::sendto(
+            borrowed_fd(fd),
+            buf.as_ptr().cast(),
+            send_recv_len(buf.len()),
+            bitflags_bits!(flags),
+            as_ptr(&encode_sockaddr_xdp(addr)).cast::<c::sockaddr>(),
+            size_of::<c::sockaddr_xdp>() as _,
+        ))
+    }
+}
+
 #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
 pub(crate) fn socket(
     domain: AddressFamily,
@@ -213,6 +238,17 @@ pub(crate) fn bind_unix(sockfd: BorrowedFd<'_>, addr: &SocketAddrUnix) -> io::Re
             borrowed_fd(sockfd),
             as_ptr(&addr.unix).cast(),
             addr.addr_len(),
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn bind_xdp(sockfd: BorrowedFd<'_>, addr: &SocketAddrXdp) -> io::Result<()> {
+    unsafe {
+        ret(c::bind(
+            borrowed_fd(sockfd),
+            as_ptr(&encode_sockaddr_xdp(addr)).cast(),
+            size_of::<c::sockaddr_xdp>() as c::socklen_t,
         ))
     }
 }
@@ -402,6 +438,23 @@ pub(crate) fn sendmsg_unix(
     })
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn sendmsg_xdp(
+    sockfd: BorrowedFd<'_>,
+    addr: &SocketAddrXdp,
+    iov: &[IoSlice<'_>],
+    control: &mut SendAncillaryBuffer<'_, '_, '_>,
+    msg_flags: SendFlags,
+) -> io::Result<usize> {
+    with_xdp_msghdr(addr, iov, control, |msghdr| unsafe {
+        ret_send_recv(c::sendmsg(
+            borrowed_fd(sockfd),
+            &msghdr,
+            bitflags_bits!(msg_flags),
+        ))
+    })
+}
+
 #[cfg(not(any(
     apple,
     windows,
@@ -473,8 +526,8 @@ pub(crate) fn acceptfrom_with(
     }
 }
 
-/// Darwin lacks `accept4`, but does have `accept`. We define
-/// `SocketFlags` to have no flags, so we can discard it here.
+/// Darwin lacks `accept4`, but does have `accept`. We define `SocketFlags` to
+/// have no flags, so we can discard it here.
 #[cfg(any(
     apple,
     windows,
@@ -488,8 +541,8 @@ pub(crate) fn accept_with(sockfd: BorrowedFd<'_>, _flags: SocketFlags) -> io::Re
     accept(sockfd)
 }
 
-/// Darwin lacks `accept4`, but does have `accept`. We define
-/// `SocketFlags` to have no flags, so we can discard it here.
+/// Darwin lacks `accept4`, but does have `accept`. We define `SocketFlags` to
+/// have no flags, so we can discard it here.
 #[cfg(any(
     apple,
     windows,

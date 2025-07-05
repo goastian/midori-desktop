@@ -18,7 +18,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'Android32 (dbg)': {
@@ -28,7 +28,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'Android32 (more configs)': {
@@ -50,7 +50,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'Android64 (dbg)': {
@@ -60,7 +60,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'Android64 Builder arm64': {},
@@ -161,7 +161,7 @@
       'Linux64 Release (Libfuzzer)': {},
       'Mac Asan': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'cores-12', 'resultdb-json-format'],
+        'mixins': ['mac_14_x64', 'cores-12', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
@@ -169,21 +169,21 @@
       'Mac64 Builder': {},
       'Mac64 Debug': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'cores-12', 'resultdb-json-format'],
+        'mixins': ['mac_14_x64', 'cores-12', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
       },
       'Mac64 Release': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'resultdb-json-format'],
+        'mixins': ['mac_14_x64', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
       },
       'MacARM64 M1 Release': {
         'os_type': 'mac',
-        'mixins': ['mac_12_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
+        'mixins': ['mac_14_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
@@ -228,7 +228,7 @@
       },
       'iOS Debug (simulator)': {
         'mixins': [
-          'mac_13_x64', 'chromium-tester-service-account', 'mac_toolchain',
+          'mac_14_x64', 'chromium-tester-service-account', 'mac_toolchain',
           'has_native_resultdb_integration', 'out_dir_arg', 'webrtc-xctest'
         ],
         'test_suites': {
@@ -265,7 +265,7 @@
         'os_type':
         'linux',
         'mixins': [
-          'linux-bionic', 'x86-64', 'perf-pool-vm', 'timeout-3h',
+          'linux-jammy', 'x86-64', 'perf-pool-vm', 'timeout-3h',
           'resultdb-gtest-json-format', 'fuchsia-gtest-output', 'perf-output'
         ],
         'test_suites': {
@@ -322,7 +322,7 @@
     'machines': {
       'iOS64 Debug': {
         'mixins': [
-          'ios-device-16.7', 'webrtc-xctest', 'chrome-tester-service-account',
+          'ios-device-18', 'webrtc-xctest', 'chrome-tester-service-account',
           'xcode_15_main', 'mac_toolchain', 'has_native_resultdb_integration',
           'out_dir_arg'
         ],
@@ -332,8 +332,8 @@
       },
       'iOS64 Perf': {
         'mixins': [
-          'ios-device-perf', 'webrtc-xctest', 'timeout-3h',
-          'chrome-tester-service-account', 'xcode_14_main', 'mac_toolchain',
+          'arm64', 'ios-device-perf', 'webrtc-xctest', 'timeout-3h',
+          'chrome-tester-service-account', 'xcode_15_main', 'mac_toolchain',
           'has_native_resultdb_integration', 'out_dir_arg'
         ],
         'test_suites': {
@@ -345,7 +345,7 @@
       },
       'iOS64 Release': {
         'mixins': [
-          'ios-device-16.7', 'webrtc-xctest', 'chrome-tester-service-account',
+          'ios-device-18', 'webrtc-xctest', 'chrome-tester-service-account',
           'xcode_15_main', 'mac_toolchain', 'has_native_resultdb_integration',
           'out_dir_arg'
         ],
@@ -366,7 +366,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests_tryserver',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'android_arm64_rel': {
@@ -376,7 +376,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests_tryserver',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'android_arm_dbg': {
@@ -386,7 +386,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests_tryserver',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'android_arm_more_configs': {
@@ -405,7 +405,7 @@
         ],
         'test_suites': {
           'gtest_tests': 'android_tests_tryserver',
-          'junit_tests': 'android_junit_tests',
+          'isolated_scripts': 'android_junit_tests',
         },
       },
       'android_compile_arm64_dbg': {},
@@ -431,13 +431,14 @@
       'ios_compile_arm64_rel': {},
       'ios_dbg_simulator': {
         'mixins': [
-          'mac_13_x64', 'chromium-tester-service-account', 'mac_toolchain',
+          'mac_14_x64', 'chromium-tester-service-account', 'mac_toolchain',
           'has_native_resultdb_integration', 'out_dir_arg', 'webrtc-xctest'
         ],
         'test_suites': {
           'isolated_scripts': 'ios_simulator_tests_matrix',
         },
       },
+      'iwyu_verifier': {},
       'linux_asan': {
         'os_type': 'linux',
         'mixins': ['linux-focal', 'x86-64', 'resultdb-json-format'],
@@ -470,13 +471,6 @@
         },
       },
       'linux_libfuzzer_rel': {},
-      'linux_memcheck': {
-        'os_type': 'linux',
-        'mixins': ['linux-jammy', 'x86-64', 'resultdb-json-format'],
-        'test_suites': {
-          'isolated_scripts': 'linux_tests',
-        },
-      },
       'linux_more_configs': {
         'os_type': 'linux',
         'mixins': ['linux-jammy', 'x86-64', 'resultdb-json-format'],
@@ -541,7 +535,7 @@
       },
       'mac_asan': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'resultdb-json-format', 'cores-12'],
+        'mixins': ['mac_14_x64', 'resultdb-json-format', 'cores-12'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
@@ -550,28 +544,28 @@
       'mac_compile_rel': {},
       'mac_dbg': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'resultdb-json-format', 'cores-12'],
+        'mixins': ['mac_14_x64', 'resultdb-json-format', 'cores-12'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
       },
       'mac_dbg_m1': {
         'os_type': 'mac',
-        'mixins': ['mac_12_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
+        'mixins': ['mac_14_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },
       },
       'mac_rel': {
         'os_type': 'mac',
-        'mixins': ['mac_12_x64', 'resultdb-json-format'],
+        'mixins': ['mac_14_x64', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests_tryserver',
         },
       },
       'mac_rel_m1': {
         'os_type': 'mac',
-        'mixins': ['mac_12_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
+        'mixins': ['mac_14_arm64', 'mac-m1-cpu', 'resultdb-json-format'],
         'test_suites': {
           'isolated_scripts': 'desktop_tests',
         },

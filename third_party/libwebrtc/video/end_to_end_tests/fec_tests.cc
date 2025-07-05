@@ -14,7 +14,6 @@
 #include "api/test/simulated_network.h"
 #include "api/test/video/function_video_encoder_factory.h"
 #include "call/fake_network_pipe.h"
-#include "call/simulated_network.h"
 #include "media/engine/internal_decoder_factory.h"
 #include "modules/include/module_common_types_public.h"
 #include "modules/rtp_rtcp/source/byte_io.h"
@@ -25,6 +24,7 @@
 #include "test/field_trial.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/network/simulated_network.h"
 #include "test/rtcp_packet_parser.h"
 #include "test/video_test_constants.h"
 
@@ -55,7 +55,10 @@ TEST_F(FecEndToEndTest, ReceivesUlpfec) {
    public:
     UlpfecRenderObserver()
         : EndToEndTest(test::VideoTestConstants::kDefaultTimeout),
-          encoder_factory_([]() { return VP8Encoder::Create(); }),
+          encoder_factory_(
+              [](const Environment& env, const SdpVideoFormat& format) {
+                return CreateVp8Encoder(env);
+              }),
           random_(0xcafef00d1),
           num_packets_sent_(0) {}
 
@@ -372,7 +375,10 @@ TEST_F(FecEndToEndTest, ReceivedUlpfecPacketsNotNacked) {
           ulpfec_sequence_number_(0),
           has_last_sequence_number_(false),
           last_sequence_number_(0),
-          encoder_factory_([]() { return VP8Encoder::Create(); }) {}
+          encoder_factory_(
+              [](const Environment& env, const SdpVideoFormat& format) {
+                return CreateVp8Encoder(env);
+              }) {}
 
    private:
     Action OnSendRtp(rtc::ArrayView<const uint8_t> packet) override {

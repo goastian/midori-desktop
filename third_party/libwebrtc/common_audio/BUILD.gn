@@ -46,6 +46,7 @@ rtc_library("common_audio") {
     ":common_audio_c",
     ":sinc_resampler",
     "../api:array_view",
+    "../api/audio:audio_frame_api",
     "../rtc_base:checks",
     "../rtc_base:gtest_prod",
     "../rtc_base:logging",
@@ -58,7 +59,6 @@ rtc_library("common_audio") {
     "../system_wrappers",
     "third_party/ooura:fft_size_256",
   ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 
   defines = []
 
@@ -117,7 +117,6 @@ rtc_library("common_audio_c") {
     "signal_processing/filter_ma_fast_q12.c",
     "signal_processing/get_hanning_window.c",
     "signal_processing/get_scaling_square.c",
-    "signal_processing/ilbc_specific_functions.c",
     "signal_processing/include/real_fft.h",
     "signal_processing/include/signal_processing_library.h",
     "signal_processing/include/spl_inl.h",
@@ -139,6 +138,7 @@ rtc_library("common_audio_c") {
     "signal_processing/spl_sqrt.c",
     "signal_processing/splitting_filter.c",
     "signal_processing/sqrt_of_one_minus_x_squared.c",
+    "signal_processing/vector_operations.c",
     "signal_processing/vector_scaling_operations.c",
     "vad/include/webrtc_vad.h",
     "vad/vad_core.c",
@@ -291,7 +291,7 @@ if (rtc_build_with_neon) {
 
     if (target_cpu != "arm64") {
       # Enable compilation for the NEON instruction set.
-      suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+      suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
       cflags = [ "-mfpu=neon" ]
     }
 
@@ -314,7 +314,7 @@ if (rtc_build_with_neon) {
 
     if (target_cpu != "arm64") {
       # Enable compilation for the NEON instruction set.
-      suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+      suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
       cflags = [ "-mfpu=neon" ]
     }
 
@@ -369,6 +369,7 @@ if (rtc_include_tests && !build_with_chromium) {
       ":fir_filter_factory",
       ":sinc_resampler",
       "../rtc_base:checks",
+      "../rtc_base:logging",
       "../rtc_base:macromagic",
       "../rtc_base:rtc_base_tests_utils",
       "../rtc_base:stringutils",
@@ -383,8 +384,6 @@ if (rtc_include_tests && !build_with_chromium) {
     ]
 
     if (is_android) {
-      deps += [ "//testing/android/native_test:native_test_support" ]
-
       shard_timeout = 900
     }
   }

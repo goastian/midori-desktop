@@ -21,6 +21,10 @@ impl ComputePassDescriptorRef {
     ) -> &ComputePassSampleBufferAttachmentDescriptorArrayRef {
         unsafe { msg_send![self, sampleBufferAttachments] }
     }
+
+    pub fn set_dispatch_type(&self, ty: MTLDispatchType) {
+        unsafe { msg_send![self, setDispatchType: ty] }
+    }
 }
 
 /// See <https://developer.apple.com/documentation/metal/mtlcomputepasssamplebufferattachmentdescriptorarray>
@@ -67,7 +71,7 @@ impl ComputePassSampleBufferAttachmentDescriptor {
 }
 
 impl ComputePassSampleBufferAttachmentDescriptorRef {
-    pub fn sample_buffer(&self) -> &CounterSampleBufferRef {
+    pub fn sample_buffer(&self) -> Option<&CounterSampleBufferRef> {
         unsafe { msg_send![self, sampleBuffer] }
     }
 

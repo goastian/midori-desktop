@@ -1,3 +1,5 @@
+use alloc::{vec, vec::Vec};
+
 use super::{
     ast::{
         BuiltinVariations, FunctionDeclaration, FunctionKind, Overload, ParameterInfo,
@@ -292,6 +294,26 @@ pub fn inject_builtin(
                 f,
             )
         }
+        "textureQueryLevels" => {
+            let f = |kind, dim, arrayed, multi, shadow| {
+                let class = match shadow {
+                    true => ImageClass::Depth { multi },
+                    false => ImageClass::Sampled { kind, multi },
+                };
+
+                let image = TypeInner::Image {
+                    dim,
+                    arrayed,
+                    class,
+                };
+
+                declaration
+                    .overloads
+                    .push(module.add_builtin(vec![image], MacroCall::TextureQueryLevels))
+            };
+
+            texture_args_generator(TextureArgsOptions::SHADOW | variations.into(), f)
+        }
         "texelFetch" | "texelFetchOffset" => {
             let offset = "texelFetchOffset" == name;
             let f = |kind, dim, arrayed, multi, _shadow| {
@@ -442,37 +464,54 @@ fn inject_standard_builtins(
     module: &mut Module,
     name: &str,
 ) {
-    match name {
-        "sampler1D" | "sampler1DArray" | "sampler2D" | "sampler2DArray" | "sampler2DMS"
-        | "sampler2DMSArray" | "sampler3D" | "samplerCube" | "samplerCubeArray" => {
-            declaration.overloads.push(module.add_builtin(
-                vec![
-                    TypeInner::Image {
-                        dim: match name {
-                            "sampler1D" | "sampler1DArray" => Dim::D1,
-                            "sampler2D" | "sampler2DArray" | "sampler2DMS" | "sampler2DMSArray" => {
-                                Dim::D2
-                            }
-                            "sampler3D" => Dim::D3,
-                            _ => Dim::Cube,
+    // Some samplers (sampler1D, etc...) can be float, int, or uint
+    let anykind_sampler = if name.starts_with("sampler") {
+        Some((name, Sk::Float))
+    } else if name.starts_with("usampler") {
+        Some((&name[1..], Sk::Uint))
+    } else if name.starts_with("isampler") {
+        Some((&name[1..], Sk::Sint))
+    } else {
+        None
+    };
+    if let Some((sampler, kind)) = anykind_sampler {
+        match sampler {
+            "sampler1D" | "sampler1DArray" | "sampler2D" | "sampler2DArray" | "sampler2DMS"
+            | "sampler2DMSArray" | "sampler3D" | "samplerCube" | "samplerCubeArray" => {
+                declaration.overloads.push(module.add_builtin(
+                    vec![
+                        TypeInner::Image {
+                            dim: match sampler {
+                                "sampler1D" | "sampler1DArray" => Dim::D1,
+                                "sampler2D" | "sampler2DArray" | "sampler2DMS"
+                                | "sampler2DMSArray" => Dim::D2,
+                                "sampler3D" => Dim::D3,
+                                _ => Dim::Cube,
+                            },
+                            arrayed: matches!(
+                                sampler,
+                                "sampler1DArray"
+                                    | "sampler2DArray"
+                                    | "sampler2DMSArray"
+                                    | "samplerCubeArray"
+                            ),
+                            class: ImageClass::Sampled {
+                                kind,
+                                multi: matches!(sampler, "sampler2DMS" | "sampler2DMSArray"),
+                            },
                         },
-                        arrayed: matches!(
-                            name,
-                            "sampler1DArray"
-                                | "sampler2DArray"
-                                | "sampler2DMSArray"
-                                | "samplerCubeArray"
-                        ),
-                        class: ImageClass::Sampled {
-                            kind: Sk::Float,
-                            multi: matches!(name, "sampler2DMS" | "sampler2DMSArray"),
-                        },
-                    },
-                    TypeInner::Sampler { comparison: false },
-                ],
-                MacroCall::Sampler,
-            ))
+                        TypeInner::Sampler { comparison: false },
+                    ],
+                    MacroCall::Sampler,
+                ));
+                return;
+            }
+            _ => (),
         }
+    }
+
+    match name {
+        // Shadow sampler can only be of kind `Sk::Float`
         "sampler1DShadow"
         | "sampler1DArrayShadow"
         | "sampler2DShadow"
@@ -646,8 +685,8 @@ fn inject_standard_builtins(
                 "bitfieldReverse" => MathFunction::ReverseBits,
                 "bitfieldExtract" => MathFunction::ExtractBits,
                 "bitfieldInsert" => MathFunction::InsertBits,
-                "findLSB" => MathFunction::FindLsb,
-                "findMSB" => MathFunction::FindMsb,
+                "findLSB" => MathFunction::FirstTrailingBit,
+                "findMSB" => MathFunction::FirstLeadingBit,
                 _ => unreachable!(),
             };
 
@@ -695,8 +734,12 @@ fn inject_standard_builtins(
                 // we need to cast the return type of findLsb / findMsb
                 let mc = if scalar.kind == Sk::Uint {
                     match mc {
-                        MacroCall::MathFunction(MathFunction::FindLsb) => MacroCall::FindLsbUint,
-                        MacroCall::MathFunction(MathFunction::FindMsb) => MacroCall::FindMsbUint,
+                        MacroCall::MathFunction(MathFunction::FirstTrailingBit) => {
+                            MacroCall::FindLsbUint
+                        }
+                        MacroCall::MathFunction(MathFunction::FirstLeadingBit) => {
+                            MacroCall::FindMsbUint
+                        }
                         mc => mc,
                     }
                 } else {
@@ -1511,6 +1554,7 @@ pub enum MacroCall {
     TextureSize {
         arrayed: bool,
     },
+    TextureQueryLevels,
     ImageLoad {
         multi: bool,
     },
@@ -1656,13 +1700,7 @@ impl MacroCall {
                     true => {
                         let offset_arg = args[num_args];
                         num_args += 1;
-                        match ctx.lift_up_const_expression(offset_arg) {
-                            Ok(v) => Some(v),
-                            Err(e) => {
-                                frontend.errors.push(e);
-                                None
-                            }
-                        }
+                        Some(offset_arg)
                     }
                     false => None,
                 };
@@ -1743,6 +1781,24 @@ impl MacroCall {
                     Span::default(),
                 )?
             }
+            MacroCall::TextureQueryLevels => {
+                let expr = ctx.add_expression(
+                    Expression::ImageQuery {
+                        image: args[0],
+                        query: ImageQuery::NumLevels,
+                    },
+                    Span::default(),
+                )?;
+
+                ctx.add_expression(
+                    Expression::As {
+                        expr,
+                        kind: Sk::Sint,
+                        convert: Some(4),
+                    },
+                    Span::default(),
+                )?
+            }
             MacroCall::ImageLoad { multi } => {
                 let comps = frontend.coordinate_components(ctx, args[0], args[1], None, meta)?;
                 let (sample, level) = match (multi, args.get(2)) {
@@ -1787,8 +1843,8 @@ impl MacroCall {
             )?,
             mc @ (MacroCall::FindLsbUint | MacroCall::FindMsbUint) => {
                 let fun = match mc {
-                    MacroCall::FindLsbUint => MathFunction::FindLsb,
-                    MacroCall::FindMsbUint => MathFunction::FindMsb,
+                    MacroCall::FindLsbUint => MathFunction::FirstTrailingBit,
+                    MacroCall::FindMsbUint => MathFunction::FirstLeadingBit,
                     _ => unreachable!(),
                 };
                 let res = ctx.add_expression(
@@ -2218,7 +2274,7 @@ pub fn sampled_to_depth(
 }
 
 bitflags::bitflags! {
-    /// Influences the operation `texture_args_generator`
+    /// Influences the operation [`texture_args_generator`]
     struct TextureArgsOptions: u32 {
         /// Generates multisampled variants of images
         const MULTI = 1 << 0;

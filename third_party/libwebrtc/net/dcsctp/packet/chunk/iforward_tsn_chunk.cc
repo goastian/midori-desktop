@@ -12,11 +12,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "net/dcsctp/packet/bounded_byte_reader.h"
 #include "net/dcsctp/packet/bounded_byte_writer.h"
@@ -48,11 +48,11 @@ namespace dcsctp {
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 constexpr int IForwardTsnChunk::kType;
 
-absl::optional<IForwardTsnChunk> IForwardTsnChunk::Parse(
+std::optional<IForwardTsnChunk> IForwardTsnChunk::Parse(
     rtc::ArrayView<const uint8_t> data) {
-  absl::optional<BoundedByteReader<kHeaderSize>> reader = ParseTLV(data);
+  std::optional<BoundedByteReader<kHeaderSize>> reader = ParseTLV(data);
   if (!reader.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   TSN new_cumulative_tsn(reader->Load32<4>());
@@ -96,7 +96,7 @@ void IForwardTsnChunk::SerializeTo(std::vector<uint8_t>& out) const {
 }
 
 std::string IForwardTsnChunk::ToString() const {
-  rtc::StringBuilder sb;
+  webrtc::StringBuilder sb;
   sb << "I-FORWARD-TSN, new_cumulative_tsn=" << *new_cumulative_tsn();
   return sb.Release();
 }

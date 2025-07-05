@@ -4,8 +4,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(clippy::module_name_repetitions)]
-
 use std::ops::Deref;
 
 use neqo_common::{Decoder, Encoder};
@@ -41,7 +39,7 @@ pub enum HSettingType {
     EnableH3Datagram,
 }
 
-fn hsetting_default(setting_type: HSettingType) -> u64 {
+const fn hsetting_default(setting_type: HSettingType) -> u64 {
     match setting_type {
         HSettingType::MaxHeaderListSize => 1 << 62,
         HSettingType::MaxTableCapacity
@@ -59,7 +57,7 @@ pub struct HSetting {
 
 impl HSetting {
     #[must_use]
-    pub fn new(setting_type: HSettingType, value: u64) -> Self {
+    pub const fn new(setting_type: HSettingType, value: u64) -> Self {
         Self {
             setting_type,
             value,
@@ -82,10 +80,10 @@ impl HSettings {
 
     #[must_use]
     pub fn get(&self, setting: HSettingType) -> u64 {
-        match self.settings.iter().find(|s| s.setting_type == setting) {
-            Some(v) => v.value,
-            None => hsetting_default(setting),
-        }
+        self.settings
+            .iter()
+            .find(|s| s.setting_type == setting)
+            .map_or_else(|| hsetting_default(setting), |v| v.value)
     }
 
     pub fn encode_frame_contents(&self, enc: &mut Encoder) {
@@ -180,7 +178,7 @@ impl HSettings {
                 // other supported settings here
                 (Some(_), Some(_)) => {} // ignore unknown setting, it is fine.
                 _ => return Err(Error::NotEnoughData),
-            };
+            }
         }
         Ok(())
     }
@@ -226,7 +224,7 @@ pub struct HttpZeroRttChecker {
 impl HttpZeroRttChecker {
     /// Right now we only have QPACK settings, so that is all this takes.
     #[must_use]
-    pub fn new(settings: Http3Parameters) -> Self {
+    pub const fn new(settings: Http3Parameters) -> Self {
         Self { settings }
     }
 

@@ -9,13 +9,14 @@
  */
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "api/field_trials.h"
 #include "api/jsep.h"
 #include "api/media_types.h"
 #include "api/peer_connection_interface.h"
@@ -30,8 +31,8 @@
 #include "api/task_queue/task_queue_factory.h"
 #include "media/base/fake_media_engine.h"
 #include "media/base/media_engine.h"
-#include "p2p/base/fake_port_allocator.h"
 #include "p2p/base/port_allocator.h"
+#include "p2p/test/fake_port_allocator.h"
 #include "pc/peer_connection_wrapper.h"
 #include "pc/session_description.h"
 #include "pc/test/enable_fake_media.h"
@@ -42,7 +43,6 @@
 #include "rtc_base/thread.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
-#include "test/scoped_key_value_config.h"
 
 namespace webrtc {
 
@@ -76,7 +76,7 @@ class PeerConnectionHeaderExtensionTest
 
   std::unique_ptr<PeerConnectionWrapper> CreatePeerConnection(
       cricket::MediaType media_type,
-      absl::optional<SdpSemantics> semantics) {
+      std::optional<SdpSemantics> semantics) {
     auto media_engine = std::make_unique<cricket::FakeMediaEngine>();
     if (media_type == cricket::MediaType::MEDIA_TYPE_AUDIO)
       media_engine->fake_voice_engine()->SetRtpHeaderExtensions(extensions_);
@@ -98,7 +98,7 @@ class PeerConnectionHeaderExtensionTest
     auto fake_port_allocator = std::make_unique<cricket::FakePortAllocator>(
         rtc::Thread::Current(),
         std::make_unique<rtc::BasicPacketSocketFactory>(socket_server_.get()),
-        &field_trials_);
+        field_trials_.get());
     auto observer = std::make_unique<MockPeerConnectionObserver>();
     PeerConnectionInterface::RTCConfiguration config;
     if (semantics)
@@ -113,7 +113,7 @@ class PeerConnectionHeaderExtensionTest
         pc_factory, result.MoveValue(), std::move(observer));
   }
 
-  test::ScopedKeyValueConfig field_trials_;
+  std::unique_ptr<FieldTrials> field_trials_ = FieldTrials::CreateNoGlobal("");
   std::unique_ptr<rtc::SocketServer> socket_server_;
   rtc::AutoSocketServerThread main_thread_;
   std::vector<RtpHeaderExtensionCapability> extensions_;

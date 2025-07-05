@@ -10,26 +10,32 @@
 #ifndef CALL_CALL_H_
 #define CALL_CALL_H_
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "api/adaptation/resource.h"
+#include "api/fec_controller.h"
+#include "api/field_trials_view.h"
 #include "api/media_types.h"
+#include "api/rtp_headers.h"
+#include "api/scoped_refptr.h"
 #include "api/task_queue/task_queue_base.h"
+#include "api/transport/bitrate_settings.h"
 #include "call/audio_receive_stream.h"
 #include "call/audio_send_stream.h"
 #include "call/call_basic_stats.h"
 #include "call/call_config.h"
 #include "call/flexfec_receive_stream.h"
 #include "call/packet_receiver.h"
+#include "call/payload_type.h"
+#include "call/rtp_transport_controller_send_interface.h"
 #include "call/video_receive_stream.h"
 #include "call/video_send_stream.h"
-#include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/network/sent_packet.h"
-#include "rtc_base/network_route.h"
+#include "video/config/video_encoder_config.h"
 
 namespace webrtc {
 
@@ -47,7 +53,7 @@ class Call {
  public:
   using Stats = CallBasicStats;
 
-  static std::unique_ptr<Call> Create(const CallConfig& config);
+  static std::unique_ptr<Call> Create(CallConfig config);
 
   virtual AudioSendStream* CreateAudioSendStream(
       const AudioSendStream::Config& config) = 0;
@@ -98,6 +104,18 @@ class Call {
   // remove this method interface.
   virtual RtpTransportControllerSendInterface* GetTransportControllerSend() = 0;
 
+  // A class that keeps track of payload types on the transport(s), and
+  // suggests new ones when needed.
+  virtual PayloadTypeSuggester* GetPayloadTypeSuggester() {
+    // TODO: https://issues.webrtc.org/360058654 - make pure virtual
+    RTC_CHECK_NOTREACHED();
+    return nullptr;
+  }
+  virtual void SetPayloadTypeSuggester(PayloadTypeSuggester* /* suggester */) {
+    // TODO: https://issues.webrtc.org/360058654 - make pure virtual
+    RTC_CHECK_NOTREACHED();
+  }
+
   // Returns the call statistics, such as estimated send and receive bandwidth,
   // pacing delay, etc.
   virtual Stats GetStats() const = 0;
@@ -127,6 +145,10 @@ class Call {
 
   virtual void SetClientBitratePreferences(
       const BitrateSettings& preferences) = 0;
+
+  virtual void EnableSendCongestionControlFeedbackAccordingToRfc8888() = 0;
+  virtual int FeedbackAccordingToRfc8888Count() = 0;
+  virtual int FeedbackAccordingToTransportCcCount() = 0;
 
   virtual const FieldTrialsView& trials() const = 0;
 

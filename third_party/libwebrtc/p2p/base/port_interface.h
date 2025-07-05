@@ -12,18 +12,19 @@
 #define P2P_BASE_PORT_INTERFACE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/candidate.h"
+#include "api/field_trials_view.h"
 #include "api/packet_socket_factory.h"
+#include "api/task_queue/task_queue_base.h"
 #include "p2p/base/transport_description.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/callback_list.h"
-#include "rtc_base/proxy_info.h"
 #include "rtc_base/socket_address.h"
 
 namespace rtc {
@@ -138,7 +139,7 @@ class PortInterface {
 
   virtual std::string ToString() const = 0;
 
-  virtual void GetStunStats(absl::optional<StunStats>* stats) = 0;
+  virtual void GetStunStats(std::optional<StunStats>* stats) = 0;
 
   // Removes and deletes a connection object. `DestroyConnection` will
   // delete the connection object directly whereas `DestroyConnectionAsync`
@@ -154,8 +155,6 @@ class PortInterface {
 
   // The factory used to create the sockets of this port.
   virtual rtc::PacketSocketFactory* socket_factory() const = 0;
-  virtual const std::string& user_agent() = 0;
-  virtual const rtc::ProxyInfo& proxy() = 0;
 
   // Identifies the generation that this port was created in.
   virtual uint32_t generation() const = 0;

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use malloc_size_of_derive::MallocSizeOf;
 use serde::{Deserialize, Serialize};
 
 use super::{Bucketing, Histogram};
@@ -18,7 +19,7 @@ use crate::util::floating_point_context::FloatingPointContext;
 /// i = ⌊n log<sub>base</sub>(𝑥)⌋
 ///
 /// In other words, there are n buckets for each power of `base` magnitude.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, MallocSizeOf)]
 pub struct Functional {
     exponent: f64,
 }
@@ -85,44 +86,8 @@ impl Histogram<Functional> {
     /// **Caution** This is a more specific implementation of `snapshot_values` on functional
     /// histograms. `snapshot_values` cannot be used with those, due to buckets not being
     /// precomputed.
-    pub fn snapshot(&self) -> HashMap<u64, u64> {
-        if self.values.is_empty() {
-            return HashMap::new();
-        }
-
-        let mut min_key = None;
-        let mut max_key = None;
-
-        // `Iterator#min` and `Iterator#max` would do the same job independently,
-        // but we want to avoid iterating the keys twice, so we loop ourselves.
-        for key in self.values.keys() {
-            let key = *key;
-
-            // safe unwrap, we checked it's not none
-            if min_key.is_none() || key < min_key.unwrap() {
-                min_key = Some(key);
-            }
-
-            // safe unwrap, we checked it's not none
-            if max_key.is_none() || key > max_key.unwrap() {
-                max_key = Some(key);
-            }
-        }
-
-        // Non-empty values, therefore minimum/maximum exists.
-        // safe unwraps, we set it at least once.
-        let min_bucket = self.bucketing.sample_to_bucket_index(min_key.unwrap());
-        let max_bucket = self.bucketing.sample_to_bucket_index(max_key.unwrap()) + 1;
-
-        let mut values = self.values.clone();
-
-        for idx in min_bucket..=max_bucket {
-            // Fill in missing entries.
-            let min_bucket = self.bucketing.bucket_index_to_bucket_minimum(idx);
-            let _ = values.entry(min_bucket).or_insert(0);
-        }
-
-        values
+    pub fn snapshot(&self) -> &HashMap<u64, u64> {
+        &self.values
     }
 }
 
@@ -170,5 +135,51 @@ mod test {
                 hist.bucketing.sample_to_bucket_minimum(bucket_minimum)
             );
         }
+    }
+
+    #[test]
+    fn histogram_merge() {
+        let mut hist = Histogram::functional(2.0, 8.0);
+
+        // Check each of the first 100 integers, where numerical accuracy of the round-tripping
+        // is most potentially problematic
+        for sample in 0..100 {
+            hist.accumulate(sample);
+        }
+
+        let mut filled_hist = hist.clone();
+
+        let mut hist2 = Histogram::functional(2.0, 8.0);
+        for sample in 100..200 {
+            hist.accumulate(sample);
+            hist2.accumulate(sample);
+        }
+
+        filled_hist.merge(&hist2);
+
+        assert_eq!(filled_hist, hist);
+    }
+
+    #[test]
+    #[should_panic]
+    fn histogram_merge_different_buckets() {
+        let mut hist1 = Histogram::functional(2.0, 8.0);
+        let hist2 = Histogram::functional(1.0, 4.0);
+
+        hist1.merge(&hist2);
+    }
+
+    #[test]
+    fn histogram_clears() {
+        let mut hist = Histogram::functional(2.0, 8.0);
+        let empty_hist = hist.clone();
+
+        assert_eq!(empty_hist, hist);
+
+        hist.accumulate(13);
+        assert_ne!(empty_hist, hist);
+
+        hist.clear();
+        assert_eq!(empty_hist, hist);
     }
 }

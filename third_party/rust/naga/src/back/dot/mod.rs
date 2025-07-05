@@ -7,14 +7,17 @@ of IR inspection and debugging.
 [dot]: https://graphviz.org/doc/info/lang.html
 */
 
+use alloc::{
+    borrow::Cow,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::fmt::{Error as FmtError, Write as _};
+
 use crate::{
     arena::Handle,
     valid::{FunctionInfo, ModuleInfo},
-};
-
-use std::{
-    borrow::Cow,
-    fmt::{Error as FmtError, Write as _},
 };
 
 /// Configuration options for the dot backend
@@ -244,13 +247,30 @@ impl StatementGraph {
                     value,
                     result,
                 } => {
-                    self.emits.push((id, result));
+                    if let Some(result) = result {
+                        self.emits.push((id, result));
+                    }
                     self.dependencies.push((id, pointer, "pointer"));
                     self.dependencies.push((id, value, "value"));
                     if let crate::AtomicFunction::Exchange { compare: Some(cmp) } = *fun {
                         self.dependencies.push((id, cmp, "cmp"));
                     }
                     "Atomic"
+                }
+                S::ImageAtomic {
+                    image,
+                    coordinate,
+                    array_index,
+                    fun: _,
+                    value,
+                } => {
+                    self.dependencies.push((id, image, "image"));
+                    self.dependencies.push((id, coordinate, "coordinate"));
+                    if let Some(expr) = array_index {
+                        self.dependencies.push((id, expr, "array_index"));
+                    }
+                    self.dependencies.push((id, value, "value"));
+                    "ImageAtomic"
                 }
                 S::WorkGroupUniformLoad { pointer, result } => {
                     self.emits.push((id, result));
@@ -275,6 +295,13 @@ impl StatementGraph {
                         crate::RayQueryFunction::Proceed { result } => {
                             self.emits.push((id, result));
                             "RayQueryProceed"
+                        }
+                        crate::RayQueryFunction::GenerateIntersection { hit_t } => {
+                            self.dependencies.push((id, hit_t, "hit_t"));
+                            "RayQueryGenerateIntersection"
+                        }
+                        crate::RayQueryFunction::ConfirmIntersection => {
+                            "RayQueryConfirmIntersection"
                         }
                         crate::RayQueryFunction::Terminate => "RayQueryTerminate",
                     }
@@ -375,12 +402,8 @@ impl StatementGraph {
     }
 }
 
-#[allow(clippy::manual_unwrap_or)]
 fn name(option: &Option<String>) -> &str {
-    match *option {
-        Some(ref name) => name,
-        None => "",
-    }
+    option.as_deref().unwrap_or_default()
 }
 
 /// set39 color scheme from <https://graphviz.org/doc/info/colors.html>
@@ -389,6 +412,32 @@ const COLORS: &[&str] = &[
     "#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3", "#fdb462", "#b3de69", "#fccde5",
     "#d9d9d9",
 ];
+
+struct Prefixed<T>(Handle<T>);
+
+impl core::fmt::Display for Prefixed<crate::Expression> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.write_prefixed(f, "e")
+    }
+}
+
+impl core::fmt::Display for Prefixed<crate::LocalVariable> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.write_prefixed(f, "l")
+    }
+}
+
+impl core::fmt::Display for Prefixed<crate::GlobalVariable> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.write_prefixed(f, "g")
+    }
+}
+
+impl core::fmt::Display for Prefixed<crate::Function> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.write_prefixed(f, "f")
+    }
+}
 
 fn write_fun(
     output: &mut String,
@@ -403,9 +452,9 @@ fn write_fun(
         for (handle, var) in fun.local_variables.iter() {
             writeln!(
                 output,
-                "\t\t{}_l{} [ shape=hexagon label=\"{:?} '{}'\" ]",
+                "\t\t{}_{} [ shape=hexagon label=\"{:?} '{}'\" ]",
                 prefix,
-                handle.index(),
+                Prefixed(handle),
                 handle,
                 name(&var.name),
             )?;
@@ -440,9 +489,9 @@ fn write_fun(
         for (to, expr, label) in sg.dependencies {
             writeln!(
                 output,
-                "\t\t{}_e{} -> {}_s{} [ label=\"{}\" ]",
+                "\t\t{}_{} -> {}_s{} [ label=\"{}\" ]",
                 prefix,
-                expr.index(),
+                Prefixed(expr),
                 prefix,
                 to,
                 label,
@@ -451,22 +500,23 @@ fn write_fun(
         for (from, to) in sg.emits {
             writeln!(
                 output,
-                "\t\t{}_s{} -> {}_e{} [ style=dotted ]",
+                "\t\t{}_s{} -> {}_{} [ style=dotted ]",
                 prefix,
                 from,
                 prefix,
-                to.index(),
+                Prefixed(to),
             )?;
         }
     }
 
+    assert!(sg.calls.is_empty());
     for (from, function) in sg.calls {
         writeln!(
             output,
-            "\t\t{}_s{} -> f{}_s0",
+            "\t\t{}_s{} -> {}_s0",
             prefix,
             from,
-            function.index(),
+            Prefixed(function),
         )?;
     }
 
@@ -673,10 +723,15 @@ fn write_function_expressions(
             E::RayQueryGetIntersection { query, committed } => {
                 edges.insert("", query);
                 let ty = if committed { "Committed" } else { "Candidate" };
-                (format!("rayQueryGet{}Intersection", ty).into(), 4)
+                (format!("rayQueryGet{ty}Intersection").into(), 4)
             }
             E::SubgroupBallotResult => ("SubgroupBallotResult".into(), 4),
             E::SubgroupOperationResult { .. } => ("SubgroupOperationResult".into(), 4),
+            E::RayQueryVertexPositions { query, committed } => {
+                edges.insert("", query);
+                let ty = if committed { "Committed" } else { "Candidate" };
+                (format!("get{}HitVertexPositions", ty).into(), 4)
+            }
         };
 
         // give uniform expressions an outline
@@ -686,9 +741,9 @@ fn write_function_expressions(
         };
         writeln!(
             output,
-            "\t\t{}_e{} [ {}=\"{}\" label=\"{:?} {}\" ]",
+            "\t\t{}_{} [ {}=\"{}\" label=\"{:?} {}\" ]",
             prefix,
-            handle.index(),
+            Prefixed(handle),
             color_attr,
             COLORS[color_id],
             handle,
@@ -698,11 +753,11 @@ fn write_function_expressions(
         for (key, edge) in edges.drain() {
             writeln!(
                 output,
-                "\t\t{}_e{} -> {}_e{} [ label=\"{}\" ]",
+                "\t\t{}_{} -> {}_{} [ label=\"{}\" ]",
                 prefix,
-                edge.index(),
+                Prefixed(edge),
                 prefix,
-                handle.index(),
+                Prefixed(handle),
                 key,
             )?;
         }
@@ -710,27 +765,27 @@ fn write_function_expressions(
             Some(Payload::Arguments(list)) => {
                 write!(output, "\t\t{{")?;
                 for &comp in list {
-                    write!(output, " {}_e{}", prefix, comp.index())?;
+                    write!(output, " {}_{}", prefix, Prefixed(comp))?;
                 }
-                writeln!(output, " }} -> {}_e{}", prefix, handle.index())?;
+                writeln!(output, " }} -> {}_{}", prefix, Prefixed(handle))?;
             }
             Some(Payload::Local(h)) => {
                 writeln!(
                     output,
-                    "\t\t{}_l{} -> {}_e{}",
+                    "\t\t{}_{} -> {}_{}",
                     prefix,
-                    h.index(),
+                    Prefixed(h),
                     prefix,
-                    handle.index(),
+                    Prefixed(handle),
                 )?;
             }
             Some(Payload::Global(h)) => {
                 writeln!(
                     output,
-                    "\t\tg{} -> {}_e{} [fillcolor=gray]",
-                    h.index(),
+                    "\t\t{} -> {}_{} [fillcolor=gray]",
+                    Prefixed(h),
                     prefix,
-                    handle.index(),
+                    Prefixed(handle),
                 )?;
             }
             None => {}
@@ -746,7 +801,7 @@ pub fn write(
     mod_info: Option<&ModuleInfo>,
     options: Options,
 ) -> Result<String, FmtError> {
-    use std::fmt::Write as _;
+    use core::fmt::Write as _;
 
     let mut output = String::new();
     output += "digraph Module {\n";
@@ -757,8 +812,8 @@ pub fn write(
         for (handle, var) in module.global_variables.iter() {
             writeln!(
                 output,
-                "\t\tg{} [ shape=hexagon label=\"{:?} {:?}/'{}'\" ]",
-                handle.index(),
+                "\t\t{} [ shape=hexagon label=\"{:?} {:?}/'{}'\" ]",
+                Prefixed(handle),
                 handle,
                 var.space,
                 name(&var.name),
@@ -768,7 +823,7 @@ pub fn write(
     }
 
     for (handle, fun) in module.functions.iter() {
-        let prefix = format!("f{}", handle.index());
+        let prefix = Prefixed(handle).to_string();
         writeln!(output, "\tsubgraph cluster_{prefix} {{")?;
         writeln!(
             output,

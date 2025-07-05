@@ -199,7 +199,8 @@ TEST_F(SendStatisticsProxyTest, ReportBlockDataObserver) {
     report_block.SetFractionLost(offset + 2);
     report_block.SetJitter(offset + 3);
     ReportBlockData data;
-    data.SetReportBlock(/*sender_ssrc=*/0, report_block, Timestamp::Zero());
+    data.SetReportBlock(/*sender_ssrc=*/0, report_block, Timestamp::Zero(),
+                        Timestamp::Zero());
     expected_.substreams[ssrc].report_block_data = data;
 
     callback->OnReportBlockDataUpdated(data);
@@ -214,7 +215,8 @@ TEST_F(SendStatisticsProxyTest, ReportBlockDataObserver) {
     report_block.SetFractionLost(offset + 2);
     report_block.SetJitter(offset + 3);
     ReportBlockData data;
-    data.SetReportBlock(/*sender_ssrc=*/0, report_block, Timestamp::Zero());
+    data.SetReportBlock(/*sender_ssrc=*/0, report_block, Timestamp::Zero(),
+                        Timestamp::Zero());
     expected_.substreams[ssrc].report_block_data = data;
 
     callback->OnReportBlockDataUpdated(data);
@@ -382,7 +384,7 @@ TEST_F(SendStatisticsProxyTest, OnSendEncodedImageIncreasesQpSum) {
   EncodedImage encoded_image;
   CodecSpecificInfo codec_info;
   auto ssrc = config_.rtp.ssrcs[0];
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc].qp_sum);
   encoded_image.qp_ = 3;
   statistics_proxy_->OnSendEncodedImage(encoded_image, &codec_info);
@@ -397,10 +399,10 @@ TEST_F(SendStatisticsProxyTest, OnSendEncodedImageWithoutQpQpSumWontExist) {
   CodecSpecificInfo codec_info;
   auto ssrc = config_.rtp.ssrcs[0];
   encoded_image.qp_ = -1;
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc].qp_sum);
   statistics_proxy_->OnSendEncodedImage(encoded_image, &codec_info);
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc].qp_sum);
 }
 
@@ -412,16 +414,16 @@ TEST_F(SendStatisticsProxyTest,
   ScalabilityMode layer1_mode = ScalabilityMode::kL1T3;
   auto ssrc0 = config_.rtp.ssrcs[0];
   auto ssrc1 = config_.rtp.ssrcs[1];
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc0].scalability_mode);
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc1].scalability_mode);
   encoded_image.SetSimulcastIndex(0);
   codec_info.scalability_mode = layer0_mode;
   statistics_proxy_->OnSendEncodedImage(encoded_image, &codec_info);
   EXPECT_THAT(statistics_proxy_->GetStats().substreams[ssrc0].scalability_mode,
               layer0_mode);
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             statistics_proxy_->GetStats().substreams[ssrc1].scalability_mode);
   encoded_image.SetSimulcastIndex(1);
   codec_info.scalability_mode = layer1_mode;
@@ -1506,6 +1508,36 @@ TEST_F(SendStatisticsProxyTest,
       0u, statistics_proxy_->GetStats().quality_limitation_resolution_changes);
 }
 
+TEST_F(SendStatisticsProxyTest, OnBitrateAllocationUpdatedSetsTargetBitrates) {
+  // We only update target bitrates for substreams that exist and these are
+  // created lazily in various places... calling OnInactiveSsrc() is one way to
+  // ensure the stats are reported.
+  statistics_proxy_->OnInactiveSsrc(kFirstSsrc);
+  statistics_proxy_->OnInactiveSsrc(kSecondSsrc);
+
+  // Update target bitrates!
+  VideoBitrateAllocation allocation;
+  allocation.SetBitrate(0, 0, 123);
+  allocation.SetBitrate(1, 0, 321);
+  statistics_proxy_->OnBitrateAllocationUpdated(VideoCodec(), allocation);
+  EXPECT_EQ(statistics_proxy_->GetStats().substreams[kFirstSsrc].target_bitrate,
+            DataRate::BitsPerSec(123));
+  EXPECT_EQ(
+      statistics_proxy_->GetStats().substreams[kSecondSsrc].target_bitrate,
+      DataRate::BitsPerSec(321));
+
+  // 0 bitrate = no target.
+  allocation.SetBitrate(0, 0, 0);
+  allocation.SetBitrate(1, 0, 0);
+  statistics_proxy_->OnBitrateAllocationUpdated(VideoCodec(), allocation);
+  EXPECT_FALSE(statistics_proxy_->GetStats()
+                   .substreams[kFirstSsrc]
+                   .target_bitrate.has_value());
+  EXPECT_FALSE(statistics_proxy_->GetStats()
+                   .substreams[kSecondSsrc]
+                   .target_bitrate.has_value());
+}
+
 TEST_F(SendStatisticsProxyTest,
        QualityLimitationResolutionDoesNotUpdateForSpatialLayerChanges) {
   VideoCodec codec;
@@ -2319,7 +2351,7 @@ TEST_F(SendStatisticsProxyTest, NoSubstreams) {
   rtcp::ReportBlock report_block;
   report_block.SetMediaSsrc(excluded_ssrc);
   ReportBlockData data;
-  data.SetReportBlock(0, report_block, Timestamp::Zero());
+  data.SetReportBlock(0, report_block, Timestamp::Zero(), Timestamp::Zero());
   rtcp_callback->OnReportBlockDataUpdated(data);
 
   // From BitrateStatisticsObserver.
@@ -2372,7 +2404,7 @@ TEST_F(SendStatisticsProxyTest, EncodedResolutionTimesOut) {
   rtcp::ReportBlock report_block;
   report_block.SetMediaSsrc(config_.rtp.ssrcs[0]);
   ReportBlockData data;
-  data.SetReportBlock(0, report_block, Timestamp::Zero());
+  data.SetReportBlock(0, report_block, Timestamp::Zero(), Timestamp::Zero());
   rtcp_callback->OnReportBlockDataUpdated(data);
 
   // Report stats for second SSRC to make sure it's not outdated along with the
@@ -2533,7 +2565,7 @@ TEST_F(SendStatisticsProxyTest, GetStatsReportsIsRtx) {
 
   EXPECT_NE(GetStreamStats(kFirstSsrc).type,
             VideoSendStream::StreamStats::StreamType::kRtx);
-  EXPECT_EQ(GetStreamStats(kFirstSsrc).referenced_media_ssrc, absl::nullopt);
+  EXPECT_EQ(GetStreamStats(kFirstSsrc).referenced_media_ssrc, std::nullopt);
   EXPECT_EQ(GetStreamStats(kFirstRtxSsrc).type,
             VideoSendStream::StreamStats::StreamType::kRtx);
   EXPECT_EQ(GetStreamStats(kFirstRtxSsrc).referenced_media_ssrc, kFirstSsrc);
@@ -2553,7 +2585,7 @@ TEST_F(SendStatisticsProxyTest, GetStatsReportsIsFlexFec) {
 
   EXPECT_NE(GetStreamStats(kFirstSsrc).type,
             VideoSendStream::StreamStats::StreamType::kFlexfec);
-  EXPECT_EQ(GetStreamStats(kFirstSsrc).referenced_media_ssrc, absl::nullopt);
+  EXPECT_EQ(GetStreamStats(kFirstSsrc).referenced_media_ssrc, std::nullopt);
   EXPECT_EQ(GetStreamStats(kFlexFecSsrc).type,
             VideoSendStream::StreamStats::StreamType::kFlexfec);
   EXPECT_EQ(GetStreamStats(kFlexFecSsrc).referenced_media_ssrc, kFirstSsrc);

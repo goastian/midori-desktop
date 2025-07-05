@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,7 +21,6 @@
 #include "absl/functional/bind_front.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "net/dcsctp/packet/chunk/abort_chunk.h"
 #include "net/dcsctp/packet/chunk/chunk.h"
@@ -97,7 +97,7 @@ Capabilities ComputeCapabilities(const DcSctpOptions& options,
                                  uint16_t peer_nbr_inbound_streams,
                                  const Parameters& parameters) {
   Capabilities capabilities;
-  absl::optional<SupportedExtensionsParameter> supported_extensions =
+  std::optional<SupportedExtensionsParameter> supported_extensions =
       parameters.get<SupportedExtensionsParameter>();
 
   if (options.enable_partial_reliability) {
@@ -316,7 +316,7 @@ void DcSctpSocket::Connect() {
         callbacks_.GetRandomInt(kMinVerificationTag, kMaxVerificationTag));
     RTC_DLOG(LS_INFO)
         << log_prefix()
-        << rtc::StringFormat(
+        << webrtc::StringFormat(
                "Connecting. my_verification_tag=%08x, my_initial_tsn=%u",
                *connect_params_.verification_tag, *connect_params_.initial_tsn);
     SendInit();
@@ -612,9 +612,9 @@ void DcSctpSocket::SetBufferedAmountLowThreshold(StreamID stream_id,
   send_queue_.SetBufferedAmountLowThreshold(stream_id, bytes);
 }
 
-absl::optional<Metrics> DcSctpSocket::GetMetrics() const {
+std::optional<Metrics> DcSctpSocket::GetMetrics() const {
   if (tcb_ == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   Metrics metrics = metrics_;
@@ -657,7 +657,7 @@ void DcSctpSocket::MaybeSendShutdownOnPacketReceived(const SctpPacket& packet) {
 }
 
 void DcSctpSocket::MaybeSendResetStreamsRequest() {
-  absl::optional<ReConfigChunk> reconfig =
+  std::optional<ReConfigChunk> reconfig =
       tcb_->stream_reset_handler().MakeStreamResetRequest();
   if (reconfig.has_value()) {
     SctpPacket::Builder builder = tcb_->PacketBuilder();
@@ -715,7 +715,7 @@ bool DcSctpSocket::ValidatePacket(const SctpPacket& packet) {
     }
     callbacks_.OnError(
         ErrorKind::kParseFailed,
-        rtc::StringFormat(
+        webrtc::StringFormat(
             "Packet has invalid verification tag: %08x, expected %08x",
             *header.verification_tag, *connect_params_.verification_tag));
     return false;
@@ -760,7 +760,7 @@ bool DcSctpSocket::ValidatePacket(const SctpPacket& packet) {
 
   callbacks_.OnError(
       ErrorKind::kParseFailed,
-      rtc::StringFormat(
+      webrtc::StringFormat(
           "Packet has invalid verification tag: %08x, expected %08x",
           *header.verification_tag, *my_verification_tag));
   return false;
@@ -788,7 +788,7 @@ void DcSctpSocket::ReceivePacket(rtc::ArrayView<const uint8_t> data) {
     packet_observer_->OnReceivedPacket(TimeMs(callbacks_.Now().ms()), data);
   }
 
-  absl::optional<SctpPacket> packet = SctpPacket::Parse(data, options_);
+  std::optional<SctpPacket> packet = SctpPacket::Parse(data, options_);
   if (!packet.has_value()) {
     // https://tools.ietf.org/html/rfc4960#section-6.8
     // "The default procedure for handling invalid SCTP packets is to
@@ -906,7 +906,7 @@ bool DcSctpSocket::HandleUnrecognizedChunk(
   RTC_DLOG(LS_VERBOSE) << log_prefix() << "Received unknown chunk: "
                        << static_cast<int>(descriptor.type);
   if (report_as_error) {
-    rtc::StringBuilder sb;
+    webrtc::StringBuilder sb;
     sb << "Received unknown chunk of type: "
        << static_cast<int>(descriptor.type) << " with report-error bit set";
     callbacks_.OnError(ErrorKind::kParseFailed, sb.str());
@@ -1021,12 +1021,6 @@ void DcSctpSocket::OnSentPacket(rtc::ArrayView<const uint8_t> packet,
       DebugPrintOutgoing(packet);
     }
 
-    // The heartbeat interval timer is restarted for every sent packet, to
-    // fire when the outgoing channel is inactive.
-    if (tcb_ != nullptr) {
-      tcb_->heartbeat_handler().RestartTimer();
-    }
-
     ++metrics_.tx_packets_count;
   }
 }
@@ -1043,22 +1037,22 @@ bool DcSctpSocket::ValidateHasTCB() {
 }
 
 void DcSctpSocket::ReportFailedToParseChunk(int chunk_type) {
-  rtc::StringBuilder sb;
+  webrtc::StringBuilder sb;
   sb << "Failed to parse chunk of type: " << chunk_type;
   callbacks_.OnError(ErrorKind::kParseFailed, sb.str());
 }
 
-void DcSctpSocket::HandleData(const CommonHeader& header,
+void DcSctpSocket::HandleData(const CommonHeader& /* header */,
                               const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<DataChunk> chunk = DataChunk::Parse(descriptor.data);
+  std::optional<DataChunk> chunk = DataChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     HandleDataCommon(*chunk);
   }
 }
 
-void DcSctpSocket::HandleIData(const CommonHeader& header,
+void DcSctpSocket::HandleIData(const CommonHeader& /* header */,
                                const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<IDataChunk> chunk = IDataChunk::Parse(descriptor.data);
+  std::optional<IDataChunk> chunk = IDataChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     HandleDataCommon(*chunk);
   }
@@ -1123,9 +1117,9 @@ void DcSctpSocket::HandleDataCommon(AnyDataChunk& chunk) {
   }
 }
 
-void DcSctpSocket::HandleInit(const CommonHeader& header,
+void DcSctpSocket::HandleInit(const CommonHeader& /* header */,
                               const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<InitChunk> chunk = InitChunk::Parse(descriptor.data);
+  std::optional<InitChunk> chunk = InitChunk::Parse(descriptor.data);
   if (!ValidateParseSuccess(chunk)) {
     return;
   }
@@ -1221,7 +1215,7 @@ void DcSctpSocket::HandleInit(const CommonHeader& header,
 
   RTC_DLOG(LS_VERBOSE)
       << log_prefix()
-      << rtc::StringFormat(
+      << webrtc::StringFormat(
              "Proceeding with connection. my_verification_tag=%08x, "
              "my_initial_tsn=%u, peer_verification_tag=%08x, "
              "peer_initial_tsn=%u",
@@ -1253,9 +1247,9 @@ void DcSctpSocket::HandleInit(const CommonHeader& header,
 }
 
 void DcSctpSocket::HandleInitAck(
-    const CommonHeader& header,
+    const CommonHeader& /* header */,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<InitAckChunk> chunk = InitAckChunk::Parse(descriptor.data);
+  std::optional<InitAckChunk> chunk = InitAckChunk::Parse(descriptor.data);
   if (!ValidateParseSuccess(chunk)) {
     return;
   }
@@ -1313,14 +1307,13 @@ void DcSctpSocket::HandleInitAck(
 void DcSctpSocket::HandleCookieEcho(
     const CommonHeader& header,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<CookieEchoChunk> chunk =
+  std::optional<CookieEchoChunk> chunk =
       CookieEchoChunk::Parse(descriptor.data);
   if (!ValidateParseSuccess(chunk)) {
     return;
   }
 
-  absl::optional<StateCookie> cookie =
-      StateCookie::Deserialize(chunk->cookie());
+  std::optional<StateCookie> cookie = StateCookie::Deserialize(chunk->cookie());
   if (!cookie.has_value()) {
     callbacks_.OnError(ErrorKind::kParseFailed, "Failed to parse state cookie");
     return;
@@ -1334,7 +1327,7 @@ void DcSctpSocket::HandleCookieEcho(
     if (header.verification_tag != cookie->my_tag()) {
       callbacks_.OnError(
           ErrorKind::kParseFailed,
-          rtc::StringFormat(
+          webrtc::StringFormat(
               "Received CookieEcho with invalid verification tag: %08x, "
               "expected %08x",
               *header.verification_tag, *cookie->my_tag()));
@@ -1453,9 +1446,9 @@ bool DcSctpSocket::HandleCookieEchoWithTCB(const CommonHeader& header,
 }
 
 void DcSctpSocket::HandleCookieAck(
-    const CommonHeader& header,
+    const CommonHeader& /* header */,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<CookieAckChunk> chunk = CookieAckChunk::Parse(descriptor.data);
+  std::optional<CookieAckChunk> chunk = CookieAckChunk::Parse(descriptor.data);
   if (!ValidateParseSuccess(chunk)) {
     return;
   }
@@ -1484,9 +1477,9 @@ void DcSctpSocket::MaybeDeliverMessages() {
   }
 }
 
-void DcSctpSocket::HandleSack(const CommonHeader& header,
+void DcSctpSocket::HandleSack(const CommonHeader& /* header */,
                               const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<SackChunk> chunk = SackChunk::Parse(descriptor.data);
+  std::optional<SackChunk> chunk = SackChunk::Parse(descriptor.data);
 
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     Timestamp now = callbacks_.Now();
@@ -1517,9 +1510,9 @@ void DcSctpSocket::HandleSack(const CommonHeader& header,
 }
 
 void DcSctpSocket::HandleHeartbeatRequest(
-    const CommonHeader& header,
+    const CommonHeader& /* header */,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<HeartbeatRequestChunk> chunk =
+  std::optional<HeartbeatRequestChunk> chunk =
       HeartbeatRequestChunk::Parse(descriptor.data);
 
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
@@ -1528,9 +1521,9 @@ void DcSctpSocket::HandleHeartbeatRequest(
 }
 
 void DcSctpSocket::HandleHeartbeatAck(
-    const CommonHeader& header,
+    const CommonHeader& /* header */,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<HeartbeatAckChunk> chunk =
+  std::optional<HeartbeatAckChunk> chunk =
       HeartbeatAckChunk::Parse(descriptor.data);
 
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
@@ -1538,9 +1531,9 @@ void DcSctpSocket::HandleHeartbeatAck(
   }
 }
 
-void DcSctpSocket::HandleAbort(const CommonHeader& header,
+void DcSctpSocket::HandleAbort(const CommonHeader& /* header */,
                                const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<AbortChunk> chunk = AbortChunk::Parse(descriptor.data);
+  std::optional<AbortChunk> chunk = AbortChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk)) {
     std::string error_string = ErrorCausesToString(chunk->error_causes());
     if (tcb_ == nullptr) {
@@ -1558,9 +1551,9 @@ void DcSctpSocket::HandleAbort(const CommonHeader& header,
   }
 }
 
-void DcSctpSocket::HandleError(const CommonHeader& header,
+void DcSctpSocket::HandleError(const CommonHeader& /* header */,
                                const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<ErrorChunk> chunk = ErrorChunk::Parse(descriptor.data);
+  std::optional<ErrorChunk> chunk = ErrorChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk)) {
     std::string error_string = ErrorCausesToString(chunk->error_causes());
     if (tcb_ == nullptr) {
@@ -1576,10 +1569,10 @@ void DcSctpSocket::HandleError(const CommonHeader& header,
 }
 
 void DcSctpSocket::HandleReconfig(
-    const CommonHeader& header,
+    const CommonHeader& /* header */,
     const SctpPacket::ChunkDescriptor& descriptor) {
   Timestamp now = callbacks_.Now();
-  absl::optional<ReConfigChunk> chunk = ReConfigChunk::Parse(descriptor.data);
+  std::optional<ReConfigChunk> chunk = ReConfigChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     tcb_->stream_reset_handler().HandleReConfig(*std::move(chunk));
     // Handling this response may result in outgoing stream resets finishing
@@ -1700,7 +1693,7 @@ void DcSctpSocket::HandleShutdownComplete(
 void DcSctpSocket::HandleForwardTsn(
     const CommonHeader& header,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<ForwardTsnChunk> chunk =
+  std::optional<ForwardTsnChunk> chunk =
       ForwardTsnChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     HandleForwardTsnCommon(*chunk);
@@ -1710,7 +1703,7 @@ void DcSctpSocket::HandleForwardTsn(
 void DcSctpSocket::HandleIForwardTsn(
     const CommonHeader& header,
     const SctpPacket::ChunkDescriptor& descriptor) {
-  absl::optional<IForwardTsnChunk> chunk =
+  std::optional<IForwardTsnChunk> chunk =
       IForwardTsnChunk::Parse(descriptor.data);
   if (ValidateParseSuccess(chunk) && ValidateHasTCB()) {
     HandleForwardTsnCommon(*chunk);
@@ -1742,7 +1735,7 @@ void DcSctpSocket::HandleForwardTsnCommon(const AnyForwardTsnChunk& chunk) {
 }
 
 void DcSctpSocket::MaybeSendShutdownOrAck() {
-  if (tcb_->retransmission_queue().unacked_bytes() != 0) {
+  if (tcb_->retransmission_queue().unacked_items() != 0) {
     return;
   }
 
@@ -1794,12 +1787,12 @@ HandoverReadinessStatus DcSctpSocket::GetHandoverReadiness() const {
   return status;
 }
 
-absl::optional<DcSctpSocketHandoverState>
+std::optional<DcSctpSocketHandoverState>
 DcSctpSocket::GetHandoverStateAndClose() {
   CallbackDeferrer::ScopedDeferrer deferrer(callbacks_);
 
   if (!GetHandoverReadiness().IsReady()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   DcSctpSocketHandoverState state;

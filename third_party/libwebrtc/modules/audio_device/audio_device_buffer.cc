@@ -245,13 +245,13 @@ void AudioDeviceBuffer::SetVQEData(int play_delay_ms, int rec_delay_ms) {
 
 int32_t AudioDeviceBuffer::SetRecordedBuffer(const void* audio_buffer,
                                              size_t samples_per_channel) {
-  return SetRecordedBuffer(audio_buffer, samples_per_channel, absl::nullopt);
+  return SetRecordedBuffer(audio_buffer, samples_per_channel, std::nullopt);
 }
 
 int32_t AudioDeviceBuffer::SetRecordedBuffer(
     const void* audio_buffer,
     size_t samples_per_channel,
-    absl::optional<int64_t> capture_timestamp_ns) {
+    std::optional<int64_t> capture_timestamp_ns) {
   // Copy the complete input buffer to the local buffer.
   const size_t old_size = rec_buffer_.size();
   rec_buffer_.SetData(static_cast<const int16_t*>(audio_buffer),
@@ -264,8 +264,7 @@ int32_t AudioDeviceBuffer::SetRecordedBuffer(
 
   if (capture_timestamp_ns) {
     int64_t align_offsync_estimation_time = rtc::TimeMicros();
-    if (align_offsync_estimation_time -
-            rtc::TimestampAligner::kMinFrameIntervalUs >
+    if (align_offsync_estimation_time - TimestampAligner::kMinFrameIntervalUs >
         align_offsync_estimation_time_) {
       align_offsync_estimation_time_ = align_offsync_estimation_time;
       capture_timestamp_ns_ =

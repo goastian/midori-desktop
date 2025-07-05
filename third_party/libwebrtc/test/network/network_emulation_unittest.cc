@@ -11,25 +11,52 @@
 #include "test/network/network_emulation.h"
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "api/task_queue/task_queue_base.h"
+#include "api/test/network_emulation/network_emulation_interfaces.h"
+#include "api/test/network_emulation_manager.h"
+#include "api/test/rtc_error_matchers.h"
 #include "api/test/simulated_network.h"
+#include "api/transport/ecn_marking.h"
+#include "api/transport/stun.h"
+#include "api/units/data_size.h"
 #include "api/units/time_delta.h"
-#include "call/simulated_network.h"
-#include "rtc_base/event.h"
-#include "rtc_base/gunit.h"
+#include "api/units/timestamp.h"
+#include "rtc_base/buffer.h"
+#include "rtc_base/byte_buffer.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/ip_address.h"
+#include "rtc_base/net_helpers.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/task_queue_for_test.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
+#include "rtc_base/thread.h"
+#include "rtc_base/thread_annotations.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 #include "test/network/network_emulation_manager.h"
+#include "test/network/simulated_network.h"
+#include "test/wait_until.h"
 
 namespace webrtc {
 namespace test {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::Eq;
 
 constexpr TimeDelta kNetworkPacketWaitTimeout = TimeDelta::Millis(100);
 constexpr TimeDelta kStatsWaitTimeout = TimeDelta::Seconds(1);
@@ -40,40 +67,60 @@ class SocketReader : public sigslot::has_slots<> {
   explicit SocketReader(rtc::Socket* socket, rtc::Thread* network_thread)
       : socket_(socket), network_thread_(network_thread) {
     socket_->SignalReadEvent.connect(this, &SocketReader::OnReadEvent);
-    size_ = 128 * 1024;
-    buf_ = new char[size_];
   }
-  ~SocketReader() override { delete[] buf_; }
 
   void OnReadEvent(rtc::Socket* socket) {
     RTC_DCHECK(socket_ == socket);
     RTC_DCHECK(network_thread_->IsCurrent());
-    int64_t timestamp;
-    len_ = socket_->Recv(buf_, size_, &timestamp);
+
+    rtc::Socket::ReceiveBuffer receive_buffer(payload_);
+    socket_->RecvFrom(receive_buffer);
+    last_ecn_mark_ = receive_buffer.ecn;
 
     MutexLock lock(&lock_);
     received_count_++;
   }
 
-  int ReceivedCount() {
+  int ReceivedCount() const {
     MutexLock lock(&lock_);
     return received_count_;
+  }
+
+  webrtc::EcnMarking LastEcnMarking() const {
+    MutexLock lock(&lock_);
+    return last_ecn_mark_;
   }
 
  private:
   rtc::Socket* const socket_;
   rtc::Thread* const network_thread_;
-  char* buf_;
-  size_t size_;
-  int len_;
+  rtc::Buffer payload_;
+  webrtc::EcnMarking last_ecn_mark_;
 
-  Mutex lock_;
+  mutable Mutex lock_;
   int received_count_ RTC_GUARDED_BY(lock_) = 0;
 };
 
 class MockReceiver : public EmulatedNetworkReceiverInterface {
  public:
   MOCK_METHOD(void, OnPacketReceived, (EmulatedIpPacket packet), (override));
+};
+
+class MockNetworkBehaviourInterface : public NetworkBehaviorInterface {
+ public:
+  MOCK_METHOD(bool, EnqueuePacket, (PacketInFlightInfo), (override));
+  MOCK_METHOD(std::vector<PacketDeliveryInfo>,
+              DequeueDeliverablePackets,
+              (int64_t),
+              (override));
+  MOCK_METHOD(std::optional<int64_t>,
+              NextDeliveryTimeUs,
+              (),
+              (const, override));
+  MOCK_METHOD(void,
+              RegisterDeliveryTimeChangedCallback,
+              (absl::AnyInvocable<void()>),
+              (override));
 };
 
 class NetworkEmulationManagerThreeNodesRoutingTest : public ::testing::Test {
@@ -143,7 +190,7 @@ class NetworkEmulationManagerThreeNodesRoutingTest : public ::testing::Test {
   MockReceiver r_e3_e1_;
 
   NetworkEmulationManagerImpl emulation_{
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault};
+      NetworkEmulationManagerConfig{.time_mode = TimeMode::kRealTime}};
   EmulatedEndpoint* e1_;
   EmulatedEndpoint* e2_;
   EmulatedEndpoint* e3_;
@@ -157,11 +204,9 @@ EmulatedNetworkNode* CreateEmulatedNodeWithDefaultBuiltInConfig(
 
 }  // namespace
 
-using ::testing::_;
-
 TEST(NetworkEmulationManagerTest, GeneratedIpv4AddressDoesNotCollide) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kRealTime});
   std::set<rtc::IPAddress> ips;
   EmulatedEndpointConfig config;
   config.generated_ip_family = EmulatedEndpointConfig::IpAddressFamily::kIpv4;
@@ -175,7 +220,7 @@ TEST(NetworkEmulationManagerTest, GeneratedIpv4AddressDoesNotCollide) {
 
 TEST(NetworkEmulationManagerTest, GeneratedIpv6AddressDoesNotCollide) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kRealTime});
   std::set<rtc::IPAddress> ips;
   EmulatedEndpointConfig config;
   config.generated_ip_family = EmulatedEndpointConfig::IpAddressFamily::kIpv6;
@@ -189,7 +234,7 @@ TEST(NetworkEmulationManagerTest, GeneratedIpv6AddressDoesNotCollide) {
 
 TEST(NetworkEmulationManagerTest, Run) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kRealTime});
 
   EmulatedNetworkNode* alice_node = network_manager.CreateEmulatedNode(
       std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig()));
@@ -336,14 +381,101 @@ TEST(NetworkEmulationManagerTest, Run) {
 
     received_stats_count++;
   });
-  ASSERT_EQ_SIMULATED_WAIT(received_stats_count.load(), 2,
-                           kStatsWaitTimeout.ms(),
-                           *network_manager.time_controller());
+  ASSERT_THAT(WaitUntil([&] { return received_stats_count.load(); }, Eq(2),
+                        {.timeout = kStatsWaitTimeout,
+                         .clock = network_manager.time_controller()}),
+              IsRtcOk());
+}
+
+TEST(NetworkEmulationManagerTest, EcnMarkingIsPropagated) {
+  NetworkEmulationManagerImpl network_manager(
+      {.time_mode = TimeMode::kRealTime});
+
+  EmulatedNetworkNode* alice_node = network_manager.CreateEmulatedNode(
+      std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig()));
+  EmulatedNetworkNode* bob_node = network_manager.CreateEmulatedNode(
+      std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig()));
+  EmulatedEndpoint* alice_endpoint =
+      network_manager.CreateEndpoint(EmulatedEndpointConfig());
+  EmulatedEndpoint* bob_endpoint =
+      network_manager.CreateEndpoint(EmulatedEndpointConfig());
+  network_manager.CreateRoute(alice_endpoint, {alice_node}, bob_endpoint);
+  network_manager.CreateRoute(bob_endpoint, {bob_node}, alice_endpoint);
+
+  EmulatedNetworkManagerInterface* nt1 =
+      network_manager.CreateEmulatedNetworkManagerInterface({alice_endpoint});
+  EmulatedNetworkManagerInterface* nt2 =
+      network_manager.CreateEmulatedNetworkManagerInterface({bob_endpoint});
+
+  rtc::Thread* t1 = nt1->network_thread();
+  rtc::Thread* t2 = nt2->network_thread();
+
+  rtc::Socket* s1 = nullptr;
+  rtc::Socket* s2 = nullptr;
+  SendTask(t1,
+           [&] { s1 = t1->socketserver()->CreateSocket(AF_INET, SOCK_DGRAM); });
+  SendTask(t2,
+           [&] { s2 = t2->socketserver()->CreateSocket(AF_INET, SOCK_DGRAM); });
+
+  SocketReader r1(s1, t1);
+  SocketReader r2(s2, t2);
+
+  rtc::SocketAddress a1(alice_endpoint->GetPeerLocalAddress(), 0);
+  rtc::SocketAddress a2(bob_endpoint->GetPeerLocalAddress(), 0);
+
+  SendTask(t1, [&] {
+    s1->Bind(a1);
+    a1 = s1->GetLocalAddress();
+  });
+  SendTask(t2, [&] {
+    s2->Bind(a2);
+    a2 = s2->GetLocalAddress();
+  });
+
+  SendTask(t1, [&] { s1->Connect(a2); });
+  SendTask(t2, [&] { s2->Connect(a1); });
+
+  t1->PostTask([&]() {
+    s1->SetOption(rtc::Socket::Option::OPT_SEND_ECN, 1);
+    rtc::CopyOnWriteBuffer data("Hello");
+    s1->Send(data.data(), data.size());
+  });
+
+  network_manager.time_controller()->AdvanceTime(TimeDelta::Seconds(1));
+
+  EXPECT_EQ(r2.ReceivedCount(), 1);
+  EXPECT_EQ(r2.LastEcnMarking(), webrtc::EcnMarking::kEct1);
+
+  std::atomic<int> received_stats_count{0};
+  nt1->GetStats([&](EmulatedNetworkStats st) {
+    EXPECT_EQ(st.overall_incoming_stats.packets_received, 0);
+    EXPECT_EQ(st.overall_outgoing_stats.packets_sent, 1);
+    EXPECT_EQ(st.overall_outgoing_stats.ecn_count.ect_1(), 1);
+    EXPECT_EQ(st.overall_outgoing_stats.ecn_count.ce(), 0);
+    EXPECT_EQ(st.overall_outgoing_stats.ecn_count.not_ect(), 0);
+    ++received_stats_count;
+  });
+  nt2->GetStats([&](EmulatedNetworkStats st) {
+    EXPECT_EQ(st.overall_incoming_stats.packets_received, 1);
+    EXPECT_EQ(st.overall_outgoing_stats.packets_sent, 0);
+    EXPECT_EQ(st.overall_incoming_stats.ecn_count.ect_1(), 1);
+    EXPECT_EQ(st.overall_incoming_stats.ecn_count.ce(), 0);
+    EXPECT_EQ(st.overall_incoming_stats.ecn_count.not_ect(), 0);
+    ++received_stats_count;
+  });
+  ASSERT_THAT(WaitUntil([&] { return received_stats_count.load(); }, Eq(2),
+                        {.timeout = kStatsWaitTimeout,
+                         .clock = network_manager.time_controller()}),
+              IsRtcOk());
+
+  SendTask(t1, [&] { delete s1; });
+  SendTask(t2, [&] { delete s2; });
 }
 
 TEST(NetworkEmulationManagerTest, DebugStatsCollectedInDebugMode) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kSimulated, EmulatedNetworkStatsGatheringMode::kDebug);
+      {.time_mode = TimeMode::kSimulated,
+       .stats_gathering_mode = EmulatedNetworkStatsGatheringMode::kDebug});
 
   EmulatedNetworkNode* alice_node = network_manager.CreateEmulatedNode(
       std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig()));
@@ -436,14 +568,15 @@ TEST(NetworkEmulationManagerTest, DebugStatsCollectedInDebugMode) {
 
     received_stats_count++;
   });
-  ASSERT_EQ_SIMULATED_WAIT(received_stats_count.load(), 1,
-                           kStatsWaitTimeout.ms(),
-                           *network_manager.time_controller());
+  ASSERT_THAT(WaitUntil([&] { return received_stats_count.load(); }, Eq(1),
+                        {.timeout = kStatsWaitTimeout,
+                         .clock = network_manager.time_controller()}),
+              IsRtcOk());
 }
 
 TEST(NetworkEmulationManagerTest, ThroughputStats) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kRealTime});
 
   EmulatedNetworkNode* alice_node = network_manager.CreateEmulatedNode(
       std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig()));
@@ -514,9 +647,10 @@ TEST(NetworkEmulationManagerTest, ThroughputStats) {
     received_stats_count++;
   });
 
-  ASSERT_EQ_SIMULATED_WAIT(received_stats_count.load(), 1,
-                           kStatsWaitTimeout.ms(),
-                           *network_manager.time_controller());
+  ASSERT_THAT(WaitUntil([&] { return received_stats_count.load(); }, Eq(1),
+                        {.timeout = kStatsWaitTimeout,
+                         .clock = network_manager.time_controller()}),
+              IsRtcOk());
 
   EXPECT_EQ(r1.ReceivedCount(), 11);
   EXPECT_EQ(r2.ReceivedCount(), 11);
@@ -574,7 +708,7 @@ TEST_F(NetworkEmulationManagerThreeNodesRoutingTest,
 
 TEST(NetworkEmulationManagerTest, EndpointLoopback) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kSimulated, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kSimulated});
   auto endpoint = network_manager.CreateEndpoint(EmulatedEndpointConfig());
 
   MockReceiver receiver;
@@ -591,7 +725,7 @@ TEST(NetworkEmulationManagerTest, EndpointCanSendWithDifferentSourceIp) {
   constexpr uint32_t kEndpointIp = 0xC0A80011;  // 192.168.0.17
   constexpr uint32_t kSourceIp = 0xC0A80012;    // 192.168.0.18
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kSimulated, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kSimulated});
   EmulatedEndpointConfig endpoint_config;
   endpoint_config.ip = rtc::IPAddress(kEndpointIp);
   endpoint_config.allow_send_packet_with_different_source_ip = true;
@@ -612,7 +746,7 @@ TEST(NetworkEmulationManagerTest,
   constexpr uint32_t kDestEndpointIp = 0xC0A80011;  // 192.168.0.17
   constexpr uint32_t kDestIp = 0xC0A80012;          // 192.168.0.18
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kSimulated, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kSimulated});
   auto sender_endpoint =
       network_manager.CreateEndpoint(EmulatedEndpointConfig());
   EmulatedEndpointConfig endpoint_config;
@@ -636,7 +770,7 @@ TEST(NetworkEmulationManagerTest,
 
 TEST(NetworkEmulationManagerTURNTest, GetIceServerConfig) {
   NetworkEmulationManagerImpl network_manager(
-      TimeMode::kRealTime, EmulatedNetworkStatsGatheringMode::kDefault);
+      {.time_mode = TimeMode::kRealTime});
   auto turn = network_manager.CreateTURNServer(EmulatedTURNServerConfig());
 
   EXPECT_GT(turn->GetIceServerConfig().username.size(), 0u);
@@ -647,8 +781,7 @@ TEST(NetworkEmulationManagerTURNTest, GetIceServerConfig) {
 }
 
 TEST(NetworkEmulationManagerTURNTest, ClientTraffic) {
-  NetworkEmulationManagerImpl emulation(
-      TimeMode::kSimulated, EmulatedNetworkStatsGatheringMode::kDefault);
+  NetworkEmulationManagerImpl emulation({.time_mode = TimeMode::kSimulated});
   auto* ep = emulation.CreateEndpoint(EmulatedEndpointConfig());
   auto* turn = emulation.CreateTURNServer(EmulatedTURNServerConfig());
   auto* node = CreateEmulatedNodeWithDefaultBuiltInConfig(&emulation);
@@ -670,6 +803,46 @@ TEST(NetworkEmulationManagerTURNTest, ClientTraffic) {
   ep->SendPacket(rtc::SocketAddress(ep->GetPeerLocalAddress(), port),
                  turn->GetClientEndpointAddress(), packet);
   emulation.time_controller()->AdvanceTime(TimeDelta::Seconds(1));
+}
+
+TEST(LinkEmulationTest, HandlesDeliveryTimeChangedCallback) {
+  constexpr uint32_t kEndpointIp = 0xC0A80011;  // 192.168.0.17
+  NetworkEmulationManagerImpl network_manager(
+      {.time_mode = TimeMode::kSimulated});
+  auto mock_behaviour =
+      std::make_unique<::testing::NiceMock<MockNetworkBehaviourInterface>>();
+  MockNetworkBehaviourInterface* mock_behaviour_ptr = mock_behaviour.get();
+  absl::AnyInvocable<void()> delivery_time_changed_callback = nullptr;
+  TaskQueueBase* emulation_task_queue = nullptr;
+  EXPECT_CALL(*mock_behaviour_ptr, RegisterDeliveryTimeChangedCallback)
+      .WillOnce([&](absl::AnyInvocable<void()> callback) {
+        delivery_time_changed_callback = std::move(callback);
+        emulation_task_queue = TaskQueueBase::Current();
+      });
+  LinkEmulation* link =
+      network_manager.CreateEmulatedNode(std::move(mock_behaviour))->link();
+  network_manager.time_controller()->AdvanceTime(TimeDelta::Zero());
+  ASSERT_TRUE(delivery_time_changed_callback);
+
+  EXPECT_CALL(*mock_behaviour_ptr, EnqueuePacket);
+  EXPECT_CALL(*mock_behaviour_ptr, NextDeliveryTimeUs)
+      .WillOnce(::testing::Return(
+          network_manager.time_controller()->GetClock()->TimeInMicroseconds() +
+          10));
+  link->OnPacketReceived(EmulatedIpPacket(
+      rtc::SocketAddress(kEndpointIp, 50), rtc::SocketAddress(kEndpointIp, 79),
+      rtc::CopyOnWriteBuffer(10), Timestamp::Millis(1)));
+  network_manager.time_controller()->AdvanceTime(TimeDelta::Zero());
+
+  // Test that NetworkBehaviour can reschedule time for delivery. When
+  // delivery_time_changed_callback is triggered, LinkEmulation re-query the
+  // next delivery time.
+  EXPECT_CALL(*mock_behaviour_ptr, NextDeliveryTimeUs)
+      .WillOnce(::testing::Return(
+          network_manager.time_controller()->GetClock()->TimeInMicroseconds() +
+          20));
+  emulation_task_queue->PostTask([&]() { delivery_time_changed_callback(); });
+  network_manager.time_controller()->AdvanceTime(TimeDelta::Zero());
 }
 
 }  // namespace test

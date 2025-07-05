@@ -44,8 +44,8 @@
 #include <stdlib.h>
 #include <winsock2.h>
 #else
-#include <netinet/in.h>
-#endif  // defined(WEBRTC_WIN)
+#include <netinet/in.h>  // no-presubmit-check
+#endif                   // defined(WEBRTC_WIN)
 
 #if defined(WEBRTC_ARCH_LITTLE_ENDIAN)
 #define htobe16(v) htons(v)

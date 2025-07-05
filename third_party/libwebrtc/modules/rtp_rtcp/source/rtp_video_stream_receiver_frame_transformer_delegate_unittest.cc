@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -50,8 +51,8 @@ std::unique_ptr<RtpFrameObject> CreateRtpFrameObject(
       /*last_packet_received_time=*/5, /*rtp_timestamp=*/6, /*ntp_time_ms=*/7,
       VideoSendTiming(), /*payload_type=*/8, video_header.codec,
       kVideoRotation_0, VideoContentType::UNSPECIFIED, video_header,
-      absl::nullopt, RtpPacketInfos({packet_info}),
-      EncodedImageBuffer::Create(0));
+      /*color_space=*/std::nullopt, /*frame_instrumentation_data=*/std::nullopt,
+      RtpPacketInfos({packet_info}), EncodedImageBuffer::Create(0));
 }
 
 std::unique_ptr<RtpFrameObject> CreateRtpFrameObject() {
@@ -159,6 +160,15 @@ TEST(RtpVideoStreamReceiverFrameTransformerDelegateTest,
   RTPVideoHeader video_header;
   video_header.width = 1280u;
   video_header.height = 720u;
+
+  Timestamp capture_time = Timestamp::Millis(1234);
+  TimeDelta sender_capture_time_offset = TimeDelta::Millis(56);
+  AbsoluteCaptureTime absolute_capture_time = {
+      .absolute_capture_timestamp = Int64MsToUQ32x32(capture_time.ms()),
+      .estimated_capture_clock_offset =
+          Int64MsToUQ32x32(sender_capture_time_offset.ms())};
+  video_header.absolute_capture_time = absolute_capture_time;
+
   RTPVideoHeader::GenericDescriptorInfo& generic =
       video_header.generic.emplace();
   generic.frame_id = 10;
@@ -188,6 +198,10 @@ TEST(RtpVideoStreamReceiverFrameTransformerDelegateTest,
         EXPECT_THAT(metadata.GetDecodeTargetIndications(),
                     ElementsAre(DecodeTargetIndication::kSwitch));
         EXPECT_EQ(metadata.GetCsrcs(), csrcs);
+        ASSERT_TRUE(frame->ReceiveTime().has_value());
+        EXPECT_GE(frame->ReceiveTime()->us(), 0);
+        EXPECT_EQ(frame->CaptureTime(), capture_time);
+        EXPECT_EQ(frame->SenderCaptureTimeOffset(), sender_capture_time_offset);
       });
   // The delegate creates a transformable frame from the RtpFrameObject.
   delegate->TransformFrame(CreateRtpFrameObject(video_header, csrcs));
@@ -222,8 +236,8 @@ TEST(RtpVideoStreamReceiverFrameTransformerDelegateTest,
   // Checks that the recieved RTPFrameObject has the new metadata.
   EXPECT_CALL(receiver, ManageFrame)
       .WillOnce([&](std::unique_ptr<RtpFrameObject> frame) {
-        const absl::optional<RTPVideoHeader::GenericDescriptorInfo>&
-            descriptor = frame->GetRtpVideoHeader().generic;
+        const std::optional<RTPVideoHeader::GenericDescriptorInfo>& descriptor =
+            frame->GetRtpVideoHeader().generic;
         if (!descriptor.has_value()) {
           ADD_FAILURE() << "GenericDescriptorInfo in RTPVideoHeader doesn't "
                            "have a value.";

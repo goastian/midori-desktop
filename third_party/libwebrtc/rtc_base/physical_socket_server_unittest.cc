@@ -10,22 +10,24 @@
 
 #include "rtc_base/physical_socket_server.h"
 
-#include <signal.h>
-
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 
-#include "rtc_base/gunit.h"
+#include "api/test/rtc_error_matchers.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/net_helpers.h"
 #include "rtc_base/net_test_helpers.h"
 #include "rtc_base/network_monitor.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
 #include "rtc_base/socket_unittest.h"
 #include "rtc_base/test_utils.h"
 #include "rtc_base/thread.h"
-#include "test/field_trial.h"
+#include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/wait_until.h"
 
 namespace rtc {
 
@@ -238,8 +240,11 @@ void PhysicalSocketTest::ConnectInternalAcceptError(const IPAddress& loopback) {
   EXPECT_FALSE(sink.Check(client1.get(), webrtc::testing::SSE_CLOSE));
 
   // Server has pending connection, try to accept it (will fail).
-  EXPECT_TRUE_WAIT((sink.Check(server.get(), webrtc::testing::SSE_READ)),
-                   kTimeout);
+  EXPECT_THAT(
+      webrtc::WaitUntil(
+          [&] { return (sink.Check(server.get(), webrtc::testing::SSE_READ)); },
+          ::testing::IsTrue()),
+      webrtc::IsRtcOk());
   // Simulate "::accept" returning an error.
   SetFailAccept(true);
   std::unique_ptr<Socket> accepted(server->Accept(&accept_addr));
@@ -262,8 +267,11 @@ void PhysicalSocketTest::ConnectInternalAcceptError(const IPAddress& loopback) {
   EXPECT_FALSE(sink.Check(client2.get(), webrtc::testing::SSE_CLOSE));
 
   // Server has pending connection, try to accept it (will succeed).
-  EXPECT_TRUE_WAIT((sink.Check(server.get(), webrtc::testing::SSE_READ)),
-                   kTimeout);
+  EXPECT_THAT(
+      webrtc::WaitUntil(
+          [&] { return (sink.Check(server.get(), webrtc::testing::SSE_READ)); },
+          ::testing::IsTrue()),
+      webrtc::IsRtcOk());
   SetFailAccept(false);
   std::unique_ptr<Socket> accepted2(server->Accept(&accept_addr));
   ASSERT_TRUE(accepted2);
@@ -470,19 +478,6 @@ TEST_F(PhysicalSocketTest, TestSocketRecvTimestampIPv4) {
 TEST_F(PhysicalSocketTest, TestSocketRecvTimestampIPv6) {
   SocketTest::TestSocketRecvTimestampIPv6();
 }
-
-#if !defined(WEBRTC_MAC)
-TEST_F(PhysicalSocketTest, TestSocketRecvTimestampIPv4ScmExperimentDisabled) {
-  MAYBE_SKIP_IPV4;
-  webrtc::test::ScopedFieldTrials trial("WebRTC-SCM-Timestamp/Disabled/");
-  SocketTest::TestSocketRecvTimestampIPv4();
-}
-
-TEST_F(PhysicalSocketTest, TestSocketRecvTimestampIPv6ScmExperimentDisabled) {
-  webrtc::test::ScopedFieldTrials trial("WebRTC-SCM-Timestamp/Disabled/");
-  SocketTest::TestSocketRecvTimestampIPv6();
-}
-#endif
 
 #if !defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
 // TODO(bugs.webrtc.org/15368): IpV4 fails on IOS and MAC. IPV6 works.

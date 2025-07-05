@@ -9,6 +9,8 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use malloc_size_of::MallocSizeOf;
+use malloc_size_of_derive::MallocSizeOf;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -16,7 +18,7 @@ use super::request::HeaderMap;
 use crate::{DELETION_REQUEST_PINGS_DIRECTORY, PENDING_PINGS_DIRECTORY};
 
 /// A representation of the data extracted from a ping file,
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, MallocSizeOf)]
 pub struct PingPayload {
     /// The ping's doc_id.
     pub document_id: String,
@@ -30,6 +32,8 @@ pub struct PingPayload {
     pub body_has_info_sections: bool,
     /// The ping's name. (Also likely in the upload_path.)
     pub ping_name: String,
+    /// The capabilities this ping must be uploaded under.
+    pub uploader_capabilities: Vec<String>,
 }
 
 /// A struct to hold the result of scanning all pings directories.
@@ -37,6 +41,28 @@ pub struct PingPayload {
 pub struct PingPayloadsByDirectory {
     pub pending_pings: Vec<(u64, PingPayload)>,
     pub deletion_request_pings: Vec<(u64, PingPayload)>,
+}
+
+impl MallocSizeOf for PingPayloadsByDirectory {
+    fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+        // SAFETY: We own the referenced `Vec`s and can hand out pointers to them
+        // to an external function.
+        let shallow_size = unsafe {
+            ops.malloc_size_of(self.pending_pings.as_ptr())
+                + ops.malloc_size_of(self.deletion_request_pings.as_ptr())
+        };
+
+        let mut n = shallow_size;
+        for elem in self.pending_pings.iter() {
+            n += elem.0.size_of(ops);
+            n += elem.1.size_of(ops);
+        }
+        for elem in self.deletion_request_pings.iter() {
+            n += elem.0.size_of(ops);
+            n += elem.1.size_of(ops);
+        }
+        n
+    }
 }
 
 impl PingPayloadsByDirectory {
@@ -86,6 +112,8 @@ pub struct PingMetadata {
     pub body_has_info_sections: Option<bool>,
     /// The name of the ping.
     pub ping_name: Option<String>,
+    /// The capabilities this ping must be uploaded under.
+    pub uploader_capabilities: Option<Vec<String>>,
 }
 
 /// Processes a ping's metadata.
@@ -94,7 +122,7 @@ pub struct PingMetadata {
 /// currently it contains only additonal headers to be added to each ping request.
 /// Therefore, we will process the contents of this line
 /// and return a HeaderMap of the persisted headers.
-fn process_metadata(path: &str, metadata: &str) -> Option<PingMetadata> {
+pub fn process_metadata(path: &str, metadata: &str) -> Option<PingMetadata> {
     if let Ok(metadata) = serde_json::from_str::<PingMetadata>(metadata) {
         return Some(metadata);
     } else {
@@ -104,7 +132,7 @@ fn process_metadata(path: &str, metadata: &str) -> Option<PingMetadata> {
 }
 
 /// Manages the pings directories.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MallocSizeOf)]
 pub struct PingDirectoryManager {
     /// Path to the pending pings directory.
     pending_pings_dir: PathBuf,
@@ -196,6 +224,7 @@ impl PingDirectoryManager {
                 headers,
                 body_has_info_sections,
                 ping_name,
+                uploader_capabilities,
             } = metadata
                 .and_then(|m| process_metadata(&path, &m))
                 .unwrap_or_default();
@@ -208,6 +237,7 @@ impl PingDirectoryManager {
                 headers,
                 body_has_info_sections: body_has_info_sections.unwrap_or(true),
                 ping_name,
+                uploader_capabilities: uploader_capabilities.unwrap_or_default(),
             });
         } else {
             log::warn!(
@@ -337,7 +367,18 @@ mod test {
         let (mut glean, dir) = new_glean(None);
 
         // Register a ping for testing
-        let ping_type = PingType::new("test", true, true, true, true, true, vec![], vec![]);
+        let ping_type = PingType::new(
+            "test",
+            true,
+            true,
+            true,
+            true,
+            true,
+            vec![],
+            vec![],
+            true,
+            vec![],
+        );
         glean.register_ping_type(&ping_type);
 
         // Submit the ping to populate the pending_pings directory
@@ -364,7 +405,18 @@ mod test {
         let (mut glean, dir) = new_glean(None);
 
         // Register a ping for testing
-        let ping_type = PingType::new("test", true, true, true, true, true, vec![], vec![]);
+        let ping_type = PingType::new(
+            "test",
+            true,
+            true,
+            true,
+            true,
+            true,
+            vec![],
+            vec![],
+            true,
+            vec![],
+        );
         glean.register_ping_type(&ping_type);
 
         // Submit the ping to populate the pending_pings directory
@@ -400,7 +452,18 @@ mod test {
         let (mut glean, dir) = new_glean(None);
 
         // Register a ping for testing
-        let ping_type = PingType::new("test", true, true, true, true, true, vec![], vec![]);
+        let ping_type = PingType::new(
+            "test",
+            true,
+            true,
+            true,
+            true,
+            true,
+            vec![],
+            vec![],
+            true,
+            vec![],
+        );
         glean.register_ping_type(&ping_type);
 
         // Submit the ping to populate the pending_pings directory

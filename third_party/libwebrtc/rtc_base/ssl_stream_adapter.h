@@ -15,12 +15,15 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "api/array_view.h"
+#include "api/field_trials_view.h"
+#include "rtc_base/buffer.h"
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/ssl_identity.h"
 #include "rtc_base/stream.h"
@@ -58,9 +61,6 @@ extern const char kCsAeadAes256Gcm[];
 // name, as defined in https://tools.ietf.org/html/rfc5764#section-4.1.2.
 std::string SrtpCryptoSuiteToName(int crypto_suite);
 
-// The reverse of above conversion.
-int SrtpCryptoSuiteFromName(absl::string_view crypto_suite);
-
 // Get key length and salt length for given crypto suite. Returns true for
 // valid suites, otherwise false.
 bool GetSrtpKeyAndSaltLengths(int crypto_suite,
@@ -69,9 +69,6 @@ bool GetSrtpKeyAndSaltLengths(int crypto_suite,
 
 // Returns true if the given crypto suite id uses a GCM cipher.
 bool IsGcmCryptoSuite(int crypto_suite);
-
-// Returns true if the given crypto suite name uses a GCM cipher.
-bool IsGcmCryptoSuiteName(absl::string_view crypto_suite);
 
 // SSLStreamAdapter : A StreamInterfaceAdapter that does SSL/TLS.
 // After SSL has been started, the stream will only open on successful
@@ -90,19 +87,23 @@ bool IsGcmCryptoSuiteName(absl::string_view crypto_suite);
 enum SSLRole { SSL_CLIENT, SSL_SERVER };
 enum SSLMode { SSL_MODE_TLS, SSL_MODE_DTLS };
 
-// Note: TLS_10, TLS_11, and DTLS_10 will all be ignored, and only DTLS1_2 will
-// be accepted unless the trial flag WebRTC-LegacyTlsProtocols/Enabled/ is
-// passed in or an explicit override is used. Support for the legacy protocol
-// versions will be completely removed in the future.
-// See https://bugs.webrtc.org/10261.
+// TODO bugs.webrtc.org/40644300 remove unused legacy constants.
 enum SSLProtocolVersion {
   SSL_PROTOCOL_NOT_GIVEN = -1,
-  SSL_PROTOCOL_TLS_10 = 0,
-  SSL_PROTOCOL_TLS_11,
-  SSL_PROTOCOL_TLS_12,
-  SSL_PROTOCOL_DTLS_10 = SSL_PROTOCOL_TLS_11,
+  SSL_PROTOCOL_TLS_10 = 0,  // Deprecated and no longer supported.
+  SSL_PROTOCOL_TLS_11 = 1,  // Deprecated and no longer supported.
+  SSL_PROTOCOL_TLS_12 = 2,
+  SSL_PROTOCOL_TLS_13 = 3,
+  SSL_PROTOCOL_DTLS_10 = 1,  // Deprecated and no longer supported.
   SSL_PROTOCOL_DTLS_12 = SSL_PROTOCOL_TLS_12,
+  SSL_PROTOCOL_DTLS_13 = SSL_PROTOCOL_TLS_13,
 };
+
+// Versions returned from BoringSSL.
+const uint16_t kDtls10VersionBytes = 0xfeff;
+const uint16_t kDtls12VersionBytes = 0xfefd;
+const uint16_t kDtls13VersionBytes = 0xfefc;
+
 enum class SSLPeerCertificateDigestError {
   NONE,
   UNKNOWN_ALGORITHM,
@@ -123,7 +124,8 @@ class SSLStreamAdapter : public StreamInterface {
   // Caller is responsible for freeing the returned object.
   static std::unique_ptr<SSLStreamAdapter> Create(
       std::unique_ptr<StreamInterface> stream,
-      absl::AnyInvocable<void(SSLHandshakeError)> handshake_error = nullptr);
+      absl::AnyInvocable<void(SSLHandshakeError)> handshake_error = nullptr,
+      const webrtc::FieldTrialsView* field_trials = nullptr);
 
   SSLStreamAdapter() = default;
   ~SSLStreamAdapter() override = default;
@@ -140,8 +142,8 @@ class SSLStreamAdapter : public StreamInterface {
   // TODO(ekr@rtfm.com): rename this SetRole to reflect its new function
   virtual void SetServerRole(SSLRole role = SSL_SERVER) = 0;
 
-  // Do DTLS or TLS.
-  virtual void SetMode(SSLMode mode) = 0;
+  [[deprecated("Only DTLS is supported by the stream adapter")]] virtual void
+  SetMode(SSLMode mode) = 0;
 
   // Set maximum supported protocol version. The highest version supported by
   // both ends will be used for the connection, i.e. if one party supports
@@ -180,13 +182,16 @@ class SSLStreamAdapter : public StreamInterface {
   // channel (such as the signaling channel). This must specify the terminal
   // certificate, not just a CA. SSLStream makes a copy of the digest value.
   //
-  // Returns true if successful.
-  // `error` is optional and provides more information about the failure.
-  virtual bool SetPeerCertificateDigest(
+  // Returns SSLPeerCertificateDigestError::NONE if successful.
+  virtual SSLPeerCertificateDigestError SetPeerCertificateDigest(
       absl::string_view digest_alg,
-      const unsigned char* digest_val,
-      size_t digest_len,
-      SSLPeerCertificateDigestError* error = nullptr) = 0;
+      rtc::ArrayView<const uint8_t> digest_val) = 0;
+  [[deprecated(
+      "Use SetPeerCertificateDigest with ArrayView instead")]] virtual bool
+  SetPeerCertificateDigest(absl::string_view digest_alg,
+                           const unsigned char* digest_val,
+                           size_t digest_len,
+                           SSLPeerCertificateDigestError* error = nullptr);
 
   // Retrieves the peer's certificate chain including leaf certificate, if a
   // connection has been established.
@@ -194,40 +199,30 @@ class SSLStreamAdapter : public StreamInterface {
 
   // Retrieves the IANA registration id of the cipher suite used for the
   // connection (e.g. 0x2F for "TLS_RSA_WITH_AES_128_CBC_SHA").
-  virtual bool GetSslCipherSuite(int* cipher_suite);
+  virtual bool GetSslCipherSuite(int* cipher_suite) const = 0;
+  // Returns the name of the cipher suite used for the DTLS transport,
+  // as defined in the "Description" column of the IANA cipher suite registry.
+  virtual std::optional<absl::string_view> GetTlsCipherSuiteName() const = 0;
 
   // Retrieves the enum value for SSL version.
   // Will return -1 until the version has been negotiated.
-  virtual SSLProtocolVersion GetSslVersion() const = 0;
+  [[deprecated("Use GetSslVersionBytes")]] virtual SSLProtocolVersion
+  GetSslVersion() const = 0;
   // Retrieves the 2-byte version from the TLS protocol.
   // Will return false until the version has been negotiated.
   virtual bool GetSslVersionBytes(int* version) const = 0;
 
   // Key Exporter interface from RFC 5705
-  // Arguments are:
-  // label               -- the exporter label.
-  //                        part of the RFC defining each exporter
-  //                        usage (IN)
-  // context/context_len -- a context to bind to for this connection;
-  //                        optional, can be null, 0 (IN)
-  // use_context         -- whether to use the context value
-  //                        (needed to distinguish no context from
-  //                        zero-length ones).
-  // result              -- where to put the computed value
-  // result_len          -- the length of the computed value
-  virtual bool ExportKeyingMaterial(absl::string_view label,
-                                    const uint8_t* context,
-                                    size_t context_len,
-                                    bool use_context,
-                                    uint8_t* result,
-                                    size_t result_len);
+  virtual bool ExportSrtpKeyingMaterial(
+      rtc::ZeroOnFreeBuffer<uint8_t>& keying_material) = 0;
 
   // Returns the signature algorithm or 0 if not applicable.
   virtual uint16_t GetPeerSignatureAlgorithm() const = 0;
 
   // DTLS-SRTP interface
-  virtual bool SetDtlsSrtpCryptoSuites(const std::vector<int>& crypto_suites);
-  virtual bool GetDtlsSrtpCryptoSuite(int* crypto_suite);
+  virtual bool SetDtlsSrtpCryptoSuites(
+      const std::vector<int>& crypto_suites) = 0;
+  virtual bool GetDtlsSrtpCryptoSuite(int* crypto_suite) const = 0;
 
   // Returns true if a TLS connection has been established.
   // The only difference between this and "GetState() == SE_OPEN" is that if
@@ -245,11 +240,6 @@ class SSLStreamAdapter : public StreamInterface {
   static bool IsAcceptableCipher(int cipher, KeyType key_type);
   static bool IsAcceptableCipher(absl::string_view cipher, KeyType key_type);
 
-  // TODO(guoweis): Move this away from a static class method. Currently this is
-  // introduced such that any caller could depend on sslstreamadapter.h without
-  // depending on specific SSL implementation.
-  static std::string SslCipherSuiteToName(int cipher_suite);
-
   ////////////////////////////////////////////////////////////////////////////
   // Testing only member functions
   ////////////////////////////////////////////////////////////////////////////
@@ -257,6 +247,9 @@ class SSLStreamAdapter : public StreamInterface {
   // Use our timeutils.h source of timing in BoringSSL, allowing us to test
   // using a fake clock.
   static void EnableTimeCallbackForTesting();
+
+  // Return max DTLS SSLProtocolVersion supported by implementation.
+  static SSLProtocolVersion GetMaxSupportedDTLSProtocolVersion();
 
   // Deprecated. Do not use this API outside of testing.
   // Do not set this to false outside of testing.

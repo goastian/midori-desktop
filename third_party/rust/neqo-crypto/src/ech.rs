@@ -102,12 +102,12 @@ pub fn generate_keys() -> Res<(PrivateKey, PublicKey)> {
     let oid = unsafe { oid_data.as_ref() }.ok_or(Error::InternalError)?;
     let oid_slc = unsafe { null_safe_slice(oid.oid.data, oid.oid.len) };
     let mut params: Vec<u8> = Vec::with_capacity(oid_slc.len() + 2);
-    params.push(u8::try_from(p11::SEC_ASN1_OBJECT_ID).unwrap());
-    params.push(u8::try_from(oid.oid.len).unwrap());
+    params.push(u8::try_from(p11::SEC_ASN1_OBJECT_ID)?);
+    params.push(u8::try_from(oid.oid.len)?);
     params.extend_from_slice(oid_slc);
 
     let mut public_ptr: *mut SECKEYPublicKey = null_mut();
-    let mut param_item = Item::wrap(&params);
+    let mut param_item = Item::wrap(&params)?;
 
     // If we have tracing on, try to ensure that key data can be read.
     let insensitive_secret_ptr = if log::log_enabled!(log::Level::Trace) {
@@ -146,7 +146,7 @@ pub fn generate_keys() -> Res<(PrivateKey, PublicKey)> {
     assert_eq!(secret_ptr.is_null(), public_ptr.is_null());
     let sk = PrivateKey::from_ptr(secret_ptr)?;
     let pk = PublicKey::from_ptr(public_ptr)?;
-    qtrace!("Generated key pair: sk={:?} pk={:?}", sk, pk);
+    qtrace!("Generated key pair: sk={sk:?} pk={pk:?}");
     Ok((sk, pk))
 }
 

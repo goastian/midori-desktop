@@ -12,16 +12,16 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
-#include "api/audio/audio_mixer.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
 #include "api/jsep.h"
+#include "api/make_ref_counted.h"
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
 #include "api/peer_connection_interface.h"
@@ -33,7 +33,8 @@
 #include "api/rtp_transceiver_interface.h"
 #include "api/scoped_refptr.h"
 #include "api/set_remote_description_observer_interface.h"
-#include "api/uma_metrics.h"
+#include "api/test/rtc_error_matchers.h"
+#include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_decoder_factory_template.h"
 #include "api/video_codecs/video_decoder_factory_template_dav1d_adapter.h"
 #include "api/video_codecs/video_decoder_factory_template_libvpx_vp8_adapter.h"
@@ -44,10 +45,8 @@
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp8_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
+#include "media/base/codec.h"
 #include "media/base/stream_params.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
-#include "p2p/base/port_allocator.h"
 #include "pc/media_session.h"
 #include "pc/peer_connection_wrapper.h"
 #include "pc/sdp_utils.h"
@@ -56,12 +55,11 @@
 #include "pc/test/integration_test_helpers.h"
 #include "pc/test/mock_peer_connection_observers.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/gunit.h"
-#include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/thread.h"
 #include "system_wrappers/include/metrics.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/wait_until.h"
 
 // This file contains tests for RTP Media API-related behavior of
 // `webrtc::PeerConnection`, see https://w3c.github.io/webrtc-pc/#rtp-media-api.
@@ -70,7 +68,6 @@ namespace webrtc {
 
 using RTCConfiguration = PeerConnectionInterface::RTCConfiguration;
 using ::testing::ElementsAre;
-using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::testing::Values;
 
@@ -757,8 +754,12 @@ TEST_F(PeerConnectionRtpTestPlanB,
       std::move(srd2_sdp),
       rtc::make_ref_counted<OnSuccessObserver<decltype(srd2_callback)>>(
           srd2_callback));
-  EXPECT_TRUE_WAIT(srd1_callback_called, kDefaultTimeout);
-  EXPECT_TRUE_WAIT(srd2_callback_called, kDefaultTimeout);
+  EXPECT_THAT(
+      WaitUntil([&] { return srd1_callback_called; }, ::testing::IsTrue()),
+      IsRtcOk());
+  EXPECT_THAT(
+      WaitUntil([&] { return srd2_callback_called; }, ::testing::IsTrue()),
+      IsRtcOk());
 }
 
 // Tests that a remote track is created with the signaled MSIDs when they are
@@ -959,10 +960,10 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan,
   auto caller = CreatePeerConnection();
 
   auto transceiver = caller->AddTransceiver(cricket::MEDIA_TYPE_AUDIO);
-  EXPECT_EQ(absl::nullopt, transceiver->mid());
+  EXPECT_EQ(std::nullopt, transceiver->mid());
   EXPECT_FALSE(transceiver->stopped());
   EXPECT_EQ(RtpTransceiverDirection::kSendRecv, transceiver->direction());
-  EXPECT_EQ(absl::nullopt, transceiver->current_direction());
+  EXPECT_EQ(std::nullopt, transceiver->current_direction());
 }
 
 // Test that adding a transceiver with the audio kind creates an audio sender
@@ -1781,6 +1782,36 @@ TEST_F(PeerConnectionRtpTestUnifiedPlan, CheckForInvalidEncodingParameters) {
 
   init.send_encodings[0].num_temporal_layers = 5;
   EXPECT_EQ(RTCErrorType::INVALID_RANGE,
+            caller->pc()
+                ->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, init)
+                .error()
+                .type());
+  init.send_encodings = default_send_encodings;
+
+  init.send_encodings[0].scalability_mode = std::nullopt;
+  init.send_encodings[0].codec =
+      cricket::CreateVideoCodec(SdpVideoFormat("VP8", {})).ToCodecParameters();
+  EXPECT_EQ(RTCErrorType::NONE,
+            caller->pc()
+                ->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, init)
+                .error()
+                .type());
+  init.send_encodings = default_send_encodings;
+
+  init.send_encodings[0].scalability_mode = "L1T2";
+  init.send_encodings[0].codec =
+      cricket::CreateVideoCodec(SdpVideoFormat("VP8", {})).ToCodecParameters();
+  EXPECT_EQ(RTCErrorType::NONE,
+            caller->pc()
+                ->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, init)
+                .error()
+                .type());
+  init.send_encodings = default_send_encodings;
+
+  init.send_encodings[0].scalability_mode = "L2T2";
+  init.send_encodings[0].codec =
+      cricket::CreateVideoCodec(SdpVideoFormat("VP8", {})).ToCodecParameters();
+  EXPECT_EQ(RTCErrorType::UNSUPPORTED_OPERATION,
             caller->pc()
                 ->AddTransceiver(cricket::MEDIA_TYPE_VIDEO, init)
                 .error()

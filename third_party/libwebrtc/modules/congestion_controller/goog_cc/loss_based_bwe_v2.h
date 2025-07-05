@@ -11,9 +11,11 @@
 #ifndef MODULES_CONGESTION_CONTROLLER_GOOG_CC_LOSS_BASED_BWE_V2_H_
 #define MODULES_CONGESTION_CONTROLLER_GOOG_CC_LOSS_BASED_BWE_V2_H_
 
+#include <cstdint>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/field_trials_view.h"
 #include "api/transport/network_types.h"
@@ -126,6 +128,7 @@ class LossBasedBweV2 {
     TimeDelta padding_duration = TimeDelta::Zero();
     bool bound_best_candidate = false;
     bool pace_at_loss_based_estimate = false;
+    double median_sending_rate_factor = 0.0;
   };
 
   struct Derivatives {
@@ -147,9 +150,8 @@ class LossBasedBweV2 {
 
   struct PartialObservation {
     int num_packets = 0;
-    int num_lost_packets = 0;
+    std::unordered_map<int64_t, DataSize> lost_packets;
     DataSize size = DataSize::Zero();
-    DataSize lost_size = DataSize::Zero();
   };
 
   struct PaddingInfo {
@@ -163,14 +165,17 @@ class LossBasedBweV2 {
     DataRate rate = DataRate::PlusInfinity();
   };
 
-  static absl::optional<Config> CreateConfig(
+  static std::optional<Config> CreateConfig(
       const FieldTrialsView* key_value_config);
   bool IsConfigValid() const;
 
   // Returns `0.0` if not enough loss statistics have been received.
-  double GetAverageReportedLossRatio() const;
-  double GetAverageReportedPacketLossRatio() const;
-  double GetAverageReportedByteLossRatio() const;
+  void UpdateAverageReportedLossRatio();
+  double CalculateAverageReportedPacketLossRatio() const;
+  // Calculates the average loss ratio over the last `observation_window_size`
+  // observations but skips the observation with min and max loss ratio in order
+  // to filter out loss spikes.
+  double CalculateAverageReportedByteLossRatio() const;
   std::vector<ChannelParameters> GetCandidates(bool in_alr) const;
   DataRate GetCandidateBandwidthUpperBound() const;
   Derivatives GetDerivatives(const ChannelParameters& channel_parameters) const;
@@ -195,17 +200,18 @@ class LossBasedBweV2 {
                                            DataRate new_estimate);
   bool IsInLossLimitedState() const;
   bool CanKeepIncreasingState(DataRate estimate) const;
+  DataRate GetMedianSendingRate() const;
 
-  absl::optional<DataRate> acknowledged_bitrate_;
-  absl::optional<Config> config_;
+  std::optional<DataRate> acknowledged_bitrate_;
+  std::optional<Config> config_;
   ChannelParameters current_best_estimate_;
   int num_observations_ = 0;
   std::vector<Observation> observations_;
   PartialObservation partial_observation_;
   Timestamp last_send_time_most_recent_observation_ = Timestamp::PlusInfinity();
   Timestamp last_time_estimate_reduced_ = Timestamp::MinusInfinity();
-  absl::optional<DataRate> cached_instant_upper_bound_;
-  absl::optional<DataRate> cached_instant_lower_bound_;
+  std::optional<DataRate> cached_instant_upper_bound_;
+  std::optional<DataRate> cached_instant_lower_bound_;
   std::vector<double> instant_upper_bound_temporal_weights_;
   std::vector<double> temporal_weights_;
   Timestamp recovering_after_loss_timestamp_ = Timestamp::MinusInfinity();
@@ -216,6 +222,7 @@ class LossBasedBweV2 {
   LossBasedBweV2::Result loss_based_result_ = LossBasedBweV2::Result();
   HoldInfo last_hold_info_ = HoldInfo();
   PaddingInfo last_padding_info_ = PaddingInfo();
+  double average_reported_loss_ratio_ = 0.0;
 };
 
 }  // namespace webrtc

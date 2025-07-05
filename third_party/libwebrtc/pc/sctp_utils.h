@@ -14,6 +14,7 @@
 #include <string>
 
 #include "api/data_channel_interface.h"
+#include "api/priority.h"
 #include "api/transport/data_channel_transport_interface.h"
 #include "media/base/media_channel.h"
 #include "media/sctp/sctp_transport_internal.h"
@@ -21,11 +22,8 @@
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/ssl_stream_adapter.h"  // For SSLRole
 
-namespace rtc {
-class CopyOnWriteBuffer;
-}  // namespace rtc
-
 namespace webrtc {
+class CopyOnWriteBuffer;
 struct DataChannelInit;
 
 // Wraps the `uint16_t` sctp data channel stream id value and does range
@@ -63,10 +61,10 @@ bool ParseDataChannelOpenAckMessage(const rtc::CopyOnWriteBuffer& payload);
 
 bool WriteDataChannelOpenMessage(const std::string& label,
                                  const std::string& protocol,
-                                 absl::optional<Priority> priority,
+                                 std::optional<PriorityValue> priority,
                                  bool ordered,
-                                 absl::optional<int> max_retransmits,
-                                 absl::optional<int> max_retransmit_time,
+                                 std::optional<int> max_retransmits,
+                                 std::optional<int> max_retransmit_time,
                                  rtc::CopyOnWriteBuffer* payload);
 bool WriteDataChannelOpenMessage(const std::string& label,
                                  const DataChannelInit& config,

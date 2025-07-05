@@ -97,8 +97,8 @@
 //!
 //! [Implementing `Serialize`]: https://serde.rs/impl-serialize.html
 //! [`LinkedHashMap<K, V>`]: https://docs.rs/linked-hash-map/*/linked_hash_map/struct.LinkedHashMap.html
-//! [`Serialize`]: ../trait.Serialize.html
-//! [`Serializer`]: ../trait.Serializer.html
+//! [`Serialize`]: crate::Serialize
+//! [`Serializer`]: crate::Serializer
 //! [`postcard`]: https://github.com/jamesmunns/postcard
 //! [`linked-hash-map`]: https://crates.io/crates/linked-hash-map
 //! [`serde_derive`]: https://crates.io/crates/serde_derive
@@ -115,10 +115,10 @@ mod impossible;
 
 pub use self::impossible::Impossible;
 
-#[cfg(not(any(feature = "std", feature = "unstable")))]
+#[cfg(all(not(feature = "std"), no_core_error))]
 #[doc(no_inline)]
 pub use crate::std_error::Error as StdError;
-#[cfg(all(feature = "unstable", not(feature = "std")))]
+#[cfg(not(any(feature = "std", no_core_error)))]
 #[doc(no_inline)]
 pub use core::error::Error as StdError;
 #[cfg(feature = "std")]
@@ -173,8 +173,8 @@ macro_rules! declare_error_trait {
             /// }
             /// ```
             ///
-            /// [`Path`]: https://doc.rust-lang.org/std/path/struct.Path.html
-            /// [`Serialize`]: ../trait.Serialize.html
+            /// [`Path`]: std::path::Path
+            /// [`Serialize`]: crate::Serialize
             fn custom<T>(msg: T) -> Self
             where
                 T: Display;
@@ -215,6 +215,13 @@ declare_error_trait!(Error: Sized + Debug + Display);
 /// [`linked-hash-map`]: https://crates.io/crates/linked-hash-map
 /// [`serde_derive`]: https://crates.io/crates/serde_derive
 /// [derive section of the manual]: https://serde.rs/derive.html
+#[cfg_attr(
+    not(no_diagnostic_namespace),
+    diagnostic::on_unimplemented(
+        note = "for local types consider adding `#[derive(serde::Serialize)]` to your `{Self}` type",
+        note = "for types from other crates check whether the crate offers a `serde` feature flag",
+    )
+)]
 pub trait Serialize {
     /// Serialize this value into the given Serde serializer.
     ///
@@ -338,7 +345,7 @@ pub trait Serializer: Sized {
     /// in-memory data structures may be simplified by using `Ok` to propagate
     /// the data structure around.
     ///
-    /// [`io::Write`]: https://doc.rust-lang.org/std/io/trait.Write.html
+    /// [`io::Write`]: std::io::Write
     type Ok;
 
     /// The error type when some error occurs during serialization.
@@ -762,7 +769,7 @@ pub trait Serializer: Sized {
     /// # fn main() {}
     /// ```
     ///
-    /// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
+    /// [`None`]: core::option::Option::None
     fn serialize_none(self) -> Result<Self::Ok, Self::Error>;
 
     /// Serialize a [`Some(T)`] value.
@@ -795,7 +802,7 @@ pub trait Serializer: Sized {
     /// # fn main() {}
     /// ```
     ///
-    /// [`Some(T)`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.Some
+    /// [`Some(T)`]: core::option::Option::Some
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + Serialize;
@@ -1346,8 +1353,7 @@ pub trait Serializer: Sized {
     /// }
     /// ```
     ///
-    /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
-    /// [`serialize_str`]: #tymethod.serialize_str
+    /// [`serialize_str`]: Self::serialize_str
     #[cfg(any(feature = "std", feature = "alloc"))]
     fn collect_str<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
@@ -1798,9 +1804,9 @@ pub trait SerializeMap {
     /// care about performance or are not able to optimize `serialize_entry` any
     /// better than this.
     ///
-    /// [`Serialize`]: ../trait.Serialize.html
-    /// [`serialize_key`]: #tymethod.serialize_key
-    /// [`serialize_value`]: #tymethod.serialize_value
+    /// [`Serialize`]: crate::Serialize
+    /// [`serialize_key`]: Self::serialize_key
+    /// [`serialize_value`]: Self::serialize_value
     fn serialize_entry<K, V>(&mut self, key: &K, value: &V) -> Result<(), Self::Error>
     where
         K: ?Sized + Serialize,

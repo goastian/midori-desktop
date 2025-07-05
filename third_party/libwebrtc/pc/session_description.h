@@ -114,6 +114,13 @@ class MediaContentDescription {
     remote_estimate_ = remote_estimate;
   }
 
+  // Support of RFC 8888 feedback messages.
+  // This is a transport-wide property, but is signalled in SDP
+  // at the m-line level; its mux category is IDENTICAL-PER-PT,
+  // and only wildcard is allowed. RFC 8888 section 6.
+  bool rtcp_fb_ack_ccfb() const { return rtcp_fb_ack_ccfb_; }
+  void set_rtcp_fb_ack_ccfb(bool enable) { rtcp_fb_ack_ccfb_ = enable; }
+
   int bandwidth() const { return bandwidth_; }
   void set_bandwidth(int bandwidth) { bandwidth_ = bandwidth; }
   std::string bandwidth_type() const { return bandwidth_type_; }
@@ -257,6 +264,7 @@ class MediaContentDescription {
   bool rtcp_mux_ = false;
   bool rtcp_reduced_size_ = false;
   bool remote_estimate_ = false;
+  bool rtcp_fb_ack_ccfb_ = false;
   int bandwidth_ = kAutoBandwidth;
   std::string bandwidth_type_ = kApplicationSpecificBandwidth;
 
@@ -391,32 +399,40 @@ enum class MediaProtocolType {
 class RTC_EXPORT ContentInfo {
  public:
   explicit ContentInfo(MediaProtocolType type) : type(type) {}
+  ContentInfo(MediaProtocolType type,
+              absl::string_view mid,
+              std::unique_ptr<MediaContentDescription> description,
+              bool rejected = false,
+              bool bundle_only = false)
+      : type(type),
+        rejected(rejected),
+        bundle_only(bundle_only),
+        mid_(mid),
+        description_(std::move(description)) {}
   ~ContentInfo();
-  // Copy
+
+  // Copy ctor and assignment will clone `description_`.
   ContentInfo(const ContentInfo& o);
-  ContentInfo& operator=(const ContentInfo& o);
+  // Const ref assignment operator removed. Instead, use the explicit ctor.
+  ContentInfo& operator=(const ContentInfo& o) = delete;
+
   ContentInfo(ContentInfo&& o) = default;
   ContentInfo& operator=(ContentInfo&& o) = default;
 
-  // Alias for `name`.
-  std::string mid() const { return name; }
-  void set_mid(const std::string& mid) { this->name = mid; }
+  // TODO(tommi): change return type to string_view.
+  const std::string& mid() const { return mid_; }
+  void set_mid(absl::string_view mid) { mid_ = std::string(mid); }
 
   // Alias for `description`.
   MediaContentDescription* media_description();
   const MediaContentDescription* media_description() const;
 
-  void set_media_description(std::unique_ptr<MediaContentDescription> desc) {
-    description_ = std::move(desc);
-  }
-
-  // TODO(bugs.webrtc.org/8620): Rename this to mid.
-  std::string name;
   MediaProtocolType type;
   bool rejected = false;
   bool bundle_only = false;
 
  private:
+  std::string mid_;
   friend class SessionDescription;
   std::unique_ptr<MediaContentDescription> description_;
 };
@@ -454,11 +470,6 @@ class ContentGroup {
 typedef std::vector<ContentInfo> ContentInfos;
 typedef std::vector<ContentGroup> ContentGroups;
 
-const ContentInfo* FindContentInfoByName(const ContentInfos& contents,
-                                         const std::string& name);
-const ContentInfo* FindContentInfoByType(const ContentInfos& contents,
-                                         const std::string& type);
-
 // Determines how the MSID will be signaled in the SDP.
 // These can be used as bit flags to indicate both or the special value none.
 enum MsidSignaling {
@@ -494,8 +505,8 @@ class SessionDescription {
   const ContentInfo* GetContentByName(const std::string& name) const;
   ContentInfo* GetContentByName(const std::string& name);
   const MediaContentDescription* GetContentDescriptionByName(
-      const std::string& name) const;
-  MediaContentDescription* GetContentDescriptionByName(const std::string& name);
+      absl::string_view name) const;
+  MediaContentDescription* GetContentDescriptionByName(absl::string_view name);
   const ContentInfo* FirstContentByType(MediaProtocolType type) const;
   const ContentInfo* FirstContent() const;
 

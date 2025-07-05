@@ -113,7 +113,7 @@ std::unique_ptr<SSLIdentity> BoringSSLIdentity::CreateFromPEMChainStrings(
     absl::string_view certificate_chain) {
   bssl::UniquePtr<BIO> bio(
       BIO_new_mem_buf(certificate_chain.data(),
-                      rtc::dchecked_cast<int>(certificate_chain.size())));
+                      webrtc::dchecked_cast<int>(certificate_chain.size())));
   if (!bio) {
     return nullptr;
   }
@@ -129,6 +129,7 @@ std::unique_ptr<SSLIdentity> BoringSSLIdentity::CreateFromPEMChainStrings(
       uint32_t err = ERR_peek_error();
       if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
           ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+        err = ERR_get_error();
         break;
       }
       RTC_LOG(LS_ERROR) << "Failed to parse certificate from PEM string.";

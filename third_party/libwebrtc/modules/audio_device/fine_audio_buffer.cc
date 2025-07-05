@@ -23,9 +23,9 @@ namespace webrtc {
 
 FineAudioBuffer::FineAudioBuffer(AudioDeviceBuffer* audio_device_buffer)
     : audio_device_buffer_(audio_device_buffer),
-      playout_samples_per_channel_10ms_(rtc::dchecked_cast<size_t>(
+      playout_samples_per_channel_10ms_(dchecked_cast<size_t>(
           audio_device_buffer->PlayoutSampleRate() * 10 / 1000)),
-      record_samples_per_channel_10ms_(rtc::dchecked_cast<size_t>(
+      record_samples_per_channel_10ms_(dchecked_cast<size_t>(
           audio_device_buffer->RecordingSampleRate() * 10 / 1000)),
       playout_channels_(audio_device_buffer->PlayoutChannels()),
       record_channels_(audio_device_buffer->RecordingChannels()) {
@@ -109,7 +109,7 @@ void FineAudioBuffer::GetPlayoutData(rtc::ArrayView<int16_t> audio_buffer,
 void FineAudioBuffer::DeliverRecordedData(
     rtc::ArrayView<const int16_t> audio_buffer,
     int record_delay_ms,
-    absl::optional<int64_t> capture_time_ns) {
+    std::optional<int64_t> capture_time_ns) {
   RTC_DCHECK(IsReadyForRecord());
   // Always append new data and grow the buffer when needed.
   record_buffer_.AppendData(audio_buffer.data(), audio_buffer.size());

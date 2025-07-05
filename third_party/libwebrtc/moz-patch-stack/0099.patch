@@ -1,121 +1,39 @@
-From: Jan Grulich <jgrulich@redhat.com>
-Date: Thu, 30 Nov 2023 11:49:00 +0000
-Subject: Bug 1844020 - Add option to DeviceInfo::GetDeviceName() identifying a
- placeholder device r=pehrsons,webrtc-reviewers
+From: Andreas Pehrson <apehrson@mozilla.com>
+Date: Wed, 10 Apr 2024 21:54:00 +0000
+Subject: Bug 1888181 - (fix-52fec7d3) Limit scope of race checker in
+ VideoCaptureModuleV4L2::StartCapture. r=mjf
 
-Adds a new parameter "deviceIsPlaceholder" that will be set to true in
-case the returned device is not a real device but a placeholder that is
-just used to inform about camera device existence.
+TSAN detects a race between destroying the scoped race checker in StartCapture
+and creating the scoped race checker in CaptureProcess, because once the capture
+thread has been created (and given its run function) there is no synchronization
+before the run function starts to run.
 
-Differential Revision: https://phabricator.services.mozilla.com/D189929
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/ed31b2acb5fbca3e2d0691a64bc52e65952070c0
+This patch avoids the race by destroying the StartCapture scoped race checker
+before creating the capture thread.
+
+Differential Revision: https://phabricator.services.mozilla.com/D207203
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/b046a1446cee5ab485d4868b3ca9784b16b2d02f
 ---
- modules/video_capture/linux/device_info_pipewire.cc | 4 +++-
- modules/video_capture/linux/device_info_pipewire.h  | 3 ++-
- modules/video_capture/linux/device_info_v4l2.cc     | 3 ++-
- modules/video_capture/linux/device_info_v4l2.h      | 3 ++-
- modules/video_capture/video_capture.h               | 3 ++-
- modules/video_capture/windows/device_info_ds.cc     | 3 ++-
- modules/video_capture/windows/device_info_ds.h      | 3 ++-
- 7 files changed, 15 insertions(+), 7 deletions(-)
+ modules/video_capture/linux/video_capture_v4l2.cc | 2 ++
+ 1 file changed, 2 insertions(+)
 
-diff --git a/modules/video_capture/linux/device_info_pipewire.cc b/modules/video_capture/linux/device_info_pipewire.cc
-index ef1cf67d54..31d922035b 100644
---- a/modules/video_capture/linux/device_info_pipewire.cc
-+++ b/modules/video_capture/linux/device_info_pipewire.cc
-@@ -50,8 +50,10 @@ int32_t DeviceInfoPipeWire::GetDeviceName(uint32_t deviceNumber,
-                                           uint32_t deviceUniqueIdUTF8Length,
-                                           char* productUniqueIdUTF8,
-                                           uint32_t productUniqueIdUTF8Length,
--                                          pid_t* pid) {
-+                                          pid_t* pid,
-+                                          bool* deviceIsPlaceholder) {
-   RTC_CHECK(pipewire_session_);
-+
-   if (deviceNumber >= NumberOfDevices())
-     return -1;
+diff --git a/modules/video_capture/linux/video_capture_v4l2.cc b/modules/video_capture/linux/video_capture_v4l2.cc
+index 6d8a5e463f..db2450a2c7 100644
+--- a/modules/video_capture/linux/video_capture_v4l2.cc
++++ b/modules/video_capture/linux/video_capture_v4l2.cc
+@@ -129,6 +129,7 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
+     }
+   }
  
-diff --git a/modules/video_capture/linux/device_info_pipewire.h b/modules/video_capture/linux/device_info_pipewire.h
-index 8a33d75892..00715c94bc 100644
---- a/modules/video_capture/linux/device_info_pipewire.h
-+++ b/modules/video_capture/linux/device_info_pipewire.h
-@@ -30,7 +30,8 @@ class DeviceInfoPipeWire : public DeviceInfoImpl {
-                         uint32_t deviceUniqueIdUTF8Length,
-                         char* productUniqueIdUTF8 = nullptr,
-                         uint32_t productUniqueIdUTF8Length = 0,
--                        pid_t* pid = 0) override;
-+                        pid_t* pid = 0,
-+                        bool* deviceIsPlaceholder = 0) override;
-   /*
-    * Fills the membervariable _captureCapabilities with capabilites for the
-    * given device name.
-diff --git a/modules/video_capture/linux/device_info_v4l2.cc b/modules/video_capture/linux/device_info_v4l2.cc
-index 04caaea592..401c38f9c5 100644
---- a/modules/video_capture/linux/device_info_v4l2.cc
-+++ b/modules/video_capture/linux/device_info_v4l2.cc
-@@ -232,7 +232,8 @@ int32_t DeviceInfoV4l2::GetDeviceName(uint32_t deviceNumber,
-                                       uint32_t deviceUniqueIdUTF8Length,
-                                       char* /*productUniqueIdUTF8*/,
-                                       uint32_t /*productUniqueIdUTF8Length*/,
--                                      pid_t* /*pid*/) {
-+                                      pid_t* /*pid*/,
-+                                      bool* /*deviceIsPlaceholder*/) {
-   // Travel through /dev/video [0-63]
-   uint32_t count = 0;
-   char device[20];
-diff --git a/modules/video_capture/linux/device_info_v4l2.h b/modules/video_capture/linux/device_info_v4l2.h
-index 0bec3eb765..55415845ad 100644
---- a/modules/video_capture/linux/device_info_v4l2.h
-+++ b/modules/video_capture/linux/device_info_v4l2.h
-@@ -36,7 +36,8 @@ class DeviceInfoV4l2 : public DeviceInfoImpl {
-                         uint32_t deviceUniqueIdUTF8Length,
-                         char* productUniqueIdUTF8 = 0,
-                         uint32_t productUniqueIdUTF8Length = 0,
--                        pid_t* pid=0) override;
-+                        pid_t* pid = 0,
-+                        bool* deviceIsPlaceholder = 0) override;
-   /*
-    * Fills the membervariable _captureCapabilities with capabilites for the
-    * given device name.
-diff --git a/modules/video_capture/video_capture.h b/modules/video_capture/video_capture.h
-index 43a6a7f832..f59c34f8b2 100644
---- a/modules/video_capture/video_capture.h
-+++ b/modules/video_capture/video_capture.h
-@@ -74,7 +74,8 @@ class VideoCaptureModule : public RefCountInterface {
-                                   uint32_t deviceUniqueIdUTF8Length,
-                                   char* productUniqueIdUTF8 = 0,
-                                   uint32_t productUniqueIdUTF8Length = 0,
--                                  pid_t* pid = 0) = 0;
-+                                  pid_t* pid = 0,
-+                                  bool* deviceIsPlaceholder = 0) = 0;
++  {
+   // We don't want members above to be guarded by capture_checker_ as
+   // it's meant to be for members that are accessed on the API thread
+   // only when we are not capturing. The code above can be called many
+@@ -298,6 +299,7 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
+   _requestedCapability = capability;
+   _captureStarted = true;
+   _streaming = true;
++  }
  
-     // Returns the number of capabilities this device.
-     virtual int32_t NumberOfCapabilities(const char* deviceUniqueIdUTF8) = 0;
-diff --git a/modules/video_capture/windows/device_info_ds.cc b/modules/video_capture/windows/device_info_ds.cc
-index f6927281f3..8ca741239c 100644
---- a/modules/video_capture/windows/device_info_ds.cc
-+++ b/modules/video_capture/windows/device_info_ds.cc
-@@ -173,7 +173,8 @@ int32_t DeviceInfoDS::GetDeviceName(uint32_t deviceNumber,
-                                     uint32_t deviceUniqueIdUTF8Length,
-                                     char* productUniqueIdUTF8,
-                                     uint32_t productUniqueIdUTF8Length,
--                                    pid_t* pid) {
-+                                    pid_t* pid,
-+                                    bool* deviceIsPlaceholder) {
-   MutexLock lock(&_apiLock);
-   const int32_t result = GetDeviceInfo(
-       deviceNumber, deviceNameUTF8, deviceNameLength, deviceUniqueIdUTF8,
-diff --git a/modules/video_capture/windows/device_info_ds.h b/modules/video_capture/windows/device_info_ds.h
-index e6dfaed366..a9a1449b99 100644
---- a/modules/video_capture/windows/device_info_ds.h
-+++ b/modules/video_capture/windows/device_info_ds.h
-@@ -51,7 +51,8 @@ class DeviceInfoDS : public DeviceInfoImpl {
-                         uint32_t deviceUniqueIdUTF8Length,
-                         char* productUniqueIdUTF8,
-                         uint32_t productUniqueIdUTF8Length,
--                        pid_t* pid) override;
-+                        pid_t* pid,
-+                        bool* deviceIsPlaceholder) override;
- 
-   /*
-    * Display OS /capture device specific settings dialog
+   // start capture thread;
+   if (_captureThread.empty()) {

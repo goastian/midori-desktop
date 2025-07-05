@@ -1,34 +1,43 @@
+use {
+    super::{
+        auxv::AuxvError,
+        errors::{AndroidError, MapsReaderError},
+        serializers::*,
+    },
+    crate::{
+        linux::{
+            auxv::AuxvDumpInfo,
+            errors::{DumperError, ThreadInfoError},
+            maps_reader::MappingInfo,
+            module_reader,
+            thread_info::ThreadInfo,
+            Pid,
+        },
+        serializers::*,
+    },
+    error_graph::{ErrorList, WriteErrorList},
+    failspot::failspot,
+    nix::{
+        errno::Errno,
+        sys::{ptrace, signal, wait},
+    },
+    procfs_core::{
+        process::{MMPermissions, ProcState, Stat},
+        FromRead, ProcError,
+    },
+    std::{
+        ffi::OsString,
+        path,
+        result::Result,
+        time::{Duration, Instant},
+    },
+    thiserror::Error,
+};
+
 #[cfg(target_os = "android")]
 use crate::linux::android::late_process_mappings;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::thread_info;
-use crate::{
-    linux::{
-        auxv_reader::{AuxvType, ProcfsAuxvIter},
-        errors::{DumperError, InitError, ThreadInfoError},
-        maps_reader::MappingInfo,
-        thread_info::{Pid, ThreadInfo},
-        LINUX_GATE_LIBRARY_NAME,
-    },
-    minidump_format::GUID,
-};
-use goblin::elf;
-use nix::{
-    errno::Errno,
-    sys::{ptrace, signal, wait},
-};
-use procfs_core::{
-    process::{MMPermissions, ProcState, Stat},
-    FromRead, ProcError,
-};
-use std::{
-    collections::HashMap,
-    ffi::c_void,
-    io::BufReader,
-    path,
-    result::Result,
-    time::{Duration, Instant},
-};
 
 #[derive(Debug, Clone)]
 pub struct Thread {
@@ -41,7 +50,7 @@ pub struct PtraceDumper {
     pub pid: Pid,
     threads_suspended: bool,
     pub threads: Vec<Thread>,
-    pub auxv: HashMap<AuxvType, AuxvType>,
+    pub auxv: AuxvDumpInfo,
     pub mappings: Vec<MappingInfo>,
     pub page_size: usize,
 }
@@ -54,24 +63,91 @@ pub const AT_SYSINFO_EHDR: u64 = 33;
 impl Drop for PtraceDumper {
     fn drop(&mut self) {
         // Always try to resume all threads (e.g. in case of error)
-        let _ = self.resume_threads();
+        self.resume_threads(error_graph::strategy::DontCare);
         // Always allow the process to continue.
         let _ = self.continue_process();
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-enum StopProcessError {
+#[derive(Debug, Error, serde::Serialize)]
+pub enum InitError {
+    #[error("failed to read auxv")]
+    ReadAuxvFailed(#[source] crate::auxv::AuxvError),
+    #[error("IO error for file {0}")]
+    IOError(
+        String,
+        #[source]
+        #[serde(serialize_with = "serialize_io_error")]
+        std::io::Error,
+    ),
+    #[error("Failed Android specific late init")]
+    AndroidLateInitError(#[from] AndroidError),
+    #[error("Failed to read the page size")]
+    PageSizeError(
+        #[from]
+        #[serde(serialize_with = "serialize_nix_error")]
+        nix::Error,
+    ),
+    #[error("Ptrace does not function within the same process")]
+    CannotPtraceSameProcess,
+    #[error("Failed to stop the target process")]
+    StopProcessFailed(#[source] StopProcessError),
+    #[error("Errors occurred while filling missing Auxv info")]
+    FillMissingAuxvInfoErrors(#[source] ErrorList<AuxvError>),
+    #[error("Failed filling missing Auxv info")]
+    FillMissingAuxvInfoFailed(#[source] AuxvError),
+    #[error("Failed reading proc/pid/task entry for process")]
+    ReadProcessThreadEntryFailed(
+        #[source]
+        #[serde(serialize_with = "serialize_io_error")]
+        std::io::Error,
+    ),
+    #[error("Process task entry `{0:?}` could not be parsed as a TID")]
+    ProcessTaskEntryNotTid(OsString),
+    #[error("Failed to read thread name")]
+    ReadThreadNameFailed(
+        #[source]
+        #[serde(serialize_with = "serialize_io_error")]
+        std::io::Error,
+    ),
+    #[error("Proc task directory `{0:?}` is not a directory")]
+    ProcPidTaskNotDirectory(String),
+    #[error("Errors while enumerating threads")]
+    EnumerateThreadsErrors(#[source] ErrorList<InitError>),
+    #[error("Failed to enumerate threads")]
+    EnumerateThreadsFailed(#[source] Box<InitError>),
+    #[error("Failed to read process map file")]
+    ReadProcessMapFileFailed(
+        #[source]
+        #[serde(serialize_with = "serialize_proc_error")]
+        ProcError,
+    ),
+    #[error("Failed to aggregate process mappings")]
+    AggregateMappingsFailed(#[source] MapsReaderError),
+    #[error("Failed to enumerate process mappings")]
+    EnumerateMappingsFailed(#[source] Box<InitError>),
+}
+
+#[derive(Debug, thiserror::Error, serde::Serialize)]
+pub enum StopProcessError {
     #[error("Failed to stop the process")]
-    Stop(#[from] Errno),
+    Stop(
+        #[from]
+        #[serde(serialize_with = "serialize_nix_error")]
+        nix::Error,
+    ),
     #[error("Failed to get the process state")]
-    State(#[from] ProcError),
+    State(
+        #[from]
+        #[serde(serialize_with = "serialize_proc_error")]
+        ProcError,
+    ),
     #[error("Timeout waiting for process to stop")]
     Timeout,
 }
 
 #[derive(Debug, thiserror::Error)]
-enum ContinueProcessError {
+pub enum ContinueProcessError {
     #[error("Failed to continue the process")]
     Continue(#[from] Errno),
 }
@@ -93,30 +169,62 @@ fn ptrace_detach(child: Pid) -> Result<(), DumperError> {
 }
 
 impl PtraceDumper {
-    /// Constructs a dumper for extracting information of a given process
-    /// with a process ID of |pid|.
-    pub fn new(pid: Pid, stop_timeout: Duration) -> Result<Self, InitError> {
-        let mut dumper = PtraceDumper {
+    /// Constructs a dumper for extracting information from the specified process id
+    pub fn new_report_soft_errors(
+        pid: Pid,
+        stop_timeout: Duration,
+        auxv: AuxvDumpInfo,
+        soft_errors: impl WriteErrorList<InitError>,
+    ) -> Result<Self, InitError> {
+        if pid == std::process::id() as i32 {
+            return Err(InitError::CannotPtraceSameProcess);
+        }
+
+        let mut dumper = Self {
             pid,
             threads_suspended: false,
             threads: Vec::new(),
-            auxv: HashMap::new(),
+            auxv,
             mappings: Vec::new(),
             page_size: 0,
         };
-        dumper.init(stop_timeout)?;
+        dumper.init(stop_timeout, soft_errors)?;
         Ok(dumper)
     }
 
     // TODO: late_init for chromeos and android
-    pub fn init(&mut self, stop_timeout: Duration) -> Result<(), InitError> {
+    pub fn init(
+        &mut self,
+        stop_timeout: Duration,
+        mut soft_errors: impl WriteErrorList<InitError>,
+    ) -> Result<(), InitError> {
         // Stopping the process is best-effort.
         if let Err(e) = self.stop_process(stop_timeout) {
-            log::warn!("failed to stop process {}: {e}", self.pid);
+            soft_errors.push(InitError::StopProcessFailed(e));
         }
-        self.read_auxv()?;
-        self.enumerate_threads()?;
-        self.enumerate_mappings()?;
+
+        // Even if we completely fail to fill in any additional Auxv info, we can still press
+        // forward.
+        if let Err(e) = self.auxv.try_filling_missing_info(
+            self.pid,
+            soft_errors.subwriter(InitError::FillMissingAuxvInfoErrors),
+        ) {
+            soft_errors.push(InitError::FillMissingAuxvInfoFailed(e));
+        }
+
+        // If we completely fail to enumerate any threads... Some information is still better than
+        // no information!
+        if let Err(e) =
+            self.enumerate_threads(soft_errors.subwriter(InitError::EnumerateThreadsErrors))
+        {
+            soft_errors.push(InitError::EnumerateThreadsFailed(Box::new(e)));
+        }
+
+        // Same with mappings -- Some information is still better than no information!
+        if let Err(e) = self.enumerate_mappings() {
+            soft_errors.push(InitError::EnumerateMappingsFailed(Box::new(e)));
+        }
+
         self.page_size = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)?
             .expect("page size apparently unlimited: doesn't make sense.")
             as usize;
@@ -133,27 +241,6 @@ impl PtraceDumper {
         Ok(())
     }
 
-    /// Copies content of |length| bytes from a given process |child|,
-    /// starting from |src|, into |dest|. This method uses ptrace to extract
-    /// the content from the target process. Always returns true.
-    pub fn copy_from_process(
-        child: Pid,
-        src: *mut c_void,
-        num_of_bytes: usize,
-    ) -> Result<Vec<u8>, DumperError> {
-        use DumperError::CopyFromProcessError as CFPE;
-        let pid = nix::unistd::Pid::from_raw(child);
-        let mut res = Vec::new();
-        let mut idx = 0usize;
-        while idx < num_of_bytes {
-            let word = ptrace::read(pid, (src as usize + idx) as *mut c_void)
-                .map_err(|e| CFPE(child, src as usize, idx, num_of_bytes, e))?;
-            res.append(&mut word.to_ne_bytes().to_vec());
-            idx += std::mem::size_of::<libc::c_long>();
-        }
-        Ok(res)
-    }
-
     /// Suspends a thread by attaching to it.
     pub fn suspend_thread(child: Pid) -> Result<(), DumperError> {
         use DumperError::PtraceAttachError as AttachErr;
@@ -163,8 +250,28 @@ impl PtraceDumper {
         ptrace::attach(pid).map_err(|e| AttachErr(child, e))?;
         loop {
             match wait::waitpid(pid, Some(wait::WaitPidFlag::__WALL)) {
-                Ok(_) => break,
-                Err(_e @ Errno::EINTR) => continue,
+                Ok(status) => {
+                    let wait::WaitStatus::Stopped(_, status) = status else {
+                        return Err(DumperError::WaitPidError(
+                            child,
+                            nix::errno::Errno::UnknownErrno,
+                        ));
+                    };
+
+                    // Any signal will stop the thread, make sure it is SIGSTOP. Otherwise, this
+                    // signal will be delivered after PTRACE_DETACH, and the thread will enter
+                    // the "T (stopped)" state.
+                    if status == nix::sys::signal::SIGSTOP {
+                        break;
+                    }
+
+                    // Signals other than SIGSTOP that are received need to be reinjected,
+                    // or they will otherwise get lost.
+                    if let Err(err) = ptrace::cont(pid, status) {
+                        return Err(DumperError::WaitPidError(child, err));
+                    }
+                }
+                Err(Errno::EINTR) => continue,
                 Err(e) => {
                     ptrace_detach(child)?;
                     return Err(DumperError::WaitPidError(child, e));
@@ -207,42 +314,44 @@ impl PtraceDumper {
         ptrace_detach(child)
     }
 
-    pub fn suspend_threads(&mut self) -> Result<(), DumperError> {
-        let threads_count = self.threads.len();
+    pub fn suspend_threads(&mut self, mut soft_errors: impl WriteErrorList<DumperError>) {
         // Iterate over all threads and try to suspend them.
         // If the thread either disappeared before we could attach to it, or if
         // it was part of the seccomp sandbox's trusted code, it is OK to
         // silently drop it from the minidump.
-        self.threads.retain(|x| Self::suspend_thread(x.tid).is_ok());
+        self.threads.retain(|x| match Self::suspend_thread(x.tid) {
+            Ok(()) => true,
+            Err(e) => {
+                soft_errors.push(e);
+                false
+            }
+        });
 
-        if self.threads.is_empty() {
-            Err(DumperError::SuspendNoThreadsLeft(threads_count))
-        } else {
-            self.threads_suspended = true;
-            Ok(())
-        }
+        self.threads_suspended = true;
+
+        failspot::failspot!(<crate::FailSpotName>::SuspendThreads soft_errors.push(DumperError::PtraceAttachError(1234, nix::Error::EPERM)))
     }
 
-    pub fn resume_threads(&mut self) -> Result<(), DumperError> {
-        let mut result = Ok(());
+    pub fn resume_threads(&mut self, mut soft_errors: impl WriteErrorList<DumperError>) {
         if self.threads_suspended {
             for thread in &self.threads {
                 match Self::resume_thread(thread.tid) {
-                    Ok(_) => {}
-                    x => {
-                        result = x;
+                    Ok(()) => (),
+                    Err(e) => {
+                        soft_errors.push(e);
                     }
                 }
             }
         }
         self.threads_suspended = false;
-        result
     }
 
     /// Send SIGSTOP to the process so that we can get a consistent state.
     ///
     /// This will block waiting for the process to stop until `timeout` has passed.
     fn stop_process(&mut self, timeout: Duration) -> Result<(), StopProcessError> {
+        failspot!(StopProcess bail(nix::Error::EPERM));
+
         signal::kill(nix::unistd::Pid::from_raw(self.pid), Some(signal::SIGSTOP))?;
 
         // Something like waitpid for non-child processes would be better, but we have no such
@@ -273,50 +382,55 @@ impl PtraceDumper {
 
     /// Parse /proc/$pid/task to list all the threads of the process identified by
     /// pid.
-    fn enumerate_threads(&mut self) -> Result<(), InitError> {
+    fn enumerate_threads(
+        &mut self,
+        mut soft_errors: impl WriteErrorList<InitError>,
+    ) -> Result<(), InitError> {
         let pid = self.pid;
         let filename = format!("/proc/{}/task", pid);
         let task_path = path::PathBuf::from(&filename);
-        if task_path.is_dir() {
-            std::fs::read_dir(task_path)
-                .map_err(|e| InitError::IOError(filename, e))?
-                .filter_map(|entry| entry.ok()) // Filter out bad entries
-                .filter_map(|entry| {
-                    entry
-                        .file_name() // Parse name to Pid, filter out those that are unparsable
-                        .to_str()
-                        .and_then(|name| name.parse::<Pid>().ok())
-                })
-                .map(|tid| {
-                    // Read the thread-name (if there is any)
-                    let name = std::fs::read_to_string(format!("/proc/{}/task/{}/comm", pid, tid))
-                        // NOTE: This is a bit wasteful as it does two allocations in order to trim, but leaving it for now
-                        .map(|s| s.trim_end().to_string())
-                        .ok();
-                    (tid, name)
-                })
-                .for_each(|(tid, name)| self.threads.push(Thread { tid, name }));
+        if !task_path.is_dir() {
+            return Err(InitError::ProcPidTaskNotDirectory(filename));
         }
+
+        for entry in std::fs::read_dir(task_path).map_err(|e| InitError::IOError(filename, e))? {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    soft_errors.push(InitError::ReadProcessThreadEntryFailed(e));
+                    continue;
+                }
+            };
+            let file_name = entry.file_name();
+            let tid = match file_name.to_str().and_then(|name| name.parse::<Pid>().ok()) {
+                Some(tid) => tid,
+                None => {
+                    soft_errors.push(InitError::ProcessTaskEntryNotTid(file_name));
+                    continue;
+                }
+            };
+
+            // Read the thread-name (if there is any)
+            let name_result = failspot!(if ThreadName {
+                Err(std::io::Error::other(
+                    "testing requested failure reading thread name",
+                ))
+            } else {
+                std::fs::read_to_string(format!("/proc/{}/task/{}/comm", pid, tid))
+            });
+
+            let name = match name_result {
+                Ok(name) => Some(name.trim_end().to_string()),
+                Err(e) => {
+                    soft_errors.push(InitError::ReadThreadNameFailed(e));
+                    None
+                }
+            };
+
+            self.threads.push(Thread { tid, name });
+        }
+
         Ok(())
-    }
-
-    fn read_auxv(&mut self) -> Result<(), InitError> {
-        let filename = format!("/proc/{}/auxv", self.pid);
-        let auxv_path = path::PathBuf::from(&filename);
-        let auxv_file =
-            std::fs::File::open(auxv_path).map_err(|e| InitError::IOError(filename, e))?;
-        let input = BufReader::new(auxv_file);
-        let reader = ProcfsAuxvIter::new(input);
-        self.auxv = reader
-            .filter_map(Result::ok)
-            .map(|x| (x.key, x.value))
-            .collect();
-
-        if self.auxv.is_empty() {
-            Err(InitError::NoAuxvEntryFound(self.pid))
-        } else {
-            Ok(())
-        }
     }
 
     fn enumerate_mappings(&mut self) -> Result<(), InitError> {
@@ -327,49 +441,34 @@ impl PtraceDumper {
         // case its entry when creating the list of mappings.
         // See http://www.trilithium.com/johan/2005/08/linux-gate/ for more
         // information.
-        let linux_gate_loc = *self.auxv.get(&AT_SYSINFO_EHDR).unwrap_or(&0);
+        let maps_path = format!("/proc/{}/maps", self.pid);
+        let maps_file =
+            std::fs::File::open(&maps_path).map_err(|e| InitError::IOError(maps_path, e))?;
+
+        let maps = procfs_core::process::MemoryMaps::from_read(maps_file)
+            .map_err(InitError::ReadProcessMapFileFailed)?;
+
+        self.mappings = MappingInfo::aggregate(maps, self.auxv.get_linux_gate_address())
+            .map_err(InitError::AggregateMappingsFailed)?;
+
         // Although the initial executable is usually the first mapping, it's not
         // guaranteed (see http://crosbug.com/25355); therefore, try to use the
         // actual entry point to find the mapping.
-        let at_entry;
-        #[cfg(any(target_arch = "arm", all(target_os = "android", target_arch = "x86")))]
+        if let Some(entry_point_loc) = self
+            .auxv
+            .get_entry_address()
+            .map(|u| usize::try_from(u).unwrap())
         {
-            at_entry = 9;
-        }
-        #[cfg(not(any(target_arch = "arm", all(target_os = "android", target_arch = "x86"))))]
-        {
-            at_entry = libc::AT_ENTRY;
-        }
-
-        let entry_point_loc = *self.auxv.get(&at_entry).unwrap_or(&0);
-        let filename = format!("/proc/{}/maps", self.pid);
-        let errmap = |e| InitError::IOError(filename.clone(), e);
-        let maps_path = path::PathBuf::from(&filename);
-        let maps_file = std::fs::File::open(maps_path).map_err(errmap)?;
-
-        use procfs_core::FromRead;
-        self.mappings = procfs_core::process::MemoryMaps::from_read(maps_file)
-            .ok()
-            .and_then(|maps| MappingInfo::aggregate(maps, linux_gate_loc).ok())
-            .unwrap_or_default();
-
-        if entry_point_loc != 0 {
-            let mut swap_idx = None;
-            for (idx, module) in self.mappings.iter().enumerate() {
-                // If this module contains the entry-point, and it's not already the first
-                // one, then we need to make it be first.  This is because the minidump
-                // format assumes the first module is the one that corresponds to the main
-                // executable (as codified in
-                // processor/minidump.cc:MinidumpModuleList::GetMainModule()).
-                if entry_point_loc >= module.start_address.try_into().unwrap()
-                    && entry_point_loc < (module.start_address + module.size).try_into().unwrap()
-                {
-                    swap_idx = Some(idx);
-                    break;
-                }
-            }
-            if let Some(idx) = swap_idx {
-                self.mappings.swap(0, idx);
+            // If this module contains the entry-point, and it's not already the first
+            // one, then we need to make it be first.  This is because the minidump
+            // format assumes the first module is the one that corresponds to the main
+            // executable (as codified in
+            // processor/minidump.cc:MinidumpModuleList::GetMainModule()).
+            if let Some(entry_mapping_idx) = self.mappings.iter().position(|mapping| {
+                (mapping.start_address..mapping.start_address + mapping.size)
+                    .contains(&entry_point_loc)
+            }) {
+                self.mappings.swap(0, entry_mapping_idx);
             }
         }
         Ok(())
@@ -562,111 +661,21 @@ impl PtraceDumper {
         })
     }
 
-    fn parse_build_id<'data>(
-        elf_obj: &elf::Elf<'data>,
-        mem_slice: &'data [u8],
-    ) -> Option<&'data [u8]> {
-        if let Some(mut notes) = elf_obj.iter_note_headers(mem_slice) {
-            while let Some(Ok(note)) = notes.next() {
-                if (note.name == "GNU") && (note.n_type == elf::note::NT_GNU_BUILD_ID) {
-                    return Some(note.desc);
-                }
-            }
-        }
-        if let Some(mut notes) = elf_obj.iter_note_sections(mem_slice, Some(".note.gnu.build-id")) {
-            while let Some(Ok(note)) = notes.next() {
-                if (note.name == "GNU") && (note.n_type == elf::note::NT_GNU_BUILD_ID) {
-                    return Some(note.desc);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn elf_file_identifier_from_mapped_file(mem_slice: &[u8]) -> Result<Vec<u8>, DumperError> {
-        let elf_obj = elf::Elf::parse(mem_slice)?;
-
-        if let Some(build_id) = Self::parse_build_id(&elf_obj, mem_slice) {
-            // Look for a build id note first.
-            Ok(build_id.to_vec())
-        } else {
-            // Fall back on hashing the first page of the text section.
-
-            // Attempt to locate the .text section of an ELF binary and generate
-            // a simple hash by XORing the first page worth of bytes into |result|.
-            for section in elf_obj.section_headers {
-                if section.sh_type != elf::section_header::SHT_PROGBITS {
-                    continue;
-                }
-                if section.sh_flags & u64::from(elf::section_header::SHF_ALLOC) != 0
-                    && section.sh_flags & u64::from(elf::section_header::SHF_EXECINSTR) != 0
-                {
-                    let text_section =
-                        &mem_slice[section.sh_offset as usize..][..section.sh_size as usize];
-                    // Only provide mem::size_of(MDGUID) bytes to keep identifiers produced by this
-                    // function backwards-compatible.
-                    let max_len = std::cmp::min(text_section.len(), 4096);
-                    let mut result = vec![0u8; std::mem::size_of::<GUID>()];
-                    let mut offset = 0;
-                    while offset < max_len {
-                        for idx in 0..std::mem::size_of::<GUID>() {
-                            if offset + idx >= text_section.len() {
-                                break;
-                            }
-                            result[idx] ^= text_section[offset + idx];
-                        }
-                        offset += std::mem::size_of::<GUID>();
-                    }
-                    return Ok(result);
-                }
-            }
-            Err(DumperError::NoBuildIDFound)
-        }
-    }
-
-    pub fn elf_identifier_for_mapping_index(&mut self, idx: usize) -> Result<Vec<u8>, DumperError> {
+    pub fn from_process_memory_for_index<T: module_reader::ReadFromModule>(
+        &mut self,
+        idx: usize,
+    ) -> Result<T, DumperError> {
         assert!(idx < self.mappings.len());
 
-        Self::elf_identifier_for_mapping(&mut self.mappings[idx], self.pid)
+        Self::from_process_memory_for_mapping(&self.mappings[idx], self.pid)
     }
 
-    pub fn elf_identifier_for_mapping(
-        mapping: &mut MappingInfo,
+    pub fn from_process_memory_for_mapping<T: module_reader::ReadFromModule>(
+        mapping: &MappingInfo,
         pid: Pid,
-    ) -> Result<Vec<u8>, DumperError> {
-        if !MappingInfo::is_mapped_file_safe_to_open(&mapping.name) {
-            return Err(DumperError::NotSafeToOpenMapping(
-                mapping.name.clone().unwrap_or_default(),
-            ));
-        }
-
-        // Special-case linux-gate because it's not a real file.
-        if mapping.name.as_deref() == Some(LINUX_GATE_LIBRARY_NAME.as_ref()) {
-            if pid == std::process::id().try_into()? {
-                let mem_slice = unsafe {
-                    std::slice::from_raw_parts(mapping.start_address as *const u8, mapping.size)
-                };
-                return Self::elf_file_identifier_from_mapped_file(mem_slice);
-            } else {
-                let mem_slice = Self::copy_from_process(
-                    pid,
-                    mapping.start_address as *mut libc::c_void,
-                    mapping.size,
-                )?;
-                return Self::elf_file_identifier_from_mapped_file(&mem_slice);
-            }
-        }
-
-        let (filename, old_name) = mapping.fixup_deleted_file(pid)?;
-
-        let mem_slice = MappingInfo::get_mmap(&Some(filename), mapping.offset)?;
-        let build_id = Self::elf_file_identifier_from_mapped_file(&mem_slice)?;
-
-        // This means we switched from "/my/binary" to "/proc/1234/exe", change the mapping to
-        // remove the " (deleted)" portion.
-        if let Some(old_name) = old_name {
-            mapping.name = Some(old_name.into());
-        }
-        Ok(build_id)
+    ) -> Result<T, DumperError> {
+        Ok(T::read_from_module(
+            module_reader::ProcessReader::new(pid, mapping.start_address).into(),
+        )?)
     }
 }

@@ -11,16 +11,24 @@
 #include "modules/pacing/pacing_controller.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "api/array_view.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
+#include "modules/pacing/bitrate_prober.h"
+#include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
+#include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "system_wrappers/include/clock.h"
 #include "test/explicit_key_value_config.h"
 #include "test/gmock.h"
@@ -98,7 +106,7 @@ class MediaStream {
 class MockPacingControllerCallback : public PacingController::PacketSender {
  public:
   void SendPacket(std::unique_ptr<RtpPacketToSend> packet,
-                  const PacedPacketInfo& cluster_info) override {
+                  const PacedPacketInfo& /* cluster_info */) override {
     SendPacket(packet->Ssrc(), packet->SequenceNumber(),
                packet->capture_time().ms(),
                packet->packet_type() == RtpPacketMediaType::kRetransmission,
@@ -134,7 +142,7 @@ class MockPacingControllerCallback : public PacingController::PacketSender {
               OnAbortedRetransmissions,
               (uint32_t, rtc::ArrayView<const uint16_t>),
               (override));
-  MOCK_METHOD(absl::optional<uint32_t>,
+  MOCK_METHOD(std::optional<uint32_t>,
               GetRtxSsrcForMedia,
               (uint32_t),
               (const, override));
@@ -162,7 +170,7 @@ class MockPacketSender : public PacingController::PacketSender {
               OnAbortedRetransmissions,
               (uint32_t, rtc::ArrayView<const uint16_t>),
               (override));
-  MOCK_METHOD(absl::optional<uint32_t>,
+  MOCK_METHOD(std::optional<uint32_t>,
               GetRtxSsrcForMedia,
               (uint32_t),
               (const, override));
@@ -176,7 +184,7 @@ class PacingControllerPadding : public PacingController::PacketSender {
   PacingControllerPadding() : padding_sent_(0), total_bytes_sent_(0) {}
 
   void SendPacket(std::unique_ptr<RtpPacketToSend> packet,
-                  const PacedPacketInfo& pacing_info) override {
+                  const PacedPacketInfo& /* pacing_info */) override {
     total_bytes_sent_ += packet->payload_size();
   }
 
@@ -200,8 +208,8 @@ class PacingControllerPadding : public PacingController::PacketSender {
 
   void OnAbortedRetransmissions(uint32_t,
                                 rtc::ArrayView<const uint16_t>) override {}
-  absl::optional<uint32_t> GetRtxSsrcForMedia(uint32_t) const override {
-    return absl::nullopt;
+  std::optional<uint32_t> GetRtxSsrcForMedia(uint32_t) const override {
+    return std::nullopt;
   }
 
   void OnBatchComplete() override {}
@@ -261,8 +269,8 @@ class PacingControllerProbing : public PacingController::PacketSender {
 
   void OnAbortedRetransmissions(uint32_t,
                                 rtc::ArrayView<const uint16_t>) override {}
-  absl::optional<uint32_t> GetRtxSsrcForMedia(uint32_t) const override {
-    return absl::nullopt;
+  std::optional<uint32_t> GetRtxSsrcForMedia(uint32_t) const override {
+    return std::nullopt;
   }
   void OnBatchComplete() override {}
 
@@ -1557,7 +1565,7 @@ TEST_F(PacingControllerTest, ProbeClusterId) {
   });
   bool non_probe_packet_seen = false;
   EXPECT_CALL(callback, SendPacket)
-      .WillOnce([&](std::unique_ptr<RtpPacketToSend> packet,
+      .WillOnce([&](std::unique_ptr<RtpPacketToSend> /* packet */,
                     const PacedPacketInfo& cluster_info) {
         EXPECT_EQ(cluster_info.probe_cluster_id, kNotAProbe);
         non_probe_packet_seen = true;
@@ -1639,7 +1647,7 @@ TEST_F(PacingControllerTest, SmallFirstProbePacket) {
 
   // Expect small padding packet to be requested.
   EXPECT_CALL(callback, GeneratePadding(DataSize::Bytes(1)))
-      .WillOnce([&](DataSize padding_size) {
+      .WillOnce([&](DataSize /* padding_size */) {
         std::vector<std::unique_ptr<RtpPacketToSend>> padding_packets;
         padding_packets.emplace_back(
             BuildPacket(RtpPacketMediaType::kPadding, kAudioSsrc, 1,
@@ -1652,7 +1660,7 @@ TEST_F(PacingControllerTest, SmallFirstProbePacket) {
   EXPECT_CALL(callback, SendPacket)
       .Times(AnyNumber())
       .WillRepeatedly([&](std::unique_ptr<RtpPacketToSend> packet,
-                          const PacedPacketInfo& cluster_info) {
+                          const PacedPacketInfo& /* cluster_info */) {
         if (packets_sent == 0) {
           EXPECT_EQ(packet->packet_type(), RtpPacketMediaType::kPadding);
         } else {
@@ -2197,7 +2205,7 @@ TEST_F(PacingControllerTest,
   size_t sent_size_in_burst = 0;
   EXPECT_CALL(callback, SendPacket)
       .WillRepeatedly([&](std::unique_ptr<RtpPacketToSend> packet,
-                          const PacedPacketInfo& cluster_info) {
+                          const PacedPacketInfo& /* cluster_info */) {
         sent_size_in_burst += packet->size();
       });
 

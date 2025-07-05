@@ -1,6 +1,6 @@
 use std::env;
 use std::process::Command;
-use std::str::{self, FromStr};
+use std::str;
 
 // The rustc-cfg strings below are *not* public API. Please let us know by
 // opening a GitHub issue if your build environment requires some way to enable
@@ -15,8 +15,11 @@ fn main() {
 
     if minor >= 77 {
         println!("cargo:rustc-check-cfg=cfg(no_core_cstr)");
+        println!("cargo:rustc-check-cfg=cfg(no_core_error)");
+        println!("cargo:rustc-check-cfg=cfg(no_core_net)");
         println!("cargo:rustc-check-cfg=cfg(no_core_num_saturating)");
         println!("cargo:rustc-check-cfg=cfg(no_core_try_from)");
+        println!("cargo:rustc-check-cfg=cfg(no_diagnostic_namespace)");
         println!("cargo:rustc-check-cfg=cfg(no_float_copysign)");
         println!("cargo:rustc-check-cfg=cfg(no_num_nonzero_signed)");
         println!("cargo:rustc-check-cfg=cfg(no_relaxed_trait_bounds)");
@@ -47,11 +50,6 @@ fn main() {
         println!("cargo:rustc-cfg=no_float_copysign");
     }
 
-    // Current minimum supported version of serde_derive crate is Rust 1.56.
-    if minor < 56 {
-        println!("cargo:rustc-cfg=no_serde_derive");
-    }
-
     // Support for #[cfg(target_has_atomic = "...")] stabilized in Rust 1.60.
     if minor < 60 {
         println!("cargo:rustc-cfg=no_target_has_atomic");
@@ -73,6 +71,11 @@ fn main() {
         }
     }
 
+    // Current minimum supported version of serde_derive crate is Rust 1.61.
+    if minor < 61 {
+        println!("cargo:rustc-cfg=no_serde_derive");
+    }
+
     // Support for core::ffi::CStr and alloc::ffi::CString stabilized in Rust 1.64.
     // https://blog.rust-lang.org/2022/09/22/Rust-1.64.0.html#c-compatible-ffi-types-in-core-and-alloc
     if minor < 64 {
@@ -84,33 +87,33 @@ fn main() {
     if minor < 74 {
         println!("cargo:rustc-cfg=no_core_num_saturating");
     }
+
+    // Support for core::net stabilized in Rust 1.77.
+    // https://blog.rust-lang.org/2024/03/21/Rust-1.77.0.html
+    if minor < 77 {
+        println!("cargo:rustc-cfg=no_core_net");
+    }
+
+    // Support for the `#[diagnostic]` tool attribute namespace
+    // https://blog.rust-lang.org/2024/05/02/Rust-1.78.0.html#diagnostic-attributes
+    if minor < 78 {
+        println!("cargo:rustc-cfg=no_diagnostic_namespace");
+    }
+
+    // The Error trait became available in core in 1.81.
+    // https://blog.rust-lang.org/2024/09/05/Rust-1.81.0.html#coreerrorerror
+    if minor < 81 {
+        println!("cargo:rustc-cfg=no_core_error");
+    }
 }
 
 fn rustc_minor_version() -> Option<u32> {
-    let rustc = match env::var_os("RUSTC") {
-        Some(rustc) => rustc,
-        None => return None,
-    };
-
-    let output = match Command::new(rustc).arg("--version").output() {
-        Ok(output) => output,
-        Err(_) => return None,
-    };
-
-    let version = match str::from_utf8(&output.stdout) {
-        Ok(version) => version,
-        Err(_) => return None,
-    };
-
+    let rustc = env::var_os("RUSTC")?;
+    let output = Command::new(rustc).arg("--version").output().ok()?;
+    let version = str::from_utf8(&output.stdout).ok()?;
     let mut pieces = version.split('.');
     if pieces.next() != Some("rustc 1") {
         return None;
     }
-
-    let next = match pieces.next() {
-        Some(next) => next,
-        None => return None,
-    };
-
-    u32::from_str(next).ok()
+    pieces.next()?.parse().ok()
 }

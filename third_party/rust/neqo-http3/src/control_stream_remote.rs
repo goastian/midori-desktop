@@ -4,6 +4,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::fmt::{self, Display, Formatter};
+
 use neqo_common::qdebug;
 use neqo_transport::{Connection, StreamId};
 
@@ -15,13 +17,13 @@ use crate::{
 /// The remote control stream is responsible only for reading frames. The frames are handled by
 /// `Http3Connection`.
 #[derive(Debug)]
-pub(crate) struct ControlStreamRemote {
+pub struct ControlStreamRemote {
     stream_id: StreamId,
     frame_reader: FrameReader,
 }
 
-impl ::std::fmt::Display for ControlStreamRemote {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for ControlStreamRemote {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Http3 remote control stream {:?}", self.stream_id)
     }
 }
@@ -36,7 +38,7 @@ impl ControlStreamRemote {
 
     /// Check if a stream is the control stream and read received data.
     pub fn receive_single(&mut self, conn: &mut Connection) -> Res<Option<HFrame>> {
-        qdebug!([self], "Receiving data.");
+        qdebug!("[{self}] Receiving data");
         match self
             .frame_reader
             .receive(&mut StreamReaderConnectionWrapper::new(
@@ -45,7 +47,7 @@ impl ControlStreamRemote {
             ))? {
             (_, true) => Err(Error::HttpClosedCriticalStream),
             (s, false) => {
-                qdebug!([self], "received {:?}", s);
+                qdebug!("[{self}] received {s:?}");
                 Ok(s)
             }
         }
@@ -63,7 +65,6 @@ impl RecvStream for ControlStreamRemote {
         Err(Error::HttpClosedCriticalStream)
     }
 
-    #[allow(clippy::vec_init_then_push)] // Clippy fail.
     fn receive(&mut self, conn: &mut Connection) -> Res<(ReceiveOutput, bool)> {
         let mut control_frames = Vec::new();
 

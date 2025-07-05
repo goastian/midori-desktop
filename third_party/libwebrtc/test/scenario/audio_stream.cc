@@ -9,8 +9,27 @@
  */
 #include "test/scenario/audio_stream.h"
 
-#include "absl/memory/memory.h"
-#include "test/call_test.h"
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "api/audio_codecs/audio_decoder_factory.h"
+#include "api/audio_codecs/audio_encoder_factory.h"
+#include "api/call/transport.h"
+#include "api/media_types.h"
+#include "api/rtp_headers.h"
+#include "api/rtp_parameters.h"
+#include "api/scoped_refptr.h"
+#include "api/units/data_rate.h"
+#include "api/units/time_delta.h"
+#include "call/audio_receive_stream.h"
+#include "call/audio_send_stream.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/strings/string_builder.h"
+#include "test/scenario/call_client.h"
+#include "test/scenario/column_printer.h"
+#include "test/scenario/scenario_config.h"
 #include "test/video_test_constants.h"
 
 #if WEBRTC_ENABLE_PROTOBUF
@@ -29,7 +48,7 @@ enum : int {  // The first valid value is 1.
   kAbsSendTimeExtensionId
 };
 
-absl::optional<std::string> CreateAdaptationString(
+std::optional<std::string> CreateAdaptationString(
     AudioStreamConfig::NetworkAdaptation config) {
 #if WEBRTC_ENABLE_PROTOBUF
 
@@ -61,7 +80,7 @@ absl::optional<std::string> CreateAdaptationString(
   RTC_LOG(LS_ERROR) << "audio_network_adaptation is enabled"
                        " but WEBRTC_ENABLE_PROTOBUF is false.\n"
                        "Ignoring settings.";
-  return absl::nullopt;
+  return std::nullopt;
 #endif  // WEBRTC_ENABLE_PROTOBUF
 }
 }  // namespace
@@ -132,9 +151,6 @@ SendAudioStream::SendAudioStream(
     send_config.max_bitrate_bps = max_rate.bps();
   }
 
-  if (config.stream.in_bandwidth_estimation) {
-    send_config.send_codec_spec->transport_cc_enabled = true;
-  }
   send_config.rtp.extensions = GetAudioRtpExtensions(config);
 
   sender_->SendTask([&] {

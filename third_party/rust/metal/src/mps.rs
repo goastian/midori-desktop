@@ -40,7 +40,7 @@ pub enum MPSRayDataType {
     OriginMaskDirectionMaxDistance = 2,
 }
 
-bitflags! {
+bitflags::bitflags! {
     /// See <https://developer.apple.com/documentation/metalperformanceshaders/mpsraymaskoptions>
     #[allow(non_upper_case_globals)]
     #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -116,7 +116,7 @@ pub enum MPSAccelerationStructureStatus {
     Built = 1,
 }
 
-bitflags! {
+bitflags::bitflags! {
     /// See <https://developer.apple.com/documentation/metalperformanceshaders/mpsaccelerationstructureusage>
     #[allow(non_upper_case_globals)]
     #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -449,13 +449,12 @@ impl InstanceAccelerationStructureRef {
         unsafe {
             let acs: *mut Object = msg_send![self, accelerationStructures];
             let count: NSUInteger = msg_send![acs, count];
-            let ret = (0..count)
+            (0..count)
                 .map(|i| {
                     let ac = msg_send![acs, objectAtIndex: i];
                     PolygonAccelerationStructure::from_ptr(ac)
                 })
-                .collect();
-            ret
+                .collect()
         }
     }
 

@@ -12,7 +12,6 @@
 #include <iterator>
 #include <map>
 #include <memory>
-#include <ostream>  // no-presubmit-check TODO(webrtc:8982)
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,7 +19,9 @@
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "api/audio/audio_device.h"
 #include "api/audio/audio_mixer.h"
+#include "api/audio/audio_processing.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/audio_codecs/opus_audio_decoder_factory.h"
@@ -50,8 +51,6 @@
 #include "media/base/media_constants.h"
 #include "media/base/rid_description.h"
 #include "media/base/stream_params.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
 #include "pc/channel_interface.h"
 #include "pc/peer_connection_wrapper.h"
 #include "pc/sdp_utils.h"
@@ -88,19 +87,6 @@ using cricket::RidDescription;
 using cricket::SimulcastDescription;
 using cricket::SimulcastLayer;
 using cricket::StreamParams;
-
-namespace cricket {
-
-std::ostream& operator<<(  // no-presubmit-check TODO(webrtc:8982)
-    std::ostream& os,      // no-presubmit-check TODO(webrtc:8982)
-    const SimulcastLayer& layer) {
-  if (layer.is_paused) {
-    os << "~";
-  }
-  return os << layer.rid;
-}
-
-}  // namespace cricket
 
 namespace webrtc {
 

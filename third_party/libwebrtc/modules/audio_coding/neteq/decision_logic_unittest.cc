@@ -18,11 +18,14 @@
 #include "modules/audio_coding/neteq/mock/mock_buffer_level_filter.h"
 #include "modules/audio_coding/neteq/mock/mock_delay_manager.h"
 #include "modules/audio_coding/neteq/mock/mock_packet_arrival_history.h"
+#include "test/explicit_key_value_config.h"
 #include "test/gtest.h"
 
 namespace webrtc {
 
 namespace {
+
+using test::ExplicitKeyValueConfig;
 
 constexpr int kSampleRate = 8000;
 constexpr int kSamplesPerMs = kSampleRate / 1000;
@@ -43,6 +46,7 @@ NetEqController::NetEqStatus CreateNetEqStatus(NetEq::Mode last_mode,
       current_delay_ms * kSamplesPerMs;
   status.packet_buffer_info.dtx_or_cng = false;
   status.next_packet = {status.target_timestamp, false, false};
+  status.sync_buffer_samples = 0;
   return status;
 }
 
@@ -57,8 +61,10 @@ class DecisionLogicTest : public ::testing::Test {
     NetEqController::Config config;
     config.tick_timer = &tick_timer_;
     config.allow_time_stretching = true;
+    config.max_packets_in_buffer = 200;
+    config.base_min_delay_ms = 0;
     auto delay_manager = std::make_unique<MockDelayManager>(
-        DelayManager::Config(), config.tick_timer);
+        DelayManager::Config(ExplicitKeyValueConfig("")), config.tick_timer);
     mock_delay_manager_ = delay_manager.get();
     auto buffer_level_filter = std::make_unique<MockBufferLevelFilter>();
     mock_buffer_level_filter_ = buffer_level_filter.get();
@@ -191,7 +197,7 @@ TEST_F(DecisionLogicTest, TimeStrechComfortNoise) {
 
 TEST_F(DecisionLogicTest, CngTimeout) {
   auto status = CreateNetEqStatus(NetEq::Mode::kCodecInternalCng, 0);
-  status.next_packet = absl::nullopt;
+  status.next_packet = std::nullopt;
   status.generated_noise_samples = kSamplesPerMs * 500;
   bool reset_decoder = false;
   EXPECT_EQ(decision_logic_->GetDecision(status, &reset_decoder),

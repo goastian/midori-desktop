@@ -3,6 +3,7 @@ struct Struct<T, U> {
     pinned: T,
     unpinned: U,
 }
+#[doc(hidden)]
 #[allow(dead_code)]
 #[allow(single_use_lifetimes)]
 #[allow(clippy::unknown_clippy_lints)]
@@ -17,6 +18,7 @@ where
     pinned: ::pin_project_lite::__private::Pin<&'__pin mut (T)>,
     unpinned: &'__pin mut (U),
 }
+#[doc(hidden)]
 #[allow(dead_code)]
 #[allow(single_use_lifetimes)]
 #[allow(clippy::unknown_clippy_lints)]
@@ -31,6 +33,7 @@ where
     pinned: ::pin_project_lite::__private::Pin<&'__pin (T)>,
     unpinned: &'__pin (U),
 }
+#[doc(hidden)]
 #[allow(dead_code)]
 #[allow(single_use_lifetimes)]
 #[allow(clippy::mut_mut)]
@@ -47,6 +50,8 @@ struct StructProjReplace<T, U> {
 #[allow(clippy::used_underscore_binding)]
 const _: () = {
     impl<T, U> Struct<T, U> {
+        #[doc(hidden)]
+        #[inline]
         fn project<'__pin>(
             self: ::pin_project_lite::__private::Pin<&'__pin mut Self>,
         ) -> StructProj<'__pin, T, U> {
@@ -58,6 +63,8 @@ const _: () = {
                 }
             }
         }
+        #[doc(hidden)]
+        #[inline]
         fn project_ref<'__pin>(
             self: ::pin_project_lite::__private::Pin<&'__pin Self>,
         ) -> StructProjRef<'__pin, T, U> {
@@ -69,6 +76,8 @@ const _: () = {
                 }
             }
         }
+        #[doc(hidden)]
+        #[inline]
         fn project_replace(
             self: ::pin_project_lite::__private::Pin<&mut Self>,
             replacement: Self,
@@ -86,7 +95,9 @@ const _: () = {
                 };
                 {
                     (
-                        ::pin_project_lite::__private::UnsafeDropInPlaceGuard::new(pinned),
+                        ::pin_project_lite::__private::UnsafeDropInPlaceGuard::new(
+                            pinned,
+                        ),
                         (),
                     );
                 }
@@ -100,10 +111,10 @@ const _: () = {
         pinned: T,
         unpinned: ::pin_project_lite::__private::AlwaysUnpin<U>,
     }
-    impl<'__pin, T, U> ::pin_project_lite::__private::Unpin for Struct<T, U> where
-        __Origin<'__pin, T, U>: ::pin_project_lite::__private::Unpin
-    {
-    }
+    impl<'__pin, T, U> ::pin_project_lite::__private::Unpin for Struct<T, U>
+    where
+        __Origin<'__pin, T, U>: ::pin_project_lite::__private::Unpin,
+    {}
     trait MustNotImplDrop {}
     #[allow(clippy::drop_bounds, drop_bounds)]
     impl<T: ::pin_project_lite::__private::Drop> MustNotImplDrop for T {}

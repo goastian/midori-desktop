@@ -14,7 +14,18 @@ edition = "2018"
 name = "coreaudio-sys-utils"
 version = "0.1.0"
 authors = ["Chun-Min Chang <chun.m.chang@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+readme = false
 license = "ISC"
+
+[lib]
+name = "coreaudio_sys_utils"
+path = "src/lib.rs"
 
 [dependencies.core-foundation-sys]
 version = "0.8"

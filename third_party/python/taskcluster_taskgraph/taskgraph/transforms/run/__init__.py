@@ -9,16 +9,15 @@ the task at a higher level, using a "run" field that can be interpreted by
 run-using handlers in `taskcluster/taskgraph/transforms/run`.
 """
 
-
 import copy
-import json
 import logging
 
-from voluptuous import Any, Exclusive, Extra, Optional, Required
+from voluptuous import Exclusive, Extra, Optional, Required
 
 from taskgraph.transforms.base import TransformSequence
 from taskgraph.transforms.cached_tasks import order_tasks
 from taskgraph.transforms.task import task_description_schema
+from taskgraph.util import json
 from taskgraph.util import path as mozpath
 from taskgraph.util.python_path import import_sibling_modules
 from taskgraph.util.schema import Schema, validate_schema
@@ -49,6 +48,7 @@ run_description_schema = Schema(
         # possibly modified by the run implementation.  See
         # taskcluster/taskgraph/transforms/task.py for the schema details.
         Required("description"): task_description_schema["description"],
+        Optional("priority"): task_description_schema["priority"],
         Optional("attributes"): task_description_schema["attributes"],
         Optional("task-from"): task_description_schema["task-from"],
         Optional("dependencies"): task_description_schema["dependencies"],
@@ -84,7 +84,6 @@ run_description_schema = Schema(
         },
         # A list of artifacts to install from 'fetch' tasks.
         Optional("fetches"): {
-            Any("toolchain", "fetch"): [str],
             str: [
                 str,
                 fetches_schema,
@@ -122,7 +121,9 @@ def rewrite_when_to_optimization(config, tasks):
         files_changed = when.get("files-changed")
 
         # implicitly add task config directory.
-        files_changed.append(f"{config.path}/**")
+        files_changed.append(f"{config.path}/kind.yml")
+        if task.get("task-from") and task["task-from"] != "kind.yml":
+            files_changed.append(f"{config.path}/{task['task-from']}")
 
         # "only when files changed" implies "skip if files have not changed"
         task["optimization"] = {"skip-unless-changed": files_changed}
@@ -156,43 +157,6 @@ def set_label(config, tasks):
             task["label"] = "{}-{}".format(config.kind, task["name"])
         if task.get("name"):
             del task["name"]
-        yield task
-
-
-@transforms.add
-def add_resource_monitor(config, tasks):
-    for task in tasks:
-        if task.get("attributes", {}).get("resource-monitor"):
-            worker_implementation, worker_os = worker_type_implementation(
-                config.graph_config, task["worker-type"]
-            )
-            # Normalise worker os so that linux-bitbar and similar use linux tools.
-            if worker_os:
-                worker_os = worker_os.split("-")[0]
-            if "win7" in task["worker-type"]:
-                arch = "32"
-            else:
-                arch = "64"
-            task.setdefault("fetches", {})
-            task["fetches"].setdefault("toolchain", [])
-            task["fetches"]["toolchain"].append(f"{worker_os}{arch}-resource-monitor")
-
-            if worker_implementation == "docker-worker":
-                artifact_source = "/builds/worker/monitoring/resource-monitor.json"
-            else:
-                artifact_source = "monitoring/resource-monitor.json"
-            task["worker"].setdefault("artifacts", [])
-            task["worker"]["artifacts"].append(
-                {
-                    "name": "public/monitoring/resource-monitor.json",
-                    "type": "file",
-                    "path": artifact_source,
-                }
-            )
-            # Set env for output file
-            task["worker"].setdefault("env", {})
-            task["worker"]["env"]["RESOURCE_MONITOR_OUTPUT"] = artifact_source
-
         yield task
 
 
@@ -251,7 +215,17 @@ def use_fetches(config, tasks):
         for kind in sorted(fetches):
             artifacts = fetches[kind]
             if kind in ("fetch", "toolchain"):
-                for fetch_name in sorted(artifacts):
+                for artifact in sorted(
+                    artifacts, key=lambda a: a if isinstance(a, str) else a["artifact"]
+                ):
+                    # Convert name only fetch entries to full fledged ones for
+                    # easier processing.
+                    if isinstance(artifact, str):
+                        artifact = {
+                            "artifact": artifact,
+                        }
+
+                    fetch_name = artifact["artifact"]
                     label = f"{kind}-{fetch_name}"
                     label = aliases.get(label, label)
                     if label not in artifact_names:
@@ -262,15 +236,21 @@ def use_fetches(config, tasks):
                         env.update(extra_env[label])
 
                     path = artifact_names[label]
+                    dest = artifact.get("dest", None)
+                    extract = artifact.get("extract", True)
+                    verify_hash = artifact.get("verify-hash", False)
 
                     dependencies[label] = label
-                    task_fetches.append(
-                        {
-                            "artifact": path,
-                            "task": f"<{label}>",
-                            "extract": True,
-                        }
-                    )
+                    fetch = {
+                        "artifact": path,
+                        "task": f"<{label}>",
+                        "extract": extract,
+                    }
+                    if dest is not None:
+                        fetch["dest"] = dest
+                    if verify_hash:
+                        fetch["verify-hash"] = verify_hash
+                    task_fetches.append(fetch)
             else:
                 if kind not in dependencies:
                     raise Exception(
@@ -289,7 +269,9 @@ def use_fetches(config, tasks):
                     if len(dep_tasks) != 1:
                         raise Exception(
                             "{name} can't fetch {kind} artifacts because "
-                            "there are {tasks} with label {label} in kind dependencies!".format(
+                            "there are {tasks} with label {label} in kind dependencies!\n"
+                            "Available tasks:"
+                            "\n - {labels}".format(
                                 name=name,
                                 kind=kind,
                                 label=dependencies[kind],
@@ -297,6 +279,9 @@ def use_fetches(config, tasks):
                                     "no tasks"
                                     if len(dep_tasks) == 0
                                     else "multiple tasks"
+                                ),
+                                labels="\n - ".join(
+                                    config.kind_dependencies_tasks.keys()
                                 ),
                             )
                         )

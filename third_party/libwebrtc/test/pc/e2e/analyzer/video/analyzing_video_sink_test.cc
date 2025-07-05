@@ -11,11 +11,11 @@
 
 #include <stdio.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/scoped_refptr.h"
 #include "api/test/create_frame_generator.h"
 #include "api/test/frame_generator_interface.h"
@@ -45,7 +45,7 @@ using ::testing::Test;
 
 // Remove files and directories in a directory non-recursively.
 void CleanDir(absl::string_view dir, size_t expected_output_files_count) {
-  absl::optional<std::vector<std::string>> dir_content =
+  std::optional<std::vector<std::string>> dir_content =
       test::ReadDirectory(dir);
   if (expected_output_files_count == 0) {
     ASSERT_TRUE(!dir_content.has_value() || dir_content->empty())
@@ -81,8 +81,8 @@ std::unique_ptr<test::FrameGeneratorInterface> CreateFrameGenerator(
     size_t width,
     size_t height) {
   return test::CreateSquareFrameGenerator(width, height,
-                                          /*type=*/absl::nullopt,
-                                          /*num_squares=*/absl::nullopt);
+                                          /*type=*/std::nullopt,
+                                          /*num_squares=*/std::nullopt);
 }
 
 void AssertFrameIdsAre(const std::string& filename,
@@ -319,6 +319,74 @@ TEST_F(AnalyzingVideoSinkTest,
   }
 
   ExpectOutputFilesCount(2);
+}
+
+TEST_F(AnalyzingVideoSinkTest, KeepsCountingFrameWhenUnsucsribed) {
+  VideoSubscription subscription_before;
+  subscription_before.SubscribeToPeer(
+      "alice", VideoResolution(/*width=*/1280, /*height=*/720, /*fps=*/30));
+
+  VideoConfig video_config("alice_video", /*width=*/1280, /*height=*/720,
+                           /*fps=*/30);
+
+  ExampleVideoQualityAnalyzer analyzer;
+  std::unique_ptr<test::FrameGeneratorInterface> frame_generator =
+      CreateFrameGenerator(/*width=*/1280, /*height=*/720);
+  VideoFrame frame_before = CreateFrame(*frame_generator);
+  frame_before.set_id(
+      analyzer.OnFrameCaptured("alice", "alice_video", frame_before));
+  VideoFrame frame_after = CreateFrame(*frame_generator);
+  frame_after.set_id(
+      analyzer.OnFrameCaptured("alice", "alice_video", frame_after));
+
+  {
+    AnalyzingVideoSinksHelper helper;
+    helper.AddConfig("alice", video_config);
+    AnalyzingVideoSink sink("bob", Clock::GetRealTimeClock(), analyzer, helper,
+                            subscription_before, /*report_infra_stats=*/false);
+    sink.OnFrame(frame_before);
+
+    sink.UpdateSubscription(VideoSubscription());
+    sink.OnFrame(frame_after);
+  }
+
+  EXPECT_THAT(analyzer.frames_rendered(), Eq(2));
+}
+
+TEST_F(AnalyzingVideoSinkTest,
+       KeepsCountingFrameWhenUnsucsribedUsingEmptyResolution) {
+  VideoSubscription subscription_before;
+  subscription_before.SubscribeToPeer(
+      "alice", VideoResolution(/*width=*/1280, /*height=*/720, /*fps=*/30));
+  VideoSubscription subscription_after;
+  subscription_after.SubscribeToPeer(
+      "alice", VideoResolution(/*width=*/0, /*height=*/0, /*fps=*/0));
+
+  VideoConfig video_config("alice_video", /*width=*/1280, /*height=*/720,
+                           /*fps=*/30);
+
+  ExampleVideoQualityAnalyzer analyzer;
+  std::unique_ptr<test::FrameGeneratorInterface> frame_generator =
+      CreateFrameGenerator(/*width=*/1280, /*height=*/720);
+  VideoFrame frame_before = CreateFrame(*frame_generator);
+  frame_before.set_id(
+      analyzer.OnFrameCaptured("alice", "alice_video", frame_before));
+  VideoFrame frame_after = CreateFrame(*frame_generator);
+  frame_after.set_id(
+      analyzer.OnFrameCaptured("alice", "alice_video", frame_after));
+
+  {
+    AnalyzingVideoSinksHelper helper;
+    helper.AddConfig("alice", video_config);
+    AnalyzingVideoSink sink("bob", Clock::GetRealTimeClock(), analyzer, helper,
+                            subscription_before, /*report_infra_stats=*/false);
+    sink.OnFrame(frame_before);
+
+    sink.UpdateSubscription(subscription_after);
+    sink.OnFrame(frame_after);
+  }
+
+  EXPECT_THAT(analyzer.frames_rendered(), Eq(2));
 }
 
 TEST_F(AnalyzingVideoSinkTest,

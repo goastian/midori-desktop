@@ -12,10 +12,10 @@
 #define PC_PEER_CONNECTION_WRAPPER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/data_channel_interface.h"
 #include "api/function_view.h"
 #include "api/jsep.h"
@@ -23,10 +23,12 @@
 #include "api/media_types.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
+#include "api/rtp_parameters.h"
 #include "api/rtp_sender_interface.h"
 #include "api/rtp_transceiver_interface.h"
 #include "api/scoped_refptr.h"
 #include "api/stats/rtc_stats_report.h"
+#include "pc/peer_connection.h"
 #include "pc/test/mock_peer_connection_observers.h"
 
 namespace webrtc {
@@ -60,6 +62,8 @@ class PeerConnectionWrapper {
   PeerConnectionFactoryInterface* pc_factory();
   PeerConnectionInterface* pc();
   MockPeerConnectionObserver* observer();
+
+  PeerConnection* GetInternalPeerConnection();
 
   // Calls the underlying PeerConnection's CreateOffer method and returns the
   // resulting SessionDescription once it is available. If the method call
@@ -95,6 +99,8 @@ class PeerConnectionWrapper {
   // Returns true if the description was successfully set.
   bool SetLocalDescription(std::unique_ptr<SessionDescriptionInterface> desc,
                            std::string* error_out = nullptr);
+  bool SetLocalDescription(std::unique_ptr<SessionDescriptionInterface> desc,
+                           RTCError* error_out);
   // Calls the underlying PeerConnection's SetRemoteDescription method with the
   // given session description and waits for the success/failure response.
   // Returns true if the description was successfully set.
@@ -171,7 +177,7 @@ class PeerConnectionWrapper {
   // initialization parameters.
   rtc::scoped_refptr<DataChannelInterface> CreateDataChannel(
       const std::string& label,
-      const absl::optional<DataChannelInit>& config = absl::nullopt);
+      const std::optional<DataChannelInit>& config = std::nullopt);
 
   // Returns the signaling state of the underlying PeerConnection.
   PeerConnectionInterface::SignalingState signaling_state();

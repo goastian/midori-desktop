@@ -1,35 +1,33 @@
-# Askama
+# askama
 
-[![Documentation](https://docs.rs/askama/badge.svg)](https://docs.rs/askama/)
-[![Latest version](https://img.shields.io/crates/v/askama.svg)](https://crates.io/crates/askama)
-[![Build Status](https://github.com/djc/askama/workflows/CI/badge.svg)](https://github.com/djc/askama/actions?query=workflow%3ACI)
-[![Chat](https://badges.gitter.im/gitterHQ/gitter.svg)](https://gitter.im/djc/askama)
+[![Crates.io](https://img.shields.io/crates/v/askama?logo=rust&style=flat-square&logoColor=white "Crates.io")](https://crates.io/crates/askama)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/askama-rs/askama/rust.yml?branch=master&logo=github&style=flat-square&logoColor=white "GitHub Workflow Status")](https://github.com/askama-rs/askama/actions/workflows/rust.yml)
+[![Book](https://img.shields.io/readthedocs/askama?label=book&logo=readthedocs&style=flat-square&logoColor=white "Book")](https://askama.readthedocs.io/)
+[![docs.rs](https://img.shields.io/docsrs/askama?logo=docsdotrs&style=flat-square&logoColor=white "docs.rs")](https://docs.rs/askama/)
 
-Askama implements a template rendering engine based on [Jinja](https://jinja.palletsprojects.com/).
-It generates Rust code from your templates at compile time
+**Askama** implements a template rendering engine based on [Jinja](https://jinja.palletsprojects.com/),
+and generates type-safe Rust code from your templates at compile time
 based on a user-defined `struct` to hold the template's context.
-See below for an example, or read [the book][docs].
 
-**"Pretty exciting. I would love to use this already."** --
-[Armin Ronacher][mitsuhiko], creator of Jinja
+At some point, **Askama** got forked into **Rinja** (explained [here](https://blog.guillaume-gomez.fr/articles/2024-07-31+docs.rs+switching+jinja+template+framework+from+tera+to+rinja))
+before getting merged back into **Askama**.
 
-All feedback welcome. Feel free to file bugs, requests for documentation and
-any other feedback to the [issue tracker][issues] or [tweet me][twitter].
+All feedback welcome! Feel free to file bugs, requests for documentation and
+any other feedback to the [issue tracker][issues].
 
-Askama was created by and is maintained by Dirkjan Ochtman. If you are in a
-position to support ongoing maintenance and further development or use it
-in a for-profit context, please consider supporting my open source work on
-[Patreon][patreon].
+You can find the documentation about our syntax, features, configuration in our book:
+[askama.readthedocs.io](https://askama.readthedocs.io/).
+
+Have a look at our [*Askama Playground*](https://askama-rs.github.io/askama_playground/),
+if you want to try out askama's code generation online.
 
 ### Feature highlights
 
 * Construct templates using a familiar, easy-to-use syntax
 * Benefit from the safety provided by Rust's type system
-* Template code is compiled into your crate for [optimal performance][benchmarks]
-* Optional built-in support for Actix, Axum, Gotham, Mendes, Rocket, tide, and warp web frameworks
+* Template code is compiled into your crate for optimal performance
 * Debugging features to assist you in template development
 * Templates must be valid UTF-8 and produce UTF-8 when rendered
-* IDE support available in [JetBrains products](https://plugins.jetbrains.com/plugin/16591-askama-template-support)
 * Works on stable Rust
 
 ### Supported in templates
@@ -43,30 +41,22 @@ in a for-profit context, please consider supporting my open source work on
 * Opt-out HTML escaping
 * Syntax customization
 
-[docs]: https://djc.github.io/askama/
-[fafhrd91]: https://github.com/fafhrd91
-[mitsuhiko]: http://lucumr.pocoo.org/
-[issues]: https://github.com/djc/askama/issues
-[twitter]: https://twitter.com/djco/
-[patreon]: https://www.patreon.com/dochtman
-[benchmarks]: https://github.com/djc/template-benchmarks-rs
+[issues]: https://github.com/askama-rs/askama/issues
 
 
 How to get started
 ------------------
 
-First, add the following to your crate's `Cargo.toml`:
+First, add the askama dependency to your crate's `Cargo.toml`:
 
-```toml
-# in section [dependencies]
-askama = "0.11.2"
-
+```sh
+cargo add askama
 ```
 
 Now create a directory called `templates` in your crate root.
 In it, create a file called `hello.html`, containing the following:
 
-```
+```jinja
 Hello, {{ name }}!
 ```
 
@@ -90,7 +80,3 @@ fn main() {
 ```
 
 You should now be able to compile and run this code.
-
-Review the [test cases] for more examples.
-
-[test cases]: https://github.com/djc/askama/tree/main/testing

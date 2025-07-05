@@ -10,6 +10,7 @@ COMPILE_FLAGS["OS_INCLUDES"] = []
 AllowCompilerWarnings()
 
 DEFINES["ABSL_ALLOCATOR_NOTHROW"] = "1"
+DEFINES["PROTOBUF_ENABLE_DEBUG_LOGGING_MAY_LEAK_PII"] = "0"
 DEFINES["RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY"] = True
 DEFINES["RTC_ENABLE_VP9"] = True
 DEFINES["USE_AURA"] = "1"
@@ -17,7 +18,6 @@ DEFINES["USE_GLIB"] = "1"
 DEFINES["USE_NSS_CERTS"] = "1"
 DEFINES["USE_OZONE"] = "1"
 DEFINES["USE_UDEV"] = True
-DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
 DEFINES["WEBRTC_ENABLE_PROTOBUF"] = "0"
 DEFINES["WEBRTC_LIBRARY_IMPL"] = True
 DEFINES["WEBRTC_LINUX"] = True
@@ -40,9 +40,9 @@ LOCAL_INCLUDES += [
     "!/third_party/libwebrtc/gen",
     "/gfx/angle/checkout/include/",
     "/ipc/chromium/src",
+    "/third_party/abseil-cpp/",
     "/third_party/libepoxy/libepoxy/include/",
     "/third_party/libwebrtc/",
-    "/third_party/libwebrtc/third_party/abseil-cpp/",
     "/tools/profiler/public"
 ]
 

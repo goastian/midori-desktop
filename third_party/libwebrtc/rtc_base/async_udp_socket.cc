@@ -10,22 +10,24 @@
 
 #include "rtc_base/async_udp_socket.h"
 
-#include "absl/types/optional.h"
+#include <cstddef>
+#include <memory>
+#include <optional>
+
+#include "api/sequence_checker.h"
 #include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
+#include "rtc_base/async_packet_socket.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network/received_packet.h"
 #include "rtc_base/network/sent_packet.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/socket_factory.h"
 #include "rtc_base/time_utils.h"
-#include "system_wrappers/include/field_trial.h"
 
 namespace rtc {
-
-// Returns true if the experiement "WebRTC-SCM-Timestamp" is explicitly
-// disabled.
-static bool IsScmTimeStampExperimentDisabled() {
-  return webrtc::field_trial::IsDisabled("WebRTC-SCM-Timestamp");
-}
 
 AsyncUDPSocket* AsyncUDPSocket::Create(Socket* socket,
                                        const SocketAddress& bind_address) {
@@ -65,7 +67,7 @@ int AsyncUDPSocket::Send(const void* pv,
                          const rtc::PacketOptions& options) {
   rtc::SentPacket sent_packet(options.packet_id, rtc::TimeMillis(),
                               options.info_signaled_after_sent);
-  CopySocketInformationToPacketInfo(cb, *this, false, &sent_packet.info);
+  CopySocketInformationToPacketInfo(cb, *this, &sent_packet.info);
   int ret = socket_->Send(pv, cb);
   SignalSentPacket(this, sent_packet);
   return ret;
@@ -77,7 +79,16 @@ int AsyncUDPSocket::SendTo(const void* pv,
                            const rtc::PacketOptions& options) {
   rtc::SentPacket sent_packet(options.packet_id, rtc::TimeMillis(),
                               options.info_signaled_after_sent);
-  CopySocketInformationToPacketInfo(cb, *this, true, &sent_packet.info);
+  CopySocketInformationToPacketInfo(cb, *this, &sent_packet.info);
+  if (has_set_ect1_options_ != options.ecn_1) {
+    // It is unclear what is most efficient, setting options on every sent
+    // packet or when changed. Potentially, can separate send sockets be used?
+    // This is the easier implementation.
+    if (socket_->SetOption(Socket::Option::OPT_SEND_ECN,
+                           options.ecn_1 ? 1 : 0) == 0) {
+      has_set_ect1_options_ = options.ecn_1;
+    }
+  }
   int ret = socket_->SendTo(pv, cb, addr);
   SignalSentPacket(this, sent_packet);
   return ret;
@@ -133,15 +144,9 @@ void AsyncUDPSocket::OnReadEvent(Socket* socket) {
     receive_buffer.arrival_time = webrtc::Timestamp::Micros(rtc::TimeMicros());
   } else {
     if (!socket_time_offset_) {
-      // Estimate timestamp offset from first packet arrival time unless
-      // disabled
-      bool estimate_time_offset = !IsScmTimeStampExperimentDisabled();
-      if (estimate_time_offset) {
-        socket_time_offset_ = webrtc::Timestamp::Micros(rtc::TimeMicros()) -
-                              *receive_buffer.arrival_time;
-      } else {
-        socket_time_offset_ = webrtc::TimeDelta::Micros(0);
-      }
+      // Estimate timestamp offset from first packet arrival time.
+      socket_time_offset_ = webrtc::Timestamp::Micros(rtc::TimeMicros()) -
+                            *receive_buffer.arrival_time;
     }
     *receive_buffer.arrival_time += *socket_time_offset_;
   }

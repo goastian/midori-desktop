@@ -7,10 +7,8 @@ use objc::{rc::autoreleasepool, runtime::YES};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::ControlFlow,
-    platform::macos::WindowExtMacOS,
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
 };
-
-use std::mem;
 
 struct App {
     pub _device: Device,
@@ -23,13 +21,7 @@ struct App {
 
 fn select_device() -> Option<Device> {
     let devices = Device::all();
-    for device in devices {
-        if device.supports_dynamic_libraries() {
-            return Some(device);
-        }
-    }
-
-    None
+    devices.into_iter().find(|d| d.supports_dynamic_libraries())
 }
 
 impl App {
@@ -37,15 +29,17 @@ impl App {
         let device = select_device().expect("no device found that supports dynamic libraries");
         let command_queue = device.new_command_queue();
 
-        let layer = MetalLayer::new();
+        let mut layer = MetalLayer::new();
         layer.set_device(&device);
         layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
         layer.set_presents_with_transaction(false);
         layer.set_framebuffer_only(false);
         unsafe {
-            let view = window.ns_view() as cocoa_id;
-            view.setWantsLayer(YES);
-            view.setLayer(mem::transmute(layer.as_ref()));
+            if let Ok(RawWindowHandle::AppKit(rw)) = window.window_handle().map(|wh| wh.as_raw()) {
+                let view = rw.ns_view.as_ptr() as cocoa_id;
+                view.setWantsLayer(YES);
+                view.setLayer(<*mut _>::cast(layer.as_mut()));
+            }
         }
         let draw_size = window.inner_size();
         layer.set_drawable_size(CGSize::new(draw_size.width as f64, draw_size.height as f64));
@@ -130,48 +124,48 @@ impl App {
         {
             let encoder = command_buffer.new_compute_command_encoder();
             encoder.set_compute_pipeline_state(&self.image_fill_cps);
-            encoder.set_texture(0, Some(&drawable.texture()));
+            encoder.set_texture(0, Some(drawable.texture()));
             encoder.dispatch_threads(threads_per_grid, threads_per_threadgroup);
             encoder.end_encoding();
         }
 
-        command_buffer.present_drawable(&drawable);
+        command_buffer.present_drawable(drawable);
         command_buffer.commit();
     }
 }
 
 fn main() {
-    let events_loop = winit::event_loop::EventLoop::new();
+    let event_loop = winit::event_loop::EventLoop::new().unwrap();
     let size = winit::dpi::LogicalSize::new(800, 600);
 
     let window = winit::window::WindowBuilder::new()
         .with_inner_size(size)
         .with_title("Metal Shader Dylib Example".to_string())
-        .build(&events_loop)
+        .build(&event_loop)
         .unwrap();
 
     let mut app = App::new(&window);
 
-    events_loop.run(move |event, _, control_flow| {
-        autoreleasepool(|| {
-            *control_flow = ControlFlow::Poll;
+    event_loop
+        .run(move |event, event_loop| {
+            autoreleasepool(|| {
+                event_loop.set_control_flow(ControlFlow::Poll);
 
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::Resized(size) => {
-                        app.resize(size.width, size.height);
-                    }
-                    _ => (),
-                },
-                Event::MainEventsCleared => {
-                    window.request_redraw();
+                match event {
+                    Event::AboutToWait => window.request_redraw(),
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => event_loop.exit(),
+                        WindowEvent::Resized(size) => {
+                            app.resize(size.width, size.height);
+                        }
+                        WindowEvent::RedrawRequested => {
+                            app.draw();
+                        }
+                        _ => (),
+                    },
+                    _ => {}
                 }
-                Event::RedrawRequested(_) => {
-                    app.draw();
-                }
-                _ => {}
-            }
-        });
-    });
+            });
+        })
+        .unwrap();
 }

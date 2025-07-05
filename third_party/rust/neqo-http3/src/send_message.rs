@@ -4,7 +4,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::{cell::RefCell, cmp::min, fmt::Debug, num::NonZeroUsize, rc::Rc};
+use std::{
+    cell::RefCell,
+    cmp::min,
+    fmt::{self, Debug, Display, Formatter},
+    num::NonZeroUsize,
+    rc::Rc,
+};
 
 use neqo_common::{qdebug, qtrace, Encoder, Header, MessageType};
 use neqo_qpack::encoder::QPackEncoder;
@@ -27,7 +33,7 @@ const MAX_DATA_HEADER_SIZE_5_LIMIT: usize = MAX_DATA_HEADER_SIZE_5 + 9; // 10737
 
 /// A HTTP message, request and response, consists of headers, optional data and an optional
 /// trailer header block. This state machine does not reflect what was already sent to the
-/// transport layer but only reflect what has been supplied to the `SendMessage`.It is
+/// transport layer but only reflect what has been supplied to the `SendMessage`. It is
 /// represented by the following states:
 ///   `WaitingForHeaders` - the headers have not been supplied yet. In this state only a
 ///                         request/response header can be added. When headers are supplied
@@ -42,7 +48,6 @@ const MAX_DATA_HEADER_SIZE_5_LIMIT: usize = MAX_DATA_HEADER_SIZE_5 + 9; // 10737
 ///                   supply only a fin.
 ///   `Done` - in this state no more data or headers can be added. This state is entered when the
 ///            message is closed.
-
 #[derive(Debug, PartialEq)]
 enum MessageState {
     WaitingForHeaders,
@@ -103,7 +108,7 @@ impl MessageState {
 }
 
 #[derive(Debug)]
-pub(crate) struct SendMessage {
+pub struct SendMessage {
     state: MessageState,
     message_type: MessageType,
     stream_type: Http3StreamType,
@@ -120,7 +125,7 @@ impl SendMessage {
         encoder: Rc<RefCell<QPackEncoder>>,
         conn_events: Box<dyn SendStreamEvents>,
     ) -> Self {
-        qdebug!("Create a request stream_id={}", stream_id);
+        qdebug!("Create a request stream_id={stream_id}");
         Self {
             state: MessageState::WaitingForHeaders,
             message_type,
@@ -152,7 +157,7 @@ impl SendMessage {
     }
 
     fn stream_id(&self) -> StreamId {
-        Option::<StreamId>::from(&self.stream).unwrap()
+        Option::<StreamId>::from(&self.stream).expect("stream has ID")
     }
 
     fn get_stream_info(&self) -> Http3StreamInfo {
@@ -167,7 +172,7 @@ impl Stream for SendMessage {
 }
 impl SendStream for SendMessage {
     fn send_data(&mut self, conn: &mut Connection, buf: &[u8]) -> Res<usize> {
-        qtrace!([self], "send_body: len={}", buf.len());
+        qtrace!("[{self}] send_body: len={}", buf.len());
 
         self.state.new_data()?;
 
@@ -184,7 +189,7 @@ impl SendStream for SendMessage {
             // cheap, thus not worth optimizing.
             conn.stream_set_writable_event_low_watermark(
                 self.stream_id(),
-                NonZeroUsize::new(MIN_DATA_FRAME_SIZE).unwrap(),
+                NonZeroUsize::new(MIN_DATA_FRAME_SIZE).ok_or(Error::Internal)?,
             )?;
             return Ok(0);
         }
@@ -201,12 +206,7 @@ impl SendStream for SendMessage {
             min(buf.len(), available - 9)
         };
 
-        qdebug!(
-            [self],
-            "send_request_body: available={} to_send={}.",
-            available,
-            to_send
-        );
+        qdebug!("[{self}] send_request_body: available={available} to_send={to_send}");
 
         let data_frame = HFrame::Data {
             len: to_send as u64,
@@ -251,14 +251,14 @@ impl SendStream for SendMessage {
     fn send(&mut self, conn: &mut Connection) -> Res<()> {
         let sent = Error::map_error(self.stream.send_buffer(conn), Error::HttpInternal(5))?;
 
-        qtrace!([self], "{} bytes sent", sent);
+        qtrace!("[{self}] {sent} bytes sent");
         if !self.stream.has_buffered_data() {
             if self.state.done() {
                 Error::map_error(
                     conn.stream_close_send(self.stream_id()),
                     Error::HttpInternal(6),
                 )?;
-                qtrace!([self], "done sending request");
+                qtrace!("[{self}] done sending request");
             } else {
                 // DataWritable is just a signal for an application to try to write more data,
                 // if writing fails it is fine. Therefore we do not need to properly check
@@ -314,7 +314,7 @@ impl SendStream for SendMessage {
 impl HttpSendStream for SendMessage {
     fn send_headers(&mut self, headers: &[Header], conn: &mut Connection) -> Res<()> {
         self.state.new_headers(headers, self.message_type)?;
-        let buf = SendMessage::encode(
+        let buf = Self::encode(
             &mut self.encoder.borrow_mut(),
             headers,
             conn,
@@ -330,8 +330,8 @@ impl HttpSendStream for SendMessage {
     }
 }
 
-impl ::std::fmt::Display for SendMessage {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for SendMessage {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "SendMesage {}", self.stream_id())
     }
 }

@@ -13,12 +13,30 @@
 #include <errno.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
+
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "api/task_queue/pending_task_safety_flag.h"
+#include "rtc_base/async_socket.h"
+#include "rtc_base/openssl_session_cache.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/ssl_adapter.h"
+#include "rtc_base/ssl_certificate.h"
+#include "rtc_base/ssl_identity.h"
+#include "rtc_base/ssl_stream_adapter.h"
+#include "rtc_base/strings/string_builder.h"
 #ifdef OPENSSL_IS_BORINGSSL
+#include <openssl/base.h>
 #include <openssl/pool.h>
+
+#include "rtc_base/boringssl_certificate.h"
 #endif
-#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <string.h>
 #include <time.h>
@@ -37,7 +55,6 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
-#include "rtc_base/openssl.h"
 #ifdef OPENSSL_IS_BORINGSSL
 #include "rtc_base/boringssl_identity.h"
 #else
@@ -45,7 +62,6 @@
 #endif
 #include "rtc_base/openssl_utility.h"
 #include "rtc_base/strings/str_join.h"
-#include "rtc_base/strings/string_builder.h"
 #include "rtc_base/thread.h"
 
 //////////////////////////////////////////////////////////////////////
@@ -124,7 +140,7 @@ static int socket_write(BIO* b, const char* in, int inl) {
 }
 
 static int socket_puts(BIO* b, const char* str) {
-  return socket_write(b, str, rtc::checked_cast<int>(strlen(str)));
+  return socket_write(b, str, webrtc::checked_cast<int>(strlen(str)));
 }
 
 static long socket_ctrl(BIO* b, int cmd, long num, void* ptr) {  // NOLINT
@@ -170,16 +186,12 @@ namespace rtc {
 using ::webrtc::TimeDelta;
 
 bool OpenSSLAdapter::InitializeSSL() {
-  if (!SSL_library_init())
-    return false;
-#if !defined(ADDRESS_SANITIZER) || !defined(WEBRTC_MAC) || defined(WEBRTC_IOS)
-  // Loading the error strings crashes mac_asan.  Omit this debugging aid there.
-  SSL_load_error_strings();
-#endif
-  ERR_load_BIO_strings();
-  OpenSSL_add_all_algorithms();
-  RAND_poll();
-  return true;
+  // TODO: https://issues.webrtc.org/issues/339300437 - remove once
+  // BoringSSL no longer requires this after
+  // https://bugs.chromium.org/p/boringssl/issues/detail?id=35
+  // In OpenSSL it is supposed to be a no-op as of 1.1:
+  // https://www.openssl.org/docs/man1.1.1/man3/OPENSSL_init_ssl.html
+  return OPENSSL_init_ssl(0, nullptr);
 }
 
 bool OpenSSLAdapter::CleanupSSL() {
@@ -287,7 +299,7 @@ int OpenSSLAdapter::BeginSSL() {
   // need to create one, and specify `false` to disable session caching.
   if (ssl_session_cache_ == nullptr) {
     RTC_DCHECK(!ssl_ctx_);
-    ssl_ctx_ = CreateContext(ssl_mode_, false);
+    ssl_ctx_ = CreateContext(ssl_mode_, /* enable_cache= */ false);
   }
 
   if (!ssl_ctx_) {
@@ -352,7 +364,7 @@ int OpenSSLAdapter::BeginSSL() {
     if (!tls_alpn_string.empty()) {
       SSL_set_alpn_protos(
           ssl_, reinterpret_cast<const unsigned char*>(tls_alpn_string.data()),
-          rtc::dchecked_cast<unsigned>(tls_alpn_string.size()));
+          webrtc::dchecked_cast<unsigned>(tls_alpn_string.size()));
     }
   }
 
@@ -466,7 +478,7 @@ int OpenSSLAdapter::DoSslWrite(const void* pv, size_t cb, int* error) {
   RTC_DCHECK(error != nullptr);
 
   ssl_write_needs_read_ = false;
-  int ret = SSL_write(ssl_, pv, checked_cast<int>(cb));
+  int ret = SSL_write(ssl_, pv, webrtc::checked_cast<int>(cb));
   *error = SSL_get_error(ssl_, ret);
   switch (*error) {
     case SSL_ERROR_NONE:
@@ -560,7 +572,7 @@ int OpenSSLAdapter::Send(const void* pv, size_t cb) {
     pending_data_.SetData(static_cast<const uint8_t*>(pv), cb);
     // Since we're taking responsibility for sending this data, return its full
     // size. The user of this class can consider it sent.
-    return rtc::dchecked_cast<int>(cb);
+    return webrtc::dchecked_cast<int>(cb);
   }
   return ret;
 }
@@ -598,7 +610,7 @@ int OpenSSLAdapter::Recv(void* pv, size_t cb, int64_t* timestamp) {
   }
 
   ssl_read_needs_write_ = false;
-  int code = SSL_read(ssl_, pv, checked_cast<int>(cb));
+  int code = SSL_read(ssl_, pv, webrtc::checked_cast<int>(cb));
   int error = SSL_get_error(ssl_, code);
 
   switch (error) {
@@ -761,65 +773,34 @@ bool OpenSSLAdapter::SSLPostConnectionCheck(SSL* ssl, absl::string_view host) {
   return is_valid_cert_name;
 }
 
-void OpenSSLAdapter::SSLInfoCallback(const SSL* s, int where, int value) {
-  std::string type;
-  bool info_log = false;
-  bool alert_log = false;
+void OpenSSLAdapter::SSLInfoCallback(const SSL* ssl, int where, int ret) {
   switch (where) {
-    case SSL_CB_EXIT:
-      info_log = true;
-      type = "exit";
-      break;
-    case SSL_CB_ALERT:
-      alert_log = true;
-      type = "alert";
-      break;
-    case SSL_CB_READ_ALERT:
-      alert_log = true;
-      type = "read_alert";
-      break;
-    case SSL_CB_WRITE_ALERT:
-      alert_log = true;
-      type = "write_alert";
-      break;
-    case SSL_CB_ACCEPT_LOOP:
-      info_log = true;
-      type = "accept_loop";
-      break;
-    case SSL_CB_ACCEPT_EXIT:
-      info_log = true;
-      type = "accept_exit";
-      break;
-    case SSL_CB_CONNECT_LOOP:
-      info_log = true;
-      type = "connect_loop";
-      break;
-    case SSL_CB_CONNECT_EXIT:
-      info_log = true;
-      type = "connect_exit";
-      break;
-    case SSL_CB_HANDSHAKE_START:
-      info_log = true;
-      type = "handshake_start";
-      break;
-    case SSL_CB_HANDSHAKE_DONE:
-      info_log = true;
-      type = "handshake_done";
-      break;
     case SSL_CB_LOOP:
     case SSL_CB_READ:
     case SSL_CB_WRITE:
+      return;
     default:
       break;
   }
-
-  if (info_log) {
-    RTC_LOG(LS_INFO) << type << " " << SSL_state_string_long(s);
+  char buf[1024];
+  webrtc::SimpleStringBuilder ss(buf);
+  ss << SSL_state_string_long(ssl);
+  if (ret == 0) {
+    RTC_LOG(LS_ERROR) << "Error during " << ss.str() << "\n";
+    return;
   }
-  if (alert_log) {
-    RTC_LOG(LS_WARNING) << type << " " << SSL_alert_type_string_long(value)
-                        << " " << SSL_alert_desc_string_long(value) << " "
-                        << SSL_state_string_long(s);
+  // See SSL_alert_type_string_long.
+  int severity_class = where >> 8;
+  switch (severity_class) {
+    case SSL3_AL_WARNING:
+    case SSL3_AL_FATAL:
+      ss << " " << SSL_alert_type_string_long(ret);
+      ss << " " << SSL_alert_desc_string_long(ret);
+      RTC_LOG(LS_WARNING) << ss.str();
+      break;
+    default:
+      RTC_LOG(LS_INFO) << ss.str();
+      break;
   }
 }
 
@@ -1006,15 +987,14 @@ SSL_CTX* OpenSSLAdapter::CreateContext(SSLMode mode, bool enable_cache) {
   SSL_CTX_set_cipher_list(
       ctx, "ALL:!SHA256:!SHA384:!aPSK:!ECDSA+SHA1:!ADH:!LOW:!EXP:!MD5:!3DES");
 
-  if (mode == SSL_MODE_DTLS) {
-    SSL_CTX_set_read_ahead(ctx, 1);
-  }
-
   if (enable_cache) {
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_CLIENT);
     SSL_CTX_sess_set_new_cb(ctx, &OpenSSLAdapter::NewSSLSessionCallback);
   }
 
+#ifdef OPENSSL_IS_BORINGSSL
+  SSL_CTX_set_permute_extensions(ctx, true);
+#endif
   return ctx;
 }
 

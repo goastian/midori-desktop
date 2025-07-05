@@ -1,11 +1,13 @@
+use alloc::vec::Vec;
+
+use bit_set::BitSet;
+
 use super::{
     analyzer::{FunctionInfo, GlobalUse},
-    Capabilities, Disalignment, FunctionError, ModuleInfo,
+    Capabilities, Disalignment, FunctionError, ModuleInfo, PushConstantError,
 };
 use crate::arena::{Handle, UniqueArena};
-
 use crate::span::{AddSpan as _, MapErrWithSpan as _, SpanProvider as _, WithSpan};
-use bit_set::BitSet;
 
 const MAX_WORKGROUP_SIZE: u32 = 0x4000;
 
@@ -39,6 +41,8 @@ pub enum GlobalVariableError {
     InitializerNotAllowed(crate::AddressSpace),
     #[error("Storage address space doesn't support write-only access")]
     StorageAddressSpaceWriteOnlyNotSupported,
+    #[error("Type is not valid for use as a push constant")]
+    InvalidPushConstantType(#[source] PushConstantError),
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -50,6 +54,11 @@ pub enum VaryingError {
     NotIOShareableType(Handle<crate::Type>),
     #[error("Interpolation is not valid")]
     InvalidInterpolation,
+    #[error("Cannot combine {interpolation:?} interpolation with the {sampling:?} sample type")]
+    InvalidInterpolationSamplingCombination {
+        interpolation: crate::Interpolation,
+        sampling: crate::Sampling,
+    },
     #[error("Interpolation must be specified on vertex shader outputs and fragment shader inputs")]
     MissingInterpolation,
     #[error("Built-in {0:?} is not available at this stage")]
@@ -62,6 +71,8 @@ pub enum VaryingError {
     MemberMissingBinding(u32),
     #[error("Multiple bindings at location {location} are present")]
     BindingCollision { location: u32 },
+    #[error("Multiple bindings use the same `blend_src` {blend_src}")]
+    BindingCollisionBlendSrc { blend_src: u32 },
     #[error("Built-in {0:?} is present more than once")]
     DuplicateBuiltIn(crate::BuiltIn),
     #[error("Capability {0:?} is not supported")]
@@ -70,14 +81,16 @@ pub enum VaryingError {
     InvalidInputAttributeInStage(&'static str, crate::ShaderStage),
     #[error("The attribute {0:?} is not valid for stage {1:?}")]
     InvalidAttributeInStage(&'static str, crate::ShaderStage),
-    #[error(
-        "The location index {location} cannot be used together with the attribute {attribute:?}"
-    )]
-    InvalidLocationAttributeCombination {
-        location: u32,
-        attribute: &'static str,
+    #[error("The `blend_src` attribute can only be used on location 0, only indices 0 and 1 are valid. Location was {location}, index was {blend_src}.")]
+    InvalidBlendSrcIndex { location: u32, blend_src: u32 },
+    #[error("If `blend_src` is used, there must be exactly two outputs both with location 0, one with `blend_src(0)` and the other with `blend_src(1)`.")]
+    IncompleteBlendSrcUsage,
+    #[error("If `blend_src` is used, both outputs must have the same type. `blend_src(0)` has type {blend_src_0_type:?} and `blend_src(1)` has type {blend_src_1_type:?}.")]
+    BlendSrcOutputTypeMismatch {
+        blend_src_0_type: Handle<crate::Type>,
+        blend_src_1_type: Handle<crate::Type>,
     },
-    #[error("Workgroup size is multi dimensional, @builtin(subgroup_id) and @builtin(subgroup_invocation_id) are not supported.")]
+    #[error("Workgroup size is multi dimensional, `@builtin(subgroup_id)` and `@builtin(subgroup_invocation_id)` are not supported.")]
     InvalidMultiDimensionalSubgroupBuiltIn,
 }
 
@@ -110,10 +123,6 @@ pub enum EntryPointError {
     InvalidIntegerInterpolation { location: u32 },
     #[error(transparent)]
     Function(#[from] FunctionError),
-    #[error(
-        "Invalid locations {location_mask:?} are set while dual source blending. Only location 0 may be set."
-    )]
-    InvalidLocationsWhileDualSourceBlending { location_mask: BitSet },
 }
 
 fn storage_usage(access: crate::StorageAccess) -> GlobalUse {
@@ -124,16 +133,19 @@ fn storage_usage(access: crate::StorageAccess) -> GlobalUse {
     if access.contains(crate::StorageAccess::STORE) {
         storage_usage |= GlobalUse::WRITE;
     }
+    if access.contains(crate::StorageAccess::ATOMIC) {
+        storage_usage |= GlobalUse::ATOMIC;
+    }
     storage_usage
 }
 
 struct VaryingContext<'a> {
     stage: crate::ShaderStage,
     output: bool,
-    second_blend_source: bool,
     types: &'a UniqueArena<crate::Type>,
     type_info: &'a Vec<super::r#type::TypeInfo>,
     location_mask: &'a mut BitSet,
+    blend_src_mask: &'a mut BitSet,
     built_ins: &'a mut crate::FastHashSet<crate::BuiltIn>,
     capabilities: Capabilities,
     flags: super::ValidationFlags,
@@ -189,7 +201,11 @@ impl VaryingContext<'_> {
                 }
 
                 let (visible, type_good) = match built_in {
-                    Bi::BaseInstance | Bi::BaseVertex | Bi::InstanceIndex | Bi::VertexIndex => (
+                    Bi::BaseInstance
+                    | Bi::BaseVertex
+                    | Bi::InstanceIndex
+                    | Bi::VertexIndex
+                    | Bi::DrawID => (
                         self.stage == St::Vertex && !self.output,
                         *ty_inner == Ti::Scalar(crate::Scalar::U32),
                     ),
@@ -219,6 +235,7 @@ impl VaryingContext<'_> {
                             St::Vertex => self.output,
                             St::Fragment => !self.output,
                             St::Compute => false,
+                            St::Task | St::Mesh => unreachable!(),
                         },
                         *ty_inner
                             == Ti::Vector {
@@ -230,6 +247,7 @@ impl VaryingContext<'_> {
                         match self.stage {
                             St::Vertex | St::Fragment => !self.output,
                             St::Compute => false,
+                            St::Task | St::Mesh => unreachable!(),
                         },
                         *ty_inner == Ti::Scalar(crate::Scalar::I32),
                     ),
@@ -277,6 +295,7 @@ impl VaryingContext<'_> {
                         match self.stage {
                             St::Compute | St::Fragment => !self.output,
                             St::Vertex => false,
+                            St::Task | St::Mesh => unreachable!(),
                         },
                         *ty_inner == Ti::Scalar(crate::Scalar::U32),
                     ),
@@ -294,7 +313,7 @@ impl VaryingContext<'_> {
                 location,
                 interpolation,
                 sampling,
-                second_blend_source,
+                blend_src,
             } => {
                 // Only IO-shareable types may be stored in locations.
                 if !self.type_info[ty.index()]
@@ -304,7 +323,9 @@ impl VaryingContext<'_> {
                     return Err(VaryingError::NotIOShareableType(ty));
                 }
 
-                if second_blend_source {
+                if let Some(blend_src) = blend_src {
+                    // `blend_src` is only valid if dual source blending was explicitly enabled,
+                    // see https://www.w3.org/TR/WGSL/#extension-dual_source_blending
                     if !self
                         .capabilities
                         .contains(Capabilities::DUAL_SOURCE_BLENDING)
@@ -315,27 +336,53 @@ impl VaryingContext<'_> {
                     }
                     if self.stage != crate::ShaderStage::Fragment {
                         return Err(VaryingError::InvalidAttributeInStage(
-                            "second_blend_source",
+                            "blend_src",
                             self.stage,
                         ));
                     }
                     if !self.output {
                         return Err(VaryingError::InvalidInputAttributeInStage(
-                            "second_blend_source",
+                            "blend_src",
                             self.stage,
                         ));
                     }
-                    if location != 0 {
-                        return Err(VaryingError::InvalidLocationAttributeCombination {
+                    if (blend_src != 0 && blend_src != 1) || location != 0 {
+                        return Err(VaryingError::InvalidBlendSrcIndex {
                             location,
-                            attribute: "second_blend_source",
+                            blend_src,
                         });
                     }
+                    if !self.blend_src_mask.insert(blend_src as usize) {
+                        return Err(VaryingError::BindingCollisionBlendSrc { blend_src });
+                    }
+                } else if !self.location_mask.insert(location as usize)
+                    && self.flags.contains(super::ValidationFlags::BINDINGS)
+                {
+                    return Err(VaryingError::BindingCollision { location });
+                }
 
-                    self.second_blend_source = true;
-                } else if !self.location_mask.insert(location as usize) {
-                    if self.flags.contains(super::ValidationFlags::BINDINGS) {
-                        return Err(VaryingError::BindingCollision { location });
+                if let Some(interpolation) = interpolation {
+                    let invalid_sampling = match (interpolation, sampling) {
+                        (_, None)
+                        | (
+                            crate::Interpolation::Perspective | crate::Interpolation::Linear,
+                            Some(
+                                crate::Sampling::Center
+                                | crate::Sampling::Centroid
+                                | crate::Sampling::Sample,
+                            ),
+                        )
+                        | (
+                            crate::Interpolation::Flat,
+                            Some(crate::Sampling::First | crate::Sampling::Either),
+                        ) => None,
+                        (_, Some(invalid_sampling)) => Some(invalid_sampling),
+                    };
+                    if let Some(sampling) = invalid_sampling {
+                        return Err(VaryingError::InvalidInterpolationSamplingCombination {
+                            interpolation,
+                            sampling,
+                        });
                     }
                 }
 
@@ -343,6 +390,7 @@ impl VaryingContext<'_> {
                     crate::ShaderStage::Vertex => self.output,
                     crate::ShaderStage::Fragment => !self.output,
                     crate::ShaderStage::Compute => false,
+                    crate::ShaderStage::Task | crate::ShaderStage::Mesh => unreachable!(),
                 };
 
                 // It doesn't make sense to specify a sampling when `interpolation` is `Flat`, but
@@ -408,6 +456,24 @@ impl VaryingContext<'_> {
                                     .map_err(|e| e.with_span_context(span_context))?,
                             }
                         }
+
+                        if !self.blend_src_mask.is_empty() {
+                            let span_context = self.types.get_span_context(ty);
+
+                            // If there's any blend_src usage, it must apply to all members of which there must be exactly 2.
+                            if members.len() != 2 || self.blend_src_mask.len() != 2 {
+                                return Err(VaryingError::IncompleteBlendSrcUsage
+                                    .with_span_context(span_context));
+                            }
+                            // Also, all members must have the same type.
+                            if members[0].ty != members[1].ty {
+                                return Err(VaryingError::BlendSrcOutputTypeMismatch {
+                                    blend_src_0_type: members[0].ty,
+                                    blend_src_1_type: members[1].ty,
+                                }
+                                .with_span_context(span_context));
+                            }
+                        }
                     }
                     _ => {
                         if self.flags.contains(super::ValidationFlags::BINDINGS) {
@@ -463,7 +529,10 @@ impl super::Validator {
                 if access == crate::StorageAccess::STORE {
                     return Err(GlobalVariableError::StorageAddressSpaceWriteOnlyNotSupported);
                 }
-                (TypeFlags::DATA | TypeFlags::HOST_SHAREABLE, true)
+                (
+                    TypeFlags::DATA | TypeFlags::HOST_SHAREABLE | TypeFlags::CREATION_RESOLVED,
+                    true,
+                )
             }
             crate::AddressSpace::Uniform => {
                 if let Err((ty_handle, disalignment)) = type_info.uniform_layout {
@@ -479,7 +548,8 @@ impl super::Validator {
                     TypeFlags::DATA
                         | TypeFlags::COPY
                         | TypeFlags::SIZED
-                        | TypeFlags::HOST_SHAREABLE,
+                        | TypeFlags::HOST_SHAREABLE
+                        | TypeFlags::CREATION_RESOLVED,
                     true,
                 )
             }
@@ -508,8 +578,8 @@ impl super::Validator {
                         _ => {}
                     },
                     crate::TypeInner::Sampler { .. }
-                    | crate::TypeInner::AccelerationStructure
-                    | crate::TypeInner::RayQuery => {}
+                    | crate::TypeInner::AccelerationStructure { .. }
+                    | crate::TypeInner::RayQuery { .. } => {}
                     _ => {
                         return Err(GlobalVariableError::InvalidType(var.space));
                     }
@@ -517,13 +587,19 @@ impl super::Validator {
 
                 (TypeFlags::empty(), true)
             }
-            crate::AddressSpace::Private => (TypeFlags::CONSTRUCTIBLE, false),
+            crate::AddressSpace::Private => (
+                TypeFlags::CONSTRUCTIBLE | TypeFlags::CREATION_RESOLVED,
+                false,
+            ),
             crate::AddressSpace::WorkGroup => (TypeFlags::DATA | TypeFlags::SIZED, false),
             crate::AddressSpace::PushConstant => {
                 if !self.capabilities.contains(Capabilities::PUSH_CONSTANT) {
                     return Err(GlobalVariableError::UnsupportedCapability(
                         Capabilities::PUSH_CONSTANT,
                     ));
+                }
+                if let Err(ref err) = type_info.push_constant_compatibility {
+                    return Err(GlobalVariableError::InvalidPushConstantType(err.clone()));
                 }
                 (
                     TypeFlags::DATA
@@ -560,9 +636,10 @@ impl super::Validator {
                 return Err(GlobalVariableError::InitializerExprType);
             }
 
-            let decl_ty = &gctx.types[var.ty].inner;
-            let init_ty = mod_info[init].inner_with(gctx.types);
-            if !decl_ty.equivalent(init_ty, gctx.types) {
+            if !gctx.compare_types(
+                &crate::proc::TypeResolution::Handle(var.ty),
+                &mod_info[init],
+            ) {
                 return Err(GlobalVariableError::InitializerType);
             }
         }
@@ -575,7 +652,6 @@ impl super::Validator {
         ep: &crate::EntryPoint,
         module: &crate::Module,
         mod_info: &ModuleInfo,
-        global_expr_kind: &crate::proc::ExpressionKindTracker,
     ) -> Result<FunctionInfo, WithSpan<EntryPointError>> {
         if ep.early_depth_test.is_some() {
             let required = Capabilities::EARLY_DEPTH_TEST;
@@ -604,7 +680,7 @@ impl super::Validator {
         }
 
         let mut info = self
-            .validate_function(&ep.function, module, mod_info, true, global_expr_kind)
+            .validate_function(&ep.function, module, mod_info, true)
             .map_err(WithSpan::into_other)?;
 
         {
@@ -614,6 +690,7 @@ impl super::Validator {
                 crate::ShaderStage::Vertex => ShaderStages::VERTEX,
                 crate::ShaderStage::Fragment => ShaderStages::FRAGMENT,
                 crate::ShaderStage::Compute => ShaderStages::COMPUTE,
+                crate::ShaderStage::Task | crate::ShaderStage::Mesh => unreachable!(),
             };
 
             if !info.available_stages.contains(stage_bit) {
@@ -628,10 +705,10 @@ impl super::Validator {
             let mut ctx = VaryingContext {
                 stage: ep.stage,
                 output: false,
-                second_blend_source: false,
                 types: &module.types,
                 type_info: &self.types,
                 location_mask: &mut self.location_mask,
+                blend_src_mask: &mut self.blend_src_mask,
                 built_ins: &mut argument_built_ins,
                 capabilities: self.capabilities,
                 flags: self.flags,
@@ -646,39 +723,30 @@ impl super::Validator {
             let mut ctx = VaryingContext {
                 stage: ep.stage,
                 output: true,
-                second_blend_source: false,
                 types: &module.types,
                 type_info: &self.types,
                 location_mask: &mut self.location_mask,
+                blend_src_mask: &mut self.blend_src_mask,
                 built_ins: &mut result_built_ins,
                 capabilities: self.capabilities,
                 flags: self.flags,
             };
             ctx.validate(ep, fr.ty, fr.binding.as_ref())
                 .map_err_inner(|e| EntryPointError::Result(e).with_span())?;
-            if ctx.second_blend_source {
-                // Only the first location may be used when dual source blending
-                if ctx.location_mask.len() == 1 && ctx.location_mask.contains(0) {
-                    info.dual_source_blending = true;
-                } else {
-                    return Err(EntryPointError::InvalidLocationsWhileDualSourceBlending {
-                        location_mask: self.location_mask.clone(),
-                    }
-                    .with_span());
-                }
-            }
-
             if ep.stage == crate::ShaderStage::Vertex
                 && !result_built_ins.contains(&crate::BuiltIn::Position { invariant: false })
             {
                 return Err(EntryPointError::MissingVertexOutputPosition.with_span());
+            }
+            if !self.blend_src_mask.is_empty() {
+                info.dual_source_blending = true;
             }
         } else if ep.stage == crate::ShaderStage::Vertex {
             return Err(EntryPointError::MissingVertexOutputPosition.with_span());
         }
 
         {
-            let used_push_constants = module
+            let mut used_push_constants = module
                 .global_variables
                 .iter()
                 .filter(|&(_, var)| var.space == crate::AddressSpace::PushConstant)
@@ -686,8 +754,7 @@ impl super::Validator {
                 .filter(|&handle| !info[handle].is_empty());
             // Check if there is more than one push constant, and error if so.
             // Use a loop for when returning multiple errors is supported.
-            #[allow(clippy::never_loop)]
-            for handle in used_push_constants.skip(1) {
+            if let Some(handle) = used_push_constants.nth(1) {
                 return Err(EntryPointError::MoreThanOnePushConstantUsed
                     .with_span_handle(handle, &module.global_variables));
             }
@@ -718,7 +785,9 @@ impl super::Validator {
                     } => storage_usage(access),
                     _ => GlobalUse::READ | GlobalUse::QUERY,
                 },
-                crate::AddressSpace::Private | crate::AddressSpace::WorkGroup => GlobalUse::all(),
+                crate::AddressSpace::Private | crate::AddressSpace::WorkGroup => {
+                    GlobalUse::READ | GlobalUse::WRITE | GlobalUse::QUERY
+                }
                 crate::AddressSpace::PushConstant => GlobalUse::READ,
             };
             if !allowed_usage.contains(usage) {
@@ -733,7 +802,7 @@ impl super::Validator {
             }
 
             if let Some(ref bind) = var.binding {
-                if !self.ep_resource_bindings.insert(bind.clone()) {
+                if !self.ep_resource_bindings.insert(*bind) {
                     if self.flags.contains(super::ValidationFlags::BINDINGS) {
                         return Err(EntryPointError::BindingCollision(var_handle)
                             .with_span_handle(var_handle, &module.global_variables));

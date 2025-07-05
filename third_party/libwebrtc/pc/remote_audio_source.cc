@@ -72,7 +72,7 @@ RemoteAudioSource::~RemoteAudioSource() {
 
 void RemoteAudioSource::Start(
     cricket::VoiceMediaReceiveChannelInterface* media_channel,
-    absl::optional<uint32_t> ssrc) {
+    std::optional<uint32_t> ssrc) {
   RTC_DCHECK_RUN_ON(worker_thread_);
 
   // Register for callbacks immediately before AddSink so that we always get
@@ -87,7 +87,7 @@ void RemoteAudioSource::Start(
 
 void RemoteAudioSource::Stop(
     cricket::VoiceMediaReceiveChannelInterface* media_channel,
-    absl::optional<uint32_t> ssrc) {
+    std::optional<uint32_t> ssrc) {
   RTC_DCHECK_RUN_ON(worker_thread_);
   RTC_DCHECK(media_channel);
   ssrc ? media_channel->SetRawAudioSink(*ssrc, nullptr)
@@ -115,8 +115,7 @@ bool RemoteAudioSource::remote() const {
 void RemoteAudioSource::SetVolume(double volume) {
   RTC_DCHECK_GE(volume, 0);
   RTC_DCHECK_LE(volume, 10);
-  RTC_LOG(LS_INFO) << rtc::StringFormat("RAS::%s({volume=%.2f})", __func__,
-                                        volume);
+  RTC_LOG(LS_INFO) << StringFormat("RAS::%s({volume=%.2f})", __func__, volume);
   for (auto* observer : audio_observers_) {
     observer->OnSetVolume(volume);
   }
@@ -159,7 +158,7 @@ void RemoteAudioSource::OnData(const AudioSinkInterface::Data& audio) {
     // absolute capture timestamp.
     sink->OnData(audio.data, 16, audio.sample_rate, audio.channels,
                  audio.samples_per_channel,
-                 /*absolute_capture_timestamp_ms=*/absl::nullopt);
+                 /*absolute_capture_timestamp_ms=*/std::nullopt);
   }
 }
 

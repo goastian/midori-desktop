@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use malloc_size_of_derive::MallocSizeOf;
+
 use crate::metrics::PingType;
 
 /// Glean-provided pings, all enabled by default.
@@ -10,7 +12,7 @@ use crate::metrics::PingType;
 /// This might get auto-generated when the Rust API lands ([Bug 1579146](https://bugzilla.mozilla.org/show_bug.cgi?id=1579146)).
 ///
 /// They are parsed and registered by the platform-specific wrappers, but might be used Glean-internal directly.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MallocSizeOf)]
 pub struct InternalPings {
     pub baseline: PingType,
     pub metrics: PingType,
@@ -34,6 +36,8 @@ impl InternalPings {
                     "dirty_startup".to_string(),
                     "inactive".to_string(),
                 ],
+                true,
+                vec![],
             ),
             metrics: PingType::new(
                 "metrics",
@@ -50,6 +54,8 @@ impl InternalPings {
                     "tomorrow".to_string(),
                     "upgrade".to_string(),
                 ],
+                true,
+                vec![],
             ),
             events: PingType::new(
                 "events",
@@ -64,6 +70,8 @@ impl InternalPings {
                     "inactive".to_string(),
                     "max_capacity".to_string(),
                 ],
+                true,
+                vec![],
             ),
             deletion_request: PingType::new(
                 "deletion-request",
@@ -74,6 +82,8 @@ impl InternalPings {
                 true, // The deletion-request should not be disabled
                 vec![],
                 vec!["at_init".to_string(), "set_upload_enabled".to_string()],
+                true,
+                vec![],
             ),
         }
     }

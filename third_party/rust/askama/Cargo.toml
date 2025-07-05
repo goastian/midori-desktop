@@ -11,12 +11,17 @@
 
 [package]
 edition = "2021"
-rust-version = "1.58"
+rust-version = "1.81"
 name = "askama"
-version = "0.12.0"
+version = "0.13.1"
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Type-safe, compiled Jinja-like templates for Rust"
-homepage = "https://github.com/djc/askama"
-documentation = "https://docs.rs/askama"
+homepage = "https://askama.readthedocs.io/"
 readme = "README.md"
 keywords = [
     "markup",
@@ -26,101 +31,101 @@ keywords = [
 ]
 categories = ["template-engine"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/djc/askama"
-resolver = "1"
+repository = "https://github.com/askama-rs/askama"
 
 [package.metadata.docs.rs]
-features = [
-    "config",
-    "humansize",
-    "num-traits",
-    "serde-json",
-    "serde-yaml",
+features = ["full"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--cfg=docsrs",
 ]
 
+[badges.maintenance]
+status = "actively-developed"
+
+[features]
+alloc = [
+    "askama_derive?/alloc",
+    "serde?/alloc",
+    "serde_json?/alloc",
+    "percent-encoding?/alloc",
+]
+blocks = ["askama_derive?/blocks"]
+code-in-doc = ["askama_derive?/code-in-doc"]
+config = ["askama_derive?/config"]
+default = [
+    "config",
+    "derive",
+    "std",
+    "urlencode",
+    "askama_derive?/default",
+]
+derive = ["askama_derive"]
+full = [
+    "default",
+    "blocks",
+    "code-in-doc",
+    "serde_json",
+    "askama_derive?/full",
+]
+serde_json = [
+    "std",
+    "askama_derive?/serde_json",
+    "dep:serde",
+    "dep:serde_json",
+]
+std = [
+    "alloc",
+    "askama_derive?/std",
+    "serde?/std",
+    "serde_json?/std",
+    "percent-encoding?/std",
+]
+urlencode = [
+    "askama_derive?/urlencode",
+    "dep:percent-encoding",
+]
+
+[lib]
+name = "askama"
+path = "src/lib.rs"
+
+[[bench]]
+name = "escape"
+path = "benches/escape.rs"
+harness = false
+
+[[bench]]
+name = "to-json"
+path = "benches/to-json.rs"
+harness = false
+required-features = ["serde_json"]
+
 [dependencies.askama_derive]
-version = "0.12.0"
-
-[dependencies.askama_escape]
-version = "0.10.3"
-
-[dependencies.comrak]
-version = "0.16"
+version = "=0.13.1"
 optional = true
 default-features = false
 
-[dependencies.dep_humansize]
-version = "2"
-optional = true
-package = "humansize"
-
-[dependencies.dep_num_traits]
-version = "0.2.6"
-optional = true
-package = "num-traits"
+[dependencies.itoa]
+version = "1.0.11"
 
 [dependencies.percent-encoding]
 version = "2.1.0"
 optional = true
+default-features = false
 
 [dependencies.serde]
 version = "1.0"
-features = ["derive"]
 optional = true
+default-features = false
 
 [dependencies.serde_json]
 version = "1.0"
 optional = true
+default-features = false
 
-[dependencies.serde_yaml]
-version = "0.9"
-optional = true
+[dev-dependencies.assert_matches]
+version = "1.5.0"
 
-[features]
-config = ["askama_derive/config"]
-default = [
-    "config",
-    "humansize",
-    "num-traits",
-    "urlencode",
-]
-humansize = [
-    "askama_derive/humansize",
-    "dep_humansize",
-]
-markdown = [
-    "askama_derive/markdown",
-    "comrak",
-]
-mime = []
-mime_guess = []
-num-traits = [
-    "askama_derive/num-traits",
-    "dep_num_traits",
-]
-serde-json = [
-    "askama_derive/serde-json",
-    "askama_escape/json",
-    "serde",
-    "serde_json",
-]
-serde-yaml = [
-    "askama_derive/serde-yaml",
-    "serde",
-    "serde_yaml",
-]
-urlencode = [
-    "askama_derive/urlencode",
-    "percent-encoding",
-]
-with-actix-web = ["askama_derive/with-actix-web"]
-with-axum = ["askama_derive/with-axum"]
-with-gotham = ["askama_derive/with-gotham"]
-with-hyper = ["askama_derive/with-hyper"]
-with-mendes = ["askama_derive/with-mendes"]
-with-rocket = ["askama_derive/with-rocket"]
-with-tide = ["askama_derive/with-tide"]
-with-warp = ["askama_derive/with-warp"]
-
-[badges.maintenance]
-status = "actively-developed"
+[dev-dependencies.criterion]
+version = "0.5"

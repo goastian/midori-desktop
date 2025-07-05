@@ -110,7 +110,6 @@ class UnitBase {
     } else if (value == -std::numeric_limits<T>::infinity()) {
       return MinusInfinity();
     } else {
-      RTC_DCHECK(!std::isnan(value));
       return FromValue(rtc::dchecked_cast<int64_t>(value));
     }
   }
@@ -276,6 +275,7 @@ class RelativeUnit : public UnitBase<Unit_T> {
 
  protected:
   using UnitBase<Unit_T>::UnitBase;
+  constexpr RelativeUnit() : UnitBase<Unit_T>(0) {}
 };
 
 template <class Unit_T>

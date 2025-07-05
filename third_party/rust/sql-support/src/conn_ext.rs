@@ -12,8 +12,7 @@ use std::ops::Deref;
 use std::time::Instant;
 
 use crate::maybe_cached::MaybeCached;
-
-pub struct Conn(rusqlite::Connection);
+use crate::{debug, warn};
 
 /// This trait exists so that we can use these helpers on `rusqlite::{Transaction, Connection}`.
 /// Note that you must import ConnExt in order to call these methods on anything.
@@ -254,14 +253,14 @@ impl ConnExt for Connection {
     }
 }
 
-impl<'conn> ConnExt for Transaction<'conn> {
+impl ConnExt for Transaction<'_> {
     #[inline]
     fn conn(&self) -> &Connection {
         self
     }
 }
 
-impl<'conn> ConnExt for Savepoint<'conn> {
+impl ConnExt for Savepoint<'_> {
     #[inline]
     fn conn(&self) -> &Connection {
         self
@@ -334,19 +333,19 @@ impl<'conn> UncheckedTransaction<'conn> {
     /// Consumes and commits an unchecked transaction.
     pub fn commit(mut self) -> SqlResult<()> {
         if self.finished {
-            log::warn!("ignoring request to commit an already finished transaction");
+            warn!("ignoring request to commit an already finished transaction");
             return Ok(());
         }
         self.finished = true;
         self.conn.execute_batch("COMMIT")?;
-        log::debug!("Transaction commited after {:?}", self.started_at.elapsed());
+        debug!("Transaction commited after {:?}", self.started_at.elapsed());
         Ok(())
     }
 
     /// Consumes and rolls back an unchecked transaction.
     pub fn rollback(mut self) -> SqlResult<()> {
         if self.finished {
-            log::warn!("ignoring request to rollback an already finished transaction");
+            warn!("ignoring request to rollback an already finished transaction");
             return Ok(());
         }
         self.rollback_()
@@ -367,7 +366,7 @@ impl<'conn> UncheckedTransaction<'conn> {
     }
 }
 
-impl<'conn> Deref for UncheckedTransaction<'conn> {
+impl Deref for UncheckedTransaction<'_> {
     type Target = Connection;
 
     #[inline]
@@ -376,15 +375,15 @@ impl<'conn> Deref for UncheckedTransaction<'conn> {
     }
 }
 
-impl<'conn> Drop for UncheckedTransaction<'conn> {
+impl Drop for UncheckedTransaction<'_> {
     fn drop(&mut self) {
         if let Err(e) = self.finish_() {
-            log::warn!("Error dropping an unchecked transaction: {}", e);
+            warn!("Error dropping an unchecked transaction: {}", e);
         }
     }
 }
 
-impl<'conn> ConnExt for UncheckedTransaction<'conn> {
+impl ConnExt for UncheckedTransaction<'_> {
     #[inline]
     fn conn(&self) -> &Connection {
         self

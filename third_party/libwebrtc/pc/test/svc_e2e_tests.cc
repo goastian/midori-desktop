@@ -27,7 +27,7 @@
 #include "api/test/simulated_network.h"
 #include "api/test/time_controller.h"
 #include "api/video_codecs/vp9_profile.h"
-#include "call/simulated_network.h"
+#include "media/base/media_constants.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
 #include "modules/video_coding/svc/scalability_mode_util.h"
 #include "rtc_base/containers/flat_map.h"
@@ -35,6 +35,7 @@
 #include "test/field_trial.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/network/simulated_network.h"
 #include "test/pc/e2e/analyzer/video/default_video_quality_analyzer.h"
 #include "test/pc/e2e/network_quality_metrics_reporter.h"
 #include "test/testsupport/file_utils.h"
@@ -70,10 +71,8 @@ CreateTestFixture(absl::string_view test_case_name,
   auto fixture = webrtc_pc_e2e::CreatePeerConnectionE2EQualityTestFixture(
       std::string(test_case_name), time_controller, nullptr,
       std::move(video_quality_analyzer));
-  auto alice = std::make_unique<PeerConfigurer>(
-      network_links.first->network_dependencies());
-  auto bob = std::make_unique<PeerConfigurer>(
-      network_links.second->network_dependencies());
+  auto alice = std::make_unique<PeerConfigurer>(*network_links.first);
+  auto bob = std::make_unique<PeerConfigurer>(*network_links.second);
   alice_configurer(alice.get());
   bob_configurer(bob.get());
   fixture->AddPeer(std::move(alice));
@@ -94,7 +93,7 @@ enum class UseDependencyDescriptor {
 struct SvcTestParameters {
   static SvcTestParameters Create(const std::string& codec_name,
                                   const std::string& scalability_mode_str) {
-    absl::optional<ScalabilityMode> scalability_mode =
+    std::optional<ScalabilityMode> scalability_mode =
         ScalabilityModeFromString(scalability_mode_str);
     RTC_CHECK(scalability_mode.has_value())
         << "Unsupported scalability mode: " << scalability_mode_str;
@@ -176,8 +175,8 @@ class SvcVideoQualityAnalyzer : public DefaultVideoQualityAnalyzer {
                       const EncodedImage& encoded_image,
                       const EncoderStats& stats,
                       bool discarded) override {
-    absl::optional<int> spatial_id = encoded_image.SpatialIndex();
-    absl::optional<int> temporal_id = encoded_image.TemporalIndex();
+    std::optional<int> spatial_id = encoded_image.SpatialIndex();
+    std::optional<int> temporal_id = encoded_image.TemporalIndex();
     encoder_layers_seen_[spatial_id.value_or(0)][temporal_id.value_or(0)]++;
     DefaultVideoQualityAnalyzer::OnFrameEncoded(
         peer_name, frame_id, encoded_image, stats, discarded);
@@ -186,8 +185,8 @@ class SvcVideoQualityAnalyzer : public DefaultVideoQualityAnalyzer {
   void OnFramePreDecode(absl::string_view peer_name,
                         uint16_t frame_id,
                         const EncodedImage& input_image) override {
-    absl::optional<int> spatial_id = input_image.SpatialIndex();
-    absl::optional<int> temporal_id = input_image.TemporalIndex();
+    std::optional<int> spatial_id = input_image.SpatialIndex();
+    std::optional<int> temporal_id = input_image.TemporalIndex();
     if (!spatial_id) {
       decoder_layers_seen_[0][temporal_id.value_or(0)]++;
     } else {
@@ -222,14 +221,14 @@ class SvcVideoQualityAnalyzer : public DefaultVideoQualityAnalyzer {
   const SpatialTemporalLayerCounts& decoder_layers_seen() const {
     return decoder_layers_seen_;
   }
-  const absl::optional<std::string> reported_scalability_mode() const {
+  const std::optional<std::string> reported_scalability_mode() const {
     return reported_scalability_mode_;
   }
 
  private:
   SpatialTemporalLayerCounts encoder_layers_seen_;
   SpatialTemporalLayerCounts decoder_layers_seen_;
-  absl::optional<std::string> reported_scalability_mode_;
+  std::optional<std::string> reported_scalability_mode_;
 };
 
 MATCHER_P2(HasSpatialAndTemporalLayers,
@@ -316,7 +315,7 @@ TEST_P(SvcTest, ScalabilityModeSupported) {
   }
   test::ScopedFieldTrials override_trials(AppendFieldTrials(trials));
   std::unique_ptr<NetworkEmulationManager> network_emulation_manager =
-      CreateNetworkEmulationManager(TimeMode::kSimulated);
+      CreateNetworkEmulationManager({.time_mode = TimeMode::kSimulated});
   auto analyzer = std::make_unique<SvcVideoQualityAnalyzer>(
       network_emulation_manager->time_controller()->GetClock());
   SvcVideoQualityAnalyzer* analyzer_ptr = analyzer.get();

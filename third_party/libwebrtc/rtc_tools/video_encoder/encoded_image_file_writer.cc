@@ -22,7 +22,7 @@ EncodedImageFileWriter::EncodedImageFileWriter(
       CodecTypeToPayloadString(video_codec_setting.codecType);
 
   // Retrieve scalability mode information.
-  absl::optional<ScalabilityMode> scalability_mode =
+  std::optional<ScalabilityMode> scalability_mode =
       video_codec_setting.GetScalabilityMode();
   RTC_CHECK(scalability_mode);
   spatial_layers_ = ScalabilityModeToNumSpatialLayers(*scalability_mode);
@@ -36,7 +36,7 @@ EncodedImageFileWriter::EncodedImageFileWriter(
   for (int i = 0; i < spatial_layers_; ++i) {
     for (int j = 0; j < temporal_layers_; ++j) {
       char buffer[256];
-      rtc::SimpleStringBuilder name(buffer);
+      SimpleStringBuilder name(buffer);
       name << "output-" << codec_string << "-"
            << ScalabilityModeToString(*scalability_mode) << "-L" << i << "T"
            << j << ".ivf";

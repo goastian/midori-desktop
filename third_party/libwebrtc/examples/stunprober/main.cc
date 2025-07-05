@@ -18,7 +18,7 @@
 #include "absl/flags/parse.h"
 #include "p2p/base/basic_packet_socket_factory.h"
 #include "p2p/stunprober/stun_prober.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network.h"
 #include "rtc_base/physical_socket_server.h"
@@ -27,6 +27,10 @@
 #include "rtc_base/thread.h"
 #include "rtc_base/time_utils.h"
 #include "test/scoped_key_value_config.h"
+
+#ifdef WEBRTC_WIN
+#include "rtc_base/win32_socket_init.h"
+#endif  // WEBRTC_WIN
 
 using stunprober::AsyncCallback;
 using stunprober::StunProber;
@@ -108,6 +112,9 @@ void StopTrial(rtc::Thread* thread, StunProber* prober, int result) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+#ifdef WEBRTC_WIN
+  rtc::WinsockInitializer winsock_init;
+#endif  // WEBRTC_WIN
   absl::ParseCommandLine(argc, argv);
 
   std::vector<rtc::SocketAddress> server_addresses;

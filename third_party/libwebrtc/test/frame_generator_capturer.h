@@ -13,8 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "api/test/frame_generator_interface.h"
@@ -64,11 +64,11 @@ class FrameGeneratorCapturer : public TestVideoCapturer {
     int width;
     int height;
   };
-  absl::optional<Resolution> GetResolution() const;
+  std::optional<Resolution> GetResolution() const;
 
   void OnOutputFormatRequest(int width,
                              int height,
-                             const absl::optional<int>& max_fps);
+                             const std::optional<int>& max_fps);
 
   void SetSinkWantsObserver(SinkWantsObserver* observer);
 
@@ -78,9 +78,7 @@ class FrameGeneratorCapturer : public TestVideoCapturer {
 
   void ForceFrame();
   void SetFakeRotation(VideoRotation rotation);
-  void SetFakeColorSpace(absl::optional<ColorSpace> color_space);
-
-  int64_t first_frame_capture_time() const { return first_frame_capture_time_; }
+  void SetFakeColorSpace(std::optional<ColorSpace> color_space);
 
   bool Init();
 
@@ -88,7 +86,6 @@ class FrameGeneratorCapturer : public TestVideoCapturer {
   void InsertFrame();
   static bool Run(void* obj);
   int GetCurrentConfiguredFramerate();
-  void UpdateFps(int max_fps) RTC_EXCLUSIVE_LOCKS_REQUIRED(&lock_);
 
   Clock* const clock_;
   RepeatingTaskHandle frame_task_;
@@ -100,11 +97,8 @@ class FrameGeneratorCapturer : public TestVideoCapturer {
 
   int source_fps_ RTC_GUARDED_BY(&lock_);
   int target_capture_fps_ RTC_GUARDED_BY(&lock_);
-  absl::optional<int> wanted_fps_ RTC_GUARDED_BY(&lock_);
   VideoRotation fake_rotation_ = kVideoRotation_0;
-  absl::optional<ColorSpace> fake_color_space_ RTC_GUARDED_BY(&lock_);
-
-  int64_t first_frame_capture_time_;
+  std::optional<ColorSpace> fake_color_space_ RTC_GUARDED_BY(&lock_);
 
   std::unique_ptr<TaskQueueBase, TaskQueueDeleter> task_queue_;
 };

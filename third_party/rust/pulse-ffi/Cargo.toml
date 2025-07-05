@@ -13,11 +13,22 @@
 name = "pulse-ffi"
 version = "0.1.0"
 authors = ["Dan Glastonbury <dglastonbury@mozilla.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "FFI for libpulse.so supporting static linking and dynamic loading."
+readme = false
 license = "ISC"
-
-[dependencies]
-libc = "^0.2.20"
 
 [features]
 dlopen = []
+
+[lib]
+name = "pulse_ffi"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "^0.2.20"

@@ -23,29 +23,27 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <algorithm>
+#include <functional>
 #include <map>
 #include <memory>
-#include <set>
+#include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/async_dns_resolver.h"
 #include "api/candidate.h"
 #include "api/ice_transport_interface.h"
 #include "api/rtc_error.h"
 #include "api/sequence_checker.h"
-#include "api/task_queue/pending_task_safety_flag.h"
 #include "api/transport/enums.h"
 #include "api/transport/stun.h"
 #include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair_config.h"
 #include "logging/rtc_event_log/ice_logger.h"
 #include "p2p/base/active_ice_controller_factory_interface.h"
+#include "p2p/base/active_ice_controller_interface.h"
 #include "p2p/base/candidate_pair_interface.h"
 #include "p2p/base/connection.h"
 #include "p2p/base/ice_agent_interface.h"
@@ -64,6 +62,7 @@
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/dscp.h"
+#include "rtc_base/network/received_packet.h"
 #include "rtc_base/network/sent_packet.h"
 #include "rtc_base/network_route.h"
 #include "rtc_base/socket.h"
@@ -128,7 +127,6 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
   bool receiving() const override;
   void SetIceRole(IceRole role) override;
   IceRole GetIceRole() const override;
-  void SetIceTiebreaker(uint64_t tiebreaker) override;
   void SetIceParameters(const IceParameters& ice_params) override;
   void SetRemoteIceParameters(const IceParameters& ice_params) override;
   void SetRemoteIceMode(IceMode mode) override;
@@ -145,10 +143,9 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
   // only update the parameter if it is considered set in `config`. For example,
   // a negative value of receiving_timeout will be considered "not set" and we
   // will not use it to update the respective parameter in `config_`.
-  // TODO(deadbeef): Use absl::optional instead of negative values.
+  // TODO(deadbeef): Use std::optional instead of negative values.
   void SetIceConfig(const IceConfig& config) override;
-  const IceConfig& config() const;
-  static webrtc::RTCError ValidateIceConfig(const IceConfig& config);
+  const IceConfig& config() const override;
 
   // From TransportChannel:
   int SendPacket(const char* data,
@@ -159,9 +156,9 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
   bool GetOption(rtc::Socket::Option opt, int* value) override;
   int GetError() override;
   bool GetStats(IceTransportStats* ice_transport_stats) override;
-  absl::optional<int> GetRttEstimate() override;
+  std::optional<int> GetRttEstimate() override;
   const Connection* selected_connection() const override;
-  absl::optional<const CandidatePair> GetSelectedCandidatePair() const override;
+  std::optional<const CandidatePair> GetSelectedCandidatePair() const override;
 
   // From IceAgentInterface
   void OnStartedPinging() override;
@@ -206,7 +203,7 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
 
   void PruneAllPorts();
   int check_receiving_interval() const;
-  absl::optional<rtc::NetworkRoute> network_route() const override;
+  std::optional<rtc::NetworkRoute> network_route() const override;
 
   void RemoveConnection(Connection* connection);
 
@@ -246,10 +243,22 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
     return ss.Release();
   }
 
-  absl::optional<std::reference_wrapper<StunDictionaryWriter>>
+  std::optional<std::reference_wrapper<StunDictionaryWriter>>
   GetDictionaryWriter() override {
     return stun_dict_writer_;
   }
+
+  const webrtc::FieldTrialsView* field_trials() const override {
+    return field_trials_;
+  }
+  void SetDtlsPiggybackingCallbacks(
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          dtls_piggyback_get_data,
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          dtls_piggyback_get_ack,
+      absl::AnyInvocable<void(const StunByteStringAttribute*,
+                              const StunByteStringAttribute*)>
+          dtls_piggyback_report_data) override;
 
  private:
   P2PTransportChannel(
@@ -439,7 +448,6 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
       RTC_GUARDED_BY(network_thread_);
   IceMode remote_ice_mode_ RTC_GUARDED_BY(network_thread_);
   IceRole ice_role_ RTC_GUARDED_BY(network_thread_);
-  uint64_t ice_tiebreaker_ RTC_GUARDED_BY(network_thread_);
   IceGatheringState gathering_state_ RTC_GUARDED_BY(network_thread_);
   std::unique_ptr<webrtc::BasicRegatheringController> regathering_controller_
       RTC_GUARDED_BY(network_thread_);
@@ -462,7 +470,7 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
   bool has_been_writable_ RTC_GUARDED_BY(network_thread_) =
       false;  // if writable_ has ever been true
 
-  absl::optional<rtc::NetworkRoute> network_route_
+  std::optional<rtc::NetworkRoute> network_route_
       RTC_GUARDED_BY(network_thread_);
   webrtc::IceEventLog ice_event_log_ RTC_GUARDED_BY(network_thread_);
 
@@ -507,12 +515,23 @@ class RTC_EXPORT P2PTransportChannel : public IceTransportInternal,
 
   // Parsed field trials.
   IceFieldTrials ice_field_trials_;
+  // Unparsed field trials.
+  const webrtc::FieldTrialsView* field_trials_;
 
   // A dictionary of attributes that will be reflected to peer.
   StunDictionaryWriter stun_dict_writer_;
 
   // A dictionary that tracks attributes from peer.
   StunDictionaryView stun_dict_view_;
+
+  // DTLS-STUN piggybacking callbacks.
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_piggyback_get_data_;
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_piggyback_get_ack_;
+  absl::AnyInvocable<void(const StunByteStringAttribute*,
+                          const StunByteStringAttribute*)>
+      dtls_piggyback_report_data_;
 };
 
 }  // namespace cricket

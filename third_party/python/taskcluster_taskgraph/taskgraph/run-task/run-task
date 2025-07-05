@@ -39,7 +39,7 @@ from pathlib import Path
 from threading import Thread
 from typing import Optional
 
-SECRET_BASEURL_TPL = "http://taskcluster/secrets/v1/secret/{}"
+SECRET_BASEURL_TPL = "{}/secrets/v1/secret/{{}}".format(os.environ.get("TASKCLUSTER_PROXY_URL", "http://taskcluster").rstrip('/'))
 
 GITHUB_SSH_FINGERPRINT = (
     b"github.com ssh-ed25519 "
@@ -115,10 +115,12 @@ NULL_REVISION = "0000000000000000000000000000000000000000"
 
 
 def print_line(prefix, m):
-    now = datetime.datetime.utcnow().isoformat().encode("utf-8")
-    # slice microseconds to 3 decimals.
-    now = now[:-3] if now[-7:-6] == b"." else now
-    sys.stdout.buffer.write(b"[%s %sZ] %s" % (prefix, now, m))
+    now = (
+        datetime.datetime.now(tz=datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .encode("utf-8")
+    )
+    sys.stdout.buffer.write(b"[%s %s] %s" % (prefix, now, m))
     sys.stdout.buffer.flush()
 
 
@@ -197,7 +199,7 @@ def remove(path):
         return
 
     """
-    On Windows, adds '\\\\?\\' to paths which match ^[A-Za-z]:\\.* to access
+    On Windows, adds '\\\\?\\' to paths which match ^[A-Za-z]:(\\|/).* to access
     files or directories that exceed MAX_PATH(260) limitation or that ends
     with a period.
     """
@@ -205,7 +207,7 @@ def remove(path):
         sys.platform in ("win32", "cygwin")
         and len(path) >= 3
         and path[1] == ":"
-        and path[2] == "\\"
+        and path[2] in (os.pathsep, os.altsep)
     ):
         path = "\\\\?\\%s" % path
 
@@ -1011,7 +1013,12 @@ def install_pip_requirements(repositories):
         return
 
     # TODO: Stop using system Python (#381)
-    cmd = [sys.executable, "-mpip", "install", "--break-system-packages"]
+    if shutil.which("uv"):
+        user_site_dir = subprocess.run([sys.executable, "-msite", "--user-site"], capture_output=True, text=True).stdout.strip()
+        cmd = ["uv", "pip", "install", "--python", sys.executable, "--target", user_site_dir]
+    else:
+        cmd = [sys.executable, "-mpip", "install", "--user", "--break-system-packages"]
+
     if os.environ.get("PIP_DISABLE_REQUIRE_HASHES") != "1":
         cmd.append("--require-hashes")
 
@@ -1021,64 +1028,6 @@ def install_pip_requirements(repositories):
     run_required_command(b"pip-install", cmd)
 
 
-def maybe_run_resource_monitoring():
-    """Run the resource monitor if available.
-
-    Discussion in https://github.com/taskcluster/taskcluster-rfcs/pull/160
-    and https://bugzil.la/1648051
-
-    """
-    if "MOZ_FETCHES" not in os.environ:
-        return
-    if "RESOURCE_MONITOR_OUTPUT" not in os.environ:
-        return
-
-    prefix = b"resource_monitor"
-
-    executable = "{}/resource-monitor/resource-monitor{}".format(
-        os.environ.get("MOZ_FETCHES_DIR"), ".exe" if IS_WINDOWS else ""
-    )
-
-    if not os.path.exists(executable) or not os.access(executable, os.X_OK):
-        print_line(prefix, b"%s not executable\n" % executable.encode("utf-8"))
-        return
-    args = [
-        executable,
-        "-process",
-        str(os.getpid()),
-        "-output",
-        os.environ["RESOURCE_MONITOR_OUTPUT"],
-    ]
-    print_line(prefix, b"Resource monitor starting: %s\n" % str(args).encode("utf-8"))
-    # Avoid environment variables the payload doesn't need.
-    del os.environ["RESOURCE_MONITOR_OUTPUT"]
-
-    # Without CREATE_NEW_PROCESS_GROUP Windows signals will attempt to kill run-task, too.
-    process = subprocess.Popen(
-        args,
-        # Disable buffering because we want to receive output
-        # as it is generated so timestamps in logs are
-        # accurate.
-        bufsize=0,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0,
-        cwd=os.getcwd(),
-    )
-
-    def capture_output():
-        fh = io.TextIOWrapper(process.stdout, encoding="latin1")
-        while True:
-            data = fh.readline().encode("latin1")
-            if data == b"":
-                break
-            print_line(prefix, data)
-
-    monitor_process = Thread(target=capture_output)
-    monitor_process.start()
-    return process
-
-
 def _display_python_version():
     print_line(
         b"setup", b"Python version: %s\n" % platform.python_version().encode("utf-8")
@@ -1086,10 +1035,10 @@ def _display_python_version():
 
 
 def main(args):
-    os.environ["TASK_WORKDIR"] = os.getcwd()
+    task_workdir = os.environ["TASK_WORKDIR"] = os.getcwd()
     print_line(
         b"setup",
-        b"run-task started in %s\n" % os.environ["TASK_WORKDIR"].encode("utf-8"),
+        b"run-task started in %s\n" % task_workdir.encode("utf-8"),
     )
     print_line(
         b"setup",
@@ -1144,7 +1093,10 @@ def main(args):
     if running_as_root and os.path.exists("/dev/kvm"):
         # Ensure kvm permissions for worker, required for Android x86
         st = os.stat("/dev/kvm")
-        os.chmod("/dev/kvm", st.st_mode | 0o666)
+
+        # Podman mounts `/dev/kvm` as 0o666 already and doesn't allow chmoding it
+        if stat.S_IMODE(st.st_mode) != 0o666:
+            os.chmod("/dev/kvm", st.st_mode | 0o666)
 
     # Validate caches.
     #
@@ -1305,20 +1257,22 @@ def main(args):
     for repo in repositories:
         vcs_checkout_from_args(repo)
 
-    resource_process = None
+    # Convert certain well known environment variables to absolute paths.
+    for k in [
+        "CARGO_HOME",
+        "MOZ_FETCHES_DIR",
+        "PIP_CACHE_DIR",
+        "UPLOAD_DIR",
+        "UV_CACHE_DIR",
+        "npm_config_cache",
+    ] + [
+        "{}_PATH".format(repository["project"].upper())
+        for repository in repositories
+    ]:
+        if k in os.environ:
+            os.environ[k] = os.path.abspath(os.environ[k])
 
     try:
-        for k in ["MOZ_FETCHES_DIR", "UPLOAD_DIR"] + [
-            "{}_PATH".format(repository["project"].upper())
-            for repository in repositories
-        ]:
-            if k in os.environ:
-                os.environ[k] = os.path.abspath(os.environ[k])
-                print_line(
-                    b"setup",
-                    b"%s is %s\n" % (k.encode("utf-8"), os.environ[k].encode("utf-8")),
-                )
-
         if "MOZ_FETCHES" in os.environ:
             fetch_artifacts()
 
@@ -1326,21 +1280,8 @@ def main(args):
         # fetches to grab dependencies.
         install_pip_requirements(repositories)
 
-        resource_process = maybe_run_resource_monitoring()
-
         return run_command(b"task", task_args, cwd=args.task_cwd)
     finally:
-        if resource_process:
-            print_line(b"resource_monitor", b"terminating\n")
-            if IS_WINDOWS:
-                # .terminate() on Windows is not a graceful shutdown, due to
-                # differences in signals. CTRL_BREAK_EVENT will work provided
-                # the subprocess is in a different process group, so this script
-                # isn't also killed.
-                os.kill(resource_process.pid, signal.CTRL_BREAK_EVENT)
-            else:
-                resource_process.terminate()
-            resource_process.wait()
         fetches_dir = os.environ.get("MOZ_FETCHES_DIR")
         if fetches_dir and os.path.isdir(fetches_dir):
             print_line(b"fetches", b"removing %s\n" % fetches_dir.encode("utf-8"))

@@ -5,11 +5,15 @@
 //! See the `rustix::backend` module documentation for details.
 #![allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
 
+#[cfg(target_os = "linux")]
+use super::msghdr::with_xdp_msghdr;
 use super::msghdr::{
     with_noaddr_msghdr, with_recv_msghdr, with_unix_msghdr, with_v4_msghdr, with_v6_msghdr,
 };
 use super::read_sockaddr::{initialize_family_to_unspec, maybe_read_sockaddr_os, read_sockaddr_os};
 use super::send_recv::{RecvFlags, SendFlags};
+#[cfg(target_os = "linux")]
+use super::write_sockaddr::encode_sockaddr_xdp;
 use super::write_sockaddr::{encode_sockaddr_v4, encode_sockaddr_v6};
 use crate::backend::c;
 use crate::backend::conv::{
@@ -18,6 +22,8 @@ use crate::backend::conv::{
 };
 use crate::fd::{BorrowedFd, OwnedFd};
 use crate::io::{self, IoSlice, IoSliceMut};
+#[cfg(target_os = "linux")]
+use crate::net::xdp::SocketAddrXdp;
 use crate::net::{
     AddressFamily, Protocol, RecvAncillaryBuffer, RecvMsgReturn, SendAncillaryBuffer, Shutdown,
     SocketAddrAny, SocketAddrUnix, SocketAddrV4, SocketAddrV6, SocketFlags, SocketType,
@@ -129,7 +135,7 @@ pub(crate) fn socketpair(
 
 #[inline]
 pub(crate) fn accept(fd: BorrowedFd<'_>) -> io::Result<OwnedFd> {
-    #[cfg(not(target_arch = "x86"))]
+    #[cfg(not(any(target_arch = "x86", target_arch = "s390x")))]
     unsafe {
         let fd = ret_owned_fd(syscall_readonly!(__NR_accept, fd, zero(), zero()))?;
         Ok(fd)
@@ -142,6 +148,11 @@ pub(crate) fn accept(fd: BorrowedFd<'_>) -> io::Result<OwnedFd> {
             slice_just_addr::<ArgReg<'_, SocketArg>, _>(&[fd.into(), zero(), zero()])
         ))?;
         Ok(fd)
+    }
+    #[cfg(target_arch = "s390x")]
+    {
+        // accept is not available on s390x
+        accept_with(fd, SocketFlags::empty())
     }
 }
 
@@ -165,7 +176,7 @@ pub(crate) fn accept_with(fd: BorrowedFd<'_>, flags: SocketFlags) -> io::Result<
 
 #[inline]
 pub(crate) fn acceptfrom(fd: BorrowedFd<'_>) -> io::Result<(OwnedFd, Option<SocketAddrAny>)> {
-    #[cfg(not(target_arch = "x86"))]
+    #[cfg(not(any(target_arch = "x86", target_arch = "s390x")))]
     unsafe {
         let mut addrlen = core::mem::size_of::<sockaddr>() as socklen_t;
         let mut storage = MaybeUninit::<sockaddr>::uninit();
@@ -197,6 +208,11 @@ pub(crate) fn acceptfrom(fd: BorrowedFd<'_>) -> io::Result<(OwnedFd, Option<Sock
             fd,
             maybe_read_sockaddr_os(&storage.assume_init(), addrlen.try_into().unwrap()),
         ))
+    }
+    #[cfg(target_arch = "s390x")]
+    {
+        // accept is not available on s390x
+        acceptfrom_with(fd, SocketFlags::empty())
     }
 }
 
@@ -402,6 +418,37 @@ pub(crate) fn sendmsg_unix(
     })
 }
 
+#[cfg(target_os = "linux")]
+#[inline]
+pub(crate) fn sendmsg_xdp(
+    sockfd: BorrowedFd<'_>,
+    addr: &SocketAddrXdp,
+    iov: &[IoSlice<'_>],
+    control: &mut SendAncillaryBuffer<'_, '_, '_>,
+    msg_flags: SendFlags,
+) -> io::Result<usize> {
+    with_xdp_msghdr(addr, iov, control, |msghdr| {
+        #[cfg(not(target_arch = "x86"))]
+        let result =
+            unsafe { ret_usize(syscall!(__NR_sendmsg, sockfd, by_ref(&msghdr), msg_flags)) };
+
+        #[cfg(target_arch = "x86")]
+        let result = unsafe {
+            ret_usize(syscall!(
+                __NR_socketcall,
+                x86_sys(SYS_SENDMSG),
+                slice_just_addr::<ArgReg<'_, SocketArg>, _>(&[
+                    sockfd.into(),
+                    by_ref(&msghdr),
+                    msg_flags.into()
+                ])
+            ))
+        };
+
+        result
+    })
+}
+
 #[inline]
 pub(crate) fn shutdown(fd: BorrowedFd<'_>, how: Shutdown) -> io::Result<()> {
     #[cfg(not(target_arch = "x86"))]
@@ -431,6 +478,7 @@ pub(crate) fn send(fd: BorrowedFd<'_>, buf: &[u8], flags: SendFlags) -> io::Resu
         target_arch = "mips64",
         target_arch = "mips64r6",
         target_arch = "riscv64",
+        target_arch = "s390x",
         target_arch = "x86",
         target_arch = "x86_64",
     )))]
@@ -442,6 +490,7 @@ pub(crate) fn send(fd: BorrowedFd<'_>, buf: &[u8], flags: SendFlags) -> io::Resu
         target_arch = "mips64",
         target_arch = "mips64r6",
         target_arch = "riscv64",
+        target_arch = "s390x",
         target_arch = "x86_64",
     ))]
     unsafe {
@@ -584,6 +633,45 @@ pub(crate) fn sendto_unix(
     }
 }
 
+#[cfg(target_os = "linux")]
+#[inline]
+pub(crate) fn sendto_xdp(
+    fd: BorrowedFd<'_>,
+    buf: &[u8],
+    flags: SendFlags,
+    addr: &SocketAddrXdp,
+) -> io::Result<usize> {
+    let (buf_addr, buf_len) = slice(buf);
+
+    #[cfg(not(target_arch = "x86"))]
+    unsafe {
+        ret_usize(syscall_readonly!(
+            __NR_sendto,
+            fd,
+            buf_addr,
+            buf_len,
+            flags,
+            by_ref(&encode_sockaddr_xdp(addr)),
+            size_of::<c::sockaddr_xdp, _>()
+        ))
+    }
+    #[cfg(target_arch = "x86")]
+    unsafe {
+        ret_usize(syscall_readonly!(
+            __NR_socketcall,
+            x86_sys(SYS_SENDTO),
+            slice_just_addr::<ArgReg<'_, SocketArg>, _>(&[
+                fd.into(),
+                buf_addr,
+                buf_len,
+                flags.into(),
+                by_ref(&encode_sockaddr_xdp(addr)),
+                size_of::<c::sockaddr_xdp, _>(),
+            ])
+        ))
+    }
+}
+
 #[inline]
 pub(crate) unsafe fn recv(
     fd: BorrowedFd<'_>,
@@ -596,6 +684,7 @@ pub(crate) unsafe fn recv(
         target_arch = "mips64",
         target_arch = "mips64r6",
         target_arch = "riscv64",
+        target_arch = "s390x",
         target_arch = "x86",
         target_arch = "x86_64",
     )))]
@@ -607,6 +696,7 @@ pub(crate) unsafe fn recv(
         target_arch = "mips64",
         target_arch = "mips64r6",
         target_arch = "riscv64",
+        target_arch = "s390x",
         target_arch = "x86_64",
     ))]
     {
@@ -824,6 +914,32 @@ pub(crate) fn bind_unix(fd: BorrowedFd<'_>, addr: &SocketAddrUnix) -> io::Result
                 fd.into(),
                 by_ref(&addr.unix),
                 socklen_t(addr.addr_len()),
+            ])
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[inline]
+pub(crate) fn bind_xdp(fd: BorrowedFd<'_>, addr: &SocketAddrXdp) -> io::Result<()> {
+    #[cfg(not(target_arch = "x86"))]
+    unsafe {
+        ret(syscall_readonly!(
+            __NR_bind,
+            fd,
+            by_ref(&encode_sockaddr_xdp(addr)),
+            size_of::<c::sockaddr_xdp, _>()
+        ))
+    }
+    #[cfg(target_arch = "x86")]
+    unsafe {
+        ret(syscall_readonly!(
+            __NR_socketcall,
+            x86_sys(SYS_BIND),
+            slice_just_addr::<ArgReg<'_, SocketArg>, _>(&[
+                fd.into(),
+                by_ref(&encode_sockaddr_xdp(addr)),
+                size_of::<c::sockaddr_xdp, _>(),
             ])
         ))
     }

@@ -7,11 +7,15 @@
   ### DO NOT edit it by hand.                                       ###
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
+CXXFLAGS += CONFIG["MOZ_PIPEWIRE_CFLAGS"]
+if not CONFIG["MOZ_SYSTEM_PIPEWIRE"]:
+    LOCAL_INCLUDES += [ "/third_party/pipewire/" ]
 
 COMPILE_FLAGS["OS_INCLUDES"] = []
 AllowCompilerWarnings()
 
 DEFINES["ABSL_ALLOCATOR_NOTHROW"] = "1"
+DEFINES["PROTOBUF_ENABLE_DEBUG_LOGGING_MAY_LEAK_PII"] = "0"
 DEFINES["RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY"] = True
 DEFINES["RTC_ENABLE_VP9"] = True
 DEFINES["WEBRTC_ENABLE_PROTOBUF"] = "0"
@@ -27,8 +31,8 @@ LOCAL_INCLUDES += [
     "!/ipc/ipdl/_ipdlheaders",
     "!/third_party/libwebrtc/gen",
     "/ipc/chromium/src",
+    "/third_party/abseil-cpp/",
     "/third_party/libwebrtc/",
-    "/third_party/libwebrtc/third_party/abseil-cpp/",
     "/tools/profiler/public"
 ]
 
@@ -53,7 +57,6 @@ if CONFIG["OS_TARGET"] == "Android":
     DEFINES["HAVE_SYS_UIO_H"] = True
     DEFINES["WEBRTC_ANDROID"] = True
     DEFINES["WEBRTC_ANDROID_OPENSLES"] = True
-    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_GNU_SOURCE"] = True
@@ -80,7 +83,6 @@ if CONFIG["OS_TARGET"] == "Linux":
     DEFINES["USE_NSS_CERTS"] = "1"
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_UDEV"] = True
-    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
@@ -106,7 +108,6 @@ if CONFIG["OS_TARGET"] == "OpenBSD":
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_X11"] = "1"
     DEFINES["WEBRTC_BSD"] = True
-    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
     DEFINES["_LARGEFILE64_SOURCE"] = True
@@ -185,6 +186,10 @@ if CONFIG["TARGET_CPU"] == "arm":
     DEFINES["WEBRTC_ARCH_ARM_V7"] = True
     DEFINES["WEBRTC_HAS_NEON"] = True
 
+if CONFIG["TARGET_CPU"] == "loongarch64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
 if CONFIG["TARGET_CPU"] == "mips32":
 
     DEFINES["MIPS32_LE"] = True
@@ -194,12 +199,7 @@ if CONFIG["TARGET_CPU"] == "mips32":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [
@@ -216,12 +216,7 @@ if CONFIG["TARGET_CPU"] == "mips64":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [
@@ -282,12 +277,7 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [
@@ -304,12 +294,7 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "arm":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [
@@ -330,12 +315,7 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [
@@ -352,12 +332,7 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86_64":
 
     LOCAL_INCLUDES += [
         "/gfx/angle/checkout/include/",
-        "/third_party/drm/drm/",
-        "/third_party/drm/drm/include/",
-        "/third_party/drm/drm/include/libdrm/",
-        "/third_party/gbm/gbm/",
-        "/third_party/libepoxy/libepoxy/include/",
-        "/third_party/pipewire/"
+        "/third_party/libepoxy/libepoxy/include/"
     ]
 
     UNIFIED_SOURCES += [

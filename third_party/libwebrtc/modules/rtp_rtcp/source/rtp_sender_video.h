@@ -11,28 +11,31 @@
 #ifndef MODULES_RTP_RTCP_SOURCE_RTP_SENDER_VIDEO_H_
 #define MODULES_RTP_RTCP_SOURCE_RTP_SENDER_VIDEO_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/environment/environment.h"
 #include "api/frame_transformer_interface.h"
 #include "api/scoped_refptr.h"
-#include "api/sequence_checker.h"
-#include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "api/transport/rtp/dependency_descriptor.h"
+#include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
+#include "api/video/color_space.h"
+#include "api/video/encoded_image.h"
 #include "api/video/video_codec_type.h"
-#include "api/video/video_frame_type.h"
 #include "api/video/video_layers_allocation.h"
+#include "api/video/video_rotation.h"
+#include "api/video/video_timing.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/absolute_capture_time_sender.h"
 #include "modules/rtp_rtcp/source/active_decode_targets_helper.h"
-#include "modules/rtp_rtcp/source/rtp_rtcp_config.h"
 #include "modules/rtp_rtcp/source/rtp_sender.h"
 #include "modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h"
 #include "modules/rtp_rtcp/source/rtp_video_header.h"
@@ -43,6 +46,7 @@
 #include "rtc_base/race_checker.h"
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
+#include "system_wrappers/include/clock.h"
 
 namespace webrtc {
 
@@ -77,12 +81,12 @@ class RTPSenderVideo : public RTPVideoFrameSenderInterface {
     RTPSender* rtp_sender = nullptr;
     // Some FEC data is duplicated here in preparation of moving FEC to
     // the egress stage.
-    absl::optional<VideoFecGenerator::FecType> fec_type;
+    std::optional<VideoFecGenerator::FecType> fec_type;
     size_t fec_overhead_bytes = 0;  // Per packet max FEC overhead.
     FrameEncryptorInterface* frame_encryptor = nullptr;
     bool require_frame_encryption = false;
     bool enable_retransmit_all_layers = false;
-    absl::optional<int> red_payload_type;
+    std::optional<int> red_payload_type;
     const FieldTrialsView* field_trials = nullptr;
     rtc::scoped_refptr<FrameTransformerInterface> frame_transformer;
     TaskQueueFactory* task_queue_factory = nullptr;
@@ -98,7 +102,7 @@ class RTPSenderVideo : public RTPVideoFrameSenderInterface {
   // video encoder, excluding any additional overhead.
   // Calls to this method are assumed to be externally serialized.
   bool SendVideo(int payload_type,
-                 absl::optional<VideoCodecType> codec_type,
+                 std::optional<VideoCodecType> codec_type,
                  uint32_t rtp_timestamp,
                  Timestamp capture_time,
                  rtc::ArrayView<const uint8_t> payload,
@@ -108,7 +112,7 @@ class RTPSenderVideo : public RTPVideoFrameSenderInterface {
                  std::vector<uint32_t> csrcs) override;
 
   bool SendEncodedImage(int payload_type,
-                        absl::optional<VideoCodecType> codec_type,
+                        std::optional<VideoCodecType> codec_type,
                         uint32_t rtp_timestamp,
                         const EncodedImage& encoded_image,
                         RTPVideoHeader video_header,
@@ -199,32 +203,32 @@ class RTPSenderVideo : public RTPVideoFrameSenderInterface {
   rtc::RaceChecker send_checker_;
   int32_t retransmission_settings_ RTC_GUARDED_BY(send_checker_);
   VideoRotation last_rotation_ RTC_GUARDED_BY(send_checker_);
-  absl::optional<ColorSpace> last_color_space_ RTC_GUARDED_BY(send_checker_);
+  std::optional<ColorSpace> last_color_space_ RTC_GUARDED_BY(send_checker_);
   bool transmit_color_space_next_frame_ RTC_GUARDED_BY(send_checker_);
   std::unique_ptr<FrameDependencyStructure> video_structure_
       RTC_GUARDED_BY(send_checker_);
-  absl::optional<VideoLayersAllocation> allocation_
+  std::optional<VideoLayersAllocation> allocation_
       RTC_GUARDED_BY(send_checker_);
   // Flag indicating if we should send `allocation_`.
   SendVideoLayersAllocation send_allocation_ RTC_GUARDED_BY(send_checker_);
-  absl::optional<VideoLayersAllocation> last_full_sent_allocation_
+  std::optional<VideoLayersAllocation> last_full_sent_allocation_
       RTC_GUARDED_BY(send_checker_);
 
   // Current target playout delay.
-  absl::optional<VideoPlayoutDelay> current_playout_delay_
+  std::optional<VideoPlayoutDelay> current_playout_delay_
       RTC_GUARDED_BY(send_checker_);
   // Flag indicating if we need to send `current_playout_delay_` in order
   // to guarantee it gets delivered.
   bool playout_delay_pending_;
   // Set by the field trial WebRTC-ForceSendPlayoutDelay to override the playout
   // delay of outgoing video frames.
-  const absl::optional<VideoPlayoutDelay> forced_playout_delay_;
+  const std::optional<VideoPlayoutDelay> forced_playout_delay_;
 
   // Should never be held when calling out of this class.
   Mutex mutex_;
 
-  const absl::optional<int> red_payload_type_;
-  absl::optional<VideoFecGenerator::FecType> fec_type_;
+  const std::optional<int> red_payload_type_;
+  std::optional<VideoFecGenerator::FecType> fec_type_;
   const size_t fec_overhead_bytes_;  // Per packet max FEC overhead.
 
   mutable Mutex stats_mutex_;

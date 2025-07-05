@@ -13,21 +13,21 @@
 #include <string.h>
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
-#include "absl/types/optional.h"
 #include "api/audio_codecs/audio_format.h"
 #include "api/rtp_headers.h"
 #include "modules/audio_coding/include/audio_coding_module_typedefs.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/absolute_capture_time_sender.h"
 #include "modules/rtp_rtcp/source/byte_io.h"
+#include "modules/rtp_rtcp/source/ntp_time_util.h"
 #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "modules/rtp_rtcp/source/rtp_packet.h"
 #include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
-#include "modules/rtp_rtcp/source/time_util.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
@@ -47,8 +47,8 @@ RTPSenderAudio::~RTPSenderAudio() {}
 int32_t RTPSenderAudio::RegisterAudioPayload(absl::string_view payload_name,
                                              const int8_t payload_type,
                                              const uint32_t frequency,
-                                             const size_t channels,
-                                             const uint32_t rate) {
+                                             const size_t /* channels */,
+                                             const uint32_t /* rate */) {
   if (absl::EqualsIgnoreCase(payload_name, "cn")) {
     MutexLock lock(&send_audio_mutex_);
     //  we can have multiple CNG payload types
@@ -77,7 +77,7 @@ int32_t RTPSenderAudio::RegisterAudioPayload(absl::string_view payload_name,
     return 0;
   } else if (payload_name == "audio") {
     MutexLock lock(&send_audio_mutex_);
-    encoder_rtp_timestamp_frequency_ = rtc::dchecked_cast<int>(frequency);
+    encoder_rtp_timestamp_frequency_ = dchecked_cast<int>(frequency);
     return 0;
   }
   return 0;
@@ -137,7 +137,7 @@ bool RTPSenderAudio::SendAudio(const RtpAudioFrame& frame) {
   // updates, with a value of 50 ms RECOMMENDED.
   constexpr int kDtmfIntervalTimeMs = 50;
   uint32_t dtmf_payload_freq = 0;
-  absl::optional<AbsoluteCaptureTime> absolute_capture_time;
+  std::optional<AbsoluteCaptureTime> absolute_capture_time;
   {
     MutexLock lock(&send_audio_mutex_);
     dtmf_payload_freq = dtmf_payload_freq_;
@@ -244,8 +244,8 @@ bool RTPSenderAudio::SendAudio(const RtpAudioFrame& frame) {
   packet->set_capture_time(clock_->CurrentTime());
   // Set audio level extension, if included.
   packet->SetExtension<AudioLevelExtension>(
-      frame.type == AudioFrameType::kAudioFrameSpeech,
-      frame.audio_level_dbov.value_or(127));
+      AudioLevel(frame.type == AudioFrameType::kAudioFrameSpeech,
+                 frame.audio_level_dbov.value_or(127)));
 
   if (absolute_capture_time.has_value()) {
     // It also checks that extension was registered during SDP negotiation. If

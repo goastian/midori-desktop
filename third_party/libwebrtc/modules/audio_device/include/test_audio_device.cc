@@ -287,7 +287,9 @@ class DiscardRenderer final : public TestAudioDeviceModule::Renderer {
 
   int NumChannels() const override { return num_channels_; }
 
-  bool Render(rtc::ArrayView<const int16_t> data) override { return true; }
+  bool Render(rtc::ArrayView<const int16_t> /* data */) override {
+    return true;
+  }
 
  private:
   int sampling_frequency_in_hz_;
@@ -499,7 +501,7 @@ TestAudioDeviceModule::CreateWavFileReader(absl::string_view filename,
                                            bool repeat) {
   WavReader reader(filename);
   int sampling_frequency_in_hz = reader.sample_rate();
-  int num_channels = rtc::checked_cast<int>(reader.num_channels());
+  int num_channels = checked_cast<int>(reader.num_channels());
   return std::make_unique<WavFileReader>(filename, sampling_frequency_in_hz,
                                          num_channels, repeat);
 }

@@ -14,18 +14,39 @@ edition = "2021"
 name = "error-support"
 version = "0.1.0"
 authors = ["Thom Chiovoloni <tchiovoloni@mozilla.com>"]
+build = false
 exclude = ["/android"]
+autolib = false
+autobins = false
+autoexamples = false
 autotests = false
+autobenches = false
 readme = "README.md"
 license = "MPL-2.0"
 
-[dependencies]
-log = "0.4"
-uniffi = "0.27.1"
+[features]
+backtrace = ["dep:backtrace"]
+testing = ["tracing-support/testing"]
+tracing-logging = [
+    "dep:tracing",
+    "dep:tracing-support",
+]
+tracing-reporting = [
+    "dep:tracing",
+    "dep:tracing-support",
+]
+
+[lib]
+name = "error_support"
+path = "src/lib.rs"
 
 [dependencies.backtrace]
 version = "0.3"
 optional = true
+
+[dependencies.env_logger]
+version = "0.10"
+default-features = false
 
 [dependencies.error-support-macros]
 path = "macros"
@@ -33,9 +54,23 @@ path = "macros"
 [dependencies.lazy_static]
 version = "1.4"
 
+[dependencies.log]
+version = "0.4"
+
 [dependencies.parking_lot]
 version = ">=0.11,<=0.12"
 
+[dependencies.tracing]
+version = "0.1"
+optional = true
+
+[dependencies.tracing-support]
+path = "../tracing"
+optional = true
+
+[dependencies.uniffi]
+version = "0.29.0"
+
 [build-dependencies.uniffi]
-version = "0.27.1"
+version = "0.29.0"
 features = ["build"]

@@ -44,7 +44,7 @@ rtc_static_library("ns") {
 
   defines = []
   if (rtc_build_with_neon && target_cpu != "arm64") {
-    suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+    suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
     cflags = [ "-mfpu=neon" ]
   }
 
@@ -64,7 +64,6 @@ rtc_static_library("ns") {
     "../../../system_wrappers:metrics",
     "../utility:cascaded_biquad_filter",
   ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
 if (rtc_include_tests) {
@@ -89,7 +88,6 @@ if (rtc_include_tests) {
       "../../../test:test_support",
       "../utility:cascaded_biquad_filter",
     ]
-    absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 
     defines = []
 

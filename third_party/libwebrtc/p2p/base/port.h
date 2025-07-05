@@ -17,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -25,7 +26,6 @@
 
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/candidate.h"
 #include "api/field_trials_view.h"
 #include "api/packet_socket_factory.h"
@@ -53,7 +53,6 @@
 #include "rtc_base/network.h"
 #include "rtc_base/network/received_packet.h"
 #include "rtc_base/network/sent_packet.h"
-#include "rtc_base/proxy_info.h"
 #include "rtc_base/rate_tracker.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/system/rtc_export.h"
@@ -103,7 +102,7 @@ class CandidateStats {
   CandidateStats(const CandidateStats&) = default;
   CandidateStats(CandidateStats&&) = default;
   CandidateStats(Candidate candidate,
-                 absl::optional<StunStats> stats = absl::nullopt)
+                 std::optional<StunStats> stats = std::nullopt)
       : candidate_(std::move(candidate)), stun_stats_(std::move(stats)) {}
   ~CandidateStats() = default;
 
@@ -111,20 +110,18 @@ class CandidateStats {
 
   const Candidate& candidate() const { return candidate_; }
 
-  const absl::optional<StunStats>& stun_stats() const { return stun_stats_; }
+  const std::optional<StunStats>& stun_stats() const { return stun_stats_; }
 
  private:
   Candidate candidate_;
   // STUN port stats if this candidate is a STUN candidate.
-  absl::optional<StunStats> stun_stats_;
+  std::optional<StunStats> stun_stats_;
 };
 
 typedef std::vector<CandidateStats> CandidateStatsList;
 
 const char* ProtoToString(ProtocolType proto);
-absl::optional<ProtocolType> StringToProto(absl::string_view proto_name);
-webrtc::IceCandidateType PortTypeToIceCandidateType(
-    const absl::string_view type);
+std::optional<ProtocolType> StringToProto(absl::string_view proto_name);
 
 struct ProtocolAddress {
   rtc::SocketAddress address;
@@ -173,24 +170,25 @@ typedef std::set<rtc::SocketAddress> ServerAddresses;
 // connections to similar mechanisms of the other client.  Subclasses of this
 // one add support for specific mechanisms like local UDP ports.
 class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
+ public:
+  // A struct containing common arguments to creating a port. See also
+  // CreateRelayPortArgs.
+  struct PortParametersRef {
+    webrtc::TaskQueueBase* network_thread;
+    rtc::PacketSocketFactory* socket_factory;
+    const rtc::Network* network;
+    absl::string_view ice_username_fragment;
+    absl::string_view ice_password;
+    const webrtc::FieldTrialsView* field_trials;
+  };
+
  protected:
   // Constructors for use only by via constructors in derived classes.
-  Port(webrtc::TaskQueueBase* thread,
+  Port(const PortParametersRef& args, webrtc::IceCandidateType type);
+  Port(const PortParametersRef& args,
        webrtc::IceCandidateType type,
-       rtc::PacketSocketFactory* factory,
-       const rtc::Network* network,
-       absl::string_view username_fragment,
-       absl::string_view password,
-       const webrtc::FieldTrialsView* field_trials = nullptr);
-  Port(webrtc::TaskQueueBase* thread,
-       webrtc::IceCandidateType type,
-       rtc::PacketSocketFactory* factory,
-       const rtc::Network* network,
        uint16_t min_port,
        uint16_t max_port,
-       absl::string_view username_fragment,
-       absl::string_view password,
-       const webrtc::FieldTrialsView* field_trials = nullptr,
        bool shared_socket = false);
 
  public:
@@ -325,13 +323,6 @@ class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
       const rtc::SocketAddress& addr,
       const std::vector<uint16_t>& unknown_types);
 
-  void set_proxy(absl::string_view user_agent, const rtc::ProxyInfo& proxy) {
-    user_agent_ = std::string(user_agent);
-    proxy_ = proxy;
-  }
-  const std::string& user_agent() override { return user_agent_; }
-  const rtc::ProxyInfo& proxy() override { return proxy_; }
-
   void EnablePortPackets() override;
 
   // Called if the port has no connections and is no longer useful.
@@ -372,7 +363,7 @@ class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
 
   int16_t network_cost() const override { return network_cost_; }
 
-  void GetStunStats(absl::optional<StunStats>* stats) override {}
+  void GetStunStats(std::optional<StunStats>* /* stats */) override {}
 
  protected:
   void UpdateNetworkCost() override;
@@ -436,7 +427,7 @@ class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
   rtc::DiffServCodePoint StunDscpValue() const override;
 
   // Extra work to be done in subclasses when a connection is destroyed.
-  virtual void HandleConnectionDestroyed(Connection* conn) {}
+  virtual void HandleConnectionDestroyed(Connection* /* conn */) {}
 
   void DestroyAllConnections();
 
@@ -501,9 +492,6 @@ class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
   IceRole ice_role_;
   uint64_t tiebreaker_;
   bool shared_socket_;
-  // Information to use when going through a proxy.
-  std::string user_agent_;
-  rtc::ProxyInfo proxy_;
 
   // A virtual cost perceived by the user, usually based on the network type
   // (WiFi. vs. Cellular). It takes precedence over the priority when

@@ -78,7 +78,7 @@ fn check_client_preinfo(client_preinfo: &SecretAgentPreInfo) {
     assert_eq!(client_preinfo.cipher_suite(), None);
     assert!(!client_preinfo.early_data());
     assert_eq!(client_preinfo.early_data_cipher(), None);
-    assert_eq!(client_preinfo.max_early_data(), 0);
+    assert_eq!(client_preinfo.max_early_data(), Ok(0));
     assert_eq!(client_preinfo.alpn(), None);
 }
 
@@ -87,7 +87,7 @@ fn check_server_preinfo(server_preinfo: &SecretAgentPreInfo) {
     assert_eq!(server_preinfo.cipher_suite(), Some(TLS_AES_128_GCM_SHA256));
     assert!(!server_preinfo.early_data());
     assert_eq!(server_preinfo.early_data_cipher(), None);
-    assert_eq!(server_preinfo.max_early_data(), 0);
+    assert_eq!(server_preinfo.max_early_data(), Ok(0));
     assert_eq!(server_preinfo.alpn(), None);
 }
 
@@ -129,8 +129,8 @@ fn raw() {
     assert!(server.state().is_connected());
 
     // The client should have one certificate for the server.
-    let mut certs = client.peer_certificate().unwrap();
-    assert_eq!(1, certs.count());
+    let certs = client.peer_certificate().unwrap();
+    assert_eq!(1, certs.into_iter().count());
 
     // The server shouldn't have a client certificate.
     assert!(server.peer_certificate().is_none());

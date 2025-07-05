@@ -323,6 +323,9 @@ pub enum MINIDUMP_STREAM_TYPE {
 
     /// The contents of /proc/self/limits from a Linux system
     MozLinuxLimits = 0x4d7a0003,
+
+    /// Soft errors reported during minidump generation
+    MozSoftErrors = 0x4d7a0004,
 }
 
 impl From<MINIDUMP_STREAM_TYPE> for u32 {
@@ -470,7 +473,7 @@ pub struct CV_INFO_PDB20 {
     pub pdb_file_name: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB20 {
+impl scroll::ctx::TryFromCtx<'_, Endian> for CV_INFO_PDB20 {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
@@ -506,7 +509,7 @@ pub struct CV_INFO_PDB70 {
     pub pdb_file_name: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for CV_INFO_PDB70 {
+impl scroll::ctx::TryFromCtx<'_, Endian> for CV_INFO_PDB70 {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {
@@ -1673,24 +1676,24 @@ multi_structs! {
 /// grafted onto Microsoft's own formats. Here's what's important to know:
 ///
 /// * The "Cpu Context" and the "XSAVE context" are in fact the same regions
-/// of memory.
+///   of memory.
 ///
 /// * Whether XSTATE is present or not, the classic layouts of CONTEXT_X86
-/// and [`CONTEXT_AMD64`] both apply -- xstate will only add stuff after *or*
-/// refine your understanding of memory in the existing layout. So you can
-/// safely ignore the existence of XSTATE, but you might be missing new info.
+///   and [`CONTEXT_AMD64`] both apply -- xstate will only add stuff after *or*
+///   refine your understanding of memory in the existing layout. So you can
+///   safely ignore the existence of XSTATE, but you might be missing new info.
 ///
 /// * AMD64 doesn't have a standard way to save general purpose registers,
-/// so the first 256 bytes of [`CONTEXT_AMD64`] are just however microsoft
-/// decided to save the registers, and will not be referred to by the XSTATE.
+///   so the first 256 bytes of [`CONTEXT_AMD64`] are just however microsoft
+///   decided to save the registers, and will not be referred to by the XSTATE.
 ///
 /// **!!! THIS PART IS IMPORTANT !!!**
 ///
 /// * As a consequence, all [`XSTATE_FEATURE::offset`] values must have 256
-/// added to them to get the correct offset for that feature! For example, the
-/// LEGACY_FLOATING_POINT feature should always have an offset of 0, but it
-/// is actually at offset 256 in [`CONTEXT_AMD64`] (it corresponds to
-/// [`CONTEXT_AMD64::float_save`]).
+///   added to them to get the correct offset for that feature! For example, the
+///   LEGACY_FLOATING_POINT feature should always have an offset of 0, but it
+///   is actually at offset 256 in [`CONTEXT_AMD64`] (it corresponds to
+///   [`CONTEXT_AMD64::float_save`]).
 ///
 /// * The following features are already contained inside of [`CONTEXT_AMD64`]:
 ///    * LEGACY_FLOATING_POINT
@@ -1698,12 +1701,12 @@ multi_structs! {
 ///    * GSSE_AND_AVX
 ///
 /// * If there are XSTATE entries that *actually* map outside of the context's
-/// normal memory range, then the context's [`context_flags`](`CONTEXT_AMD64::context_flags`)
-/// will have bit 0x40 set ([`CONTEXT_HAS_XSTATE`]).
+///   normal memory range, then the context's [`context_flags`](`CONTEXT_AMD64::context_flags`)
+///   will have bit 0x40 set ([`CONTEXT_HAS_XSTATE`]).
 ///
 /// * [`ContextFlagsCpu::from_flags`] will mask out the [`CONTEXT_HAS_XSTATE`] bit.
-/// If you want to check for that bit, check the raw value of
-/// [`context_flags`](`CONTEXT_AMD64::context_flags`).
+///   If you want to check for that bit, check the raw value of
+///   [`context_flags`](`CONTEXT_AMD64::context_flags`).
 
 #[derive(Debug, Clone, Pread, Pwrite, SizeWith)]
 pub struct XSTATE_CONFIG_FEATURE_MSC_INFO {
@@ -1742,7 +1745,7 @@ pub struct XstateFeatureIter<'a> {
     idx: usize,
 }
 
-impl<'a> Iterator for XstateFeatureIter<'a> {
+impl Iterator for XstateFeatureIter<'_> {
     type Item = (usize, XSTATE_FEATURE);
     fn next(&mut self) -> Option<Self::Item> {
         while self.idx < self.info.features.len() {
@@ -2055,7 +2058,7 @@ pub struct MINIDUMP_UTF8_STRING {
     pub buffer: Vec<u8>,
 }
 
-impl<'a> scroll::ctx::TryFromCtx<'a, Endian> for MINIDUMP_UTF8_STRING {
+impl scroll::ctx::TryFromCtx<'_, Endian> for MINIDUMP_UTF8_STRING {
     type Error = scroll::Error;
 
     fn try_from_ctx(src: &[u8], endian: Endian) -> Result<(Self, usize), Self::Error> {

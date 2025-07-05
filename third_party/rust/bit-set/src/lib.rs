@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! # Description
+//!
 //! An implementation of a set using a bit vector as an underlying
 //! representation for holding unsigned numerical elements.
 //!
@@ -46,17 +48,15 @@
 //! let bv = s.into_bit_vec();
 //! assert!(bv[3]);
 //! ```
-
+#![doc(html_root_url = "https://docs.rs/bit-set/0.8.0")]
 #![no_std]
-#![cfg_attr(all(test, feature = "nightly"), feature(test))]
-extern crate bit_vec;
-#[cfg(all(test, feature = "nightly"))]
-extern crate rand;
-#[cfg(all(test, feature = "nightly"))]
-extern crate test;
 
-#[cfg(test)]
-#[macro_use]
+extern crate bit_vec;
+
+#[cfg(feature = "serde")]
+extern crate serde;
+
+#[cfg(any(test, feature = "std"))]
 extern crate std;
 
 use bit_vec::{BitBlock, BitVec, Blocks};
@@ -85,6 +85,7 @@ fn blocks_for_bits<B: BitBlock>(bits: usize) -> usize {
     }
 }
 
+#[allow(clippy::iter_skip_zero)]
 // Take two BitVec's, and return iterators of their words, where the shorter one
 // has been padded with 0's
 fn match_words<'a, 'b, B: BitBlock>(
@@ -116,6 +117,7 @@ fn match_words<'a, 'b, B: BitBlock>(
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct BitSet<B = u32> {
     bit_vec: BitVec<B>,
 }
@@ -161,7 +163,7 @@ impl<B: BitBlock> Extend<usize> for BitSet<B> {
 impl<B: BitBlock> PartialOrd for BitSet<B> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.iter().partial_cmp(other)
+        Some(self.cmp(other))
     }
 }
 
@@ -338,15 +340,40 @@ impl<B: BitBlock> BitSet<B> {
     /// ```
     /// use bit_set::BitSet;
     ///
-    /// let mut s = BitSet::new();
-    /// s.insert(0);
+    /// let mut set = BitSet::new();
+    /// set.insert(0);
     ///
-    /// let bv = s.get_ref();
+    /// let bv = set.get_ref();
     /// assert_eq!(bv[0], true);
     /// ```
     #[inline]
     pub fn get_ref(&self) -> &BitVec<B> {
         &self.bit_vec
+    }
+
+    /// Returns a mutable reference to the underlying bit vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bit_set::BitSet;
+    ///
+    /// let mut set = BitSet::new();
+    /// set.insert(0);
+    /// set.insert(3);
+    ///
+    /// {
+    ///     let bv = set.get_mut();
+    ///     bv.set(1, true);
+    /// }
+    ///
+    /// assert!(set.contains(0));
+    /// assert!(set.contains(1));
+    /// assert!(set.contains(3));
+    /// ```
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut BitVec<B> {
+        &mut self.bit_vec
     }
 
     #[inline]
@@ -390,11 +417,12 @@ impl<B: BitBlock> BitSet<B> {
     /// use bit_set::BitSet;
     ///
     /// let mut s = BitSet::new();
-    /// s.insert(32183231);
-    /// s.remove(32183231);
+    /// s.insert(3231);
+    /// s.remove(3231);
     ///
     /// // Internal storage will probably be bigger than necessary
     /// println!("old capacity: {}", s.capacity());
+    /// assert!(s.capacity() >= 3231);
     ///
     /// // Now should be smaller
     /// s.shrink_to_fit();
@@ -417,8 +445,8 @@ impl<B: BitBlock> BitSet<B> {
         unsafe {
             bit_vec.storage_mut().truncate(trunc_len);
             bit_vec.set_len(trunc_len * B::bits());
-            bit_vec.shrink_to_fit();
         }
+        bit_vec.shrink_to_fit();
     }
 
     /// Iterator over each usize stored in the `BitSet`.
@@ -441,7 +469,7 @@ impl<B: BitBlock> BitSet<B> {
     }
 
     /// Iterator over each usize stored in `self` union `other`.
-    /// See [union_with](#method.union_with) for an efficient in-place version.
+    /// See [`union_with`] for an efficient in-place version.
     ///
     /// # Examples
     ///
@@ -456,6 +484,8 @@ impl<B: BitBlock> BitSet<B> {
     ///     println!("{}", x);
     /// }
     /// ```
+    ///
+    /// [`union_with`]: Self::union_with
     #[inline]
     pub fn union<'a>(&'a self, other: &'a Self) -> Union<'a, B> {
         fn or<B: BitBlock>(w1: B, w2: B) -> B {
@@ -470,7 +500,7 @@ impl<B: BitBlock> BitSet<B> {
     }
 
     /// Iterator over each usize stored in `self` intersect `other`.
-    /// See [intersect_with](#method.intersect_with) for an efficient in-place version.
+    /// See [`intersect_with`] for an efficient in-place version.
     ///
     /// # Examples
     ///
@@ -485,6 +515,8 @@ impl<B: BitBlock> BitSet<B> {
     ///     println!("{}", x);
     /// }
     /// ```
+    ///
+    /// [`intersect_with`]: Self::intersect_with
     #[inline]
     pub fn intersection<'a>(&'a self, other: &'a Self) -> Intersection<'a, B> {
         fn bitand<B: BitBlock>(w1: B, w2: B) -> B {
@@ -492,18 +524,18 @@ impl<B: BitBlock> BitSet<B> {
         }
         let min = cmp::min(self.bit_vec.len(), other.bit_vec.len());
 
-        Intersection(
-            BlockIter::from_blocks(TwoBitPositions {
+        Intersection {
+            iter: BlockIter::from_blocks(TwoBitPositions {
                 set: self.bit_vec.blocks(),
                 other: other.bit_vec.blocks(),
                 merge: bitand,
-            })
-            .take(min),
-        )
+            }),
+            n: min,
+        }
     }
 
     /// Iterator over each usize stored in the `self` setminus `other`.
-    /// See [difference_with](#method.difference_with) for an efficient in-place version.
+    /// See [`difference_with`] for an efficient in-place version.
     ///
     /// # Examples
     ///
@@ -525,6 +557,8 @@ impl<B: BitBlock> BitSet<B> {
     ///     println!("{}", x);
     /// }
     /// ```
+    ///
+    /// [`difference_with`]: Self::difference_with
     #[inline]
     pub fn difference<'a>(&'a self, other: &'a Self) -> Difference<'a, B> {
         fn diff<B: BitBlock>(w1: B, w2: B) -> B {
@@ -539,8 +573,7 @@ impl<B: BitBlock> BitSet<B> {
     }
 
     /// Iterator over each usize stored in the symmetric difference of `self` and `other`.
-    /// See [symmetric_difference_with](#method.symmetric_difference_with) for
-    /// an efficient in-place version.
+    /// See [`symmetric_difference_with`] for an efficient in-place version.
     ///
     /// # Examples
     ///
@@ -555,6 +588,8 @@ impl<B: BitBlock> BitSet<B> {
     ///     println!("{}", x);
     /// }
     /// ```
+    ///
+    /// [`symmetric_difference_with`]: Self::symmetric_difference_with
     #[inline]
     pub fn symmetric_difference<'a>(&'a self, other: &'a Self) -> SymmetricDifference<'a, B> {
         fn bitxor<B: BitBlock>(w1: B, w2: B) -> B {
@@ -753,9 +788,7 @@ impl<B: BitBlock> BitSet<B> {
     /// Returns the number of set bits in this set.
     #[inline]
     pub fn len(&self) -> usize {
-        self.bit_vec
-            .blocks()
-            .fold(0, |acc, n| acc + n.count_ones() as usize)
+        self.bit_vec.blocks().fold(0, |acc, n| acc + n.count_ones())
     }
 
     /// Returns whether there are no bits set in this set
@@ -813,7 +846,7 @@ impl<B: BitBlock> BitSet<B> {
         // Ensure we have enough space to hold the new element
         let len = self.bit_vec.len();
         if value >= len {
-            self.bit_vec.grow(value - len + 1, false)
+            self.bit_vec.grow(value - len + 1, false);
         }
 
         self.bit_vec.set(value, true);
@@ -830,6 +863,11 @@ impl<B: BitBlock> BitSet<B> {
         self.bit_vec.set(value, false);
 
         true
+    }
+
+    /// Excludes `element` and all greater elements from the `BitSet`.
+    pub fn truncate(&mut self, element: usize) {
+        self.bit_vec.truncate(element);
     }
 }
 
@@ -882,13 +920,20 @@ pub struct Iter<'a, B: 'a>(BlockIter<Blocks<'a, B>, B>);
 #[derive(Clone)]
 pub struct Union<'a, B: 'a>(BlockIter<TwoBitPositions<'a, B>, B>);
 #[derive(Clone)]
-pub struct Intersection<'a, B: 'a>(Take<BlockIter<TwoBitPositions<'a, B>, B>>);
+pub struct Intersection<'a, B: 'a> {
+    iter: BlockIter<TwoBitPositions<'a, B>, B>,
+    // as an optimization, we compute the maximum possible
+    // number of elements in the intersection, and count it
+    // down as we return elements. If we reach zero, we can
+    // stop.
+    n: usize,
+}
 #[derive(Clone)]
 pub struct Difference<'a, B: 'a>(BlockIter<TwoBitPositions<'a, B>, B>);
 #[derive(Clone)]
 pub struct SymmetricDifference<'a, B: 'a>(BlockIter<TwoBitPositions<'a, B>, B>);
 
-impl<'a, T, B: BitBlock> Iterator for BlockIter<T, B>
+impl<T, B: BitBlock> Iterator for BlockIter<T, B>
 where
     T: Iterator<Item = B>,
 {
@@ -911,13 +956,17 @@ where
         // update block, removing the LSB
         self.head = self.head & (self.head - B::one());
         // return offset + (index of LSB)
-        Some(self.head_offset + (B::count_ones(k) as usize))
+        Some(self.head_offset + (B::count_ones(k)))
+    }
+
+    fn count(self) -> usize {
+        self.head.count_ones() + self.tail.map(|block| block.count_ones()).sum::<usize>()
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         match self.tail.size_hint() {
-            (_, Some(h)) => (0, Some(1 + h * B::bits())),
+            (_, Some(h)) => (0, Some((1 + h) * B::bits())),
             _ => (0, None),
         }
     }
@@ -960,6 +1009,10 @@ impl<'a, B: BitBlock> Iterator for Iter<'a, B> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.0.size_hint()
     }
+    #[inline]
+    fn count(self) -> usize {
+        self.0.count()
+    }
 }
 
 impl<'a, B: BitBlock> Iterator for Union<'a, B> {
@@ -973,6 +1026,10 @@ impl<'a, B: BitBlock> Iterator for Union<'a, B> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.0.size_hint()
     }
+    #[inline]
+    fn count(self) -> usize {
+        self.0.count()
+    }
 }
 
 impl<'a, B: BitBlock> Iterator for Intersection<'a, B> {
@@ -980,11 +1037,25 @@ impl<'a, B: BitBlock> Iterator for Intersection<'a, B> {
 
     #[inline]
     fn next(&mut self) -> Option<usize> {
-        self.0.next()
+        if self.n != 0 {
+            self.n -= 1;
+            self.iter.next()
+        } else {
+            None
+        }
     }
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        // We could invoke self.iter.size_hint() and incorporate that into the hint.
+        // In practice, that does not seem worthwhile because the lower bound will
+        // always be zero and the upper bound could only possibly less then n in a
+        // partially iterated iterator. However, it makes little sense ask for size_hint
+        // in a partially iterated iterator, so it did not seem worthwhile.
+        (0, Some(self.n))
+    }
+    #[inline]
+    fn count(self) -> usize {
+        self.iter.count()
     }
 }
 
@@ -999,6 +1070,10 @@ impl<'a, B: BitBlock> Iterator for Difference<'a, B> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.0.size_hint()
     }
+    #[inline]
+    fn count(self) -> usize {
+        self.0.count()
+    }
 }
 
 impl<'a, B: BitBlock> Iterator for SymmetricDifference<'a, B> {
@@ -1011,6 +1086,10 @@ impl<'a, B: BitBlock> Iterator for SymmetricDifference<'a, B> {
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.0.size_hint()
+    }
+    #[inline]
+    fn count(self) -> usize {
+        self.0.count()
     }
 }
 
@@ -1029,6 +1108,7 @@ mod tests {
     use bit_vec::BitVec;
     use std::cmp::Ordering::{Equal, Greater, Less};
     use std::vec::Vec;
+    use std::{format, vec};
 
     #[test]
     fn test_bit_set_show() {
@@ -1058,12 +1138,14 @@ mod tests {
 
         let idxs: Vec<_> = bit_vec.iter().collect();
         assert_eq!(idxs, [0, 2, 3]);
+        assert_eq!(bit_vec.iter().count(), 3);
 
         let long: BitSet = (0..10000).filter(|&n| n % 2 == 0).collect();
         let real: Vec<_> = (0..10000 / 2).map(|x| x * 2).collect();
 
         let idxs: Vec<_> = long.iter().collect();
         assert_eq!(idxs, real);
+        assert_eq!(long.iter().count(), real.len());
     }
 
     #[test]
@@ -1129,6 +1211,7 @@ mod tests {
         let expected = [3, 5, 11, 77];
         let actual: Vec<_> = a.intersection(&b).collect();
         assert_eq!(actual, expected);
+        assert_eq!(a.intersection(&b).count(), expected.len());
     }
 
     #[test]
@@ -1148,6 +1231,7 @@ mod tests {
         let expected = [1, 5, 500];
         let actual: Vec<_> = a.difference(&b).collect();
         assert_eq!(actual, expected);
+        assert_eq!(a.difference(&b).count(), expected.len());
     }
 
     #[test]
@@ -1169,6 +1253,7 @@ mod tests {
         let expected = [1, 5, 11, 14, 220];
         let actual: Vec<_> = a.symmetric_difference(&b).collect();
         assert_eq!(actual, expected);
+        assert_eq!(a.symmetric_difference(&b).count(), expected.len());
     }
 
     #[test]
@@ -1194,6 +1279,7 @@ mod tests {
         let expected = [1, 3, 5, 9, 11, 13, 19, 24, 160, 200];
         let actual: Vec<_> = a.union(&b).collect();
         assert_eq!(actual, expected);
+        assert_eq!(a.union(&b).count(), expected.len());
     }
 
     #[test]
@@ -1491,6 +1577,45 @@ mod tests {
         assert!(b.contains(1000));
     }
 
+    #[test]
+    fn test_truncate() {
+        let bytes = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let mut s = BitSet::from_bytes(&bytes);
+        s.truncate(5 * 8);
+
+        assert_eq!(s, BitSet::from_bytes(&bytes[..5]));
+        assert_eq!(s.len(), 5 * 8);
+        s.truncate(4 * 8);
+        assert_eq!(s, BitSet::from_bytes(&bytes[..4]));
+        assert_eq!(s.len(), 4 * 8);
+        // Truncating to a size > s.len() should be a noop
+        s.truncate(5 * 8);
+        assert_eq!(s, BitSet::from_bytes(&bytes[..4]));
+        assert_eq!(s.len(), 4 * 8);
+        s.truncate(8);
+        assert_eq!(s, BitSet::from_bytes(&bytes[..1]));
+        assert_eq!(s.len(), 8);
+        s.truncate(0);
+        assert_eq!(s, BitSet::from_bytes(&[]));
+        assert_eq!(s.len(), 0);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serialization() {
+        let bset: BitSet = BitSet::new();
+        let serialized = serde_json::to_string(&bset).unwrap();
+        let unserialized: BitSet = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(bset, unserialized);
+
+        let elems: Vec<usize> = vec![11, 42, 100, 101];
+        let bset: BitSet = elems.iter().map(|n| *n).collect();
+        let serialized = serde_json::to_string(&bset).unwrap();
+        let unserialized = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(bset, unserialized);
+    }
+
     /*
         #[test]
         fn test_bit_set_append() {
@@ -1553,56 +1678,4 @@ mod tests {
                                                0b00101011, 0b10101101]));
         }
     */
-}
-
-#[cfg(all(test, feature = "nightly"))]
-mod bench {
-    use super::BitSet;
-    use bit_vec::BitVec;
-    use rand::{thread_rng, Rng, ThreadRng};
-
-    use test::{black_box, Bencher};
-
-    const BENCH_BITS: usize = 1 << 14;
-    const BITS: usize = 32;
-
-    fn rng() -> ThreadRng {
-        thread_rng()
-    }
-
-    #[bench]
-    fn bench_bit_vecset_small(b: &mut Bencher) {
-        let mut r = rng();
-        let mut bit_vec = BitSet::new();
-        b.iter(|| {
-            for _ in 0..100 {
-                bit_vec.insert((r.next_u32() as usize) % BITS);
-            }
-            black_box(&bit_vec);
-        });
-    }
-
-    #[bench]
-    fn bench_bit_vecset_big(b: &mut Bencher) {
-        let mut r = rng();
-        let mut bit_vec = BitSet::new();
-        b.iter(|| {
-            for _ in 0..100 {
-                bit_vec.insert((r.next_u32() as usize) % BENCH_BITS);
-            }
-            black_box(&bit_vec);
-        });
-    }
-
-    #[bench]
-    fn bench_bit_vecset_iter(b: &mut Bencher) {
-        let bit_vec = BitSet::from_bit_vec(BitVec::from_fn(BENCH_BITS, |idx| idx % 3 == 0));
-        b.iter(|| {
-            let mut sum = 0;
-            for idx in &bit_vec {
-                sum += idx as usize;
-            }
-            sum
-        })
-    }
 }

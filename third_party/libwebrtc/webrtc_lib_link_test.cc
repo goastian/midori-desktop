@@ -8,6 +8,9 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "api/audio/audio_device.h"
+#include "api/audio/audio_processing.h"
+#include "api/audio/builtin_audio_processing_builder.h"
 #include "api/audio_codecs/audio_decoder_factory_template.h"
 #include "api/audio_codecs/audio_encoder_factory_template.h"
 #include "api/audio_codecs/opus/audio_decoder_opus.h"
@@ -28,8 +31,6 @@
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp8_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
 
 namespace webrtc {
 
@@ -48,7 +49,8 @@ void CreateSomeMediaDeps(PeerConnectionFactoryDependencies& media_deps) {
       std::make_unique<VideoDecoderFactoryTemplate<
           LibvpxVp8DecoderTemplateAdapter, LibvpxVp9DecoderTemplateAdapter,
           OpenH264DecoderTemplateAdapter, Dav1dDecoderTemplateAdapter>>();
-  media_deps.audio_processing = webrtc::AudioProcessingBuilder().Create();
+  media_deps.audio_processing_builder =
+      std::make_unique<BuiltinAudioProcessingBuilder>();
 }
 
 webrtc::PeerConnectionFactoryDependencies CreateSomePcfDeps() {

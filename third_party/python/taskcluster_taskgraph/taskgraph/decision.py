@@ -3,7 +3,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-import json
 import logging
 import os
 import pathlib
@@ -19,6 +18,7 @@ from taskgraph.create import create_tasks
 from taskgraph.generator import TaskGraphGenerator
 from taskgraph.parameters import Parameters, get_version
 from taskgraph.taskgraph import TaskGraph
+from taskgraph.util import json
 from taskgraph.util.python_path import find_object
 from taskgraph.util.schema import Schema, validate_schema
 from taskgraph.util.vcs import Repository, get_repository
@@ -74,8 +74,28 @@ def taskgraph_decision(options, parameters=None):
      * generating a set of artifacts to memorialize the graph
      * calling TaskCluster APIs to create the graph
     """
+    level = logging.INFO
     if options.get("verbose"):
-        logging.root.setLevel(logging.DEBUG)
+        level = logging.DEBUG
+
+    logging.root.setLevel(level)
+    # Handlers must have an explicit level set for them to properly filter
+    # messages from child loggers (such as the optimization log a few lines
+    # down).
+    for h in logging.root.handlers:
+        h.setLevel(level)
+
+    if not os.path.isdir(ARTIFACTS_DIR):
+        os.mkdir(ARTIFACTS_DIR)
+
+    # optimizations are difficult to debug after the fact, so we always
+    # log them at DEBUG level, and write the log as a separate artifact
+    opt_log = logging.getLogger("optimization")
+    opt_log.setLevel(logging.DEBUG)
+    opt_handler = logging.FileHandler(ARTIFACTS_DIR / "optimizations.log", mode="w")
+    if logging.root.handlers:
+        opt_handler.setFormatter(logging.root.handlers[0].formatter)
+    opt_log.addHandler(opt_handler)
 
     parameters = parameters or (
         lambda graph_config: get_decision_parameters(graph_config, options)
@@ -354,12 +374,12 @@ def write_artifact(filename, data):
             yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
     elif filename.endswith(".json"):
         with open(path, "w") as f:
-            json.dump(data, f, sort_keys=True, indent=2, separators=(",", ": "))
+            json.dump(data, f, sort_keys=True, indent=2)
     elif filename.endswith(".gz"):
         import gzip
 
         with gzip.open(path, "wb") as f:
-            f.write(json.dumps(data))
+            f.write(json.dumps(data))  # type: ignore
     else:
         raise TypeError(f"Don't know how to write to {filename}")
 

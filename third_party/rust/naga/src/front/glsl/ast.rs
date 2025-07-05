@@ -1,6 +1,7 @@
-use std::{borrow::Cow, fmt};
+use alloc::{borrow::Cow, string::String, vec::Vec};
+use core::fmt;
 
-use super::{builtins::MacroCall, context::ExprPos, Span};
+use super::{builtins::MacroCall, Span};
 use crate::{
     AddressSpace, BinaryOperator, Binding, Constant, Expression, Function, GlobalVariable, Handle,
     Interpolation, Literal, Sampling, StorageAccess, Type, UnaryOperator,
@@ -73,9 +74,9 @@ bitflags::bitflags! {
         const STANDARD = 1 << 0;
         /// Request overloads that use the double type
         const DOUBLE = 1 << 1;
-        /// Request overloads that use samplerCubeArray(Shadow)
+        /// Request overloads that use `samplerCubeArray(Shadow)`
         const CUBE_TEXTURES_ARRAY = 1 << 2;
-        /// Request overloads that use sampler2DMSArray
+        /// Request overloads that use `sampler2DMSArray`
         const D2_MULTI_TEXTURES_ARRAY = 1 << 3;
     }
 }
@@ -178,6 +179,8 @@ pub enum QualifierKey<'a> {
     Layout,
     /// Used for image formats
     Format,
+    /// Used for `index` layout qualifiers
+    Index,
 }
 
 #[derive(Debug)]
@@ -374,14 +377,6 @@ impl ParameterQualifier {
         match *self {
             ParameterQualifier::Out | ParameterQualifier::InOut => true,
             _ => false,
-        }
-    }
-
-    /// Converts from a parameter qualifier into a [`ExprPos`]
-    pub const fn as_pos(&self) -> ExprPos {
-        match *self {
-            ParameterQualifier::Out | ParameterQualifier::InOut => ExprPos::Lhs,
-            _ => ExprPos::Rhs,
         }
     }
 }

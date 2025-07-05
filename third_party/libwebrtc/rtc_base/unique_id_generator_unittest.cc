@@ -18,28 +18,28 @@
 #include "api/array_view.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/units/time_delta.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/gunit.h"
-#include "rtc_base/helpers.h"
 #include "test/gmock.h"
 
 using ::testing::IsEmpty;
 using ::testing::Test;
 
-namespace rtc {
+namespace webrtc {
 namespace {
 // Utility class that registers itself as the currently active task queue.
-class FakeTaskQueue : public webrtc::TaskQueueBase {
+class FakeTaskQueue : public TaskQueueBase {
  public:
   FakeTaskQueue() : task_queue_setter_(this) {}
 
   void Delete() override {}
   void PostTaskImpl(absl::AnyInvocable<void() &&> task,
                     const PostTaskTraits& traits,
-                    const webrtc::Location& location) override {}
+                    const Location& location) override {}
   void PostDelayedTaskImpl(absl::AnyInvocable<void() &&> task,
-                           webrtc::TimeDelta delay,
+                           TimeDelta delay,
                            const PostDelayedTaskTraits& traits,
-                           const webrtc::Location& location) override {}
+                           const Location& location) override {}
 
  private:
   CurrentTaskQueueSetter task_queue_setter_;
@@ -208,4 +208,4 @@ TEST(UniqueNumberGeneratorDeathTest, FailsWhenUsedInWrongContext) {
 }
 #endif
 
-}  // namespace rtc
+}  // namespace webrtc

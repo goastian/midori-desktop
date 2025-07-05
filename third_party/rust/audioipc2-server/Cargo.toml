@@ -17,8 +17,19 @@ authors = [
     "Matthew Gregan <kinetik@flim.org>",
     "Dan Glastonbury <dan.glastonbury@gmail.com>",
 ]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Remote cubeb server"
+readme = false
 license = "ISC"
+
+[lib]
+name = "audioipc2_server"
+path = "src/lib.rs"
 
 [dependencies]
 cubeb-core = "0.13"

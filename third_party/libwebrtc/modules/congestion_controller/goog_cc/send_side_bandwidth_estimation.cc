@@ -11,18 +11,18 @@
 #include "modules/congestion_controller/goog_cc/send_side_bandwidth_estimation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/strings/match.h"
-#include "absl/types/optional.h"
 #include "api/field_trials_view.h"
-#include "api/network_state_predictor.h"
 #include "api/rtc_event_log/rtc_event_log.h"
+#include "api/transport/bandwidth_usage.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
@@ -33,7 +33,6 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/experiments/field_trial_parser.h"
 #include "rtc_base/logging.h"
-#include "system_wrappers/include/field_trial.h"
 #include "system_wrappers/include/metrics.h"
 
 namespace webrtc {
@@ -67,21 +66,18 @@ const size_t kNumUmaRampupMetrics =
 
 const char kBweLosExperiment[] = "WebRTC-BweLossExperiment";
 
-bool BweLossExperimentIsEnabled() {
-  std::string experiment_string =
-      webrtc::field_trial::FindFullName(kBweLosExperiment);
-  // The experiment is enabled iff the field trial string begins with "Enabled".
-  return absl::StartsWith(experiment_string, "Enabled");
+bool BweLossExperimentIsEnabled(const FieldTrialsView& field_trials) {
+  return field_trials.IsEnabled(kBweLosExperiment);
 }
 
-bool ReadBweLossExperimentParameters(float* low_loss_threshold,
+bool ReadBweLossExperimentParameters(const FieldTrialsView& field_trials,
+                                     float* low_loss_threshold,
                                      float* high_loss_threshold,
                                      uint32_t* bitrate_threshold_kbps) {
   RTC_DCHECK(low_loss_threshold);
   RTC_DCHECK(high_loss_threshold);
   RTC_DCHECK(bitrate_threshold_kbps);
-  std::string experiment_string =
-      webrtc::field_trial::FindFullName(kBweLosExperiment);
+  std::string experiment_string = field_trials.Lookup(kBweLosExperiment);
   int parsed_values =
       sscanf(experiment_string.c_str(), "Enabled-%f,%f,%u", low_loss_threshold,
              high_loss_threshold, bitrate_threshold_kbps);
@@ -113,14 +109,6 @@ bool ReadBweLossExperimentParameters(float* low_loss_threshold,
 }
 }  // namespace
 
-LinkCapacityTracker::LinkCapacityTracker()
-    : tracking_rate("rate", TimeDelta::Seconds(10)) {
-  ParseFieldTrial({&tracking_rate},
-                  field_trial::FindFullName("WebRTC-Bwe-LinkCapacity"));
-}
-
-LinkCapacityTracker::~LinkCapacityTracker() {}
-
 void LinkCapacityTracker::UpdateDelayBasedEstimate(
     Timestamp at_time,
     DataRate delay_based_bitrate) {
@@ -137,7 +125,7 @@ void LinkCapacityTracker::OnStartingRate(DataRate start_rate) {
     capacity_estimate_bps_ = start_rate.bps<double>();
 }
 
-void LinkCapacityTracker::OnRateUpdate(absl::optional<DataRate> acknowledged,
+void LinkCapacityTracker::OnRateUpdate(std::optional<DataRate> acknowledged,
                                        DataRate target,
                                        Timestamp at_time) {
   if (!acknowledged)
@@ -145,7 +133,8 @@ void LinkCapacityTracker::OnRateUpdate(absl::optional<DataRate> acknowledged,
   DataRate acknowledged_target = std::min(*acknowledged, target);
   if (acknowledged_target.bps() > capacity_estimate_bps_) {
     TimeDelta delta = at_time - last_link_capacity_update_;
-    double alpha = delta.IsFinite() ? exp(-(delta / tracking_rate.Get())) : 0;
+    double alpha =
+        delta.IsFinite() ? exp(-(delta / TimeDelta::Seconds(10))) : 0;
     capacity_estimate_bps_ = alpha * capacity_estimate_bps_ +
                              (1 - alpha) * acknowledged_target.bps<double>();
   }
@@ -203,7 +192,8 @@ TimeDelta RttBasedBackoff::CorrectedRtt() const {
 RttBasedBackoff::~RttBasedBackoff() = default;
 
 SendSideBandwidthEstimation::SendSideBandwidthEstimation(
-    const FieldTrialsView* key_value_config, RtcEventLog* event_log)
+    const FieldTrialsView* key_value_config,
+    RtcEventLog* event_log)
     : key_value_config_(key_value_config),
       rtt_backoff_(key_value_config),
       lost_packets_since_last_loss_update_(0),
@@ -238,11 +228,11 @@ SendSideBandwidthEstimation::SendSideBandwidthEstimation(
       loss_based_state_(LossBasedState::kDelayBasedEstimate),
       disable_receiver_limit_caps_only_("Disabled") {
   RTC_DCHECK(event_log);
-  if (BweLossExperimentIsEnabled()) {
+  if (BweLossExperimentIsEnabled(*key_value_config_)) {
     uint32_t bitrate_threshold_kbps;
-    if (ReadBweLossExperimentParameters(&low_loss_threshold_,
-                                        &high_loss_threshold_,
-                                        &bitrate_threshold_kbps)) {
+    if (ReadBweLossExperimentParameters(
+            *key_value_config_, &low_loss_threshold_, &high_loss_threshold_,
+            &bitrate_threshold_kbps)) {
       RTC_LOG(LS_INFO) << "Enabled BweLossExperiment with parameters "
                        << low_loss_threshold_ << ", " << high_loss_threshold_
                        << ", " << bitrate_threshold_kbps;
@@ -289,7 +279,7 @@ void SendSideBandwidthEstimation::OnRouteChange() {
 }
 
 void SendSideBandwidthEstimation::SetBitrates(
-    absl::optional<DataRate> send_bitrate,
+    std::optional<DataRate> send_bitrate,
     DataRate min_bitrate,
     DataRate max_bitrate,
     Timestamp at_time) {
@@ -365,7 +355,7 @@ void SendSideBandwidthEstimation::UpdateDelayBasedEstimate(Timestamp at_time,
 }
 
 void SendSideBandwidthEstimation::SetAcknowledgedRate(
-    absl::optional<DataRate> acknowledged_rate,
+    std::optional<DataRate> acknowledged_rate,
     Timestamp at_time) {
   acknowledged_rate_ = acknowledged_rate;
   if (!acknowledged_rate.has_value()) {
@@ -383,8 +373,8 @@ void SendSideBandwidthEstimation::SetAcknowledgedRate(
 
 void SendSideBandwidthEstimation::UpdateLossBasedEstimator(
     const TransportPacketsFeedback& report,
-    BandwidthUsage delay_detector_state,
-    absl::optional<DataRate> probe_bitrate,
+    BandwidthUsage /* delay_detector_state */,
+    std::optional<DataRate> /* probe_bitrate */,
     bool in_alr) {
   if (LossBasedBandwidthEstimatorV1Enabled()) {
     loss_based_bandwidth_estimator_v1_.UpdateLossStatistics(

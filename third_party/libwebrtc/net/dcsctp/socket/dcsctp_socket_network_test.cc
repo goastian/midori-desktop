@@ -10,20 +10,20 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/task_queue/pending_task_safety_flag.h"
 #include "api/task_queue/task_queue_base.h"
 #include "api/test/create_network_emulation_manager.h"
 #include "api/test/network_emulation_manager.h"
+#include "api/units/data_rate.h"
 #include "api/units/time_delta.h"
-#include "call/simulated_network.h"
 #include "net/dcsctp/public/dcsctp_options.h"
 #include "net/dcsctp/public/dcsctp_socket.h"
 #include "net/dcsctp/public/types.h"
@@ -33,6 +33,7 @@
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/random.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/strings/string_format.h"
 #include "rtc_base/time_utils.h"
@@ -55,6 +56,7 @@ using ::testing::AllOf;
 using ::testing::Ge;
 using ::testing::Le;
 using ::testing::SizeIs;
+using ::webrtc::DataRate;
 using ::webrtc::TimeDelta;
 using ::webrtc::Timestamp;
 
@@ -165,7 +167,8 @@ class SctpActor : public DcSctpSocketCallbacks {
     double bitrate_mbps =
         static_cast<double>(received_bytes_ * 8) / duration.ms() / 1000;
     RTC_LOG(LS_INFO) << log_prefix()
-                     << rtc::StringFormat("Received %0.2f Mbps", bitrate_mbps);
+                     << webrtc::StringFormat("Received %0.2f Mbps",
+                                             bitrate_mbps);
 
     received_bitrate_mbps_.push_back(bitrate_mbps);
     received_bytes_ = 0;
@@ -214,18 +217,19 @@ class SctpActor : public DcSctpSocketCallbacks {
 
   void OnConnectionRestarted() override {}
 
-  void OnStreamsResetFailed(rtc::ArrayView<const StreamID> outgoing_streams,
-                            absl::string_view reason) override {}
+  void OnStreamsResetFailed(
+      rtc::ArrayView<const StreamID> /* outgoing_streams */,
+      absl::string_view /* reason */) override {}
 
   void OnStreamsResetPerformed(
-      rtc::ArrayView<const StreamID> outgoing_streams) override {}
+      rtc::ArrayView<const StreamID> /* outgoing_streams */) override {}
 
   void OnIncomingStreamsReset(
-      rtc::ArrayView<const StreamID> incoming_streams) override {}
+      rtc::ArrayView<const StreamID> /* incoming_streams */) override {}
 
   void NotifyOutgoingMessageBufferEmpty() override {}
 
-  void OnBufferedAmountLow(StreamID stream_id) override {
+  void OnBufferedAmountLow(StreamID /* stream_id */) override {
     if (mode_ == ActorMode::kThroughputSender) {
       std::vector<uint8_t> payload(kHugePayloadSize);
       sctp_socket_.Send(DcSctpMessage(kStreamId, kPpid, std::move(payload)),
@@ -241,7 +245,7 @@ class SctpActor : public DcSctpSocketCallbacks {
                           std::vector<uint8_t>(kLargePayloadSize)),
             send_options);
 
-        send_options.max_retransmissions = absl::nullopt;
+        send_options.max_retransmissions = std::nullopt;
         sctp_socket_.Send(
             DcSctpMessage(kStreamId, kPpid,
                           std::vector<uint8_t>(kSmallPayloadSize)),
@@ -250,12 +254,12 @@ class SctpActor : public DcSctpSocketCallbacks {
     }
   }
 
-  absl::optional<DcSctpMessage> ConsumeReceivedMessage() {
+  std::optional<DcSctpMessage> ConsumeReceivedMessage() {
     if (!last_received_message_.has_value()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     DcSctpMessage ret = *std::move(last_received_message_);
-    last_received_message_ = absl::nullopt;
+    last_received_message_ = std::nullopt;
     return ret;
   }
 
@@ -300,7 +304,7 @@ class SctpActor : public DcSctpSocketCallbacks {
 
  private:
   std::string log_prefix() const {
-    rtc::StringBuilder sb;
+    webrtc::StringBuilder sb;
     sb << log_prefix_;
     sb << rtc::TimeMillis();
     sb << ": ";
@@ -315,7 +319,7 @@ class SctpActor : public DcSctpSocketCallbacks {
   webrtc::Random random_;
   DcSctpSocket sctp_socket_;
   size_t received_bytes_ = 0;
-  absl::optional<DcSctpMessage> last_received_message_;
+  std::optional<DcSctpMessage> last_received_message_;
   Timestamp last_bandwidth_printout_;
   // Per-second received bitrates, in Mbps
   std::vector<double> received_bitrate_mbps_;
@@ -327,7 +331,7 @@ class DcSctpSocketNetworkTest : public testing::Test {
   DcSctpSocketNetworkTest()
       : options_(MakeOptionsForTest()),
         emulation_(webrtc::CreateNetworkEmulationManager(
-            webrtc::TimeMode::kSimulated)) {}
+            {.time_mode = webrtc::TimeMode::kSimulated})) {}
 
   void MakeNetwork(const webrtc::BuiltInNetworkBehaviorConfig& config) {
     webrtc::EmulatedEndpoint* endpoint_a =
@@ -407,7 +411,7 @@ TEST_F(DcSctpSocketNetworkTest, CanSendLargeMessage) {
 TEST_F(DcSctpSocketNetworkTest, CanSendMessagesReliablyWithLowBandwidth) {
   webrtc::BuiltInNetworkBehaviorConfig pipe_config;
   pipe_config.queue_delay_ms = 30;
-  pipe_config.link_capacity_kbps = 1000;
+  pipe_config.link_capacity = DataRate::KilobitsPerSec(1000);
   MakeNetwork(pipe_config);
 
   SctpActor sender("A", emulated_socket_a_, options_);
@@ -436,7 +440,7 @@ TEST_F(DcSctpSocketNetworkTest,
        DCSCTP_NDEBUG_TEST(CanSendMessagesReliablyWithMediumBandwidth)) {
   webrtc::BuiltInNetworkBehaviorConfig pipe_config;
   pipe_config.queue_delay_ms = 30;
-  pipe_config.link_capacity_kbps = 18000;
+  pipe_config.link_capacity = DataRate::KilobitsPerSec(18000);
   MakeNetwork(pipe_config);
 
   SctpActor sender("A", emulated_socket_a_, options_);

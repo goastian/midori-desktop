@@ -11,62 +11,118 @@
 
 [package]
 edition = "2021"
-rust-version = "1.58"
+rust-version = "1.81"
 name = "askama_derive"
-version = "0.12.1"
+version = "0.13.1"
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Procedural macro package for Askama"
-homepage = "https://github.com/djc/askama"
+homepage = "https://github.com/askama-rs/askama"
 readme = "README.md"
-license = "MIT/Apache-2.0"
-repository = "https://github.com/djc/askama"
-resolver = "1"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/askama-rs/askama"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--cfg=docsrs",
+]
+
+[features]
+alloc = []
+blocks = ["syn/full"]
+code-in-doc = ["dep:pulldown-cmark"]
+config = [
+    "dep:basic-toml",
+    "dep:serde",
+    "dep:serde_derive",
+    "parser/config",
+]
+default = [
+    "config",
+    "derive",
+    "std",
+    "urlencode",
+]
+derive = []
+full = [
+    "default",
+    "blocks",
+    "code-in-doc",
+    "serde_json",
+]
+serde_json = []
+std = ["alloc"]
+urlencode = []
 
 [lib]
+name = "askama_derive"
+path = "src/lib.rs"
 proc-macro = true
 
 [dependencies.basic-toml]
 version = "0.1.1"
 optional = true
 
-[dependencies.mime]
-version = "0.3"
-
-[dependencies.mime_guess]
+[dependencies.memchr]
 version = "2"
 
-[dependencies.nom]
-version = "7"
+[dependencies.parser]
+version = "=0.13.0"
+package = "askama_parser"
 
 [dependencies.proc-macro2]
 version = "1"
 
+[dependencies.pulldown-cmark]
+version = "0.13.0"
+optional = true
+default-features = false
+
 [dependencies.quote]
 version = "1"
+default-features = false
+
+[dependencies.rustc-hash]
+version = "2.0.0"
 
 [dependencies.serde]
 version = "1.0"
-features = ["derive"]
+optional = true
+
+[dependencies.serde_derive]
+version = "1.0"
 optional = true
 
 [dependencies.syn]
-version = "2"
-
-[features]
-config = [
-    "serde",
-    "basic-toml",
+version = "2.0.41"
+features = [
+    "clone-impls",
+    "derive",
+    "parsing",
+    "printing",
 ]
-humansize = []
-markdown = []
-num-traits = []
-serde-json = []
-serde-yaml = []
-urlencode = []
-with-actix-web = []
-with-axum = []
-with-gotham = []
-with-hyper = []
-with-mendes = []
-with-rocket = []
-with-tide = []
-with-warp = []
+default-features = false
+
+[dev-dependencies.console]
+version = "0.15.8"
+
+[dev-dependencies.prettyplease]
+version = "0.2.20"
+
+[dev-dependencies.similar]
+version = "2.6.0"
+
+[dev-dependencies.syn]
+version = "2.0.41"
+features = ["full"]
+
+[lints.rust.unexpected_cfgs]
+level = "allow"
+priority = 0
+check-cfg = ['cfg(feature, values("__standalone"))']

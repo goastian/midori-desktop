@@ -28,6 +28,11 @@ definitions:
     pattern: "^[a-z_][a-z0-9_]{0,29}(\\.[a-z_][a-z0-9_]{0,29})*$"
     maxLength: 40
 
+  event_extra_key:
+    type: string
+    pattern: "^[ -~]+$"
+    maxLength: 40
+
   # Prior to version 2.0.0 of the schema, special ping names with underscores
   # were also supported.
   kebab_case:
@@ -115,7 +120,9 @@ definitions:
               of the metric to be stored at a given set of labels. The labeled
               metric types include:
 
-                `labeled_boolean`, `labeled_string`, `labeled_counter`.
+                `labeled_boolean`, `labeled_string`, `labeled_counter`,
+                `labeled_custom_distribution`, `labeled_memory_distribution`,
+                `labeled_timing_distribution`, `labeled_quantity`.
 
             - `text`: Record long text data.
 
@@ -141,6 +148,10 @@ definitions:
           - labeled_boolean
           - labeled_string
           - labeled_counter
+          - labeled_custom_distribution
+          - labeled_memory_distribution
+          - labeled_timing_distribution
+          - labeled_quantity
           - rate
           - text
           - object
@@ -380,7 +391,7 @@ definitions:
           Valid when `type`_ is `event`.
         type: object
         propertyNames:
-          $ref: "#/definitions/dotted_snake_case"
+          $ref: "#/definitions/event_extra_key"
         additionalProperties:
           type: object
           properties:
@@ -431,7 +442,6 @@ definitions:
           Required when `type`_ is `custom_distribution`.
         type: number
         minimum: 1
-        maximum: 100
 
       histogram_type:
         title: Histogram type
@@ -555,7 +565,7 @@ definitions:
           Use is limited to Firefox Desktop only.
           Has no effect when used with non-FOG outputters.
           See FOG's documentation on mirroring for details -
-          https://firefox-source-docs.mozilla.org/toolkit/components/glean/mirroring.html
+          https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/gifft.html
         type: string
         minLength: 6
 

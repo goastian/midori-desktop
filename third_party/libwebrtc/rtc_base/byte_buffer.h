@@ -97,8 +97,13 @@ class ByteBufferWriterT {
                        val.size());
   }
   // Write an array of bytes (uint8_t)
+  [[deprecated("issues.webrtc.org/4225170 - use Write(ArrayView)")]]
   void WriteBytes(const uint8_t* val, size_t len) {
     WriteBytesInternal(reinterpret_cast<const value_type*>(val), len);
+  }
+
+  void Write(ArrayView<const value_type> data) {
+    WriteBytesInternal(data.data(), data.size());
   }
 
   // Reserves the given number of bytes and returns a value_type* that can be
@@ -114,6 +119,8 @@ class ByteBufferWriterT {
 
   // Clears the contents of the buffer. After this, Length() will be 0.
   void Clear() { buffer_.Clear(); }
+
+  BufferClassT Extract() && { return std::move(buffer_); }
 
  private:
   static constexpr size_t kDefaultCapacity = 4096;

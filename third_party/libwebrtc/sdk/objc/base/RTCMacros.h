@@ -23,6 +23,9 @@
 #define RTC_OBJC_EXPORT
 #endif
 
+// Macro used to mark a function as deprecated.
+#define RTC_OBJC_DEPRECATED(msg) __attribute__((deprecated(msg)))
+
 // Internal macros used to correctly concatenate symbols.
 #define RTC_SYMBOL_CONCAT_HELPER(a, b) a##b
 #define RTC_SYMBOL_CONCAT(a, b) RTC_SYMBOL_CONCAT_HELPER(a, b)
@@ -46,7 +49,8 @@
 // Macro used internally to declare API types. Declaring an API type without
 // using this macro will not include the declared type in the set of types
 // that will be affected by the configurable RTC_OBJC_TYPE_PREFIX.
-#define RTC_OBJC_TYPE(type_name) RTC_SYMBOL_CONCAT(RTC_OBJC_TYPE_PREFIX, type_name)
+#define RTC_OBJC_TYPE(type_name) \
+  RTC_SYMBOL_CONCAT(RTC_OBJC_TYPE_PREFIX, type_name)
 
 #if defined(__cplusplus)
 #define RTC_EXTERN extern "C" RTC_OBJC_EXPORT

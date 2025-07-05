@@ -6,11 +6,16 @@
 
 // Buffering data to send until it is acked.
 
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "<https://github.com/mozilla/neqo/issues/2284#issuecomment-2782711813>"
+)]
+
 use std::{
     cell::RefCell,
     cmp::{max, min, Ordering},
     collections::{btree_map::Entry, BTreeMap, VecDeque},
-    hash::{Hash, Hasher},
+    fmt::{self, Display, Formatter},
     mem,
     num::NonZeroUsize,
     ops::Add,
@@ -24,20 +29,29 @@ use smallvec::SmallVec;
 use crate::{
     events::ConnectionEvents,
     fc::SenderFlowControl,
-    frame::{Frame, FRAME_TYPE_RESET_STREAM},
+    frame::{Frame, FrameType},
     packet::PacketBuilder,
     recovery::{RecoveryToken, StreamRecoveryToken},
     stats::FrameStats,
     stream_id::StreamId,
     streams::SendOrder,
-    tparams::{self, TransportParameters},
+    tparams::{
+        TransportParameterId::{InitialMaxStreamDataBidiRemote, InitialMaxStreamDataUni},
+        TransportParameters,
+    },
     AppError, Error, Res,
 };
 
-pub const SEND_BUFFER_SIZE: usize = 0x10_0000; // 1 MiB
+/// The maximum stream send buffer size.
+///
+/// See [`crate::recv_stream::MAX_RECV_WINDOW_SIZE`] for an explanation of this
+/// concrete value.
+///
+/// Keep in sync with [`crate::recv_stream::MAX_RECV_WINDOW_SIZE`].
+pub const MAX_SEND_BUFFER_SIZE: usize = 10 * 1024 * 1024;
 
 /// The priority that is assigned to sending data for the stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
 pub enum TransmissionPriority {
     /// This stream is more important than the functioning of the connection.
     /// Don't use this priority unless the stream really is that important.
@@ -52,40 +66,10 @@ pub enum TransmissionPriority {
     /// connection operation.  They go ahead of session tickets though.
     High,
     /// The default priority.
+    #[default]
     Normal,
     /// Low priority streams get sent last.
     Low,
-}
-
-impl Default for TransmissionPriority {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
-
-impl PartialOrd for TransmissionPriority {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TransmissionPriority {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self == other {
-            return Ordering::Equal;
-        }
-        match (self, other) {
-            (Self::Critical, _) => Ordering::Greater,
-            (_, Self::Critical) => Ordering::Less,
-            (Self::Important, _) => Ordering::Greater,
-            (_, Self::Important) => Ordering::Less,
-            (Self::High, _) => Ordering::Greater,
-            (_, Self::High) => Ordering::Less,
-            (Self::Normal, _) => Ordering::Greater,
-            (_, Self::Normal) => Ordering::Less,
-            _ => unreachable!(),
-        }
-    }
 }
 
 impl Add<RetransmissionPriority> for TransmissionPriority {
@@ -138,7 +122,7 @@ enum RangeState {
 
 /// Track ranges in the stream as sent or acked. Acked implies sent. Not in a
 /// range implies needing-to-be-sent, either initially or as a retransmission.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct RangeTracker {
     /// The number of bytes that have been acknowledged starting from offset 0.
     acked: u64,
@@ -157,7 +141,7 @@ impl RangeTracker {
             .map_or(self.acked, |(&k, &(v, _))| k + v)
     }
 
-    fn acked_from_zero(&self) -> u64 {
+    const fn acked_from_zero(&self) -> u64 {
         self.acked
     }
 
@@ -219,9 +203,13 @@ impl RangeTracker {
     /// The only tricky parts are making sure that we maintain `self.acked`,
     /// which is the first acknowledged range.  And making sure that we don't create
     /// ranges of the same type that are adjacent; these need to be merged.
-    #[allow(clippy::missing_panics_doc)] // with a >16 exabyte packet on a 128-bit machine, maybe
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_acked(&mut self, new_off: u64, new_len: usize) {
-        let end = new_off + u64::try_from(new_len).unwrap();
+        let end = new_off + u64::try_from(new_len).expect("usize fits in u64");
         let new_off = max(self.acked, new_off);
         let mut new_len = end.saturating_sub(new_off);
         if new_len == 0 {
@@ -253,7 +241,8 @@ impl RangeTracker {
             }
         } else if let Some(last) = covered.pop() {
             // Otherwise, the last of the existing ranges might overhang this one by some.
-            let (old_off, (old_len, old_state)) = self.used.remove_entry(&last).unwrap(); // can't fail
+            let (old_off, (old_len, old_state)) =
+                self.used.remove_entry(&last).expect("entry exists"); // can't fail
             let remainder = (old_off + old_len).saturating_sub(new_end);
             if remainder > 0 {
                 if old_state == RangeState::Acked {
@@ -317,9 +306,13 @@ impl RangeTracker {
     /// +     SS
     /// = SSSSSS
     /// ```
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_sent(&mut self, mut new_off: u64, new_len: usize) {
-        let new_end = new_off + u64::try_from(new_len).unwrap();
+        let new_end = new_off + u64::try_from(new_len).expect("usize fits in u64");
         new_off = max(self.acked, new_off);
         let mut new_len = new_end.saturating_sub(new_off);
         if new_len == 0 {
@@ -405,12 +398,12 @@ impl RangeTracker {
 
     fn unmark_range(&mut self, off: u64, len: usize) {
         if len == 0 {
-            qdebug!("unmark 0-length range at {}", off);
+            qdebug!("unmark 0-length range at {off}");
             return;
         }
 
         self.first_unmarked = None;
-        let len = u64::try_from(len).unwrap();
+        let len = u64::try_from(len).expect("usize fits in u64");
         let end_off = off + len;
 
         let mut to_remove = SmallVec::<[_; 8]>::new();
@@ -424,10 +417,7 @@ impl RangeTracker {
                 if *cur_off + *cur_len > off {
                     if *cur_state == RangeState::Acked {
                         qdebug!(
-                            "Attempted to unmark Acked range {}-{} with unmark_range {}-{}",
-                            cur_off,
-                            cur_len,
-                            off,
+                            "Attempted to unmark Acked range {cur_off}-{cur_len} with unmark_range {off}-{}",
                             off + len
                         );
                     } else {
@@ -439,10 +429,7 @@ impl RangeTracker {
 
             if *cur_state == RangeState::Acked {
                 qdebug!(
-                    "Attempted to unmark Acked range {}-{} with unmark_range {}-{}",
-                    cur_off,
-                    cur_len,
-                    off,
+                    "Attempted to unmark Acked range {cur_off}-{cur_len} with unmark_range {off}-{}",
                     off + len
                 );
                 continue;
@@ -475,12 +462,15 @@ impl RangeTracker {
     /// On 32-bit machines where far too much is sent before calling this.
     /// Note that this should not be called for handshakes, which should never exceed that limit.
     pub fn unmark_sent(&mut self) {
-        self.unmark_range(0, usize::try_from(self.highest_offset()).unwrap());
+        self.unmark_range(
+            0,
+            usize::try_from(self.highest_offset()).expect("u64 fits in usize"),
+        );
     }
 }
 
 /// Buffer to contain queued bytes and track their state.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct TxBuffer {
     send_buf: VecDeque<u8>, // buffer of not-acked bytes
     ranges: RangeTracker,   // ranges in buffer that have been sent or acked
@@ -494,25 +484,30 @@ impl TxBuffer {
 
     /// Attempt to add some or all of the passed-in buffer to the `TxBuffer`.
     pub fn send(&mut self, buf: &[u8]) -> usize {
-        let can_buffer = min(SEND_BUFFER_SIZE - self.buffered(), buf.len());
+        let can_buffer = min(MAX_SEND_BUFFER_SIZE - self.buffered(), buf.len());
         if can_buffer > 0 {
             self.send_buf.extend(&buf[..can_buffer]);
-            debug_assert!(self.send_buf.len() <= SEND_BUFFER_SIZE);
+            debug_assert!(self.send_buf.len() <= MAX_SEND_BUFFER_SIZE);
         }
         can_buffer
     }
 
-    #[allow(clippy::missing_panics_doc)] // These are not possible.
-    pub fn next_bytes(&mut self) -> Option<(u64, &[u8])> {
+    fn first_unmarked_range(&mut self) -> Option<(u64, Option<u64>)> {
         let (start, maybe_len) = self.ranges.first_unmarked_range();
+        let buffered = u64::try_from(self.buffered()).ok()?;
+        (start != self.retired() + buffered).then_some((start, maybe_len))
+    }
 
-        if start == self.retired() + u64::try_from(self.buffered()).unwrap() {
-            return None;
-        }
+    pub fn is_empty(&mut self) -> bool {
+        self.first_unmarked_range().is_none()
+    }
+
+    pub fn next_bytes(&mut self) -> Option<(u64, &[u8])> {
+        let (start, maybe_len) = self.first_unmarked_range()?;
 
         // Convert from ranges-relative-to-zero to
         // ranges-relative-to-buffer-start
-        let buff_off = usize::try_from(start - self.retired()).unwrap();
+        let buff_off = usize::try_from(start - self.retired()).ok()?;
 
         // Deque returns two slices. Create a subslice from whichever
         // one contains the first unmarked data.
@@ -522,12 +517,9 @@ impl TxBuffer {
             &self.send_buf.as_slices().1[buff_off - self.send_buf.as_slices().0.len()..]
         };
 
-        let len = if let Some(range_len) = maybe_len {
-            // Truncate if range crosses deque slices
-            min(usize::try_from(range_len).unwrap(), slc.len())
-        } else {
-            slc.len()
-        };
+        let len = maybe_len.map_or(slc.len(), |range_len| {
+            min(usize::try_from(range_len).unwrap_or(usize::MAX), slc.len())
+        });
 
         debug_assert!(len > 0);
         debug_assert!(len <= slc.len());
@@ -539,7 +531,11 @@ impl TxBuffer {
         self.ranges.mark_sent(offset, len);
     }
 
-    #[allow(clippy::missing_panics_doc)] // Not possible here.
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_as_acked(&mut self, offset: u64, len: usize) {
         let prev_retired = self.retired();
         self.ranges.mark_acked(offset, len);
@@ -547,7 +543,7 @@ impl TxBuffer {
         // Any newly-retired bytes can be dropped from the buffer.
         let new_retirable = self.retired() - prev_retired;
         debug_assert!(new_retirable <= self.buffered() as u64);
-        let keep = self.buffered() - usize::try_from(new_retirable).unwrap();
+        let keep = self.buffered() - usize::try_from(new_retirable).expect("u64 fits in usize");
 
         // Truncate front
         self.send_buf.rotate_left(self.buffered() - keep);
@@ -564,7 +560,7 @@ impl TxBuffer {
     }
 
     #[must_use]
-    pub fn retired(&self) -> u64 {
+    pub const fn retired(&self) -> u64 {
         self.ranges.acked_from_zero()
     }
 
@@ -573,17 +569,17 @@ impl TxBuffer {
     }
 
     fn avail(&self) -> usize {
-        SEND_BUFFER_SIZE - self.buffered()
+        MAX_SEND_BUFFER_SIZE - self.buffered()
     }
 
     fn used(&self) -> u64 {
-        self.retired() + u64::try_from(self.buffered()).unwrap()
+        self.retired() + u64::try_from(self.buffered()).expect("usize fits in u64")
     }
 }
 
 /// QUIC sending stream states, based on -transport 3.1.
 #[derive(Debug)]
-pub(crate) enum SendStreamState {
+pub enum SendStreamState {
     Ready {
         fc: SenderFlowControl<StreamId>,
         conn_fc: Rc<RefCell<SenderFlowControl<()>>>,
@@ -631,25 +627,14 @@ impl SendStreamState {
     fn tx_avail(&self) -> usize {
         match self {
             // In Ready, TxBuffer not yet allocated but size is known
-            Self::Ready { .. } => SEND_BUFFER_SIZE,
+            Self::Ready { .. } => MAX_SEND_BUFFER_SIZE,
             Self::Send { send_buf, .. } | Self::DataSent { send_buf, .. } => send_buf.avail(),
             Self::DataRecvd { .. } | Self::ResetSent { .. } | Self::ResetRecvd { .. } => 0,
         }
     }
 
-    fn name(&self) -> &str {
-        match self {
-            Self::Ready { .. } => "Ready",
-            Self::Send { .. } => "Send",
-            Self::DataSent { .. } => "DataSent",
-            Self::DataRecvd { .. } => "DataRecvd",
-            Self::ResetSent { .. } => "ResetSent",
-            Self::ResetRecvd { .. } => "ResetRecvd",
-        }
-    }
-
     fn transition(&mut self, new_state: Self) {
-        qtrace!("SendStream state {} -> {}", self.name(), new_state.name());
+        qtrace!("SendStream state {:?} -> {:?}", self, new_state);
         *self = new_state;
     }
 }
@@ -675,7 +660,7 @@ pub struct SendStreamStats {
 
 impl SendStreamStats {
     #[must_use]
-    pub fn new(bytes_written: u64, bytes_sent: u64, bytes_acked: u64) -> Self {
+    pub const fn new(bytes_written: u64, bytes_sent: u64, bytes_acked: u64) -> Self {
         Self {
             bytes_written,
             bytes_sent,
@@ -684,17 +669,17 @@ impl SendStreamStats {
     }
 
     #[must_use]
-    pub fn bytes_written(&self) -> u64 {
+    pub const fn bytes_written(&self) -> u64 {
         self.bytes_written
     }
 
     #[must_use]
-    pub fn bytes_sent(&self) -> u64 {
+    pub const fn bytes_sent(&self) -> u64 {
         self.bytes_sent
     }
 
     #[must_use]
-    pub fn bytes_acked(&self) -> u64 {
+    pub const fn bytes_acked(&self) -> u64 {
         self.bytes_acked
     }
 }
@@ -714,21 +699,7 @@ pub struct SendStream {
     writable_event_low_watermark: NonZeroUsize,
 }
 
-impl Hash for SendStream {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.stream_id.hash(state);
-    }
-}
-
-impl PartialEq for SendStream {
-    fn eq(&self, other: &Self) -> bool {
-        self.stream_id == other.stream_id
-    }
-}
-impl Eq for SendStream {}
-
 impl SendStream {
-    #[allow(clippy::missing_panics_doc)] // not possible
     pub fn new(
         stream_id: StreamId,
         max_stream_data: u64,
@@ -748,7 +719,7 @@ impl SendStream {
             sendorder: None,
             bytes_sent: 0,
             fair: false,
-            writable_event_low_watermark: 1.try_into().unwrap(),
+            writable_event_low_watermark: NonZeroUsize::MIN,
         };
         if ss.avail() > 0 {
             ss.conn_events.send_stream_writable(stream_id);
@@ -763,7 +734,7 @@ impl SendStream {
         tokens: &mut Vec<RecoveryToken>,
         stats: &mut FrameStats,
     ) {
-        qtrace!("write STREAM frames at priority {:?}", priority);
+        qtrace!("write STREAM frames at priority {priority:?}");
         if !self.write_reset_frame(priority, builder, tokens, stats) {
             self.write_blocked_frame(priority, builder, tokens, stats);
             self.write_stream_frame(priority, builder, tokens, stats);
@@ -796,7 +767,7 @@ impl SendStream {
     }
 
     #[must_use]
-    pub fn is_fair(&self) -> bool {
+    pub const fn is_fair(&self) -> bool {
         self.fair
     }
 
@@ -810,7 +781,7 @@ impl SendStream {
     }
 
     #[must_use]
-    pub fn sendorder(&self) -> Option<SendOrder> {
+    pub const fn sendorder(&self) -> Option<SendOrder> {
         self.sendorder
     }
 
@@ -834,11 +805,15 @@ impl SendStream {
     }
 
     #[must_use]
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn bytes_written(&self) -> u64 {
         match &self.state {
             SendStreamState::Send { send_buf, .. } | SendStreamState::DataSent { send_buf, .. } => {
-                send_buf.retired() + u64::try_from(send_buf.buffered()).unwrap()
+                send_buf.retired() + u64::try_from(send_buf.buffered()).expect("usize fits in u64")
             }
             SendStreamState::DataRecvd {
                 retired, written, ..
@@ -858,7 +833,7 @@ impl SendStream {
     }
 
     #[must_use]
-    pub fn bytes_acked(&self) -> u64 {
+    pub const fn bytes_acked(&self) -> u64 {
         match &self.state {
             SendStreamState::Send { send_buf, .. } | SendStreamState::DataSent { send_buf, .. } => {
                 send_buf.retired()
@@ -878,27 +853,21 @@ impl SendStream {
             SendStreamState::Send {
                 ref mut send_buf, ..
             } => {
-                let result = send_buf.next_bytes();
-                if let Some((offset, slice)) = result {
-                    if retransmission_only {
-                        qtrace!(
-                            "next_bytes apply retransmission limit at {}",
-                            self.retransmission_offset
-                        );
-                        if self.retransmission_offset > offset {
-                            let len = min(
-                                usize::try_from(self.retransmission_offset - offset).unwrap(),
-                                slice.len(),
-                            );
-                            Some((offset, &slice[..len]))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some((offset, slice))
-                    }
+                let (offset, slice) = send_buf.next_bytes()?;
+                if retransmission_only {
+                    qtrace!(
+                        "next_bytes apply retransmission limit at {}",
+                        self.retransmission_offset
+                    );
+                    (self.retransmission_offset > offset).then(|| {
+                        let Ok(delta) = usize::try_from(self.retransmission_offset - offset) else {
+                            return None;
+                        };
+                        let len = min(delta, slice.len());
+                        Some((offset, &slice[..len]))
+                    })?
                 } else {
-                    None
+                    Some((offset, slice))
                 }
             }
             SendStreamState::DataSent {
@@ -929,25 +898,29 @@ impl SendStream {
     fn length_and_fill(data_len: usize, space: usize) -> (usize, bool) {
         if data_len >= space {
             // More data than space allows, or an exact fit => fast path.
-            qtrace!("SendStream::length_and_fill fill {}", space);
+            qtrace!("SendStream::length_and_fill fill {space}");
             return (space, true);
         }
 
         // Estimate size of the length field based on the available space,
         // less 1, which is the worst case.
         let length = min(space.saturating_sub(1), data_len);
-        let length_len = Encoder::varint_len(u64::try_from(length).unwrap());
+        let length_len = Encoder::varint_len(u64::try_from(length).expect("usize fits in u64"));
         debug_assert!(length_len <= space); // We don't depend on this being true, but it is true.
 
         // From here we can always fit `data_len`, but we might as well fill
         // if there is no space for the length field plus another frame.
         let fill = data_len + length_len + PacketBuilder::MINIMUM_FRAME_SIZE > space;
-        qtrace!("SendStream::length_and_fill {} fill {}", data_len, fill);
+        qtrace!("SendStream::length_and_fill {data_len} fill {fill}");
         (data_len, fill)
     }
 
     /// Maybe write a `STREAM` frame.
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn write_stream_frame(
         &mut self,
         priority: TransmissionPriority,
@@ -974,14 +947,15 @@ impl SendStream {
                     0
                 };
             if overhead > builder.remaining() {
-                qtrace!([self], "write_frame no space for header");
+                qtrace!("[{self}] write_frame no space for header");
                 return;
             }
 
             let (length, fill) = Self::length_and_fill(data.len(), builder.remaining() - overhead);
-            let fin = final_size.map_or(false, |fs| fs == offset + u64::try_from(length).unwrap());
+            let fin = final_size
+                .is_some_and(|fs| fs == offset + u64::try_from(length).expect("usize fits in u64"));
             if length == 0 && !fin {
-                qtrace!([self], "write_frame no data, no fin");
+                qtrace!("[{self}] write_frame no data, no fin");
                 return;
             }
 
@@ -1018,7 +992,7 @@ impl SendStream {
             | SendStreamState::Send { .. }
             | SendStreamState::DataSent { .. }
             | SendStreamState::DataRecvd { .. } => {
-                qtrace!([self], "Reset acked while in {} state?", self.state.name());
+                qtrace!("[{self}] Reset acked while in {:?} state?", self.state);
             }
             SendStreamState::ResetSent {
                 final_retired,
@@ -1028,8 +1002,8 @@ impl SendStream {
                 final_retired,
                 final_written,
             }),
-            SendStreamState::ResetRecvd { .. } => qtrace!([self], "already in ResetRecvd state"),
-        };
+            SendStreamState::ResetRecvd { .. } => qtrace!("[{self}] already in ResetRecvd state"),
+        }
     }
 
     pub fn reset_lost(&mut self) {
@@ -1063,7 +1037,7 @@ impl SendStream {
                 return false;
             }
             if builder.write_varint_frame(&[
-                FRAME_TYPE_RESET_STREAM,
+                FrameType::ResetStream.into(),
                 self.stream_id.as_u64(),
                 err,
                 final_size,
@@ -1088,7 +1062,7 @@ impl SendStream {
         {
             fc.frame_lost(limit);
         } else {
-            qtrace!([self], "Ignoring lost STREAM_DATA_BLOCKED({})", limit);
+            qtrace!("[{self}] Ignoring lost STREAM_DATA_BLOCKED({limit})");
         }
     }
 
@@ -1110,14 +1084,21 @@ impl SendStream {
         }
     }
 
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_as_sent(&mut self, offset: u64, len: usize, fin: bool) {
-        self.bytes_sent = max(self.bytes_sent, offset + u64::try_from(len).unwrap());
+        self.bytes_sent = max(
+            self.bytes_sent,
+            offset + u64::try_from(len).expect("usize fits in u64"),
+        );
 
         if let Some(buf) = self.state.tx_buf_mut() {
             buf.mark_as_sent(offset, len);
             self.send_blocked_if_space_needed(0);
-        };
+        }
 
         if fin {
             if let SendStreamState::DataSent { fin_sent, .. } = &mut self.state {
@@ -1126,7 +1107,11 @@ impl SendStream {
         }
     }
 
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_as_acked(&mut self, offset: u64, len: usize, fin: bool) {
         match self.state {
             SendStreamState::Send {
@@ -1149,30 +1134,29 @@ impl SendStream {
                 if *fin_acked && send_buf.buffered() == 0 {
                     self.conn_events.send_stream_complete(self.stream_id);
                     let retired = send_buf.retired();
-                    let buffered = u64::try_from(send_buf.buffered()).unwrap();
+                    let buffered = u64::try_from(send_buf.buffered()).expect("usize fits in u64");
                     self.state.transition(SendStreamState::DataRecvd {
                         retired,
                         written: buffered,
                     });
                 }
             }
-            _ => qtrace!(
-                [self],
-                "mark_as_acked called from state {}",
-                self.state.name()
-            ),
+            _ => qtrace!("[{self}] mark_as_acked called from state {:?}", self.state),
         }
     }
 
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn mark_as_lost(&mut self, offset: u64, len: usize, fin: bool) {
         self.retransmission_offset = max(
             self.retransmission_offset,
-            offset + u64::try_from(len).unwrap(),
+            offset + u64::try_from(len).expect("usize fits in u64"),
         );
         qtrace!(
-            [self],
-            "mark_as_lost retransmission offset={}",
+            "[{self}] mark_as_lost retransmission offset={}",
             self.retransmission_offset
         );
         if let Some(buf) = self.state.tx_buf_mut() {
@@ -1216,6 +1200,7 @@ impl SendStream {
     }
 
     pub fn set_max_stream_data(&mut self, limit: u64) {
+        qdebug!("setting max_stream_data to {limit}");
         if let SendStreamState::Ready { fc, .. } | SendStreamState::Send { fc, .. } =
             &mut self.state
         {
@@ -1227,7 +1212,7 @@ impl SendStream {
     }
 
     #[must_use]
-    pub fn is_terminal(&self) -> bool {
+    pub const fn is_terminal(&self) -> bool {
         matches!(
             self.state,
             SendStreamState::DataRecvd { .. } | SendStreamState::ResetRecvd { .. }
@@ -1262,7 +1247,7 @@ impl SendStream {
 
     fn send_internal(&mut self, buf: &[u8], atomic: bool) -> Res<usize> {
         if buf.is_empty() {
-            qerror!([self], "zero-length send on stream");
+            qerror!("[{self}] zero-length send on stream");
             return Err(Error::InvalidInput);
         }
 
@@ -1326,14 +1311,18 @@ impl SendStream {
                     fin_acked: false,
                 });
             }
-            SendStreamState::DataSent { .. } => qtrace!([self], "already in DataSent state"),
-            SendStreamState::DataRecvd { .. } => qtrace!([self], "already in DataRecvd state"),
-            SendStreamState::ResetSent { .. } => qtrace!([self], "already in ResetSent state"),
-            SendStreamState::ResetRecvd { .. } => qtrace!([self], "already in ResetRecvd state"),
+            SendStreamState::DataSent { .. } => qtrace!("[{self}] already in DataSent state"),
+            SendStreamState::DataRecvd { .. } => qtrace!("[{self}] already in DataRecvd state"),
+            SendStreamState::ResetSent { .. } => qtrace!("[{self}] already in ResetSent state"),
+            SendStreamState::ResetRecvd { .. } => qtrace!("[{self}] already in ResetRecvd state"),
         }
     }
 
-    #[allow(clippy::missing_panics_doc)] // not possible
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn reset(&mut self, err: AppError) {
         match &self.state {
             SendStreamState::Ready { fc, .. } => {
@@ -1349,7 +1338,7 @@ impl SendStream {
             SendStreamState::Send { fc, send_buf, .. } => {
                 let final_size = fc.used();
                 let final_retired = send_buf.retired();
-                let buffered = u64::try_from(send_buf.buffered()).unwrap();
+                let buffered = u64::try_from(send_buf.buffered()).expect("usize fits in u64");
                 self.state.transition(SendStreamState::ResetSent {
                     err,
                     final_size,
@@ -1361,7 +1350,7 @@ impl SendStream {
             SendStreamState::DataSent { send_buf, .. } => {
                 let final_size = send_buf.used();
                 let final_retired = send_buf.retired();
-                let buffered = u64::try_from(send_buf.buffered()).unwrap();
+                let buffered = u64::try_from(send_buf.buffered()).expect("usize fits in u64");
                 self.state.transition(SendStreamState::ResetSent {
                     err,
                     final_size,
@@ -1370,10 +1359,10 @@ impl SendStream {
                     final_written: buffered,
                 });
             }
-            SendStreamState::DataRecvd { .. } => qtrace!([self], "already in DataRecvd state"),
-            SendStreamState::ResetSent { .. } => qtrace!([self], "already in ResetSent state"),
-            SendStreamState::ResetRecvd { .. } => qtrace!([self], "already in ResetRecvd state"),
-        };
+            SendStreamState::DataRecvd { .. } => qtrace!("[{self}] already in DataRecvd state"),
+            SendStreamState::ResetSent { .. } => qtrace!("[{self}] already in ResetSent state"),
+            SendStreamState::ResetRecvd { .. } => qtrace!("[{self}] already in ResetRecvd state"),
+        }
     }
 
     #[cfg(test)]
@@ -1381,11 +1370,7 @@ impl SendStream {
         &mut self.state
     }
 
-    pub(crate) fn maybe_emit_writable_event(
-        &mut self,
-        previous_limit: usize,
-        current_limit: usize,
-    ) {
+    pub(crate) fn maybe_emit_writable_event(&self, previous_limit: usize, current_limit: usize) {
         let low_watermark = self.writable_event_low_watermark.get();
 
         // Skip if:
@@ -1403,8 +1388,8 @@ impl SendStream {
     }
 }
 
-impl ::std::fmt::Display for SendStream {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for SendStream {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "SendStream {}", self.stream_id)
     }
 }
@@ -1450,7 +1435,7 @@ impl OrderGroup {
     }
 
     #[must_use]
-    pub fn stream_ids(&self) -> &Vec<StreamId> {
+    pub const fn stream_ids(&self) -> &Vec<StreamId> {
         &self.vec
     }
 
@@ -1494,7 +1479,7 @@ impl OrderGroup {
     }
 }
 
-impl<'a> Iterator for OrderGroupIter<'a> {
+impl Iterator for OrderGroupIter<'_> {
     type Item = StreamId;
     fn next(&mut self) -> Option<Self::Item> {
         // Stop when we would return the started_at element on the next
@@ -1509,7 +1494,7 @@ impl<'a> Iterator for OrderGroupIter<'a> {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct SendStreams {
+pub struct SendStreams {
     map: IndexMap<StreamId, SendStream>,
 
     // What we really want is a Priority Queue that we can do arbitrary
@@ -1545,14 +1530,25 @@ pub(crate) struct SendStreams {
 }
 
 impl SendStreams {
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_errors_doc,
+        reason = "OK here."
+    )]
     pub fn get(&self, id: StreamId) -> Res<&SendStream> {
         self.map.get(&id).ok_or(Error::InvalidStreamId)
     }
 
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_errors_doc,
+        reason = "OK here."
+    )]
     pub fn get_mut(&mut self, id: StreamId) -> Res<&mut SendStream> {
         self.map.get_mut(&id).ok_or(Error::InvalidStreamId)
     }
 
+    #[must_use]
     pub fn exists(&self, id: StreamId) -> bool {
         self.map.contains_key(&id)
     }
@@ -1569,6 +1565,11 @@ impl SendStreams {
         }
     }
 
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_errors_doc,
+        reason = "OK here."
+    )]
     pub fn set_sendorder(&mut self, stream_id: StreamId, sendorder: Option<SendOrder>) -> Res<()> {
         self.set_fairness(stream_id, true)?;
         if let Some(stream) = self.map.get_mut(&stream_id) {
@@ -1579,7 +1580,7 @@ impl SendStreams {
                 // sendorder key
                 let mut group = self.group_mut(old_sendorder);
                 group.remove(stream_id);
-                self.get_mut(stream_id).unwrap().set_sendorder(sendorder);
+                self.get_mut(stream_id)?.set_sendorder(sendorder);
                 group = self.group_mut(sendorder);
                 group.insert(stream_id);
                 qtrace!(
@@ -1593,6 +1594,11 @@ impl SendStreams {
         }
     }
 
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_errors_doc,
+        reason = "OK here."
+    )]
     pub fn set_fairness(&mut self, stream_id: StreamId, make_fair: bool) -> Res<()> {
         let stream: &mut SendStream = self.map.get_mut(&stream_id).ok_or(Error::InvalidStreamId)?;
         let was_fair = stream.fair;
@@ -1620,7 +1626,9 @@ impl SendStreams {
         } else if was_fair && !make_fair {
             // remove from the OrderGroup
             let group = if let Some(sendorder) = stream.sendorder {
-                self.sendordered.get_mut(&sendorder).unwrap()
+                self.sendordered
+                    .get_mut(&sendorder)
+                    .ok_or(Error::InternalError)?
             } else {
                 &mut self.regular
             };
@@ -1672,12 +1680,11 @@ impl SendStreams {
                     match stream.sendorder() {
                         None => self.regular.remove(*stream_id),
                         Some(sendorder) => {
-                            self.sendordered
-                                .get_mut(&sendorder)
-                                .unwrap()
-                                .remove(*stream_id);
+                            if let Some(group) = self.sendordered.get_mut(&sendorder) {
+                                group.remove(*stream_id);
+                            }
                         }
-                    };
+                    }
                 }
                 // if unfair, we're done
                 return false;
@@ -1693,7 +1700,7 @@ impl SendStreams {
         tokens: &mut Vec<RecoveryToken>,
         stats: &mut FrameStats,
     ) {
-        qtrace!("write STREAM frames at priority {:?}", priority);
+        qtrace!("write STREAM frames at priority {priority:?}");
         // WebTransport data (which is Normal) may have a SendOrder
         // priority attached.  The spec states (6.3 write-chunk 6.1):
 
@@ -1730,7 +1737,7 @@ impl SendStreams {
         qtrace!("processing streams...  unfair:");
         for stream in self.map.values_mut() {
             if !stream.is_fair() {
-                qtrace!("   {}", stream);
+                qtrace!("   {stream}");
                 if !stream.write_frames_with_early_return(priority, builder, tokens, stats) {
                     break;
                 }
@@ -1744,31 +1751,42 @@ impl SendStreams {
                 .flat_map(|group| group.iter()),
         );
         for stream_id in stream_ids {
-            let stream = self.map.get_mut(&stream_id).unwrap();
-            if let Some(order) = stream.sendorder() {
-                qtrace!("   {} ({})", stream_id, order);
-            } else {
-                qtrace!("   None");
-            }
-            if !stream.write_frames_with_early_return(priority, builder, tokens, stats) {
-                break;
+            if let Some(stream) = self.map.get_mut(&stream_id) {
+                if let Some(order) = stream.sendorder() {
+                    qtrace!("   {stream_id} ({order})");
+                } else {
+                    qtrace!("   None");
+                }
+                if !stream.write_frames_with_early_return(priority, builder, tokens, stats) {
+                    break;
+                }
             }
         }
     }
 
+    #[allow(
+        clippy::allow_attributes,
+        clippy::missing_panics_doc,
+        reason = "OK here."
+    )]
     pub fn update_initial_limit(&mut self, remote: &TransportParameters) {
         for (id, ss) in &mut self.map {
             let limit = if id.is_bidi() {
                 assert!(!id.is_remote_initiated(Role::Client));
-                remote.get_integer(tparams::INITIAL_MAX_STREAM_DATA_BIDI_REMOTE)
+                remote.get_integer(InitialMaxStreamDataBidiRemote)
             } else {
-                remote.get_integer(tparams::INITIAL_MAX_STREAM_DATA_UNI)
+                remote.get_integer(InitialMaxStreamDataUni)
             };
             ss.set_max_stream_data(limit);
         }
     }
 }
 
+#[allow(
+    clippy::allow_attributes,
+    clippy::into_iter_without_iter,
+    reason = "OK here."
+)]
 impl<'a> IntoIterator for &'a mut SendStreams {
     type Item = (&'a StreamId, &'a mut SendStream);
     type IntoIter = indexmap::map::IterMut<'a, StreamId, SendStream>;
@@ -1780,7 +1798,7 @@ impl<'a> IntoIterator for &'a mut SendStreams {
 
 #[derive(Debug, Clone)]
 pub struct SendStreamRecoveryToken {
-    pub(crate) id: StreamId,
+    id: StreamId,
     offset: u64,
     length: usize,
     fin: bool,
@@ -1790,7 +1808,7 @@ pub struct SendStreamRecoveryToken {
 mod tests {
     use std::{cell::RefCell, collections::VecDeque, num::NonZeroUsize, rc::Rc};
 
-    use neqo_common::{event::Provider, hex_with_len, qtrace, Encoder};
+    use neqo_common::{event::Provider as _, hex_with_len, qtrace, Encoder, MAX_VARINT};
 
     use super::SendStreamRecoveryToken;
     use crate::{
@@ -1801,9 +1819,10 @@ mod tests {
         recovery::{RecoveryToken, StreamRecoveryToken},
         send_stream::{
             RangeState, RangeTracker, SendStream, SendStreamState, SendStreams, TxBuffer,
+            MAX_SEND_BUFFER_SIZE,
         },
         stats::FrameStats,
-        ConnectionEvents, StreamId, SEND_BUFFER_SIZE,
+        ConnectionEvents, StreamId, INITIAL_RECV_WINDOW_SIZE,
     };
 
     fn connection_fc(limit: u64) -> Rc<RefCell<SenderFlowControl<()>>> {
@@ -2267,21 +2286,18 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn tx_buffer_next_bytes_1() {
         let mut txb = TxBuffer::new();
 
-        assert_eq!(txb.avail(), SEND_BUFFER_SIZE);
-
         // Fill the buffer
-        let big_buf = vec![1; SEND_BUFFER_SIZE * 2];
-        assert_eq!(txb.send(&big_buf), SEND_BUFFER_SIZE);
+        let big_buf = vec![1; INITIAL_RECV_WINDOW_SIZE];
+        assert_eq!(txb.send(&big_buf), INITIAL_RECV_WINDOW_SIZE);
         assert!(matches!(txb.next_bytes(),
-                         Some((0, x)) if x.len() == SEND_BUFFER_SIZE
+                         Some((0, x)) if x.len() == INITIAL_RECV_WINDOW_SIZE
                          && x.iter().all(|ch| *ch == 1)));
 
         // Mark almost all as sent. Get what's left
-        let one_byte_from_end = SEND_BUFFER_SIZE as u64 - 1;
+        let one_byte_from_end = INITIAL_RECV_WINDOW_SIZE as u64 - 1;
         txb.mark_as_sent(0, usize::try_from(one_byte_from_end).unwrap());
         assert!(matches!(txb.next_bytes(),
                          Some((start, x)) if x.len() == 1
@@ -2289,7 +2305,7 @@ mod tests {
                          && x.iter().all(|ch| *ch == 1)));
 
         // Mark all as sent. Get nothing
-        txb.mark_as_sent(0, SEND_BUFFER_SIZE);
+        txb.mark_as_sent(0, INITIAL_RECV_WINDOW_SIZE);
         assert!(txb.next_bytes().is_none());
 
         // Mark as lost. Get it again
@@ -2301,7 +2317,7 @@ mod tests {
 
         // Mark a larger range lost, including beyond what's in the buffer even.
         // Get a little more
-        let five_bytes_from_end = SEND_BUFFER_SIZE as u64 - 5;
+        let five_bytes_from_end = INITIAL_RECV_WINDOW_SIZE as u64 - 5;
         txb.mark_as_lost(five_bytes_from_end, 100);
         assert!(matches!(txb.next_bytes(),
                          Some((start, x)) if x.len() == 5
@@ -2326,7 +2342,7 @@ mod tests {
         txb.mark_as_sent(five_bytes_from_end, 5);
         assert!(matches!(txb.next_bytes(),
                          Some((start, x)) if x.len() == 30
-                         && start == SEND_BUFFER_SIZE as u64
+                         && start == INITIAL_RECV_WINDOW_SIZE as u64
                          && x.iter().all(|ch| *ch == 2)));
     }
 
@@ -2334,17 +2350,15 @@ mod tests {
     fn tx_buffer_next_bytes_2() {
         let mut txb = TxBuffer::new();
 
-        assert_eq!(txb.avail(), SEND_BUFFER_SIZE);
-
         // Fill the buffer
-        let big_buf = vec![1; SEND_BUFFER_SIZE * 2];
-        assert_eq!(txb.send(&big_buf), SEND_BUFFER_SIZE);
+        let big_buf = vec![1; INITIAL_RECV_WINDOW_SIZE];
+        assert_eq!(txb.send(&big_buf), INITIAL_RECV_WINDOW_SIZE);
         assert!(matches!(txb.next_bytes(),
-                         Some((0, x)) if x.len()==SEND_BUFFER_SIZE
+                         Some((0, x)) if x.len()==INITIAL_RECV_WINDOW_SIZE
                          && x.iter().all(|ch| *ch == 1)));
 
         // As above
-        let forty_bytes_from_end = SEND_BUFFER_SIZE as u64 - 40;
+        let forty_bytes_from_end = INITIAL_RECV_WINDOW_SIZE as u64 - 40;
 
         txb.mark_as_acked(0, usize::try_from(forty_bytes_from_end).unwrap());
         assert!(matches!(txb.next_bytes(),
@@ -2364,7 +2378,7 @@ mod tests {
                          && x.iter().all(|ch| *ch == 1)));
 
         // Mark a range 'A' in second slice as sent. Should still return the same
-        let range_a_start = SEND_BUFFER_SIZE as u64 + 30;
+        let range_a_start = INITIAL_RECV_WINDOW_SIZE as u64 + 30;
         let range_a_end = range_a_start + 10;
         txb.mark_as_sent(range_a_start, 10);
         assert!(matches!(txb.next_bytes(),
@@ -2373,7 +2387,7 @@ mod tests {
                          && x.iter().all(|ch| *ch == 1)));
 
         // Ack entire first slice and into second slice
-        let ten_bytes_past_end = SEND_BUFFER_SIZE as u64 + 10;
+        let ten_bytes_past_end = INITIAL_RECV_WINDOW_SIZE as u64 + 10;
         txb.mark_as_acked(0, usize::try_from(ten_bytes_past_end).unwrap());
 
         // Get up to marked range A
@@ -2412,31 +2426,31 @@ mod tests {
         }
 
         // Should hit stream flow control limit before filling up send buffer
-        let big_buf = vec![4; SEND_BUFFER_SIZE + 100];
-        let res = s.send(&big_buf[..SEND_BUFFER_SIZE]).unwrap();
+        let big_buf = vec![4; INITIAL_RECV_WINDOW_SIZE + 100];
+        let res = s.send(&big_buf[..INITIAL_RECV_WINDOW_SIZE]).unwrap();
         assert_eq!(res, 1024 - 100);
 
         // should do nothing, max stream data already 1024
         s.set_max_stream_data(1024);
-        let res = s.send(&big_buf[..SEND_BUFFER_SIZE]).unwrap();
+        let res = s.send(&big_buf[..INITIAL_RECV_WINDOW_SIZE]).unwrap();
         assert_eq!(res, 0);
 
         // should now hit the conn flow control (4096)
         s.set_max_stream_data(1_048_576);
-        let res = s.send(&big_buf[..SEND_BUFFER_SIZE]).unwrap();
+        let res = s.send(&big_buf[..INITIAL_RECV_WINDOW_SIZE]).unwrap();
         assert_eq!(res, 3072);
 
         // should now hit the tx buffer size
-        conn_fc.borrow_mut().update(SEND_BUFFER_SIZE as u64);
+        conn_fc.borrow_mut().update(INITIAL_RECV_WINDOW_SIZE as u64);
         let res = s.send(&big_buf).unwrap();
-        assert_eq!(res, SEND_BUFFER_SIZE - 4096);
+        assert_eq!(res, INITIAL_RECV_WINDOW_SIZE - 4096);
 
         // TODO(agrover@mozilla.com): test ooo acks somehow
         s.mark_as_acked(0, 40, false);
     }
 
     #[test]
-    fn test_tx_buffer_acks() {
+    fn tx_buffer_acks() {
         let mut tx = TxBuffer::new();
         assert_eq!(tx.send(&[4; 100]), 100);
         let res = tx.next_bytes().unwrap();
@@ -2495,17 +2509,8 @@ mod tests {
         conn_fc.borrow_mut().update(1_000_000_000);
         assert_eq!(conn_events.events().count(), 0);
 
-        // Unblocking both by a large amount will cause avail() to be limited by
-        // tx buffer size.
-        assert_eq!(s.avail(), SEND_BUFFER_SIZE - 4);
-
-        let big_buf = vec![b'a'; SEND_BUFFER_SIZE];
-        assert_eq!(s.send(&big_buf).unwrap(), SEND_BUFFER_SIZE - 4);
-
-        // No event because still blocked by tx buffer full
-        s.set_max_stream_data(2_000_000_000);
-        assert_eq!(conn_events.events().count(), 0);
-        assert_eq!(s.send(b"hello").unwrap(), 0);
+        let big_buf = vec![b'a'; INITIAL_RECV_WINDOW_SIZE];
+        assert_eq!(s.send(&big_buf).unwrap(), INITIAL_RECV_WINDOW_SIZE);
     }
 
     #[test]
@@ -2572,7 +2577,7 @@ mod tests {
         ));
     }
 
-    fn as_stream_token(t: &RecoveryToken) -> &SendStreamRecoveryToken {
+    const fn as_stream_token(t: &RecoveryToken) -> &SendStreamRecoveryToken {
         if let RecoveryToken::Stream(StreamRecoveryToken::Stream(rt)) = &t {
             rt
         } else {
@@ -2594,7 +2599,7 @@ mod tests {
         ss.insert(StreamId::from(0), s);
 
         let mut tokens = Vec::new();
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
 
         // Write a small frame: no fin.
         let written = builder.len();
@@ -2670,7 +2675,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     // Verify lost frames handle fin properly with zero length fin
     fn send_stream_get_frame_zerolength_fin() {
         let conn_fc = connection_fc(100);
@@ -2683,7 +2687,7 @@ mod tests {
         ss.insert(StreamId::from(0), s);
 
         let mut tokens = Vec::new();
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
         ss.write_frames(
             TransmissionPriority::default(),
             &mut builder,
@@ -2761,7 +2765,7 @@ mod tests {
         assert_eq!(s.next_bytes(false), Some((0, &b"ab"[..])));
 
         // This doesn't report blocking yet.
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
         let mut tokens = Vec::new();
         let mut stats = FrameStats::default();
         s.write_blocked_frame(
@@ -2802,6 +2806,19 @@ mod tests {
     }
 
     #[test]
+    fn max_send_buffer_size() {
+        // Huge FC limit. Thus buffer size limited only.
+        const FC_LIMIT: u64 = 1024 * 1024 * 1024;
+        let s = SendStream::new(
+            StreamId::from(4),
+            FC_LIMIT,
+            connection_fc(FC_LIMIT),
+            ConnectionEvents::default(),
+        );
+        assert_eq!(s.avail(), MAX_SEND_BUFFER_SIZE);
+    }
+
+    #[test]
     fn data_blocked_atomic() {
         let conn_fc = connection_fc(5);
         let conn_events = ConnectionEvents::default();
@@ -2814,7 +2831,7 @@ mod tests {
         assert_eq!(s.send_atomic(b"abc").unwrap(), 0);
 
         // Assert that STREAM_DATA_BLOCKED is sent.
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
         let mut tokens = Vec::new();
         let mut stats = FrameStats::default();
         s.write_blocked_frame(
@@ -2901,7 +2918,7 @@ mod tests {
         s.mark_as_lost(len_u64, 0, true);
 
         // No frame should be sent here.
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
         let mut tokens = Vec::new();
         let mut stats = FrameStats::default();
         s.write_stream_frame(
@@ -2916,8 +2933,6 @@ mod tests {
     /// Create a `SendStream` and force it into a state where it believes that
     /// `offset` bytes have already been sent and acknowledged.
     fn stream_with_sent(stream: u64, offset: usize) -> SendStream {
-        const MAX_VARINT: u64 = (1 << 62) - 1;
-
         let conn_fc = connection_fc(MAX_VARINT);
         let mut s = SendStream::new(
             StreamId::from(stream),
@@ -2942,14 +2957,7 @@ mod tests {
     fn frame_sent_sid(stream: u64, offset: usize, len: usize, fin: bool, space: usize) -> bool {
         const BUF: &[u8] = &[0x42; 128];
 
-        qtrace!(
-            "frame_sent stream={} offset={} len={} fin={}, space={}",
-            stream,
-            offset,
-            len,
-            fin,
-            space
-        );
+        qtrace!("frame_sent stream={stream} offset={offset} len={len} fin={fin}, space={space}");
 
         let mut s = stream_with_sent(stream, offset);
 
@@ -2961,7 +2969,7 @@ mod tests {
             s.close();
         }
 
-        let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+        let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
         let header_len = builder.len();
         builder.set_limit(header_len + space);
 
@@ -3057,12 +3065,12 @@ mod tests {
 
     fn stream_frame_at_boundary(data: &[u8]) {
         fn send_with_extra_capacity(data: &[u8], extra: usize, expect_full: bool) -> Vec<u8> {
-            qtrace!("send_with_extra_capacity {} + {}", data.len(), extra);
+            qtrace!("send_with_extra_capacity {} + {extra}", data.len());
             let mut s = stream_with_sent(0, 0);
             s.send(data).unwrap();
             s.close();
 
-            let mut builder = PacketBuilder::short(Encoder::new(), false, []);
+            let mut builder = PacketBuilder::short(Encoder::new(), false, None::<&[u8]>);
             let header_len = builder.len();
             // Add 2 for the frame type and stream ID, then add the extra.
             builder.set_limit(header_len + data.len() + 2 + extra);

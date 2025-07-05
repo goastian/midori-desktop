@@ -12,25 +12,32 @@
 #include <string.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "api/data_channel_interface.h"
+#include "api/make_ref_counted.h"
+#include "api/priority.h"
 #include "api/rtc_error.h"
 #include "api/scoped_refptr.h"
+#include "api/sequence_checker.h"
+#include "api/task_queue/pending_task_safety_flag.h"
+#include "api/test/rtc_error_matchers.h"
 #include "api/transport/data_channel_transport_interface.h"
-#include "media/base/media_channel.h"
 #include "media/sctp/sctp_transport_internal.h"
 #include "pc/sctp_data_channel.h"
 #include "pc/sctp_utils.h"
 #include "pc/test/fake_data_channel_controller.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/copy_on_write_buffer.h"
-#include "rtc_base/gunit.h"
 #include "rtc_base/null_socket_server.h"
 #include "rtc_base/ssl_stream_adapter.h"
 #include "rtc_base/thread.h"
+#include "test/gmock.h"
 #include "test/gtest.h"
 #include "test/run_loop.h"
+#include "test/wait_until.h"
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
 #include "test/testsupport/rtc_expect_death.h"
@@ -40,7 +47,7 @@ namespace webrtc {
 
 namespace {
 
-static constexpr int kDefaultTimeout = 10000;
+using ::testing::Eq;
 
 class FakeDataChannelObserver : public DataChannelObserver {
  public:
@@ -100,7 +107,7 @@ class SctpDataChannelTest : public ::testing::Test {
       RTC_DCHECK_RUN_ON(&network_thread_);
       if (!inner_channel_->sid_n().has_value()) {
         inner_channel_->SetSctpSid_n(sid);
-        controller_->AddSctpDataStream(sid);
+        controller_->AddSctpDataStream(sid, inner_channel_->priority());
       }
       inner_channel_->OnTransportChannelCreated();
     });
@@ -117,7 +124,7 @@ class SctpDataChannelTest : public ::testing::Test {
                      StreamId sid) {
     network_thread_.BlockingCall([&]() {
       channel->SetSctpSid_n(sid);
-      controller_->AddSctpDataStream(sid);
+      controller_->AddSctpDataStream(sid, channel->priority());
     });
   }
 
@@ -162,16 +169,20 @@ TEST_F(SctpDataChannelTest, VerifyConfigurationGetters) {
   EXPECT_EQ(channel_->reliable(), init_.reliable);
   EXPECT_EQ(channel_->ordered(), init_.ordered);
   EXPECT_EQ(channel_->negotiated(), init_.negotiated);
-  EXPECT_EQ(channel_->priority(), Priority::kLow);
-  EXPECT_EQ(channel_->maxRetransmitTime(), static_cast<uint16_t>(-1));
+  EXPECT_EQ(channel_->priority(), PriorityValue(Priority::kLow));
   EXPECT_EQ(channel_->maxPacketLifeTime(), init_.maxRetransmitTime);
-  EXPECT_EQ(channel_->maxRetransmits(), static_cast<uint16_t>(-1));
   EXPECT_EQ(channel_->maxRetransmitsOpt(), init_.maxRetransmits);
+  // TODO: issues.webrtc.org/42220231 - remove when deprecation done
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  EXPECT_EQ(channel_->maxRetransmitTime(), static_cast<uint16_t>(-1));
+  EXPECT_EQ(channel_->maxRetransmits(), static_cast<uint16_t>(-1));
+#pragma clang diagnostic pop
 
   // Check the non-const part of the configuration.
   EXPECT_EQ(channel_->id(), init_.id);
   network_thread_.BlockingCall(
-      [&]() { EXPECT_EQ(inner_channel_->sid_n(), absl::nullopt); });
+      [&]() { EXPECT_EQ(inner_channel_->sid_n(), std::nullopt); });
 
   SetChannelReady();
   EXPECT_EQ(channel_->id(), 0);
@@ -187,7 +198,7 @@ TEST_F(SctpDataChannelTest, ConnectedToTransportOnCreated) {
   EXPECT_TRUE(controller_->IsConnected(dc.get()));
 
   // The sid is not set yet, so it should not have added the streams.
-  absl::optional<StreamId> sid =
+  std::optional<StreamId> sid =
       network_thread_.BlockingCall([&]() { return dc->sid_n(); });
   EXPECT_FALSE(sid.has_value());
 
@@ -222,266 +233,6 @@ TEST_F(SctpDataChannelTest, StateTransition) {
   EXPECT_FALSE(controller_->IsConnected(inner_channel_.get()));
 }
 
-// Tests that DataChannel::buffered_amount() is correct after the channel is
-// blocked.
-TEST_F(SctpDataChannelTest, BufferedAmountWhenBlocked) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  size_t successful_sends = 0;
-  auto send_complete = [&](RTCError err) {
-    EXPECT_TRUE(err.ok());
-    ++successful_sends;
-  };
-  channel_->SendAsync(buffer, send_complete);
-  FlushNetworkThreadAndPendingOperations();
-  EXPECT_EQ(channel_->buffered_amount(), 0u);
-  size_t successful_send_count = 1;
-  EXPECT_EQ(successful_send_count, successful_sends);
-  EXPECT_EQ(successful_send_count,
-            observer_->on_buffered_amount_change_count());
-
-  controller_->set_send_blocked(true);
-  const int number_of_packets = 3;
-  for (int i = 0; i < number_of_packets; ++i) {
-    channel_->SendAsync(buffer, send_complete);
-    ++successful_send_count;
-  }
-  FlushNetworkThreadAndPendingOperations();
-  EXPECT_EQ(buffer.data.size() * number_of_packets,
-            channel_->buffered_amount());
-  EXPECT_EQ(successful_send_count, successful_sends);
-
-  // An event should not have been fired for buffered amount.
-  EXPECT_EQ(1u, observer_->on_buffered_amount_change_count());
-
-  // Now buffered amount events should get fired and the value
-  // get down to 0u.
-  controller_->set_send_blocked(false);
-  run_loop_.Flush();
-  EXPECT_EQ(channel_->buffered_amount(), 0u);
-  EXPECT_EQ(successful_send_count, successful_sends);
-  EXPECT_EQ(successful_send_count,
-            observer_->on_buffered_amount_change_count());
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedBufferedAmountWhenBlocked) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  EXPECT_TRUE(channel_->Send(buffer));
-  size_t successful_send_count = 1;
-
-  run_loop_.Flush();
-  EXPECT_EQ(0U, channel_->buffered_amount());
-  EXPECT_EQ(successful_send_count,
-            observer_->on_buffered_amount_change_count());
-
-  controller_->set_send_blocked(true);
-
-  const int number_of_packets = 3;
-  for (int i = 0; i < number_of_packets; ++i) {
-    EXPECT_TRUE(channel_->Send(buffer));
-  }
-  EXPECT_EQ(buffer.data.size() * number_of_packets,
-            channel_->buffered_amount());
-  EXPECT_EQ(successful_send_count,
-            observer_->on_buffered_amount_change_count());
-
-  controller_->set_send_blocked(false);
-  run_loop_.Flush();
-  successful_send_count += number_of_packets;
-  EXPECT_EQ(channel_->buffered_amount(), 0u);
-  EXPECT_EQ(successful_send_count,
-            observer_->on_buffered_amount_change_count());
-}
-
-// Tests that the queued data are sent when the channel transitions from blocked
-// to unblocked.
-TEST_F(SctpDataChannelTest, QueuedDataSentWhenUnblocked) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  controller_->set_send_blocked(true);
-  size_t successful_send = 0u;
-  auto send_complete = [&](RTCError err) {
-    EXPECT_TRUE(err.ok());
-    ++successful_send;
-  };
-  channel_->SendAsync(buffer, send_complete);
-  FlushNetworkThreadAndPendingOperations();
-  EXPECT_EQ(1U, successful_send);
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  controller_->set_send_blocked(false);
-  SetChannelReady();
-  EXPECT_EQ(channel_->buffered_amount(), 0u);
-  EXPECT_EQ(observer_->on_buffered_amount_change_count(), 1u);
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedQueuedDataSentWhenUnblocked) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  controller_->set_send_blocked(true);
-  EXPECT_TRUE(channel_->Send(buffer));
-
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  controller_->set_send_blocked(false);
-  SetChannelReady();
-  EXPECT_EQ(0U, channel_->buffered_amount());
-  EXPECT_EQ(1U, observer_->on_buffered_amount_change_count());
-}
-
-// Tests that no crash when the channel is blocked right away while trying to
-// send queued data.
-TEST_F(SctpDataChannelTest, BlockedWhenSendQueuedDataNoCrash) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  controller_->set_send_blocked(true);
-  size_t successful_send = 0u;
-  auto send_complete = [&](RTCError err) {
-    EXPECT_TRUE(err.ok());
-    ++successful_send;
-  };
-  channel_->SendAsync(buffer, send_complete);
-  FlushNetworkThreadAndPendingOperations();
-  EXPECT_EQ(1U, successful_send);
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  // Set channel ready while it is still blocked.
-  SetChannelReady();
-  EXPECT_EQ(buffer.size(), channel_->buffered_amount());
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  // Unblock the channel to send queued data again, there should be no crash.
-  controller_->set_send_blocked(false);
-  SetChannelReady();
-  EXPECT_EQ(0U, channel_->buffered_amount());
-  EXPECT_EQ(1U, observer_->on_buffered_amount_change_count());
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedBlockedWhenSendQueuedDataNoCrash) {
-  AddObserver();
-  SetChannelReady();
-  DataBuffer buffer("abcd");
-  controller_->set_send_blocked(true);
-  EXPECT_TRUE(channel_->Send(buffer));
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  // Set channel ready while it is still blocked.
-  SetChannelReady();
-  EXPECT_EQ(buffer.size(), channel_->buffered_amount());
-  EXPECT_EQ(0U, observer_->on_buffered_amount_change_count());
-
-  // Unblock the channel to send queued data again, there should be no crash.
-  controller_->set_send_blocked(false);
-  SetChannelReady();
-  EXPECT_EQ(0U, channel_->buffered_amount());
-  EXPECT_EQ(1U, observer_->on_buffered_amount_change_count());
-}
-
-// Tests that DataChannel::messages_sent() and DataChannel::bytes_sent() are
-// correct, sending data both while unblocked and while blocked.
-TEST_F(SctpDataChannelTest, VerifyMessagesAndBytesSent) {
-  AddObserver();
-  SetChannelReady();
-  std::vector<DataBuffer> buffers({
-      DataBuffer("message 1"),
-      DataBuffer("msg 2"),
-      DataBuffer("message three"),
-      DataBuffer("quadra message"),
-      DataBuffer("fifthmsg"),
-      DataBuffer("message of the beast"),
-  });
-
-  // Default values.
-  EXPECT_EQ(0U, channel_->messages_sent());
-  EXPECT_EQ(0U, channel_->bytes_sent());
-
-  // Send three buffers while not blocked.
-  controller_->set_send_blocked(false);
-  for (int i : {0, 1, 2}) {
-    channel_->SendAsync(buffers[i], nullptr);
-  }
-  FlushNetworkThreadAndPendingOperations();
-
-  size_t bytes_sent = buffers[0].size() + buffers[1].size() + buffers[2].size();
-  EXPECT_EQ_WAIT(0U, channel_->buffered_amount(), kDefaultTimeout);
-  EXPECT_EQ(3U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-
-  // Send three buffers while blocked, queuing the buffers.
-  controller_->set_send_blocked(true);
-  for (int i : {3, 4, 5}) {
-    channel_->SendAsync(buffers[i], nullptr);
-  }
-  FlushNetworkThreadAndPendingOperations();
-  size_t bytes_queued =
-      buffers[3].size() + buffers[4].size() + buffers[5].size();
-  EXPECT_EQ(bytes_queued, channel_->buffered_amount());
-  EXPECT_EQ(3U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-
-  // Unblock and make sure everything was sent.
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(0U, channel_->buffered_amount(), kDefaultTimeout);
-  bytes_sent += bytes_queued;
-  EXPECT_EQ(6U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedVerifyMessagesAndBytesSent) {
-  AddObserver();
-  SetChannelReady();
-  std::vector<DataBuffer> buffers({
-      DataBuffer("message 1"),
-      DataBuffer("msg 2"),
-      DataBuffer("message three"),
-      DataBuffer("quadra message"),
-      DataBuffer("fifthmsg"),
-      DataBuffer("message of the beast"),
-  });
-
-  // Default values.
-  EXPECT_EQ(0U, channel_->messages_sent());
-  EXPECT_EQ(0U, channel_->bytes_sent());
-
-  // Send three buffers while not blocked.
-  controller_->set_send_blocked(false);
-  EXPECT_TRUE(channel_->Send(buffers[0]));
-  EXPECT_TRUE(channel_->Send(buffers[1]));
-  EXPECT_TRUE(channel_->Send(buffers[2]));
-  size_t bytes_sent = buffers[0].size() + buffers[1].size() + buffers[2].size();
-  EXPECT_EQ_WAIT(0U, channel_->buffered_amount(), kDefaultTimeout);
-  EXPECT_EQ(3U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-
-  // Send three buffers while blocked, queuing the buffers.
-  controller_->set_send_blocked(true);
-  EXPECT_TRUE(channel_->Send(buffers[3]));
-  EXPECT_TRUE(channel_->Send(buffers[4]));
-  EXPECT_TRUE(channel_->Send(buffers[5]));
-  size_t bytes_queued =
-      buffers[3].size() + buffers[4].size() + buffers[5].size();
-  EXPECT_EQ(bytes_queued, channel_->buffered_amount());
-  EXPECT_EQ(3U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-
-  // Unblock and make sure everything was sent.
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(0U, channel_->buffered_amount(), kDefaultTimeout);
-  bytes_sent += bytes_queued;
-  EXPECT_EQ(6U, channel_->messages_sent());
-  EXPECT_EQ(bytes_sent, channel_->bytes_sent());
-}
-
 // Tests that the queued control message is sent when channel is ready.
 TEST_F(SctpDataChannelTest, OpenMessageSent) {
   // Initially the id is unassigned.
@@ -489,16 +240,6 @@ TEST_F(SctpDataChannelTest, OpenMessageSent) {
 
   SetChannelReady();
   EXPECT_GE(channel_->id(), 0);
-  EXPECT_EQ(DataMessageType::kControl,
-            controller_->last_send_data_params().type);
-  EXPECT_EQ(controller_->last_sid(), channel_->id());
-}
-
-TEST_F(SctpDataChannelTest, QueuedOpenMessageSent) {
-  controller_->set_send_blocked(true);
-  SetChannelReady();
-  controller_->set_send_blocked(false);
-
   EXPECT_EQ(DataMessageType::kControl,
             controller_->last_send_data_params().type);
   EXPECT_EQ(controller_->last_sid(), channel_->id());
@@ -526,7 +267,9 @@ TEST_F(SctpDataChannelTest, SendUnorderedAfterReceivesOpenAck) {
       controller_->CreateDataChannel("test1", init);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
 
   // Sends a message and verifies it's ordered.
   DataBuffer buffer("some data");
@@ -555,7 +298,9 @@ TEST_F(SctpDataChannelTest, DeprecatedSendUnorderedAfterReceivesOpenAck) {
       controller_->CreateDataChannel("test1", init);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
 
   // Sends a message and verifies it's ordered.
   DataBuffer buffer("some data");
@@ -584,7 +329,9 @@ TEST_F(SctpDataChannelTest, SendUnorderedAfterReceiveData) {
       controller_->CreateDataChannel("test1", init);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
 
   // Emulates receiving a DATA message.
   DataBuffer buffer("data");
@@ -607,7 +354,9 @@ TEST_F(SctpDataChannelTest, DeprecatedSendUnorderedAfterReceiveData) {
       controller_->CreateDataChannel("test1", init);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
 
   // Emulates receiving a DATA message.
   DataBuffer buffer("data");
@@ -617,56 +366,6 @@ TEST_F(SctpDataChannelTest, DeprecatedSendUnorderedAfterReceiveData) {
   // Sends a message and verifies it's unordered.
   ASSERT_TRUE(proxy->Send(buffer));
   EXPECT_FALSE(controller_->last_send_data_params().ordered);
-}
-
-// Tests that the channel can't open until it's successfully sent the OPEN
-// message.
-TEST_F(SctpDataChannelTest, OpenWaitsForOpenMesssage) {
-  DataBuffer buffer("foo");
-
-  controller_->set_send_blocked(true);
-  SetChannelReady();
-  EXPECT_EQ(DataChannelInterface::kConnecting, channel_->state());
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, channel_->state(), 1000);
-  EXPECT_EQ(DataMessageType::kControl,
-            controller_->last_send_data_params().type);
-}
-
-// Tests that close first makes sure all queued data gets sent.
-TEST_F(SctpDataChannelTest, QueuedCloseFlushes) {
-  DataBuffer buffer("foo");
-
-  controller_->set_send_blocked(true);
-  SetChannelReady();
-  EXPECT_EQ(DataChannelInterface::kConnecting, channel_->state());
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, channel_->state(), 1000);
-  controller_->set_send_blocked(true);
-  channel_->SendAsync(buffer, nullptr);
-  channel_->Close();
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(DataChannelInterface::kClosed, channel_->state(), 1000);
-  EXPECT_TRUE(channel_->error().ok());
-  EXPECT_EQ(DataMessageType::kText, controller_->last_send_data_params().type);
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedQueuedCloseFlushes) {
-  DataBuffer buffer("foo");
-
-  controller_->set_send_blocked(true);
-  SetChannelReady();
-  EXPECT_EQ(DataChannelInterface::kConnecting, channel_->state());
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, channel_->state(), 1000);
-  controller_->set_send_blocked(true);
-  channel_->Send(buffer);
-  channel_->Close();
-  controller_->set_send_blocked(false);
-  EXPECT_EQ_WAIT(DataChannelInterface::kClosed, channel_->state(), 1000);
-  EXPECT_TRUE(channel_->error().ok());
-  EXPECT_EQ(DataMessageType::kText, controller_->last_send_data_params().type);
 }
 
 // Tests that messages are sent with the right id.
@@ -716,7 +415,9 @@ TEST_F(SctpDataChannelTest, NoMsgSentIfNegotiatedAndNotFromOpenMsg) {
       controller_->CreateDataChannel("test1", config);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
   EXPECT_EQ(0, controller_->last_sid());
 }
 
@@ -781,7 +482,9 @@ TEST_F(SctpDataChannelTest, OpenAckSentIfCreatedFromOpenMessage) {
       controller_->CreateDataChannel("test1", config);
   auto proxy = SctpDataChannel::CreateProxy(dc, signaling_safety_);
 
-  EXPECT_EQ_WAIT(DataChannelInterface::kOpen, proxy->state(), 1000);
+  EXPECT_THAT(WaitUntil([&] { return proxy->state(); },
+                        Eq(DataChannelInterface::kOpen)),
+              IsRtcOk());
 
   EXPECT_EQ(config.id, controller_->last_sid());
   EXPECT_EQ(DataMessageType::kControl,
@@ -798,59 +501,6 @@ TEST_F(SctpDataChannelTest, OpenAckRoleInitialization) {
   base.negotiated = true;
   InternalDataChannelInit init2(base);
   EXPECT_EQ(InternalDataChannelInit::kNone, init2.open_handshake_role);
-}
-
-// Tests that that Send() returns false if the sending buffer is full
-// and the channel stays open.
-TEST_F(SctpDataChannelTest, OpenWhenSendBufferFull) {
-  AddObserver();
-  SetChannelReady();
-
-  const size_t packetSize = 1024;
-
-  rtc::CopyOnWriteBuffer buffer(packetSize);
-  memset(buffer.MutableData(), 0, buffer.size());
-
-  DataBuffer packet(buffer, true);
-  controller_->set_send_blocked(true);
-  size_t successful_send = 0u, failed_send = 0u;
-  auto send_complete = [&](RTCError err) {
-    err.ok() ? ++successful_send : ++failed_send;
-  };
-
-  size_t count = DataChannelInterface::MaxSendQueueSize() / packetSize;
-  for (size_t i = 0; i < count; ++i) {
-    channel_->SendAsync(packet, send_complete);
-  }
-
-  // The sending buffer should be full, `Send()` returns false.
-  channel_->SendAsync(packet, std::move(send_complete));
-  FlushNetworkThreadAndPendingOperations();
-  EXPECT_TRUE(DataChannelInterface::kOpen == channel_->state());
-  EXPECT_EQ(successful_send, count);
-  EXPECT_EQ(failed_send, 1u);
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedOpenWhenSendBufferFull) {
-  SetChannelReady();
-
-  const size_t packetSize = 1024;
-
-  rtc::CopyOnWriteBuffer buffer(packetSize);
-  memset(buffer.MutableData(), 0, buffer.size());
-
-  DataBuffer packet(buffer, true);
-  controller_->set_send_blocked(true);
-
-  for (size_t i = 0; i < DataChannelInterface::MaxSendQueueSize() / packetSize;
-       ++i) {
-    EXPECT_TRUE(channel_->Send(packet));
-  }
-
-  // The sending buffer should be full, `Send()` returns false.
-  EXPECT_FALSE(channel_->Send(packet));
-  EXPECT_TRUE(DataChannelInterface::kOpen == channel_->state());
 }
 
 // Tests that the DataChannel is closed on transport errors.
@@ -943,12 +593,11 @@ TEST_F(SctpDataChannelTest, TransportDestroyedWhileDataBuffered) {
   AddObserver();
   SetChannelReady();
 
-  rtc::CopyOnWriteBuffer buffer(1024);
+  rtc::CopyOnWriteBuffer buffer(100 * 1024);
   memset(buffer.MutableData(), 0, buffer.size());
   DataBuffer packet(buffer, true);
 
-  // Send a packet while sending is blocked so it ends up buffered.
-  controller_->set_send_blocked(true);
+  // Send a very large packet, forcing the message to become buffered.
   channel_->SendAsync(packet, nullptr);
 
   // Tell the data channel that its transport is being destroyed.
@@ -959,35 +608,9 @@ TEST_F(SctpDataChannelTest, TransportDestroyedWhileDataBuffered) {
   network_thread_.BlockingCall(
       [&] { inner_channel_->OnTransportChannelClosed(error); });
   controller_.reset(nullptr);
-  EXPECT_EQ_WAIT(DataChannelInterface::kClosed, channel_->state(),
-                 kDefaultTimeout);
-  EXPECT_FALSE(channel_->error().ok());
-  EXPECT_EQ(RTCErrorType::OPERATION_ERROR_WITH_DATA, channel_->error().type());
-  EXPECT_EQ(RTCErrorDetailType::SCTP_FAILURE, channel_->error().error_detail());
-}
-
-// TODO(tommi): This test uses `Send()`. Remove once fully deprecated.
-TEST_F(SctpDataChannelTest, DeprecatedTransportDestroyedWhileDataBuffered) {
-  SetChannelReady();
-
-  rtc::CopyOnWriteBuffer buffer(1024);
-  memset(buffer.MutableData(), 0, buffer.size());
-  DataBuffer packet(buffer, true);
-
-  // Send a packet while sending is blocked so it ends up buffered.
-  controller_->set_send_blocked(true);
-  EXPECT_TRUE(channel_->Send(packet));
-
-  // Tell the data channel that its transport is being destroyed.
-  // It should then stop using the transport (allowing us to delete it) and
-  // transition to the "closed" state.
-  RTCError error(RTCErrorType::OPERATION_ERROR_WITH_DATA, "");
-  error.set_error_detail(RTCErrorDetailType::SCTP_FAILURE);
-  network_thread_.BlockingCall(
-      [&] { inner_channel_->OnTransportChannelClosed(error); });
-  controller_.reset(nullptr);
-  EXPECT_EQ_WAIT(DataChannelInterface::kClosed, channel_->state(),
-                 kDefaultTimeout);
+  EXPECT_THAT(WaitUntil([&] { return channel_->state(); },
+                        Eq(DataChannelInterface::kClosed)),
+              IsRtcOk());
   EXPECT_FALSE(channel_->error().ok());
   EXPECT_EQ(RTCErrorType::OPERATION_ERROR_WITH_DATA, channel_->error().type());
   EXPECT_EQ(RTCErrorDetailType::SCTP_FAILURE, channel_->error().error_detail());
@@ -1007,8 +630,9 @@ TEST_F(SctpDataChannelTest, TransportGotErrorCode) {
   network_thread_.BlockingCall(
       [&] { inner_channel_->OnTransportChannelClosed(error); });
   controller_.reset(nullptr);
-  EXPECT_EQ_WAIT(DataChannelInterface::kClosed, channel_->state(),
-                 kDefaultTimeout);
+  EXPECT_THAT(WaitUntil([&] { return channel_->state(); },
+                        Eq(DataChannelInterface::kClosed)),
+              IsRtcOk());
   EXPECT_FALSE(channel_->error().ok());
   EXPECT_EQ(RTCErrorType::OPERATION_ERROR_WITH_DATA, channel_->error().type());
   EXPECT_EQ(RTCErrorDetailType::SCTP_FAILURE, channel_->error().error_detail());
@@ -1036,7 +660,7 @@ TEST_F(SctpSidAllocatorTest, SctpIdAllocationNoReuse) {
   StreamId old_id(1);
   EXPECT_TRUE(allocator_.ReserveSid(old_id));
 
-  absl::optional<StreamId> new_id = allocator_.AllocateSid(rtc::SSL_SERVER);
+  std::optional<StreamId> new_id = allocator_.AllocateSid(rtc::SSL_SERVER);
   EXPECT_TRUE(new_id.has_value());
   EXPECT_NE(old_id, new_id);
 
@@ -1054,7 +678,7 @@ TEST_F(SctpSidAllocatorTest, SctpIdReusedForRemovedDataChannel) {
   EXPECT_TRUE(allocator_.ReserveSid(odd_id));
   EXPECT_TRUE(allocator_.ReserveSid(even_id));
 
-  absl::optional<StreamId> allocated_id =
+  std::optional<StreamId> allocated_id =
       allocator_.AllocateSid(rtc::SSL_SERVER);
   EXPECT_EQ(odd_id.stream_id_int() + 2, allocated_id->stream_id_int());
 
@@ -1122,8 +746,6 @@ class NoImplObserver : public DataChannelObserver {
 TEST(DataChannelInterfaceTest, Coverage) {
   auto channel = rtc::make_ref_counted<NoImplDataChannel>();
   EXPECT_FALSE(channel->ordered());
-  EXPECT_EQ(channel->maxRetransmitTime(), 0u);
-  EXPECT_EQ(channel->maxRetransmits(), 0u);
   EXPECT_FALSE(channel->maxRetransmitsOpt());
   EXPECT_FALSE(channel->maxPacketLifeTime());
   EXPECT_TRUE(channel->protocol().empty());

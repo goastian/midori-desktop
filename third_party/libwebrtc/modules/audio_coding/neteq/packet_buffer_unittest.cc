@@ -36,7 +36,7 @@ class MockEncodedAudioFrame : public webrtc::AudioDecoder::EncodedAudioFrame {
 
   MOCK_METHOD(bool, IsDtxPacket, (), (const, override));
 
-  MOCK_METHOD(absl::optional<DecodeResult>,
+  MOCK_METHOD(std::optional<DecodeResult>,
               Decode,
               (rtc::ArrayView<int16_t> decoded),
               (const, override));
@@ -108,7 +108,7 @@ namespace webrtc {
 
 TEST(PacketBuffer, CreateAndDestroy) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer* buffer =
       new PacketBuffer(10, &tick_timer, &mock_stats);  // 10 packets.
   EXPECT_TRUE(buffer->Empty());
@@ -117,7 +117,7 @@ TEST(PacketBuffer, CreateAndDestroy) {
 
 TEST(PacketBuffer, InsertPacket) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(10, &tick_timer, &mock_stats);  // 10 packets.
   PacketGenerator gen(17u, 4711u, 0, 10);
   MockDecoderDatabase decoder_database;
@@ -141,7 +141,7 @@ TEST(PacketBuffer, InsertPacket) {
 // Test to flush buffer.
 TEST(PacketBuffer, FlushBuffer) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(10, &tick_timer, &mock_stats);  // 10 packets.
   PacketGenerator gen(0, 0, 0, 10);
   const int payload_len = 10;
@@ -166,7 +166,7 @@ TEST(PacketBuffer, FlushBuffer) {
 // Test to fill the buffer over the limits, and verify that it flushes.
 TEST(PacketBuffer, OverfillBuffer) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(10, &tick_timer, &mock_stats);  // 10 packets.
   PacketGenerator gen(0, 0, 0, 10);
   MockDecoderDatabase decoder_database;
@@ -196,10 +196,9 @@ TEST(PacketBuffer, OverfillBuffer) {
   EXPECT_CALL(decoder_database, Die());  // Called when object is deleted.
 }
 
-
 TEST(PacketBuffer, ExtractOrderRedundancy) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(100, &tick_timer, &mock_stats);  // 100 packets.
   const int kPackets = 18;
   const int kFrameSize = 10;
@@ -253,7 +252,7 @@ TEST(PacketBuffer, ExtractOrderRedundancy) {
   EXPECT_EQ(kExpectPacketsInBuffer, buffer.NumPacketsInBuffer());
 
   for (size_t i = 0; i < kExpectPacketsInBuffer; ++i) {
-    const absl::optional<Packet> packet = buffer.GetNextPacket();
+    const std::optional<Packet> packet = buffer.GetNextPacket();
     EXPECT_EQ(packet, expect_order[i]);  // Compare contents.
   }
   EXPECT_TRUE(buffer.Empty());
@@ -262,7 +261,7 @@ TEST(PacketBuffer, ExtractOrderRedundancy) {
 
 TEST(PacketBuffer, DiscardPackets) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(100, &tick_timer, &mock_stats);  // 100 packets.
   const uint16_t start_seq_no = 17;
   const uint32_t start_ts = 4711;
@@ -327,7 +326,7 @@ TEST(PacketBuffer, DiscardPackets) {
 
 TEST(PacketBuffer, Reordering) {
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(100, &tick_timer, &mock_stats);  // 100 packets.
   const uint16_t start_seq_no = 17;
   const uint32_t start_ts = 4711;
@@ -356,7 +355,7 @@ TEST(PacketBuffer, Reordering) {
   // Extract them and make sure that come out in the right order.
   uint32_t current_ts = start_ts;
   for (int i = 0; i < 10; ++i) {
-    const absl::optional<Packet> packet = buffer.GetNextPacket();
+    const std::optional<Packet> packet = buffer.GetNextPacket();
     ASSERT_TRUE(packet);
     EXPECT_EQ(current_ts, packet->timestamp);
     current_ts += ts_increment;
@@ -371,7 +370,7 @@ TEST(PacketBuffer, Failures) {
   int payload_len = 100;
   PacketGenerator gen(start_seq_no, start_ts, 0, ts_increment);
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
 
   PacketBuffer buffer(100, &tick_timer, &mock_stats);  // 100 packets.
   {
@@ -510,7 +509,7 @@ TEST(PacketBuffer, GetSpanSamples) {
   constexpr int kSampleRateHz = 48000;
   constexpr bool kCountWaitingTime = false;
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(3, &tick_timer, &mock_stats);
   PacketGenerator gen(0, kStartTimeStamp, 0, kFrameSizeSamples);
   MockDecoderDatabase decoder_database;
@@ -558,7 +557,7 @@ TEST(PacketBuffer, GetSpanSamplesCountWaitingTime) {
   constexpr bool kCountWaitingTime = true;
   constexpr size_t kLastDecodedSizeSamples = 0;
   TickTimer tick_timer;
-  StrictMock<MockStatisticsCalculator> mock_stats;
+  StrictMock<MockStatisticsCalculator> mock_stats(&tick_timer);
   PacketBuffer buffer(3, &tick_timer, &mock_stats);
   PacketGenerator gen(0, kStartTimeStamp, 0, kFrameSizeSamples);
   MockDecoderDatabase decoder_database;

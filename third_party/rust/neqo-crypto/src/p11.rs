@@ -4,17 +4,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![allow(dead_code)]
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-
 use std::{
     cell::RefCell,
-    mem,
+    fmt::{self, Debug, Formatter},
     ops::{Deref, DerefMut},
     os::raw::c_uint,
     ptr::null_mut,
+    slice::Iter as SliceIter,
 };
 
 use neqo_common::hex_with_len;
@@ -24,9 +20,14 @@ use crate::{
     null_safe_slice,
 };
 
-#[allow(clippy::upper_case_acronyms)]
-#[allow(clippy::unreadable_literal)]
-#[allow(unknown_lints, clippy::borrow_as_ptr)]
+#[expect(
+    dead_code,
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    clippy::unreadable_literal,
+    reason = "For included bindgen code."
+)]
 mod nss_p11 {
     include!(concat!(env!("OUT_DIR"), "/nss_p11.rs"));
 }
@@ -46,6 +47,11 @@ macro_rules! scoped_ptr {
             /// # Errors
             ///
             /// When passed a null pointer generates an error.
+            #[allow(
+                clippy::allow_attributes,
+                dead_code,
+                reason = "False positive; is used in code calling the macro."
+            )]
             pub fn from_ptr(ptr: *mut $target) -> Result<Self, $crate::err::Error> {
                 if ptr.is_null() {
                     Err($crate::err::Error::last_nss_error())
@@ -57,7 +63,6 @@ macro_rules! scoped_ptr {
 
         impl Deref for $scoped {
             type Target = *mut $target;
-            #[must_use]
             fn deref(&self) -> &*mut $target {
                 &self.ptr
             }
@@ -70,16 +75,14 @@ macro_rules! scoped_ptr {
         }
 
         impl Drop for $scoped {
-            #[allow(unused_must_use)]
             fn drop(&mut self) {
-                unsafe { $dtor(self.ptr) };
+                unsafe { _ = $dtor(self.ptr) };
             }
         }
     };
 }
 
 scoped_ptr!(Certificate, CERTCertificate, CERT_DestroyCertificate);
-scoped_ptr!(CertList, CERTCertList, CERT_DestroyCertList);
 scoped_ptr!(PublicKey, SECKEYPublicKey, SECKEY_DestroyPublicKey);
 
 impl PublicKey {
@@ -100,16 +103,15 @@ impl PublicKey {
                 **self,
                 buf.as_mut_ptr(),
                 &mut len,
-                c_uint::try_from(buf.len()).unwrap(),
+                c_uint::try_from(buf.len())?,
             )
         })?;
-        buf.truncate(usize::try_from(len).unwrap());
+        buf.truncate(usize::try_from(len)?);
         Ok(buf)
     }
 }
 
 impl Clone for PublicKey {
-    #[must_use]
     fn clone(&self) -> Self {
         let ptr = unsafe { SECKEY_CopyPublicKey(self.ptr) };
         assert!(!ptr.is_null());
@@ -117,8 +119,8 @@ impl Clone for PublicKey {
     }
 }
 
-impl std::fmt::Debug for PublicKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Debug for PublicKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(b) = self.key_data() {
             write!(f, "PublicKey {}", hex_with_len(b))
         } else {
@@ -164,7 +166,6 @@ impl PrivateKey {
 unsafe impl Send for PrivateKey {}
 
 impl Clone for PrivateKey {
-    #[must_use]
     fn clone(&self) -> Self {
         let ptr = unsafe { SECKEY_CopyPrivateKey(self.ptr) };
         assert!(!ptr.is_null());
@@ -172,8 +173,8 @@ impl Clone for PrivateKey {
     }
 }
 
-impl std::fmt::Debug for PrivateKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Debug for PrivateKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(b) = self.key_data() {
             write!(f, "PrivateKey {}", hex_with_len(b))
         } else {
@@ -187,7 +188,7 @@ scoped_ptr!(Slot, PK11SlotInfo, PK11_FreeSlot);
 impl Slot {
     pub fn internal() -> Res<Self> {
         let p = unsafe { PK11_GetInternalSlot() };
-        Slot::from_ptr(p)
+        Self::from_ptr(p)
     }
 }
 
@@ -212,7 +213,6 @@ impl SymKey {
 }
 
 impl Clone for SymKey {
-    #[must_use]
     fn clone(&self) -> Self {
         let ptr = unsafe { PK11_ReferenceSymKey(self.ptr) };
         assert!(!ptr.is_null());
@@ -220,13 +220,19 @@ impl Clone for SymKey {
     }
 }
 
-impl std::fmt::Debug for SymKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl Debug for SymKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(b) = self.as_bytes() {
             write!(f, "SymKey {}", hex_with_len(b))
         } else {
             write!(f, "Opaque SymKey")
         }
+    }
+}
+
+impl Default for SymKey {
+    fn default() -> Self {
+        Self { ptr: null_mut() }
     }
 }
 
@@ -240,53 +246,77 @@ unsafe fn destroy_secitem(item: *mut SECItem) {
 }
 scoped_ptr!(Item, SECItem, destroy_secitem);
 
+impl AsRef<[u8]> for SECItem {
+    fn as_ref(&self) -> &[u8] {
+        unsafe { null_safe_slice(self.data, self.len) }
+    }
+}
+
 impl Item {
     /// Create a wrapper for a slice of this object.
     /// Creating this object is technically safe, but using it is extremely dangerous.
     /// Minimally, it can only be passed as a `const SECItem*` argument to functions,
     /// or those that treat their argument as `const`.
-    pub fn wrap(buf: &[u8]) -> SECItem {
-        SECItem {
+    pub fn wrap(buf: &[u8]) -> Res<SECItem> {
+        Ok(SECItem {
             type_: SECItemType::siBuffer,
             data: buf.as_ptr().cast_mut(),
-            len: c_uint::try_from(buf.len()).unwrap(),
-        }
+            len: c_uint::try_from(buf.len())?,
+        })
     }
 
     /// Create a wrapper for a struct.
     /// Creating this object is technically safe, but using it is extremely dangerous.
     /// Minimally, it can only be passed as a `const SECItem*` argument to functions,
     /// or those that treat their argument as `const`.
-    pub fn wrap_struct<T>(v: &T) -> SECItem {
+    pub fn wrap_struct<T>(v: &T) -> Res<SECItem> {
         let data: *const T = v;
-        SECItem {
+        Ok(SECItem {
             type_: SECItemType::siBuffer,
             data: data.cast_mut().cast(),
-            len: c_uint::try_from(mem::size_of::<T>()).unwrap(),
-        }
+            len: c_uint::try_from(size_of::<T>())?,
+        })
     }
 
     /// Make an empty `SECItem` for passing as a mutable `SECItem*` argument.
-    pub fn make_empty() -> SECItem {
+    pub const fn make_empty() -> SECItem {
         SECItem {
             type_: SECItemType::siBuffer,
             data: null_mut(),
             len: 0,
         }
     }
+}
 
-    /// This dereferences the pointer held by the item and makes a copy of the
-    /// content that is referenced there.
-    ///
-    /// # Safety
-    ///
-    /// This dereferences two pointers.  It doesn't get much less safe.
-    pub unsafe fn into_vec(self) -> Vec<u8> {
-        let b = self.ptr.as_ref().unwrap();
-        // Sanity check the type, as some types don't count bytes in `Item::len`.
-        assert_eq!(b.type_, SECItemType::siBuffer);
-        let slc = null_safe_slice(b.data, b.len);
-        Vec::from(slc)
+unsafe fn destroy_secitem_array(array: *mut SECItemArray) {
+    SECITEM_FreeArray(array, PRBool::from(true));
+}
+scoped_ptr!(ItemArray, SECItemArray, destroy_secitem_array);
+
+impl<'a> IntoIterator for &'a ItemArray {
+    type Item = &'a [u8];
+    type IntoIter = ItemArrayIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            iter: AsRef::<[SECItem]>::as_ref(self).iter(),
+        }
+    }
+}
+
+impl AsRef<[SECItem]> for ItemArray {
+    fn as_ref(&self) -> &[SECItem] {
+        unsafe { null_safe_slice((*self.ptr).items, (*self.ptr).len) }
+    }
+}
+
+pub struct ItemArrayIterator<'a> {
+    iter: SliceIter<'a, SECItem>,
+}
+
+impl<'a> Iterator for ItemArrayIterator<'a> {
+    type Item = &'a [u8];
+    fn next(&mut self) -> Option<&'a [u8]> {
+        self.iter.next().map(AsRef::<[u8]>::as_ref)
     }
 }
 
@@ -314,8 +344,8 @@ pub fn randomize<B: AsMut<[u8]>>(mut buf: B) -> B {
 #[cfg(not(feature = "disable-random"))]
 pub fn randomize<B: AsMut<[u8]>>(mut buf: B) -> B {
     let m_buf = buf.as_mut();
-    let len = std::os::raw::c_int::try_from(m_buf.len()).unwrap();
-    secstatus_to_res(unsafe { PK11_GenerateRandom(m_buf.as_mut_ptr(), len) }).unwrap();
+    let len = std::os::raw::c_int::try_from(m_buf.len()).expect("usize fits into c_int");
+    secstatus_to_res(unsafe { PK11_GenerateRandom(m_buf.as_mut_ptr(), len) }).expect("NSS failed");
     buf
 }
 
@@ -328,8 +358,8 @@ impl RandomCache {
     const SIZE: usize = 256;
     const CUTOFF: usize = 32;
 
-    fn new() -> Self {
-        RandomCache {
+    const fn new() -> Self {
+        Self {
             cache: [0; Self::SIZE],
             used: Self::SIZE,
         }
@@ -361,7 +391,7 @@ impl RandomCache {
 /// When `size` is too large or NSS fails.
 #[must_use]
 pub fn random<const N: usize>() -> [u8; N] {
-    thread_local!(static CACHE: RefCell<RandomCache> = RefCell::new(RandomCache::new()));
+    thread_local!(static CACHE: RefCell<RandomCache> = const { RefCell::new(RandomCache::new()) });
 
     let buf = [0; N];
     if N <= RandomCache::CUTOFF {

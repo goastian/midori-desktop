@@ -227,7 +227,7 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
     return latest_negotiation_needed_event_.value_or(0u);
   }
   void clear_latest_negotiation_needed_event() {
-    latest_negotiation_needed_event_ = absl::nullopt;
+    latest_negotiation_needed_event_ = std::nullopt;
   }
 
   rtc::scoped_refptr<PeerConnectionInterface> pc_;
@@ -236,7 +236,7 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
   rtc::scoped_refptr<DataChannelInterface> last_datachannel_;
   rtc::scoped_refptr<StreamCollection> remote_streams_;
   bool renegotiation_needed_ = false;
-  absl::optional<uint32_t> latest_negotiation_needed_event_;
+  std::optional<uint32_t> latest_negotiation_needed_event_;
   bool ice_gathering_complete_ = false;
   bool ice_connected_ = false;
   bool callback_triggered_ = false;
@@ -352,7 +352,7 @@ class FakeSetLocalDescriptionObserver
 
  private:
   // Set on complete, on success this is set to an RTCError::OK() error.
-  absl::optional<RTCError> error_;
+  std::optional<RTCError> error_;
 };
 
 class FakeSetRemoteDescriptionObserver
@@ -371,7 +371,7 @@ class FakeSetRemoteDescriptionObserver
 
  private:
   // Set on complete, on success this is set to an RTCError::OK() error.
-  absl::optional<RTCError> error_;
+  std::optional<RTCError> error_;
 };
 
 class MockDataChannelObserver : public DataChannelObserver {
@@ -390,7 +390,13 @@ class MockDataChannelObserver : public DataChannelObserver {
 
   void OnBufferedAmountChange(uint64_t previous_amount) override {}
 
-  void OnStateChange() override { states_.push_back(channel_->state()); }
+  void OnStateChange() override {
+    states_.push_back(channel_->state());
+    if (state_change_callback_) {
+      state_change_callback_(states_.back());
+    }
+  }
+
   void OnMessage(const DataBuffer& buffer) override {
     messages_.push_back(
         {std::string(buffer.data.data<char>(), buffer.data.size()),
@@ -417,10 +423,16 @@ class MockDataChannelObserver : public DataChannelObserver {
     return states_;
   }
 
+  void set_state_change_callback(
+      std::function<void(DataChannelInterface::DataState)> func) {
+    state_change_callback_ = std::move(func);
+  }
+
  private:
   rtc::scoped_refptr<DataChannelInterface> channel_;
   std::vector<DataChannelInterface::DataState> states_;
   std::vector<Message> messages_;
+  std::function<void(DataChannelInterface::DataState)> state_change_callback_;
 };
 
 class MockStatsObserver : public StatsObserver {

@@ -10,26 +10,28 @@
 
 #include "modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "modules/rtp_rtcp/source/rtp_descriptor_authentication.h"
+#include "modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/thread.h"
 
 namespace webrtc {
 
-namespace {
 class TransformableVideoReceiverFrame
     : public TransformableVideoFrameInterface {
  public:
   TransformableVideoReceiverFrame(std::unique_ptr<RtpFrameObject> frame,
                                   uint32_t ssrc,
                                   RtpVideoFrameReceiver* receiver)
-      : frame_(std::move(frame)),
+      : TransformableVideoFrameInterface(Passkey()),
+        frame_(std::move(frame)),
         metadata_(frame_->GetRtpVideoHeader().GetAsMetadata()),
         receiver_(receiver) {
     metadata_.SetSsrc(ssrc);
@@ -87,6 +89,32 @@ class TransformableVideoReceiverFrame
     return mime_type + CodecTypeToPayloadString(frame_->codec_type());
   }
 
+  std::optional<Timestamp> ReceiveTime() const override {
+    return frame_->ReceivedTimestamp();
+  }
+
+  std::optional<Timestamp> CaptureTime() const override {
+    if (auto& absolute_capture_time =
+            frame_->GetRtpVideoHeader().absolute_capture_time) {
+      if (absolute_capture_time->absolute_capture_timestamp) {
+        return Timestamp::Micros(UQ32x32ToInt64Us(
+            absolute_capture_time->absolute_capture_timestamp));
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<TimeDelta> SenderCaptureTimeOffset() const override {
+    if (auto& absolute_capture_time =
+            frame_->GetRtpVideoHeader().absolute_capture_time) {
+      if (absolute_capture_time->estimated_capture_clock_offset) {
+        return TimeDelta::Micros(UQ32x32ToInt64Us(
+            *absolute_capture_time->estimated_capture_clock_offset));
+      }
+    }
+    return std::nullopt;
+  }
+
   const RtpVideoFrameReceiver* Receiver() { return receiver_; }
 
  private:
@@ -94,7 +122,6 @@ class TransformableVideoReceiverFrame
   VideoFrameMetadata metadata_;
   RtpVideoFrameReceiver* receiver_;
 };
-}  // namespace
 
 RtpVideoStreamReceiverFrameTransformerDelegate::
     RtpVideoStreamReceiverFrameTransformerDelegate(
@@ -211,7 +238,8 @@ void RtpVideoStreamReceiverFrameTransformerDelegate::ManageFrame(
         /*rtp_timestamp=*/transformed_frame->GetTimestamp(),
         /*ntp_time_ms=*/0, timing, transformed_frame->GetPayloadType(),
         metadata.GetCodec(), metadata.GetRotation(), metadata.GetContentType(),
-        video_header, video_header.color_space, RtpPacketInfos(),
+        video_header, video_header.color_space,
+        video_header.frame_instrumentation_data, RtpPacketInfos(),
         EncodedImageBuffer::Create(data.data(), data.size())));
   }
 }

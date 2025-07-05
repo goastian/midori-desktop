@@ -11,22 +11,39 @@
 #include "media/sctp/dcsctp_transport.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/data_channel_interface.h"
+#include "api/dtls_transport_interface.h"
 #include "api/environment/environment.h"
-#include "media/base/media_channel.h"
+#include "api/priority.h"
+#include "api/rtc_error.h"
+#include "api/sequence_checker.h"
+#include "api/task_queue/task_queue_base.h"
+#include "api/transport/data_channel_transport_interface.h"
+#include "media/sctp/sctp_transport_internal.h"
+#include "net/dcsctp/public/dcsctp_message.h"
+#include "net/dcsctp/public/dcsctp_options.h"
+#include "net/dcsctp/public/dcsctp_socket.h"
 #include "net/dcsctp/public/dcsctp_socket_factory.h"
 #include "net/dcsctp/public/packet_observer.h"
 #include "net/dcsctp/public/text_pcap_packet_observer.h"
+#include "net/dcsctp/public/timeout.h"
 #include "net/dcsctp/public/types.h"
 #include "p2p/base/packet_transport_internal.h"
+#include "p2p/dtls/dtls_transport_internal.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network/received_packet.h"
 #include "rtc_base/socket.h"
@@ -70,7 +87,7 @@ WebrtcPPID ToPPID(DataMessageType message_type, size_t size) {
   }
 }
 
-absl::optional<DataMessageType> ToDataMessageType(dcsctp::PPID ppid) {
+std::optional<DataMessageType> ToDataMessageType(dcsctp::PPID ppid) {
   switch (static_cast<WebrtcPPID>(ppid.value())) {
     case WebrtcPPID::kDCEP:
       return DataMessageType::kControl;
@@ -83,10 +100,10 @@ absl::optional<DataMessageType> ToDataMessageType(dcsctp::PPID ppid) {
     case WebrtcPPID::kBinaryEmpty:
       return DataMessageType::kBinary;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<cricket::SctpErrorCauseCode> ToErrorCauseCode(
+std::optional<cricket::SctpErrorCauseCode> ToErrorCauseCode(
     dcsctp::ErrorKind error) {
   switch (error) {
     case dcsctp::ErrorKind::kParseFailed:
@@ -105,7 +122,7 @@ absl::optional<cricket::SctpErrorCauseCode> ToErrorCauseCode(
       // No SCTP error cause code matches those
       break;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool IsEmptyPPID(dcsctp::PPID ppid) {
@@ -117,15 +134,16 @@ bool IsEmptyPPID(dcsctp::PPID ppid) {
 
 DcSctpTransport::DcSctpTransport(const Environment& env,
                                  rtc::Thread* network_thread,
-                                 rtc::PacketTransportInternal* transport)
+                                 cricket::DtlsTransportInternal* transport)
     : DcSctpTransport(env,
                       network_thread,
                       transport,
                       std::make_unique<dcsctp::DcSctpSocketFactory>()) {}
+
 DcSctpTransport::DcSctpTransport(
     const Environment& env,
     rtc::Thread* network_thread,
-    rtc::PacketTransportInternal* transport,
+    cricket::DtlsTransportInternal* transport,
     std::unique_ptr<dcsctp::DcSctpSocketFactory> socket_factory)
     : network_thread_(network_thread),
       transport_(transport),
@@ -140,7 +158,7 @@ DcSctpTransport::DcSctpTransport(
           }) {
   RTC_DCHECK_RUN_ON(network_thread_);
   static std::atomic<int> instance_count = 0;
-  rtc::StringBuilder sb;
+  StringBuilder sb;
   sb << debug_name_ << instance_count++;
   debug_name_ = sb.Release();
   ConnectTransportSignals();
@@ -166,7 +184,7 @@ void DcSctpTransport::SetDataChannelSink(DataChannelSink* sink) {
 }
 
 void DcSctpTransport::SetDtlsTransport(
-    rtc::PacketTransportInternal* transport) {
+    cricket::DtlsTransportInternal* transport) {
   RTC_DCHECK_RUN_ON(network_thread_);
   DisconnectTransportSignals();
   transport_ = transport;
@@ -190,8 +208,14 @@ bool DcSctpTransport::Start(int local_sctp_port,
     options.max_message_size = max_message_size;
     options.max_timer_backoff_duration = kMaxTimerBackoffDuration;
     // Don't close the connection automatically on too many retransmissions.
-    options.max_retransmissions = absl::nullopt;
-    options.max_init_retransmits = absl::nullopt;
+    options.max_retransmissions = std::nullopt;
+    options.max_init_retransmits = std::nullopt;
+    options.per_stream_send_queue_limit =
+        DataChannelInterface::MaxSendQueueSize();
+    // This is just set to avoid denial-of-service. Practically unlimited.
+    options.max_send_buffer_size = std::numeric_limits<size_t>::max();
+    options.enable_message_interleaving =
+        env_.field_trials().IsEnabled("WebRTC-DataChannelMessageInterleaving");
 
     std::unique_ptr<dcsctp::PacketObserver> packet_observer;
     if (RTC_LOG_CHECK_LEVEL(LS_VERBOSE)) {
@@ -215,16 +239,27 @@ bool DcSctpTransport::Start(int local_sctp_port,
 
   MaybeConnectSocket();
 
+  for (const auto& [sid, stream_state] : stream_states_) {
+    socket_->SetStreamPriority(sid, stream_state.priority);
+  }
+
   return true;
 }
 
-bool DcSctpTransport::OpenStream(int sid) {
+bool DcSctpTransport::OpenStream(int sid, PriorityValue priority) {
   RTC_DCHECK_RUN_ON(network_thread_);
-  RTC_DLOG(LS_INFO) << debug_name_ << "->OpenStream(" << sid << ").";
+  RTC_DLOG(LS_INFO) << debug_name_ << "->OpenStream(" << sid << ", "
+                    << priority.value() << ").";
 
   StreamState stream_state;
+  stream_state.priority = dcsctp::StreamPriority(priority.value());
   stream_states_.insert_or_assign(dcsctp::StreamID(static_cast<uint16_t>(sid)),
                                   stream_state);
+  if (socket_) {
+    socket_->SetStreamPriority(dcsctp::StreamID(sid),
+                               dcsctp::StreamPriority(priority.value()));
+  }
+
   return true;
 }
 
@@ -363,16 +398,34 @@ int DcSctpTransport::max_message_size() const {
   return socket_->options().max_message_size;
 }
 
-absl::optional<int> DcSctpTransport::max_outbound_streams() const {
+std::optional<int> DcSctpTransport::max_outbound_streams() const {
   if (!socket_)
-    return absl::nullopt;
+    return std::nullopt;
   return socket_->options().announced_maximum_outgoing_streams;
 }
 
-absl::optional<int> DcSctpTransport::max_inbound_streams() const {
+std::optional<int> DcSctpTransport::max_inbound_streams() const {
   if (!socket_)
-    return absl::nullopt;
+    return std::nullopt;
   return socket_->options().announced_maximum_incoming_streams;
+}
+
+size_t DcSctpTransport::buffered_amount(int sid) const {
+  if (!socket_)
+    return 0;
+  return socket_->buffered_amount(dcsctp::StreamID(sid));
+}
+
+size_t DcSctpTransport::buffered_amount_low_threshold(int sid) const {
+  if (!socket_)
+    return 0;
+  return socket_->buffered_amount_low_threshold(dcsctp::StreamID(sid));
+}
+
+void DcSctpTransport::SetBufferedAmountLowThreshold(int sid, size_t bytes) {
+  if (!socket_)
+    return;
+  socket_->SetBufferedAmountLowThreshold(dcsctp::StreamID(sid), bytes);
 }
 
 void DcSctpTransport::set_debug_name_for_testing(const char* debug_name) {
@@ -437,6 +490,13 @@ void DcSctpTransport::OnTotalBufferedAmountLow() {
     if (data_channel_sink_) {
       data_channel_sink_->OnReadyToSend();
     }
+  }
+}
+
+void DcSctpTransport::OnBufferedAmountLow(dcsctp::StreamID stream_id) {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  if (data_channel_sink_) {
+    data_channel_sink_->OnBufferedAmountLow(*stream_id);
   }
 }
 
@@ -618,6 +678,11 @@ void DcSctpTransport::ConnectTransportSignals() {
       data_channel_sink_->OnTransportClosed({});
     }
   });
+  transport_->SubscribeDtlsTransportState(
+      this, [this](cricket::DtlsTransportInternal* transport,
+                   DtlsTransportState state) {
+        OnDtlsTransportState(transport, state);
+      });
 }
 
 void DcSctpTransport::DisconnectTransportSignals() {
@@ -628,6 +693,7 @@ void DcSctpTransport::DisconnectTransportSignals() {
   transport_->SignalWritableState.disconnect(this);
   transport_->DeregisterReceivedPacketCallback(this);
   transport_->SetOnCloseCallback(nullptr);
+  transport_->UnsubscribeDtlsTransportState(this);
 }
 
 void DcSctpTransport::OnTransportWritableState(
@@ -636,12 +702,32 @@ void DcSctpTransport::OnTransportWritableState(
   RTC_DCHECK_EQ(transport_, transport);
   RTC_DLOG(LS_VERBOSE) << debug_name_
                        << "->OnTransportWritableState(), writable="
-                       << transport->writable();
+                       << transport->writable() << " socket: "
+                       << (socket_ ? std::to_string(
+                                         static_cast<int>(socket_->state()))
+                                   : "UNSET");
   MaybeConnectSocket();
 }
 
+void DcSctpTransport::OnDtlsTransportState(
+    cricket::DtlsTransportInternal* transport,
+    webrtc::DtlsTransportState state) {
+  if (state == DtlsTransportState::kNew && socket_) {
+    // IF DTLS restart (DtlsTransportState::kNew)
+    // THEN
+    //   restart socket so that we send an SCPT init
+    //   before any outgoing messages. This is needed
+    //   after DTLS fingerprint changed since peer will discard
+    //   messages with crypto derived from old fingerprint.
+    RTC_DLOG(LS_INFO) << debug_name_ << " DTLS restart";
+    dcsctp::DcSctpOptions options = socket_->options();
+    socket_.reset();
+    Start(options.local_port, options.remote_port, options.max_message_size);
+  }
+}
+
 void DcSctpTransport::OnTransportReadPacket(
-    rtc::PacketTransportInternal* transport,
+    rtc::PacketTransportInternal* /* transport */,
     const rtc::ReceivedPacket& packet) {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (packet.decryption_info() != rtc::ReceivedPacket::kDtlsDecrypted) {

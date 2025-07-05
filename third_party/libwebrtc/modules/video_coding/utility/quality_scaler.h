@@ -15,8 +15,8 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "api/field_trials_view.h"
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
@@ -51,7 +51,6 @@ class QualityScaler {
   void ReportQp(int qp, int64_t time_sent_us);
 
   void SetQpThresholds(VideoEncoder::QpThresholds thresholds);
-  bool QpFastFilterLow() const;
 
   // The following members declared protected for testing purposes.
  protected:
@@ -89,10 +88,9 @@ class QualityScaler {
   VideoEncoder::QpThresholds thresholds_ RTC_GUARDED_BY(&task_checker_);
   const int64_t sampling_period_ms_;
   bool fast_rampup_ RTC_GUARDED_BY(&task_checker_);
-  rtc::MovingAverage average_qp_ RTC_GUARDED_BY(&task_checker_);
-  rtc::MovingAverage framedrop_percent_media_opt_
-      RTC_GUARDED_BY(&task_checker_);
-  rtc::MovingAverage framedrop_percent_all_ RTC_GUARDED_BY(&task_checker_);
+  MovingAverage average_qp_ RTC_GUARDED_BY(&task_checker_);
+  MovingAverage framedrop_percent_media_opt_ RTC_GUARDED_BY(&task_checker_);
+  MovingAverage framedrop_percent_all_ RTC_GUARDED_BY(&task_checker_);
 
   // Used by QualityScalingExperiment.
   const bool experiment_enabled_;
@@ -102,7 +100,7 @@ class QualityScaler {
 
   const size_t min_frames_needed_;
   const double initial_scale_factor_;
-  const absl::optional<double> scale_factor_;
+  const std::optional<double> scale_factor_;
 };
 
 // Reacts to QP being too high or too low. For best quality, when QP is high it

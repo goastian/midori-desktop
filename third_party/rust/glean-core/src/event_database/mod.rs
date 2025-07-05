@@ -14,6 +14,8 @@ use std::sync::{Mutex, RwLock};
 
 use chrono::{DateTime, FixedOffset, Utc};
 
+use malloc_size_of::MallocSizeOf;
+use malloc_size_of_derive::MallocSizeOf;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 
@@ -28,7 +30,7 @@ use crate::Result;
 use crate::{CommonMetricData, CounterMetric, Lifetime};
 
 /// Represents the recorded data for a single event.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, MallocSizeOf)]
 #[cfg_attr(test, derive(Default))]
 pub struct RecordedEvent {
     /// The timestamp of when the event was recorded.
@@ -54,7 +56,9 @@ pub struct RecordedEvent {
 }
 
 /// Represents the stored data for a single event.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Deserialize, Serialize, PartialEq, Eq, malloc_size_of_derive::MallocSizeOf,
+)]
 struct StoredEvent {
     #[serde(flatten)]
     event: RecordedEvent,
@@ -97,6 +101,12 @@ pub struct EventDatabase {
     event_stores: RwLock<HashMap<String, Vec<StoredEvent>>>,
     /// A lock to be held when doing operations on the filesystem
     file_lock: Mutex<()>,
+}
+
+impl MallocSizeOf for EventDatabase {
+    fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+        self.event_stores.read().unwrap().size_of(ops)
+    }
 }
 
 impl EventDatabase {
@@ -284,6 +294,10 @@ impl EventDatabase {
         {
             let mut db = self.event_stores.write().unwrap(); // safe unwrap, only error case is poisoning
             for store_name in meta.inner.send_in_pings.iter() {
+                if !glean.is_ping_enabled(store_name) {
+                    continue;
+                }
+
                 let store = db.entry(store_name.to_string()).or_default();
                 let execution_counter = CounterMetric::new(CommonMetricData {
                     name: "execution_counter".into(),
@@ -455,7 +469,7 @@ impl EventDatabase {
                     .event
                     .extra
                     .as_ref()
-                    .map_or(false, |extra| extra.is_empty())
+                    .is_some_and(|extra| extra.is_empty())
                 {
                     // Small optimization to save us sending empty dicts.
                     event.event.extra = None;
@@ -758,7 +772,7 @@ mod test {
         let (mut glean, dir) = new_glean(None);
         let db = EventDatabase::new(dir.path()).unwrap();
 
-        let test_storage = "test-storage";
+        let test_storage = "store1";
         let test_category = "category";
         let test_name = "name";
         let test_timestamp = 2;

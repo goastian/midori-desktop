@@ -803,7 +803,7 @@ int32_t AudioDeviceLinuxALSA::InitPlayoutLocked() {
 #if defined(WEBRTC_ARCH_BIG_ENDIAN)
            SND_PCM_FORMAT_S16_BE,
 #else
-           SND_PCM_FORMAT_S16_LE,                             // format
+           SND_PCM_FORMAT_S16_LE,  // format
 #endif
            SND_PCM_ACCESS_RW_INTERLEAVED,  // access
            _playChannels,                  // channels
@@ -927,7 +927,7 @@ int32_t AudioDeviceLinuxALSA::InitRecordingLocked() {
 #if defined(WEBRTC_ARCH_BIG_ENDIAN)
                                     SND_PCM_FORMAT_S16_BE,  // format
 #else
-                                    SND_PCM_FORMAT_S16_LE,    // format
+                                    SND_PCM_FORMAT_S16_LE,  // format
 #endif
                                     SND_PCM_ACCESS_RW_INTERLEAVED,  // access
                                     _recChannels,                   // channels
@@ -1516,7 +1516,7 @@ bool AudioDeviceLinuxALSA::RecThreadProcess() {
   int err;
   snd_pcm_sframes_t frames;
   snd_pcm_sframes_t avail_frames;
-  int8_t buffer[_recordingBufferSizeIn10MS];
+  std::vector<int8_t> buffer(_recordingBufferSizeIn10MS);
 
   Lock();
 
@@ -1542,7 +1542,7 @@ bool AudioDeviceLinuxALSA::RecThreadProcess() {
   if (static_cast<uint32_t>(avail_frames) > _recordingFramesLeft)
     avail_frames = _recordingFramesLeft;
 
-  frames = LATE(snd_pcm_readi)(_handleRecord, buffer,
+  frames = LATE(snd_pcm_readi)(_handleRecord, buffer.data(),
                                avail_frames);  // frames to be written
   if (frames < 0) {
     RTC_LOG(LS_ERROR) << "capture snd_pcm_readi error: "
@@ -1557,8 +1557,8 @@ bool AudioDeviceLinuxALSA::RecThreadProcess() {
         LATE(snd_pcm_frames_to_bytes)(_handleRecord, _recordingFramesLeft);
     int size = LATE(snd_pcm_frames_to_bytes)(_handleRecord, frames);
 
-    memcpy(&_recordingBuffer[_recordingBufferSizeIn10MS - left_size], buffer,
-           size);
+    memcpy(&_recordingBuffer[_recordingBufferSizeIn10MS - left_size],
+           buffer.data(), size);
     _recordingFramesLeft -= frames;
 
     if (!_recordingFramesLeft) {  // buf is full

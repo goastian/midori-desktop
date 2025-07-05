@@ -15,18 +15,19 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/field_trials_view.h"
-#include "api/rtc_error.h"
+#include "call/rtp_demuxer.h"
 #include "p2p/base/packet_transport_internal.h"
 #include "pc/rtp_transport.h"
 #include "pc/srtp_session.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/network/received_packet.h"
 #include "rtc_base/network_route.h"
 
 namespace webrtc {
@@ -58,24 +59,20 @@ class SrtpTransport : public RtpTransport {
   // packet encryption. The keys can either come from SDES negotiation or DTLS
   // handshake.
   bool SetRtpParams(int send_crypto_suite,
-                    const uint8_t* send_key,
-                    int send_key_len,
+                    const rtc::ZeroOnFreeBuffer<uint8_t>& send_key,
                     const std::vector<int>& send_extension_ids,
                     int recv_crypto_suite,
-                    const uint8_t* recv_key,
-                    int recv_key_len,
+                    const rtc::ZeroOnFreeBuffer<uint8_t>& recv_key,
                     const std::vector<int>& recv_extension_ids);
 
   // Create new send/recv sessions and set the negotiated crypto keys for RTCP
   // packet encryption. The keys can either come from SDES negotiation or DTLS
   // handshake.
   bool SetRtcpParams(int send_crypto_suite,
-                     const uint8_t* send_key,
-                     int send_key_len,
+                     const rtc::ZeroOnFreeBuffer<uint8_t>& send_key,
                      const std::vector<int>& send_extension_ids,
                      int recv_crypto_suite,
-                     const uint8_t* recv_key,
-                     int recv_key_len,
+                     const rtc::ZeroOnFreeBuffer<uint8_t>& recv_key,
                      const std::vector<int>& recv_extension_ids);
 
   void ResetParams();
@@ -120,29 +117,20 @@ class SrtpTransport : public RtpTransport {
   void OnRtpPacketReceived(const rtc::ReceivedPacket& packet) override;
   void OnRtcpPacketReceived(const rtc::ReceivedPacket& packet) override;
   void OnNetworkRouteChanged(
-      absl::optional<rtc::NetworkRoute> network_route) override;
+      std::optional<rtc::NetworkRoute> network_route) override;
 
   // Override the RtpTransport::OnWritableState.
   void OnWritableState(rtc::PacketTransportInternal* packet_transport) override;
 
-  bool ProtectRtp(void* data, int in_len, int max_len, int* out_len);
-
+  bool ProtectRtp(rtc::CopyOnWriteBuffer& buffer);
   // Overloaded version, outputs packet index.
-  bool ProtectRtp(void* data,
-                  int in_len,
-                  int max_len,
-                  int* out_len,
-                  int64_t* index);
-  bool ProtectRtcp(void* data, int in_len, int max_len, int* out_len);
+  bool ProtectRtp(rtc::CopyOnWriteBuffer& buffer, int64_t* index);
+  bool ProtectRtcp(rtc::CopyOnWriteBuffer& buffer);
 
   // Decrypts/verifies an invidiual RTP/RTCP packet.
   // If an HMAC is used, this will decrease the packet size.
-  bool UnprotectRtp(void* data, int in_len, int* out_len);
-
-  bool UnprotectRtcp(void* data, int in_len, int* out_len);
-
-  bool MaybeSetKeyParams();
-  bool ParseKeyParams(const std::string& key_params, uint8_t* key, size_t len);
+  bool UnprotectRtp(rtc::CopyOnWriteBuffer& buffer);
+  bool UnprotectRtcp(rtc::CopyOnWriteBuffer& buffer);
 
   const std::string content_name_;
 
@@ -151,8 +139,8 @@ class SrtpTransport : public RtpTransport {
   std::unique_ptr<cricket::SrtpSession> send_rtcp_session_;
   std::unique_ptr<cricket::SrtpSession> recv_rtcp_session_;
 
-  absl::optional<int> send_crypto_suite_;
-  absl::optional<int> recv_crypto_suite_;
+  std::optional<int> send_crypto_suite_;
+  std::optional<int> recv_crypto_suite_;
   rtc::ZeroOnFreeBuffer<uint8_t> send_key_;
   rtc::ZeroOnFreeBuffer<uint8_t> recv_key_;
 

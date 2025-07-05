@@ -10,13 +10,19 @@
 #ifndef CALL_CALL_CONFIG_H_
 #define CALL_CALL_CONFIG_H_
 
+#include <memory>
+#include <optional>
+
 #include "api/environment/environment.h"
 #include "api/fec_controller.h"
 #include "api/metronome/metronome.h"
 #include "api/neteq/neteq_factory.h"
 #include "api/network_state_predictor.h"
+#include "api/scoped_refptr.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/transport/bitrate_settings.h"
 #include "api/transport/network_control.h"
+#include "api/units/time_delta.h"
 #include "call/audio_state.h"
 #include "call/rtp_transport_config.h"
 #include "call/rtp_transport_controller_send_factory_interface.h"
@@ -32,7 +38,9 @@ struct CallConfig {
   explicit CallConfig(const Environment& env,
                       TaskQueueBase* network_task_queue = nullptr);
 
-  CallConfig(const CallConfig&);
+  // Move-only.
+  CallConfig(CallConfig&&) = default;
+  CallConfig& operator=(CallConfig&& other) = default;
 
   ~CallConfig();
 
@@ -57,13 +65,18 @@ struct CallConfig {
   NetworkStatePredictorFactoryInterface* network_state_predictor_factory =
       nullptr;
 
-  // Network controller factory to use for this call.
+  // Call-specific Network controller factory to use. If this is set, it
+  // takes precedence over network_controller_factory.
+  std::unique_ptr<NetworkControllerFactoryInterface>
+      per_call_network_controller_factory;
+  // Network controller factory to use for this call if
+  // per_call_network_controller_factory is null.
   NetworkControllerFactoryInterface* network_controller_factory = nullptr;
 
   // NetEq factory to use for this call.
   NetEqFactory* neteq_factory = nullptr;
 
-  TaskQueueBase* const network_task_queue_ = nullptr;
+  TaskQueueBase* network_task_queue_ = nullptr;
   // RtpTransportControllerSend to use for this call.
   RtpTransportControllerSendFactoryInterface*
       rtp_transport_controller_send_factory = nullptr;
@@ -72,7 +85,7 @@ struct CallConfig {
   Metronome* encode_metronome = nullptr;
 
   // The burst interval of the pacer, see TaskQueuePacedSender constructor.
-  absl::optional<TimeDelta> pacer_burst_interval;
+  std::optional<TimeDelta> pacer_burst_interval;
 
   // Enables send packet batching from the egress RTP sender.
   bool enable_send_packet_batching = false;

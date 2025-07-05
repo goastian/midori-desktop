@@ -8,11 +8,13 @@
 
 use std::{
     cmp::min,
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display, Formatter},
     time::{Duration, Instant},
 };
 
 use neqo_common::qtrace;
+
+use crate::rtt::GRANULARITY;
 
 /// This value determines how much faster the pacer operates than the
 /// congestion window.
@@ -60,25 +62,40 @@ impl Pacer {
         }
     }
 
+    pub const fn mtu(&self) -> usize {
+        self.p
+    }
+
+    pub fn set_mtu(&mut self, mtu: usize) {
+        self.p = mtu;
+    }
+
     /// Determine when the next packet will be available based on the provided RTT
     /// and congestion window.  This doesn't update state.
     /// This returns a time, which could be in the past (this object doesn't know what
     /// the current time is).
     pub fn next(&self, rtt: Duration, cwnd: usize) -> Instant {
         if self.c >= self.p {
-            qtrace!([self], "next {}/{:?} no wait = {:?}", cwnd, rtt, self.t);
-            self.t
-        } else {
-            // This is the inverse of the function in `spend`:
-            // self.t + rtt * (self.p - self.c) / (PACER_SPEEDUP * cwnd)
-            let r = rtt.as_nanos();
-            let d = r.saturating_mul(u128::try_from(self.p - self.c).unwrap());
-            let add = d / u128::try_from(cwnd * PACER_SPEEDUP).unwrap();
-            let w = u64::try_from(add).map(Duration::from_nanos).unwrap_or(rtt);
-            let nxt = self.t + w;
-            qtrace!([self], "next {}/{:?} wait {:?} = {:?}", cwnd, rtt, w, nxt);
-            nxt
+            qtrace!("[{self}] next {cwnd}/{rtt:?} no wait = {:?}", self.t);
+            return self.t;
         }
+
+        // This is the inverse of the function in `spend`:
+        // self.t + rtt * (self.p - self.c) / (PACER_SPEEDUP * cwnd)
+        let r = rtt.as_nanos();
+        let d = r.saturating_mul(u128::try_from(self.p - self.c).expect("usize fits into u128"));
+        let add = d / u128::try_from(cwnd * PACER_SPEEDUP).expect("usize fits into u128");
+        let w = u64::try_from(add).map(Duration::from_nanos).unwrap_or(rtt);
+
+        // If the increment is below the timer granularity, send immediately.
+        if w < GRANULARITY {
+            qtrace!("[{self}] next {cwnd}/{rtt:?} below granularity ({w:?})",);
+            return self.t;
+        }
+
+        let nxt = self.t + w;
+        qtrace!("[{self}] next {cwnd}/{rtt:?} wait {w:?} = {nxt:?}");
+        nxt
     }
 
     /// Spend credit.  This cannot fail; users of this API are expected to call
@@ -91,14 +108,14 @@ impl Pacer {
             return;
         }
 
-        qtrace!([self], "spend {} over {}, {:?}", count, cwnd, rtt);
+        qtrace!("[{self}] spend {count} over {cwnd}, {rtt:?}");
         // Increase the capacity by:
         //    `(now - self.t) * PACER_SPEEDUP * cwnd / rtt`
         // That is, the elapsed fraction of the RTT times rate that data is added.
         let incr = now
             .saturating_duration_since(self.t)
             .as_nanos()
-            .saturating_mul(u128::try_from(cwnd * PACER_SPEEDUP).unwrap())
+            .saturating_mul(u128::try_from(cwnd * PACER_SPEEDUP).expect("usize fits into u128"))
             .checked_div(rtt.as_nanos())
             .and_then(|i| usize::try_from(i).ok())
             .unwrap_or(self.m);
@@ -110,13 +127,13 @@ impl Pacer {
 }
 
 impl Display for Pacer {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Pacer {}/{}", self.c, self.p)
     }
 }
 
 impl Debug for Pacer {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "Pacer@{:?} {}/{}..{}", self.t, self.c, self.p, self.m)
     }
 }
@@ -159,5 +176,19 @@ mod tests {
         assert_eq!(p.next(RTT, CWND), n);
         p.spend(n, RTT, CWND, PACKET);
         assert_eq!(p.next(RTT, CWND), n);
+    }
+
+    #[test]
+    fn send_immediately_below_granularity() {
+        const SHORT_RTT: Duration = Duration::from_millis(10);
+        let n = now();
+        let mut p = Pacer::new(true, n, PACKET, PACKET);
+        assert_eq!(p.next(SHORT_RTT, CWND), n);
+        p.spend(n, SHORT_RTT, CWND, PACKET);
+        assert_eq!(
+            p.next(SHORT_RTT, CWND),
+            n,
+            "Expect packet to be sent immediately, instead of being paced below timer granularity"
+        );
     }
 }

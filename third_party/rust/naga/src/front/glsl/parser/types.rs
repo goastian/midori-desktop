@@ -1,4 +1,5 @@
-use std::num::NonZeroU32;
+use alloc::{vec, vec::Vec};
+use core::num::NonZeroU32;
 
 use crate::{
     front::glsl::{
@@ -12,7 +13,7 @@ use crate::{
     AddressSpace, ArraySize, Handle, Span, Type, TypeInner,
 };
 
-impl<'source> ParsingContext<'source> {
+impl ParsingContext<'_> {
     /// Parses an optional array_specifier returning whether or not it's present
     /// and modifying the type handle if it exists
     pub fn parse_array_specifier(
@@ -147,7 +148,7 @@ impl<'source> ParsingContext<'source> {
     }
 
     pub fn peek_type_qualifier(&mut self, frontend: &mut Frontend) -> bool {
-        self.peek(frontend).map_or(false, |t| match t.value {
+        self.peek(frontend).is_some_and(|t| match t.value {
             TokenValue::Invariant
             | TokenValue::Interpolation(_)
             | TokenValue::Sampling(_)
@@ -228,7 +229,7 @@ impl<'source> ParsingContext<'source> {
                         }
                         TokenValue::Buffer => {
                             StorageQualifier::AddressSpace(AddressSpace::Storage {
-                                access: crate::StorageAccess::all(),
+                                access: crate::StorageAccess::LOAD | crate::StorageAccess::STORE,
                             })
                         }
                         _ => unreachable!(),
@@ -274,10 +275,12 @@ impl<'source> ParsingContext<'source> {
                     qualifiers.precision = Some((p, token.meta));
                 }
                 TokenValue::MemoryQualifier(access) => {
+                    let load_store = crate::StorageAccess::LOAD | crate::StorageAccess::STORE;
                     let storage_access = qualifiers
                         .storage_access
-                        .get_or_insert((crate::StorageAccess::all(), Span::default()));
-                    if !storage_access.0.contains(!access) {
+                        .get_or_insert((load_store, Span::default()));
+
+                    if !storage_access.0.contains(!access & load_store) {
                         frontend.errors.push(Error {
                             kind: ErrorKind::SemanticError(
                                 "The same memory qualifier can only be used once".into(),
@@ -341,6 +344,13 @@ impl<'source> ParsingContext<'source> {
                         QualifierKey::Layout,
                         QualifierValue::Layout(StructLayout::Std430),
                     ),
+                    "index" => {
+                        self.expect(frontend, TokenValue::Assign)?;
+                        let (value, end_meta) = self.parse_uint_constant(frontend, ctx)?;
+                        token.meta.subsume(end_meta);
+
+                        (QualifierKey::Index, QualifierValue::Uint(value))
+                    }
                     word => {
                         if let Some(format) = map_image_format(word) {
                             (QualifierKey::Format, QualifierValue::Format(format))
@@ -379,7 +389,7 @@ impl<'source> ParsingContext<'source> {
     }
 
     pub fn peek_type_name(&mut self, frontend: &mut Frontend) -> bool {
-        self.peek(frontend).map_or(false, |t| match t.value {
+        self.peek(frontend).is_some_and(|t| match t.value {
             TokenValue::TypeName(_) | TokenValue::Void => true,
             TokenValue::Struct => true,
             TokenValue::Identifier(ref ident) => frontend.lookup_type.contains_key(ident),
@@ -397,7 +407,7 @@ fn map_image_format(word: &str) -> Option<crate::StorageFormat> {
         "rgba16f" => Sf::Rgba16Float,
         "rg32f" => Sf::Rg32Float,
         "rg16f" => Sf::Rg16Float,
-        "r11f_g11f_b10f" => Sf::Rg11b10Float,
+        "r11f_g11f_b10f" => Sf::Rg11b10Ufloat,
         "r32f" => Sf::R32Float,
         "r16f" => Sf::R16Float,
         "rgba16" => Sf::Rgba16Unorm,
@@ -428,6 +438,7 @@ fn map_image_format(word: &str) -> Option<crate::StorageFormat> {
         "rgba32ui" => Sf::Rgba32Uint,
         "rgba16ui" => Sf::Rgba16Uint,
         "rgba8ui" => Sf::Rgba8Uint,
+        "r64ui" => Sf::R64Uint,
         "rg32ui" => Sf::Rg32Uint,
         "rg16ui" => Sf::Rg16Uint,
         "rg8ui" => Sf::Rg8Uint,

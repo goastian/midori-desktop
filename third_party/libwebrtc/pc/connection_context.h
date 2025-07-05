@@ -30,10 +30,10 @@
 #include "rtc_base/socket_factory.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/thread_annotations.h"
+#include "rtc_base/unique_id_generator.h"
 
 namespace rtc {
 class BasicPacketSocketFactory;
-class UniqueRandomIdGenerator;
 }  // namespace rtc
 
 namespace webrtc {
@@ -44,8 +44,7 @@ namespace webrtc {
 // interferes with the operation of other PeerConnections.
 //
 // This class must be created and destroyed on the signaling thread.
-class ConnectionContext final
-    : public rtc::RefCountedNonVirtual<ConnectionContext> {
+class ConnectionContext final : public RefCountedNonVirtual<ConnectionContext> {
  public:
   // Creates a ConnectionContext. May return null if initialization fails.
   // The Dependencies class allows simple management of all new dependencies
@@ -92,7 +91,7 @@ class ConnectionContext final
     RTC_DCHECK_RUN_ON(worker_thread());
     return call_factory_.get();
   }
-  rtc::UniqueRandomIdGenerator* ssrc_generator() { return &ssrc_generator_; }
+  UniqueRandomIdGenerator* ssrc_generator() { return &ssrc_generator_; }
   // Note: There is lots of code that wants to know whether or not we
   // use RTX, but so far, no code has been found that sets it to false.
   // Kept in the API in order to ease introduction if we want to resurrect
@@ -106,7 +105,7 @@ class ConnectionContext final
   ConnectionContext(const Environment& env,
                     PeerConnectionFactoryDependencies* dependencies);
 
-  friend class rtc::RefCountedNonVirtual<ConnectionContext>;
+  friend class RefCountedNonVirtual<ConnectionContext>;
   ~ConnectionContext();
 
  private:
@@ -130,7 +129,7 @@ class ConnectionContext final
   // specified by the user (or by the remote party).
   // TODO(bugs.webrtc.org/12666): This variable is used from both the signaling
   // and worker threads. See if we can't restrict usage to a single thread.
-  rtc::UniqueRandomIdGenerator ssrc_generator_;
+  UniqueRandomIdGenerator ssrc_generator_;
   std::unique_ptr<rtc::NetworkMonitorFactory> const network_monitor_factory_
       RTC_GUARDED_BY(signaling_thread_);
   std::unique_ptr<rtc::NetworkManager> default_network_manager_

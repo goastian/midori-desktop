@@ -18,10 +18,12 @@
 #include <string>
 #include <vector>
 
+#include "api/priority.h"
 #include "api/rtc_error.h"
 #include "api/transport/data_channel_transport_interface.h"
 #include "media/base/media_channel.h"
 #include "p2p/base/packet_transport_internal.h"
+#include "p2p/dtls/dtls_transport_internal.h"
 #include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/thread.h"
 
@@ -82,7 +84,7 @@ class SctpTransportInternal {
 
   // Changes what underlying DTLS transport is uses. Used when switching which
   // bundled transport the SctpTransport uses.
-  virtual void SetDtlsTransport(rtc::PacketTransportInternal* transport) = 0;
+  virtual void SetDtlsTransport(cricket::DtlsTransportInternal* transport) = 0;
 
   // When Start is called, connects as soon as possible; this can be called
   // before DTLS completes, in which case the connection will begin when DTLS
@@ -113,7 +115,7 @@ class SctpTransportInternal {
   // TODO(deadbeef): Actually implement the "returns false if `sid` can't be
   // used" part. See:
   // https://bugs.chromium.org/p/chromium/issues/detail?id=619849
-  virtual bool OpenStream(int sid) = 0;
+  virtual bool OpenStream(int sid, webrtc::PriorityValue priority) = 0;
   // The inverse of OpenStream. Begins the closing procedure, which will
   // eventually result in SignalClosingProcedureComplete on the side that
   // initiates it, and both SignalClosingProcedureStartedRemotely and
@@ -136,10 +138,14 @@ class SctpTransportInternal {
   // Returns the current max message size, set with Start().
   virtual int max_message_size() const = 0;
   // Returns the current negotiated max # of outbound streams.
-  // Will return absl::nullopt if negotiation is incomplete.
-  virtual absl::optional<int> max_outbound_streams() const = 0;
+  // Will return std::nullopt if negotiation is incomplete.
+  virtual std::optional<int> max_outbound_streams() const = 0;
   // Returns the current negotiated max # of inbound streams.
-  virtual absl::optional<int> max_inbound_streams() const = 0;
+  virtual std::optional<int> max_inbound_streams() const = 0;
+  // Returns the amount of buffered data in the send queue for a stream.
+  virtual size_t buffered_amount(int sid) const = 0;
+  virtual size_t buffered_amount_low_threshold(int sid) const = 0;
+  virtual void SetBufferedAmountLowThreshold(int sid, size_t bytes) = 0;
 
   // Helper for debugging.
   virtual void set_debug_name_for_testing(const char* debug_name) = 0;

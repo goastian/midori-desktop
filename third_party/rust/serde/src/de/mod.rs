@@ -101,8 +101,8 @@
 //!    - SocketAddrV6
 //!
 //! [Implementing `Deserialize`]: https://serde.rs/impl-deserialize.html
-//! [`Deserialize`]: ../trait.Deserialize.html
-//! [`Deserializer`]: ../trait.Deserializer.html
+//! [`Deserialize`]: crate::Deserialize
+//! [`Deserializer`]: crate::Deserializer
 //! [`LinkedHashMap<K, V>`]: https://docs.rs/linked-hash-map/*/linked_hash_map/struct.LinkedHashMap.html
 //! [`postcard`]: https://github.com/jamesmunns/postcard
 //! [`linked-hash-map`]: https://crates.io/crates/linked-hash-map
@@ -118,17 +118,16 @@ use crate::lib::*;
 
 pub mod value;
 
-mod format;
 mod ignored_any;
 mod impls;
 pub(crate) mod size_hint;
 
 pub use self::ignored_any::IgnoredAny;
 
-#[cfg(not(any(feature = "std", feature = "unstable")))]
+#[cfg(all(not(feature = "std"), no_core_error))]
 #[doc(no_inline)]
 pub use crate::std_error::Error as StdError;
-#[cfg(all(feature = "unstable", not(feature = "std")))]
+#[cfg(not(any(feature = "std", no_core_error)))]
 #[doc(no_inline)]
 pub use core::error::Error as StdError;
 #[cfg(feature = "std")]
@@ -487,13 +486,13 @@ where
     }
 }
 
-impl<'a> Expected for &'a str {
+impl Expected for &str {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(self)
     }
 }
 
-impl<'a> Display for Expected + 'a {
+impl Display for Expected + '_ {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         Expected::fmt(self, formatter)
     }
@@ -532,6 +531,13 @@ impl<'a> Display for Expected + 'a {
 /// deserializer lifetimes] for a more detailed explanation of these lifetimes.
 ///
 /// [Understanding deserializer lifetimes]: https://serde.rs/lifetimes.html
+#[cfg_attr(
+    not(no_diagnostic_namespace),
+    diagnostic::on_unimplemented(
+        note = "for local types consider adding `#[derive(serde::Deserialize)]` to your `{Self}` type",
+        note = "for types from other crates check whether the crate offers a `serde` feature flag",
+    )
+)]
 pub trait Deserialize<'de>: Sized {
     /// Deserialize this value from the given Serde deserializer.
     ///
@@ -1367,7 +1373,7 @@ pub trait Visitor<'de>: Sized {
         E: Error,
     {
         let mut buf = [0u8; 58];
-        let mut writer = format::Buf::new(&mut buf);
+        let mut writer = crate::format::Buf::new(&mut buf);
         fmt::Write::write_fmt(&mut writer, format_args!("integer `{}` as i128", v)).unwrap();
         Err(Error::invalid_type(
             Unexpected::Other(writer.as_str()),
@@ -1429,7 +1435,7 @@ pub trait Visitor<'de>: Sized {
         E: Error,
     {
         let mut buf = [0u8; 57];
-        let mut writer = format::Buf::new(&mut buf);
+        let mut writer = crate::format::Buf::new(&mut buf);
         fmt::Write::write_fmt(&mut writer, format_args!("integer `{}` as u128", v)).unwrap();
         Err(Error::invalid_type(
             Unexpected::Other(writer.as_str()),
@@ -1735,7 +1741,7 @@ pub trait SeqAccess<'de> {
     }
 }
 
-impl<'de, 'a, A> SeqAccess<'de> for &'a mut A
+impl<'de, A> SeqAccess<'de> for &mut A
 where
     A: ?Sized + SeqAccess<'de>,
 {
@@ -1888,7 +1894,7 @@ pub trait MapAccess<'de> {
     }
 }
 
-impl<'de, 'a, A> MapAccess<'de> for &'a mut A
+impl<'de, A> MapAccess<'de> for &mut A
 where
     A: ?Sized + MapAccess<'de>,
 {

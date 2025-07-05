@@ -45,6 +45,7 @@ pub(super) trait FromAsm: private::Sealed {
 /// pointer types. They need a type to point to, so we define a custom private
 /// type, to prevent it from being used for anything else.
 #[repr(transparent)]
+#[allow(dead_code)]
 pub(super) struct Opaque(c::c_void);
 
 // Argument numbers.
@@ -205,7 +206,7 @@ impl<Num: RetNumber> FromAsm for RetReg<Num> {
 
 #[repr(transparent)]
 pub(super) struct SyscallNumber<'a> {
-    nr: usize,
+    pub(super) nr: usize,
     _phantom: PhantomData<&'a ()>,
 }
 

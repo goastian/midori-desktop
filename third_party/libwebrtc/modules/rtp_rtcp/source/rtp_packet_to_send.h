@@ -13,9 +13,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/ref_counted_base.h"
 #include "api/scoped_refptr.h"
@@ -51,13 +51,11 @@ class RtpPacketToSend : public RtpPacket {
 
   void set_packet_type(RtpPacketMediaType type);
 
-  absl::optional<RtpPacketMediaType> packet_type() const {
-    return packet_type_;
-  }
+  std::optional<RtpPacketMediaType> packet_type() const { return packet_type_; }
 
   enum class OriginalType { kAudio, kVideo };
   // Original type does not change if packet type is changed to kRetransmission.
-  absl::optional<OriginalType> original_packet_type() const {
+  std::optional<OriginalType> original_packet_type() const {
     return original_packet_type_;
   }
 
@@ -67,9 +65,14 @@ class RtpPacketToSend : public RtpPacket {
   void set_retransmitted_sequence_number(uint16_t sequence_number) {
     retransmitted_sequence_number_ = sequence_number;
   }
-  absl::optional<uint16_t> retransmitted_sequence_number() const {
+  std::optional<uint16_t> retransmitted_sequence_number() const {
     return retransmitted_sequence_number_;
   }
+
+  // If this is a retransmission, indicates the SSRC of the original
+  // media packet that this packet represents.
+  void set_original_ssrc(uint32_t ssrc) { original_ssrc_ = ssrc; }
+  std::optional<uint32_t> original_ssrc() const { return original_ssrc_; }
 
   void set_allow_retransmission(bool allow_retransmission) {
     allow_retransmission_ = allow_retransmission;
@@ -133,22 +136,38 @@ class RtpPacketToSend : public RtpPacket {
   void set_time_in_send_queue(TimeDelta time_in_send_queue) {
     time_in_send_queue_ = time_in_send_queue;
   }
-  absl::optional<TimeDelta> time_in_send_queue() const {
+  std::optional<TimeDelta> time_in_send_queue() const {
     return time_in_send_queue_;
   }
+  // A sequence number guaranteed to be monotically increasing by one for all
+  // packets where transport feedback is expected.
+  std::optional<int64_t> transport_sequence_number() const {
+    return transport_sequence_number_;
+  }
+  void set_transport_sequence_number(int64_t transport_sequence_number) {
+    transport_sequence_number_ = transport_sequence_number;
+  }
+  // Transport is capable of handling explicit congestion notification and the
+  // RTP packet should be sent as ect(1)
+  // https://www.rfc-editor.org/rfc/rfc9331.html
+  bool send_as_ect1() const { return send_as_ect1_; }
+  void set_send_as_ect1() { send_as_ect1_ = true; }
 
  private:
   webrtc::Timestamp capture_time_ = webrtc::Timestamp::Zero();
-  absl::optional<RtpPacketMediaType> packet_type_;
-  absl::optional<OriginalType> original_packet_type_;
+  std::optional<RtpPacketMediaType> packet_type_;
+  std::optional<OriginalType> original_packet_type_;
+  std::optional<uint32_t> original_ssrc_;
+  std::optional<int64_t> transport_sequence_number_;
   bool allow_retransmission_ = false;
-  absl::optional<uint16_t> retransmitted_sequence_number_;
+  std::optional<uint16_t> retransmitted_sequence_number_;
   rtc::scoped_refptr<rtc::RefCountedBase> additional_data_;
   bool is_first_packet_of_frame_ = false;
   bool is_key_frame_ = false;
   bool fec_protect_packet_ = false;
   bool is_red_ = false;
-  absl::optional<TimeDelta> time_in_send_queue_;
+  bool send_as_ect1_ = false;
+  std::optional<TimeDelta> time_in_send_queue_;
 };
 
 }  // namespace webrtc

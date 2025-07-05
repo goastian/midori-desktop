@@ -162,10 +162,6 @@ ECCurve KeyParams::ec_curve() const {
   return params_.curve;
 }
 
-KeyType IntKeyTypeFamilyToKeyType(int key_type_family) {
-  return static_cast<KeyType>(key_type_family);
-}
-
 //////////////////////////////////////////////////////////////////////
 // SSLIdentity
 //////////////////////////////////////////////////////////////////////
@@ -197,7 +193,7 @@ bool SSLIdentity::PemToDer(absl::string_view pem_type,
 std::string SSLIdentity::DerToPem(absl::string_view pem_type,
                                   const unsigned char* data,
                                   size_t length) {
-  rtc::StringBuilder result;
+  webrtc::StringBuilder result;
   result << "-----BEGIN " << pem_type << "-----\n";
 
   std::string b64_encoded;

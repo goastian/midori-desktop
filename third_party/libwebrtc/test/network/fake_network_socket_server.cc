@@ -10,17 +10,33 @@
 
 #include "test/network/fake_network_socket_server.h"
 
-#include <algorithm>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "api/scoped_refptr.h"
+#include "api/sequence_checker.h"
 #include "api/task_queue/pending_task_safety_flag.h"
+#include "api/test/network_emulation/network_emulation_interfaces.h"
+#include "api/transport/ecn_marking.h"
+#include "api/units/time_delta.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/event.h"
+#include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread.h"
+#include "rtc_base/thread_annotations.h"
+#include "test/network/network_emulation.h"
 
 namespace webrtc {
 namespace test {
@@ -52,11 +68,11 @@ class FakeNetworkSocket : public rtc::Socket,
   int SendTo(const void* pv,
              size_t cb,
              const rtc::SocketAddress& addr) override;
-  int Recv(void* pv, size_t cb, int64_t* timestamp) override;
-  int RecvFrom(void* pv,
-               size_t cb,
-               rtc::SocketAddress* paddr,
-               int64_t* timestamp) override;
+  int Recv(void* pv, size_t cb, int64_t* timestamp) override {
+    RTC_DCHECK_NOTREACHED() << " Use RecvFrom instead.";
+    return 0;
+  }
+  int RecvFrom(ReceiveBuffer& buffer) override;
   int Listen(int backlog) override;
   rtc::Socket* Accept(rtc::SocketAddress* paddr) override;
   int GetError() const override;
@@ -75,7 +91,7 @@ class FakeNetworkSocket : public rtc::Socket,
   int error_ RTC_GUARDED_BY(&thread_);
   std::map<Option, int> options_map_ RTC_GUARDED_BY(&thread_);
 
-  absl::optional<EmulatedIpPacket> pending_ RTC_GUARDED_BY(thread_);
+  std::optional<EmulatedIpPacket> pending_ RTC_GUARDED_BY(thread_);
   rtc::scoped_refptr<PendingTaskSafetyFlag> alive_;
 };
 
@@ -135,7 +151,7 @@ int FakeNetworkSocket::Bind(const rtc::SocketAddress& addr) {
     error_ = EADDRNOTAVAIL;
     return 2;
   }
-  absl::optional<uint16_t> port =
+  std::optional<uint16_t> port =
       endpoint_->BindReceiver(local_addr_.port(), this);
   if (!port) {
     local_addr_.Clear();
@@ -175,47 +191,26 @@ int FakeNetworkSocket::SendTo(const void* pv,
     return -1;
   }
   rtc::CopyOnWriteBuffer packet(static_cast<const uint8_t*>(pv), cb);
-  endpoint_->SendPacket(local_addr_, addr, packet);
+  EcnMarking ecn = EcnMarking::kNotEct;
+  auto it = options_map_.find(OPT_SEND_ECN);
+  if (it != options_map_.end() && it->second == 1) {
+    ecn = EcnMarking::kEct1;
+  }
+
+  endpoint_->SendPacket(local_addr_, addr, packet, /*application_overhead=*/0,
+                        ecn);
   return cb;
 }
 
-int FakeNetworkSocket::Recv(void* pv, size_t cb, int64_t* timestamp) {
-  rtc::SocketAddress paddr;
-  return RecvFrom(pv, cb, &paddr, timestamp);
-}
-
-// Reads 1 packet from internal queue. Reads up to `cb` bytes into `pv`
-// and returns the length of received packet.
-int FakeNetworkSocket::RecvFrom(void* pv,
-                                size_t cb,
-                                rtc::SocketAddress* paddr,
-                                int64_t* timestamp) {
+int FakeNetworkSocket::RecvFrom(ReceiveBuffer& buffer) {
   RTC_DCHECK_RUN_ON(thread_);
-
-  if (timestamp) {
-    *timestamp = -1;
-  }
   RTC_CHECK(pending_);
-
-  *paddr = pending_->from;
-  size_t data_read = std::min(cb, pending_->size());
-  memcpy(pv, pending_->cdata(), data_read);
-  *timestamp = pending_->arrival_time.us();
-
-  // According to RECV(2) Linux Man page
-  // real socket will discard data, that won't fit into provided buffer,
-  // but we won't to skip such error, so we will assert here.
-  RTC_CHECK(data_read == pending_->size())
-      << "Too small buffer is provided for socket read. "
-         "Received data size: "
-      << pending_->size() << "; Provided buffer size: " << cb;
-
+  buffer.source_address = pending_->from;
+  buffer.arrival_time = pending_->arrival_time;
+  buffer.payload.SetData(pending_->cdata(), pending_->size());
+  buffer.ecn = pending_->ecn;
   pending_.reset();
-
-  // According to RECV(2) Linux Man page
-  // real socket will return message length, not data read. In our case it is
-  // actually the same value.
-  return static_cast<int>(data_read);
+  return buffer.payload.size();
 }
 
 int FakeNetworkSocket::Listen(int backlog) {

@@ -10,6 +10,14 @@
 
 #include "call/video_receive_stream.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+
+#include "api/call/transport.h"
+#include "api/rtp_headers.h"
+#include "api/video_codecs/sdp_video_format.h"
 #include "rtc_base/strings/string_builder.h"
 
 namespace webrtc {
@@ -29,7 +37,7 @@ bool VideoReceiveStreamInterface::Decoder::operator==(
 
 std::string VideoReceiveStreamInterface::Decoder::ToString() const {
   char buf[1024];
-  rtc::SimpleStringBuilder ss(buf);
+  SimpleStringBuilder ss(buf);
   ss << "{payload_type: " << payload_type;
   ss << ", payload_name: " << video_format.name;
   ss << ", codec_params: {";
@@ -52,7 +60,7 @@ VideoReceiveStreamInterface::Stats::~Stats() = default;
 std::string VideoReceiveStreamInterface::Stats::ToString(
     int64_t time_ms) const {
   char buf[2048];
-  rtc::SimpleStringBuilder ss(buf);
+  SimpleStringBuilder ss(buf);
   ss << "VideoReceiveStreamInterface stats: " << time_ms << ", {ssrc: " << ssrc
      << ", ";
   ss << "total_bps: " << total_bitrate_bps << ", ";
@@ -112,7 +120,7 @@ VideoReceiveStreamInterface::Config::Config::~Config() = default;
 
 std::string VideoReceiveStreamInterface::Config::ToString() const {
   char buf[4 * 1024];
-  rtc::SimpleStringBuilder ss(buf);
+  SimpleStringBuilder ss(buf);
   ss << "{decoders: [";
   for (size_t i = 0; i < decoders.size(); ++i) {
     ss << decoders[i].ToString();
@@ -136,7 +144,7 @@ VideoReceiveStreamInterface::Config::Rtp::~Rtp() = default;
 
 std::string VideoReceiveStreamInterface::Config::Rtp::ToString() const {
   char buf[2 * 1024];
-  rtc::SimpleStringBuilder ss(buf);
+  SimpleStringBuilder ss(buf);
   ss << "{remote_ssrc: " << remote_ssrc;
   ss << ", local_ssrc: " << local_ssrc;
   ss << ", rtcp_mode: "

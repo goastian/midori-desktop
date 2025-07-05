@@ -15,9 +15,9 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/audio/echo_canceller3_config.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
@@ -33,7 +33,8 @@ namespace webrtc {
 // and another one is done using the aggreation of energy over all the subbands.
 class ErleEstimator {
  public:
-  ErleEstimator(size_t startup_phase_length_blocks,
+  ErleEstimator(const Environment& env,
+                size_t startup_phase_length_blocks,
                 const EchoCanceller3Config& config,
                 size_t num_capture_channels);
   ~ErleEstimator();
@@ -91,7 +92,7 @@ class ErleEstimator {
   // vector with content between 0 and 1 where 1 indicates that, at this current
   // time instant, the linear filter is reaching its maximum subtraction
   // performance.
-  rtc::ArrayView<const absl::optional<float>> GetInstLinearQualityEstimates()
+  rtc::ArrayView<const std::optional<float>> GetInstLinearQualityEstimates()
       const {
     return fullband_erle_estimator_.GetInstLinearQualityEstimates();
   }

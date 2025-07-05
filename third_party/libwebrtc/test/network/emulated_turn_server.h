@@ -16,10 +16,14 @@
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "api/test/network_emulation/network_emulation_interfaces.h"
 #include "api/test/network_emulation_manager.h"
 #include "api/transport/stun.h"
-#include "p2p/base/turn_server.h"
+#include "p2p/test/turn_server.h"
 #include "rtc_base/async_packet_socket.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/thread.h"
+#include "rtc_base/thread_annotations.h"
 
 namespace webrtc {
 namespace test {
@@ -42,7 +46,8 @@ class EmulatedTURNServer : public EmulatedTURNServerInterface,
   // Create an EmulatedTURNServer.
   // `thread` is a thread that will be used to run cricket::TurnServer
   // that expects all calls to be made from a single thread.
-  EmulatedTURNServer(std::unique_ptr<rtc::Thread> thread,
+  EmulatedTURNServer(const EmulatedTURNServerConfig& config,
+                     std::unique_ptr<rtc::Thread> thread,
                      EmulatedEndpoint* client,
                      EmulatedEndpoint* peer);
   ~EmulatedTURNServer() override;

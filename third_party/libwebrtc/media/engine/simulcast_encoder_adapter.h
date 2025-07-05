@@ -15,13 +15,13 @@
 #include <atomic>
 #include <list>
 #include <memory>
+#include <optional>
 #include <stack>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/types/optional.h"
 #include "api/environment/environment.h"
 #include "api/fec_controller_override.h"
 #include "api/field_trials_view.h"
@@ -68,6 +68,9 @@ class RTC_EXPORT SimulcastEncoderAdapter : public VideoEncoder {
   void OnLossNotification(const LossNotification& loss_notification) override;
 
   EncoderInfo GetEncoderInfo() const override;
+
+ protected:
+  void DestroyStoredEncoders();
 
  private:
   class EncoderContext {
@@ -122,10 +125,10 @@ class RTC_EXPORT SimulcastEncoderAdapter : public VideoEncoder {
     void set_is_keyframe_needed() { is_keyframe_needed_ = true; }
     bool is_paused() const { return is_paused_; }
     void set_is_paused(bool is_paused) { is_paused_ = is_paused; }
-    absl::optional<double> target_fps() const {
+    std::optional<double> target_fps() const {
       return framerate_controller_ == nullptr
-                 ? absl::nullopt
-                 : absl::optional<double>(
+                 ? std::nullopt
+                 : std::optional<double>(
                        framerate_controller_->GetMaxFramerate());
     }
 
@@ -145,8 +148,6 @@ class RTC_EXPORT SimulcastEncoderAdapter : public VideoEncoder {
   };
 
   bool Initialized() const;
-
-  void DestroyStoredEncoders();
 
   // This method creates encoder. May reuse previously created encoders from
   // `cached_encoder_contexts_`. It's const because it's used from
@@ -189,7 +190,6 @@ class RTC_EXPORT SimulcastEncoderAdapter : public VideoEncoder {
   // GetEncoderInfo(), which is const.
   mutable std::list<std::unique_ptr<EncoderContext>> cached_encoder_contexts_;
 
-  const absl::optional<unsigned int> experimental_boosted_screenshare_qp_;
   const bool boost_base_layer_quality_;
   const bool prefer_temporal_support_on_base_layer_;
   const bool per_layer_pli_;

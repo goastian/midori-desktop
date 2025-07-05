@@ -4,32 +4,31 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use neqo_common::qtrace;
+use std::fmt::{self, Display, Formatter};
+
 use neqo_transport::{Connection, StreamId};
 
 use crate::{qlog, Res};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub enum BufferedStream {
+    #[default]
     Uninitialized,
-    Initialized { stream_id: StreamId, buf: Vec<u8> },
+    Initialized {
+        stream_id: StreamId,
+        buf: Vec<u8>,
+    },
 }
 
-impl Default for BufferedStream {
-    fn default() -> Self {
-        Self::Uninitialized
-    }
-}
-
-impl ::std::fmt::Display for BufferedStream {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for BufferedStream {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "BufferedStream {:?}", Option::<StreamId>::from(self))
     }
 }
 
 impl BufferedStream {
     #[must_use]
-    pub fn new(stream_id: StreamId) -> Self {
+    pub const fn new(stream_id: StreamId) -> Self {
         Self::Initialized {
             stream_id,
             buf: Vec::new(),
@@ -49,7 +48,7 @@ impl BufferedStream {
 
     /// # Panics
     ///
-    /// This functon cannot be called before the `BufferedStream` is initialized.
+    /// This function cannot be called before the `BufferedStream` is initialized.
     pub fn buffer(&mut self, to_buf: &[u8]) {
         if let Self::Initialized { buf, .. } = self {
             buf.extend_from_slice(to_buf);
@@ -62,14 +61,12 @@ impl BufferedStream {
     ///
     /// Returns `neqo_transport` errors.
     pub fn send_buffer(&mut self, conn: &mut Connection) -> Res<usize> {
-        let label = ::neqo_common::log_subject!(::log::Level::Debug, self);
         let Self::Initialized { stream_id, buf } = self else {
             return Ok(0);
         };
         if buf.is_empty() {
             return Ok(0);
         }
-        qtrace!([label], "sending data.");
         let sent = conn.stream_send(*stream_id, &buf[..])?;
         if sent == 0 {
             return Ok(0);
@@ -113,7 +110,7 @@ impl BufferedStream {
 }
 
 impl From<&BufferedStream> for Option<StreamId> {
-    fn from(stream: &BufferedStream) -> Option<StreamId> {
+    fn from(stream: &BufferedStream) -> Self {
         if let BufferedStream::Initialized { stream_id, .. } = stream {
             Some(*stream_id)
         } else {

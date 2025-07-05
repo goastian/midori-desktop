@@ -6,37 +6,62 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linux {
-    use super::*;
-    use minidump_writer::{
-        minidump_writer::STOP_TIMEOUT,
-        ptrace_dumper::{PtraceDumper, AT_SYSINFO_EHDR},
-        LINUX_GATE_LIBRARY_NAME,
-    };
-    use nix::{
-        sys::mman::{mmap_anonymous, MapFlags, ProtFlags},
-        unistd::getppid,
+    use {
+        super::*,
+        error_graph::ErrorList,
+        minidump_writer::{
+            minidump_writer::STOP_TIMEOUT, module_reader, ptrace_dumper::PtraceDumper,
+            LINUX_GATE_LIBRARY_NAME,
+        },
+        nix::{
+            sys::mman::{mmap_anonymous, MapFlags, ProtFlags},
+            unistd::getppid,
+        },
     };
 
     macro_rules! test {
         ($x:expr, $errmsg:expr) => {
-            if $x {
-                Ok(())
-            } else {
-                Err($errmsg)
+            if !$x {
+                return Err($errmsg.into());
             }
         };
     }
 
+    macro_rules! fail_on_soft_error(($n: ident, $e: expr) => {{
+        let mut $n = ErrorList::default();
+        let __result = $e;
+        if !$n.is_empty() {
+            return Err($n.into());
+        }
+        __result
+    }});
+
     fn test_setup() -> Result<()> {
         let ppid = getppid();
-        PtraceDumper::new(ppid.as_raw(), STOP_TIMEOUT)?;
+        fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid.as_raw(),
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors,
+            )?
+        );
         Ok(())
     }
 
     fn test_thread_list() -> Result<()> {
         let ppid = getppid();
-        let dumper = PtraceDumper::new(ppid.as_raw(), STOP_TIMEOUT)?;
-        test!(!dumper.threads.is_empty(), "No threads")?;
+        let dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid.as_raw(),
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors,
+            )?
+        );
+        test!(!dumper.threads.is_empty(), "No threads");
         test!(
             dumper
                 .threads
@@ -45,35 +70,102 @@ mod linux {
                 .count()
                 == 1,
             "Thread found multiple times"
-        )?;
+        );
+
+        test!(
+            dumper
+                .threads
+                .iter()
+                .any(|thread| thread.name.as_deref() == Some("sighup-thread")),
+            "Failed to locate and/or stop sighup-thread"
+        );
+
         Ok(())
     }
 
     fn test_copy_from_process(stack_var: usize, heap_var: usize) -> Result<()> {
+        use minidump_writer::mem_reader::MemReader;
+
         let ppid = getppid().as_raw();
-        let mut dumper = PtraceDumper::new(ppid, STOP_TIMEOUT)?;
-        dumper.suspend_threads()?;
-        let stack_res = PtraceDumper::copy_from_process(ppid, stack_var as *mut libc::c_void, 1)?;
+        let mut dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid,
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors
+            )?
+        );
 
-        let expected_stack: libc::c_long = 0x11223344;
-        test!(
-            stack_res == expected_stack.to_ne_bytes(),
-            "stack var not correct"
-        )?;
+        fail_on_soft_error!(soft_errors, dumper.suspend_threads(&mut soft_errors));
 
-        let heap_res = PtraceDumper::copy_from_process(ppid, heap_var as *mut libc::c_void, 1)?;
-        let expected_heap: libc::c_long = 0x55667788;
-        test!(
-            heap_res == expected_heap.to_ne_bytes(),
-            "heap var not correct"
-        )?;
-        dumper.resume_threads()?;
+        // We support 3 different methods of reading memory from another
+        // process, ensure they all function and give the same results
+
+        let expected_stack = 0x11223344usize.to_ne_bytes();
+        let expected_heap = 0x55667788usize.to_ne_bytes();
+
+        let validate = |reader: &mut MemReader| -> Result<()> {
+            let mut val = [0u8; std::mem::size_of::<usize>()];
+            let read = reader.read(stack_var, &mut val)?;
+            assert_eq!(read, val.len());
+            test!(val == expected_stack, "stack var not correct");
+
+            let read = reader.read(heap_var, &mut val)?;
+            assert_eq!(read, val.len());
+            test!(val == expected_heap, "heap var not correct");
+
+            Ok(())
+        };
+
+        // virtual mem
+        {
+            let mut mr = MemReader::for_virtual_mem(ppid);
+            validate(&mut mr)
+                .map_err(|err| format!("failed to validate memory for {mr:?}: {err}"))?;
+        }
+
+        // file
+        {
+            let mut mr = MemReader::for_file(ppid)
+                .map_err(|err| format!("failed to open `/proc/{ppid}/mem`: {err}"))?;
+            validate(&mut mr)
+                .map_err(|err| format!("failed to validate memory for {mr:?}: {err}"))?;
+        }
+
+        // ptrace
+        {
+            let mut mr = MemReader::for_ptrace(ppid);
+            validate(&mut mr)
+                .map_err(|err| format!("failed to validate memory for {mr:?}: {err}"))?;
+        }
+
+        let stack_res =
+            PtraceDumper::copy_from_process(ppid, stack_var, std::mem::size_of::<usize>())?;
+
+        test!(stack_res == expected_stack, "stack var not correct");
+
+        let heap_res =
+            PtraceDumper::copy_from_process(ppid, heap_var, std::mem::size_of::<usize>())?;
+
+        test!(heap_res == expected_heap, "heap var not correct");
+
+        fail_on_soft_error!(soft_errors, dumper.resume_threads(&mut soft_errors));
+
         Ok(())
     }
 
     fn test_find_mappings(addr1: usize, addr2: usize) -> Result<()> {
         let ppid = getppid();
-        let dumper = PtraceDumper::new(ppid.as_raw(), STOP_TIMEOUT)?;
+        let dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid.as_raw(),
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors,
+            )?
+        );
         dumper
             .find_mapping(addr1)
             .ok_or("No mapping for addr1 found")?;
@@ -82,15 +174,27 @@ mod linux {
             .find_mapping(addr2)
             .ok_or("No mapping for addr2 found")?;
 
-        test!(dumper.find_mapping(0).is_none(), "NULL found")?;
+        test!(dumper.find_mapping(0).is_none(), "NULL found");
         Ok(())
     }
 
     fn test_file_id() -> Result<()> {
         let ppid = getppid().as_raw();
-        let exe_link = format!("/proc/{}/exe", ppid);
+        let exe_link = format!("/proc/{ppid}/exe");
         let exe_name = std::fs::read_link(exe_link)?.into_os_string();
-        let mut dumper = PtraceDumper::new(getppid().as_raw(), STOP_TIMEOUT)?;
+
+        let mut dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid,
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors
+            )?
+        );
+
+        fail_on_soft_error!(soft_errors, dumper.suspend_threads(&mut soft_errors));
+
         let mut found_exe = None;
         for (idx, mapping) in dumper.mappings.iter().enumerate() {
             if mapping.name.as_ref().map(|x| x.into()).as_ref() == Some(&exe_name) {
@@ -99,7 +203,10 @@ mod linux {
             }
         }
         let idx = found_exe.unwrap();
-        let id = dumper.elf_identifier_for_mapping_index(idx)?;
+        let module_reader::BuildId(id) = dumper.from_process_memory_for_index(idx)?;
+
+        fail_on_soft_error!(soft_errors, dumper.resume_threads(&mut soft_errors));
+
         assert!(!id.is_empty());
         assert!(id.iter().any(|&x| x > 0));
         Ok(())
@@ -107,13 +214,21 @@ mod linux {
 
     fn test_merged_mappings(path: String, mapped_mem: usize, mem_size: usize) -> Result<()> {
         // Now check that PtraceDumper interpreted the mappings properly.
-        let dumper = PtraceDumper::new(getppid().as_raw(), STOP_TIMEOUT)?;
+        let dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                getppid().as_raw(),
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors,
+            )?
+        );
         let mut mapping_count = 0;
         for map in &dumper.mappings {
             if map
                 .name
                 .as_ref()
-                .map_or(false, |name| name.to_string_lossy().starts_with(&path))
+                .is_some_and(|name| name.to_string_lossy().starts_with(&path))
             {
                 mapping_count += 1;
                 // This mapping should encompass the entire original mapped
@@ -129,36 +244,57 @@ mod linux {
 
     fn test_linux_gate_mapping_id() -> Result<()> {
         let ppid = getppid().as_raw();
-        let mut dumper = PtraceDumper::new(ppid, STOP_TIMEOUT)?;
+        let mut dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid,
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors
+            )?
+        );
         let mut found_linux_gate = false;
-        for mut mapping in dumper.mappings.clone() {
+        for mapping in dumper.mappings.clone() {
             if mapping.name == Some(LINUX_GATE_LIBRARY_NAME.into()) {
                 found_linux_gate = true;
-                dumper.suspend_threads()?;
-                let id = PtraceDumper::elf_identifier_for_mapping(&mut mapping, ppid)?;
-                test!(!id.is_empty(), "id-vec is empty")?;
-                test!(id.iter().any(|&x| x > 0), "all id elements are 0")?;
-                dumper.resume_threads()?;
+
+                fail_on_soft_error!(soft_errors, dumper.suspend_threads(&mut soft_errors));
+
+                let module_reader::BuildId(id) =
+                    PtraceDumper::from_process_memory_for_mapping(&mapping, ppid)?;
+                test!(!id.is_empty(), "id-vec is empty");
+                test!(id.iter().any(|&x| x > 0), "all id elements are 0");
+
+                fail_on_soft_error!(soft_errors, dumper.resume_threads(&mut soft_errors));
+
                 break;
             }
         }
-        test!(found_linux_gate, "found no linux_gate")?;
+        test!(found_linux_gate, "found no linux_gate");
         Ok(())
     }
 
     fn test_mappings_include_linux_gate() -> Result<()> {
         let ppid = getppid().as_raw();
-        let dumper = PtraceDumper::new(ppid, STOP_TIMEOUT)?;
-        let linux_gate_loc = dumper.auxv[&AT_SYSINFO_EHDR];
-        test!(linux_gate_loc != 0, "linux_gate_loc == 0")?;
+        let dumper = fail_on_soft_error!(
+            soft_errors,
+            PtraceDumper::new_report_soft_errors(
+                ppid,
+                STOP_TIMEOUT,
+                Default::default(),
+                &mut soft_errors
+            )?
+        );
+        let linux_gate_loc = dumper.auxv.get_linux_gate_address().unwrap();
+        test!(linux_gate_loc != 0, "linux_gate_loc == 0");
         let mut found_linux_gate = false;
         for mapping in &dumper.mappings {
             if mapping.name == Some(LINUX_GATE_LIBRARY_NAME.into()) {
                 found_linux_gate = true;
                 test!(
-                    linux_gate_loc == mapping.start_address.try_into()?,
+                    usize::try_from(linux_gate_loc)? == mapping.start_address,
                     "linux_gate_loc != start_address"
-                )?;
+                );
 
                 // This doesn't work here, as we do not test via "fork()", so the addresses are different
                 // let ll = mapping.start_address as *const u8;
@@ -172,7 +308,7 @@ mod linux {
                 break;
             }
         }
-        test!(found_linux_gate, "found no linux_gate")?;
+        test!(found_linux_gate, "found no linux_gate");
         Ok(())
     }
 
@@ -268,6 +404,7 @@ mod linux {
     pub(super) fn real_main(args: Vec<String>) -> Result<()> {
         match args.len() {
             1 => match args[0].as_ref() {
+                "nop" => Ok(()),
                 "file_id" => test_file_id(),
                 "setup" => test_setup(),
                 "thread_list" => test_thread_list(),

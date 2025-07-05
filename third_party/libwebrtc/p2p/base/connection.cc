@@ -13,23 +13,43 @@
 #include <math.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/candidate.h"
+#include "api/rtc_error.h"
+#include "api/sequence_checker.h"
+#include "api/task_queue/task_queue_base.h"
+#include "api/transport/stun.h"
 #include "api/units/timestamp.h"
+#include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair.h"
+#include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair_config.h"
+#include "logging/rtc_event_log/ice_logger.h"
+#include "p2p/base/connection_info.h"
 #include "p2p/base/p2p_constants.h"
+#include "p2p/base/p2p_transport_channel_ice_field_trials.h"
+#include "p2p/base/port_interface.h"
+#include "p2p/base/stun_request.h"
+#include "p2p/base/transport_description.h"
+#include "rtc_base/async_packet_socket.h"
 #include "rtc_base/byte_buffer.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/net_helper.h"
+#include "rtc_base/net_helpers.h"
 #include "rtc_base/network.h"
+#include "rtc_base/network/received_packet.h"
 #include "rtc_base/network/sent_packet.h"
 #include "rtc_base/network_constants.h"
 #include "rtc_base/numerics/safe_minmax.h"
@@ -39,6 +59,7 @@
 #include "rtc_base/string_utils.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/time_utils.h"
+#include "rtc_base/weak_ptr.h"
 
 namespace cricket {
 namespace {
@@ -144,12 +165,6 @@ const int MINIMUM_RTT = 100;    // 0.1 seconds
 const int MAXIMUM_RTT = 60000;  // 60 seconds
 
 const int DEFAULT_RTT_ESTIMATE_HALF_TIME_MS = 500;
-
-// Computes our estimate of the RTT given the current estimate.
-inline int ConservativeRTTEstimate(int rtt) {
-  return rtc::SafeClamp(2 * rtt, MINIMUM_RTT, MAXIMUM_RTT);
-}
-
 // Weighting of the old rtt value to new data.
 const int RTT_RATIO = 3;  // 3 : 1
 
@@ -393,7 +408,7 @@ int Connection::unwritable_timeout() const {
   return unwritable_timeout_.value_or(CONNECTION_WRITE_CONNECT_TIMEOUT);
 }
 
-void Connection::set_unwritable_timeout(const absl::optional<int>& value_ms) {
+void Connection::set_unwritable_timeout(const std::optional<int>& value_ms) {
   RTC_DCHECK_RUN_ON(network_thread_);
   unwritable_timeout_ = value_ms;
 }
@@ -403,7 +418,7 @@ int Connection::unwritable_min_checks() const {
   return unwritable_min_checks_.value_or(CONNECTION_WRITE_CONNECT_FAILURES);
 }
 
-void Connection::set_unwritable_min_checks(const absl::optional<int>& value) {
+void Connection::set_unwritable_min_checks(const std::optional<int>& value) {
   RTC_DCHECK_RUN_ON(network_thread_);
   unwritable_min_checks_ = value;
 }
@@ -413,7 +428,7 @@ int Connection::inactive_timeout() const {
   return inactive_timeout_.value_or(CONNECTION_WRITE_TIMEOUT);
 }
 
-void Connection::set_inactive_timeout(const absl::optional<int>& value) {
+void Connection::set_inactive_timeout(const std::optional<int>& value) {
   RTC_DCHECK_RUN_ON(network_thread_);
   inactive_timeout_ = value;
 }
@@ -424,7 +439,7 @@ int Connection::receiving_timeout() const {
 }
 
 void Connection::set_receiving_timeout(
-    absl::optional<int> receiving_timeout_ms) {
+    std::optional<int> receiving_timeout_ms) {
   RTC_DCHECK_RUN_ON(network_thread_);
   receiving_timeout_ = receiving_timeout_ms;
 }
@@ -563,6 +578,15 @@ void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
       // This doesn't just check, it makes callbacks if transaction
       // id's match.
     case STUN_BINDING_RESPONSE:
+      if (dtls_stun_piggyback_consumer_) {
+        const StunByteStringAttribute* dtls_piggyback_attribute =
+            msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN);
+        const StunByteStringAttribute* dtls_piggyback_ack =
+            msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
+        dtls_stun_piggyback_consumer_(dtls_piggyback_attribute,
+                                      dtls_piggyback_ack);
+      }
+      ABSL_FALLTHROUGH_INTENDED;
     case STUN_BINDING_ERROR_RESPONSE:
       requests_.CheckResponse(msg.get());
       break;
@@ -584,6 +608,36 @@ void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
     default:
       RTC_DCHECK_NOTREACHED();
       break;
+  }
+}
+
+void Connection::MaybeAddDtlsPiggybackingAttributes(StunMessage* msg) {
+  if (!(dtls_stun_piggyback_data_producer_ &&
+        dtls_stun_piggyback_ack_producer_)) {
+    return;
+  }
+  std::optional<absl::string_view> dtls_piggyback_attr =
+      dtls_stun_piggyback_data_producer_(STUN_BINDING_RESPONSE);
+  std::optional<absl::string_view> dtls_piggyback_ack =
+      dtls_stun_piggyback_ack_producer_(STUN_BINDING_REQUEST);
+
+  size_t need_length =
+      (dtls_piggyback_attr
+           ? dtls_piggyback_attr->length() + kStunAttributeHeaderSize
+           : 0) +
+      (dtls_piggyback_ack
+           ? dtls_piggyback_ack->length() + kStunAttributeHeaderSize
+           : 0);
+  if (msg->length() + need_length > kMaxStunBindingLength) {
+    return;
+  }
+  if (dtls_piggyback_attr) {
+    msg->AddAttribute(std::make_unique<StunByteStringAttribute>(
+        STUN_ATTR_META_DTLS_IN_STUN, *dtls_piggyback_attr));
+  }
+  if (dtls_piggyback_ack) {
+    msg->AddAttribute(std::make_unique<StunByteStringAttribute>(
+        STUN_ATTR_META_DTLS_IN_STUN_ACK, *dtls_piggyback_ack));
   }
 }
 
@@ -629,6 +683,14 @@ void Connection::HandleStunBindingOrGoogPingRequest(IceMessage* msg) {
 
   // This is a validated stun request from remote peer.
   if (msg->type() == STUN_BINDING_REQUEST) {
+    if (dtls_stun_piggyback_consumer_) {
+      const StunByteStringAttribute* dtls_piggyback_attribute =
+          msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN);
+      const StunByteStringAttribute* dtls_piggyback_ack =
+          msg->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
+      dtls_stun_piggyback_consumer_(dtls_piggyback_attribute,
+                                    dtls_piggyback_ack);
+    }
     SendStunBindingResponse(msg);
   } else {
     RTC_DCHECK(msg->type() == GOOG_PING_REQUEST);
@@ -745,14 +807,15 @@ void Connection::SendStunBindingResponse(const StunMessage* message) {
         RTC_LOG(LS_ERROR) << "GOOG_DELTA consumer did not return ack!";
       }
     } else {
-      RTC_LOG(LS_WARNING) << "Ignore GOOG_DELTA"
-                          << " len: " << delta->length()
+      RTC_LOG(LS_WARNING) << "Ignore GOOG_DELTA" << " len: " << delta->length()
                           << " answer_goog_delta = "
                           << field_trials_->answer_goog_delta
                           << " goog_delta_consumer_ = "
                           << goog_delta_consumer_.has_value();
     }
   }
+
+  MaybeAddDtlsPiggybackingAttributes(&response);
 
   response.AddMessageIntegrity(local_candidate().password());
   response.AddFingerprint();
@@ -900,7 +963,7 @@ void Connection::PrintPingsSinceLastResponse(std::string* s, size_t max) {
       oss << rtc::hex_encode(ping.id) << " ";
     }
   }
-  *s = oss.str();
+  *s = oss.Release();
 }
 
 bool Connection::selected() const {
@@ -919,7 +982,8 @@ void Connection::UpdateState(int64_t now) {
   if (!port_)
     return;
 
-  int rtt = ConservativeRTTEstimate(rtt_);
+  // Computes our estimate of the RTT given the current estimate.
+  int rtt = webrtc::SafeClamp(2 * rtt_, MINIMUM_RTT, MAXIMUM_RTT);
 
   if (RTC_LOG_CHECK_LEVEL(LS_VERBOSE)) {
     std::string pings;
@@ -1089,6 +1153,8 @@ std::unique_ptr<IceMessage> Connection::BuildPingRequest(
     message->AddAttribute(std::move(delta));
   }
 
+  MaybeAddDtlsPiggybackingAttributes(message.get());
+
   message->AddMessageIntegrity(remote_candidate_.password());
   message->AddFingerprint();
 
@@ -1100,7 +1166,7 @@ int64_t Connection::last_ping_response_received() const {
   return last_ping_response_received_;
 }
 
-const absl::optional<std::string>& Connection::last_ping_id_received() const {
+const std::optional<std::string>& Connection::last_ping_id_received() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   return last_ping_id_received_;
 }
@@ -1118,7 +1184,7 @@ int64_t Connection::last_ping_received() const {
   return last_ping_received_;
 }
 
-void Connection::ReceivedPing(const absl::optional<std::string>& request_id) {
+void Connection::ReceivedPing(const std::optional<std::string>& request_id) {
   RTC_DCHECK_RUN_ON(network_thread_);
   last_ping_received_ = rtc::TimeMillis();
   last_ping_id_received_ = request_id;
@@ -1160,8 +1226,8 @@ int64_t Connection::last_data_received() const {
 
 void Connection::ReceivedPingResponse(
     int rtt,
-    absl::string_view request_id,
-    const absl::optional<uint32_t>& nomination) {
+    absl::string_view /* request_id */,
+    const std::optional<uint32_t>& nomination) {
   RTC_DCHECK_RUN_ON(network_thread_);
   RTC_DCHECK_GE(rtt, 0);
   // We've already validated that this is a STUN binding response with
@@ -1183,8 +1249,10 @@ void Connection::ReceivedPingResponse(
   UpdateReceiving(last_ping_response_received_);
   set_write_state(STATE_WRITABLE);
   set_state(IceCandidatePairState::SUCCEEDED);
+
+  // Smooth the RTT estimate using a moving average.
   if (rtt_samples_ > 0) {
-    rtt_ = rtc::GetNextMovingAverage(rtt_, rtt, RTT_RATIO);
+    rtt_ = (RTT_RATIO * rtt_ + rtt) / (RTT_RATIO + 1);
   } else {
     rtt_ = rtt;
   }
@@ -1423,7 +1491,7 @@ void Connection::OnConnectionRequestResponse(StunRequest* request,
                       ", rtt="
                    << rtt << ", pings_since_last_response=" << pings;
   }
-  absl::optional<uint32_t> nomination;
+  std::optional<uint32_t> nomination;
   const std::string request_id = request->id();
   auto iter = absl::c_find_if(
       pings_since_last_response_,
@@ -1486,6 +1554,21 @@ void Connection::OnConnectionRequestResponse(StunRequest* request,
     }
   } else if (delta_ack) {
     RTC_LOG(LS_ERROR) << "Discard GOOG_DELTA_ACK, no consumer";
+  }
+
+  if (dtls_stun_piggyback_consumer_) {
+    const bool sent_dtls_piggyback =
+        request->msg()->GetByteString(STUN_ATTR_META_DTLS_IN_STUN) != nullptr;
+    const bool sent_dtls_piggyback_ack =
+        request->msg()->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK) !=
+        nullptr;
+    const StunByteStringAttribute* dtls_piggyback_attr =
+        response->GetByteString(STUN_ATTR_META_DTLS_IN_STUN);
+    const StunByteStringAttribute* dtls_piggyback_ack =
+        response->GetByteString(STUN_ATTR_META_DTLS_IN_STUN_ACK);
+    if (sent_dtls_piggyback || sent_dtls_piggyback_ack) {
+      dtls_stun_piggyback_consumer_(dtls_piggyback_attr, dtls_piggyback_ack);
+    }
   }
 }
 
@@ -1566,7 +1649,7 @@ void Connection::MaybeSetRemoteIceParametersAndGeneration(
   }
   // TODO(deadbeef): A value of '0' for the generation is used for both
   // generation 0 and "generation unknown". It should be changed to an
-  // absl::optional to fix this.
+  // std::optional to fix this.
   if (remote_candidate_.username() == ice_params.ufrag &&
       remote_candidate_.password() == ice_params.pwd &&
       remote_candidate_.generation() == 0) {
@@ -1728,7 +1811,7 @@ bool Connection::missing_responses(int64_t now) const {
 }
 
 bool Connection::TooManyOutstandingPings(
-    const absl::optional<int>& max_outstanding_pings) const {
+    const std::optional<int>& max_outstanding_pings) const {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (!max_outstanding_pings.has_value()) {
     return false;

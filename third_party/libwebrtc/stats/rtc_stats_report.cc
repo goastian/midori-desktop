@@ -10,9 +10,13 @@
 
 #include "api/stats/rtc_stats_report.h"
 
-#include <type_traits>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include "api/scoped_refptr.h"
+#include "api/stats/rtc_stats.h"
+#include "api/units/timestamp.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/strings/string_builder.h"
 
@@ -118,7 +122,7 @@ std::string RTCStatsReport::ToJson() const {
   if (begin() == end()) {
     return "";
   }
-  rtc::StringBuilder sb;
+  StringBuilder sb;
   sb << "[";
   const char* separator = "";
   for (ConstIterator it = begin(); it != end(); ++it) {

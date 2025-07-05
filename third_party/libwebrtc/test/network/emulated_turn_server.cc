@@ -10,13 +10,28 @@
 
 #include "test/network/emulated_turn_server.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "api/async_dns_resolver.h"
 #include "api/packet_socket_factory.h"
+#include "api/sequence_checker.h"
+#include "api/test/network_emulation/network_emulation_interfaces.h"
+#include "api/test/network_emulation_manager.h"
+#include "p2p/base/port_interface.h"
+#include "p2p/test/turn_server.h"
+#include "rtc_base/async_packet_socket.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/network/received_packet.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/task_queue_for_test.h"
+#include "rtc_base/thread.h"
 
 namespace {
 
@@ -49,8 +64,6 @@ class PacketSocketFactoryWrapper : public rtc::PacketSocketFactory {
   rtc::AsyncPacketSocket* CreateClientTcpSocket(
       const rtc::SocketAddress& local_address,
       const rtc::SocketAddress& remote_address,
-      const rtc::ProxyInfo& proxy_info,
-      const std::string& user_agent,
       const rtc::PacketSocketTcpOptions& tcp_options) override {
     return nullptr;
   }
@@ -121,18 +134,21 @@ class EmulatedTURNServer::AsyncPacketSocketWrapper
   const rtc::SocketAddress local_address_;
 };
 
-EmulatedTURNServer::EmulatedTURNServer(std::unique_ptr<rtc::Thread> thread,
+EmulatedTURNServer::EmulatedTURNServer(const EmulatedTURNServerConfig& config,
+                                       std::unique_ptr<rtc::Thread> thread,
                                        EmulatedEndpoint* client,
                                        EmulatedEndpoint* peer)
     : thread_(std::move(thread)), client_(client), peer_(peer) {
   ice_config_.username = "keso";
   ice_config_.password = "keso";
-  SendTask(thread_.get(), [=]() {
+  SendTask(thread_.get(), [this, enable_permission_checks =
+                                     config.enable_permission_checks]() {
     RTC_DCHECK_RUN_ON(thread_.get());
     turn_server_ = std::make_unique<cricket::TurnServer>(thread_.get());
     turn_server_->set_realm(kTestRealm);
     turn_server_->set_realm(kTestSoftware);
     turn_server_->set_auth_hook(this);
+    turn_server_->set_enable_permission_checks(enable_permission_checks);
 
     auto client_socket = Wrap(client_);
     turn_server_->AddInternalSocket(client_socket, cricket::PROTO_UDP);
@@ -148,14 +164,14 @@ EmulatedTURNServer::EmulatedTURNServer(std::unique_ptr<rtc::Thread> thread,
 }
 
 void EmulatedTURNServer::Stop() {
-  SendTask(thread_.get(), [=]() {
+  SendTask(thread_.get(), [this]() {
     RTC_DCHECK_RUN_ON(thread_.get());
     sockets_.clear();
   });
 }
 
 EmulatedTURNServer::~EmulatedTURNServer() {
-  SendTask(thread_.get(), [=]() {
+  SendTask(thread_.get(), [this]() {
     RTC_DCHECK_RUN_ON(thread_.get());
     turn_server_.reset(nullptr);
   });

@@ -12,25 +12,51 @@
 
 #include <stdint.h>
 
+#include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "api/array_view.h"
 #include "api/audio_codecs/audio_codec_pair_id.h"
+#include "api/audio_options.h"
+#include "api/crypto/crypto_options.h"
 #include "api/field_trials_view.h"
+#include "api/jsep.h"
+#include "api/media_types.h"
+#include "api/rtc_error.h"
 #include "api/rtp_parameters.h"
+#include "api/rtp_receiver_interface.h"
+#include "api/rtp_sender_interface.h"
+#include "api/rtp_transceiver_direction.h"
+#include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
+#include "api/task_queue/pending_task_safety_flag.h"
+#include "api/task_queue/task_queue_base.h"
+#include "api/video/video_bitrate_allocator_factory.h"
+#include "api/video_codecs/scalability_mode.h"
 #include "media/base/codec.h"
+#include "media/base/codec_comparators.h"
 #include "media/base/media_channel.h"
-#include "media/base/media_channel_impl.h"
-#include "media/base/media_constants.h"
+#include "media/base/media_config.h"
 #include "media/base/media_engine.h"
 #include "pc/channel.h"
+#include "pc/channel_interface.h"
+#include "pc/connection_context.h"
 #include "pc/rtp_media_utils.h"
+#include "pc/rtp_receiver.h"
+#include "pc/rtp_receiver_proxy.h"
+#include "pc/rtp_sender.h"
+#include "pc/rtp_sender_proxy.h"
+#include "pc/rtp_transport_internal.h"
 #include "pc/session_description.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -39,72 +65,45 @@
 namespace webrtc {
 namespace {
 
+bool HasAnyMediaCodec(const std::vector<RtpCodecCapability>& codecs) {
+  return absl::c_any_of(codecs, [](const RtpCodecCapability& codec) {
+    return codec.IsMediaCodec();
+  });
+}
+
 RTCError VerifyCodecPreferences(
-    const std::vector<RtpCodecCapability>& unfiltered_codecs,
-    const std::vector<cricket::Codec>& recv_codecs,
-    const FieldTrialsView& field_trials) {
-  // If the intersection between codecs and
-  // RTCRtpReceiver.getCapabilities(kind).codecs only contains RTX, RED, FEC
-  // codecs or Comfort Noise codecs or is an empty set, throw
+    const std::vector<RtpCodecCapability>& codecs,
+    const std::vector<cricket::Codec>& send_codecs,
+    const std::vector<cricket::Codec>& recv_codecs) {
+  // `codec_capabilities` is the union of `send_codecs` and `recv_codecs`.
+  std::vector<cricket::Codec> codec_capabilities;
+  codec_capabilities.reserve(send_codecs.size() + recv_codecs.size());
+  codec_capabilities.insert(codec_capabilities.end(), send_codecs.begin(),
+                            send_codecs.end());
+  codec_capabilities.insert(codec_capabilities.end(), recv_codecs.begin(),
+                            recv_codecs.end());
+  // If a media codec is not recognized from `codec_capabilities`, throw
   // InvalidModificationError.
-  // This ensures that we always have something to offer, regardless of
-  // transceiver.direction.
-  // TODO(fippo): clean up the filtering killswitch
-  std::vector<RtpCodecCapability> codecs = unfiltered_codecs;
-  if (!absl::c_any_of(codecs, [&recv_codecs](const RtpCodecCapability& codec) {
-        return codec.IsMediaCodec() &&
-               absl::c_any_of(recv_codecs,
-                              [&codec](const cricket::Codec& recv_codec) {
-                                return recv_codec.MatchesRtpCodec(codec);
+  if (!absl::c_all_of(codecs, [&codec_capabilities](
+                                  const RtpCodecCapability& codec) {
+        return !codec.IsMediaCodec() ||
+               absl::c_any_of(codec_capabilities,
+                              [&codec](const cricket::Codec& codec_capability) {
+                                return IsSameRtpCodec(codec_capability, codec);
                               });
       })) {
     LOG_AND_RETURN_ERROR(RTCErrorType::INVALID_MODIFICATION,
-                         "Invalid codec preferences: Missing codec from recv "
-                         "codec capabilities.");
+                         "Invalid codec preferences: Missing codec from codec "
+                         "capabilities.");
   }
-
-  // Let codecCapabilities RTCRtpReceiver.getCapabilities(kind).codecs.
-  // For each codec in codecs, If
-  // codec is not in codecCapabilities, throw InvalidModificationError.
-  for (const auto& codec_preference : codecs) {
-    bool is_recv_codec = absl::c_any_of(
-        recv_codecs, [&codec_preference](const cricket::Codec& codec) {
-          return codec.MatchesRtpCodec(codec_preference);
-        });
-    if (!is_recv_codec) {
-      if (!field_trials.IsDisabled(
-              "WebRTC-SetCodecPreferences-ReceiveOnlyFilterInsteadOfThrow")) {
-        LOG_AND_RETURN_ERROR(
-            RTCErrorType::INVALID_MODIFICATION,
-            std::string(
-                "Invalid codec preferences: invalid codec with name \"") +
-                codec_preference.name + "\".");
-      } else {
-        // Killswitch behavior: filter out any codec not in receive codecs.
-        codecs.erase(std::remove_if(
-            codecs.begin(), codecs.end(),
-            [&recv_codecs](const RtpCodecCapability& codec) {
-              return codec.IsMediaCodec() &&
-                     !absl::c_any_of(
-                         recv_codecs,
-                         [&codec](const cricket::Codec& recv_codec) {
-                           return recv_codec.MatchesRtpCodec(codec);
-                         });
-            }));
-      }
-    }
-  }
-
-  // Check we have a real codec (not just rtx, red, fec or CN)
-  if (absl::c_all_of(codecs, [](const RtpCodecCapability& codec) {
-        return !codec.IsMediaCodec();
-      })) {
+  // If `codecs` only contains entries for RTX, RED, FEC or Comfort Noise, throw
+  // InvalidModificationError.
+  if (!HasAnyMediaCodec(codecs)) {
     LOG_AND_RETURN_ERROR(
         RTCErrorType::INVALID_MODIFICATION,
         "Invalid codec preferences: codec list must have a non "
-        "RTX, RED or FEC entry.");
+        "RTX, RED, FEC or Comfort Noise entry.");
   }
-
   return RTCError::OK();
 }
 
@@ -125,6 +124,7 @@ RtpTransceiver::RtpTransceiver(cricket::MediaType media_type,
       context_(context) {
   RTC_DCHECK(media_type == cricket::MEDIA_TYPE_AUDIO ||
              media_type == cricket::MEDIA_TYPE_VIDEO);
+  RTC_DCHECK(context_);
 }
 
 RtpTransceiver::RtpTransceiver(
@@ -141,6 +141,7 @@ RtpTransceiver::RtpTransceiver(
       header_extensions_to_negotiate_(
           std::move(header_extensions_to_negotiate)),
       on_negotiation_needed_(std::move(on_negotiation_needed)) {
+  RTC_DCHECK(context_);
   RTC_DCHECK(media_type_ == cricket::MEDIA_TYPE_AUDIO ||
              media_type_ == cricket::MEDIA_TYPE_VIDEO);
   RTC_DCHECK_EQ(sender->media_type(), receiver->media_type());
@@ -204,18 +205,20 @@ RTCError RtpTransceiver::CreateChannel(
     VideoBitrateAllocatorFactory* video_bitrate_allocator_factory,
     std::function<RtpTransportInternal*(absl::string_view)> transport_lookup) {
   RTC_DCHECK_RUN_ON(thread_);
+  RTC_DCHECK(!channel());
+
   if (!media_engine()) {
     // TODO(hta): Must be a better way
     return RTCError(RTCErrorType::INTERNAL_ERROR,
                     "No media engine for mid=" + std::string(mid));
   }
+
   std::unique_ptr<cricket::ChannelInterface> new_channel;
   if (media_type() == cricket::MEDIA_TYPE_AUDIO) {
     // TODO(bugs.webrtc.org/11992): CreateVideoChannel internally switches to
     // the worker thread. We shouldn't be using the `call_ptr_` hack here but
     // simply be on the worker thread and use `call_` (update upstream code).
     RTC_DCHECK(call_ptr);
-    RTC_DCHECK(media_engine());
     // TODO(bugs.webrtc.org/11992): Remove this workaround after updates in
     // PeerConnection and add the expectation that we're already on the right
     // thread.
@@ -228,17 +231,10 @@ RTCError RtpTransceiver::CreateChannel(
           media_send_channel = media_engine()->voice().CreateSendChannel(
               call_ptr, media_config, audio_options, crypto_options,
               codec_pair_id);
-      if (!media_send_channel) {
-        // TODO(bugs.webrtc.org/14912): Consider CHECK or reporting failure
-        return;
-      }
       std::unique_ptr<cricket::VoiceMediaReceiveChannelInterface>
           media_receive_channel = media_engine()->voice().CreateReceiveChannel(
               call_ptr, media_config, audio_options, crypto_options,
               codec_pair_id);
-      if (!media_receive_channel) {
-        return;
-      }
       // Note that this is safe because both sending and
       // receiving channels will be deleted at the same time.
       media_send_channel->SetSsrcListChangedCallback(
@@ -266,16 +262,9 @@ RTCError RtpTransceiver::CreateChannel(
           media_send_channel = media_engine()->video().CreateSendChannel(
               call_ptr, media_config, video_options, crypto_options,
               video_bitrate_allocator_factory);
-      if (!media_send_channel) {
-        return;
-      }
-
       std::unique_ptr<cricket::VideoMediaReceiveChannelInterface>
           media_receive_channel = media_engine()->video().CreateReceiveChannel(
               call_ptr, media_config, video_options, crypto_options);
-      if (!media_receive_channel) {
-        return;
-      }
       // Note that this is safe because both sending and
       // receiving channels will be deleted at the same time.
       media_send_channel->SetSsrcListChangedCallback(
@@ -290,11 +279,6 @@ RTCError RtpTransceiver::CreateChannel(
           std::move(media_receive_channel), mid, srtp_required, crypto_options,
           context()->ssrc_generator());
     });
-  }
-  if (!new_channel) {
-    // TODO(hta): Must be a better way
-    return RTCError(RTCErrorType::INTERNAL_ERROR,
-                    "Failed to create channel for mid=" + std::string(mid));
   }
   SetChannel(std::move(new_channel), transport_lookup);
   return RTCError::OK();
@@ -316,8 +300,7 @@ void RtpTransceiver::SetChannel(
 
   RTC_DCHECK_EQ(media_type(), channel->media_type());
   signaling_thread_safety_ = PendingTaskSafetyFlag::Create();
-
-  std::unique_ptr<cricket::ChannelInterface> channel_to_delete;
+  channel_ = std::move(channel);
 
   // An alternative to this, could be to require SetChannel to be called
   // on the network thread. The channel object operates for the most part
@@ -329,22 +312,19 @@ void RtpTransceiver::SetChannel(
   // helps with keeping the channel implementation requirements being met and
   // avoids synchronization for accessing the pointer or network related state.
   context()->network_thread()->BlockingCall([&]() {
-    if (channel_) {
-      channel_->SetFirstPacketReceivedCallback(nullptr);
-      channel_->SetRtpTransport(nullptr);
-      channel_to_delete = std::move(channel_);
-    }
-
-    channel_ = std::move(channel);
-
     channel_->SetRtpTransport(transport_lookup(channel_->mid()));
     channel_->SetFirstPacketReceivedCallback(
         [thread = thread_, flag = signaling_thread_safety_, this]() mutable {
           thread->PostTask(
               SafeTask(std::move(flag), [this]() { OnFirstPacketReceived(); }));
         });
+    channel_->SetFirstPacketSentCallback(
+        [thread = thread_, flag = signaling_thread_safety_, this]() mutable {
+          thread->PostTask(
+              SafeTask(std::move(flag), [this]() { OnFirstPacketSent(); }));
+        });
   });
-  PushNewMediaChannelAndDeleteChannel(nullptr);
+  PushNewMediaChannel();
 
   RTC_DCHECK_BLOCK_COUNT_NO_MORE_THAN(2);
 }
@@ -358,52 +338,56 @@ void RtpTransceiver::ClearChannel() {
 
   RTC_LOG_THREAD_BLOCK_COUNT();
 
-  if (channel_) {
-    signaling_thread_safety_->SetNotAlive();
-    signaling_thread_safety_ = nullptr;
-  }
-  std::unique_ptr<cricket::ChannelInterface> channel_to_delete;
+  signaling_thread_safety_->SetNotAlive();
+  signaling_thread_safety_ = nullptr;
 
   context()->network_thread()->BlockingCall([&]() {
-    if (channel_) {
-      channel_->SetFirstPacketReceivedCallback(nullptr);
-      channel_->SetRtpTransport(nullptr);
-      channel_to_delete = std::move(channel_);
-    }
+    channel_->SetFirstPacketReceivedCallback(nullptr);
+    channel_->SetFirstPacketSentCallback(nullptr);
+    channel_->SetRtpTransport(nullptr);
   });
 
   RTC_DCHECK_BLOCK_COUNT_NO_MORE_THAN(1);
-  PushNewMediaChannelAndDeleteChannel(std::move(channel_to_delete));
+  DeleteChannel();
 
   RTC_DCHECK_BLOCK_COUNT_NO_MORE_THAN(2);
 }
 
-void RtpTransceiver::PushNewMediaChannelAndDeleteChannel(
-    std::unique_ptr<cricket::ChannelInterface> channel_to_delete) {
-  // The clumsy combination of pushing down media channel and deleting
-  // the channel is due to the desire to do both things in one Invoke().
-  if (!channel_to_delete && senders_.empty() && receivers_.empty()) {
+void RtpTransceiver::PushNewMediaChannel() {
+  RTC_DCHECK(channel_);
+  if (senders_.empty() && receivers_.empty()) {
     return;
   }
   context()->worker_thread()->BlockingCall([&]() {
-    // Push down the new media_channel, if any, otherwise clear it.
-    auto* media_send_channel =
-        channel_ ? channel_->media_send_channel() : nullptr;
+    // Push down the new media_channel.
+    auto* media_send_channel = channel_->media_send_channel();
     for (const auto& sender : senders_) {
       sender->internal()->SetMediaChannel(media_send_channel);
     }
 
-    auto* media_receive_channel =
-        channel_ ? channel_->media_receive_channel() : nullptr;
+    auto* media_receive_channel = channel_->media_receive_channel();
     for (const auto& receiver : receivers_) {
       receiver->internal()->SetMediaChannel(media_receive_channel);
     }
+  });
+}
 
-    // Destroy the channel, if we had one, now _after_ updating the receivers
-    // who might have had references to the previous channel.
-    if (channel_to_delete) {
-      channel_to_delete.reset(nullptr);
+void RtpTransceiver::DeleteChannel() {
+  RTC_DCHECK(channel_);
+  // Ensure that channel_ is not reachable via transceiver, but is deleted
+  // only after clearing the references in senders_ and receivers_.
+  context()->worker_thread()->BlockingCall([&]() {
+    auto channel_to_delete = std::move(channel_);
+    // Clear the media channel reference from senders and receivers.
+    for (const auto& sender : senders_) {
+      sender->internal()->SetMediaChannel(nullptr);
     }
+    for (const auto& receiver : receivers_) {
+      receiver->internal()->SetMediaChannel(nullptr);
+    }
+    // The channel is destroyed here, on the worker thread as it needs to
+    // be.
+    channel_to_delete.reset();
   });
 }
 
@@ -488,13 +472,19 @@ cricket::MediaType RtpTransceiver::media_type() const {
   return media_type_;
 }
 
-absl::optional<std::string> RtpTransceiver::mid() const {
+std::optional<std::string> RtpTransceiver::mid() const {
   return mid_;
 }
 
 void RtpTransceiver::OnFirstPacketReceived() {
   for (const auto& receiver : receivers_) {
     receiver->internal()->NotifyFirstPacketReceived();
+  }
+}
+
+void RtpTransceiver::OnFirstPacketSent() {
+  for (const auto& sender : senders_) {
+    sender->internal()->NotifyFirstPacketSent();
   }
 }
 
@@ -525,7 +515,7 @@ void RtpTransceiver::set_current_direction(RtpTransceiverDirection direction) {
 }
 
 void RtpTransceiver::set_fired_direction(
-    absl::optional<RtpTransceiverDirection> direction) {
+    std::optional<RtpTransceiverDirection> direction) {
   fired_direction_ = direction;
 }
 
@@ -566,7 +556,7 @@ RTCError RtpTransceiver::SetDirectionWithError(
   return RTCError::OK();
 }
 
-absl::optional<RtpTransceiverDirection> RtpTransceiver::current_direction()
+std::optional<RtpTransceiverDirection> RtpTransceiver::current_direction()
     const {
   if (unified_plan_ && stopped())
     return RtpTransceiverDirection::kStopped;
@@ -574,8 +564,7 @@ absl::optional<RtpTransceiverDirection> RtpTransceiver::current_direction()
   return current_direction_;
 }
 
-absl::optional<RtpTransceiverDirection> RtpTransceiver::fired_direction()
-    const {
+std::optional<RtpTransceiverDirection> RtpTransceiver::fired_direction() const {
   return fired_direction_;
 }
 
@@ -659,7 +648,7 @@ void RtpTransceiver::StopTransceiverProcedure() {
 
   // 3. Set transceiver.[[Receptive]] to false.
   // 4. Set transceiver.[[CurrentDirection]] to null.
-  current_direction_ = absl::nullopt;
+  current_direction_ = std::nullopt;
 }
 
 RTCError RtpTransceiver::SetCodecPreferences(
@@ -669,32 +658,105 @@ RTCError RtpTransceiver::SetCodecPreferences(
   // to codecs and abort these steps.
   if (codec_capabilities.empty()) {
     codec_preferences_.clear();
+    sendrecv_codec_preferences_.clear();
+    sendonly_codec_preferences_.clear();
+    recvonly_codec_preferences_.clear();
     return RTCError::OK();
   }
-
   // 4. Remove any duplicate values in codecs.
   std::vector<RtpCodecCapability> codecs;
   absl::c_remove_copy_if(codec_capabilities, std::back_inserter(codecs),
                          [&codecs](const RtpCodecCapability& codec) {
                            return absl::c_linear_search(codecs, codec);
                          });
+  // TODO(https://crbug.com/webrtc/391530822): Move logic in
+  // MediaSessionDescriptionFactory to this level.
+  return UpdateCodecPreferencesCaches(codecs);
+}
 
-  // 6. to 8.
-  RTCError result;
-  std::vector<cricket::Codec> recv_codecs;
+RTCError RtpTransceiver::UpdateCodecPreferencesCaches(
+    const std::vector<RtpCodecCapability>& codecs) {
+  // Get codec capabilities from media engine.
+  std::vector<cricket::Codec> send_codecs, recv_codecs;
   if (media_type_ == cricket::MEDIA_TYPE_AUDIO) {
+    send_codecs = media_engine()->voice().send_codecs();
     recv_codecs = media_engine()->voice().recv_codecs();
   } else if (media_type_ == cricket::MEDIA_TYPE_VIDEO) {
+    send_codecs = media_engine()->video().send_codecs();
     recv_codecs = media_engine()->video().recv_codecs(context()->use_rtx());
   }
-  result = VerifyCodecPreferences(codecs, recv_codecs,
-                                  context()->env().field_trials());
-
-  if (result.ok()) {
-    codec_preferences_ = codecs;
+  RTCError error = VerifyCodecPreferences(codecs, send_codecs, recv_codecs);
+  if (!error.ok()) {
+    return error;
   }
+  codec_preferences_ = codecs;
+  // Update the filtered views of `codec_preferences_` so that we don't have
+  // to query codec capabilities when calling filtered_codec_preferences() or
+  // every time the direction changes.
+  sendrecv_codec_preferences_.clear();
+  sendonly_codec_preferences_.clear();
+  recvonly_codec_preferences_.clear();
+  for (const RtpCodecCapability& codec : codec_preferences_) {
+    if (!codec.IsMediaCodec()) {
+      // Non-media codecs don't need to be filtered at this level.
+      sendrecv_codec_preferences_.push_back(codec);
+      sendonly_codec_preferences_.push_back(codec);
+      recvonly_codec_preferences_.push_back(codec);
+      continue;
+    }
+    // Is this a send codec, receive codec or both?
+    bool is_send_codec =
+        absl::c_any_of(send_codecs, [&codec](const cricket::Codec& send_codec) {
+          return IsSameRtpCodecIgnoringLevel(send_codec, codec);
+        });
+    bool is_recv_codec =
+        absl::c_any_of(recv_codecs, [&codec](const cricket::Codec& recv_codec) {
+          return IsSameRtpCodecIgnoringLevel(recv_codec, codec);
+        });
+    // The codec being neither for sending or receving is not possible because
+    // of prior validation by VerifyCodecPreferences().
+    RTC_CHECK(is_send_codec || is_recv_codec);
+    if (is_send_codec && is_recv_codec) {
+      sendrecv_codec_preferences_.push_back(codec);
+    }
+    if (is_send_codec) {
+      sendonly_codec_preferences_.push_back(codec);
+    }
+    if (is_recv_codec) {
+      recvonly_codec_preferences_.push_back(codec);
+    }
+  }
+  // If filtering results in an empty list this is the same as not having any
+  // preferences.
+  if (!HasAnyMediaCodec(sendrecv_codec_preferences_)) {
+    sendrecv_codec_preferences_.clear();
+  }
+  if (!HasAnyMediaCodec(sendonly_codec_preferences_)) {
+    sendonly_codec_preferences_.clear();
+  }
+  if (!HasAnyMediaCodec(recvonly_codec_preferences_)) {
+    recvonly_codec_preferences_.clear();
+  }
+  return RTCError::OK();
+}
 
-  return result;
+std::vector<RtpCodecCapability> RtpTransceiver::codec_preferences() const {
+  return codec_preferences_;
+}
+
+std::vector<RtpCodecCapability> RtpTransceiver::filtered_codec_preferences()
+    const {
+  switch (direction_) {
+    case RtpTransceiverDirection::kSendRecv:
+    case RtpTransceiverDirection::kInactive:
+    case RtpTransceiverDirection::kStopped:
+      return sendrecv_codec_preferences_;
+    case RtpTransceiverDirection::kSendOnly:
+      return sendonly_codec_preferences_;
+    case RtpTransceiverDirection::kRecvOnly:
+      return recvonly_codec_preferences_;
+  }
+  return codec_preferences_;
 }
 
 std::vector<RtpHeaderExtensionCapability>

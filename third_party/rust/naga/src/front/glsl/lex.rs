@@ -1,13 +1,16 @@
+use alloc::string::String;
+
+use pp_rs::{
+    pp::Preprocessor,
+    token::{PreprocessorError, Punct, TokenValue as PPTokenValue},
+};
+
 use super::{
     ast::Precision,
     token::{Directive, DirectiveKind, Token, TokenValue},
     types::parse_type,
 };
 use crate::{FastHashMap, Span, StorageAccess};
-use pp_rs::{
-    pp::Preprocessor,
-    token::{PreprocessorError, Punct, TokenValue as PPTokenValue},
-};
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -38,7 +41,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
+impl Iterator for Lexer<'_> {
     type Item = LexerResult;
     fn next(&mut self) -> Option<Self::Item> {
         let pp_token = match self.pp.next()? {
@@ -200,6 +203,8 @@ impl<'a> Iterator for Lexer<'a> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+
     use pp_rs::token::{Integer, Location, Token as PPToken, TokenValue as PPTokenValue};
 
     use super::{

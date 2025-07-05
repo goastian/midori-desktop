@@ -173,7 +173,7 @@ bool RtpFecTest<ForwardErrorCorrectionType>::IsRecoveryComplete() {
 
 class FlexfecForwardErrorCorrection : public ForwardErrorCorrection {
  public:
-  static const uint32_t kFecSsrc = kFlexfecSsrc;
+  static constexpr uint32_t kFecSsrc = kFlexfecSsrc;
 
   FlexfecForwardErrorCorrection()
       : ForwardErrorCorrection(
@@ -184,7 +184,7 @@ class FlexfecForwardErrorCorrection : public ForwardErrorCorrection {
 
   // For FlexFEC we let the FEC packet sequence numbers be independent of
   // the media packet sequence numbers.
-  static uint16_t GetFirstFecSeqNum(uint16_t next_media_seq_num) {
+  static uint16_t GetFirstFecSeqNum(uint16_t /* next_media_seq_num */) {
     Random random(0xbe110);
     return random.Rand<uint16_t>();
   }
@@ -192,7 +192,7 @@ class FlexfecForwardErrorCorrection : public ForwardErrorCorrection {
 
 class UlpfecForwardErrorCorrection : public ForwardErrorCorrection {
  public:
-  static const uint32_t kFecSsrc = kMediaSsrc;
+  static constexpr uint32_t kFecSsrc = kMediaSsrc;
 
   UlpfecForwardErrorCorrection()
       : ForwardErrorCorrection(

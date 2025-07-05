@@ -9,16 +9,21 @@ type Error = Box<dyn error::Error + std::marker::Send + std::marker::Sync>;
 pub type Result<T> = result::Result<T, Error>;
 
 fn build_command() -> Command {
-    let mut cmd = Command::new("cargo");
+    let mut cmd;
+    if let Some(binary) = std::env::var_os("TEST_HELPER") {
+        cmd = Command::new(binary);
+    } else {
+        cmd = Command::new("cargo");
+        cmd.args(["run", "-q", "--bin", "test"]);
 
-    cmd.env("RUST_BACKTRACE", "1")
-        .args(["run", "-q", "--bin", "test"]);
+        // In normal cases where the host and target are the same this won't matter,
+        // but tests will fail if you are eg running in a cross container which will
+        // likely be x86_64 but may be targetting aarch64 or i686, which will result
+        // in tests failing, or at the least not testing what you think
+        cmd.args(["--target", current_platform::CURRENT_PLATFORM, "--"]);
+    }
 
-    // In normal cases where the host and target are the same this won't matter,
-    // but tests will fail if you are eg running in a cross container which will
-    // likely be x86_64 but may be targetting aarch64 or i686, which will result
-    // in tests failing, or at the least not testing what you think
-    cmd.args(["--target", current_platform::CURRENT_PLATFORM, "--"]);
+    cmd.env("RUST_BACKTRACE", "1");
 
     cmd
 }
@@ -88,4 +93,39 @@ pub fn start_child_and_return(args: &[&str]) -> Child {
     cmd.stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child")
+}
+
+#[allow(unused)]
+pub fn read_minidump_soft_errors_or_panic<'a, T>(
+    dump: &minidump::Minidump<'a, T>,
+) -> serde_json::Value
+where
+    T: std::ops::Deref<Target = [u8]> + 'a,
+{
+    let contents = std::str::from_utf8(
+        dump.get_raw_stream(minidump_common::format::MINIDUMP_STREAM_TYPE::MozSoftErrors.into())
+            .expect("missing soft error stream"),
+    )
+    .expect("expected utf-8 stream");
+
+    serde_json::from_str(contents).expect("expected json")
+}
+
+#[allow(unused)]
+pub fn assert_soft_errors_in_minidump<'a, 'b, T, I>(
+    dump: &minidump::Minidump<'a, T>,
+    expected_errors: I,
+) where
+    T: std::ops::Deref<Target = [u8]> + 'a,
+    I: IntoIterator<Item = &'b serde_json::Value>,
+{
+    let actual_json = read_minidump_soft_errors_or_panic(dump);
+    let actual_errors = actual_json.as_array().unwrap();
+
+    // Ensure that every error we expect is in the actual list somewhere
+    for expected_error in expected_errors {
+        assert!(actual_errors
+            .iter()
+            .any(|actual_error| actual_error == expected_error));
+    }
 }

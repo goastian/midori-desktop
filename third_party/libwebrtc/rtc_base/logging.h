@@ -21,7 +21,7 @@
 // RTC_LOG(sev) logs the given stream at severity "sev", which must be a
 //     compile-time constant of the LoggingSeverity type, without the namespace
 //     prefix.
-// RTC_LOG_IF(sev, condition) logs the given stream at severitye "sev" if
+// RTC_LOG_IF(sev, condition) logs the given stream at severity "sev" if
 //     "condition" is true.
 // RTC_LOG_V(sev) Like RTC_LOG(), but sev is a run-time variable of the
 //     LoggingSeverity type (basically, it just doesn't prepend the namespace).
@@ -59,6 +59,7 @@
 #include <errno.h>
 
 #include <atomic>
+#include <optional>
 #include <sstream>  // no-presubmit-check TODO(webrtc:8982)
 #include <string>
 #include <type_traits>
@@ -66,12 +67,14 @@
 
 #include "absl/base/attributes.h"
 #include "absl/meta/type_traits.h"
+#include "absl/strings/has_absl_stringify.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/units/timestamp.h"
 #include "rtc_base/platform_thread_types.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/system/inline.h"
+#include "rtc_base/type_traits.h"
 
 #if !defined(NDEBUG) || defined(DLOG_ALWAYS_ON)
 #define RTC_DLOG_IS_ON 1
@@ -126,7 +129,7 @@ class LogLineRef {
   absl::string_view message() const { return message_; }
   absl::string_view filename() const { return filename_; }
   int line() const { return line_; }
-  absl::optional<PlatformThreadId> thread_id() const { return thread_id_; }
+  std::optional<PlatformThreadId> thread_id() const { return thread_id_; }
   webrtc::Timestamp timestamp() const { return timestamp_; }
   absl::string_view tag() const { return tag_; }
   LoggingSeverity severity() const { return severity_; }
@@ -142,7 +145,7 @@ class LogLineRef {
   void set_message(std::string message) { message_ = std::move(message); }
   void set_filename(absl::string_view filename) { filename_ = filename; }
   void set_line(int line) { line_ = line; }
-  void set_thread_id(absl::optional<PlatformThreadId> thread_id) {
+  void set_thread_id(std::optional<PlatformThreadId> thread_id) {
     thread_id_ = thread_id;
   }
   void set_timestamp(webrtc::Timestamp timestamp) { timestamp_ = timestamp; }
@@ -152,7 +155,7 @@ class LogLineRef {
   std::string message_;
   absl::string_view filename_;
   int line_ = 0;
-  absl::optional<PlatformThreadId> thread_id_;
+  std::optional<PlatformThreadId> thread_id_;
   webrtc::Timestamp timestamp_ = webrtc::Timestamp::MinusInfinity();
   // The default Android debug output tag.
   absl::string_view tag_ = "libjingle";
@@ -290,6 +293,7 @@ inline Val<LogArgType::kULongLong, unsigned long long> MakeVal(
 inline Val<LogArgType::kDouble, double> MakeVal(double x) {
   return {x};
 }
+
 inline Val<LogArgType::kLongDouble, long double> MakeVal(long double x) {
   return {x};
 }
@@ -322,6 +326,7 @@ inline Val<LogArgType::kLogMetadataErr, LogMetadataErr> MakeVal(
 // The enum class types are not implicitly convertible to arithmetic types.
 template <typename T,
           absl::enable_if_t<std::is_enum<T>::value &&
+                            !absl::HasAbslStringify<T>::value &&
                             !std::is_arithmetic<T>::value>* = nullptr>
 inline decltype(MakeVal(std::declval<absl::underlying_type_t<T>>())) MakeVal(
     T x) {
@@ -335,33 +340,25 @@ inline Val<LogArgType::kLogMetadataTag, LogMetadataTag> MakeVal(
 }
 #endif
 
-template <typename T, class = void>
-struct has_to_log_string : std::false_type {};
-template <typename T>
-struct has_to_log_string<T,
-                         absl::enable_if_t<std::is_convertible<
-                             decltype(ToLogString(std::declval<T>())),
-                             std::string>::value>> : std::true_type {};
-
-template <typename T, absl::enable_if_t<has_to_log_string<T>::value>* = nullptr>
+template <typename T,
+          std::enable_if_t<absl::HasAbslStringify<T>::value>* = nullptr>
 ToStringVal MakeVal(const T& x) {
-  return {ToLogString(x)};
+  return {absl::StrCat(x)};
 }
 
 // Handle arbitrary types other than the above by falling back to stringstream.
 // TODO(bugs.webrtc.org/9278): Get rid of this overload when callers don't need
 // it anymore. No in-tree caller does, but some external callers still do.
-template <
-    typename T,
-    typename T1 = absl::decay_t<T>,
-    absl::enable_if_t<std::is_class<T1>::value &&
-                      !std::is_same<T1, std::string>::value &&
-                      !std::is_same<T1, LogMetadata>::value &&
-                      !has_to_log_string<T1>::value &&
+template <typename T,
+          typename T1 = absl::decay_t<T>,
+          std::enable_if_t<std::is_class<T1>::value &&               //
+                           !std::is_same<T1, std::string>::value &&  //
+                           !std::is_same<T1, LogMetadata>::value &&  //
+                           !absl::HasAbslStringify<T1>::value &&
 #ifdef WEBRTC_ANDROID
-                      !std::is_same<T1, LogMetadataTag>::value &&
+                           !std::is_same<T1, LogMetadataTag>::value &&  //
 #endif
-                      !std::is_same<T1, LogMetadataErr>::value>* = nullptr>
+                           !std::is_same<T1, LogMetadataErr>::value>* = nullptr>
 ToStringVal MakeVal(const T& x) {
   std::ostringstream os;  // no-presubmit-check TODO(webrtc:8982)
   os << x;
@@ -384,18 +381,7 @@ class LogStreamer;
 template <>
 class LogStreamer<> final {
  public:
-  template <typename U,
-            typename V = decltype(MakeVal(std::declval<U>())),
-            absl::enable_if_t<std::is_arithmetic<U>::value ||
-                              std::is_enum<U>::value>* = nullptr>
-  RTC_FORCE_INLINE LogStreamer<V> operator<<(U arg) const {
-    return LogStreamer<V>(MakeVal(arg), this);
-  }
-
-  template <typename U,
-            typename V = decltype(MakeVal(std::declval<U>())),
-            absl::enable_if_t<!std::is_arithmetic<U>::value &&
-                              !std::is_enum<U>::value>* = nullptr>
+  template <typename U, typename V = decltype(MakeVal(std::declval<U>()))>
   RTC_FORCE_INLINE LogStreamer<V> operator<<(const U& arg) const {
     return LogStreamer<V>(MakeVal(arg), this);
   }
@@ -415,18 +401,7 @@ class LogStreamer<T, Ts...> final {
   RTC_FORCE_INLINE LogStreamer(T arg, const LogStreamer<Ts...>* prior)
       : arg_(arg), prior_(prior) {}
 
-  template <typename U,
-            typename V = decltype(MakeVal(std::declval<U>())),
-            absl::enable_if_t<std::is_arithmetic<U>::value ||
-                              std::is_enum<U>::value>* = nullptr>
-  RTC_FORCE_INLINE LogStreamer<V, T, Ts...> operator<<(U arg) const {
-    return LogStreamer<V, T, Ts...>(MakeVal(arg), this);
-  }
-
-  template <typename U,
-            typename V = decltype(MakeVal(std::declval<U>())),
-            absl::enable_if_t<!std::is_arithmetic<U>::value &&
-                              !std::is_enum<U>::value>* = nullptr>
+  template <typename U, typename V = decltype(MakeVal(std::declval<U>()))>
   RTC_FORCE_INLINE LogStreamer<V, T, Ts...> operator<<(const U& arg) const {
     return LogStreamer<V, T, Ts...>(MakeVal(arg), this);
   }
@@ -465,7 +440,7 @@ class LogMessageVoidify {
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
   template <typename... Ts>
-  void operator&(LogStreamer<Ts...>&& streamer) {}
+  void operator&(LogStreamer<Ts...>&& /* streamer */) {}
 };
 
 }  // namespace webrtc_logging_impl
@@ -501,7 +476,7 @@ class LogMessage {
   LogMessage& operator=(const LogMessage&) = delete;
 
   void AddTag(const char* tag);
-  rtc::StringBuilder& stream();
+  webrtc::StringBuilder& stream();
   // Returns the time at which this function was called for the first time.
   // The time will be used as the logging start time.
   // If this is not called externally, the LogMessage ctor also calls it, in
@@ -649,7 +624,7 @@ class LogMessage {
 #endif  // RTC_LOG_ENABLED()
 
   // The stringbuilder that buffers the formatted message before output
-  rtc::StringBuilder print_stream_;
+  webrtc::StringBuilder print_stream_;
 
   static bool aec_debug_;
   static std::string aec_filename_base_;

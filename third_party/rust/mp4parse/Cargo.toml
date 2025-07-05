@@ -20,11 +20,17 @@ authors = [
     "Jon Bauman <jbauman@mozilla.com>",
     "Bryce Seager van Dyk <bvandyk@mozilla.com>",
 ]
+build = false
 exclude = [
     "*.mp4",
     "*.avif",
     "av1-avif/*",
 ]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Parser for ISO base media file format (mp4)"
 documentation = "https://docs.rs/mp4parse/"
 readme = "README.md"
@@ -32,11 +38,32 @@ categories = ["multimedia::video"]
 license = "MPL-2.0"
 repository = "https://github.com/mozilla/mp4parse-rust"
 
+[badges.travis-ci]
+repository = "https://github.com/mozilla/mp4parse-rust"
+
+[features]
+3gpp = []
+meta-xml = []
+missing-pixi-permitted = []
+mp4v = []
+unstable-api = []
+
 [lib]
+name = "mp4parse"
+path = "src/lib.rs"
 bench = false
+
+[[test]]
+name = "overflow"
+path = "tests/overflow.rs"
+
+[[test]]
+name = "public"
+path = "tests/public.rs"
 
 [[bench]]
 name = "avif_benchmark"
+path = "benches/avif_benchmark.rs"
 harness = false
 
 [dependencies]
@@ -49,20 +76,10 @@ static_assertions = "1.1.0"
 version = "0.3.2"
 
 [dependencies.fallible_collections]
-version = "0.4"
+version = "0.4.9"
 features = ["std_io"]
 
 [dev-dependencies]
 criterion = "0.4"
 test-assembler = "0.1.2"
 walkdir = "2.3.1"
-
-[features]
-3gpp = []
-meta-xml = []
-missing-pixi-permitted = []
-mp4v = []
-unstable-api = []
-
-[badges.travis-ci]
-repository = "https://github.com/mozilla/mp4parse-rust"

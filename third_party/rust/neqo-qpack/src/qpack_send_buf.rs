@@ -10,8 +10,8 @@ use neqo_common::Encoder;
 
 use crate::{huffman::encode_huffman, prefix::Prefix};
 
-#[derive(Default, Debug, PartialEq)]
-pub(crate) struct QpackData {
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct QpackData {
     buf: Vec<u8>,
 }
 
@@ -38,7 +38,7 @@ impl QpackData {
         };
 
         if val < u64::from(first_byte_max) {
-            let v = u8::try_from(val).unwrap();
+            let v = u8::try_from(val).expect("first_byte_max is a u8 and val is smaller");
             self.write_byte((prefix.prefix() & !first_byte_max) | v);
             return 1;
         }
@@ -49,7 +49,7 @@ impl QpackData {
         let mut written = 1;
         let mut done = false;
         while !done {
-            let mut b = u8::try_from(val & 0x7f).unwrap();
+            let mut b = (val & 0x7f) as u8; // Safe because of the mask.
             val >>= 7;
             if val > 0 {
                 b |= 0x80;
@@ -75,10 +75,16 @@ impl QpackData {
 
         if use_huffman {
             let encoded = encode_huffman(value);
-            self.encode_prefixed_encoded_int(real_prefix, u64::try_from(encoded.len()).unwrap());
+            self.encode_prefixed_encoded_int(
+                real_prefix,
+                u64::try_from(encoded.len()).expect("usize fits in u64"),
+            );
             self.write_bytes(&encoded);
         } else {
-            self.encode_prefixed_encoded_int(real_prefix, u64::try_from(value.len()).unwrap());
+            self.encode_prefixed_encoded_int(
+                real_prefix,
+                u64::try_from(value.len()).expect("usize fits in u64"),
+            );
             self.write_bytes(value);
         }
     }
@@ -90,7 +96,7 @@ impl QpackData {
     pub fn read(&mut self, r: usize) {
         assert!(
             r <= self.buf.len(),
-            "want to set more bytes read than remain in the buffer."
+            "want to set more bytes read than remain in the buffer"
         );
         self.buf = self.buf.split_off(r);
     }
@@ -108,21 +114,21 @@ mod tests {
     use super::{Prefix, QpackData};
 
     #[test]
-    fn test_encode_prefixed_encoded_int_1() {
+    fn encode_prefixed_encoded_int_1() {
         let mut d = QpackData::default();
         d.encode_prefixed_encoded_int(Prefix::new(0xC0, 2), 5);
         assert_eq!(d[..], [0xc5]);
     }
 
     #[test]
-    fn test_encode_prefixed_encoded_int_2() {
+    fn encode_prefixed_encoded_int_2() {
         let mut d = QpackData::default();
         d.encode_prefixed_encoded_int(Prefix::new(0xC0, 2), 65);
         assert_eq!(d[..], [0xff, 0x02]);
     }
 
     #[test]
-    fn test_encode_prefixed_encoded_int_3() {
+    fn encode_prefixed_encoded_int_3() {
         let mut d = QpackData::default();
         d.encode_prefixed_encoded_int(Prefix::new(0xC0, 2), 100_000);
         assert_eq!(d[..], [0xff, 0xe1, 0x8c, 0x06]);
@@ -146,14 +152,14 @@ mod tests {
     const LITERAL_HUFFMAN: &[u8] = &[0xe8, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f];
 
     #[test]
-    fn test_encode_literal() {
+    fn encode_literal() {
         let mut d = QpackData::default();
         d.encode_literal(false, Prefix::new(0xC0, 2), VALUE);
         assert_eq!(&&d[..], &LITERAL);
     }
 
     #[test]
-    fn test_encode_literal_huffman() {
+    fn encode_literal_huffman() {
         let mut d = QpackData::default();
         d.encode_literal(true, Prefix::new(0xC0, 2), VALUE);
         assert_eq!(&&d[..], &LITERAL_HUFFMAN);

@@ -4,27 +4,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::{
-    cmp::{min, Ordering},
-    mem,
-    rc::Rc,
-    time::Instant,
-};
+use std::{cmp::min, rc::Rc, time::Instant};
 
 use neqo_common::Encoder;
 
 use crate::{
-    frame::{
-        FrameType, FRAME_TYPE_CONNECTION_CLOSE_APPLICATION, FRAME_TYPE_CONNECTION_CLOSE_TRANSPORT,
-        FRAME_TYPE_HANDSHAKE_DONE,
-    },
-    packet::PacketBuilder,
-    path::PathRef,
-    recovery::RecoveryToken,
-    CloseReason, Error,
+    frame::FrameType, packet::PacketBuilder, path::PathRef, recovery::RecoveryToken, CloseReason,
+    Error,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 /// The state of the Connection.
 pub enum State {
     /// A newly created connection.
@@ -54,12 +43,12 @@ pub enum State {
 
 impl State {
     #[must_use]
-    pub fn connected(&self) -> bool {
+    pub const fn connected(&self) -> bool {
         matches!(self, Self::Connected | Self::Confirmed)
     }
 
     #[must_use]
-    pub fn closed(&self) -> bool {
+    pub const fn closed(&self) -> bool {
         matches!(
             self,
             Self::Closing { .. } | Self::Draining { .. } | Self::Closed(_)
@@ -67,7 +56,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn error(&self) -> Option<&CloseReason> {
+    pub const fn error(&self) -> Option<&CloseReason> {
         if let Self::Closing { error, .. } | Self::Draining { error, .. } | Self::Closed(error) =
             self
         {
@@ -76,40 +65,10 @@ impl State {
             None
         }
     }
-}
 
-// Implement `PartialOrd` so that we can enforce monotonic state progression.
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if mem::discriminant(self) == mem::discriminant(other) {
-            return Ordering::Equal;
-        }
-        #[allow(clippy::match_same_arms)] // Lint bug: rust-lang/rust-clippy#860
-        match (self, other) {
-            (Self::Init, _) => Ordering::Less,
-            (_, Self::Init) => Ordering::Greater,
-            (Self::WaitInitial, _) => Ordering::Less,
-            (_, Self::WaitInitial) => Ordering::Greater,
-            (Self::WaitVersion, _) => Ordering::Less,
-            (_, Self::WaitVersion) => Ordering::Greater,
-            (Self::Handshaking, _) => Ordering::Less,
-            (_, Self::Handshaking) => Ordering::Greater,
-            (Self::Connected, _) => Ordering::Less,
-            (_, Self::Connected) => Ordering::Greater,
-            (Self::Confirmed, _) => Ordering::Less,
-            (_, Self::Confirmed) => Ordering::Greater,
-            (Self::Closing { .. }, _) => Ordering::Less,
-            (_, Self::Closing { .. }) => Ordering::Greater,
-            (Self::Draining { .. }, _) => Ordering::Less,
-            (_, Self::Draining { .. }) => Ordering::Greater,
-            (Self::Closed(_), _) => unreachable!(),
-        }
+    #[must_use]
+    pub const fn closing(&self) -> bool {
+        matches!(self, Self::Closing { .. } | Self::Draining { .. })
     }
 }
 
@@ -137,7 +96,7 @@ impl ClosingFrame {
         }
     }
 
-    pub fn path(&self) -> &PathRef {
+    pub const fn path(&self) -> &PathRef {
         &self.path
     }
 
@@ -148,7 +107,7 @@ impl ClosingFrame {
             Some(Self {
                 path: Rc::clone(&self.path),
                 error: CloseReason::Transport(Error::ApplicationError),
-                frame_type: 0,
+                frame_type: FrameType::Padding,
                 reason_phrase: Vec::new(),
             })
         } else {
@@ -162,17 +121,17 @@ impl ClosingFrame {
     pub const MIN_LENGTH: usize = 1 + 8 + 8 + 2 + 8;
 
     pub fn write_frame(&self, builder: &mut PacketBuilder) {
-        if builder.remaining() < ClosingFrame::MIN_LENGTH {
+        if builder.remaining() < Self::MIN_LENGTH {
             return;
         }
         match &self.error {
             CloseReason::Transport(e) => {
-                builder.encode_varint(FRAME_TYPE_CONNECTION_CLOSE_TRANSPORT);
+                builder.encode_varint(FrameType::ConnectionCloseTransport);
                 builder.encode_varint(e.code());
                 builder.encode_varint(self.frame_type);
             }
             CloseReason::Application(code) => {
-                builder.encode_varint(FRAME_TYPE_CONNECTION_CLOSE_APPLICATION);
+                builder.encode_varint(FrameType::ConnectionCloseApplication);
                 builder.encode_varint(*code);
             }
         }
@@ -218,13 +177,11 @@ impl StateSignaling {
     }
 
     pub fn write_done(&mut self, builder: &mut PacketBuilder) -> Option<RecoveryToken> {
-        if matches!(self, Self::HandshakeDone) && builder.remaining() >= 1 {
+        (matches!(self, Self::HandshakeDone) && builder.remaining() >= 1).then(|| {
             *self = Self::Idle;
-            builder.encode_varint(FRAME_TYPE_HANDSHAKE_DONE);
-            Some(RecoveryToken::HandshakeDone)
-        } else {
-            None
-        }
+            builder.encode_varint(FrameType::HandshakeDone);
+            RecoveryToken::HandshakeDone
+        })
     }
 
     pub fn close(

@@ -2,7 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    mem,
+    sync::{Arc, Mutex},
+};
+
+use malloc_size_of::MallocSizeOf;
 
 type BoxedCallback = Box<dyn FnOnce(Option<&str>) + Send + 'static>;
 
@@ -17,6 +22,19 @@ pub struct PingType {
     ///
     /// A function to be called right before a ping is submitted.
     test_callback: Arc<Mutex<Option<BoxedCallback>>>,
+}
+
+impl MallocSizeOf for PingType {
+    fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+        self.inner.size_of(ops)
+            + self
+                .test_callback
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|cb| mem::size_of_val(cb))
+                .unwrap_or(0)
+    }
 }
 
 impl PingType {
@@ -34,6 +52,7 @@ impl PingType {
     /// * `schedules_pings` - A list of pings which are triggered for submission when this ping is
     ///   submitted.
     /// * `reason_codes` - The valid reason codes for this ping.
+    /// * `uploader_capabilities` - The capabilities required during this ping's upload.
     #[allow(clippy::too_many_arguments)]
     pub fn new<A: Into<String>>(
         name: A,
@@ -44,6 +63,8 @@ impl PingType {
         enabled: bool,
         schedules_pings: Vec<String>,
         reason_codes: Vec<String>,
+        follows_collection_enabled: bool,
+        uploader_capabilities: Vec<String>,
     ) -> Self {
         let inner = glean_core::metrics::PingType::new(
             name.into(),
@@ -54,12 +75,22 @@ impl PingType {
             enabled,
             schedules_pings,
             reason_codes,
+            follows_collection_enabled,
+            uploader_capabilities,
         );
 
         Self {
             inner,
             test_callback: Arc::new(Default::default()),
         }
+    }
+
+    /// Enable or disable a ping.
+    ///
+    /// Disabling a ping causes all data for that ping to be removed from storage
+    /// and all pending pings of that type to be deleted.
+    pub fn set_enabled(&self, enabled: bool) {
+        self.inner.set_enabled(enabled)
     }
 
     /// Submits the ping for eventual uploading.
@@ -82,6 +113,55 @@ impl PingType {
         }
 
         self.inner.submit(reason.map(|s| s.to_string()))
+    }
+
+    /// Get the name of this Ping
+    pub fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    /// Whether the client ID will be included in the assembled ping when submitting.
+    pub fn include_client_id(&self) -> bool {
+        self.inner.include_client_id()
+    }
+
+    /// Whether the ping should be sent if empty.
+    pub fn send_if_empty(&self) -> bool {
+        self.inner.send_if_empty()
+    }
+
+    /// Whether the ping will include precise timestamps for the start/end time.
+    pub fn precise_timestamps(&self) -> bool {
+        self.inner.precise_timestamps()
+    }
+
+    /// Whether client/ping_info sections will be included in this ping.
+    pub fn include_info_sections(&self) -> bool {
+        self.inner.include_info_sections()
+    }
+
+    /// Whether the `enabled` field of this ping is set. Note that whether or
+    /// not a ping is actually enabled is dependent upon the underlying glean
+    /// instance settings, and `follows_collection_enabled`. In other words,
+    /// a Ping might actually be enabled even if the enabled field is not
+    /// set (with this function returning `false`).
+    pub fn naively_enabled(&self) -> bool {
+        self.inner.naively_enabled()
+    }
+
+    /// Whether this ping follows the `collection_enabled` (aka `upload_enabled`) flag.
+    pub fn follows_collection_enabled(&self) -> bool {
+        self.inner.follows_collection_enabled()
+    }
+
+    /// Other pings that should be scheduled when this ping is sent.
+    pub fn schedules_pings(&self) -> &[String] {
+        self.inner.schedules_pings()
+    }
+
+    /// Reason codes that this ping can send.
+    pub fn reason_codes(&self) -> &[String] {
+        self.inner.reason_codes()
     }
 
     /// **Test-only API**

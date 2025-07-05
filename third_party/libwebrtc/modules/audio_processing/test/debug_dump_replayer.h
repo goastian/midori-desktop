@@ -14,8 +14,8 @@
 #include <memory>
 
 #include "absl/strings/string_view.h"
+#include "api/audio/audio_processing.h"
 #include "common_audio/channel_buffer.h"
-#include "modules/audio_processing/include/audio_processing.h"
 
 // Generated at build-time by the protobuf compiler.
 #include "modules/audio_processing/debug.pb.h"
@@ -32,7 +32,7 @@ class DebugDumpReplayer {
   bool SetDumpFile(absl::string_view filename);
 
   // Return next event.
-  absl::optional<audioproc::Event> GetNextEvent() const;
+  std::optional<audioproc::Event> GetNextEvent() const;
 
   // Run the next event. Returns true if succeeded.
   bool RunNextEvent();

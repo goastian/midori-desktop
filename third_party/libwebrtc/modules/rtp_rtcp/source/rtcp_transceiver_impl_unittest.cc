@@ -26,10 +26,11 @@
 #include "modules/rtp_rtcp/include/report_block_data.h"
 #include "modules/rtp_rtcp/mocks/mock_network_link_rtcp_observer.h"
 #include "modules/rtp_rtcp/mocks/mock_rtcp_rtt_stats.h"
+#include "modules/rtp_rtcp/source/ntp_time_util.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/app.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/bye.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/compound_packet.h"
-#include "modules/rtp_rtcp/source/time_util.h"
+#include "modules/rtp_rtcp/source/rtcp_packet/congestion_control_feedback.h"
 #include "system_wrappers/include/clock.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
@@ -221,7 +222,7 @@ TEST_F(RtcpTransceiverImplTest, DelaysSendingFirstCompondPacket) {
   config.rtcp_transport = transport.AsStdFunction();
   config.initial_report_delay = TimeDelta::Millis(10);
   config.task_queue = queue.get();
-  absl::optional<RtcpTransceiverImpl> rtcp_transceiver;
+  std::optional<RtcpTransceiverImpl> rtcp_transceiver;
 
   Timestamp started = CurrentTime();
   queue->PostTask([&] { rtcp_transceiver.emplace(config); });
@@ -248,7 +249,7 @@ TEST_F(RtcpTransceiverImplTest, PeriodicallySendsPackets) {
   config.initial_report_delay = TimeDelta::Zero();
   config.report_period = kReportPeriod;
   config.task_queue = queue.get();
-  absl::optional<RtcpTransceiverImpl> rtcp_transceiver;
+  std::optional<RtcpTransceiverImpl> rtcp_transceiver;
   Timestamp time_just_before_1st_packet = Timestamp::MinusInfinity();
   queue->PostTask([&] {
     // Because initial_report_delay_ms is set to 0, time_just_before_the_packet
@@ -283,7 +284,7 @@ TEST_F(RtcpTransceiverImplTest, SendCompoundPacketDelaysPeriodicSendPackets) {
   config.initial_report_delay = TimeDelta::Zero();
   config.report_period = kReportPeriod;
   config.task_queue = queue.get();
-  absl::optional<RtcpTransceiverImpl> rtcp_transceiver;
+  std::optional<RtcpTransceiverImpl> rtcp_transceiver;
   queue->PostTask([&] { rtcp_transceiver.emplace(config); });
 
   // Wait for the first packet.
@@ -365,7 +366,7 @@ TEST_F(RtcpTransceiverImplTest, SendsPeriodicRtcpWhenNetworkStateIsUp) {
   config.initial_ready_to_send = false;
   config.rtcp_transport = transport.AsStdFunction();
   config.task_queue = queue.get();
-  absl::optional<RtcpTransceiverImpl> rtcp_transceiver;
+  std::optional<RtcpTransceiverImpl> rtcp_transceiver;
   rtcp_transceiver.emplace(config);
 
   queue->PostTask([&] { rtcp_transceiver->SetReadyToSend(true); });
@@ -1401,6 +1402,31 @@ TEST_F(RtcpTransceiverImplTest, ParsesTransportFeedback) {
   tb.AddReceivedPacket(/*base_sequence=*/321, Timestamp::Micros(15));
   tb.AddReceivedPacket(/*base_sequence=*/322, Timestamp::Micros(17));
   rtcp_transceiver.ReceivePacket(tb.Build(), receive_time);
+}
+
+TEST_F(RtcpTransceiverImplTest, ParsesCongestionControlFeedback) {
+  MockNetworkLinkRtcpObserver link_observer;
+  RtcpTransceiverConfig config = DefaultTestConfig();
+  config.network_link_observer = &link_observer;
+  const uint32_t receive_time_ntp = 5678;
+  Timestamp receive_time = Timestamp::Seconds(9843);
+  RtcpTransceiverImpl rtcp_transceiver(config);
+
+  EXPECT_CALL(link_observer, OnCongestionControlFeedback(receive_time, _))
+      .WillOnce(WithArg<1>([](const rtcp::CongestionControlFeedback& message) {
+        EXPECT_EQ(message.report_timestamp_compact_ntp(), 5678u);
+        EXPECT_THAT(message.packets(), SizeIs(2));
+      }));
+
+  std::vector<rtcp::CongestionControlFeedback::PacketInfo> packets = {
+      {.ssrc = 1,
+       .sequence_number = 321,
+       .arrival_time_offset = TimeDelta::Millis(15)},
+      {.ssrc = 1,
+       .sequence_number = 322,
+       .arrival_time_offset = TimeDelta::Millis(17)}};
+  rtcp::CongestionControlFeedback ccfb(std::move(packets), receive_time_ntp);
+  rtcp_transceiver.ReceivePacket(ccfb.Build(), receive_time);
 }
 
 TEST_F(RtcpTransceiverImplTest, ParsesRemb) {

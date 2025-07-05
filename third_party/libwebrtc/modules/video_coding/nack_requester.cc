@@ -25,7 +25,9 @@ namespace {
 constexpr int kMaxPacketAge = 10'000;
 constexpr int kMaxNackPackets = 1000;
 constexpr TimeDelta kDefaultRtt = TimeDelta::Millis(100);
-constexpr int kMaxNackRetries = 10;
+// Number of times a packet can be nacked before giving up. Nack is sent at most
+// every RTT.
+constexpr int kMaxNackRetries = 100;
 constexpr int kMaxReorderedPackets = 128;
 constexpr int kNumReorderingBuckets = 10;
 constexpr TimeDelta kDefaultSendNackDelay = TimeDelta::Zero();
@@ -146,8 +148,7 @@ int NackRequester::OnReceivedPacket(uint16_t seq_num) {
   return OnReceivedPacket(seq_num, false);
 }
 
-int NackRequester::OnReceivedPacket(uint16_t seq_num,
-                                    bool is_recovered) {
+int NackRequester::OnReceivedPacket(uint16_t seq_num, bool is_recovered) {
   RTC_DCHECK_RUN_ON(worker_thread_);
   // TODO(philipel): When the packet includes information whether it is
   //                 retransmitted or not, use that value instead. For

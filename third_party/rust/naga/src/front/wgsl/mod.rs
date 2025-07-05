@@ -10,15 +10,24 @@ mod lower;
 mod parse;
 #[cfg(test)]
 mod tests;
-mod to_wgsl;
-
-use crate::front::wgsl::error::Error;
-use crate::front::wgsl::parse::Parser;
-use thiserror::Error;
 
 pub use crate::front::wgsl::error::ParseError;
+pub use crate::front::wgsl::parse::directive::language_extension::{
+    ImplementedLanguageExtension, LanguageExtension, UnimplementedLanguageExtension,
+};
+
+use alloc::boxed::Box;
+use thiserror::Error;
+
+use crate::front::wgsl::error::Error;
 use crate::front::wgsl::lower::Lowerer;
+use crate::front::wgsl::parse::Parser;
 use crate::Scalar;
+
+#[cfg(test)]
+use std::println;
+
+pub(crate) type Result<'a, T> = core::result::Result<T, Box<Error<'a>>>;
 
 pub struct Frontend {
     parser: Parser,
@@ -31,14 +40,14 @@ impl Frontend {
         }
     }
 
-    pub fn parse(&mut self, source: &str) -> Result<crate::Module, ParseError> {
+    pub fn parse(&mut self, source: &str) -> core::result::Result<crate::Module, ParseError> {
         self.inner(source).map_err(|x| x.as_parse_error(source))
     }
 
-    fn inner<'a>(&mut self, source: &'a str) -> Result<crate::Module, Error<'a>> {
+    fn inner<'a>(&mut self, source: &'a str) -> Result<'a, crate::Module> {
         let tu = self.parser.parse(source)?;
         let index = index::Index::generate(&tu)?;
-        let module = Lowerer::new(&index).lower(&tu)?;
+        let module = Lowerer::new(&index).lower(tu)?;
 
         Ok(module)
     }
@@ -55,6 +64,24 @@ impl Frontend {
 /// for this, particularly if calls to this method are exposed to user input.
 ///
 /// </div>
-pub fn parse_str(source: &str) -> Result<crate::Module, ParseError> {
+pub fn parse_str(source: &str) -> core::result::Result<crate::Module, ParseError> {
     Frontend::new().parse(source)
+}
+
+#[cfg(test)]
+#[track_caller]
+pub fn assert_parse_err(input: &str, snapshot: &str) {
+    let output = parse_str(input)
+        .expect_err("expected parser error")
+        .emit_to_string(input);
+    if output != snapshot {
+        for diff in diff::lines(snapshot, &output) {
+            match diff {
+                diff::Result::Left(l) => println!("-{l}"),
+                diff::Result::Both(l, _) => println!(" {l}"),
+                diff::Result::Right(r) => println!("+{r}"),
+            }
+        }
+        panic!("Error snapshot failed");
+    }
 }

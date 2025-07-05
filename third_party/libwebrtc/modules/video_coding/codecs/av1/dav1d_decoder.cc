@@ -72,7 +72,7 @@ class ScopedDav1dPicture
 constexpr char kDav1dName[] = "dav1d";
 
 // Calling `dav1d_data_wrap` requires a `free_callback` to be registered.
-void NullFreeCallback(const uint8_t* buffer, void* opaque) {}
+void NullFreeCallback(const uint8_t* /* buffer */, void* /* opaque */) {}
 
 Dav1dDecoder::Dav1dDecoder() = default;
 
@@ -84,9 +84,9 @@ bool Dav1dDecoder::Configure(const Settings& settings) {
   Dav1dSettings s;
   dav1d_default_settings(&s);
 
-  s.n_threads = std::max(2, settings.number_of_cores());
-  s.max_frame_delay = 1;   // For low latency decoding.
-  s.all_layers = 0;        // Don't output a frame for every spatial layer.
+  s.n_threads = std::clamp(settings.number_of_cores(), 1, DAV1D_MAX_THREADS);
+  s.max_frame_delay = 1;  // For low latency decoding.
+  s.all_layers = 0;       // Don't output a frame for every spatial layer.
   // Limit max frame size to avoid OOM'ing fuzzers. crbug.com/325284120.
   s.frame_size_limit = 16384 * 16384;
   s.operating_point = 31;  // Decode all operating points.
@@ -191,8 +191,15 @@ int32_t Dav1dDecoder::Decode(const EncodedImage& encoded_image,
           .set_color_space(encoded_image.ColorSpace())
           .build();
 
-  decode_complete_callback_->Decoded(decoded_frame, absl::nullopt,
-                                     absl::nullopt);
+  // Corresponds to QP_base in
+  // J. Han et al., "A Technical Overview of AV1," in Proceedings of the IEEE,
+  // vol. 109, no. 9, pp. 1435-1462, Sept. 2021,
+  // doi: 10.1109/JPROC.2021.3058584. keywords:
+  // {Encoding;Codecs;Decoding;Streaming media;Video compression;Media;Alliance
+  // of Open Media;AV1;video compression},
+  std::optional<uint8_t> qp = dav1d_picture.frame_hdr->quant.yac;
+  decode_complete_callback_->Decoded(decoded_frame,
+                                     /*decode_time_ms=*/std::nullopt, qp);
 
   return WEBRTC_VIDEO_CODEC_OK;
 }

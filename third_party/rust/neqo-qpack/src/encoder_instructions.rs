@@ -4,7 +4,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::mem;
+use std::{
+    fmt::{self, Display, Formatter},
+    mem,
+};
 
 use neqo_common::{qdebug, qtrace};
 
@@ -18,30 +21,48 @@ use crate::{
     Res,
 };
 
-// The encoder only uses InsertWithNameLiteral, therefore clippy is complaining about dead_code.
-// We may decide to use othe instruction in the future.
-// All instructions are used for testing, therefore they are defined.
-#[allow(dead_code)]
+// The encoder only uses InsertWithNameLiteral.
+// All instructions are used for testing, therefore they are guarded with `#[cfg(test)]`.
 #[derive(Debug, PartialEq, Eq)]
 pub enum EncoderInstruction<'a> {
-    Capacity { value: u64 },
-    InsertWithNameRefStatic { index: u64, value: &'a [u8] },
-    InsertWithNameRefDynamic { index: u64, value: &'a [u8] },
-    InsertWithNameLiteral { name: &'a [u8], value: &'a [u8] },
-    Duplicate { index: u64 },
+    Capacity {
+        value: u64,
+    },
+    #[cfg(test)]
+    InsertWithNameRefStatic {
+        index: u64,
+        value: &'a [u8],
+    },
+    #[cfg(test)]
+    InsertWithNameRefDynamic {
+        index: u64,
+        value: &'a [u8],
+    },
+    InsertWithNameLiteral {
+        name: &'a [u8],
+        value: &'a [u8],
+    },
+    #[cfg(test)]
+    Duplicate {
+        index: u64,
+    },
+    #[cfg(test)]
+    #[expect(dead_code, reason = "Only used in tests.")]
     NoInstruction,
 }
 
-impl<'a> EncoderInstruction<'a> {
+impl EncoderInstruction<'_> {
     pub(crate) fn marshal(&self, enc: &mut QpackData, use_huffman: bool) {
         match self {
             Self::Capacity { value } => {
                 enc.encode_prefixed_encoded_int(ENCODER_CAPACITY, *value);
             }
+            #[cfg(test)]
             Self::InsertWithNameRefStatic { index, value } => {
                 enc.encode_prefixed_encoded_int(ENCODER_INSERT_WITH_NAME_REF_STATIC, *index);
                 enc.encode_literal(use_huffman, NO_PREFIX, value);
             }
+            #[cfg(test)]
             Self::InsertWithNameRefDynamic { index, value } => {
                 enc.encode_prefixed_encoded_int(ENCODER_INSERT_WITH_NAME_REF_DYNAMIC, *index);
                 enc.encode_literal(use_huffman, NO_PREFIX, value);
@@ -50,9 +71,11 @@ impl<'a> EncoderInstruction<'a> {
                 enc.encode_literal(use_huffman, ENCODER_INSERT_WITH_NAME_LITERAL, name);
                 enc.encode_literal(use_huffman, NO_PREFIX, value);
             }
+            #[cfg(test)]
             Self::Duplicate { index } => {
                 enc.encode_prefixed_encoded_int(ENCODER_DUPLICATE, *index);
             }
+            #[cfg(test)]
             Self::NoInstruction => {}
         }
     }
@@ -81,12 +104,14 @@ impl<'a> From<&'a EncoderInstruction<'a>> for DecodedEncoderInstruction {
     fn from(inst: &'a EncoderInstruction) -> Self {
         match inst {
             EncoderInstruction::Capacity { value } => Self::Capacity { value: *value },
+            #[cfg(test)]
             EncoderInstruction::InsertWithNameRefStatic { index, value } => {
                 Self::InsertWithNameRefStatic {
                     index: *index,
                     value: value.to_vec(),
                 }
             }
+            #[cfg(test)]
             EncoderInstruction::InsertWithNameRefDynamic { index, value } => {
                 Self::InsertWithNameRefDynamic {
                     index: *index,
@@ -99,7 +124,9 @@ impl<'a> From<&'a EncoderInstruction<'a>> for DecodedEncoderInstruction {
                     value: value.to_vec(),
                 }
             }
+            #[cfg(test)]
             EncoderInstruction::Duplicate { index } => Self::Duplicate { index: *index },
+            #[cfg(test)]
             EncoderInstruction::NoInstruction => Self::NoInstruction,
         }
     }
@@ -111,8 +138,8 @@ pub struct EncoderInstructionReader {
     instruction: DecodedEncoderInstruction,
 }
 
-impl ::std::fmt::Display for EncoderInstructionReader {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for EncoderInstructionReader {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "EncoderInstructionReader state={:?} instruction:{:?}",
@@ -122,7 +149,7 @@ impl ::std::fmt::Display for EncoderInstructionReader {
 }
 
 impl EncoderInstructionReader {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             state: EncoderInstructionReaderState::ReadInstruction,
             instruction: DecodedEncoderInstruction::NoInstruction,
@@ -150,9 +177,9 @@ impl EncoderInstructionReader {
         } else if ENCODER_DUPLICATE.cmp_prefix(b) {
             DecodedEncoderInstruction::Duplicate { index: 0 }
         } else {
-            unreachable!("The above patterns match everything.");
+            unreachable!("The above patterns match everything");
         };
-        qdebug!([self], "instruction decoded");
+        qdebug!("[{self}] instruction decoded");
     }
 
     fn decode_instruction_type<T: ReadByte + Reader>(&mut self, recv: &mut T) -> Res<()> {
@@ -181,7 +208,7 @@ impl EncoderInstructionReader {
                 }
             }
             DecodedEncoderInstruction::NoInstruction => {
-                unreachable!("We must have instruction at this point.");
+                unreachable!("We must have instruction at this point");
             }
         }
         Ok(())
@@ -196,7 +223,7 @@ impl EncoderInstructionReader {
         &mut self,
         recv: &mut T,
     ) -> Res<DecodedEncoderInstruction> {
-        qdebug!([self], "reading instructions");
+        qdebug!("[{self}] reading instructions");
         loop {
             match &mut self.state {
                 EncoderInstructionReaderState::ReadInstruction => {
@@ -205,7 +232,7 @@ impl EncoderInstructionReader {
                 EncoderInstructionReaderState::ReadFirstInt { reader } => {
                     let val = reader.read(recv)?;
 
-                    qtrace!([self], "First varint read {}", val);
+                    qtrace!("[{self}] First varint read {val}");
                     match &mut self.instruction {
                         DecodedEncoderInstruction::Capacity { value: v, .. }
                         | DecodedEncoderInstruction::Duplicate { index: v } => {
@@ -219,13 +246,13 @@ impl EncoderInstructionReader {
                                 reader: LiteralReader::default(),
                             };
                         }
-                        _ => unreachable!("This instruction cannot be in this state."),
+                        _ => unreachable!("This instruction cannot be in this state"),
                     }
                 }
                 EncoderInstructionReaderState::ReadFirstLiteral { reader } => {
                     let val = reader.read(recv)?;
 
-                    qtrace!([self], "first literal read {:?}", val);
+                    qtrace!("[{self}] first literal read {val:?}");
                     match &mut self.instruction {
                         DecodedEncoderInstruction::InsertWithNameRefStatic { value, .. }
                         | DecodedEncoderInstruction::InsertWithNameRefDynamic { value, .. } => {
@@ -238,19 +265,19 @@ impl EncoderInstructionReader {
                                 reader: LiteralReader::default(),
                             };
                         }
-                        _ => unreachable!("This instruction cannot be in this state."),
+                        _ => unreachable!("This instruction cannot be in this state"),
                     }
                 }
                 EncoderInstructionReaderState::ReadSecondLiteral { reader } => {
                     let val = reader.read(recv)?;
 
-                    qtrace!([self], "second literal read {:?}", val);
+                    qtrace!("[{self}] second literal read {val:?}");
                     match &mut self.instruction {
                         DecodedEncoderInstruction::InsertWithNameLiteral { value, .. } => {
                             *value = val;
                             self.state = EncoderInstructionReaderState::Done;
                         }
-                        _ => unreachable!("This instruction cannot be in this state."),
+                        _ => unreachable!("This instruction cannot be in this state"),
                     }
                 }
                 EncoderInstructionReaderState::Done => {}
@@ -285,7 +312,7 @@ mod test {
     }
 
     #[test]
-    fn test_encoding_decoding_instructions() {
+    fn encoding_decoding_instructions() {
         test_encoding_decoding(&EncoderInstruction::Capacity { value: 1 }, false);
         test_encoding_decoding(&EncoderInstruction::Capacity { value: 10_000 }, false);
 
@@ -386,7 +413,7 @@ mod test {
     }
 
     #[test]
-    fn test_encoding_decoding_instructions_slow_reader() {
+    fn encoding_decoding_instructions_slow_reader() {
         test_encoding_decoding_slow_reader(&EncoderInstruction::Capacity { value: 1 }, false);
         test_encoding_decoding_slow_reader(&EncoderInstruction::Capacity { value: 10_000 }, false);
 
@@ -468,7 +495,7 @@ mod test {
     }
 
     #[test]
-    fn test_decoding_error() {
+    fn decoding_error() {
         let mut test_receiver: TestReceiver = TestReceiver::default();
         // EncoderInstruction::Capacity with overflow
         test_receiver.write(&[

@@ -10,11 +10,13 @@
 
 #include "api/stats/rtcstats_objects.h"
 
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "api/stats/attribute.h"
 #include "api/stats/rtc_stats.h"
-#include "rtc_base/checks.h"
+#include "api/units/timestamp.h"
 
 namespace webrtc {
 
@@ -267,6 +269,10 @@ WEBRTC_RTCSTATS_IMPL(
     AttributeInit("pliCount", &pli_count),
     AttributeInit("nackCount", &nack_count),
     AttributeInit("qpSum", &qp_sum),
+    AttributeInit("totalCorruptionProbability", &total_corruption_probability),
+    AttributeInit("totalSquaredCorruptionProbability",
+                  &total_squared_corruption_probability),
+    AttributeInit("corruptionMeasurements", &corruption_measurements),
     AttributeInit("googTimingFrameInfo", &goog_timing_frame_info),
     AttributeInit("powerEfficientDecoder", &power_efficient_decoder),
     AttributeInit("jitterBufferFlushes", &jitter_buffer_flushes),

@@ -17,6 +17,11 @@ authors = [
     "David Keeler <dkeeler@mozilla.com>",
 ]
 build = "build.rs"
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Library to use COSE (https://tools.ietf.org/html/rfc8152) in Rust"
 readme = "README.md"
 keywords = [
@@ -26,15 +31,19 @@ keywords = [
 license = "MPL-2.0"
 repository = "https://github.com/franziskuskiefer/cose-rust"
 
+[features]
+default = []
+
 [lib]
 name = "cose"
 path = "src/cose.rs"
+
+[[example]]
+name = "sign_verify"
+path = "examples/sign_verify/main.rs"
 
 [dependencies]
 moz_cbor = "0.1.0"
 
 [dev-dependencies]
 scopeguard = "0.3"
-
-[features]
-default = []

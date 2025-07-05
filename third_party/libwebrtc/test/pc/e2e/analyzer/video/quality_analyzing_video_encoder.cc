@@ -85,7 +85,7 @@ int32_t QualityAnalyzingVideoEncoder::InitEncode(
   MutexLock lock(&mutex_);
   codec_settings_ = *codec_settings;
   mode_ = SimulcastMode::kNormal;
-  absl::optional<InterLayerPredMode> inter_layer_pred_mode;
+  std::optional<InterLayerPredMode> inter_layer_pred_mode;
   if (codec_settings->GetScalabilityMode().has_value()) {
     inter_layer_pred_mode = ScalabilityModeToInterLayerPredMode(
         *codec_settings->GetScalabilityMode());
@@ -200,7 +200,7 @@ void QualityAnalyzingVideoEncoder::SetRates(
       std::tie(min_bitrate_bps, max_bitrate_bps) =
           GetMinMaxBitratesBps(codec_settings_, si);
       double bitrate_multiplier = bitrate_multiplier_;
-      const uint32_t corrected_bitrate = rtc::checked_cast<uint32_t>(
+      const uint32_t corrected_bitrate = checked_cast<uint32_t>(
           bitrate_multiplier * spatial_layer_bitrate_bps);
       if (corrected_bitrate < min_bitrate_bps) {
         bitrate_multiplier = min_bitrate_bps / spatial_layer_bitrate_bps;
@@ -212,8 +212,8 @@ void QualityAnalyzingVideoEncoder::SetRates(
         if (parameters.bitrate.HasBitrate(si, ti)) {
           multiplied_allocation.SetBitrate(
               si, ti,
-              rtc::checked_cast<uint32_t>(
-                  bitrate_multiplier * parameters.bitrate.GetBitrate(si, ti)));
+              checked_cast<uint32_t>(bitrate_multiplier *
+                                     parameters.bitrate.GetBitrate(si, ti)));
         }
       }
     }
@@ -399,7 +399,7 @@ QualityAnalyzingVideoEncoderFactory::GetSupportedFormats() const {
 VideoEncoderFactory::CodecSupport
 QualityAnalyzingVideoEncoderFactory::QueryCodecSupport(
     const SdpVideoFormat& format,
-    absl::optional<std::string> scalability_mode) const {
+    std::optional<std::string> scalability_mode) const {
   return delegate_->QueryCodecSupport(format, scalability_mode);
 }
 

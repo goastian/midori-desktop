@@ -1,19 +1,14 @@
-use super::{
-    compose::validate_compose, validate_atomic_compare_exchange_struct, FunctionInfo, ModuleInfo,
-    ShaderStages, TypeFlags,
-};
+use super::{compose::validate_compose, FunctionInfo, ModuleInfo, ShaderStages, TypeFlags};
 use crate::arena::UniqueArena;
-
 use crate::{
     arena::Handle,
+    proc::OverloadSet as _,
     proc::{IndexableLengthError, ResolveError},
 };
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ExpressionError {
-    #[error("Doesn't exist")]
-    DoesntExist,
     #[error("Used by a statement before it was introduced into the scope by any of the dominating blocks")]
     NotInScope,
     #[error("Base type {0:?} is not compatible with this expression")]
@@ -24,8 +19,6 @@ pub enum ExpressionError {
     NegativeIndex(Handle<crate::Expression>),
     #[error("Accessing index {1} is out of {0:?} bounds")]
     IndexOutOfBounds(Handle<crate::Expression>, u32),
-    #[error("The expression {0:?} may only be indexed by a constant")]
-    IndexMustBeConstant(Handle<crate::Expression>),
     #[error("Function argument {0:?} doesn't exist")]
     FunctionArgumentDoesntExist(u32),
     #[error("Loading of {0:?} can't be done")]
@@ -46,14 +39,28 @@ pub enum ExpressionError {
     IndexableLength(#[from] IndexableLengthError),
     #[error("Operation {0:?} can't work with {1:?}")]
     InvalidUnaryOperandType(crate::UnaryOperator, Handle<crate::Expression>),
-    #[error("Operation {0:?} can't work with {1:?} and {2:?}")]
-    InvalidBinaryOperandTypes(
-        crate::BinaryOperator,
-        Handle<crate::Expression>,
-        Handle<crate::Expression>,
-    ),
-    #[error("Selecting is not possible")]
-    InvalidSelectTypes,
+    #[error(
+        "Operation {:?} can't work with {:?} (of type {:?}) and {:?} (of type {:?})",
+        op,
+        lhs_expr,
+        lhs_type,
+        rhs_expr,
+        rhs_type
+    )]
+    InvalidBinaryOperandTypes {
+        op: crate::BinaryOperator,
+        lhs_expr: Handle<crate::Expression>,
+        lhs_type: crate::TypeInner,
+        rhs_expr: Handle<crate::Expression>,
+        rhs_type: crate::TypeInner,
+    },
+    #[error("Expected selection argument types to match, but reject value of type {reject:?} does not match accept value of value {accept:?}")]
+    SelectValuesTypeMismatch {
+        accept: crate::TypeInner,
+        reject: crate::TypeInner,
+    },
+    #[error("Expected selection condition to be a boolean value, got {actual:?}")]
+    SelectConditionNotABool { actual: crate::TypeInner },
     #[error("Relational argument {0:?} is not a boolean vector")]
     InvalidBooleanVector(Handle<crate::Expression>),
     #[error("Relational argument {0:?} is not a float")]
@@ -72,6 +79,10 @@ pub enum ExpressionError {
     ExpectedSamplerType(Handle<crate::Type>),
     #[error("Unable to operate on image class {0:?}")]
     InvalidImageClass(crate::ImageClass),
+    #[error("Image atomics are not supported for storage format {0:?}")]
+    InvalidImageFormat(crate::StorageFormat),
+    #[error("Image atomics require atomic storage access, {0:?} is insufficient")]
+    InvalidImageStorageAccess(crate::StorageAccess),
     #[error("Derivatives can only be taken from scalar and vector floats")]
     InvalidDerivative,
     #[error("Image array index parameter is misplaced")]
@@ -104,10 +115,12 @@ pub enum ExpressionError {
     InvalidGatherComponent(crate::SwizzleComponent),
     #[error("Gather can't be done for image dimension {0:?}")]
     InvalidGatherDimension(crate::ImageDimension),
-    #[error("Sample level (exact) type {0:?} is not a scalar float")]
+    #[error("Sample level (exact) type {0:?} has an invalid type")]
     InvalidSampleLevelExactType(Handle<crate::Expression>),
     #[error("Sample level (bias) type {0:?} is not a scalar float")]
     InvalidSampleLevelBiasType(Handle<crate::Expression>),
+    #[error("Bias can't be done for image dimension {0:?}")]
+    InvalidSampleLevelBiasDimension(crate::ImageDimension),
     #[error("Sample level (gradient) of {1:?} doesn't match the image dimension {0:?}")]
     InvalidSampleLevelGradientType(crate::ImageDimension, Handle<crate::Expression>),
     #[error("Unable to cast")]
@@ -116,8 +129,6 @@ pub enum ExpressionError {
     WrongArgumentCount(crate::MathFunction),
     #[error("Argument [{1}] to {0:?} as expression {2:?} has an invalid type.")]
     InvalidArgumentType(crate::MathFunction, u32, Handle<crate::Expression>),
-    #[error("Atomic result type can't be {0:?}")]
-    InvalidAtomicResultType(Handle<crate::Type>),
     #[error(
         "workgroupUniformLoad result type can't be {0:?}. It can only be a constructible type."
     )]
@@ -166,7 +177,7 @@ struct ExpressionTypeResolver<'a> {
     info: &'a FunctionInfo,
 }
 
-impl<'a> std::ops::Index<Handle<crate::Expression>> for ExpressionTypeResolver<'a> {
+impl core::ops::Index<Handle<crate::Expression>> for ExpressionTypeResolver<'_> {
     type Output = crate::TypeInner;
 
     #[allow(clippy::panic)]
@@ -213,7 +224,7 @@ impl super::Validator {
                 crate::TypeInner::Scalar { .. } => {}
                 _ => return Err(ConstExpressionError::InvalidSplatType(value)),
             },
-            _ if global_expr_kind.is_const(handle) || !self.allow_overrides => {
+            _ if global_expr_kind.is_const(handle) || self.overrides_resolved => {
                 return Err(ConstExpressionError::NonFullyEvaluatedConst)
             }
             // the constant evaluator will report errors about override-expressions
@@ -232,7 +243,7 @@ impl super::Validator {
         module: &crate::Module,
         info: &FunctionInfo,
         mod_info: &ModuleInfo,
-        global_expr_kind: &crate::proc::ExpressionKindTracker,
+        expr_kind: &crate::proc::ExpressionKindTracker,
     ) -> Result<ShaderStages, ExpressionError> {
         use crate::{Expression as E, Scalar as Sc, ScalarKind as Sk, TypeInner as Ti};
 
@@ -245,13 +256,13 @@ impl super::Validator {
         let stages = match *expression {
             E::Access { base, index } => {
                 let base_type = &resolver[base];
-                // See the documentation for `Expression::Access`.
-                let dynamic_indexing_restricted = match *base_type {
-                    Ti::Vector { .. } => false,
-                    Ti::Matrix { .. } | Ti::Array { .. } => true,
-                    Ti::Pointer { .. }
+                match *base_type {
+                    Ti::Matrix { .. }
+                    | Ti::Vector { .. }
+                    | Ti::Array { .. }
+                    | Ti::Pointer { .. }
                     | Ti::ValuePointer { size: Some(_), .. }
-                    | Ti::BindingArray { .. } => false,
+                    | Ti::BindingArray { .. } => {}
                     ref other => {
                         log::error!("Indexing of {:?}", other);
                         return Err(ExpressionError::InvalidBaseType(base));
@@ -268,29 +279,30 @@ impl super::Validator {
                         return Err(ExpressionError::InvalidIndexType(index));
                     }
                 }
-                if dynamic_indexing_restricted && function.expressions[index].is_dynamic_index() {
-                    return Err(ExpressionError::IndexMustBeConstant(base));
-                }
 
-                // If we know both the length and the index, we can do the
-                // bounds check now.
-                if let crate::proc::IndexableLength::Known(known_length) =
-                    base_type.indexable_length(module)?
+                // If index is const we can do check for non-negative index
+                match module
+                    .to_ctx()
+                    .eval_expr_to_u32_from(index, &function.expressions)
                 {
-                    match module
-                        .to_ctx()
-                        .eval_expr_to_u32_from(index, &function.expressions)
-                    {
-                        Ok(value) => {
+                    Ok(value) => {
+                        let length = if self.overrides_resolved {
+                            base_type.indexable_length_resolved(module)
+                        } else {
+                            base_type.indexable_length_pending(module)
+                        }?;
+                        // If we know both the length and the index, we can do the
+                        // bounds check now.
+                        if let crate::proc::IndexableLength::Known(known_length) = length {
                             if value >= known_length {
                                 return Err(ExpressionError::IndexOutOfBounds(base, value));
                             }
                         }
-                        Err(crate::proc::U32EvalError::Negative) => {
-                            return Err(ExpressionError::NegativeIndex(base))
-                        }
-                        Err(crate::proc::U32EvalError::NonConst) => {}
                     }
+                    Err(crate::proc::U32EvalError::Negative) => {
+                        return Err(ExpressionError::NegativeIndex(base))
+                    }
+                    Err(crate::proc::U32EvalError::NonConst) => {}
                 }
 
                 ShaderStages::all()
@@ -478,11 +490,11 @@ impl super::Validator {
 
                 // check constant offset
                 if let Some(const_expr) = offset {
-                    if !global_expr_kind.is_const(const_expr) {
+                    if !expr_kind.is_const(const_expr) {
                         return Err(ExpressionError::InvalidSampleOffsetExprType);
                     }
 
-                    match *mod_info[const_expr].inner_with(&module.types) {
+                    match resolver[const_expr] {
                         Ti::Scalar(Sc { kind: Sk::Sint, .. }) if num_components == 1 => {}
                         Ti::Vector {
                             size,
@@ -533,11 +545,24 @@ impl super::Validator {
                     crate::SampleLevel::Auto => ShaderStages::FRAGMENT,
                     crate::SampleLevel::Zero => ShaderStages::all(),
                     crate::SampleLevel::Exact(expr) => {
-                        match resolver[expr] {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float, ..
-                            }) => {}
-                            _ => return Err(ExpressionError::InvalidSampleLevelExactType(expr)),
+                        match class {
+                            crate::ImageClass::Depth { .. } => match resolver[expr] {
+                                Ti::Scalar(Sc {
+                                    kind: Sk::Sint | Sk::Uint,
+                                    ..
+                                }) => {}
+                                _ => {
+                                    return Err(ExpressionError::InvalidSampleLevelExactType(expr))
+                                }
+                            },
+                            _ => match resolver[expr] {
+                                Ti::Scalar(Sc {
+                                    kind: Sk::Float, ..
+                                }) => {}
+                                _ => {
+                                    return Err(ExpressionError::InvalidSampleLevelExactType(expr))
+                                }
+                            },
                         }
                         ShaderStages::all()
                     }
@@ -547,6 +572,19 @@ impl super::Validator {
                                 kind: Sk::Float, ..
                             }) => {}
                             _ => return Err(ExpressionError::InvalidSampleLevelBiasType(expr)),
+                        }
+                        match class {
+                            crate::ImageClass::Sampled {
+                                kind: Sk::Float,
+                                multi: false,
+                            } => {
+                                if dim == crate::ImageDimension::D1 {
+                                    return Err(ExpressionError::InvalidSampleLevelBiasDimension(
+                                        dim,
+                                    ));
+                                }
+                            }
+                            _ => return Err(ExpressionError::InvalidImageClass(class)),
                         }
                         ShaderStages::FRAGMENT
                     }
@@ -593,60 +631,52 @@ impl super::Validator {
                 level,
             } => {
                 let ty = Self::global_var_ty(module, function, image)?;
-                match module.types[ty].inner {
-                    Ti::Image {
-                        class,
-                        arrayed,
-                        dim,
-                    } => {
-                        match resolver[coordinate].image_storage_coordinates() {
-                            Some(coord_dim) if coord_dim == dim => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidImageCoordinateType(
-                                    dim, coordinate,
-                                ))
-                            }
-                        };
-                        if arrayed != array_index.is_some() {
-                            return Err(ExpressionError::InvalidImageArrayIndex);
-                        }
-                        if let Some(expr) = array_index {
-                            match resolver[expr] {
-                                Ti::Scalar(Sc {
-                                    kind: Sk::Sint | Sk::Uint,
-                                    width: _,
-                                }) => {}
-                                _ => return Err(ExpressionError::InvalidImageArrayIndexType(expr)),
-                            }
-                        }
+                let Ti::Image {
+                    class,
+                    arrayed,
+                    dim,
+                } = module.types[ty].inner
+                else {
+                    return Err(ExpressionError::ExpectedImageType(ty));
+                };
 
-                        match (sample, class.is_multisampled()) {
-                            (None, false) => {}
-                            (Some(sample), true) => {
-                                if resolver[sample].scalar_kind() != Some(Sk::Sint) {
-                                    return Err(ExpressionError::InvalidImageOtherIndexType(
-                                        sample,
-                                    ));
-                                }
-                            }
-                            _ => {
-                                return Err(ExpressionError::InvalidImageOtherIndex);
-                            }
-                        }
+                match resolver[coordinate].image_storage_coordinates() {
+                    Some(coord_dim) if coord_dim == dim => {}
+                    _ => return Err(ExpressionError::InvalidImageCoordinateType(dim, coordinate)),
+                };
+                if arrayed != array_index.is_some() {
+                    return Err(ExpressionError::InvalidImageArrayIndex);
+                }
+                if let Some(expr) = array_index {
+                    if !matches!(resolver[expr], Ti::Scalar(Sc::I32 | Sc::U32)) {
+                        return Err(ExpressionError::InvalidImageArrayIndexType(expr));
+                    }
+                }
 
-                        match (level, class.is_mipmapped()) {
-                            (None, false) => {}
-                            (Some(level), true) => {
-                                if resolver[level].scalar_kind() != Some(Sk::Sint) {
-                                    return Err(ExpressionError::InvalidImageOtherIndexType(level));
-                                }
-                            }
-                            _ => {
-                                return Err(ExpressionError::InvalidImageOtherIndex);
-                            }
+                match (sample, class.is_multisampled()) {
+                    (None, false) => {}
+                    (Some(sample), true) => {
+                        if !matches!(resolver[sample], Ti::Scalar(Sc::I32 | Sc::U32)) {
+                            return Err(ExpressionError::InvalidImageOtherIndexType(sample));
                         }
                     }
-                    _ => return Err(ExpressionError::ExpectedImageType(ty)),
+                    _ => {
+                        return Err(ExpressionError::InvalidImageOtherIndex);
+                    }
+                }
+
+                match (level, class.is_mipmapped()) {
+                    (None, false) => {}
+                    (Some(level), true) => match resolver[level] {
+                        Ti::Scalar(Sc {
+                            kind: Sk::Sint | Sk::Uint,
+                            width: _,
+                        }) => {}
+                        _ => return Err(ExpressionError::InvalidImageArrayIndexType(level)),
+                    },
+                    _ => {
+                        return Err(ExpressionError::InvalidImageOtherIndex);
+                    }
                 }
                 ShaderStages::all()
             }
@@ -657,8 +687,18 @@ impl super::Validator {
                         let good = match query {
                             crate::ImageQuery::NumLayers => arrayed,
                             crate::ImageQuery::Size { level: None } => true,
-                            crate::ImageQuery::Size { level: Some(_) }
-                            | crate::ImageQuery::NumLevels => class.is_mipmapped(),
+                            crate::ImageQuery::Size { level: Some(level) } => {
+                                match resolver[level] {
+                                    Ti::Scalar(Sc::I32 | Sc::U32) => {}
+                                    _ => {
+                                        return Err(ExpressionError::InvalidImageOtherIndexType(
+                                            level,
+                                        ))
+                                    }
+                                }
+                                class.is_mipmapped()
+                            }
+                            crate::ImageQuery::NumLevels => class.is_mipmapped(),
                             crate::ImageQuery::NumSamples => class.is_multisampled(),
                         };
                         if !good {
@@ -859,7 +899,13 @@ impl super::Validator {
                         function.expressions[right],
                         right_inner
                     );
-                    return Err(ExpressionError::InvalidBinaryOperandTypes(op, left, right));
+                    return Err(ExpressionError::InvalidBinaryOperandTypes {
+                        op,
+                        lhs_expr: left,
+                        lhs_type: left_inner.clone(),
+                        rhs_expr: right,
+                        rhs_type: right_inner.clone(),
+                    });
                 }
                 ShaderStages::all()
             }
@@ -870,7 +916,8 @@ impl super::Validator {
             } => {
                 let accept_inner = &resolver[accept];
                 let reject_inner = &resolver[reject];
-                let condition_good = match resolver[condition] {
+                let condition_ty = &resolver[condition];
+                let condition_good = match *condition_ty {
                     Ti::Scalar(Sc {
                         kind: Sk::Bool,
                         width: _,
@@ -897,8 +944,16 @@ impl super::Validator {
                     },
                     _ => false,
                 };
-                if !condition_good || accept_inner != reject_inner {
-                    return Err(ExpressionError::InvalidSelectTypes);
+                if accept_inner != reject_inner {
+                    return Err(ExpressionError::SelectValuesTypeMismatch {
+                        accept: accept_inner.clone(),
+                        reject: reject_inner.clone(),
+                    });
+                }
+                if !condition_good {
+                    return Err(ExpressionError::SelectConditionNotABool {
+                        actual: condition_ty.clone(),
+                    });
                 }
                 ShaderStages::all()
             }
@@ -950,616 +1005,59 @@ impl super::Validator {
                 arg2,
                 arg3,
             } => {
-                use crate::MathFunction as Mf;
+                let actuals: &[_] = match (arg1, arg2, arg3) {
+                    (None, None, None) => &[arg],
+                    (Some(arg1), None, None) => &[arg, arg1],
+                    (Some(arg1), Some(arg2), None) => &[arg, arg1, arg2],
+                    (Some(arg1), Some(arg2), Some(arg3)) => &[arg, arg1, arg2, arg3],
+                    _ => return Err(ExpressionError::WrongArgumentCount(fun)),
+                };
 
                 let resolve = |arg| &resolver[arg];
-                let arg_ty = resolve(arg);
-                let arg1_ty = arg1.map(resolve);
-                let arg2_ty = arg2.map(resolve);
-                let arg3_ty = arg3.map(resolve);
-                match fun {
-                    Mf::Abs => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        let good = match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
-                                scalar.kind != Sk::Bool
-                            }
-                            _ => false,
-                        };
-                        if !good {
-                            return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
-                        }
+                let actual_types: &[_] = match *actuals {
+                    [arg0] => &[resolve(arg0)],
+                    [arg0, arg1] => &[resolve(arg0), resolve(arg1)],
+                    [arg0, arg1, arg2] => &[resolve(arg0), resolve(arg1), resolve(arg2)],
+                    [arg0, arg1, arg2, arg3] => {
+                        &[resolve(arg0), resolve(arg1), resolve(arg2), resolve(arg3)]
                     }
-                    Mf::Min | Mf::Max => {
-                        let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), None, None) => ty1,
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        let good = match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
-                                scalar.kind != Sk::Bool
-                            }
-                            _ => false,
-                        };
-                        if !good {
-                            return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Clamp => {
-                        let (arg1_ty, arg2_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), None) => (ty1, ty2),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        let good = match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
-                                scalar.kind != Sk::Bool
-                            }
-                            _ => false,
-                        };
-                        if !good {
-                            return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                        if arg2_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                2,
-                                arg2.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Saturate
-                    | Mf::Cos
-                    | Mf::Cosh
-                    | Mf::Sin
-                    | Mf::Sinh
-                    | Mf::Tan
-                    | Mf::Tanh
-                    | Mf::Acos
-                    | Mf::Asin
-                    | Mf::Atan
-                    | Mf::Asinh
-                    | Mf::Acosh
-                    | Mf::Atanh
-                    | Mf::Radians
-                    | Mf::Degrees
-                    | Mf::Ceil
-                    | Mf::Floor
-                    | Mf::Round
-                    | Mf::Fract
-                    | Mf::Trunc
-                    | Mf::Exp
-                    | Mf::Exp2
-                    | Mf::Log
-                    | Mf::Log2
-                    | Mf::Length
-                    | Mf::Sqrt
-                    | Mf::InverseSqrt => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
-                                if scalar.kind == Sk::Float => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::Sign => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float | Sk::Sint,
-                                ..
-                            })
-                            | Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float | Sk::Sint,
-                                        ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::Atan2 | Mf::Pow | Mf::Distance | Mf::Step => {
-                        let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), None, None) => ty1,
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
-                                if scalar.kind == Sk::Float => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Modf | Mf::Frexp => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        if !matches!(*arg_ty,
-                                     Ti::Scalar(scalar) | Ti::Vector { scalar, .. }
-                                     if scalar.kind == Sk::Float)
-                        {
-                            return Err(ExpressionError::InvalidArgumentType(fun, 1, arg));
-                        }
-                    }
-                    Mf::Ldexp => {
-                        let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), None, None) => ty1,
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        let size0 = match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float, ..
-                            }) => None,
-                            Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                                size,
-                            } => Some(size),
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
-                            }
-                        };
-                        let good = match *arg1_ty {
-                            Ti::Scalar(Sc { kind: Sk::Sint, .. }) if size0.is_none() => true,
-                            Ti::Vector {
-                                size,
-                                scalar: Sc { kind: Sk::Sint, .. },
-                            } if Some(size) == size0 => true,
-                            _ => false,
-                        };
-                        if !good {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Dot => {
-                        let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), None, None) => ty1,
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float | Sk::Sint | Sk::Uint,
-                                        ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Outer | Mf::Cross | Mf::Reflect => {
-                        let arg1_ty = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), None, None) => ty1,
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Refract => {
-                        let (arg1_ty, arg2_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), None) => (ty1, ty2),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
+                    _ => unreachable!(),
+                };
 
-                        match *arg_ty {
-                            Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
+                // Start with the set of all overloads available for `fun`.
+                let mut overloads = fun.overloads();
+                log::debug!(
+                    "initial overloads for {:?}: {:#?}",
+                    fun,
+                    overloads.for_debug(&module.types)
+                );
 
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
+                // If any argument is not a constant expression, then no
+                // overloads that accept abstract values should be considered.
+                // `OverloadSet::concrete_only` is supposed to help impose this
+                // restriction. However, no `MathFunction` accepts a mix of
+                // abstract and concrete arguments, so we don't need to worry
+                // about that here.
 
-                        match (arg_ty, arg2_ty) {
-                            (
-                                &Ti::Vector {
-                                    scalar:
-                                        Sc {
-                                            width: vector_width,
-                                            ..
-                                        },
-                                    ..
-                                },
-                                &Ti::Scalar(Sc {
-                                    width: scalar_width,
-                                    kind: Sk::Float,
-                                }),
-                            ) if vector_width == scalar_width => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg2.unwrap(),
-                                ))
-                            }
-                        }
-                    }
-                    Mf::Normalize => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::FaceForward | Mf::Fma | Mf::SmoothStep => {
-                        let (arg1_ty, arg2_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), None) => (ty1, ty2),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float, ..
-                            })
-                            | Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                        if arg2_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                2,
-                                arg2.unwrap(),
-                            ));
-                        }
-                    }
-                    Mf::Mix => {
-                        let (arg1_ty, arg2_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), None) => (ty1, ty2),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        let arg_width = match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float,
-                                width,
-                            })
-                            | Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float,
-                                        width,
-                                    },
-                                ..
-                            } => width,
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        };
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                        // the last argument can always be a scalar
-                        match *arg2_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Float,
-                                width,
-                            }) if width == arg_width => {}
-                            _ if arg2_ty == arg_ty => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg2.unwrap(),
-                                ));
-                            }
-                        }
-                    }
-                    Mf::Inverse | Mf::Determinant => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        let good = match *arg_ty {
-                            Ti::Matrix { columns, rows, .. } => columns == rows,
-                            _ => false,
-                        };
-                        if !good {
-                            return Err(ExpressionError::InvalidArgumentType(fun, 0, arg));
-                        }
-                    }
-                    Mf::Transpose => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Matrix { .. } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
-                    Mf::CountLeadingZeros
-                    | Mf::CountTrailingZeros
-                    | Mf::CountOneBits
-                    | Mf::ReverseBits
-                    | Mf::FindMsb
-                    | Mf::FindLsb => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => match scalar.kind {
-                                Sk::Sint | Sk::Uint => {
-                                    if scalar.width != 4 {
-                                        return Err(ExpressionError::UnsupportedWidth(
-                                            fun,
-                                            scalar.kind,
-                                            scalar.width,
-                                        ));
-                                    }
-                                }
-                                _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                            },
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::InsertBits => {
-                        let (arg1_ty, arg2_ty, arg3_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), Some(ty3)) => (ty1, ty2, ty3),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Sint | Sk::Uint,
-                                ..
-                            })
-                            | Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Sint | Sk::Uint,
-                                        ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        if arg1_ty != arg_ty {
-                            return Err(ExpressionError::InvalidArgumentType(
-                                fun,
-                                1,
-                                arg1.unwrap(),
-                            ));
-                        }
-                        match *arg2_ty {
-                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg2.unwrap(),
-                                ))
-                            }
-                        }
-                        match *arg3_ty {
-                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg3.unwrap(),
-                                ))
-                            }
-                        }
-                        // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
-                        for &arg in [arg_ty, arg1_ty, arg2_ty, arg3_ty].iter() {
-                            match *arg {
-                                Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
-                                    if scalar.width != 4 {
-                                        return Err(ExpressionError::UnsupportedWidth(
-                                            fun,
-                                            scalar.kind,
-                                            scalar.width,
-                                        ));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    Mf::ExtractBits => {
-                        let (arg1_ty, arg2_ty) = match (arg1_ty, arg2_ty, arg3_ty) {
-                            (Some(ty1), Some(ty2), None) => (ty1, ty2),
-                            _ => return Err(ExpressionError::WrongArgumentCount(fun)),
-                        };
-                        match *arg_ty {
-                            Ti::Scalar(Sc {
-                                kind: Sk::Sint | Sk::Uint,
-                                ..
-                            })
-                            | Ti::Vector {
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Sint | Sk::Uint,
-                                        ..
-                                    },
-                                ..
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                        match *arg1_ty {
-                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg1.unwrap(),
-                                ))
-                            }
-                        }
-                        match *arg2_ty {
-                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
-                            _ => {
-                                return Err(ExpressionError::InvalidArgumentType(
-                                    fun,
-                                    2,
-                                    arg2.unwrap(),
-                                ))
-                            }
-                        }
-                        // Remove once fixed https://github.com/gfx-rs/wgpu/issues/5276
-                        for &arg in [arg_ty, arg1_ty, arg2_ty].iter() {
-                            match *arg {
-                                Ti::Scalar(scalar) | Ti::Vector { scalar, .. } => {
-                                    if scalar.width != 4 {
-                                        return Err(ExpressionError::UnsupportedWidth(
-                                            fun,
-                                            scalar.kind,
-                                            scalar.width,
-                                        ));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    Mf::Pack2x16unorm | Mf::Pack2x16snorm | Mf::Pack2x16float => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Vector {
-                                size: crate::VectorSize::Bi,
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::Pack4x8snorm | Mf::Pack4x8unorm => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Vector {
-                                size: crate::VectorSize::Quad,
-                                scalar:
-                                    Sc {
-                                        kind: Sk::Float, ..
-                                    },
-                            } => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    mf @ (Mf::Pack4xI8 | Mf::Pack4xU8) => {
-                        let scalar_kind = match mf {
-                            Mf::Pack4xI8 => Sk::Sint,
-                            Mf::Pack4xU8 => Sk::Uint,
-                            _ => unreachable!(),
-                        };
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Vector {
-                                size: crate::VectorSize::Quad,
-                                scalar: Sc { kind, .. },
-                            } if kind == scalar_kind => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
-                    }
-                    Mf::Unpack2x16float
-                    | Mf::Unpack2x16snorm
-                    | Mf::Unpack2x16unorm
-                    | Mf::Unpack4x8snorm
-                    | Mf::Unpack4x8unorm
-                    | Mf::Unpack4xI8
-                    | Mf::Unpack4xU8 => {
-                        if arg1_ty.is_some() || arg2_ty.is_some() || arg3_ty.is_some() {
-                            return Err(ExpressionError::WrongArgumentCount(fun));
-                        }
-                        match *arg_ty {
-                            Ti::Scalar(Sc { kind: Sk::Uint, .. }) => {}
-                            _ => return Err(ExpressionError::InvalidArgumentType(fun, 0, arg)),
-                        }
+                for (i, (&expr, &ty)) in actuals.iter().zip(actual_types).enumerate() {
+                    // Remove overloads that cannot accept an `i`'th
+                    // argument arguments of type `ty`.
+                    overloads = overloads.arg(i, ty, &module.types);
+                    log::debug!(
+                        "overloads after arg {i}: {:#?}",
+                        overloads.for_debug(&module.types)
+                    );
+
+                    if overloads.is_empty() {
+                        log::debug!("all overloads eliminated");
+                        return Err(ExpressionError::InvalidArgumentType(fun, i as u32, expr));
                     }
                 }
+
+                if actuals.len() < overloads.min_arguments() {
+                    return Err(ExpressionError::WrongArgumentCount(fun));
+                }
+
                 ShaderStages::all()
             }
             E::As {
@@ -1584,30 +1082,11 @@ impl super::Validator {
                 ShaderStages::all()
             }
             E::CallResult(function) => mod_info.functions[function.index()].available_stages,
-            E::AtomicResult { ty, comparison } => {
-                let scalar_predicate = |ty: &crate::TypeInner| match ty {
-                    &crate::TypeInner::Scalar(
-                        scalar @ Sc {
-                            kind: crate::ScalarKind::Uint | crate::ScalarKind::Sint,
-                            ..
-                        },
-                    ) => self.check_width(scalar).is_ok(),
-                    _ => false,
-                };
-                let good = match &module.types[ty].inner {
-                    ty if !comparison => scalar_predicate(ty),
-                    &crate::TypeInner::Struct { ref members, .. } if comparison => {
-                        validate_atomic_compare_exchange_struct(
-                            &module.types,
-                            members,
-                            scalar_predicate,
-                        )
-                    }
-                    _ => false,
-                };
-                if !good {
-                    return Err(ExpressionError::InvalidAtomicResultType(ty));
-                }
+            E::AtomicResult { .. } => {
+                // These expressions are validated when we check the `Atomic` statement
+                // that refers to them, because we have all the information we need at
+                // that point. The checks driven by `Validator::needs_visit` ensure
+                // that this expression is indeed visited by one `Atomic` statement.
                 ShaderStages::all()
             }
             E::WorkGroupUniformLoadResult { ty } => {
@@ -1649,7 +1128,28 @@ impl super::Validator {
                     base,
                     space: crate::AddressSpace::Function,
                 } => match resolver.types[base].inner {
-                    Ti::RayQuery => ShaderStages::all(),
+                    Ti::RayQuery { .. } => ShaderStages::all(),
+                    ref other => {
+                        log::error!("Intersection result of a pointer to {:?}", other);
+                        return Err(ExpressionError::InvalidRayQueryType(query));
+                    }
+                },
+                ref other => {
+                    log::error!("Intersection result of {:?}", other);
+                    return Err(ExpressionError::InvalidRayQueryType(query));
+                }
+            },
+            E::RayQueryVertexPositions {
+                query,
+                committed: _,
+            } => match resolver[query] {
+                Ti::Pointer {
+                    base,
+                    space: crate::AddressSpace::Function,
+                } => match resolver.types[base].inner {
+                    Ti::RayQuery {
+                        vertex_return: true,
+                    } => ShaderStages::all(),
                     ref other => {
                         log::error!("Intersection result of a pointer to {:?}", other);
                         return Err(ExpressionError::InvalidRayQueryType(query));
@@ -1693,7 +1193,7 @@ impl super::Validator {
     }
 
     pub fn validate_literal(&self, literal: crate::Literal) -> Result<(), LiteralError> {
-        self.check_width(literal.scalar())?;
+        let _ = self.check_width(literal.scalar())?;
         check_literal_value(literal)?;
 
         Ok(())
@@ -1722,7 +1222,7 @@ pub fn check_literal_value(literal: crate::Literal) -> Result<(), LiteralError> 
     Ok(())
 }
 
-#[cfg(all(test, feature = "validate"))]
+#[cfg(test)]
 /// Validate a module containing the given expression, expecting an error.
 fn validate_with_expression(
     expr: crate::Expression,
@@ -1745,7 +1245,7 @@ fn validate_with_expression(
     validator.validate(&module)
 }
 
-#[cfg(all(test, feature = "validate"))]
+#[cfg(test)]
 /// Validate a module containing the given constant expression, expecting an error.
 fn validate_with_const_expression(
     expr: crate::Expression,
@@ -1762,7 +1262,6 @@ fn validate_with_const_expression(
 }
 
 /// Using F64 in a function's expression arena is forbidden.
-#[cfg(feature = "validate")]
 #[test]
 fn f64_runtime_literals() {
     let result = validate_with_expression(
@@ -1774,7 +1273,7 @@ fn f64_runtime_literals() {
         error,
         crate::valid::ValidationError::Function {
             source: super::FunctionError::Expression {
-                source: super::ExpressionError::Literal(super::LiteralError::Width(
+                source: ExpressionError::Literal(LiteralError::Width(
                     super::r#type::WidthError::MissingCapability {
                         name: "f64",
                         flag: "FLOAT64",
@@ -1794,7 +1293,6 @@ fn f64_runtime_literals() {
 }
 
 /// Using F64 in a module's constant expression arena is forbidden.
-#[cfg(feature = "validate")]
 #[test]
 fn f64_const_literals() {
     let result = validate_with_const_expression(
@@ -1805,7 +1303,7 @@ fn f64_const_literals() {
     assert!(matches!(
         error,
         crate::valid::ValidationError::ConstExpression {
-            source: super::ConstExpressionError::Literal(super::LiteralError::Width(
+            source: ConstExpressionError::Literal(LiteralError::Width(
                 super::r#type::WidthError::MissingCapability {
                     name: "f64",
                     flag: "FLOAT64",
@@ -1820,49 +1318,4 @@ fn f64_const_literals() {
         super::Capabilities::default() | super::Capabilities::FLOAT64,
     );
     assert!(result.is_ok());
-}
-
-/// Using I64 in a function's expression arena is forbidden.
-#[cfg(feature = "validate")]
-#[test]
-fn i64_runtime_literals() {
-    let result = validate_with_expression(
-        crate::Expression::Literal(crate::Literal::I64(1729)),
-        // There is no capability that enables this.
-        super::Capabilities::all(),
-    );
-    let error = result.unwrap_err().into_inner();
-    assert!(matches!(
-        error,
-        crate::valid::ValidationError::Function {
-            source: super::FunctionError::Expression {
-                source: super::ExpressionError::Literal(super::LiteralError::Width(
-                    super::r#type::WidthError::Unsupported64Bit
-                ),),
-                ..
-            },
-            ..
-        }
-    ));
-}
-
-/// Using I64 in a module's constant expression arena is forbidden.
-#[cfg(feature = "validate")]
-#[test]
-fn i64_const_literals() {
-    let result = validate_with_const_expression(
-        crate::Expression::Literal(crate::Literal::I64(1729)),
-        // There is no capability that enables this.
-        super::Capabilities::all(),
-    );
-    let error = result.unwrap_err().into_inner();
-    assert!(matches!(
-        error,
-        crate::valid::ValidationError::ConstExpression {
-            source: super::ConstExpressionError::Literal(super::LiteralError::Width(
-                super::r#type::WidthError::Unsupported64Bit,
-            ),),
-            ..
-        }
-    ));
 }

@@ -10,11 +10,13 @@
 
 #include "pc/data_channel_controller.h"
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "api/peer_connection_interface.h"
+#include "api/priority.h"
 #include "api/rtc_error.h"
 #include "pc/peer_connection_internal.h"
 #include "pc/sctp_utils.h"
@@ -52,10 +54,11 @@ RTCError DataChannelController::SendData(
                                            payload);
 }
 
-void DataChannelController::AddSctpDataStream(StreamId sid) {
+void DataChannelController::AddSctpDataStream(StreamId sid,
+                                              PriorityValue priority) {
   RTC_DCHECK_RUN_ON(network_thread());
   if (data_channel_transport_) {
-    data_channel_transport_->OpenChannel(sid.stream_id_int());
+    data_channel_transport_->OpenChannel(sid.stream_id_int(), priority);
   }
 }
 
@@ -87,6 +90,34 @@ void DataChannelController::OnChannelStateChanged(
         channel_usage_ = channel_usage;
         pc_->OnSctpDataChannelStateChanged(channel_id, state);
       }));
+}
+
+size_t DataChannelController::buffered_amount(StreamId sid) const {
+  RTC_DCHECK_RUN_ON(network_thread());
+  if (!data_channel_transport_) {
+    return 0;
+  }
+  return data_channel_transport_->buffered_amount(sid.stream_id_int());
+}
+
+size_t DataChannelController::buffered_amount_low_threshold(
+    StreamId sid) const {
+  RTC_DCHECK_RUN_ON(network_thread());
+  if (!data_channel_transport_) {
+    return 0;
+  }
+  return data_channel_transport_->buffered_amount_low_threshold(
+      sid.stream_id_int());
+}
+
+void DataChannelController::SetBufferedAmountLowThreshold(StreamId sid,
+                                                          size_t bytes) {
+  RTC_DCHECK_RUN_ON(network_thread());
+  if (!data_channel_transport_) {
+    return;
+  }
+  data_channel_transport_->SetBufferedAmountLowThreshold(sid.stream_id_int(),
+                                                         bytes);
 }
 
 void DataChannelController::OnDataReceived(
@@ -161,6 +192,16 @@ void DataChannelController::OnTransportClosed(RTCError error) {
       sid_allocator_.ReleaseSid(*channel->sid_n());
     }
   }
+}
+
+void DataChannelController::OnBufferedAmountLow(int channel_id) {
+  RTC_DCHECK_RUN_ON(network_thread());
+  auto it = absl::c_find_if(sctp_data_channels_n_, [&](const auto& c) {
+    return c->sid_n().has_value() && c->sid_n()->stream_id_int() == channel_id;
+  });
+
+  if (it != sctp_data_channels_n_.end())
+    (*it)->OnBufferedAmountLow();
 }
 
 void DataChannelController::SetupDataChannelTransport_n(
@@ -259,8 +300,8 @@ void DataChannelController::OnDataChannelOpenMessage(
 
 // RTC_RUN_ON(network_thread())
 RTCError DataChannelController::ReserveOrAllocateSid(
-    absl::optional<StreamId>& sid,
-    absl::optional<rtc::SSLRole> fallback_ssl_role) {
+    std::optional<StreamId>& sid,
+    std::optional<rtc::SSLRole> fallback_ssl_role) {
   if (sid.has_value()) {
     return sid_allocator_.ReserveSid(*sid)
                ? RTCError::OK()
@@ -268,7 +309,7 @@ RTCError DataChannelController::ReserveOrAllocateSid(
   }
 
   // Attempt to allocate an ID based on the negotiated role.
-  absl::optional<rtc::SSLRole> role = pc_->GetSctpSslRole_n();
+  std::optional<rtc::SSLRole> role = pc_->GetSctpSslRole_n();
   if (!role)
     role = fallback_ssl_role;
   if (role) {
@@ -286,7 +327,7 @@ RTCError DataChannelController::ReserveOrAllocateSid(
 RTCErrorOr<rtc::scoped_refptr<SctpDataChannel>>
 DataChannelController::CreateDataChannel(const std::string& label,
                                          InternalDataChannelInit& config) {
-  absl::optional<StreamId> sid = absl::nullopt;
+  std::optional<StreamId> sid = std::nullopt;
   if (config.id != -1) {
     if (config.id < 0 || config.id > cricket::kMaxSctpSid) {
       return RTCError(RTCErrorType::INVALID_RANGE, "StreamId out of range.");
@@ -311,7 +352,8 @@ DataChannelController::CreateDataChannel(const std::string& label,
 
   // If we have an id already, notify the transport.
   if (sid.has_value())
-    AddSctpDataStream(*sid);
+    AddSctpDataStream(*sid,
+                      config.priority.value_or(PriorityValue(Priority::kLow)));
 
   return channel;
 }
@@ -371,10 +413,10 @@ void DataChannelController::AllocateSctpSids(rtc::SSLRole role) {
   for (auto it = sctp_data_channels_n_.begin();
        it != sctp_data_channels_n_.end();) {
     if (!(*it)->sid_n().has_value()) {
-      absl::optional<StreamId> sid = sid_allocator_.AllocateSid(role);
+      std::optional<StreamId> sid = sid_allocator_.AllocateSid(role);
       if (sid.has_value()) {
         (*it)->SetSctpSid_n(*sid);
-        AddSctpDataStream(*sid);
+        AddSctpDataStream(*sid, (*it)->priority());
         if (ready_to_send) {
           RTC_LOG(LS_INFO) << "AllocateSctpSids: Id assigned, ready to send.";
           (*it)->OnTransportReady();
@@ -433,7 +475,7 @@ void DataChannelController::NotifyDataChannelsOfTransportCreated() {
 
   for (const auto& channel : sctp_data_channels_n_) {
     if (channel->sid_n().has_value())
-      AddSctpDataStream(*channel->sid_n());
+      AddSctpDataStream(*channel->sid_n(), channel->priority());
     channel->OnTransportChannelCreated();
   }
 }

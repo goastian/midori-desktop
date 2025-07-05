@@ -10,8 +10,7 @@ import re
 import voluptuous
 
 import taskgraph
-
-from .keyed_by import evaluate_keyed_by
+from taskgraph.util.keyed_by import evaluate_keyed_by, iter_dot_path
 
 
 def validate_schema(schema, obj, msg_prefix):
@@ -125,26 +124,14 @@ def resolve_keyed_by(
     Returns:
         dict: item which has also been modified in-place.
     """
-    # find the field, returning the item unchanged if anything goes wrong
-    container, subfield = item, field
-    while "." in subfield:
-        f, subfield = subfield.split(".", 1)
-        if f not in container:
-            return item
-        container = container[f]
-        if not isinstance(container, dict):
-            return item
-
-    if subfield not in container:
-        return item
-
-    container[subfield] = evaluate_keyed_by(
-        value=container[subfield],
-        item_name=f"`{field}` in `{item_name}`",
-        defer=defer,
-        enforce_single_match=enforce_single_match,
-        attributes=dict(item, **extra_values),
-    )
+    for container, subfield in iter_dot_path(item, field):
+        container[subfield] = evaluate_keyed_by(
+            value=container[subfield],
+            item_name=f"`{field}` in `{item_name}`",
+            defer=defer,
+            enforce_single_match=enforce_single_match,
+            attributes=dict(item, **extra_values),
+        )
 
     return item
 
@@ -194,7 +181,7 @@ def check_schema(schema):
                     f"Unexpected type in YAML schema: {type(k).__name__} @ {path}"
                 )
 
-        if isinstance(sch, collections.abc.Mapping):
+        if isinstance(sch, collections.abc.Mapping):  # type: ignore
             for k, v in sch.items():
                 child = f"{path}[{k!r}]"
                 check_identifier(child, k)
@@ -237,7 +224,7 @@ class Schema(voluptuous.Schema):
         return super()._compile(schema)
 
     def __getitem__(self, item):
-        return self.schema[item]
+        return self.schema[item]  # type: ignore
 
 
 OptimizationSchema = voluptuous.Any(

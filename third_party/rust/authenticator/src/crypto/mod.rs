@@ -8,7 +8,6 @@ use crate::errors::AuthenticatorError;
 use crate::{ctap2::commands::CommandError, transport::errors::HIDError};
 use serde::{
     de::{Error as SerdeError, MapAccess, Unexpected, Visitor},
-    ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use serde_bytes::ByteBuf;
@@ -342,6 +341,23 @@ impl SharedSecret {
     pub fn peer_input(&self) -> &COSEKey {
         &self.inputs.peer
     }
+
+    #[cfg(test)]
+    pub fn new_test(
+        pin_protocol: PinUvAuthProtocol,
+        key: Vec<u8>,
+        client_input: COSEKey,
+        peer_input: COSEKey,
+    ) -> Self {
+        Self {
+            pin_protocol,
+            key,
+            inputs: PublicInputs {
+                client: client_input,
+                peer: peer_input,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -377,6 +393,24 @@ impl PinUvAuthParam {
             pin_auth: vec![],
             pin_protocol,
             permissions: PinUvAuthTokenPermission::empty(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn create_test(
+        pin_protocol: u64,
+        pin_auth: Vec<u8>,
+        permissions: PinUvAuthTokenPermission,
+    ) -> Self {
+        let pin_protocol = PinUvAuthProtocol::try_from(&AuthenticatorInfo {
+            pin_protocols: Some(vec![pin_protocol]),
+            ..Default::default()
+        })
+        .expect("Failed to create PIN protocol");
+        Self {
+            pin_auth,
+            pin_protocol,
+            permissions,
         }
     }
 }
@@ -789,7 +823,7 @@ impl COSERSAKey {
             // algorithm: AlgorithmIdentifier
             &der::sequence(&[
                 // algorithm
-                &der::object_id(der::OID_RS256_BYTES)?,
+                &der::object_id(der::OID_RSA_ENCRYPTION_BYTES)?,
                 // parameters
                 &der::null()?,
             ])?,
@@ -1022,40 +1056,41 @@ impl Serialize for COSEKey {
     where
         S: Serializer,
     {
-        let map_len = match &self.key {
-            COSEKeyType::OKP(_) => 4,
-            COSEKeyType::EC2(_) => 5,
-            COSEKeyType::RSA(_) => 4,
-        };
-        let mut map = serializer.serialize_map(Some(map_len))?;
         match &self.key {
             COSEKeyType::OKP(key) => {
-                map.serialize_entry(&1, &COSEKeyTypeId::OKP)?;
-                map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &key.curve)?;
-                map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.x))?;
+                serialize_map!(
+                    serializer,
+                    &1 => &COSEKeyTypeId::OKP,
+                    &3 => &self.alg,
+                    &-1 => &key.curve,
+                    &-2 => &serde_bytes::Bytes::new(&key.x),
+                )
             }
             COSEKeyType::EC2(key) => {
-                map.serialize_entry(&1, &COSEKeyTypeId::EC2)?;
-                map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &key.curve)?;
-                map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.x))?;
-                map.serialize_entry(&-3, &serde_bytes::Bytes::new(&key.y))?;
+                serialize_map!(
+                    serializer,
+                    &1 => &COSEKeyTypeId::EC2,
+                    &3 => &self.alg,
+                    &-1 => &key.curve,
+                    &-2 => &serde_bytes::Bytes::new(&key.x),
+                    &-3 => &serde_bytes::Bytes::new(&key.y),
+                )
             }
             COSEKeyType::RSA(key) => {
-                map.serialize_entry(&1, &COSEKeyTypeId::RSA)?;
-                map.serialize_entry(&3, &self.alg)?;
-                map.serialize_entry(&-1, &serde_bytes::Bytes::new(&key.n))?;
-                map.serialize_entry(&-2, &serde_bytes::Bytes::new(&key.e))?;
+                serialize_map!(
+                    serializer,
+                    &1 => &COSEKeyTypeId::RSA,
+                    &3 => &self.alg,
+                    &-1 => &serde_bytes::Bytes::new(&key.n),
+                    &-2 => &serde_bytes::Bytes::new(&key.e),
+                )
             }
         }
-
-        map.end()
     }
 }
 
 /// Errors that can be returned from COSE functions.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum CryptoError {
     // DecodingFailure,
     LibraryFailure,
@@ -1211,8 +1246,8 @@ mod test {
         // $ ascii2der | xxd -i
         // SEQUENCE {
         //   SEQUENCE {
-        //     # sha256WithRSAEncryption
-        //     OBJECT_IDENTIFIER { 1.2.840.113549.1.1.11 }
+        //     # rsaEncryption
+        //     OBJECT_IDENTIFIER { 1.2.840.113549.1.1.1 }
         //     NULL {}
         //   }
         //   BIT_STRING {
@@ -1225,7 +1260,7 @@ mod test {
         // }
         let expected: &[u8] = &[
             0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d,
-            0x01, 0x01, 0x0b, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a,
+            0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01, 0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a,
             0x02, 0x82, 0x01, 0x01, 0x00, 0xd4, 0xd2, 0x53, 0xed, 0x7a, 0x69, 0xb1, 0x84, 0xc9,
             0xfb, 0x70, 0x30, 0x0c, 0x51, 0xb1, 0x8f, 0x89, 0x6c, 0xb1, 0x31, 0x6d, 0x87, 0xbe,
             0xe1, 0xc7, 0xf7, 0xb0, 0x4f, 0xe7, 0x27, 0xa7, 0xb7, 0x7c, 0x55, 0x20, 0x37, 0xa8,

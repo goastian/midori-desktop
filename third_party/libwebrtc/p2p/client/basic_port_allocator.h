@@ -42,10 +42,10 @@ class RTC_EXPORT BasicPortAllocator : public PortAllocator {
                      webrtc::TurnCustomizer* customizer = nullptr,
                      RelayPortFactoryInterface* relay_port_factory = nullptr,
                      const webrtc::FieldTrialsView* field_trials = nullptr);
-  BasicPortAllocator(rtc::NetworkManager* network_manager,
-                     rtc::PacketSocketFactory* socket_factory,
-                     const ServerAddresses& stun_servers,
-                     const webrtc::FieldTrialsView* field_trials = nullptr);
+
+  BasicPortAllocator(const BasicPortAllocator&) = delete;
+  BasicPortAllocator& operator=(const BasicPortAllocator&) = delete;
+
   ~BasicPortAllocator() override;
 
   // Set to kDefaultNetworkIgnoreMask by default.
@@ -151,7 +151,7 @@ class RTC_EXPORT BasicPortAllocatorSession : public PortAllocatorSession {
   void GetCandidateStatsFromReadyPorts(
       CandidateStatsList* candidate_stats_list) const override;
   void SetStunKeepaliveIntervalForReadyPorts(
-      const absl::optional<int>& stun_keepalive_interval) override;
+      const std::optional<int>& stun_keepalive_interval) override;
   void PruneAllPorts() override;
   static std::vector<const rtc::Network*> SelectIPv6Networks(
       std::vector<const rtc::Network*>& all_ipv6_networks,

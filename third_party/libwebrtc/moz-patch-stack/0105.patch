@@ -1,23 +1,31 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Fri, 19 Apr 2024 06:09:00 +0000
-Subject: Bug 1892221 - Initialize VideoCaptureModuleV4L2::_streaming in ctor.
- r=webrtc-reviewers,dbaker
+From: Nico Grunbaum <na-g@nostrum.com>
+Date: Thu, 23 May 2024 17:28:00 +0000
+Subject: Bug 1897459 - P0 - for BSD do not build physical_socket_server in
+ libwebrtc;r=mjf,webrtc-reviewers
 
-Differential Revision: https://phabricator.services.mozilla.com/D207926
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/00c4bd7039dc8992dd93d4a5948a9260b72ec2a8
+libwebrtc added the use of several non-portable socket options in this code.
+Firefox does not use any of the code in this file, but there is a header dependency chain leading from code that is used.
+
+Differential Revision: https://phabricator.services.mozilla.com/D210858
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/4e7b3c485e549e7e35b227b517acadbbad957004
 ---
- modules/video_capture/linux/video_capture_v4l2.cc | 1 +
- 1 file changed, 1 insertion(+)
+ rtc_base/BUILD.gn | 6 ++++++
+ 1 file changed, 6 insertions(+)
 
-diff --git a/modules/video_capture/linux/video_capture_v4l2.cc b/modules/video_capture/linux/video_capture_v4l2.cc
-index e3bdcd5953..e3061556e8 100644
---- a/modules/video_capture/linux/video_capture_v4l2.cc
-+++ b/modules/video_capture/linux/video_capture_v4l2.cc
-@@ -62,6 +62,7 @@ VideoCaptureModuleV4L2::VideoCaptureModuleV4L2()
-       _deviceId(-1),
-       _deviceFd(-1),
-       _buffersAllocatedByDevice(-1),
-+      _streaming(false),
-       _captureStarted(false),
-       _pool(NULL) {}
- 
+diff --git a/rtc_base/BUILD.gn b/rtc_base/BUILD.gn
+index b9c5a66147..11c68d5fcd 100644
+--- a/rtc_base/BUILD.gn
++++ b/rtc_base/BUILD.gn
+@@ -979,6 +979,12 @@ rtc_library("threading") {
+     "thread.cc",
+     "thread.h",
+   ]
++  if (is_bsd && build_with_mozilla) {
++    sources -= [
++      "physical_socket_server.cc",
++      "physical_socket_server.h",
++    ]
++  }
+   deps = [
+     ":async_dns_resolver",
+     ":byte_order",

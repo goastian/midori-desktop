@@ -10,23 +10,55 @@
 
 #include "media/engine/fake_webrtc_call.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <map>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "api/adaptation/resource.h"
+#include "api/audio_codecs/audio_format.h"
 #include "api/call/audio_sink.h"
+#include "api/crypto/frame_decryptor_interface.h"
+#include "api/environment/environment.h"
+#include "api/frame_transformer_interface.h"
+#include "api/make_ref_counted.h"
+#include "api/media_types.h"
+#include "api/rtc_error.h"
+#include "api/rtp_headers.h"
+#include "api/rtp_parameters.h"
+#include "api/rtp_sender_interface.h"
+#include "api/scoped_refptr.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/units/timestamp.h"
+#include "api/video/video_source_interface.h"
+#include "api/video_codecs/video_codec.h"
+#include "api/video_codecs/video_encoder.h"
+#include "call/audio_receive_stream.h"
+#include "call/audio_send_stream.h"
+#include "call/call.h"
+#include "call/flexfec_receive_stream.h"
 #include "call/packet_receiver.h"
+#include "call/video_receive_stream.h"
+#include "call/video_send_stream.h"
 #include "media/base/media_channel.h"
+#include "modules/rtp_rtcp/source/rtp_packet_received.h"
 #include "modules/rtp_rtcp/source/rtp_util.h"
+#include "rtc_base/buffer.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/gunit.h"
+#include "rtc_base/copy_on_write_buffer.h"
+#include "rtc_base/network/sent_packet.h"
 #include "rtc_base/thread.h"
+#include "test/gtest.h"
 #include "video/config/encoder_stream_factory.h"
+#include "video/config/video_encoder_config.h"
 
 namespace cricket {
 
+using ::webrtc::Environment;
 using ::webrtc::ParseRtpSsrc;
 
 FakeAudioSendStream::FakeAudioSendStream(
@@ -121,6 +153,10 @@ void FakeAudioReceiveStream::SetNackHistory(int history_ms) {
   config_.rtp.nack.rtp_history_ms = history_ms;
 }
 
+void FakeAudioReceiveStream::SetRtcpMode(webrtc::RtcpMode mode) {
+  config_.rtp.rtcp_mode = mode;
+}
+
 void FakeAudioReceiveStream::SetNonSenderRttMeasurement(bool enabled) {
   config_.enable_non_sender_rtt = enabled;
 }
@@ -131,7 +167,7 @@ void FakeAudioReceiveStream::SetFrameDecryptor(
 }
 
 webrtc::AudioReceiveStreamInterface::Stats FakeAudioReceiveStream::GetStats(
-    bool get_and_clear_legacy_stats) const {
+    bool /* get_and_clear_legacy_stats */) const {
   return stats_;
 }
 
@@ -144,9 +180,11 @@ void FakeAudioReceiveStream::SetGain(float gain) {
 }
 
 FakeVideoSendStream::FakeVideoSendStream(
+    const Environment& env,
     webrtc::VideoSendStream::Config config,
     webrtc::VideoEncoderConfig encoder_config)
-    : sending_(false),
+    : env_(env),
+      sending_(false),
       config_(std::move(config)),
       codec_settings_set_(false),
       resolution_scaling_enabled_(false),
@@ -247,19 +285,15 @@ void FakeVideoSendStream::OnFrame(const webrtc::VideoFrame& frame) {
       // Note: only tests set their own EncoderStreamFactory...
       video_streams_ =
           encoder_config_.video_stream_factory->CreateEncoderStreams(
-              frame.width(), frame.height(), encoder_config_);
+              env_.field_trials(), frame.width(), frame.height(),
+              encoder_config_);
     } else {
       webrtc::VideoEncoder::EncoderInfo encoder_info;
-      rtc::scoped_refptr<
-          webrtc::VideoEncoderConfig::VideoStreamFactoryInterface>
-          factory = rtc::make_ref_counted<cricket::EncoderStreamFactory>(
-              encoder_config_.video_format.name, encoder_config_.max_qp,
-              encoder_config_.content_type ==
-                  webrtc::VideoEncoderConfig::ContentType::kScreen,
-              encoder_config_.legacy_conference_mode, encoder_info);
+      auto factory =
+          rtc::make_ref_counted<webrtc::EncoderStreamFactory>(encoder_info);
 
       video_streams_ = factory->CreateEncoderStreams(
-          frame.width(), frame.height(), encoder_config_);
+          env_.field_trials(), frame.width(), frame.height(), encoder_config_);
     }
   }
   last_frame_ = frame;
@@ -292,17 +326,14 @@ void FakeVideoSendStream::ReconfigureVideoEncoder(
   if (config.video_stream_factory) {
     // Note: only tests set their own EncoderStreamFactory...
     video_streams_ = config.video_stream_factory->CreateEncoderStreams(
-        width, height, config);
+        env_.field_trials(), width, height, config);
   } else {
     webrtc::VideoEncoder::EncoderInfo encoder_info;
-    rtc::scoped_refptr<webrtc::VideoEncoderConfig::VideoStreamFactoryInterface>
-        factory = rtc::make_ref_counted<cricket::EncoderStreamFactory>(
-            config.video_format.name, config.max_qp,
-            config.content_type ==
-                webrtc::VideoEncoderConfig::ContentType::kScreen,
-            config.legacy_conference_mode, encoder_info);
+    auto factory =
+        rtc::make_ref_counted<webrtc::EncoderStreamFactory>(encoder_info);
 
-    video_streams_ = factory->CreateEncoderStreams(width, height, config);
+    video_streams_ = factory->CreateEncoderStreams(env_.field_trials(), width,
+                                                   height, config);
   }
 
   if (config.encoder_specific_settings != nullptr) {
@@ -348,7 +379,7 @@ void FakeVideoSendStream::Stop() {
 }
 
 void FakeVideoSendStream::AddAdaptationResource(
-    rtc::scoped_refptr<webrtc::Resource> resource) {}
+    rtc::scoped_refptr<webrtc::Resource> /* resource */) {}
 
 std::vector<rtc::scoped_refptr<webrtc::Resource>>
 FakeVideoSendStream::GetAdaptationResources() {
@@ -444,19 +475,19 @@ void FakeFlexfecReceiveStream::OnRtpPacket(const webrtc::RtpPacketReceived&) {
   RTC_DCHECK_NOTREACHED() << "Not implemented.";
 }
 
-FakeCall::FakeCall(webrtc::test::ScopedKeyValueConfig* field_trials)
-    : FakeCall(rtc::Thread::Current(), rtc::Thread::Current(), field_trials) {}
+FakeCall::FakeCall(const Environment& env)
+    : FakeCall(env, rtc::Thread::Current(), rtc::Thread::Current()) {}
 
-FakeCall::FakeCall(webrtc::TaskQueueBase* worker_thread,
-                   webrtc::TaskQueueBase* network_thread,
-                   webrtc::test::ScopedKeyValueConfig* field_trials)
-    : network_thread_(network_thread),
+FakeCall::FakeCall(const Environment& env,
+                   webrtc::TaskQueueBase* worker_thread,
+                   webrtc::TaskQueueBase* network_thread)
+    : env_(env),
+      network_thread_(network_thread),
       worker_thread_(worker_thread),
       audio_network_state_(webrtc::kNetworkUp),
       video_network_state_(webrtc::kNetworkUp),
       num_created_send_streams_(0),
-      num_created_receive_streams_(0),
-      trials_(field_trials ? field_trials : &fallback_trials_) {}
+      num_created_receive_streams_(0) {}
 
 FakeCall::~FakeCall() {
   EXPECT_EQ(0u, video_send_streams_.size());
@@ -521,6 +552,7 @@ webrtc::NetworkState FakeCall::GetNetworkState(webrtc::MediaType media) const {
       return video_network_state_;
     case webrtc::MediaType::DATA:
     case webrtc::MediaType::ANY:
+    case webrtc::MediaType::UNSUPPORTED:
       ADD_FAILURE() << "GetNetworkState called with unknown parameter.";
       return webrtc::kNetworkDown;
   }
@@ -574,8 +606,8 @@ void FakeCall::DestroyAudioReceiveStream(
 webrtc::VideoSendStream* FakeCall::CreateVideoSendStream(
     webrtc::VideoSendStream::Config config,
     webrtc::VideoEncoderConfig encoder_config) {
-  FakeVideoSendStream* fake_stream =
-      new FakeVideoSendStream(std::move(config), std::move(encoder_config));
+  FakeVideoSendStream* fake_stream = new FakeVideoSendStream(
+      env_, std::move(config), std::move(encoder_config));
   video_send_streams_.push_back(fake_stream);
   ++num_created_send_streams_;
   return fake_stream;
@@ -636,7 +668,7 @@ void FakeCall::DestroyFlexfecReceiveStream(
 }
 
 void FakeCall::AddAdaptationResource(
-    rtc::scoped_refptr<webrtc::Resource> resource) {}
+    rtc::scoped_refptr<webrtc::Resource> /* resource */) {}
 
 webrtc::PacketReceiver* FakeCall::Receiver() {
   return this;
@@ -721,13 +753,14 @@ void FakeCall::SignalChannelNetworkState(webrtc::MediaType media,
       break;
     case webrtc::MediaType::DATA:
     case webrtc::MediaType::ANY:
+    case webrtc::MediaType::UNSUPPORTED:
       ADD_FAILURE()
           << "SignalChannelNetworkState called with unknown parameter.";
   }
 }
 
 void FakeCall::OnAudioTransportOverheadChanged(
-    int transport_overhead_per_packet) {}
+    int /* transport_overhead_per_packet */) {}
 
 void FakeCall::OnLocalSsrcUpdated(webrtc::AudioReceiveStreamInterface& stream,
                                   uint32_t local_ssrc) {

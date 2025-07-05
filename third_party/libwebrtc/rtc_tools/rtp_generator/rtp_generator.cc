@@ -69,28 +69,28 @@ int GetDefaultTypeForPayloadName(const std::string& codec_name) {
 }
 
 // Creates a single VideoSendStream configuration.
-absl::optional<RtpGeneratorOptions::VideoSendStreamConfig>
+std::optional<RtpGeneratorOptions::VideoSendStreamConfig>
 ParseVideoSendStreamConfig(const Json::Value& json) {
   RtpGeneratorOptions::VideoSendStreamConfig config;
 
   // Parse video source settings.
-  if (!rtc::GetIntFromJsonObject(json, "duration_ms", &config.duration_ms)) {
+  if (!GetIntFromJsonObject(json, "duration_ms", &config.duration_ms)) {
     RTC_LOG(LS_WARNING) << "duration_ms not specified using default: "
                         << config.duration_ms;
   }
-  if (!rtc::GetIntFromJsonObject(json, "video_width", &config.video_width)) {
+  if (!GetIntFromJsonObject(json, "video_width", &config.video_width)) {
     RTC_LOG(LS_WARNING) << "video_width not specified using default: "
                         << config.video_width;
   }
-  if (!rtc::GetIntFromJsonObject(json, "video_height", &config.video_height)) {
+  if (!GetIntFromJsonObject(json, "video_height", &config.video_height)) {
     RTC_LOG(LS_WARNING) << "video_height not specified using default: "
                         << config.video_height;
   }
-  if (!rtc::GetIntFromJsonObject(json, "video_fps", &config.video_fps)) {
+  if (!GetIntFromJsonObject(json, "video_fps", &config.video_fps)) {
     RTC_LOG(LS_WARNING) << "video_fps not specified using default: "
                         << config.video_fps;
   }
-  if (!rtc::GetIntFromJsonObject(json, "num_squares", &config.num_squares)) {
+  if (!GetIntFromJsonObject(json, "num_squares", &config.num_squares)) {
     RTC_LOG(LS_WARNING) << "num_squares not specified using default: "
                         << config.num_squares;
   }
@@ -98,24 +98,24 @@ ParseVideoSendStreamConfig(const Json::Value& json) {
   // Parse RTP settings for this configuration.
   config.rtp.ssrcs.push_back(kDefaultSsrc);
   Json::Value rtp_json;
-  if (!rtc::GetValueFromJsonObject(json, "rtp", &rtp_json)) {
+  if (!GetValueFromJsonObject(json, "rtp", &rtp_json)) {
     RTC_LOG(LS_ERROR) << "video_streams must have an rtp section";
-    return absl::nullopt;
+    return std::nullopt;
   }
-  if (!rtc::GetStringFromJsonObject(rtp_json, "payload_name",
-                                    &config.rtp.payload_name)) {
+  if (!GetStringFromJsonObject(rtp_json, "payload_name",
+                               &config.rtp.payload_name)) {
     RTC_LOG(LS_ERROR) << "rtp.payload_name must be specified";
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (!IsValidCodecType(config.rtp.payload_name)) {
     RTC_LOG(LS_ERROR) << "rtp.payload_name must be VP8,VP9 or H264";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   config.rtp.payload_type =
       GetDefaultTypeForPayloadName(config.rtp.payload_name);
-  if (!rtc::GetIntFromJsonObject(rtp_json, "payload_type",
-                                 &config.rtp.payload_type)) {
+  if (!GetIntFromJsonObject(rtp_json, "payload_type",
+                            &config.rtp.payload_type)) {
     RTC_LOG(LS_WARNING)
         << "rtp.payload_type not specified using default for codec type"
         << config.rtp.payload_type;
@@ -126,11 +126,11 @@ ParseVideoSendStreamConfig(const Json::Value& json) {
 
 }  // namespace
 
-absl::optional<RtpGeneratorOptions> ParseRtpGeneratorOptionsFromFile(
+std::optional<RtpGeneratorOptions> ParseRtpGeneratorOptionsFromFile(
     const std::string& options_file) {
   if (!test::FileExists(options_file)) {
     RTC_LOG(LS_ERROR) << " configuration file does not exist";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Read the configuration file from disk.
@@ -140,7 +140,7 @@ absl::optional<RtpGeneratorOptions> ParseRtpGeneratorOptionsFromFile(
       config_file.Read(raw_json_buffer.data(), raw_json_buffer.size() - 1);
   if (bytes_read == 0) {
     RTC_LOG(LS_ERROR) << "Unable to read the configuration file.";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Parse the file as JSON
@@ -153,16 +153,16 @@ absl::optional<RtpGeneratorOptions> ParseRtpGeneratorOptionsFromFile(
                           &json, &error_message)) {
     RTC_LOG(LS_ERROR) << "Unable to parse the corpus config json file. Error:"
                       << error_message;
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   RtpGeneratorOptions gen_options;
   for (const auto& video_stream_json : json["video_streams"]) {
-    absl::optional<RtpGeneratorOptions::VideoSendStreamConfig>
+    std::optional<RtpGeneratorOptions::VideoSendStreamConfig>
         video_stream_config = ParseVideoSendStreamConfig(video_stream_json);
     if (!video_stream_config.has_value()) {
       RTC_LOG(LS_ERROR) << "Unable to parse the corpus config json file";
-      return absl::nullopt;
+      return std::nullopt;
     }
     gen_options.video_streams.push_back(*video_stream_config);
   }
@@ -237,18 +237,13 @@ RtpGenerator::RtpGenerator(const RtpGeneratorOptions& options)
       encoder_config.simulcast_layers[i].max_framerate = send_config.video_fps;
     }
 
-    encoder_config.video_stream_factory =
-        rtc::make_ref_counted<cricket::EncoderStreamFactory>(
-            video_config.rtp.payload_name, /*max qp*/ 56, /*screencast*/ false,
-            /*screenshare enabled*/ false, encoder_info);
-
     // Setup the fake video stream for this.
     std::unique_ptr<test::FrameGeneratorCapturer> frame_generator =
         std::make_unique<test::FrameGeneratorCapturer>(
             &env_.clock(),
             test::CreateSquareFrameGenerator(send_config.video_width,
                                              send_config.video_height,
-                                             absl::nullopt, absl::nullopt),
+                                             std::nullopt, std::nullopt),
             send_config.video_fps, env_.task_queue_factory());
     frame_generator->Init();
 

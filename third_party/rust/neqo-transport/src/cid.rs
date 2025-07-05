@@ -10,17 +10,17 @@ use std::{
     borrow::Borrow,
     cell::{Ref, RefCell},
     cmp::{max, min},
+    fmt::{self, Debug, Display, Formatter},
     ops::Deref,
     rc::Rc,
 };
 
-use neqo_common::{hex, hex_with_len, qinfo, Decoder, Encoder};
+use neqo_common::{hex, hex_with_len, qdebug, qinfo, Decoder, Encoder};
 use neqo_crypto::{random, randomize};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{
-    frame::FRAME_TYPE_NEW_CONNECTION_ID, packet::PacketBuilder, recovery::RecoveryToken,
-    stats::FrameStats, Error, Res,
+    frame::FrameType, packet::PacketBuilder, recovery::RecoveryToken, stats::FrameStats, Error, Res,
 };
 
 pub const MAX_CONNECTION_ID_LEN: usize = 20;
@@ -34,7 +34,7 @@ const CONNECTION_ID_SEQNO_EMPTY: u64 = u64::MAX - 1;
 
 #[derive(Clone, Default, Eq, Hash, PartialEq)]
 pub struct ConnectionId {
-    pub(crate) cid: SmallVec<[u8; MAX_CONNECTION_ID_LEN]>,
+    cid: SmallVec<[u8; MAX_CONNECTION_ID_LEN]>,
 }
 
 impl ConnectionId {
@@ -83,17 +83,17 @@ impl From<SmallVec<[u8; MAX_CONNECTION_ID_LEN]>> for ConnectionId {
 
 impl<T: AsRef<[u8]> + ?Sized> From<&T> for ConnectionId {
     fn from(buf: &T) -> Self {
-        Self::from(SmallVec::from(buf.as_ref()))
+        Self::from(SmallVec::from_slice(buf.as_ref()))
     }
 }
 
 impl<'a> From<ConnectionIdRef<'a>> for ConnectionId {
     fn from(cidref: ConnectionIdRef<'a>) -> Self {
-        Self::from(SmallVec::from(cidref.cid))
+        Self::from(SmallVec::from_slice(cidref.cid))
     }
 }
 
-impl std::ops::Deref for ConnectionId {
+impl Deref for ConnectionId {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -101,14 +101,14 @@ impl std::ops::Deref for ConnectionId {
     }
 }
 
-impl ::std::fmt::Debug for ConnectionId {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Debug for ConnectionId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "CID {}", hex_with_len(&self.cid))
     }
 }
 
-impl ::std::fmt::Display for ConnectionId {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for ConnectionId {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", hex(&self.cid))
     }
 }
@@ -124,14 +124,14 @@ pub struct ConnectionIdRef<'a> {
     cid: &'a [u8],
 }
 
-impl<'a> ::std::fmt::Debug for ConnectionIdRef<'a> {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Debug for ConnectionIdRef<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "CID {}", hex_with_len(self.cid))
     }
 }
 
-impl<'a> ::std::fmt::Display for ConnectionIdRef<'a> {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for ConnectionIdRef<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", hex(self.cid))
     }
 }
@@ -142,7 +142,7 @@ impl<'a, T: AsRef<[u8]> + ?Sized> From<&'a T> for ConnectionIdRef<'a> {
     }
 }
 
-impl<'a> std::ops::Deref for ConnectionIdRef<'a> {
+impl Deref for ConnectionIdRef<'_> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -150,7 +150,7 @@ impl<'a> std::ops::Deref for ConnectionIdRef<'a> {
     }
 }
 
-impl<'a> PartialEq<ConnectionId> for ConnectionIdRef<'a> {
+impl PartialEq<ConnectionId> for ConnectionIdRef<'_> {
     fn eq(&self, other: &ConnectionId) -> bool {
         self.cid == &other.cid[..]
     }
@@ -210,7 +210,7 @@ pub struct RandomConnectionIdGenerator {
 
 impl RandomConnectionIdGenerator {
     #[must_use]
-    pub fn new(len: usize) -> Self {
+    pub const fn new(len: usize) -> Self {
         Self { len }
     }
 }
@@ -294,7 +294,7 @@ impl ConnectionIdEntry<[u8; 16]> {
     }
 
     /// The sequence number of this entry.
-    pub fn sequence_number(&self) -> u64 {
+    pub const fn sequence_number(&self) -> u64 {
         self.seqno
     }
 
@@ -306,7 +306,7 @@ impl ConnectionIdEntry<[u8; 16]> {
             return false;
         }
 
-        builder.encode_varint(FRAME_TYPE_NEW_CONNECTION_ID);
+        builder.encode_varint(FrameType::NewConnectionId);
         builder.encode_varint(self.seqno);
         builder.encode_varint(0u64);
         builder.encode_vec(1, &self.cid);
@@ -314,17 +314,21 @@ impl ConnectionIdEntry<[u8; 16]> {
         stats.new_connection_id += 1;
         true
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.seqno == CONNECTION_ID_SEQNO_EMPTY || self.cid.is_empty()
+    }
 }
 
 impl ConnectionIdEntry<()> {
     /// Create an initial entry.
-    pub fn initial_local(cid: ConnectionId) -> Self {
+    pub const fn initial_local(cid: ConnectionId) -> Self {
         Self::new(0, cid, ())
     }
 }
 
 impl<SRT: Clone + PartialEq> ConnectionIdEntry<SRT> {
-    pub fn new(seqno: u64, cid: ConnectionId, srt: SRT) -> Self {
+    pub const fn new(seqno: u64, cid: ConnectionId, srt: SRT) -> Self {
         Self { seqno, cid, srt }
     }
 
@@ -340,11 +344,11 @@ impl<SRT: Clone + PartialEq> ConnectionIdEntry<SRT> {
         self.cid = cid;
     }
 
-    pub fn connection_id(&self) -> &ConnectionId {
+    pub const fn connection_id(&self) -> &ConnectionId {
         &self.cid
     }
 
-    pub fn reset_token(&self) -> &SRT {
+    pub const fn reset_token(&self) -> &SRT {
         &self.srt
     }
 }
@@ -405,7 +409,7 @@ impl ConnectionIdStore<[u8; 16]> {
     pub fn retire_prior_to(&mut self, retire_prior: u64) -> Vec<u64> {
         let mut retired = Vec::new();
         self.cids.retain(|e| {
-            if e.seqno < retire_prior {
+            if !e.is_empty() && e.seqno < retire_prior {
                 retired.push(e.seqno);
                 false
             } else {
@@ -510,8 +514,18 @@ impl ConnectionIdManager {
     pub fn retire(&mut self, seqno: u64) {
         // TODO(mt) - consider keeping connection IDs around for a short while.
 
-        self.connection_ids.retire(seqno);
-        self.lost_new_connection_id.retain(|cid| cid.seqno != seqno);
+        let empty_cid = seqno == CONNECTION_ID_SEQNO_EMPTY
+            || self
+                .connection_ids
+                .cids
+                .iter()
+                .any(|c| c.seqno == seqno && c.cid.is_empty());
+        if empty_cid {
+            qdebug!("Connection ID {seqno} is zero-length, not retiring");
+        } else {
+            self.connection_ids.retire(seqno);
+            self.lost_new_connection_id.retain(|cid| cid.seqno != seqno);
+        }
     }
 
     /// During the handshake, a server needs to regard the client's choice of destination
@@ -543,7 +557,14 @@ impl ConnectionIdManager {
         stats: &mut FrameStats,
     ) {
         if self.generator.deref().borrow().generates_empty_cids() {
-            debug_assert_eq!(self.generator.borrow_mut().generate_cid().unwrap().len(), 0);
+            debug_assert_eq!(
+                self.generator
+                    .borrow_mut()
+                    .generate_cid()
+                    .expect("OK in debug assert")
+                    .len(),
+                0
+            );
             return;
         }
 

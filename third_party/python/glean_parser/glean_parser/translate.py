@@ -11,7 +11,6 @@ High-level interface for translating `metrics.yaml` into other formats.
 from pathlib import Path
 import os
 import shutil
-import sys
 import tempfile
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
@@ -26,6 +25,7 @@ from . import markdown
 from . import metrics
 from . import ruby_server
 from . import rust
+from . import rust_server
 from . import swift
 from . import util
 
@@ -67,6 +67,7 @@ OUTPUTTERS = {
     "markdown": Outputter(markdown.output_markdown, []),
     "swift": Outputter(swift.output_swift, ["*.swift"]),
     "rust": Outputter(rust.output_rust, []),
+    "rust_server": Outputter(rust_server.output_rust, []),
 }
 
 
@@ -98,7 +99,6 @@ def transform_metrics(objects):
             raise ValueError(
                 f"No `counter` named {denominator_name} found to be used as"
                 "denominator for {numerators}",
-                file=sys.stderr,
             )
         counters[denominator_name].__class__ = metrics.Denominator
         counters[denominator_name].type = "denominator"

@@ -16,12 +16,13 @@
 #include <algorithm>
 #include <cmath>
 #include <list>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "api/audio/audio_processing_statistics.h"
 #include "api/audio_codecs/audio_encoder.h"
 #include "api/candidate.h"
 #include "api/data_channel_interface.h"
@@ -34,7 +35,6 @@
 #include "api/video/video_timing.h"
 #include "call/call.h"
 #include "media/base/media_channel.h"
-#include "modules/audio_processing/include/audio_processing_statistics.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/p2p_constants.h"
 #include "pc/channel.h"
@@ -902,8 +902,8 @@ LegacyStatsCollector::ExtractSessionAndDataInfo() {
 LegacyStatsCollector::SessionStats LegacyStatsCollector::ExtractSessionInfo_n(
     const std::vector<rtc::scoped_refptr<
         RtpTransceiverProxyWithInternal<RtpTransceiver>>>& transceivers,
-    absl::optional<std::string> sctp_transport_name,
-    absl::optional<std::string> sctp_mid) {
+    std::optional<std::string> sctp_transport_name,
+    std::optional<std::string> sctp_mid) {
   TRACE_EVENT0("webrtc", "LegacyStatsCollector::ExtractSessionInfo_n");
   RTC_DCHECK_RUN_ON(pc_->network_thread());
   rtc::Thread::ScopedDisallowBlockingCalls no_blocking_calls;
@@ -1012,13 +1012,10 @@ void LegacyStatsCollector::ExtractSessionInfo_s(SessionStats& session_stats) {
             StatsReport::kStatsValueNameSrtpCipher,
             rtc::SrtpCryptoSuiteToName(srtp_crypto_suite));
       }
-      int ssl_cipher_suite = channel_iter.ssl_cipher_suite;
-      if (ssl_cipher_suite != rtc::kTlsNullWithNullNull &&
-          rtc::SSLStreamAdapter::SslCipherSuiteToName(ssl_cipher_suite)
-              .length()) {
+      if (channel_iter.tls_cipher_suite_name) {
         channel_report->AddString(
             StatsReport::kStatsValueNameDtlsCipher,
-            rtc::SSLStreamAdapter::SslCipherSuiteToName(ssl_cipher_suite));
+            std::string(*channel_iter.tls_cipher_suite_name));
       }
 
       // Collect stats for non-pooled candidates. Note that the reports

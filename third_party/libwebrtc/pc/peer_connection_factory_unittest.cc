@@ -15,14 +15,19 @@
 #include <utility>
 #include <vector>
 
+#include "api/audio/audio_device.h"
 #include "api/audio/audio_mixer.h"
+#include "api/audio/audio_processing.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/create_peerconnection_factory.h"
 #include "api/data_channel_interface.h"
 #include "api/enable_media.h"
+#include "api/enable_media_with_defaults.h"
 #include "api/environment/environment_factory.h"
+#include "api/field_trials.h"
 #include "api/jsep.h"
+#include "api/make_ref_counted.h"
 #include "api/media_stream_interface.h"
 #include "api/task_queue/default_task_queue_factory.h"
 #include "api/test/mock_packet_socket_factory.h"
@@ -37,12 +42,11 @@
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp9_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_open_h264_adapter.h"
 #include "media/base/fake_frame_source.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
-#include "p2p/base/fake_port_allocator.h"
+#include "modules/audio_processing/include/mock_audio_processing.h"
 #include "p2p/base/port.h"
 #include "p2p/base/port_allocator.h"
 #include "p2p/base/port_interface.h"
+#include "p2p/test/fake_port_allocator.h"
 #include "pc/test/fake_audio_capture_module.h"
 #include "pc/test/fake_video_track_source.h"
 #include "pc/test/mock_peer_connection_observers.h"
@@ -53,7 +57,6 @@
 #include "rtc_base/time_utils.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
-#include "test/scoped_key_value_config.h"
 
 #ifdef WEBRTC_ANDROID
 #include "pc/test/android_test_initializer.h"
@@ -65,11 +68,14 @@ namespace webrtc {
 namespace {
 
 using ::testing::_;
+using ::testing::A;
 using ::testing::AtLeast;
 using ::testing::InvokeWithoutArgs;
 using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
+using ::webrtc::test::MockAudioProcessing;
+using ::webrtc::test::MockAudioProcessingBuilder;
 
 static const char kStunIceServer[] = "stun:stun.l.google.com:19302";
 static const char kTurnIceServer[] = "turn:test.com:1234";
@@ -117,7 +123,7 @@ class MockNetworkManager : public rtc::NetworkManager {
   MOCK_METHOD(std::vector<const rtc::Network*>,
               GetNetworks,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(std::vector<const rtc::Network*>,
               GetAnyAddressNetworks,
               (),
@@ -154,7 +160,8 @@ class PeerConnectionFactoryTest : public ::testing::Test {
     packet_socket_factory_.reset(
         new rtc::BasicPacketSocketFactory(socket_server_.get()));
     port_allocator_.reset(new cricket::FakePortAllocator(
-        rtc::Thread::Current(), packet_socket_factory_.get(), &field_trials_));
+        rtc::Thread::Current(), packet_socket_factory_.get(),
+        field_trials_.get()));
     raw_port_allocator_ = port_allocator_.get();
   }
 
@@ -249,7 +256,7 @@ class PeerConnectionFactoryTest : public ::testing::Test {
     }
   }
 
-  test::ScopedKeyValueConfig field_trials_;
+  std::unique_ptr<FieldTrials> field_trials_ = FieldTrials::CreateNoGlobal("");
   std::unique_ptr<rtc::SocketServer> socket_server_;
   rtc::AutoSocketServerThread main_thread_;
   rtc::scoped_refptr<PeerConnectionFactoryInterface> factory_;
@@ -718,6 +725,46 @@ TEST(PeerConnectionFactoryDependenciesTest, UsesPacketSocketFactory) {
   ASSERT_TRUE(pc.ok());
 
   called.Wait(kWaitTimeout);
+}
+
+TEST(PeerConnectionFactoryDependenciesTest,
+     CreatesAudioProcessingWithProvidedFactory) {
+  auto ap_factory = std::make_unique<MockAudioProcessingBuilder>();
+  auto audio_processing = make_ref_counted<NiceMock<MockAudioProcessing>>();
+  // Validate that provided audio_processing is used by expecting that a request
+  // to start AEC Dump with unnatural size limit is propagated to the
+  // `audio_processing`.
+  EXPECT_CALL(*audio_processing, CreateAndAttachAecDump(A<FILE*>(), 24'242, _));
+  EXPECT_CALL(*ap_factory, Build).WillOnce(Return(audio_processing));
+
+  PeerConnectionFactoryDependencies pcf_dependencies;
+  pcf_dependencies.adm = FakeAudioCaptureModule::Create();
+  pcf_dependencies.audio_processing_builder = std::move(ap_factory);
+  EnableMediaWithDefaults(pcf_dependencies);
+
+  scoped_refptr<PeerConnectionFactoryInterface> pcf =
+      CreateModularPeerConnectionFactory(std::move(pcf_dependencies));
+  pcf->StartAecDump(nullptr, 24'242);
+}
+
+TEST(PeerConnectionFactoryDependenciesTest, UsesAudioProcessingWhenProvided) {
+  // Test legacy way of providing audio_processing.
+  // TODO: bugs.webrtc.org/369904700 - Delete this test when webrtc users no
+  // longer set PeerConnectionFactoryDependencies::audio_processing.
+  auto audio_processing = make_ref_counted<NiceMock<MockAudioProcessing>>();
+  EXPECT_CALL(*audio_processing, CreateAndAttachAecDump(A<FILE*>(), 24'242, _));
+
+  PeerConnectionFactoryDependencies pcf_dependencies;
+  pcf_dependencies.adm = FakeAudioCaptureModule::Create();
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  pcf_dependencies.audio_processing = std::move(audio_processing);
+#pragma clang diagnostic pop
+  EnableMediaWithDefaults(pcf_dependencies);
+
+  scoped_refptr<PeerConnectionFactoryInterface> pcf =
+      CreateModularPeerConnectionFactory(std::move(pcf_dependencies));
+  pcf->StartAecDump(nullptr, 24'242);
 }
 
 }  // namespace

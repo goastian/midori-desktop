@@ -92,12 +92,12 @@ void VCMTiming::set_min_playout_delay(TimeDelta min_playout_delay) {
   }
 }
 
-void VCMTiming::set_max_playout_delay(TimeDelta max_playout_delay) {
+void VCMTiming::set_playout_delay(const VideoPlayoutDelay& playout_delay) {
   MutexLock lock(&mutex_);
-  if (max_playout_delay_ != max_playout_delay) {
-    CheckDelaysValid(min_playout_delay_, max_playout_delay);
-    max_playout_delay_ = max_playout_delay;
-  }
+  // No need to call `CheckDelaysValid` as the same invariant (min <= max)
+  // is guaranteed by the `VideoPlayoutDelay` type.
+  min_playout_delay_ = playout_delay.min();
+  max_playout_delay_ = playout_delay.max();
 }
 
 void VCMTiming::SetJitterDelay(TimeDelta jitter_delay) {
@@ -201,8 +201,12 @@ Timestamp VCMTiming::RenderTimeInternal(uint32_t frame_timestamp,
   }
   // Note that TimestampExtrapolator::ExtrapolateLocalTime is not a const
   // method; it mutates the object's wraparound state.
-  Timestamp estimated_complete_time =
-      ts_extrapolator_->ExtrapolateLocalTime(frame_timestamp).value_or(now);
+  std::optional<Timestamp> local_time =
+      ts_extrapolator_->ExtrapolateLocalTime(frame_timestamp);
+  if (!local_time.has_value()) {
+    return now;
+  }
+  Timestamp estimated_complete_time = *local_time;
 
   // Make sure the actual delay stays in the range of `min_playout_delay_`
   // and `max_playout_delay_`.
@@ -292,13 +296,13 @@ void VCMTiming::SetTimingFrameInfo(const TimingFrameInfo& info) {
   timing_frame_info_.emplace(info);
 }
 
-absl::optional<TimingFrameInfo> VCMTiming::GetTimingFrameInfo() {
+std::optional<TimingFrameInfo> VCMTiming::GetTimingFrameInfo() {
   MutexLock lock(&mutex_);
   return timing_frame_info_;
 }
 
 void VCMTiming::SetMaxCompositionDelayInFrames(
-    absl::optional<int> max_composition_delay_in_frames) {
+    std::optional<int> max_composition_delay_in_frames) {
   MutexLock lock(&mutex_);
   max_composition_delay_in_frames_ = max_composition_delay_in_frames;
 }

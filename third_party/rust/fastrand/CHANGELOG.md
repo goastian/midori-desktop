@@ -1,3 +1,24 @@
+# Version 2.1.1
+
+- Remove support for 128-bit targets, as they are not supported by rustc yet. (#87)
+
+# Version 2.1.0
+
+- Change the RNG algorithm and the way that the seed is computed. This will cause
+  the algorithm to emit different constants for different seeds, hence the minor
+  SemVer change.
+  - Update to the final WyRand v4.2 constants for better entropy. (#82)
+  - Remove an unnecessary seed modification. (#73)
+
+# Version 2.0.2
+
+- Slight restructuring of the `with_seed` function. (#79)
+
+# Version 2.0.1
+
+- Clarify documentation for the `fork()` method. (#62)
+- Mention `fastrand-contrib` in documentation. (#70)
+
 # Version 2.0.0
 
 - **Breaking:** Remove interior mutability from `Rng`. (#47)

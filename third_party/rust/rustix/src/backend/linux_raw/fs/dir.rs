@@ -81,7 +81,7 @@ impl Dir {
 
     /// `readdir(self)`, where `None` means the end of the directory.
     pub fn read(&mut self) -> Option<io::Result<DirEntry>> {
-        // If we've seen errors, don't continue to try to read anyting further.
+        // If we've seen errors, don't continue to try to read anything further.
         if self.any_errors {
             return None;
         }
@@ -234,7 +234,7 @@ impl Dir {
 
     /// `fchdir(self)`
     #[cfg(feature = "process")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "process")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "process")))]
     #[inline]
     pub fn chdir(&self) -> io::Result<()> {
         fchdir(&self.fd)

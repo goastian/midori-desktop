@@ -11,11 +11,8 @@ use std::{cmp::min, collections::VecDeque};
 use neqo_common::Encoder;
 
 use crate::{
-    events::OutgoingDatagramOutcome,
-    frame::{FRAME_TYPE_DATAGRAM, FRAME_TYPE_DATAGRAM_WITH_LEN},
-    packet::PacketBuilder,
-    recovery::RecoveryToken,
-    ConnectionEvents, Error, Res, Stats,
+    events::OutgoingDatagramOutcome, frame::FrameType, packet::PacketBuilder,
+    recovery::RecoveryToken, ConnectionEvents, Error, Res, Stats,
 };
 
 pub const MAX_QUIC_DATAGRAM: u64 = 65535;
@@ -28,10 +25,7 @@ pub enum DatagramTracking {
 
 impl From<Option<u64>> for DatagramTracking {
     fn from(v: Option<u64>) -> Self {
-        match v {
-            Some(id) => Self::Id(id),
-            None => Self::None,
-        }
+        v.map_or(Self::None, Self::Id)
     }
 }
 
@@ -50,13 +44,12 @@ struct QuicDatagram {
 }
 
 impl QuicDatagram {
-    fn tracking(&self) -> &DatagramTracking {
+    const fn tracking(&self) -> &DatagramTracking {
         &self.tracking
     }
 }
 
 impl AsRef<[u8]> for QuicDatagram {
-    #[must_use]
     fn as_ref(&self) -> &[u8] {
         &self.data[..]
     }
@@ -93,7 +86,7 @@ impl QuicDatagrams {
         }
     }
 
-    pub fn remote_datagram_size(&self) -> u64 {
+    pub const fn remote_datagram_size(&self) -> u64 {
         self.remote_datagram_size
     }
 
@@ -114,13 +107,14 @@ impl QuicDatagrams {
             let len = dgram.as_ref().len();
             if builder.remaining() > len {
                 // We need 1 more than `len` for the Frame type.
-                let length_len = Encoder::varint_len(u64::try_from(len).unwrap());
+                let length_len =
+                    Encoder::varint_len(u64::try_from(len).expect("usize fits in u64"));
                 // Include a length if there is space for another frame after this one.
                 if builder.remaining() >= 1 + length_len + len + PacketBuilder::MINIMUM_FRAME_SIZE {
-                    builder.encode_varint(FRAME_TYPE_DATAGRAM_WITH_LEN);
+                    builder.encode_varint(FrameType::DatagramWithLen);
                     builder.encode_vvec(dgram.as_ref());
                 } else {
-                    builder.encode_varint(FRAME_TYPE_DATAGRAM);
+                    builder.encode_varint(FrameType::Datagram);
                     builder.encode(dgram.as_ref());
                     builder.mark_full();
                 }
@@ -147,35 +141,35 @@ impl QuicDatagrams {
     /// # Error
     ///
     /// The function returns `TooMuchData` if the supply buffer is bigger than
-    /// the allowed remote datagram size. The funcion does not check if the
+    /// the allowed remote datagram size. The function does not check if the
     /// datagram can fit into a packet (i.e. MTU limit). This is checked during
     /// creation of an actual packet and the datagram will be dropped if it does
     /// not fit into the packet.
     pub fn add_datagram(
         &mut self,
-        buf: &[u8],
+        data: Vec<u8>,
         tracking: DatagramTracking,
         stats: &mut Stats,
     ) -> Res<()> {
-        if u64::try_from(buf.len()).unwrap() > self.remote_datagram_size {
+        if u64::try_from(data.len())? > self.remote_datagram_size {
             return Err(Error::TooMuchData);
         }
         if self.datagrams.len() == self.max_queued_outgoing_datagrams {
             self.conn_events.datagram_outcome(
-                self.datagrams.pop_front().unwrap().tracking(),
+                self.datagrams
+                    .pop_front()
+                    .ok_or(Error::InternalError)?
+                    .tracking(),
                 OutgoingDatagramOutcome::DroppedQueueFull,
             );
             stats.datagram_tx.dropped_queue_full += 1;
         }
-        self.datagrams.push_back(QuicDatagram {
-            data: buf.to_vec(),
-            tracking,
-        });
+        self.datagrams.push_back(QuicDatagram { data, tracking });
         Ok(())
     }
 
     pub fn handle_datagram(&self, data: &[u8], stats: &mut Stats) -> Res<()> {
-        if self.local_datagram_size < u64::try_from(data.len()).unwrap() {
+        if self.local_datagram_size < u64::try_from(data.len())? {
             return Err(Error::ProtocolViolation);
         }
         self.conn_events

@@ -128,7 +128,7 @@ TEST(SplTest, AddSubSatW32) {
           INT32_MIN, std::min<int64_t>(INT32_MAX, static_cast<int64_t>(a) + b));
       const int64_t diff = std::max<int64_t>(
           INT32_MIN, std::min<int64_t>(INT32_MAX, static_cast<int64_t>(a) - b));
-      rtc::StringBuilder ss;
+      webrtc::StringBuilder ss;
       ss << a << " +/- " << b << ": sum " << sum << ", diff " << diff;
       SCOPED_TRACE(ss.str());
       EXPECT_EQ(sum, WebRtcSpl_AddSatW32(a, b));
@@ -163,7 +163,12 @@ TEST(SplTest, CountLeadingZeros64) {
   }
 }
 
+// TODO(bugs.webrtc.org/345674544): Fix/enable.
+#if defined(__has_feature) && __has_feature(undefined_behavior_sanitizer)
+TEST(SplTest, DISABLED_MathOperationsTest) {
+#else
 TEST(SplTest, MathOperationsTest) {
+#endif
   int A = 1134567892;
   int32_t num = 117;
   int32_t den = -5;
@@ -494,9 +499,9 @@ TEST(SplTest, FilterTest) {
                             kFilterOrder + 1, 1);
   EXPECT_EQ(0, data_out[kFilterOrder]);
 
-  EXPECT_EQ(kVectorSize, WebRtcSpl_FilterAR(A5, 5, data_in, kVectorSize, bState,
-                                            kVectorSize, bStateLow, kVectorSize,
-                                            data_out, bTmp16Low, kVectorSize));
+  EXPECT_EQ(kVectorSize,
+            WebRtcSpl_FilterAR(A5, 5, data_in, kVectorSize, bState, kVectorSize,
+                               bStateLow, data_out, bTmp16Low));
 }
 
 TEST(SplTest, RandTest) {

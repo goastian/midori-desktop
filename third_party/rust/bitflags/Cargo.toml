@@ -13,12 +13,18 @@
 edition = "2021"
 rust-version = "1.56.0"
 name = "bitflags"
-version = "2.5.0"
+version = "2.9.0"
 authors = ["The Rust Project Developers"]
+build = false
 exclude = [
     "/tests",
     "/.github",
 ]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = """
 A macro to generate structures which behave like bitflags.
 """
@@ -38,12 +44,48 @@ repository = "https://github.com/bitflags/bitflags"
 [package.metadata.docs.rs]
 features = ["example_generated"]
 
+[features]
+example_generated = []
+rustc-dep-of-std = [
+    "core",
+    "compiler_builtins",
+]
+std = []
+
+[lib]
+name = "bitflags"
+path = "src/lib.rs"
+
+[[example]]
+name = "custom_bits_type"
+path = "examples/custom_bits_type.rs"
+
+[[example]]
+name = "custom_derive"
+path = "examples/custom_derive.rs"
+
+[[example]]
+name = "fmt"
+path = "examples/fmt.rs"
+
+[[example]]
+name = "macro_free"
+path = "examples/macro_free.rs"
+
+[[example]]
+name = "serde"
+path = "examples/serde.rs"
+
+[[bench]]
+name = "parse"
+path = "benches/parse.rs"
+
 [dependencies.arbitrary]
 version = "1.0"
 optional = true
 
 [dependencies.bytemuck]
-version = "1.0"
+version = "1.12"
 optional = true
 
 [dependencies.compiler_builtins]
@@ -56,7 +98,7 @@ optional = true
 package = "rustc-std-workspace-core"
 
 [dependencies.serde]
-version = "1.0"
+version = "1.0.103"
 optional = true
 default-features = false
 
@@ -65,31 +107,24 @@ version = "1.0"
 features = ["derive"]
 
 [dev-dependencies.bytemuck]
-version = "1.0"
+version = "1.12.2"
 features = ["derive"]
 
 [dev-dependencies.rustversion]
 version = "1.0"
 
 [dev-dependencies.serde_derive]
-version = "1.0"
+version = "1.0.103"
 
 [dev-dependencies.serde_json]
 version = "1.0"
 
 [dev-dependencies.serde_test]
-version = "1.0"
+version = "1.0.19"
 
 [dev-dependencies.trybuild]
-version = "1.0"
+version = "1.0.18"
 
 [dev-dependencies.zerocopy]
-version = "0.6"
-
-[features]
-example_generated = []
-rustc-dep-of-std = [
-    "core",
-    "compiler_builtins",
-]
-std = []
+version = "0.8"
+features = ["derive"]

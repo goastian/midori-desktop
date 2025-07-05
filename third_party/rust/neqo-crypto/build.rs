@@ -4,6 +4,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![expect(
+    clippy::unwrap_used,
+    clippy::iter_over_hash_type,
+    reason = "OK in a build script."
+)]
+
 use std::{
     collections::HashMap,
     env, fs,
@@ -54,19 +60,12 @@ struct Bindings {
     cplusplus: bool,
 }
 
-fn is_debug() -> bool {
-    // Check the build profile and not whether debug symbols are enabled (i.e.,
-    // `env::var("DEBUG")`), because we enable those for benchmarking/profiling and still want
-    // to build NSS in release mode.
-    env::var("PROFILE").unwrap_or_default() == "debug"
-}
-
 // bindgen needs access to libclang.
 // On windows, this doesn't just work, you have to set LIBCLANG_PATH.
 // Rather than download the 400Mb+ files, like gecko does, let's just reuse their work.
 fn setup_clang() {
     // If this isn't Windows, or we're in CI, then we don't need to do anything.
-    if env::consts::OS != "windows" || env::var("GITHUB_WORKFLOW").unwrap() == "CI" {
+    if env::consts::OS != "windows" || env::var("GITHUB_WORKFLOW").unwrap_or_default() == "CI" {
         return;
     }
     println!("rerun-if-env-changed=LIBCLANG_PATH");
@@ -103,20 +102,20 @@ fn get_bash() -> PathBuf {
 
     // When running under MOZILLABUILD, we need to make sure not to invoke
     // another instance of bash that might be sitting around (like WSL).
-    match env::var("MOZILLABUILD") {
-        Ok(d) => PathBuf::from(d).join("msys").join("bin").join("bash.exe"),
-        Err(_) => PathBuf::from("bash"),
-    }
+    env::var("MOZILLABUILD").map_or_else(
+        |_| PathBuf::from("bash"),
+        |d| PathBuf::from(d).join("msys").join("bin").join("bash.exe"),
+    )
 }
 
-fn build_nss(dir: PathBuf) {
+fn build_nss(dir: PathBuf, nsstarget: &str) {
     let mut build_nss = vec![
         String::from("./build.sh"),
         String::from("-Ddisable_tests=1"),
         // Generate static libraries in addition to shared libraries.
         String::from("--static"),
     ];
-    if !is_debug() {
+    if nsstarget == "Release" {
         build_nss.push(String::from("-o"));
     }
     if let Ok(d) = env::var("NSS_JOBS") {
@@ -136,21 +135,19 @@ fn build_nss(dir: PathBuf) {
 }
 
 fn dynamic_link() {
-    let libs = if env::consts::OS == "windows" {
-        &["nssutil3.dll", "nss3.dll", "ssl3.dll"]
+    let dynamic_libs = if env::consts::OS == "windows" {
+        [
+            "nssutil3.dll",
+            "nss3.dll",
+            "ssl3.dll",
+            "libplds4.dll",
+            "libplc4.dll",
+            "libnspr4.dll",
+        ]
     } else {
-        &["nssutil3", "nss3", "ssl3"]
+        ["nssutil3", "nss3", "ssl3", "plds4", "plc4", "nspr4"]
     };
-    dynamic_link_both(libs);
-}
-
-fn dynamic_link_both(extra_libs: &[&str]) {
-    let nspr_libs = if env::consts::OS == "windows" {
-        &["libplds4", "libplc4", "libnspr4"]
-    } else {
-        &["plds4", "plc4", "nspr4"]
-    };
-    for lib in nspr_libs.iter().chain(extra_libs) {
+    for lib in dynamic_libs {
         println!("cargo:rustc-link-lib=dylib={lib}");
     }
 }
@@ -160,35 +157,71 @@ fn static_link() {
         "certdb",
         "certhi",
         "cryptohi",
-        "freebl",
+        "freebl_static",
+        if env::consts::OS == "windows" {
+            "libnspr4"
+        } else {
+            "nspr4"
+        },
         "nss_static",
         "nssb",
         "nssdev",
         "nsspki",
         "nssutil",
-        "pk11wrap",
-        "pkcs12",
-        "pkcs7",
-        "smime",
+        "pk11wrap_static",
+        if env::consts::OS == "windows" {
+            "libplc4"
+        } else {
+            "plc4"
+        },
+        if env::consts::OS == "windows" {
+            "libplds4"
+        } else {
+            "plds4"
+        },
         "softokn_static",
         "ssl",
     ];
-    if env::consts::OS != "macos" {
+    // macOS always dynamically links against the system sqlite library.
+    // See https://github.com/nss-dev/nss/blob/a8c22d8fc0458db3e261acc5e19b436ab573a961/coreconf/Darwin.mk#L130-L135
+    if env::consts::OS == "macos" {
+        println!("cargo:rustc-link-lib=dylib=sqlite3");
+    } else {
         static_libs.push("sqlite");
+    }
+    // Hardware specific libs.
+    // See https://github.com/mozilla/application-services/blob/0a2dac76f979b8bcfb6bacb5424b50f58520b8fe/components/support/rc_crypto/nss/nss_build_common/src/lib.rs#L127-L157
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    // https://searchfox.org/nss/rev/0d5696b3edce5124353f03159d2aa15549db8306/lib/freebl/freebl.gyp#508-542
+    if target_arch == "arm" || target_arch == "aarch64" {
+        static_libs.push("armv8_c_lib");
+    }
+    if target_arch == "x86_64" || target_arch == "x86" {
+        static_libs.push("gcm-aes-x86_c_lib");
+        static_libs.push("sha-x86_c_lib");
+    }
+    if target_arch == "arm" {
+        static_libs.push("gcm-aes-arm32-neon_c_lib");
+    }
+    if target_arch == "aarch64" {
+        static_libs.push("gcm-aes-aarch64_c_lib");
+    }
+    if target_arch == "x86_64" {
+        static_libs.push("hw-acc-crypto-avx");
+        static_libs.push("hw-acc-crypto-avx2");
+    }
+    // https://searchfox.org/nss/rev/08c4d05078d00089f8d7540651b0717a9d66f87e/lib/freebl/freebl.gyp#315-324
+    if (target_os == "android" || target_os == "linux") && target_arch == "x86_64" {
+        static_libs.push("intel-gcm-wrap_c_lib");
+        // https://searchfox.org/nss/rev/08c4d05078d00089f8d7540651b0717a9d66f87e/lib/freebl/freebl.gyp#43-47
+        if (target_os == "android" || target_os == "linux") && target_arch == "x86_64" {
+            static_libs.push("intel-gcm-s_lib");
+        }
     }
     for lib in static_libs {
         println!("cargo:rustc-link-lib=static={lib}");
     }
-
-    // Dynamic libs that aren't transitively included by NSS libs.
-    let mut other_libs = Vec::new();
-    if env::consts::OS != "windows" {
-        other_libs.extend_from_slice(&["pthread", "dl", "c", "z"]);
-    }
-    if env::consts::OS == "macos" {
-        other_libs.push("sqlite3");
-    }
-    dynamic_link_both(&other_libs);
 }
 
 fn get_includes(nsstarget: &Path, nssdist: &Path) -> Vec<PathBuf> {
@@ -317,15 +350,18 @@ fn setup_standalone(nss: &str) -> Vec<String> {
         "The NSS_DIR environment variable is expected to be an absolute path."
     );
 
-    build_nss(nss.clone());
-
     // $NSS_DIR/../dist/
     let nssdist = nss.parent().unwrap().join("dist");
     println!("cargo:rerun-if-env-changed=NSS_TARGET");
     let nsstarget = env::var("NSS_TARGET")
         .unwrap_or_else(|_| fs::read_to_string(nssdist.join("latest")).unwrap());
-    let nsstarget = nssdist.join(nsstarget.trim());
 
+    // If NSS_PREBUILT is set, we assume that the NSS libraries are already built.
+    if env::var("NSS_PREBUILT").is_err() {
+        build_nss(nss, &nsstarget);
+    }
+
+    let nsstarget = nssdist.join(nsstarget.trim());
     let includes = get_includes(&nsstarget, &nssdist);
 
     let nsslibdir = nsstarget.join("lib");
@@ -333,7 +369,11 @@ fn setup_standalone(nss: &str) -> Vec<String> {
         "cargo:rustc-link-search=native={}",
         nsslibdir.to_str().unwrap()
     );
-    if is_debug() || env::consts::OS == "windows" {
+    if env::var("CARGO_CFG_FUZZING").is_ok()
+        || env::var("PROFILE").unwrap_or_default() == "debug"
+        // FIXME: NSPR doesn't build proper dynamic libraries on Windows.
+        || env::consts::OS == "windows"
+    {
         static_link();
     } else {
         dynamic_link();
@@ -349,7 +389,10 @@ fn setup_standalone(nss: &str) -> Vec<String> {
 
 #[cfg(feature = "gecko")]
 fn setup_for_gecko() -> Vec<String> {
-    use mozbuild::TOPOBJDIR;
+    use mozbuild::{
+        config::{BINDGEN_SYSTEM_FLAGS, NSPR_CFLAGS, NSS_CFLAGS},
+        TOPOBJDIR,
+    };
 
     let fold_libs = mozbuild::config::MOZ_FOLD_LIBS;
     let libs = if fold_libs {
@@ -393,13 +436,11 @@ fn setup_for_gecko() -> Vec<String> {
         );
     }
 
-    let flags_path = TOPOBJDIR.join("netwerk/socket/neqo/extra-bindgen-flags");
-
-    println!("cargo:rerun-if-changed={}", flags_path.to_str().unwrap());
-    let mut flags = fs::read_to_string(flags_path)
-        .expect("Failed to read extra-bindgen-flags file")
-        .split_whitespace()
-        .map(String::from)
+    let mut flags = BINDGEN_SYSTEM_FLAGS
+        .iter()
+        .chain(&NSPR_CFLAGS)
+        .chain(&NSS_CFLAGS)
+        .map(|s| s.to_string())
         .collect::<Vec<_>>();
 
     flags.push(String::from("-include"));

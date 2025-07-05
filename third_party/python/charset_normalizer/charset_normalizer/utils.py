@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import logging
 import unicodedata
@@ -5,9 +7,11 @@ from codecs import IncrementalDecoder
 from encodings.aliases import aliases
 from functools import lru_cache
 from re import findall
-from typing import Generator, List, Optional, Set, Tuple, Union
+from typing import Generator
 
-from _multibytecodec import MultibyteIncrementalDecoder
+from _multibytecodec import (  # type: ignore[import-not-found,import]
+    MultibyteIncrementalDecoder,
+)
 
 from .constant import (
     ENCODING_MARKS,
@@ -16,6 +20,7 @@ from .constant import (
     UNICODE_RANGES_COMBINED,
     UNICODE_SECONDARY_RANGE_KEYWORD,
     UTF8_MAXIMAL_ALLOCATION,
+    COMMON_CJK_CHARACTERS,
 )
 
 
@@ -23,7 +28,7 @@ from .constant import (
 def is_accentuated(character: str) -> bool:
     try:
         description: str = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
     return (
         "WITH GRAVE" in description
@@ -32,6 +37,8 @@ def is_accentuated(character: str) -> bool:
         or "WITH DIAERESIS" in description
         or "WITH CIRCUMFLEX" in description
         or "WITH TILDE" in description
+        or "WITH MACRON" in description
+        or "WITH RING ABOVE" in description
     )
 
 
@@ -41,13 +48,13 @@ def remove_accent(character: str) -> str:
     if not decomposed:
         return character
 
-    codes: List[str] = decomposed.split(" ")
+    codes: list[str] = decomposed.split(" ")
 
     return chr(int(codes[0], 16))
 
 
 @lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
-def unicode_range(character: str) -> Optional[str]:
+def unicode_range(character: str) -> str | None:
     """
     Retrieve the Unicode range official name from a single character.
     """
@@ -64,18 +71,9 @@ def unicode_range(character: str) -> Optional[str]:
 def is_latin(character: str) -> bool:
     try:
         description: str = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
     return "LATIN" in description
-
-
-@lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
-def is_ascii(character: str) -> bool:
-    try:
-        character.encode("ascii")
-    except UnicodeEncodeError:
-        return False
-    return True
 
 
 @lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
@@ -85,7 +83,7 @@ def is_punctuation(character: str) -> bool:
     if "P" in character_category:
         return True
 
-    character_range: Optional[str] = unicode_range(character)
+    character_range: str | None = unicode_range(character)
 
     if character_range is None:
         return False
@@ -100,22 +98,22 @@ def is_symbol(character: str) -> bool:
     if "S" in character_category or "N" in character_category:
         return True
 
-    character_range: Optional[str] = unicode_range(character)
+    character_range: str | None = unicode_range(character)
 
     if character_range is None:
         return False
 
-    return "Forms" in character_range
+    return "Forms" in character_range and character_category != "Lo"
 
 
 @lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
 def is_emoticon(character: str) -> bool:
-    character_range: Optional[str] = unicode_range(character)
+    character_range: str | None = unicode_range(character)
 
     if character_range is None:
         return False
 
-    return "Emoticons" in character_range
+    return "Emoticons" in character_range or "Pictographs" in character_range
 
 
 @lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
@@ -133,17 +131,11 @@ def is_case_variable(character: str) -> bool:
     return character.islower() != character.isupper()
 
 
-def is_private_use_only(character: str) -> bool:
-    character_category: str = unicodedata.category(character)
-
-    return character_category == "Co"
-
-
 @lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
 def is_cjk(character: str) -> bool:
     try:
         character_name = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
 
     return "CJK" in character_name
@@ -153,7 +145,7 @@ def is_cjk(character: str) -> bool:
 def is_hiragana(character: str) -> bool:
     try:
         character_name = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
 
     return "HIRAGANA" in character_name
@@ -163,7 +155,7 @@ def is_hiragana(character: str) -> bool:
 def is_katakana(character: str) -> bool:
     try:
         character_name = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
 
     return "KATAKANA" in character_name
@@ -173,7 +165,7 @@ def is_katakana(character: str) -> bool:
 def is_hangul(character: str) -> bool:
     try:
         character_name = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
 
     return "HANGUL" in character_name
@@ -183,10 +175,35 @@ def is_hangul(character: str) -> bool:
 def is_thai(character: str) -> bool:
     try:
         character_name = unicodedata.name(character)
-    except ValueError:
+    except ValueError:  # Defensive: unicode database outdated?
         return False
 
     return "THAI" in character_name
+
+
+@lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
+def is_arabic(character: str) -> bool:
+    try:
+        character_name = unicodedata.name(character)
+    except ValueError:  # Defensive: unicode database outdated?
+        return False
+
+    return "ARABIC" in character_name
+
+
+@lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
+def is_arabic_isolated_form(character: str) -> bool:
+    try:
+        character_name = unicodedata.name(character)
+    except ValueError:  # Defensive: unicode database outdated?
+        return False
+
+    return "ARABIC" in character_name and "ISOLATED FORM" in character_name
+
+
+@lru_cache(maxsize=UTF8_MAXIMAL_ALLOCATION)
+def is_cjk_uncommon(character: str) -> bool:
+    return character not in COMMON_CJK_CHARACTERS
 
 
 @lru_cache(maxsize=len(UNICODE_RANGES_COMBINED))
@@ -199,13 +216,13 @@ def is_unprintable(character: str) -> bool:
     return (
         character.isspace() is False  # includes \n \t \r \v
         and character.isprintable() is False
-        and character != "\x1A"  # Why? Its the ASCII substitute character.
+        and character != "\x1a"  # Why? Its the ASCII substitute character.
         and character != "\ufeff"  # bug discovered in Python,
         # Zero Width No-Break Space located in 	Arabic Presentation Forms-B, Unicode 1.1 not acknowledged as space.
     )
 
 
-def any_specified_encoding(sequence: bytes, search_zone: int = 4096) -> Optional[str]:
+def any_specified_encoding(sequence: bytes, search_zone: int = 8192) -> str | None:
     """
     Extract using ASCII-only decoder any specified encoding in the first n-bytes.
     """
@@ -214,7 +231,7 @@ def any_specified_encoding(sequence: bytes, search_zone: int = 4096) -> Optional
 
     seq_len: int = len(sequence)
 
-    results: List[str] = findall(
+    results: list[str] = findall(
         RE_POSSIBLE_ENCODING_INDICATION,
         sequence[: min(seq_len, search_zone)].decode("ascii", errors="ignore"),
     )
@@ -253,18 +270,18 @@ def is_multi_byte_encoding(name: str) -> bool:
         "utf_32_be",
         "utf_7",
     } or issubclass(
-        importlib.import_module("encodings.{}".format(name)).IncrementalDecoder,
+        importlib.import_module(f"encodings.{name}").IncrementalDecoder,
         MultibyteIncrementalDecoder,
     )
 
 
-def identify_sig_or_bom(sequence: bytes) -> Tuple[Optional[str], bytes]:
+def identify_sig_or_bom(sequence: bytes) -> tuple[str | None, bytes]:
     """
     Identify and extract SIG/BOM in given sequence.
     """
 
     for iana_encoding in ENCODING_MARKS:
-        marks: Union[bytes, List[bytes]] = ENCODING_MARKS[iana_encoding]
+        marks: bytes | list[bytes] = ENCODING_MARKS[iana_encoding]
 
         if isinstance(marks, bytes):
             marks = [marks]
@@ -281,6 +298,7 @@ def should_strip_sig_or_bom(iana_encoding: str) -> bool:
 
 
 def iana_name(cp_name: str, strict: bool = True) -> str:
+    """Returns the Python normalized encoding name (Not the IANA official name)."""
     cp_name = cp_name.lower().replace("-", "_")
 
     encoding_alias: str
@@ -291,35 +309,17 @@ def iana_name(cp_name: str, strict: bool = True) -> str:
             return encoding_iana
 
     if strict:
-        raise ValueError("Unable to retrieve IANA for '{}'".format(cp_name))
+        raise ValueError(f"Unable to retrieve IANA for '{cp_name}'")
 
     return cp_name
-
-
-def range_scan(decoded_sequence: str) -> List[str]:
-    ranges: Set[str] = set()
-
-    for character in decoded_sequence:
-        character_range: Optional[str] = unicode_range(character)
-
-        if character_range is None:
-            continue
-
-        ranges.add(character_range)
-
-    return list(ranges)
 
 
 def cp_similarity(iana_name_a: str, iana_name_b: str) -> float:
     if is_multi_byte_encoding(iana_name_a) or is_multi_byte_encoding(iana_name_b):
         return 0.0
 
-    decoder_a = importlib.import_module(
-        "encodings.{}".format(iana_name_a)
-    ).IncrementalDecoder
-    decoder_b = importlib.import_module(
-        "encodings.{}".format(iana_name_b)
-    ).IncrementalDecoder
+    decoder_a = importlib.import_module(f"encodings.{iana_name_a}").IncrementalDecoder
+    decoder_b = importlib.import_module(f"encodings.{iana_name_b}").IncrementalDecoder
 
     id_a: IncrementalDecoder = decoder_a(errors="ignore")
     id_b: IncrementalDecoder = decoder_b(errors="ignore")
@@ -367,7 +367,7 @@ def cut_sequence_chunks(
     strip_sig_or_bom: bool,
     sig_payload: bytes,
     is_multi_byte_decoder: bool,
-    decoded_payload: Optional[str] = None,
+    decoded_payload: str | None = None,
 ) -> Generator[str, None, None]:
     if decoded_payload and is_multi_byte_decoder is False:
         for i in offsets:

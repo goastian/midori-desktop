@@ -38,30 +38,37 @@ MATCHER(HasConsistentVideoDelayTimings, "") {
   // Delays should be internally consistent.
   bool m1 = arg.minimum_delay <= arg.target_delay;
   if (!m1) {
-    *result_listener << "\nminimum_delay: " << arg.minimum_delay << ", "
-                     << "target_delay: " << arg.target_delay << "\n";
+    *result_listener << "\nminimum_delay: " << ToString(arg.minimum_delay)
+                     << ", " << "target_delay: " << ToString(arg.target_delay)
+                     << "\n";
   }
   bool m2 = arg.minimum_delay <= arg.current_delay;
   if (!m2) {
-    *result_listener << "\nminimum_delay: " << arg.minimum_delay << ", "
-                     << "current_delay: " << arg.current_delay;
+    *result_listener << "\nminimum_delay: " << ToString(arg.minimum_delay)
+                     << ", "
+                     << "current_delay: " << ToString(arg.current_delay);
   }
   bool m3 = arg.target_delay >= arg.min_playout_delay;
   if (!m3) {
-    *result_listener << "\ntarget_delay: " << arg.target_delay << ", "
-                     << "min_playout_delay: " << arg.min_playout_delay << "\n";
+    *result_listener << "\ntarget_delay: " << ToString(arg.target_delay) << ", "
+                     << "min_playout_delay: " << ToString(arg.min_playout_delay)
+                     << "\n";
   }
   // TODO(crbug.com/webrtc/15197): Uncomment when this is guaranteed.
   // bool m4 = arg.target_delay <= arg.max_playout_delay;
   bool m5 = arg.current_delay >= arg.min_playout_delay;
   if (!m5) {
-    *result_listener << "\ncurrent_delay: " << arg.current_delay << ", "
-                     << "min_playout_delay: " << arg.min_playout_delay << "\n";
+    *result_listener << "\ncurrent_delay: " << ToString(arg.current_delay)
+                     << ", "
+                     << "min_playout_delay: " << ToString(arg.min_playout_delay)
+                     << "\n";
   }
   bool m6 = arg.current_delay <= arg.max_playout_delay;
   if (!m6) {
-    *result_listener << "\ncurrent_delay: " << arg.current_delay << ", "
-                     << "max_playout_delay: " << arg.max_playout_delay << "\n";
+    *result_listener << "\ncurrent_delay: " << ToString(arg.current_delay)
+                     << ", "
+                     << "max_playout_delay: " << ToString(arg.max_playout_delay)
+                     << "\n";
   }
   bool m = m1 && m2 && m3 && m5 && m6;
 
@@ -196,20 +203,19 @@ TEST(VCMTimingTest, UseLowLatencyRenderer) {
   // Default is false.
   EXPECT_FALSE(timing.RenderParameters().use_low_latency_rendering);
   // False if min playout delay > 0.
-  timing.set_min_playout_delay(TimeDelta::Millis(10));
-  timing.set_max_playout_delay(TimeDelta::Millis(20));
+  timing.set_playout_delay({TimeDelta::Millis(10), TimeDelta::Millis(20)});
   EXPECT_FALSE(timing.RenderParameters().use_low_latency_rendering);
   // True if min==0, max > 0.
-  timing.set_min_playout_delay(TimeDelta::Zero());
+  timing.set_playout_delay({TimeDelta::Zero(), TimeDelta::Millis(20)});
   EXPECT_TRUE(timing.RenderParameters().use_low_latency_rendering);
   // True if min==max==0.
-  timing.set_max_playout_delay(TimeDelta::Zero());
+  timing.set_playout_delay({TimeDelta::Zero(), TimeDelta::Zero()});
   EXPECT_TRUE(timing.RenderParameters().use_low_latency_rendering);
   // True also for max playout delay==500 ms.
-  timing.set_max_playout_delay(TimeDelta::Millis(500));
+  timing.set_playout_delay({TimeDelta::Zero(), TimeDelta::Millis(500)});
   EXPECT_TRUE(timing.RenderParameters().use_low_latency_rendering);
   // False if max playout delay > 500 ms.
-  timing.set_max_playout_delay(TimeDelta::Millis(501));
+  timing.set_playout_delay({TimeDelta::Zero(), TimeDelta::Millis(501)});
   EXPECT_FALSE(timing.RenderParameters().use_low_latency_rendering);
 
   EXPECT_THAT(timing.GetTimings(), HasConsistentVideoDelayTimings());
@@ -225,7 +231,7 @@ TEST(VCMTimingTest, MaxWaitingTimeIsZeroForZeroRenderTime) {
   test::ScopedKeyValueConfig field_trials;
   VCMTiming timing(&clock, field_trials);
   timing.Reset();
-  timing.set_max_playout_delay(TimeDelta::Zero());
+  timing.set_playout_delay({TimeDelta::Zero(), TimeDelta::Zero()});
   for (int i = 0; i < 10; ++i) {
     clock.AdvanceTime(kTimeDelta);
     Timestamp now = clock.CurrentTime();
@@ -409,9 +415,8 @@ TEST(VCMTimingTest, GetTimings) {
   TimeDelta render_delay = TimeDelta::Millis(11);
   timing.set_render_delay(render_delay);
   TimeDelta min_playout_delay = TimeDelta::Millis(50);
-  timing.set_min_playout_delay(min_playout_delay);
   TimeDelta max_playout_delay = TimeDelta::Millis(500);
-  timing.set_max_playout_delay(max_playout_delay);
+  timing.set_playout_delay({min_playout_delay, max_playout_delay});
 
   // On complete.
   timing.IncomingTimestamp(3000, clock.CurrentTime());
@@ -440,6 +445,47 @@ TEST(VCMTimingTest, GetTimings) {
   EXPECT_EQ(timings.target_delay, minimum_delay);
   EXPECT_EQ(timings.current_delay, minimum_delay);
   EXPECT_THAT(timings, HasConsistentVideoDelayTimings());
+}
+
+TEST(VCMTimingTest, GetTimingsBeforeAndAfterValidRtpTimestamp) {
+  SimulatedClock clock(33);
+  test::ScopedKeyValueConfig field_trials;
+  VCMTiming timing(&clock, field_trials);
+
+  // Setup.
+  TimeDelta min_playout_delay = TimeDelta::Millis(50);
+  timing.set_playout_delay({min_playout_delay, TimeDelta::Millis(500)});
+
+  // On decodable frames before valid rtp timestamp.
+  constexpr int decodeable_frame_cnt = 10;
+  constexpr uint32_t any_time_elapsed = 17;
+  constexpr uint32_t rtp_ts_base = 3000;
+  constexpr uint32_t rtp_ts_delta_10fps = 9000;
+  constexpr uint32_t frame_ts_delta_10fps = 100;
+  uint32_t rtp_ts = rtp_ts_base;
+
+  for (int i = 0; i < decodeable_frame_cnt; i++) {
+    clock.AdvanceTimeMilliseconds(any_time_elapsed);
+    rtp_ts += rtp_ts_delta_10fps;
+
+    Timestamp render_time = timing.RenderTime(rtp_ts, clock.CurrentTime());
+    // Render time should be CurrentTime, because timing.IncomingTimestamp has
+    // not been called yet.
+    EXPECT_EQ(render_time, clock.CurrentTime());
+  }
+
+  // On frame complete, which one not 'metadata.delayed_by_retransmission'
+  Timestamp valid_frame_ts = clock.CurrentTime();
+  timing.IncomingTimestamp(rtp_ts, valid_frame_ts);
+
+  clock.AdvanceTimeMilliseconds(any_time_elapsed);
+  rtp_ts += rtp_ts_delta_10fps;
+
+  Timestamp render_time = timing.RenderTime(rtp_ts, clock.CurrentTime());
+  // Render time should be relative to the latest valid frame timestamp.
+  EXPECT_EQ(render_time, valid_frame_ts +
+                             TimeDelta::Millis(frame_ts_delta_10fps) +
+                             min_playout_delay);
 }
 
 }  // namespace webrtc

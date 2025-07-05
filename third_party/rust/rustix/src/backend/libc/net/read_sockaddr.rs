@@ -8,6 +8,8 @@ use crate::backend::c;
 #[cfg(not(windows))]
 use crate::ffi::CStr;
 use crate::io;
+#[cfg(target_os = "linux")]
+use crate::net::xdp::{SockaddrXdpFlags, SocketAddrXdp};
 use crate::net::{Ipv4Addr, Ipv6Addr, SocketAddrAny, SocketAddrV4, SocketAddrV6};
 use core::mem::size_of;
 
@@ -57,6 +59,7 @@ unsafe fn read_ss_family(storage: *const c::sockaddr_storage) -> u16 {
             target_os = "aix",
             target_os = "espidf",
             target_os = "haiku",
+            target_os = "hurd",
             target_os = "nto",
             target_os = "vita"
         ))]
@@ -66,6 +69,7 @@ unsafe fn read_ss_family(storage: *const c::sockaddr_storage) -> u16 {
             target_os = "aix",
             target_os = "espidf",
             target_os = "haiku",
+            target_os = "hurd",
             target_os = "nto",
             target_os = "vita"
         ))]
@@ -75,6 +79,7 @@ unsafe fn read_ss_family(storage: *const c::sockaddr_storage) -> u16 {
             target_os = "aix",
             target_os = "espidf",
             target_os = "haiku",
+            target_os = "hurd",
             target_os = "nto",
             target_os = "vita"
         )))]
@@ -183,7 +188,9 @@ pub(crate) unsafe fn read_sockaddr(
                         return Err(io::Errno::INVAL);
                     }
                     debug_assert_eq!(
-                        CStr::from_ptr(decode.sun_path.as_ptr()).to_bytes().len(),
+                        CStr::from_ptr(decode.sun_path.as_ptr().cast())
+                            .to_bytes()
+                            .len(),
                         provided_len
                     );
                     &decode.sun_path[..provided_len]
@@ -192,6 +199,19 @@ pub(crate) unsafe fn read_sockaddr(
                 SocketAddrUnix::new(core::mem::transmute::<&[c::c_char], &[u8]>(path_bytes))
                     .map(SocketAddrAny::Unix)
             }
+        }
+        #[cfg(target_os = "linux")]
+        c::AF_XDP => {
+            if len < size_of::<c::sockaddr_xdp>() {
+                return Err(io::Errno::INVAL);
+            }
+            let decode = &*storage.cast::<c::sockaddr_xdp>();
+            Ok(SocketAddrAny::Xdp(SocketAddrXdp::new(
+                SockaddrXdpFlags::from_bits_retain(decode.sxdp_flags),
+                u32::from_be(decode.sxdp_ifindex),
+                u32::from_be(decode.sxdp_queue_id),
+                u32::from_be(decode.sxdp_shared_umem_fd),
+            )))
         }
         _ => Err(io::Errno::INVAL),
     }
@@ -300,6 +320,17 @@ unsafe fn inner_read_sockaddr_os(
                         .unwrap(),
                 )
             }
+        }
+        #[cfg(target_os = "linux")]
+        c::AF_XDP => {
+            assert!(len >= size_of::<c::sockaddr_xdp>());
+            let decode = &*storage.cast::<c::sockaddr_xdp>();
+            SocketAddrAny::Xdp(SocketAddrXdp::new(
+                SockaddrXdpFlags::from_bits_retain(decode.sxdp_flags),
+                u32::from_be(decode.sxdp_ifindex),
+                u32::from_be(decode.sxdp_queue_id),
+                u32::from_be(decode.sxdp_shared_umem_fd),
+            ))
         }
         other => unimplemented!("{:?}", other),
     }

@@ -1,44 +1,25 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Mon, 6 May 2024 07:28:00 +0000
-Subject: Bug 1892329 - Invert _captureThread check in
- VideoCaptureModuleV4L2::StartCapture. r=webrtc-reviewers,mjf
+From: Dan Baker <dbaker@mozilla.com>
+Date: Tue, 27 Aug 2024 14:09:00 -0600
+Subject: Bug 1912989 - (fix-2360208f7d) Removed build command causing failure.
+ - moz.build file updates
 
-Differential Revision: https://phabricator.services.mozilla.com/D208186
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/6ed6737b8214bf664642eb17cbf66a8c8450e569
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/fd4bc7427678a45283f0f56418ee2c70fac711e6
 ---
- .../video_capture/linux/video_capture_v4l2.cc | 21 +++++++++++--------
- 1 file changed, 12 insertions(+), 9 deletions(-)
+ .gn | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
 
-diff --git a/modules/video_capture/linux/video_capture_v4l2.cc b/modules/video_capture/linux/video_capture_v4l2.cc
-index 74af348a6c..29ca864e19 100644
---- a/modules/video_capture/linux/video_capture_v4l2.cc
-+++ b/modules/video_capture/linux/video_capture_v4l2.cc
-@@ -303,16 +303,19 @@ int32_t VideoCaptureModuleV4L2::StartCapture(
-   }
+diff --git a/.gn b/.gn
+index 01bb0e7b02..e379d18527 100644
+--- a/.gn
++++ b/.gn
+@@ -38,7 +38,9 @@ no_check_targets = [
+ exec_script_whitelist = build_dotfile_settings.exec_script_whitelist +
+                         [ "//build_overrides/build.gni" ]
  
-   // start capture thread;
--  if (_captureThread.empty()) {
--    quit_ = false;
--    _captureThread = rtc::PlatformThread::SpawnJoinable(
--        [self = scoped_refptr(this)] {
--          while (self->CaptureProcess()) {
--          }
--        },
--        "CaptureThread",
--        rtc::ThreadAttributes().SetPriority(rtc::ThreadPriority::kHigh));
-+  if (!_captureThread.empty()) {
-+    return 0;
-   }
-+
-+  quit_ = false;
-+
-+  _captureThread = rtc::PlatformThread::SpawnJoinable(
-+      [self = scoped_refptr(this)] {
-+        while (self->CaptureProcess()) {
-+        }
-+      },
-+      "CaptureThread",
-+      rtc::ThreadAttributes().SetPriority(rtc::ThreadPriority::kHigh));
-   return 0;
- }
+-export_compile_commands = [ "*" ]
++# Normally, we'd use 'if (!build_with_mozilla)', but that flag isn't
++# available yet.
++#export_compile_commands = [ "*" ]
  
+ default_args = {
+   # Webrtc does not support component builds because we are not using the

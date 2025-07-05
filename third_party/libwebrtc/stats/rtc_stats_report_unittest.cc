@@ -10,22 +10,29 @@
 
 #include "api/stats/rtc_stats_report.h"
 
-#include "absl/types/optional.h"
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "api/scoped_refptr.h"
 #include "api/stats/attribute.h"
 #include "api/stats/rtc_stats.h"
-#include "rtc_base/checks.h"
+#include "api/units/timestamp.h"
 #include "test/gtest.h"
 
 namespace webrtc {
 
 class RTCTestStats1 : public RTCStats {
  public:
-  WEBRTC_RTCSTATS_DECL();
+  WEBRTC_RTCSTATS_DECL(RTCTestStats1);
 
   RTCTestStats1(const std::string& id, Timestamp timestamp)
       : RTCStats(id, timestamp) {}
 
-  absl::optional<int32_t> integer;
+  std::optional<int32_t> integer;
 };
 
 WEBRTC_RTCSTATS_IMPL(RTCTestStats1,
@@ -35,12 +42,12 @@ WEBRTC_RTCSTATS_IMPL(RTCTestStats1,
 
 class RTCTestStats2 : public RTCStats {
  public:
-  WEBRTC_RTCSTATS_DECL();
+  WEBRTC_RTCSTATS_DECL(RTCTestStats2);
 
   RTCTestStats2(const std::string& id, Timestamp timestamp)
       : RTCStats(id, timestamp) {}
 
-  absl::optional<double> number;
+  std::optional<double> number;
 };
 
 WEBRTC_RTCSTATS_IMPL(RTCTestStats2,
@@ -50,12 +57,12 @@ WEBRTC_RTCSTATS_IMPL(RTCTestStats2,
 
 class RTCTestStats3 : public RTCStats {
  public:
-  WEBRTC_RTCSTATS_DECL();
+  WEBRTC_RTCSTATS_DECL(RTCTestStats3);
 
   RTCTestStats3(const std::string& id, Timestamp timestamp)
       : RTCStats(id, timestamp) {}
 
-  absl::optional<std::string> string;
+  std::optional<std::string> string;
 };
 
 WEBRTC_RTCSTATS_IMPL(RTCTestStats3,

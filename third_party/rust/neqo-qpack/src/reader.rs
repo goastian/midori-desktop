@@ -4,6 +4,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "<https://github.com/mozilla/neqo/issues/2284#issuecomment-2782711813>"
+)]
+
 use std::{mem, str};
 
 use neqo_common::{qdebug, qerror};
@@ -32,7 +37,7 @@ pub(crate) struct ReceiverConnWrapper<'a> {
     stream_id: StreamId,
 }
 
-impl<'a> ReadByte for ReceiverConnWrapper<'a> {
+impl ReadByte for ReceiverConnWrapper<'_> {
     fn read_byte(&mut self) -> Res<u8> {
         let mut b = [0];
         match self.conn.stream_recv(self.stream_id, &mut b)? {
@@ -43,7 +48,7 @@ impl<'a> ReadByte for ReceiverConnWrapper<'a> {
     }
 }
 
-impl<'a> Reader for ReceiverConnWrapper<'a> {
+impl Reader for ReceiverConnWrapper<'_> {
     fn read(&mut self, buf: &mut [u8]) -> Res<usize> {
         match self.conn.stream_recv(self.stream_id, buf)? {
             (_, true) => Err(Error::ClosedCriticalStream),
@@ -66,7 +71,7 @@ pub(crate) struct ReceiverBufferWrapper<'a> {
     offset: usize,
 }
 
-impl<'a> ReadByte for ReceiverBufferWrapper<'a> {
+impl ReadByte for ReceiverBufferWrapper<'_> {
     fn read_byte(&mut self) -> Res<u8> {
         if self.offset == self.buf.len() {
             Err(Error::DecompressionFailed)
@@ -79,11 +84,11 @@ impl<'a> ReadByte for ReceiverBufferWrapper<'a> {
 }
 
 impl<'a> ReceiverBufferWrapper<'a> {
-    pub fn new(buf: &'a [u8]) -> Self {
+    pub const fn new(buf: &'a [u8]) -> Self {
         Self { buf, offset: 0 }
     }
 
-    pub fn peek(&self) -> Res<u8> {
+    pub const fn peek(&self) -> Res<u8> {
         if self.offset == self.buf.len() {
             Err(Error::DecompressionFailed)
         } else {
@@ -91,7 +96,7 @@ impl<'a> ReceiverBufferWrapper<'a> {
         }
     }
 
-    pub fn done(&self) -> bool {
+    pub const fn done(&self) -> bool {
         self.offset == self.buf.len()
     }
 
@@ -156,7 +161,7 @@ pub struct IntReader {
 }
 
 impl IntReader {
-    /// `IntReader` is created by suppling the first byte anf prefix length.
+    /// `IntReader` is created by supplying the first byte and prefix length.
     /// A varint may take only one byte, In that case already the first by has set state to done.
     ///
     /// # Panics
@@ -164,7 +169,7 @@ impl IntReader {
     /// When `prefix_len` is 8 or larger.
     #[must_use]
     pub fn new(first_byte: u8, prefix_len: u8) -> Self {
-        debug_assert!(prefix_len < 8, "prefix cannot larger than 7.");
+        debug_assert!(prefix_len < 8, "prefix cannot larger than 7");
         let mask = if prefix_len == 0 {
             0xff
         } else {
@@ -251,7 +256,7 @@ pub struct LiteralReader {
 
 impl LiteralReader {
     /// Creates `LiteralReader` with the first byte. This constructor is always used
-    /// when a litreral has a prefix.
+    /// when a literal has a prefix.
     /// For literals without a prefix please use the default constructor.
     ///
     /// # Panics
@@ -278,6 +283,7 @@ impl LiteralReader {
     ///  1) `NeedMoreData` if the reader needs more data,
     ///  2) `IntegerOverflow`
     ///  3) Any `ReadByte`'s error
+    ///
     /// It returns value if reading the literal is done or None if it needs more data.
     ///
     /// # Panics
@@ -314,7 +320,7 @@ impl LiteralReader {
                     break Err(Error::NeedMoreData);
                 }
                 LiteralReaderState::Done => {
-                    panic!("Should not call read() in this state.");
+                    panic!("Should not call read() in this state");
                 }
             }
         }
@@ -378,7 +384,7 @@ mod tests {
     use test_receiver::TestReceiver;
 
     use super::{
-        parse_utf8, str, test_receiver, Error, IntReader, LiteralReader, ReadByte,
+        parse_utf8, str, test_receiver, Error, IntReader, LiteralReader, ReadByte as _,
         ReceiverBufferWrapper, Res,
     };
 

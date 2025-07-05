@@ -13,9 +13,10 @@
 #include <stdio.h>
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
+#include "api/audio/audio_processing_statistics.h"
 #include "api/audio_codecs/audio_encoder.h"
 #include "api/candidate.h"
 #include "api/data_channel_interface.h"
@@ -25,7 +26,6 @@
 #include "api/scoped_refptr.h"
 #include "call/call.h"
 #include "media/base/media_channel.h"
-#include "modules/audio_processing/include/audio_processing_statistics.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "pc/media_stream.h"
 #include "pc/rtp_receiver.h"
@@ -66,11 +66,6 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 namespace webrtc {
-
-namespace internal {
-// This value comes from openssl/tls1.h
-static const int TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA = 0xC014;
-}  // namespace internal
 
 // Error return values
 const char kNotFound[] = "NOT FOUND";
@@ -223,18 +218,18 @@ const StatsReport* FindNthReportByType(const StatsReports& reports,
 // `n` starts from 1 for finding the first report.
 // If either the `n`-th report is not found, or the stat is not present in that
 // report, then nullopt is returned.
-absl::optional<std::string> GetValueInNthReportByType(
+std::optional<std::string> GetValueInNthReportByType(
     const StatsReports& reports,
     StatsReport::StatsType type,
     StatsReport::StatsValueName name,
     int n) {
   const StatsReport* report = FindNthReportByType(reports, type, n);
   if (!report) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   std::string value;
   if (!GetValue(report, name, &value)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return value;
 }
@@ -674,8 +669,7 @@ class LegacyStatsCollectorTest : public ::testing::Test {
     TransportChannelStats channel_stats;
     channel_stats.component = 1;
     channel_stats.srtp_crypto_suite = rtc::kSrtpAes128CmSha1_80;
-    channel_stats.ssl_cipher_suite =
-        internal::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA;
+    channel_stats.tls_cipher_suite_name = "cipher_suite_for_test";
     pc->SetTransportStats(kTransportName, channel_stats);
 
     // Fake certificate to report.
@@ -722,9 +716,7 @@ class LegacyStatsCollectorTest : public ::testing::Test {
     std::string dtls_cipher_suite =
         ExtractStatsValue(StatsReport::kStatsReportTypeComponent, reports,
                           StatsReport::kStatsValueNameDtlsCipher);
-    EXPECT_EQ(rtc::SSLStreamAdapter::SslCipherSuiteToName(
-                  internal::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA),
-              dtls_cipher_suite);
+    EXPECT_EQ(dtls_cipher_suite, "cipher_suite_for_test");
     std::string srtp_crypto_suite =
         ExtractStatsValue(StatsReport::kStatsReportTypeComponent, reports,
                           StatsReport::kStatsValueNameSrtpCipher);
@@ -1889,7 +1881,7 @@ TEST_P(StatsCollectorTrackTest, TwoLocalSendersWithSameTrack) {
 
   // The SSRC in each SSRC report is different and correspond to the sender
   // SSRC.
-  std::vector<absl::optional<std::string>> ssrcs = {
+  std::vector<std::optional<std::string>> ssrcs = {
       GetValueInNthReportByType(reports, StatsReport::kStatsReportTypeSsrc,
                                 StatsReport::kStatsValueNameSsrc, 1),
       GetValueInNthReportByType(reports, StatsReport::kStatsReportTypeSsrc,

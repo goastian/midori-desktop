@@ -12,10 +12,10 @@
 #include "modules/video_coding/codecs/h264/include/h264.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "media/base/media_constants.h"
 #include "rtc_base/trace_event.h"
@@ -54,7 +54,7 @@ SdpVideoFormat CreateH264Format(H264Profile profile,
                                 H264Level level,
                                 const std::string& packetization_mode,
                                 bool add_scalability_modes) {
-  const absl::optional<std::string> profile_string =
+  const std::optional<std::string> profile_string =
       H264ProfileLevelIdToString(H264ProfileLevelId(profile, level));
   RTC_CHECK(profile_string);
   absl::InlinedVector<ScalabilityMode, kScalabilityModeCount> scalability_modes;
@@ -121,32 +121,27 @@ std::vector<SdpVideoFormat> SupportedH264DecoderCodecs() {
   return supportedCodecs;
 }
 
+H264EncoderSettings H264EncoderSettings::Parse(const SdpVideoFormat& format) {
+  if (auto it = format.parameters.find(cricket::kH264FmtpPacketizationMode);
+      it != format.parameters.end()) {
+    if (it->second == "0") {
+      return {.packetization_mode = H264PacketizationMode::SingleNalUnit};
+    } else if (it->second == "1") {
+      return {.packetization_mode = H264PacketizationMode::NonInterleaved};
+    }
+  }
+  return {};
+}
+
 absl::Nonnull<std::unique_ptr<VideoEncoder>> CreateH264Encoder(
-    const Environment& env,
-    H264EncoderSettings settings) {
+    [[maybe_unused]] const Environment& env,
+    [[maybe_unused]] H264EncoderSettings settings) {
 #if defined(WEBRTC_USE_H264)
   RTC_CHECK(g_rtc_use_h264);
   RTC_LOG(LS_INFO) << "Creating H264EncoderImpl.";
   return std::make_unique<H264EncoderImpl>(env, settings);
 #else
   RTC_CHECK_NOTREACHED();
-#endif
-}
-
-std::unique_ptr<H264Encoder> H264Encoder::Create() {
-  return Create(cricket::CreateVideoCodec(cricket::kH264CodecName));
-}
-
-std::unique_ptr<H264Encoder> H264Encoder::Create(
-    const cricket::VideoCodec& codec) {
-  RTC_DCHECK(H264Encoder::IsSupported());
-#if defined(WEBRTC_USE_H264)
-  RTC_CHECK(g_rtc_use_h264);
-  RTC_LOG(LS_INFO) << "Creating H264EncoderImpl.";
-  return std::make_unique<H264EncoderImpl>(codec);
-#else
-  RTC_DCHECK_NOTREACHED();
-  return nullptr;
 #endif
 }
 

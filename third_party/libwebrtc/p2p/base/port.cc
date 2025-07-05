@@ -26,7 +26,7 @@
 #include "p2p/base/stun_request.h"
 #include "rtc_base/byte_buffer.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/mdns_responder_interface.h"
@@ -80,24 +80,13 @@ const char* ProtoToString(ProtocolType proto) {
   return PROTO_NAMES[proto];
 }
 
-absl::optional<ProtocolType> StringToProto(absl::string_view proto_name) {
+std::optional<ProtocolType> StringToProto(absl::string_view proto_name) {
   for (size_t i = 0; i <= PROTO_LAST; ++i) {
     if (absl::EqualsIgnoreCase(PROTO_NAMES[i], proto_name)) {
       return static_cast<ProtocolType>(i);
     }
   }
-  return absl::nullopt;
-}
-
-IceCandidateType PortTypeToIceCandidateType(const absl::string_view type) {
-  if (type == "host" || type == LOCAL_PORT_TYPE)
-    return IceCandidateType::kHost;
-  if (type == "srflx" || type == STUN_PORT_TYPE)
-    return IceCandidateType::kSrflx;
-  if (type == PRFLX_PORT_TYPE)
-    return IceCandidateType::kPrflx;
-  RTC_DCHECK_EQ(type, RELAY_PORT_TYPE);
-  return IceCandidateType::kRelay;
+  return std::nullopt;
 }
 
 // RFC 6544, TCP candidate encoding rules.
@@ -106,52 +95,32 @@ const char TCPTYPE_ACTIVE_STR[] = "active";
 const char TCPTYPE_PASSIVE_STR[] = "passive";
 const char TCPTYPE_SIMOPEN_STR[] = "so";
 
-Port::Port(TaskQueueBase* thread,
-           webrtc::IceCandidateType type,
-           rtc::PacketSocketFactory* factory,
-           const rtc::Network* network,
-           absl::string_view username_fragment,
-           absl::string_view password,
-           const webrtc::FieldTrialsView* field_trials)
-    : Port(thread,
-           type,
-           factory,
-           network,
-           0,
-           0,
-           username_fragment,
-           password,
-           field_trials,
-           true) {}
+Port::Port(const PortParametersRef& args, webrtc::IceCandidateType type)
+    : Port(args, type, 0, 0, true) {}
 
-Port::Port(TaskQueueBase* thread,
+Port::Port(const PortParametersRef& args,
            webrtc::IceCandidateType type,
-           rtc::PacketSocketFactory* factory,
-           const rtc::Network* network,
            uint16_t min_port,
            uint16_t max_port,
-           absl::string_view username_fragment,
-           absl::string_view password,
-           const webrtc::FieldTrialsView* field_trials,
            bool shared_socket /*= false*/)
-    : thread_(thread),
-      factory_(factory),
-      field_trials_(field_trials),
+    : thread_(args.network_thread),
+      factory_(args.socket_factory),
+      field_trials_(args.field_trials),
       type_(type),
       send_retransmit_count_attribute_(false),
-      network_(network),
+      network_(args.network),
       min_port_(min_port),
       max_port_(max_port),
       component_(ICE_CANDIDATE_COMPONENT_DEFAULT),
       generation_(0),
-      ice_username_fragment_(username_fragment),
-      password_(password),
+      ice_username_fragment_(args.ice_username_fragment),
+      password_(args.ice_password),
       timeout_delay_(kPortTimeoutDelay),
       enable_port_packets_(false),
       ice_role_(ICEROLE_UNKNOWN),
       tiebreaker_(0),
       shared_socket_(shared_socket),
-      network_cost_(network->GetCost(*field_trials_)),
+      network_cost_(args.network->GetCost(*field_trials_)),
       weak_factory_(this) {
   RTC_DCHECK_RUN_ON(thread_);
   RTC_DCHECK(factory_ != nullptr);
@@ -714,8 +683,8 @@ std::string Port::CreateStunUsername(absl::string_view remote_username) const {
   return std::string(remote_username) + ":" + username_fragment();
 }
 
-bool Port::HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
-                                const rtc::ReceivedPacket& packet) {
+bool Port::HandleIncomingPacket(rtc::AsyncPacketSocket* /* socket */,
+                                const rtc::ReceivedPacket& /* packet */) {
   RTC_DCHECK_NOTREACHED();
   return false;
 }

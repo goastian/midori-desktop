@@ -3,15 +3,13 @@ use metal::*;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::macos::WindowExtMacOS,
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
 };
 
 use cocoa::{appkit::NSView, base::id as cocoa_id};
 use core_graphics_types::geometry::CGSize;
 
 use objc::{rc::autoreleasepool, runtime::YES};
-
-use std::mem;
 
 // Declare the data structures needed to carry vertex layout to
 // metal shading language(MSL) program. Use #[repr(C)], to make
@@ -20,20 +18,20 @@ use std::mem;
 // based on C++
 #[repr(C)]
 #[derive(Debug)]
-pub struct position(cty::c_float, cty::c_float);
+pub struct Position(std::ffi::c_float, std::ffi::c_float);
 #[repr(C)]
 #[derive(Debug)]
-pub struct color(cty::c_float, cty::c_float, cty::c_float);
+pub struct Color(std::ffi::c_float, std::ffi::c_float, std::ffi::c_float);
 #[repr(C)]
 #[derive(Debug)]
 pub struct AAPLVertex {
-    p: position,
-    c: color,
+    p: Position,
+    c: Color,
 }
 
 fn main() {
     // Create a window for viewing the content
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let size = winit::dpi::LogicalSize::new(800, 600);
 
     let window = winit::window::WindowBuilder::new()
@@ -52,7 +50,7 @@ fn main() {
     device.sample_timestamps(&mut cpu_start, &mut gpu_start);
     let counter_sample_buffer = create_counter_sample_buffer(&device);
     let destination_buffer = device.new_buffer(
-        (std::mem::size_of::<u64>() * 4 as usize) as u64,
+        (size_of::<u64>() * 4usize) as u64,
         MTLResourceOptions::StorageModeShared,
     );
     let counter_sampling_point = MTLCounterSamplingPoint::AtStageBoundary;
@@ -94,15 +92,17 @@ fn main() {
     // Currently, MetalLayer is the only interface that provide
     // layers to carry drawable texture from GPU rendaring through metal
     // library to viewable windows.
-    let layer = MetalLayer::new();
+    let mut layer = MetalLayer::new();
     layer.set_device(&device);
     layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
     layer.set_presents_with_transaction(false);
 
     unsafe {
-        let view = window.ns_view() as cocoa_id;
-        view.setWantsLayer(YES);
-        view.setLayer(mem::transmute(layer.as_ref()));
+        if let Ok(RawWindowHandle::AppKit(rw)) = window.window_handle().map(|wh| wh.as_raw()) {
+            let view = rw.ns_view.as_ptr() as cocoa_id;
+            view.setWantsLayer(YES);
+            view.setLayer(<*mut _>::cast(layer.as_mut()));
+        }
     }
 
     let draw_size = window.inner_size();
@@ -110,89 +110,95 @@ fn main() {
 
     let vbuf = {
         let vertex_data = create_vertex_points_for_circle();
-        let vertex_data = vertex_data.as_slice();
 
         device.new_buffer_with_data(
-            vertex_data.as_ptr() as *const _,
-            (vertex_data.len() * mem::size_of::<AAPLVertex>()) as u64,
+            vertex_data.as_ptr().cast(),
+            size_of_val(vertex_data.as_slice()) as u64,
             MTLResourceOptions::CPUCacheModeDefaultCache | MTLResourceOptions::StorageModeManaged,
         )
     };
 
-    event_loop.run(move |event, _, control_flow| {
-        autoreleasepool(|| {
-            // ControlFlow::Wait pauses the event loop if no events are available to process.
-            // This is ideal for non-game applications that only update in response to user
-            // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-            *control_flow = ControlFlow::Wait;
+    event_loop
+        .run(move |event, event_loop| {
+            autoreleasepool(|| {
+                // ControlFlow::Wait pauses the event loop if no events are available to process.
+                // This is ideal for non-game applications that only update in response to user
+                // input, and uses significantly less power/CPU time than ControlFlow::Poll.
+                event_loop.set_control_flow(ControlFlow::Wait);
 
-            match event {
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    println!("The close button was pressed; stopping");
-                    *control_flow = ControlFlow::Exit
+                match event {
+                    Event::AboutToWait => window.request_redraw(),
+                    Event::WindowEvent { event, .. } => {
+                        match event {
+                            WindowEvent::CloseRequested => {
+                                println!("The close button was pressed; stopping");
+                                event_loop.exit();
+                            }
+                            WindowEvent::RedrawRequested => {
+                                // It's preferrable to render in this event rather than in MainEventsCleared, since
+                                // rendering in here allows the program to gracefully handle redraws requested
+                                // by the OS.
+                                let drawable = match layer.next_drawable() {
+                                    Some(drawable) => drawable,
+                                    None => return,
+                                };
+
+                                // Create a new command buffer for each render pass to the current drawable
+                                let command_buffer = command_queue.new_command_buffer();
+
+                                // Obtain a renderPassDescriptor generated from the view's drawable textures.
+                                let render_pass_descriptor = RenderPassDescriptor::new();
+                                handle_render_pass_color_attachment(
+                                    render_pass_descriptor,
+                                    drawable.texture(),
+                                );
+                                handle_render_pass_sample_buffer_attachment(
+                                    render_pass_descriptor,
+                                    &counter_sample_buffer,
+                                );
+
+                                // Create a render command encoder.
+                                let encoder = command_buffer
+                                    .new_render_command_encoder(render_pass_descriptor);
+                                encoder.set_render_pipeline_state(&pipeline_state);
+                                // Pass in the parameter data.
+                                encoder.set_vertex_buffer(0, Some(&vbuf), 0);
+                                // Draw the triangles which will eventually form the circle.
+                                encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 1080);
+                                encoder.end_encoding();
+
+                                resolve_samples_into_buffer(
+                                    command_buffer,
+                                    &counter_sample_buffer,
+                                    &destination_buffer,
+                                );
+
+                                // Schedule a present once the framebuffer is complete using the current drawable.
+                                command_buffer.present_drawable(drawable);
+
+                                // Finalize rendering here & push the command buffer to the GPU.
+                                command_buffer.commit();
+                                command_buffer.wait_until_completed();
+
+                                let mut cpu_end = 0;
+                                let mut gpu_end = 0;
+                                device.sample_timestamps(&mut cpu_end, &mut gpu_end);
+                                handle_timestamps(
+                                    &destination_buffer,
+                                    cpu_start,
+                                    cpu_end,
+                                    gpu_start,
+                                    gpu_end,
+                                );
+                            }
+                            _ => (),
+                        }
+                    }
+                    _ => (),
                 }
-                Event::MainEventsCleared => {
-                    // Queue a RedrawRequested event.
-                    window.request_redraw();
-                }
-                Event::RedrawRequested(_) => {
-                    // It's preferrable to render in this event rather than in MainEventsCleared, since
-                    // rendering in here allows the program to gracefully handle redraws requested
-                    // by the OS.
-                    let drawable = match layer.next_drawable() {
-                        Some(drawable) => drawable,
-                        None => return,
-                    };
-
-                    // Create a new command buffer for each render pass to the current drawable
-                    let command_buffer = command_queue.new_command_buffer();
-
-                    // Obtain a renderPassDescriptor generated from the view's drawable textures.
-                    let render_pass_descriptor = RenderPassDescriptor::new();
-                    handle_render_pass_color_attachment(
-                        &render_pass_descriptor,
-                        drawable.texture(),
-                    );
-                    handle_render_pass_sample_buffer_attachment(
-                        &render_pass_descriptor,
-                        &counter_sample_buffer,
-                    );
-
-                    // Create a render command encoder.
-                    let encoder =
-                        command_buffer.new_render_command_encoder(&render_pass_descriptor);
-                    encoder.set_render_pipeline_state(&pipeline_state);
-                    // Pass in the parameter data.
-                    encoder.set_vertex_buffer(0, Some(&vbuf), 0);
-                    // Draw the triangles which will eventually form the circle.
-                    encoder.draw_primitives(MTLPrimitiveType::TriangleStrip, 0, 1080);
-                    encoder.end_encoding();
-
-                    resolve_samples_into_buffer(
-                        &command_buffer,
-                        &counter_sample_buffer,
-                        &destination_buffer,
-                    );
-
-                    // Schedule a present once the framebuffer is complete using the current drawable.
-                    command_buffer.present_drawable(&drawable);
-
-                    // Finalize rendering here & push the command buffer to the GPU.
-                    command_buffer.commit();
-                    command_buffer.wait_until_completed();
-
-                    let mut cpu_end = 0;
-                    let mut gpu_end = 0;
-                    device.sample_timestamps(&mut cpu_end, &mut gpu_end);
-                    handle_timestamps(&destination_buffer, cpu_start, cpu_end, gpu_start, gpu_end);
-                }
-                _ => (),
-            }
-        });
-    });
+            });
+        })
+        .unwrap();
 }
 
 // If we want to draw a circle, we need to draw it out of the three primitive
@@ -225,15 +231,15 @@ fn create_vertex_points_for_circle() -> Vec<AAPLVertex> {
         let position_y: f32 = position_y * circle_size;
 
         v.push(AAPLVertex {
-            p: position(position_x, position_y),
-            c: color(0.7, 0.3, 0.5),
+            p: Position(position_x, position_y),
+            c: Color(0.7, 0.3, 0.5),
         });
 
         if (i + 1) % 2 == 0 {
             // For each two points on perimeter, push one point of origin
             v.push(AAPLVertex {
-                p: position(origin_x, origin_y),
-                c: color(0.2, 0.7, 0.4),
+                p: Position(origin_x, origin_y),
+                c: Color(0.2, 0.7, 0.4),
             });
         }
     }
@@ -247,7 +253,7 @@ fn handle_render_pass_sample_buffer_attachment(
 ) {
     let sample_buffer_attachment_descriptor =
         descriptor.sample_buffer_attachments().object_at(0).unwrap();
-    sample_buffer_attachment_descriptor.set_sample_buffer(&counter_sample_buffer);
+    sample_buffer_attachment_descriptor.set_sample_buffer(counter_sample_buffer);
     sample_buffer_attachment_descriptor.set_start_of_vertex_sample_index(0 as NSUInteger);
     sample_buffer_attachment_descriptor.set_end_of_vertex_sample_index(1 as NSUInteger);
     sample_buffer_attachment_descriptor.set_start_of_fragment_sample_index(2 as NSUInteger);
@@ -300,10 +306,10 @@ fn resolve_samples_into_buffer(
 ) {
     let blit_encoder = command_buffer.new_blit_command_encoder();
     blit_encoder.resolve_counters(
-        &counter_sample_buffer,
-        crate::NSRange::new(0_u64, 4),
-        &destination_buffer,
-        0_u64,
+        counter_sample_buffer,
+        crate::NSRange::new(0u64, 4),
+        destination_buffer,
+        0u64,
     );
     blit_encoder.end_encoding();
 }
@@ -316,7 +322,7 @@ fn handle_timestamps(
     gpu_end: u64,
 ) {
     let samples = unsafe {
-        std::slice::from_raw_parts(resolved_sample_buffer.contents() as *const u64, 4 as usize)
+        std::slice::from_raw_parts(resolved_sample_buffer.contents().cast::<u64>(), 4usize)
     };
     let vertex_pass_start = samples[0];
     let vertex_pass_end = samples[1];
@@ -346,7 +352,7 @@ fn handle_timestamps(
 fn create_counter_sample_buffer(device: &Device) -> CounterSampleBuffer {
     let counter_sample_buffer_desc = metal::CounterSampleBufferDescriptor::new();
     counter_sample_buffer_desc.set_storage_mode(metal::MTLStorageMode::Shared);
-    counter_sample_buffer_desc.set_sample_count(4_u64);
+    counter_sample_buffer_desc.set_sample_count(4u64);
     counter_sample_buffer_desc.set_counter_set(&fetch_timestamp_counter_set(device));
 
     device
@@ -372,6 +378,5 @@ fn fetch_timestamp_counter_set(device: &Device) -> metal::CounterSet {
 fn microseconds_between_begin(begin: u64, end: u64, gpu_time_span: u64, cpu_time_span: u64) -> f64 {
     let time_span = (end as f64) - (begin as f64);
     let nanoseconds = time_span / (gpu_time_span as f64) * (cpu_time_span as f64);
-    let microseconds = nanoseconds / 1000.0;
-    return microseconds;
+    nanoseconds / 1000.0
 }

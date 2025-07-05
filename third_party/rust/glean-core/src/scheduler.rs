@@ -134,7 +134,7 @@ fn schedule_internal(
     // 3. The ping was NOT collected on the current calendar day BUT we still have
     //    some time to the due time; schedule for submitting the current calendar day.
 
-    let already_sent_today = last_sent_time.map_or(false, |d| d.date() == now.date());
+    let already_sent_today = last_sent_time.is_some_and(|d| d.date() == now.date());
     if already_sent_today {
         // Case #1
         log::info!("The 'metrics' ping was already sent today, {}", now);
@@ -202,7 +202,7 @@ fn start_scheduler(
             let mut now = now;
             loop {
                 let dur = when.until(now);
-                log::info!("Scheduling for {:?} after {}, reason {:?}", dur, now, when);
+                log::info!("Scheduling for {} after {:?}, reason {:?}", now, dur, when);
                 let mut timed_out = false;
                 {
                     match condvar.wait_timeout_while(cancelled_lock.lock().unwrap(), dur, |cancelled| !*cancelled) {

@@ -1,5 +1,6 @@
-use crate::arena::Handle;
-use std::{fmt::Display, num::NonZeroU32, ops};
+use core::{fmt::Display, num::NonZeroU32, ops};
+
+use crate::arena::{Handle, HandleVec};
 
 /// A newtype struct where its only valid values are powers of 2
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -50,7 +51,7 @@ impl Alignment {
 }
 
 impl Display for Alignment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.0.get().fmt(f)
     }
 }
@@ -108,17 +109,15 @@ impl TypeLayout {
 ///
 /// [WGSL §4.3.7, "Memory Layout"](https://gpuweb.github.io/gpuweb/wgsl/#memory-layouts)
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-#[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
 pub struct Layouter {
-    /// Layouts for types in an arena, indexed by `Handle` index.
-    layouts: Vec<TypeLayout>,
+    /// Layouts for types in an arena.
+    layouts: HandleVec<crate::Type, TypeLayout>,
 }
 
 impl ops::Index<Handle<crate::Type>> for Layouter {
     type Output = TypeLayout;
     fn index(&self, handle: Handle<crate::Type>) -> &TypeLayout {
-        &self.layouts[handle.index()]
+        &self.layouts[handle]
     }
 }
 
@@ -235,15 +234,15 @@ impl Layouter {
                 }
                 Ti::Image { .. }
                 | Ti::Sampler { .. }
-                | Ti::AccelerationStructure
-                | Ti::RayQuery
+                | Ti::AccelerationStructure { .. }
+                | Ti::RayQuery { .. }
                 | Ti::BindingArray { .. } => TypeLayout {
                     size,
                     alignment: Alignment::ONE,
                 },
             };
             debug_assert!(size <= layout.size);
-            self.layouts.push(layout);
+            self.layouts.insert(ty_handle, layout);
         }
 
         Ok(())

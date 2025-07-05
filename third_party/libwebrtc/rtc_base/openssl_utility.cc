@@ -42,7 +42,8 @@ namespace {
 // TODO(crbug.com/webrtc/11710): When OS certificate verification is available,
 // and we don't need VerifyPeerCertMatchesHost, don't compile this in order to
 // avoid a dependency on OpenSSL X509 objects (see crbug.com/webrtc/11410).
-void LogCertificates(SSL* ssl, X509* certificate) {
+void LogCertificates([[maybe_unused]] SSL* ssl,
+                     [[maybe_unused]] X509* certificate) {
 // Logging certificates is extremely verbose. So it is disabled by default.
 #ifdef LOG_CERTIFICATES
   BIO* mem = BIO_new(BIO_s_mem());
@@ -247,8 +248,9 @@ bool LoadBuiltinSSLRootCertificates(SSL_CTX* ctx) {
   for (size_t i = 0; i < arraysize(kSSLCertCertificateList); i++) {
     const unsigned char* cert_buffer = kSSLCertCertificateList[i];
     size_t cert_buffer_len = kSSLCertCertificateSizeList[i];
-    X509* cert = d2i_X509(nullptr, &cert_buffer,
-                          checked_cast<long>(cert_buffer_len));  // NOLINT
+    X509* cert =
+        d2i_X509(nullptr, &cert_buffer,
+                 webrtc::checked_cast<long>(cert_buffer_len));  // NOLINT
     if (cert) {
       int return_value = X509_STORE_add_cert(SSL_CTX_get_cert_store(ctx), cert);
       if (return_value == 0) {

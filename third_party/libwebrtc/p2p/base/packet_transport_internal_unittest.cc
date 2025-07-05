@@ -10,7 +10,7 @@
 
 #include "p2p/base/packet_transport_internal.h"
 
-#include "p2p/base/fake_packet_transport.h"
+#include "p2p/test/fake_packet_transport.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/network/received_packet.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
@@ -35,7 +35,7 @@ TEST(PacketTransportInternal,
                       rtc::ReceivedPacket::kDtlsDecrypted);
           });
   packet_transport.NotifyPacketReceived(rtc::ReceivedPacket(
-      {}, rtc::SocketAddress(), absl::nullopt, rtc::EcnMarking::kNotEct,
+      {}, rtc::SocketAddress(), std::nullopt, rtc::EcnMarking::kNotEct,
       rtc::ReceivedPacket::kDtlsDecrypted));
 
   packet_transport.DeregisterReceivedPacketCallback(&receiver);

@@ -9,15 +9,16 @@ import functools
 import json
 from pathlib import Path
 import sys
+import re
 import textwrap
 from typing import Any, Callable, Iterable, Sequence, Tuple, Union, Optional
 import urllib.request
 
-import appdirs  # type: ignore
 import diskcache  # type: ignore
 import jinja2
 import jsonschema  # type: ignore
 from jsonschema import _utils  # type: ignore
+import platformdirs  # type: ignore
 import yaml
 
 try:
@@ -189,6 +190,16 @@ def snake_case(value: str) -> str:
     return value.lower().replace(".", "_").replace("-", "_")
 
 
+def camel_or_pascal_to_snake_case(value: str) -> str:
+    """
+    Convert Camel Case or Pascal Case to Snake Case.
+
+    Any capitalized values beyond the first token are lowered
+    and an `_` is inserted.
+    """
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", value).lower()
+
+
 def screaming_case(value: str) -> str:
     """
     Convert the value to SCREAMING_SNAKE_CASE.
@@ -278,7 +289,7 @@ def fetch_remote_url(url: str, cache: bool = True):
             return fd.read()
 
     if cache:
-        cache_dir = appdirs.user_cache_dir("glean_parser", "mozilla")
+        cache_dir = platformdirs.user_cache_dir("glean_parser", "mozilla")
         with diskcache.Cache(cache_dir) as dc:
             if key in dc:
                 return dc[key]
@@ -534,6 +545,8 @@ ping_args = [
     "enabled",
     "schedules_pings",
     "reason_codes",
+    "follows_collection_enabled",
+    "uploader_capabilities",
 ]
 
 

@@ -10,6 +10,7 @@
 #include "rtc_base/physical_socket_server.h"
 
 #include <cstdint>
+#include <cstring>
 #include <utility>
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
@@ -92,7 +93,7 @@ int64_t GetSocketRecvTimestamp(int socket) {
 
 #else
 
-int64_t GetSocketRecvTimestamp(int socket) {
+int64_t GetSocketRecvTimestamp(int /* socket */) {
   return -1;
 }
 #endif
@@ -101,15 +102,15 @@ int64_t GetSocketRecvTimestamp(int socket) {
 typedef char* SockOptArg;
 #endif
 
-#if defined(WEBRTC_USE_EPOLL)
+#if defined(WEBRTC_LINUX)
 // POLLRDHUP / EPOLLRDHUP are only defined starting with Linux 2.6.17.
 #if !defined(POLLRDHUP)
 #define POLLRDHUP 0x2000
-#endif
+#endif  // !defined(POLLRDHUP)
 #if !defined(EPOLLRDHUP)
 #define EPOLLRDHUP 0x2000
-#endif
-#endif
+#endif  // !defined(EPOLLRDHUP)
+#endif  // defined(WEBRTC_LINUX)
 
 namespace {
 
@@ -151,12 +152,6 @@ class ScopedSetTrue {
   bool* value_;
 };
 
-// Returns true if the experiement "WebRTC-SCM-Timestamp" is explicitly
-// disabled.
-bool IsScmTimeStampExperimentDisabled() {
-  return webrtc::field_trial::IsDisabled("WebRTC-SCM-Timestamp");
-}
-
 }  // namespace
 
 namespace rtc {
@@ -166,8 +161,7 @@ PhysicalSocket::PhysicalSocket(PhysicalSocketServer* ss, SOCKET s)
       s_(s),
       error_(0),
       state_((s == INVALID_SOCKET) ? CS_CLOSED : CS_CONNECTED),
-      resolver_(nullptr),
-      read_scm_timestamp_experiment_(!IsScmTimeStampExperimentDisabled()) {
+      resolver_(nullptr) {
   if (s_ != INVALID_SOCKET) {
     SetEnabledEvents(DE_READ | DE_WRITE);
 
@@ -526,62 +520,49 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
 
 #if defined(WEBRTC_POSIX)
   int received = 0;
-  if (read_scm_timestamp_experiment_) {
-    iovec iov = {.iov_base = buffer, .iov_len = length};
-    msghdr msg = {.msg_name = nullptr, .msg_namelen = 0, .msg_iov = &iov, .msg_iovlen = 1};
-    if (out_addr) {
-      out_addr->Clear();
-      msg.msg_name = addr;
-      msg.msg_namelen = addr_len;
-    }
-    // TODO(bugs.webrtc.org/15368): What size is needed? IPV6_TCLASS is supposed
-    // to be an int. Why is a larger size needed?
-    char control[CMSG_SPACE(sizeof(struct timeval) + 5 * sizeof(int))] = {};
-    if (timestamp || ecn) {
-      *timestamp = -1;
-      msg.msg_control = &control;
-      msg.msg_controllen = sizeof(control);
-    }
-    received = ::recvmsg(s_, &msg, 0);
-    if (received <= 0) {
-      // An error occured or shut down.
-      return received;
-    }
-    if (timestamp || ecn) {
-      struct cmsghdr* cmsg;
-      for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-        if (ecn) {
-          if ((cmsg->cmsg_type == IPV6_TCLASS &&
-               cmsg->cmsg_level == IPPROTO_IPV6) ||
-              (cmsg->cmsg_type == IP_TOS && cmsg->cmsg_level == IPPROTO_IP)) {
-            *ecn = EcnFromDs(CMSG_DATA(cmsg)[0]);
-          }
-        }
-        if (cmsg->cmsg_level != SOL_SOCKET)
-          continue;
-        if (timestamp && cmsg->cmsg_type == SCM_TIMESTAMP) {
-          timeval* ts = reinterpret_cast<timeval*>(CMSG_DATA(cmsg));
-          *timestamp =
-              rtc::kNumMicrosecsPerSec * static_cast<int64_t>(ts->tv_sec) +
-              static_cast<int64_t>(ts->tv_usec);
+  iovec iov = {.iov_base = buffer, .iov_len = length};
+  msghdr msg = {.msg_name = nullptr, .msg_namelen = 0, .msg_iov = &iov, .msg_iovlen = 1};
+  if (out_addr) {
+    out_addr->Clear();
+    msg.msg_name = addr;
+    msg.msg_namelen = addr_len;
+  }
+  // TODO(bugs.webrtc.org/15368): What size is needed? IPV6_TCLASS is supposed
+  // to be an int. Why is a larger size needed?
+  char control[CMSG_SPACE(sizeof(struct timeval) + 5 * sizeof(int))] = {};
+  if (timestamp || ecn) {
+    *timestamp = -1;
+    msg.msg_control = &control;
+    msg.msg_controllen = sizeof(control);
+  }
+  received = ::recvmsg(s_, &msg, 0);
+  if (received <= 0) {
+    // An error occured or shut down.
+    return received;
+  }
+  if (timestamp || ecn) {
+    struct cmsghdr* cmsg;
+    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (ecn) {
+        if ((cmsg->cmsg_type == IPV6_TCLASS &&
+             cmsg->cmsg_level == IPPROTO_IPV6) ||
+            (cmsg->cmsg_type == IP_TOS && cmsg->cmsg_level == IPPROTO_IP)) {
+          *ecn = EcnFromDs(CMSG_DATA(cmsg)[0]);
         }
       }
+      if (cmsg->cmsg_level != SOL_SOCKET)
+        continue;
+      if (timestamp && cmsg->cmsg_type == SCM_TIMESTAMP) {
+        timeval ts;
+        std::memcpy(static_cast<void*>(&ts), CMSG_DATA(cmsg), sizeof(ts));
+        *timestamp =
+            rtc::kNumMicrosecsPerSec * static_cast<int64_t>(ts.tv_sec) +
+            static_cast<int64_t>(ts.tv_usec);
+      }
     }
-    if (out_addr) {
-      SocketAddressFromSockAddrStorage(addr_storage, out_addr);
-    }
-  } else {  // !read_scm_timestamp_experiment_
-    if (out_addr) {
-      received = ::recvfrom(s_, static_cast<char*>(buffer),
-                            static_cast<int>(length), 0, addr, &addr_len);
-      SocketAddressFromSockAddrStorage(addr_storage, out_addr);
-    } else {
-      received =
-          ::recv(s_, static_cast<char*>(buffer), static_cast<int>(length), 0);
-    }
-    if (timestamp) {
-      *timestamp = GetSocketRecvTimestamp(s_);
-    }
+  }
+  if (out_addr) {
+    SocketAddressFromSockAddrStorage(addr_storage, out_addr);
   }
   return received;
 
@@ -855,13 +836,10 @@ bool SocketDispatcher::Initialize() {
   ioctlsocket(s_, FIONBIO, &argp);
 #elif defined(WEBRTC_POSIX)
   fcntl(s_, F_SETFL, fcntl(s_, F_GETFL, 0) | O_NONBLOCK);
-  if (!IsScmTimeStampExperimentDisabled()) {
-    int value = 1;
-    // Attempt to get receive packet timestamp from the socket.
-    if (::setsockopt(s_, SOL_SOCKET, SO_TIMESTAMP, &value, sizeof(value)) !=
-        0) {
-      RTC_DLOG(LS_ERROR) << "::setsockopt failed. errno: " << LAST_SYSTEM_ERROR;
-    }
+  int value = 1;
+  // Attempt to get receive packet timestamp from the socket.
+  if (::setsockopt(s_, SOL_SOCKET, SO_TIMESTAMP, &value, sizeof(value)) != 0) {
+    RTC_DLOG(LS_ERROR) << "::setsockopt failed. errno: " << LAST_SYSTEM_ERROR;
   }
 #endif
 
@@ -871,10 +849,11 @@ bool SocketDispatcher::Initialize() {
   // we attempt to write to such a socket, SIGPIPE will be raised, which by
   // default will terminate the process, which we don't want. By specifying
   // this socket option, SIGPIPE will be disabled for the socket.
-  int value = 1;
+  value = 1;
   if (::setsockopt(s_, SOL_SOCKET, SO_NOSIGPIPE, &value, sizeof(value)) != 0) {
     RTC_DLOG(LS_ERROR) << "::setsockopt failed. errno: " << LAST_SYSTEM_ERROR;
   }
+
 #endif
   ss_->Add(this);
   return true;
@@ -1191,7 +1170,7 @@ class Signaler : public Dispatcher {
 
   uint32_t GetRequestedEvents() override { return DE_READ; }
 
-  void OnEvent(uint32_t ff, int err) override {
+  void OnEvent(uint32_t /* ff */, int /* err */) override {
     // It is not possible to perfectly emulate an auto-resetting event with
     // pipes.  This simulates it by resetting before the event is handled.
 
@@ -1373,7 +1352,7 @@ void PhysicalSocketServer::Remove(Dispatcher* pdispatcher) {
 #endif  // WEBRTC_USE_EPOLL
 }
 
-void PhysicalSocketServer::Update(Dispatcher* pdispatcher) {
+void PhysicalSocketServer::Update([[maybe_unused]] Dispatcher* pdispatcher) {
 #if defined(WEBRTC_USE_EPOLL)
   if (epoll_fd_ == INVALID_SOCKET) {
     return;
@@ -1492,7 +1471,15 @@ static void ProcessEvents(Dispatcher* dispatcher,
 static void ProcessPollEvents(Dispatcher* dispatcher, const pollfd& pfd) {
   bool readable = (pfd.revents & (POLLIN | POLLPRI));
   bool writable = (pfd.revents & POLLOUT);
-  bool error = (pfd.revents & (POLLRDHUP | POLLERR | POLLHUP));
+
+  // Linux and Fuchsia define POLLRDHUP, which is set when the peer has
+  // disconnected. On other platforms, we only check for POLLHUP.
+#if defined(WEBRTC_LINUX) || defined(WEBRTC_FUCHSIA)
+  constexpr short kEvents = POLLRDHUP | POLLERR | POLLHUP;
+#else
+  constexpr short kEvents = POLLERR | POLLHUP;
+#endif
+  bool error = (pfd.revents & kEvents);
 
   ProcessEvents(dispatcher, readable, writable, error, error);
 }

@@ -12,11 +12,11 @@
 #define VIDEO_ADAPTATION_BANDWIDTH_QUALITY_SCALER_RESOURCE_H_
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/scoped_refptr.h"
 #include "api/video/video_adaptation_reason.h"
 #include "api/video_codecs/video_encoder.h"
@@ -45,7 +45,8 @@ class BandwidthQualityScalerResource
 
   void StartCheckForOveruse(
       const std::vector<VideoEncoder::ResolutionBitrateLimits>&
-          resolution_bitrate_limits);
+          resolution_bitrate_limits,
+      VideoCodecType codec_type);
   void StopCheckForOveruse();
 
   // BandwidthScalerQpUsageHandlerInterface implementation.

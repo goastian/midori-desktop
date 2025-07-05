@@ -13,6 +13,7 @@
 #include <memory>
 #include <utility>
 
+#include "api/audio/builtin_audio_processing_builder.h"
 #include "api/environment/environment.h"
 #include "api/environment/environment_factory.h"
 #include "api/media_types.h"
@@ -42,14 +43,13 @@ const uint32_t kReceiverLocalAudioSsrc = 0x1234567;
 
 constexpr int kEventLogOutputIntervalMs = 5000;
 
-CallClientFakeAudio InitAudio(TimeController* time_controller) {
+CallClientFakeAudio InitAudio(const Environment& env) {
   CallClientFakeAudio setup;
   auto capturer = TestAudioDeviceModule::CreatePulsedNoiseCapturer(256, 48000);
   auto renderer = TestAudioDeviceModule::CreateDiscardRenderer(48000);
   setup.fake_audio_device = TestAudioDeviceModule::Create(
-      time_controller->GetTaskQueueFactory(), std::move(capturer),
-      std::move(renderer), 1.f);
-  setup.apm = AudioProcessingBuilder().Create();
+      &env.task_queue_factory(), std::move(capturer), std::move(renderer), 1.f);
+  setup.apm = BuiltinAudioProcessingBuilder().Build(env);
   setup.fake_audio_device->Init();
   AudioState::Config audio_state_config;
   audio_state_config.audio_mixer = AudioMixerImpl::Create();
@@ -75,7 +75,7 @@ std::unique_ptr<Call> CreateCall(
       config.transport.rates.start_rate.bps();
   call_config.network_controller_factory = network_controller_factory;
   call_config.audio_state = audio_state;
-  return Call::Create(call_config);
+  return Call::Create(std::move(call_config));
 }
 
 std::unique_ptr<RtcEventLog> CreateEventLog(
@@ -223,7 +223,7 @@ CallClient::CallClient(
       env_factory.Set(CreateEventLog(env_, *log_writer_factory_));
       env_ = env_factory.Create();
     }
-    fake_audio_setup_ = InitAudio(time_controller_);
+    fake_audio_setup_ = InitAudio(env_);
 
     call_ = CreateCall(env_, config, &network_controller_factory_,
                        fake_audio_setup_.audio_state);
@@ -362,6 +362,10 @@ uint32_t CallClient::GetNextRtxSsrc() {
 
 void CallClient::SendTask(std::function<void()> task) {
   task_queue_.SendTask(std::move(task));
+}
+
+void CallClient::UpdateNetworkAdapterId(int adapter_id) {
+  transport_->UpdateAdapterId(adapter_id);
 }
 
 int16_t CallClient::Bind(EmulatedEndpoint* endpoint) {

@@ -22,6 +22,7 @@
 #include <emmintrin.h>
 #endif
 
+#include "api/environment/environment_factory.h"
 #include "modules/audio_processing/aec3/adaptive_fir_filter_erl.h"
 #include "modules/audio_processing/aec3/aec3_fft.h"
 #include "modules/audio_processing/aec3/aec_state.h"
@@ -43,7 +44,7 @@ namespace aec3 {
 namespace {
 
 std::string ProduceDebugText(size_t num_render_channels, size_t delay) {
-  rtc::StringBuilder ss;
+  StringBuilder ss;
   ss << "delay: " << delay << ", ";
   ss << "num_render_channels:" << num_render_channels;
   return ss.Release();
@@ -482,9 +483,10 @@ TEST_P(AdaptiveFirFilterMultiChannel, FilterAndAdapt) {
   Block x(kNumBands, num_render_channels);
   std::vector<float> n(kBlockSize, 0.f);
   std::vector<float> y(kBlockSize, 0.f);
-  AecState aec_state(EchoCanceller3Config{}, num_capture_channels);
+  AecState aec_state(CreateEnvironment(), EchoCanceller3Config{},
+                     num_capture_channels);
   RenderSignalAnalyzer render_signal_analyzer(config);
-  absl::optional<DelayEstimate> delay_estimate;
+  std::optional<DelayEstimate> delay_estimate;
   std::vector<float> e(kBlockSize, 0.f);
   std::array<float, kFftLength> s_scratch;
   std::vector<SubtractorOutput> output(num_capture_channels);
@@ -564,7 +566,7 @@ TEST_P(AdaptiveFirFilterMultiChannel, FilterAndAdapt) {
                      e.begin(),
                      [&](float a, float b) { return a - b * kScale; });
       std::for_each(e.begin(), e.end(),
-                    [](float& a) { a = rtc::SafeClamp(a, -32768.f, 32767.f); });
+                    [](float& a) { a = SafeClamp(a, -32768.f, 32767.f); });
       fft.ZeroPaddedFft(e, Aec3Fft::Window::kRectangular, &E);
       for (auto& o : output) {
         for (size_t k = 0; k < kBlockSize; ++k) {

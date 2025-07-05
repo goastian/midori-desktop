@@ -4,8 +4,8 @@
 
 //! Ping collection, assembly & submission.
 
-use std::fs::{create_dir_all, File};
-use std::io::Write;
+use std::fs::{self, create_dir_all, File};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use log::info;
@@ -34,6 +34,8 @@ pub struct Ping<'a> {
     pub includes_info_sections: bool,
     /// Other pings that should be scheduled when this ping is sent.
     pub schedules_pings: Vec<String>,
+    /// Capabilities the uploader must have in order to uplaoad this ping.
+    pub uploader_capabilities: Vec<String>,
 }
 
 /// Collect a ping's data, assemble it into its full payload and store it on disk.
@@ -66,6 +68,11 @@ impl PingMaker {
 
     /// Gets, and then increments, the sequence number for a given ping.
     fn get_ping_seq(&self, glean: &Glean, storage_name: &str) -> usize {
+        // Don't attempt to increase sequence number for disabled ping
+        if !glean.is_ping_enabled(storage_name) {
+            return 0;
+        }
+
         // Sequence numbers are stored as a counter under a name that includes the storage name
         let seq = CounterMetric::new(CommonMetricData {
             name: format!("{}#sequence", storage_name),
@@ -169,8 +176,36 @@ impl PingMaker {
             StorageManager.snapshot_as_json(glean.storage(), "glean_client_info", true)
         {
             let client_info_obj = client_info.as_object().unwrap(); // safe unwrap, snapshot always returns an object.
-            for (_key, value) in client_info_obj {
-                merge(&mut map, value);
+            for (_metric_type, metrics) in client_info_obj {
+                merge(&mut map, metrics);
+            }
+            let map = map.as_object_mut().unwrap(); // safe unwrap, we created the object above.
+            let mut attribution = serde_json::Map::new();
+            let mut distribution = serde_json::Map::new();
+            map.retain(|name, value| {
+                // Only works because we ensure no client_info metric categories contain '.'.
+                let mut split = name.split('.');
+                let category = split.next();
+                let name = split.next();
+                if let (Some(category), Some(name)) = (category, name) {
+                    if category == "attribution" {
+                        attribution.insert(name.into(), value.take());
+                        false
+                    } else if category == "distribution" {
+                        distribution.insert(name.into(), value.take());
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            });
+            if !attribution.is_empty() {
+                map.insert("attribution".into(), serde_json::Value::from(attribution));
+            }
+            if !distribution.is_empty() {
+                map.insert("distribution".into(), serde_json::Value::from(distribution));
             }
         } else {
             log::warn!("Empty client info data.");
@@ -234,8 +269,20 @@ impl PingMaker {
         url_path: &'a str,
     ) -> Option<Ping<'a>> {
         info!("Collecting {}", ping.name());
+        let database = glean.storage();
 
-        let mut metrics_data = StorageManager.snapshot_as_json(glean.storage(), ping.name(), true);
+        // HACK: Only for metrics pings we add the ping timings.
+        // But we want that to persist until the next metrics ping is actually sent.
+        let write_samples = database.write_timings.replace(Vec::with_capacity(64));
+        if !write_samples.is_empty() {
+            glean
+                .database_metrics
+                .write_time
+                .accumulate_samples_sync(glean, &write_samples);
+        }
+
+        let mut metrics_data = StorageManager.snapshot_as_json(database, ping.name(), true);
+
         let events_data = glean
             .event_storage()
             .snapshot_as_json(glean, ping.name(), true);
@@ -317,6 +364,7 @@ impl PingMaker {
             headers: self.get_headers(glean),
             includes_info_sections: ping.include_info_sections(),
             schedules_pings: ping.schedules_pings().to_vec(),
+            uploader_capabilities: ping.uploader_capabilities().to_vec(),
         })
     }
 
@@ -375,6 +423,7 @@ impl PingMaker {
                 headers: Some(ping.headers.clone()),
                 body_has_info_sections: Some(ping.includes_info_sections),
                 ping_name: Some(ping.name.to_string()),
+                uploader_capabilities: Some(ping.uploader_capabilities.clone()),
             };
             file.write_all(::serde_json::to_string(&metadata)?.as_bytes())?;
         }
@@ -392,11 +441,45 @@ impl PingMaker {
     }
 
     /// Clears any pending pings in the queue.
-    pub fn clear_pending_pings(&self, data_path: &Path) -> Result<()> {
+    pub fn clear_pending_pings(&self, data_path: &Path, ping_names: &[&str]) -> Result<()> {
         let pings_dir = self.get_pings_dir(data_path, None)?;
 
-        std::fs::remove_dir_all(&pings_dir)?;
-        create_dir_all(&pings_dir)?;
+        // TODO(bug 1932909): Refactor this into its own function
+        // and share it with `upload::directory`.
+        let entries = pings_dir.read_dir()?;
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            if let Ok(file_type) = entry.file_type() {
+                if !file_type.is_file() {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            let file = match File::open(entry.path()) {
+                Ok(file) => file,
+                Err(_) => {
+                    continue;
+                }
+            };
+
+            let mut lines = BufReader::new(file).lines();
+            if let (Some(Ok(path)), Some(Ok(_body)), Ok(metadata)) =
+                (lines.next(), lines.next(), lines.next().transpose())
+            {
+                let PingMetadata { ping_name, .. } = metadata
+                    .and_then(|m| crate::upload::process_metadata(&path, &m))
+                    .unwrap_or_default();
+                let ping_name =
+                    ping_name.unwrap_or_else(|| path.split('/').nth(3).unwrap_or("").into());
+
+                if ping_names.contains(&&ping_name[..]) {
+                    _ = fs::remove_file(entry.path());
+                }
+            } else {
+                continue;
+            }
+        }
 
         log::debug!("All pending pings deleted");
 
@@ -414,15 +497,15 @@ mod test {
         let (mut glean, _t) = new_glean(None);
         let ping_maker = PingMaker::new();
 
-        assert_eq!(0, ping_maker.get_ping_seq(&glean, "custom"));
-        assert_eq!(1, ping_maker.get_ping_seq(&glean, "custom"));
+        assert_eq!(0, ping_maker.get_ping_seq(&glean, "store1"));
+        assert_eq!(1, ping_maker.get_ping_seq(&glean, "store1"));
 
         glean.set_upload_enabled(false);
-        assert_eq!(0, ping_maker.get_ping_seq(&glean, "custom"));
-        assert_eq!(0, ping_maker.get_ping_seq(&glean, "custom"));
+        assert_eq!(0, ping_maker.get_ping_seq(&glean, "store1"));
+        assert_eq!(0, ping_maker.get_ping_seq(&glean, "store1"));
 
         glean.set_upload_enabled(true);
-        assert_eq!(0, ping_maker.get_ping_seq(&glean, "custom"));
-        assert_eq!(1, ping_maker.get_ping_seq(&glean, "custom"));
+        assert_eq!(0, ping_maker.get_ping_seq(&glean, "store1"));
+        assert_eq!(1, ping_maker.get_ping_seq(&glean, "store1"));
     }
 }

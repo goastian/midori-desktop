@@ -10,28 +10,32 @@
 
 #include "pc/dtls_transport.h"
 
+#include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "api/dtls_transport_interface.h"
 #include "api/make_ref_counted.h"
 #include "api/rtc_error.h"
-#include "p2p/base/fake_dtls_transport.h"
+#include "api/scoped_refptr.h"
+#include "api/test/rtc_error_matchers.h"
 #include "p2p/base/p2p_constants.h"
+#include "p2p/dtls/fake_dtls_transport.h"
 #include "rtc_base/fake_ssl_identity.h"
-#include "rtc_base/gunit.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/ssl_identity.h"
+#include "rtc_base/thread.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/wait_until.h"
 
-constexpr int kDefaultTimeout = 1000;  // milliseconds
+namespace webrtc {
+
 constexpr int kNonsenseCipherSuite = 1234;
 
 using cricket::FakeDtlsTransport;
 using ::testing::ElementsAre;
-
-namespace webrtc {
 
 class TestDtlsTransportObserver : public DtlsTransportObserverInterface {
  public:
@@ -44,7 +48,7 @@ class TestDtlsTransportObserver : public DtlsTransportObserverInterface {
   void OnError(RTCError error) override {}
 
   DtlsTransportState state() {
-    if (states_.size() > 0) {
+    if (!states_.empty()) {
       return states_[states_.size() - 1];
     } else {
       return DtlsTransportState::kNew;
@@ -107,7 +111,9 @@ TEST_F(DtlsTransportTest, EventsObservedWhenConnecting) {
   CreateTransport();
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state_change_called_, kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state_change_called_; },
+                        ::testing::IsTrue()),
+              IsRtcOk());
   EXPECT_THAT(
       observer_.states_,
       ElementsAre(  // FakeDtlsTransport doesn't signal the "connecting" state.
@@ -120,11 +126,13 @@ TEST_F(DtlsTransportTest, CloseWhenClearing) {
   CreateTransport();
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kConnected)),
+              IsRtcOk());
   transport()->Clear();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kClosed,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kClosed)),
+              IsRtcOk());
 }
 
 TEST_F(DtlsTransportTest, RoleAppearsOnConnect) {
@@ -133,8 +141,9 @@ TEST_F(DtlsTransportTest, RoleAppearsOnConnect) {
   transport()->RegisterObserver(observer());
   EXPECT_FALSE(transport()->Information().role());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kConnected)),
+              IsRtcOk());
   EXPECT_TRUE(observer_.info_.role());
   EXPECT_TRUE(transport()->Information().role());
   EXPECT_EQ(transport()->Information().role(), DtlsTransportTlsRole::kClient);
@@ -145,8 +154,9 @@ TEST_F(DtlsTransportTest, CertificateAppearsOnConnect) {
   CreateTransport(&fake_certificate);
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kConnected)),
+              IsRtcOk());
   EXPECT_TRUE(observer_.info_.remote_ssl_certificates() != nullptr);
 }
 
@@ -155,12 +165,14 @@ TEST_F(DtlsTransportTest, CertificateDisappearsOnClose) {
   CreateTransport(&fake_certificate);
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kConnected)),
+              IsRtcOk());
   EXPECT_TRUE(observer_.info_.remote_ssl_certificates() != nullptr);
   transport()->Clear();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kClosed,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kClosed)),
+              IsRtcOk());
   EXPECT_FALSE(observer_.info_.remote_ssl_certificates());
 }
 
@@ -168,13 +180,15 @@ TEST_F(DtlsTransportTest, CipherSuiteVisibleWhenConnected) {
   CreateTransport();
   transport()->RegisterObserver(observer());
   CompleteDtlsHandshake();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kConnected)),
+              IsRtcOk());
   ASSERT_TRUE(observer_.info_.ssl_cipher_suite());
   EXPECT_EQ(kNonsenseCipherSuite, *observer_.info_.ssl_cipher_suite());
   transport()->Clear();
-  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kClosed,
-                   kDefaultTimeout);
+  ASSERT_THAT(WaitUntil([&] { return observer_.state(); },
+                        ::testing::Eq(DtlsTransportState::kClosed)),
+              IsRtcOk());
   EXPECT_FALSE(observer_.info_.ssl_cipher_suite());
 }
 

@@ -14,12 +14,12 @@ rtc_library("sent_packet") {
     "sent_packet.h",
   ]
   deps = [ "../system:rtc_export" ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
 rtc_source_set("ecn_marking") {
   visibility = [ "*" ]
   sources = [ "ecn_marking.h" ]
+  deps = [ "../../api/transport:ecn_marking" ]
 }
 
 rtc_library("received_packet") {
@@ -34,9 +34,5 @@ rtc_library("received_packet") {
     "../../api:array_view",
     "../../api/units:timestamp",
     "../system:rtc_export",
-  ]
-  absl_deps = [
-    "//third_party/abseil-cpp/absl/functional:any_invocable",
-    "//third_party/abseil-cpp/absl/types:optional",
   ]
 }

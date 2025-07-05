@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 
+use internal_pings::InternalPings;
 use serde_json::json;
 
 use super::*;
@@ -19,7 +20,37 @@ pub fn new_glean(tempdir: Option<tempfile::TempDir>) -> (Glean, tempfile::TempDi
         None => tempfile::tempdir().unwrap(),
     };
     let tmpname = dir.path().display().to_string();
-    let glean = Glean::with_options(&tmpname, GLOBAL_APPLICATION_ID, true, true);
+    let mut glean = Glean::with_options(&tmpname, GLOBAL_APPLICATION_ID, true, true);
+    // Register the builtin pings as enabled.
+    _ = InternalPings::new(true);
+
+    // store{1, 2} is used throughout tests
+    let ping = PingType::new_internal(
+        "store1",
+        true,
+        false,
+        true,
+        true,
+        true,
+        vec![],
+        vec![],
+        true,
+        vec![],
+    );
+    glean.register_ping_type(&ping);
+    let ping = PingType::new_internal(
+        "store2",
+        true,
+        false,
+        true,
+        true,
+        true,
+        vec![],
+        vec![],
+        true,
+        vec![],
+    );
+    glean.register_ping_type(&ping);
     (glean, dir)
 }
 
@@ -198,6 +229,9 @@ fn experimentation_id_is_set_correctly() {
         enable_event_timestamps: true,
         experimentation_id: Some(experimentation_id.to_string()),
         enable_internal_pings: true,
+        ping_schedule: Default::default(),
+        ping_lifetime_threshold: 0,
+        ping_lifetime_max_time: 0,
     })
     .unwrap();
 
@@ -316,12 +350,11 @@ fn client_id_is_managed_correctly_when_toggling_uploading() {
 
     glean.set_upload_enabled(false);
     assert_eq!(
-        *KNOWN_CLIENT_ID,
+        None,
         glean
             .core_metrics
             .client_id
             .get_value(&glean, "glean_client_info")
-            .unwrap()
     );
 
     glean.set_upload_enabled(true);
@@ -335,18 +368,17 @@ fn client_id_is_managed_correctly_when_toggling_uploading() {
 }
 
 #[test]
-fn client_id_is_set_to_known_value_when_uploading_disabled_at_start() {
+fn client_id_is_not_set_when_uploading_disabled_at_start() {
     let dir = tempfile::tempdir().unwrap();
     let tmpname = dir.path().display().to_string();
     let glean = Glean::with_options(&tmpname, GLOBAL_APPLICATION_ID, false, true);
 
     assert_eq!(
-        *KNOWN_CLIENT_ID,
+        None,
         glean
             .core_metrics
             .client_id
             .get_value(&glean, "glean_client_info")
-            .unwrap()
     );
 }
 
@@ -362,6 +394,58 @@ fn client_id_is_set_to_random_value_when_uploading_enabled_at_start() {
         .get_value(&glean, "glean_client_info");
     assert!(current_client_id.is_some());
     assert_ne!(*KNOWN_CLIENT_ID, current_client_id.unwrap());
+}
+
+#[test]
+fn attribution_and_distribution_are_correctly_stored() {
+    let dir = tempfile::tempdir().unwrap();
+    let tmpname = dir.path().display().to_string();
+    let glean = Glean::with_options(&tmpname, GLOBAL_APPLICATION_ID, true, true);
+
+    // On a fresh Glean, no attribution or distribution information is set.
+    assert_eq!(
+        <AttributionMetrics as Default>::default(),
+        glean.test_get_attribution()
+    );
+    assert_eq!(
+        <DistributionMetrics as Default>::default(),
+        glean.test_get_distribution()
+    );
+
+    let mut attribution = AttributionMetrics {
+        source: Some("source".into()),
+        medium: Some("medium".into()),
+        campaign: Some("campaign".into()),
+        term: Some("term".into()),
+        content: Some("content".into()),
+    };
+    let distribution = DistributionMetrics {
+        name: Some("name".into()),
+    };
+
+    // Set them all at once.
+    glean.update_attribution(attribution.clone());
+    glean.update_distribution(distribution.clone());
+
+    assert_eq!(attribution, glean.test_get_attribution());
+    assert_eq!(distribution, glean.test_get_distribution());
+
+    let attribution_update = AttributionMetrics {
+        campaign: Some("new campaign".into()),
+        ..Default::default()
+    };
+    let distribution_update = DistributionMetrics {
+        name: Some("new name".into()),
+    };
+
+    // Perform updates.
+    glean.update_attribution(attribution_update);
+    glean.update_distribution(distribution_update.clone());
+
+    // Ensure only the updated fields took over
+    attribution.campaign = Some("new campaign".into());
+    assert_eq!(attribution, glean.test_get_attribution());
+    assert_eq!(distribution_update, glean.test_get_distribution());
 }
 
 #[test]
@@ -398,9 +482,9 @@ fn correct_order() {
     fn discriminant(metric: &metrics::Metric) -> u32 {
         let ser = bincode::serialize(metric).unwrap();
         (ser[0] as u32)
-        | (ser[1] as u32) << 8
-        | (ser[2] as u32) << 16
-        | (ser[3] as u32) << 24
+        | ((ser[1] as u32) << 8)
+        | ((ser[2] as u32) << 16)
+        | ((ser[3] as u32) << 24)
     }
 
     // One of every metric type. The values are arbitrary and don't matter.
@@ -614,6 +698,7 @@ fn test_first_run() {
 
 #[test]
 fn test_dirty_bit() {
+    let _ = env_logger::builder().try_init();
     let dir = tempfile::tempdir().unwrap();
     let tmpname = dir.path().display().to_string();
     {
@@ -863,11 +948,13 @@ fn test_set_remote_metric_configuration() {
         ..Default::default()
     });
     let another_metric = LabeledString::new(
-        CommonMetricData {
-            category: "category".to_string(),
-            name: "labeled_string_metric".to_string(),
-            send_in_pings: vec!["baseline".to_string()],
-            ..Default::default()
+        LabeledMetricData::Common {
+            cmd: CommonMetricData {
+                category: "category".to_string(),
+                name: "labeled_string_metric".to_string(),
+                send_in_pings: vec!["baseline".to_string()],
+                ..Default::default()
+            },
         },
         Some(vec!["label1".into()]),
     );
@@ -1182,6 +1269,8 @@ fn disabled_pings_are_not_submitted() {
         false,
         vec![],
         vec![],
+        true,
+        vec![],
     );
     glean.register_ping_type(&ping);
 
@@ -1234,6 +1323,8 @@ fn pings_are_controllable_from_remote_settings_config() {
         false,
         vec![],
         vec![],
+        true,
+        vec![],
     );
     glean.register_ping_type(&disabled_ping);
     let enabled_ping = PingType::new(
@@ -1244,6 +1335,8 @@ fn pings_are_controllable_from_remote_settings_config() {
         true,
         true,
         vec![],
+        vec![],
+        true,
         vec![],
     );
     glean.register_ping_type(&enabled_ping);

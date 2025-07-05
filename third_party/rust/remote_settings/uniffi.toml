@@ -1,6 +1,5 @@
 [bindings.kotlin]
 package_name = "mozilla.appservices.remotesettings"
-cdylib_name = "megazord"
 
 [bindings.kotlin.custom_types.RsJsonObject]
 # Name of the type in the Kotlin code
@@ -14,5 +13,3 @@ from_custom = "{}.toString()"
 [bindings.swift]
 ffi_module_name = "MozillaRustComponents"
 ffi_module_filename = "remote_settingsFFI"
-generate_module_map = false
-

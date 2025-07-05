@@ -1,64 +1,33 @@
-From: Nico Grunbaum <na-g@nostrum.com>
-Date: Wed, 15 Nov 2023 22:33:00 +0000
-Subject: Bug 1863041 - P0 - add device filter control to
- RTCCameraVideoCapturer;r=pehrsons,webrtc-reviewers
+From: Andreas Pehrson <apehrson@mozilla.com>
+Date: Fri, 2 Feb 2024 18:43:00 +0000
+Subject: Bug 1878010 - Fix webrtc::VideoCaptureFactory for BSD.
+ r=grulja,gaston,webrtc-reviewers,mjf
 
-I have filed this bug upstream: https://bugs.chromium.org/p/webrtc/issues/detail?id=15639
-
-Differential Revision: https://phabricator.services.mozilla.com/D193172
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/91a763d768b74acc9cf4828f91a86df4a7b092ce
+Differential Revision: https://phabricator.services.mozilla.com/D200427
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f890637efe5abc0020fab83ff2224313cd0c8460
 ---
- .../capturer/RTCCameraVideoCapturer.h           |  5 ++++-
- .../capturer/RTCCameraVideoCapturer.m           | 17 +++++++++++++++--
- 2 files changed, 19 insertions(+), 3 deletions(-)
+ modules/video_capture/video_capture_factory.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/sdk/objc/components/capturer/RTCCameraVideoCapturer.h b/sdk/objc/components/capturer/RTCCameraVideoCapturer.h
-index 370bfa70f0..b1f3f64f74 100644
---- a/sdk/objc/components/capturer/RTCCameraVideoCapturer.h
-+++ b/sdk/objc/components/capturer/RTCCameraVideoCapturer.h
-@@ -26,7 +26,10 @@ NS_EXTENSION_UNAVAILABLE_IOS("Camera not available in app extensions.")
- @property(readonly, nonatomic) AVCaptureSession *captureSession;
- 
- // Returns list of available capture devices that support video capture.
--+ (NSArray<AVCaptureDevice *> *)captureDevices;
-++ (NSArray<AVCaptureDevice *> *)captureDevicesWithDeviceTypes:
-+    (NSArray<AVCaptureDeviceType> *)deviceTypes;
-+// Returns list of default capture devices types
-++ (NSArray<AVCaptureDeviceType> *)defaultCaptureDeviceTypes;
- // Returns list of formats that are supported by this class for this device.
- + (NSArray<AVCaptureDeviceFormat *> *)supportedFormatsForDevice:(AVCaptureDevice *)device;
- 
-diff --git a/sdk/objc/components/capturer/RTCCameraVideoCapturer.m b/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
-index e7c47b4e99..1361207faf 100644
---- a/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
-+++ b/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
-@@ -117,14 +117,27 @@ - (void)dealloc {
-   [[NSNotificationCenter defaultCenter] removeObserver:self];
- }
- 
--+ (NSArray<AVCaptureDevice *> *)captureDevices {
-++ (NSArray<AVCaptureDevice *> *)captureDevicesWithDeviceTypes:
-+    (NSArray<AVCaptureDeviceType> *)deviceTypes {
-   AVCaptureDeviceDiscoverySession *session = [AVCaptureDeviceDiscoverySession
--      discoverySessionWithDeviceTypes:@[ AVCaptureDeviceTypeBuiltInWideAngleCamera ]
-+      discoverySessionWithDeviceTypes:deviceTypes
-                             mediaType:AVMediaTypeVideo
-                              position:AVCaptureDevicePositionUnspecified];
-   return session.devices;
- }
- 
-++ (NSArray<AVCaptureDeviceType> *)defaultCaptureDeviceTypes {
-+  NSArray *types = @[ AVCaptureDeviceTypeBuiltInWideAngleCamera ];
-+#if !defined(WEBRTC_IOS)
-+  if (@available(macOS 14.0, *)) {
-+    types = [types arrayByAddingObject:AVCaptureDeviceTypeExternal];
-+  } else {
-+    types = [types arrayByAddingObject:AVCaptureDeviceTypeExternalUnknown];
-+  }
-+#endif
-+  return types;
-+}
-+
- + (NSArray<AVCaptureDeviceFormat *> *)supportedFormatsForDevice:(AVCaptureDevice *)device {
-   // Support opening the device in any format. We make sure it's converted to a format we
-   // can handle, if needed, in the method `-setupVideoDataOutput`.
+diff --git a/modules/video_capture/video_capture_factory.cc b/modules/video_capture/video_capture_factory.cc
+index 127bb06a2e..0d12966c2e 100644
+--- a/modules/video_capture/video_capture_factory.cc
++++ b/modules/video_capture/video_capture_factory.cc
+@@ -24,7 +24,7 @@ rtc::scoped_refptr<VideoCaptureModule> VideoCaptureFactory::Create(
+     [[maybe_unused]] const char* deviceUniqueIdUTF8) {
+ // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
+ // Android as well
+-#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
+   return nullptr;
+ #else
+   return videocapturemodule::VideoCaptureImpl::Create(options,
+@@ -40,7 +40,7 @@ VideoCaptureModule::DeviceInfo* VideoCaptureFactory::CreateDeviceInfo(
+     [[maybe_unused]] VideoCaptureOptions* options) {
+ // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
+ // Android as well
+-#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
+   return nullptr;
+ #else
+   return videocapturemodule::VideoCaptureImpl::CreateDeviceInfo(options);

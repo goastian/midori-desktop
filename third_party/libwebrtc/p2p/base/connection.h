@@ -16,14 +16,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/candidate.h"
 #include "api/rtc_error.h"
 #include "api/sequence_checker.h"
@@ -53,6 +52,8 @@ namespace cricket {
 // Version number for GOOG_PING, this is added to have the option of
 // adding other flavors in the future.
 constexpr int kGoogPingVersion = 1;
+// 1200 is the "commonly used" MTU. Subtract M-I attribute (20+4) and FP (4+4).
+constexpr int kMaxStunBindingLength = 1200 - 24 - 8;
 
 // Forward declaration so that a ConnectionRequest can contain a Connection.
 class Connection;
@@ -121,11 +122,11 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   int rtt() const;
 
   int unwritable_timeout() const;
-  void set_unwritable_timeout(const absl::optional<int>& value_ms);
+  void set_unwritable_timeout(const std::optional<int>& value_ms);
   int unwritable_min_checks() const;
-  void set_unwritable_min_checks(const absl::optional<int>& value);
+  void set_unwritable_min_checks(const std::optional<int>& value);
   int inactive_timeout() const;
-  void set_inactive_timeout(const absl::optional<int>& value);
+  void set_inactive_timeout(const std::optional<int>& value);
 
   // Gets the `ConnectionInfo` stats, where `best_connection` has not been
   // populated (default value false).
@@ -186,7 +187,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   bool nominated() const;
 
   int receiving_timeout() const;
-  void set_receiving_timeout(absl::optional<int> receiving_timeout_ms);
+  void set_receiving_timeout(std::optional<int> receiving_timeout_ms);
 
   // Deletes a `Connection` instance is by calling the `DestroyConnection`
   // method in `Port`.
@@ -219,13 +220,13 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   void ReceivedPingResponse(
       int rtt,
       absl::string_view request_id,
-      const absl::optional<uint32_t>& nomination = absl::nullopt);
+      const std::optional<uint32_t>& nomination = std::nullopt);
   std::unique_ptr<IceMessage> BuildPingRequest(
       std::unique_ptr<StunByteStringAttribute> delta)
       RTC_RUN_ON(network_thread_);
 
   int64_t last_ping_response_received() const;
-  const absl::optional<std::string>& last_ping_id_received() const;
+  const std::optional<std::string>& last_ping_id_received() const;
 
   // Used to check if any STUN ping response has been received.
   int rtt_samples() const;
@@ -235,7 +236,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   int64_t last_ping_received() const;
 
   void ReceivedPing(
-      const absl::optional<std::string>& request_id = absl::nullopt);
+      const std::optional<std::string>& request_id = std::nullopt);
   // Handles the binding request; sends a response if this is a valid request.
   void HandleStunBindingOrGoogPingRequest(IceMessage* msg);
   // Handles the piggyback acknowledgement of the lastest connectivity check
@@ -297,7 +298,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   bool stable(int64_t now) const;
 
   // Check if we sent `val` pings without receving a response.
-  bool TooManyOutstandingPings(const absl::optional<int>& val) const;
+  bool TooManyOutstandingPings(const std::optional<int>& val) const;
 
   // Called by Port when the network cost changes.
   void SetLocalCandidateNetworkCost(uint16_t cost);
@@ -355,8 +356,25 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   }
 
   void ClearStunDictConsumer() {
-    goog_delta_consumer_ = absl::nullopt;
-    goog_delta_ack_consumer_ = absl::nullopt;
+    goog_delta_consumer_ = std::nullopt;
+    goog_delta_ack_consumer_ = std::nullopt;
+  }
+
+  void RegisterDtlsPiggyback(
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          data_producer,
+      absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+          ack_producer,
+      absl::AnyInvocable<void(const StunByteStringAttribute*,
+                              const StunByteStringAttribute*)> consumer) {
+    dtls_stun_piggyback_data_producer_ = std::move(data_producer);
+    dtls_stun_piggyback_ack_producer_ = std::move(ack_producer);
+    dtls_stun_piggyback_consumer_ = std::move(consumer);
+  }
+  void DeregisterDtlsPiggyback() {
+    dtls_stun_piggyback_consumer_ = nullptr;
+    dtls_stun_piggyback_data_producer_ = nullptr;
+    dtls_stun_piggyback_ack_producer_ = nullptr;
   }
 
  protected:
@@ -459,7 +477,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   // https://w3c.github.io/webrtc-stats/#dom-rtcicecandidatepairstats-totalroundtriptime
   uint64_t total_round_trip_time_ms_ RTC_GUARDED_BY(network_thread_) = 0;
   // https://w3c.github.io/webrtc-stats/#dom-rtcicecandidatepairstats-currentroundtriptime
-  absl::optional<uint32_t> current_round_trip_time_ms_
+  std::optional<uint32_t> current_round_trip_time_ms_
       RTC_GUARDED_BY(network_thread_);
   int64_t last_ping_sent_ RTC_GUARDED_BY(
       network_thread_);  // last time we sent a ping to the other side
@@ -473,21 +491,21 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
       RTC_GUARDED_BY(network_thread_);
   // Transaction ID of the last connectivity check received. Null if having not
   // received a ping yet.
-  absl::optional<std::string> last_ping_id_received_
+  std::optional<std::string> last_ping_id_received_
       RTC_GUARDED_BY(network_thread_);
 
-  absl::optional<int> unwritable_timeout_ RTC_GUARDED_BY(network_thread_);
-  absl::optional<int> unwritable_min_checks_ RTC_GUARDED_BY(network_thread_);
-  absl::optional<int> inactive_timeout_ RTC_GUARDED_BY(network_thread_);
+  std::optional<int> unwritable_timeout_ RTC_GUARDED_BY(network_thread_);
+  std::optional<int> unwritable_min_checks_ RTC_GUARDED_BY(network_thread_);
+  std::optional<int> inactive_timeout_ RTC_GUARDED_BY(network_thread_);
 
   IceCandidatePairState state_ RTC_GUARDED_BY(network_thread_);
   // Time duration to switch from receiving to not receiving.
-  absl::optional<int> receiving_timeout_ RTC_GUARDED_BY(network_thread_);
+  std::optional<int> receiving_timeout_ RTC_GUARDED_BY(network_thread_);
   const int64_t time_created_ms_ RTC_GUARDED_BY(network_thread_);
   const int64_t delta_internal_unix_epoch_ms_ RTC_GUARDED_BY(network_thread_);
   int num_pings_sent_ RTC_GUARDED_BY(network_thread_) = 0;
 
-  absl::optional<webrtc::IceCandidatePairDescription> log_description_
+  std::optional<webrtc::IceCandidatePairDescription> log_description_
       RTC_GUARDED_BY(network_thread_);
   webrtc::IceEventLog* ice_event_log_ RTC_GUARDED_BY(network_thread_) = nullptr;
 
@@ -495,8 +513,7 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   // if configured via field trial, the remote peer supports it (signaled
   // in STUN_BINDING) and if the last STUN BINDING is identical to the one
   // that is about to be sent.
-  absl::optional<bool> remote_support_goog_ping_
-      RTC_GUARDED_BY(network_thread_);
+  std::optional<bool> remote_support_goog_ping_ RTC_GUARDED_BY(network_thread_);
   std::unique_ptr<StunMessage> cached_stun_binding_
       RTC_GUARDED_BY(network_thread_);
 
@@ -504,14 +521,23 @@ class RTC_EXPORT Connection : public CandidatePairInterface {
   rtc::EventBasedExponentialMovingAverage rtt_estimate_
       RTC_GUARDED_BY(network_thread_);
 
-  absl::optional<std::function<std::unique_ptr<StunAttribute>(
+  std::optional<std::function<std::unique_ptr<StunAttribute>(
       const StunByteStringAttribute*)>>
       goog_delta_consumer_;
-  absl::optional<
+  std::optional<
       std::function<void(webrtc::RTCErrorOr<const StunUInt64Attribute*>)>>
       goog_delta_ack_consumer_;
   absl::AnyInvocable<void(Connection*, const rtc::ReceivedPacket&)>
       received_packet_callback_;
+
+  void MaybeAddDtlsPiggybackingAttributes(StunMessage* msg);
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_stun_piggyback_data_producer_ = nullptr;
+  absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+      dtls_stun_piggyback_ack_producer_ = nullptr;
+  absl::AnyInvocable<void(const StunByteStringAttribute*,
+                          const StunByteStringAttribute*)>
+      dtls_stun_piggyback_consumer_ = nullptr;
 };
 
 // ProxyConnection defers all the interesting work to the port.

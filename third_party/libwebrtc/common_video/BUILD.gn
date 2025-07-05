@@ -8,6 +8,30 @@
 
 import("../webrtc.gni")
 
+rtc_library("corruption_detection_converters") {
+  sources = [
+    "corruption_detection_converters.cc",
+    "corruption_detection_converters.h",
+  ]
+  deps = [
+    ":frame_instrumentation_data",
+    "../api/transport/rtp:corruption_detection_message",
+    "../rtc_base:checks",
+  ]
+}
+
+rtc_library("frame_instrumentation_data") {
+  sources = [ "frame_instrumentation_data.h" ]
+}
+
+rtc_library("corruption_score_calculator") {
+  sources = [ "include/corruption_score_calculator.h" ]
+  deps = [
+    ":frame_instrumentation_data",
+    "../api/video:video_frame",
+  ]
+}
+
 rtc_library("common_video") {
   visibility = [ "*" ]
 
@@ -85,6 +109,7 @@ rtc_library("common_video") {
     "../rtc_base/synchronization:mutex",
     "../rtc_base/system:rtc_export",
     "../system_wrappers:metrics",
+    "//third_party/abseil-cpp/absl/numeric:bits",
     "//third_party/libyuv",
   ]
   if (rtc_use_h265) {
@@ -93,10 +118,6 @@ rtc_library("common_video") {
       "../rtc_base/containers:flat_map",
     ]
   }
-  absl_deps = [
-    "//third_party/abseil-cpp/absl/numeric:bits",
-    "//third_party/abseil-cpp/absl/types:optional",
-  ]
 }
 
 rtc_source_set("frame_counts") {
@@ -114,6 +135,17 @@ if (rtc_include_tests && !build_with_chromium) {
       sources = common_video_resources
       outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
     }
+  }
+
+  rtc_library("corruption_detection_converters_unittest") {
+    testonly = true
+    sources = [ "corruption_detection_converters_unittest.cc" ]
+    deps = [
+      ":corruption_detection_converters",
+      ":frame_instrumentation_data",
+      "../api/transport/rtp:corruption_detection_message",
+      "../test:test_support",
+    ]
   }
 
   rtc_test("common_video_unittests") {
@@ -143,6 +175,7 @@ if (rtc_include_tests && !build_with_chromium) {
 
     deps = [
       ":common_video",
+      ":corruption_detection_converters_unittest",
       "../api:scoped_refptr",
       "../api/units:time_delta",
       "../api/video:video_frame",
@@ -166,11 +199,8 @@ if (rtc_include_tests && !build_with_chromium) {
       "//third_party/libyuv",
     ]
 
-    absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
-
     data = common_video_resources
     if (is_android) {
-      deps += [ "//testing/android/native_test:native_test_support" ]
       shard_timeout = 900
     }
 

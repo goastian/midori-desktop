@@ -12,20 +12,21 @@
 
 #include "api/environment/environment.h"
 #include "api/task_queue/task_queue_base.h"
+#include "call/rtp_transport_config.h"
 
 namespace webrtc {
 
 CallConfig::CallConfig(const Environment& env,
                        TaskQueueBase* network_task_queue)
-    : env(env),
-      network_task_queue_(network_task_queue) {}
-
-CallConfig::CallConfig(const CallConfig& config) = default;
+    : env(env), network_task_queue_(network_task_queue) {}
 
 RtpTransportConfig CallConfig::ExtractTransportConfig() const {
   RtpTransportConfig transport_config = {.env = env};
   transport_config.bitrate_config = bitrate_config;
-  transport_config.network_controller_factory = network_controller_factory;
+  transport_config.network_controller_factory =
+      per_call_network_controller_factory
+          ? per_call_network_controller_factory.get()
+          : network_controller_factory;
   transport_config.network_state_predictor_factory =
       network_state_predictor_factory;
   transport_config.pacer_burst_interval = pacer_burst_interval;

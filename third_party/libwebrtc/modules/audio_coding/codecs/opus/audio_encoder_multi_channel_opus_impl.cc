@@ -20,15 +20,17 @@
 #include "modules/audio_coding/codecs/opus/audio_encoder_multi_channel_opus_impl.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "api/audio_codecs/opus/audio_encoder_opus_config.h"
 #include "modules/audio_coding/codecs/opus/audio_coder_opus_common.h"
-#include "rtc_base/arraysize.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/string_to_number.h"
 
 namespace webrtc {
@@ -86,11 +88,11 @@ int GetFrameSizeMs(const SdpAudioFormat& format) {
 int CalculateDefaultBitrate(int max_playback_rate, size_t num_channels) {
   const int bitrate = [&] {
     if (max_playback_rate <= 8000) {
-      return kOpusBitrateNbBps * rtc::dchecked_cast<int>(num_channels);
+      return kOpusBitrateNbBps * dchecked_cast<int>(num_channels);
     } else if (max_playback_rate <= 16000) {
-      return kOpusBitrateWbBps * rtc::dchecked_cast<int>(num_channels);
+      return kOpusBitrateWbBps * dchecked_cast<int>(num_channels);
     } else {
-      return kOpusBitrateFbBps * rtc::dchecked_cast<int>(num_channels);
+      return kOpusBitrateFbBps * dchecked_cast<int>(num_channels);
     }
   }();
   RTC_DCHECK_GE(bitrate, AudioEncoderMultiChannelOpusConfig::kMinBitrateBps);
@@ -101,12 +103,12 @@ int CalculateDefaultBitrate(int max_playback_rate, size_t num_channels) {
 // out how invalid it is and accurately log invalid values.
 int CalculateBitrate(int max_playback_rate_hz,
                      size_t num_channels,
-                     absl::optional<std::string> bitrate_param) {
+                     std::optional<std::string> bitrate_param) {
   const int default_bitrate =
       CalculateDefaultBitrate(max_playback_rate_hz, num_channels);
 
   if (bitrate_param) {
-    const auto bitrate = rtc::StringToNumber<int>(*bitrate_param);
+    const auto bitrate = StringToNumber<int>(*bitrate_param);
     if (bitrate) {
       const int chosen_bitrate =
           std::max(AudioEncoderOpusConfig::kMinBitrateBps,
@@ -165,7 +167,7 @@ void AudioEncoderMultiChannelOpusImpl::Reset() {
   RTC_CHECK(RecreateEncoderInstance(config_));
 }
 
-absl::optional<std::pair<TimeDelta, TimeDelta>>
+std::optional<std::pair<TimeDelta, TimeDelta>>
 AudioEncoderMultiChannelOpusImpl::GetFrameLengthRange() const {
   return {{TimeDelta::Millis(config_.frame_size_ms),
            TimeDelta::Millis(config_.frame_size_ms)}};
@@ -235,11 +237,11 @@ bool AudioEncoderMultiChannelOpusImpl::RecreateEncoderInstance(
   return true;
 }
 
-absl::optional<AudioEncoderMultiChannelOpusConfig>
+std::optional<AudioEncoderMultiChannelOpusConfig>
 AudioEncoderMultiChannelOpusImpl::SdpToConfig(const SdpAudioFormat& format) {
   if (!absl::EqualsIgnoreCase(format.name, "multiopus") ||
       format.clockrate_hz != 48000) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   AudioEncoderMultiChannelOpusConfig config;
@@ -264,25 +266,25 @@ AudioEncoderMultiChannelOpusImpl::SdpToConfig(const SdpAudioFormat& format) {
 
   auto num_streams = GetFormatParameter<int>(format, "num_streams");
   if (!num_streams.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   config.num_streams = *num_streams;
 
   auto coupled_streams = GetFormatParameter<int>(format, "coupled_streams");
   if (!coupled_streams.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   config.coupled_streams = *coupled_streams;
 
   auto channel_mapping =
       GetFormatParameter<std::vector<unsigned char>>(format, "channel_mapping");
   if (!channel_mapping.has_value()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   config.channel_mapping = *channel_mapping;
 
   if (!config.IsOk()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return config;
 }
@@ -342,7 +344,7 @@ AudioEncoder::EncodedInfo AudioEncoderMultiChannelOpusImpl::EncodeImpl(
         int status = WebRtcOpus_Encode(
             inst_, &input_buffer_[0],
             rtc::CheckedDivExact(input_buffer_.size(), config_.num_channels),
-            rtc::saturated_cast<int16_t>(max_encoded_bytes), encoded.data());
+            saturated_cast<int16_t>(max_encoded_bytes), encoded.data());
 
         RTC_CHECK_GE(status, 0);  // Fails only if fed invalid data.
 

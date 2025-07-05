@@ -1,5 +1,8 @@
-use super::{block::DebugInfoInner, helpers};
+use alloc::{vec, vec::Vec};
+
 use spirv::{Op, Word};
+
+use super::{block::DebugInfoInner, helpers};
 
 pub(super) enum Signedness {
     Unsigned = 0,
@@ -100,10 +103,6 @@ impl super::Instruction {
         instruction.add_operand(line);
         instruction.add_operand(column);
         instruction
-    }
-
-    pub(super) const fn no_line() -> Self {
-        Self::new(Op::NoLine)
     }
 
     //
@@ -406,6 +405,10 @@ impl super::Instruction {
         instruction
     }
 
+    pub(super) fn constant_16bit(result_type_id: Word, id: Word, low: Word) -> Self {
+        Self::constant(result_type_id, id, &[low])
+    }
+
     pub(super) fn constant_32bit(result_type_id: Word, id: Word, value: Word) -> Self {
         Self::constant(result_type_id, id, &[value])
     }
@@ -702,6 +705,41 @@ impl super::Instruction {
         instruction
     }
 
+    pub(super) fn image_texel_pointer(
+        result_type_id: Word,
+        id: Word,
+        image: Word,
+        coordinates: Word,
+        sample: Word,
+    ) -> Self {
+        let mut instruction = Self::new(Op::ImageTexelPointer);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(image);
+        instruction.add_operand(coordinates);
+        instruction.add_operand(sample);
+        instruction
+    }
+
+    pub(super) fn image_atomic(
+        op: Op,
+        result_type_id: Word,
+        id: Word,
+        pointer: Word,
+        scope_id: Word,
+        semantics_id: Word,
+        value: Word,
+    ) -> Self {
+        let mut instruction = Self::new(op);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(pointer);
+        instruction.add_operand(scope_id);
+        instruction.add_operand(semantics_id);
+        instruction.add_operand(value);
+        instruction
+    }
+
     pub(super) fn image_query(op: Op, result_type_id: Word, id: Word, image: Word) -> Self {
         let mut instruction = Self::new(op);
         instruction.set_type(result_type_id);
@@ -741,6 +779,33 @@ impl super::Instruction {
         instruction.set_type(result_type_id);
         instruction.set_result(id);
         instruction.add_operand(query);
+        instruction
+    }
+
+    pub(super) fn ray_query_generate_intersection(query: Word, hit: Word) -> Self {
+        let mut instruction = Self::new(Op::RayQueryGenerateIntersectionKHR);
+        instruction.add_operand(query);
+        instruction.add_operand(hit);
+        instruction
+    }
+
+    pub(super) fn ray_query_confirm_intersection(query: Word) -> Self {
+        let mut instruction = Self::new(Op::RayQueryConfirmIntersectionKHR);
+        instruction.add_operand(query);
+        instruction
+    }
+
+    pub(super) fn ray_query_return_vertex_position(
+        result_type_id: Word,
+        id: Word,
+        query: Word,
+        intersection: Word,
+    ) -> Self {
+        let mut instruction = Self::new(Op::RayQueryGetIntersectionTriangleVertexPositionsKHR);
+        instruction.set_type(result_type_id);
+        instruction.set_result(id);
+        instruction.add_operand(query);
+        instruction.add_operand(intersection);
         instruction
     }
 
@@ -1170,7 +1235,8 @@ impl From<crate::StorageFormat> for spirv::ImageFormat {
             Sf::Bgra8Unorm => Self::Unknown,
             Sf::Rgb10a2Uint => Self::Rgb10a2ui,
             Sf::Rgb10a2Unorm => Self::Rgb10A2,
-            Sf::Rg11b10Float => Self::R11fG11fB10f,
+            Sf::Rg11b10Ufloat => Self::R11fG11fB10f,
+            Sf::R64Uint => Self::R64ui,
             Sf::Rg32Uint => Self::Rg32ui,
             Sf::Rg32Sint => Self::Rg32i,
             Sf::Rg32Float => Self::Rg32f,

@@ -10,6 +10,8 @@
 
 #include "modules/audio_coding/neteq/reorder_optimizer.h"
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <limits>
 #include <vector>
@@ -25,7 +27,7 @@ constexpr int kBucketSizeMs = 20;
 
 ReorderOptimizer::ReorderOptimizer(int forget_factor,
                                    int ms_per_loss_percent,
-                                   absl::optional<int> start_forget_weight)
+                                   std::optional<int> start_forget_weight)
     : histogram_(kDelayBuckets, forget_factor, start_forget_weight),
       ms_per_loss_percent_(ms_per_loss_percent) {}
 

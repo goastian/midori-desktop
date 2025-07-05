@@ -2,6 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// kinda abusing features here, but features "override" builtin support.
+#[cfg(not(feature = "tracing-logging"))]
+pub use log::{debug, error, info, trace, warn, Level};
+
+#[cfg(feature = "tracing-logging")]
+pub use tracing_support::{debug, error, info, trace, warn, Level};
+
+#[cfg(all(feature = "testing", not(feature = "tracing-logging")))]
+pub fn init_for_tests() {
+    let _ = env_logger::try_init();
+}
+
+#[cfg(all(feature = "testing", not(feature = "tracing-logging")))]
+pub fn init_for_tests_with_level(level: Level) {
+    // There's gotta be a better way :(
+    let level_name = match level {
+        Level::Debug => "debug",
+        Level::Trace => "trace",
+        Level::Info => "info",
+        Level::Warn => "warn",
+        Level::Error => "error",
+    };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level_name)).init();
+}
+
+#[cfg(all(feature = "testing", feature = "tracing-logging"))]
+pub use tracing_support::init_for_tests;
+
 mod macros;
 
 #[cfg(feature = "backtrace")]
@@ -16,6 +44,18 @@ pub mod backtrace {
 
     pub struct Backtrace;
 
+    impl Backtrace {
+        pub fn new() -> Self {
+            Backtrace
+        }
+    }
+
+    impl Default for Backtrace {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl fmt::Debug for Backtrace {
         #[cold]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -27,11 +67,25 @@ pub mod backtrace {
 mod redact;
 pub use redact::*;
 
+#[cfg(not(feature = "tracing-reporting"))]
 mod reporting;
+#[cfg(not(feature = "tracing-reporting"))]
 pub use reporting::{
-    report_breadcrumb, report_error_to_app, set_application_error_reporter,
-    unset_application_error_reporter, ApplicationErrorReporter,
+    set_application_error_reporter, unset_application_error_reporter, ApplicationErrorReporter,
 };
+
+#[cfg(feature = "tracing-reporting")]
+mod reporting {
+    pub fn report_error_to_app(type_name: String, message: String) {
+        tracing::event!(target: "app-services-error-reporter::error", tracing::Level::ERROR, message, type_name);
+    }
+
+    pub fn report_breadcrumb(message: String, module: String, line: u32, column: u32) {
+        tracing::event!(target: "app-services-error-reporter::breadcrumb", tracing::Level::INFO, message, module, line, column);
+    }
+}
+
+pub use reporting::{report_breadcrumb, report_error_to_app};
 
 pub use error_support_macros::handle_error;
 
@@ -40,7 +94,7 @@ pub use handling::{convert_log_report_error, ErrorHandling, ErrorReporting, GetE
 
 /// XXX - Most of this is now considered deprecated - only FxA uses it, and
 /// should be replaced with the facilities in the `handling` module.
-
+///
 /// Define a wrapper around the the provided ErrorKind type.
 /// See also `define_error` which is more likely to be what you want.
 #[macro_export]
@@ -86,7 +140,7 @@ macro_rules! define_error_wrapper {
             #[cfg(feature = "backtrace")]
             #[cold]
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                let mut bt = self.backtrace.unwrap().lock().unwrap();
+                let mut bt = self.backtrace.as_ref().unwrap().lock().unwrap();
                 bt.resolve();
                 write!(f, "{:?}\n\n{}", bt, self.kind)
             }
@@ -159,4 +213,4 @@ macro_rules! define_error {
     };
 }
 
-uniffi::include_scaffolding!("errorsupport");
+uniffi::setup_scaffolding!("errorsupport");

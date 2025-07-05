@@ -14,36 +14,66 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
+#include <string>
+#include <tuple>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "api/array_view.h"
 #include "api/async_dns_resolver.h"
 #include "api/candidate.h"
 #include "api/field_trials_view.h"
+#include "api/ice_transport_interface.h"
+#include "api/rtc_error.h"
+#include "api/sequence_checker.h"
+#include "api/transport/enums.h"
+#include "api/transport/stun.h"
 #include "api/units/time_delta.h"
+#include "logging/rtc_event_log/events/rtc_event_ice_candidate_pair_config.h"
 #include "logging/rtc_event_log/ice_logger.h"
-#include "p2p/base/basic_ice_controller.h"
+#include "p2p/base/active_ice_controller_factory_interface.h"
+#include "p2p/base/candidate_pair_interface.h"
 #include "p2p/base/connection.h"
 #include "p2p/base/connection_info.h"
+#include "p2p/base/ice_controller_factory_interface.h"
+#include "p2p/base/ice_switch_reason.h"
+#include "p2p/base/ice_transport_internal.h"
+#include "p2p/base/p2p_constants.h"
 #include "p2p/base/port.h"
+#include "p2p/base/port_allocator.h"
+#include "p2p/base/port_interface.h"
+#include "p2p/base/regathering_controller.h"
+#include "p2p/base/transport_description.h"
 #include "p2p/base/wrapping_active_ice_controller.h"
+#include "rtc_base/async_packet_socket.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/dscp.h"
 #include "rtc_base/experiments/struct_parameters_parser.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/net_helper.h"
+#include "rtc_base/net_helpers.h"
 #include "rtc_base/network.h"
+#include "rtc_base/network/received_packet.h"
+#include "rtc_base/network/sent_packet.h"
 #include "rtc_base/network_constants.h"
-#include "rtc_base/string_encode.h"
+#include "rtc_base/network_route.h"
+#include "rtc_base/socket.h"
+#include "rtc_base/socket_address.h"
 #include "rtc_base/time_utils.h"
 #include "rtc_base/trace_event.h"
-#include "system_wrappers/include/metrics.h"
 
 namespace cricket {
 namespace {
@@ -162,7 +192,6 @@ P2PTransportChannel::P2PTransportChannel(
       error_(0),
       remote_ice_mode_(ICEMODE_FULL),
       ice_role_(ICEROLE_UNKNOWN),
-      ice_tiebreaker_(0),
       gathering_state_(kIceGatheringNew),
       weak_ping_interval_(GetWeakPingIntervalInFieldTrial(field_trials)),
       config_(RECEIVING_TIMEOUT,
@@ -172,12 +201,13 @@ P2PTransportChannel::P2PTransportChannel(
               STRONG_AND_STABLE_WRITABLE_CONNECTION_PING_INTERVAL,
               true /* presume_writable_when_fully_relayed */,
               REGATHER_ON_FAILED_NETWORKS_INTERVAL,
-              RECEIVING_SWITCHING_DELAY) {
+              RECEIVING_SWITCHING_DELAY),
+      field_trials_(field_trials) {
   TRACE_EVENT0("webrtc", "P2PTransportChannel::P2PTransportChannel");
   RTC_DCHECK(allocator_ != nullptr);
   // Validate IceConfig even for mostly built-in constant default values in case
   // we change them.
-  RTC_DCHECK(ValidateIceConfig(config_).ok());
+  RTC_DCHECK(config_.IsValid().ok());
   webrtc::BasicRegatheringController::Config regathering_config;
   regathering_config.regather_on_failed_networks_interval =
       config_.regather_on_failed_networks_interval_or_default();
@@ -282,6 +312,20 @@ void P2PTransportChannel::AddConnection(Connection* connection) {
       [this](webrtc::RTCErrorOr<const StunUInt64Attribute*> delta_ack) {
         GoogDeltaAckReceived(std::move(delta_ack));
       });
+  if (config_.dtls_handshake_in_stun) {
+    connection->RegisterDtlsPiggyback(
+        [this](StunMessageType stun_message_type) {
+          return dtls_piggyback_get_data_(stun_message_type);
+        },
+        [this](StunMessageType stun_message_type) {
+          return dtls_piggyback_get_ack_(stun_message_type);
+        },
+        [this](const StunByteStringAttribute* data,
+               const StunByteStringAttribute* ack) {
+          dtls_piggyback_report_data_(data, ack);
+        });
+  }
+
   LogCandidatePairConfig(connection,
                          webrtc::IceCandidatePairConfigType::kAdded);
 
@@ -314,17 +358,6 @@ void P2PTransportChannel::SetIceRole(IceRole ice_role) {
 IceRole P2PTransportChannel::GetIceRole() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   return ice_role_;
-}
-
-void P2PTransportChannel::SetIceTiebreaker(uint64_t tiebreaker) {
-  RTC_DCHECK_RUN_ON(network_thread_);
-  if (!ports_.empty() || !pruned_ports_.empty()) {
-    RTC_LOG(LS_ERROR)
-        << "Attempt to change tiebreaker after Port has been allocated.";
-    return;
-  }
-
-  ice_tiebreaker_ = tiebreaker;
 }
 
 IceTransportState P2PTransportChannel::GetState() const {
@@ -362,21 +395,21 @@ IceGatheringState P2PTransportChannel::gathering_state() const {
   return gathering_state_;
 }
 
-absl::optional<int> P2PTransportChannel::GetRttEstimate() {
+std::optional<int> P2PTransportChannel::GetRttEstimate() {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (selected_connection_ != nullptr &&
       selected_connection_->rtt_samples() > 0) {
     return selected_connection_->rtt();
   } else {
-    return absl::nullopt;
+    return std::nullopt;
   }
 }
 
-absl::optional<const CandidatePair>
+std::optional<const CandidatePair>
 P2PTransportChannel::GetSelectedCandidatePair() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (selected_connection_ == nullptr) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   CandidatePair pair;
@@ -504,9 +537,9 @@ void P2PTransportChannel::SetRemoteIceMode(IceMode mode) {
   remote_ice_mode_ = mode;
 }
 
-// TODO(qingsi): We apply the convention that setting a absl::optional parameter
+// TODO(qingsi): We apply the convention that setting a std::optional parameter
 // to null restores its default value in the implementation. However, some
-// absl::optional parameters are only processed below if non-null, e.g.,
+// std::optional parameters are only processed below if non-null, e.g.,
 // regather_on_failed_networks_interval, and thus there is no way to restore the
 // defaults. Fix this issue later for consistency.
 void P2PTransportChannel::SetIceConfig(const IceConfig& config) {
@@ -678,8 +711,13 @@ void P2PTransportChannel::SetIceConfig(const IceConfig& config) {
   allocator_->SetVpnPreference(config_.vpn_preference);
 
   ice_controller_->SetIceConfig(config_);
+  if (config_.dtls_handshake_in_stun != config.dtls_handshake_in_stun) {
+    config_.dtls_handshake_in_stun = config.dtls_handshake_in_stun;
+    RTC_LOG(LS_INFO) << "Set DTLS handshake in STUN to "
+                     << config.dtls_handshake_in_stun;
+  }
 
-  RTC_DCHECK(ValidateIceConfig(config_).ok());
+  RTC_DCHECK(config_.IsValid().ok());
 }
 
 void P2PTransportChannel::ParseFieldTrials(
@@ -785,58 +823,18 @@ void P2PTransportChannel::ParseFieldTrials(
   if (!ice_field_trials_.enable_goog_delta) {
     stun_dict_writer_.Disable();
   }
+
+  if (field_trials->IsEnabled("WebRTC-RFC8888CongestionControlFeedback")) {
+    int desired_recv_esn = 1;
+    RTC_LOG(LS_INFO) << "Set WebRTC-RFC8888CongestionControlFeedback: Enable "
+                        "and set ECN recving mode";
+    SetOption(rtc::Socket::OPT_RECV_ECN, desired_recv_esn);
+  }
 }
 
 const IceConfig& P2PTransportChannel::config() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   return config_;
-}
-
-// TODO(qingsi): Add tests for the config validation starting from
-// PeerConnection::SetConfiguration.
-// Static
-RTCError P2PTransportChannel::ValidateIceConfig(const IceConfig& config) {
-  if (config.ice_check_interval_strong_connectivity_or_default() <
-      config.ice_check_interval_weak_connectivity.value_or(
-          GetWeakPingIntervalInFieldTrial(nullptr))) {
-    return RTCError(RTCErrorType::INVALID_PARAMETER,
-                    "Ping interval of candidate pairs is shorter when ICE is "
-                    "strongly connected than that when ICE is weakly "
-                    "connected");
-  }
-
-  if (config.receiving_timeout_or_default() <
-      std::max(config.ice_check_interval_strong_connectivity_or_default(),
-               config.ice_check_min_interval_or_default())) {
-    return RTCError(
-        RTCErrorType::INVALID_PARAMETER,
-        "Receiving timeout is shorter than the minimal ping interval.");
-  }
-
-  if (config.backup_connection_ping_interval_or_default() <
-      config.ice_check_interval_strong_connectivity_or_default()) {
-    return RTCError(RTCErrorType::INVALID_PARAMETER,
-                    "Ping interval of backup candidate pairs is shorter than "
-                    "that of general candidate pairs when ICE is strongly "
-                    "connected");
-  }
-
-  if (config.stable_writable_connection_ping_interval_or_default() <
-      config.ice_check_interval_strong_connectivity_or_default()) {
-    return RTCError(RTCErrorType::INVALID_PARAMETER,
-                    "Ping interval of stable and writable candidate pairs is "
-                    "shorter than that of general candidate pairs when ICE is "
-                    "strongly connected");
-  }
-
-  if (config.ice_unwritable_timeout_or_default() >
-      config.ice_inactive_timeout_or_default()) {
-    return RTCError(RTCErrorType::INVALID_PARAMETER,
-                    "The timeout period for the writability state to become "
-                    "UNRELIABLE is longer than that to become TIMEOUT.");
-  }
-
-  return RTCError::OK();
 }
 
 const Connection* P2PTransportChannel::selected_connection() const {
@@ -905,7 +903,7 @@ void P2PTransportChannel::MaybeStartGathering() {
 }
 
 // A new port is available, attempt to make connections for it
-void P2PTransportChannel::OnPortReady(PortAllocatorSession* session,
+void P2PTransportChannel::OnPortReady(PortAllocatorSession* /* session */,
                                       PortInterface* port) {
   RTC_DCHECK_RUN_ON(network_thread_);
 
@@ -926,7 +924,7 @@ void P2PTransportChannel::OnPortReady(PortAllocatorSession* session,
   // if one is pending.
 
   port->SetIceRole(ice_role_);
-  port->SetIceTiebreaker(ice_tiebreaker_);
+  port->SetIceTiebreaker(allocator_->ice_tiebreaker());
   ports_.push_back(port);
   port->SignalUnknownAddress.connect(this,
                                      &P2PTransportChannel::OnUnknownAddress);
@@ -951,7 +949,7 @@ void P2PTransportChannel::OnPortReady(PortAllocatorSession* session,
 
 // A new candidate is available, let listeners know
 void P2PTransportChannel::OnCandidatesReady(
-    PortAllocatorSession* session,
+    PortAllocatorSession* /* session */,
     const std::vector<Candidate>& candidates) {
   RTC_DCHECK_RUN_ON(network_thread_);
   for (size_t i = 0; i < candidates.size(); ++i) {
@@ -960,7 +958,7 @@ void P2PTransportChannel::OnCandidatesReady(
 }
 
 void P2PTransportChannel::OnCandidateError(
-    PortAllocatorSession* session,
+    PortAllocatorSession* /* session */,
     const IceCandidateErrorEvent& event) {
   RTC_DCHECK(network_thread_ == rtc::Thread::Current());
   if (candidate_error_callback_) {
@@ -969,7 +967,7 @@ void P2PTransportChannel::OnCandidateError(
 }
 
 void P2PTransportChannel::OnCandidatesAllocationDone(
-    PortAllocatorSession* session) {
+    PortAllocatorSession* /* session */) {
   RTC_DCHECK_RUN_ON(network_thread_);
   if (config_.gather_continually()) {
     RTC_LOG(LS_INFO) << "P2PTransportChannel: " << transport_name()
@@ -992,6 +990,7 @@ void P2PTransportChannel::OnUnknownAddress(PortInterface* port,
                                            const std::string& remote_username,
                                            bool port_muxed) {
   RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(stun_msg);
 
   // Port has received a valid stun packet from an address that no Connection
   // is currently available for. See if we already have a candidate with the
@@ -1141,7 +1140,7 @@ void P2PTransportChannel::OnCandidateFilterChanged(uint32_t prev_filter,
   }
 }
 
-void P2PTransportChannel::OnRoleConflict(PortInterface* port) {
+void P2PTransportChannel::OnRoleConflict(PortInterface* /* port */) {
   SignalRoleConflict(this);  // STUN ping will be sent when SetRole is called
                              // from Transport.
 }
@@ -1578,6 +1577,7 @@ int P2PTransportChannel::SendPacket(const char* data,
     error_ = EINVAL;
     return -1;
   }
+
   // If we don't think the connection is working yet, return ENOTCONN
   // instead of sending a packet that will probably be dropped.
   if (!ReadyToSend(selected_connection_)) {
@@ -1636,7 +1636,7 @@ bool P2PTransportChannel::GetStats(IceTransportStats* ice_transport_stats) {
   return true;
 }
 
-absl::optional<rtc::NetworkRoute> P2PTransportChannel::network_route() const {
+std::optional<rtc::NetworkRoute> P2PTransportChannel::network_route() const {
   RTC_DCHECK_RUN_ON(network_thread_);
   return network_route_;
 }
@@ -2126,6 +2126,7 @@ void P2PTransportChannel::RemoveConnection(Connection* connection) {
   connection->DeregisterReceivedPacketCallback();
   connections_.erase(it);
   connection->ClearStunDictConsumer();
+  connection->DeregisterDtlsPiggyback();
   ice_controller_->OnConnectionDestroyed(connection);
 }
 
@@ -2143,7 +2144,7 @@ void P2PTransportChannel::OnPortDestroyed(PortInterface* port) {
 }
 
 void P2PTransportChannel::OnPortsPruned(
-    PortAllocatorSession* session,
+    PortAllocatorSession* /* session */,
     const std::vector<PortInterface*>& ports) {
   RTC_DCHECK_RUN_ON(network_thread_);
   for (PortInterface* port : ports) {
@@ -2205,21 +2206,21 @@ void P2PTransportChannel::OnReadPacket(Connection* connection,
     return;
   }
 
-    // Let the client know of an incoming packet
-    packets_received_++;
-    bytes_received_ += packet.payload().size();
-    RTC_DCHECK(connection->last_data_received() >= last_data_received_ms_);
-    last_data_received_ms_ =
-        std::max(last_data_received_ms_, connection->last_data_received());
+  // Let the client know of an incoming packet
+  packets_received_++;
+  bytes_received_ += packet.payload().size();
+  RTC_DCHECK(connection->last_data_received() >= last_data_received_ms_);
+  last_data_received_ms_ =
+      std::max(last_data_received_ms_, connection->last_data_received());
 
-    NotifyPacketReceived(packet);
+  NotifyPacketReceived(packet);
 
-    // May need to switch the sending connection based on the receiving media
-    // path if this is the controlled side.
-    if (ice_role_ == ICEROLE_CONTROLLED && connection != selected_connection_) {
-      ice_controller_->OnImmediateSwitchRequest(IceSwitchReason::DATA_RECEIVED,
-                                                connection);
-    }
+  // May need to switch the sending connection based on the receiving media
+  // path if this is the controlled side.
+  if (ice_role_ == ICEROLE_CONTROLLED && connection != selected_connection_) {
+    ice_controller_->OnImmediateSwitchRequest(IceSwitchReason::DATA_RECEIVED,
+                                              connection);
+  }
 }
 
 void P2PTransportChannel::OnSentPacket(const rtc::SentPacket& sent_packet) {
@@ -2247,6 +2248,14 @@ void P2PTransportChannel::SetWritable(bool writable) {
     SignalReadyToSend(this);
   }
   SignalWritableState(this);
+
+  if (config_.dtls_handshake_in_stun &&
+      dtls_piggyback_report_data_ != nullptr) {
+    // Need to STUN ping here to get the last bit of the DTLS handshake across
+    // as quickly as possible. Only done when DTLS-in-STUN is configured
+    // and the data callback has not been reset due to lack of support.
+    SendPingRequestInternal(selected_connection_);
+  }
 }
 
 void P2PTransportChannel::SetReceiving(bool receiving) {
@@ -2316,6 +2325,38 @@ void P2PTransportChannel::GoogDeltaAckReceived(
     stun_dict_writer_.Disable();
     RTC_LOG(LS_ERROR) << "Failed GOOG_DELTA_ACK: "
                       << error_or_ack.error().message();
+  }
+}
+
+void P2PTransportChannel::SetDtlsPiggybackingCallbacks(
+    absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+        dtls_piggyback_get_data,
+    absl::AnyInvocable<std::optional<absl::string_view>(StunMessageType)>
+        dtls_piggyback_get_ack,
+    absl::AnyInvocable<void(const StunByteStringAttribute*,
+                            const StunByteStringAttribute*)>
+        dtls_piggyback_report_data) {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  dtls_piggyback_get_data_ = std::move(dtls_piggyback_get_data);
+  dtls_piggyback_get_ack_ = std::move(dtls_piggyback_get_ack);
+  dtls_piggyback_report_data_ = std::move(dtls_piggyback_report_data);
+
+  RTC_DCHECK(  // either all set
+      (dtls_piggyback_get_data_ != nullptr &&
+       dtls_piggyback_get_ack_ != nullptr &&
+       dtls_piggyback_report_data_ != nullptr) ||
+      // or all nullptr
+      (dtls_piggyback_get_data_ == nullptr &&
+       dtls_piggyback_get_ack_ == nullptr &&
+       dtls_piggyback_report_data_ == nullptr));
+
+  if (dtls_piggyback_get_data_ == nullptr &&
+      dtls_piggyback_get_ack_ == nullptr &&
+      dtls_piggyback_report_data_ == nullptr) {
+    // Iterate over connections, deregister.
+    for (auto& connection : connections_) {
+      connection->DeregisterDtlsPiggyback();
+    }
   }
 }
 

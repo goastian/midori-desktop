@@ -1,5 +1,6 @@
 use crate::fragment::{Fragment, Match, Stmts};
 use crate::internals::ast::{Container, Data, Field, Style, Variant};
+use crate::internals::name::Name;
 use crate::internals::{attr, replace_receiver, Ctxt, Derive};
 use crate::{bound, dummy, pretend, this};
 use proc_macro2::{Span, TokenStream};
@@ -28,6 +29,7 @@ pub fn expand_derive_serialize(input: &mut syn::DeriveInput) -> syn::Result<Toke
         let vis = &input.vis;
         let used = pretend::pretend_used(&cont, params.is_packed);
         quote! {
+            #[automatically_derived]
             impl #impl_generics #ident #ty_generics #where_clause {
                 #vis fn serialize<__S>(__self: &#remote #ty_generics, __serializer: __S) -> #serde::__private::Result<__S::Ok, __S::Error>
                 where
@@ -289,9 +291,18 @@ fn serialize_tuple_struct(
 }
 
 fn serialize_struct(params: &Parameters, fields: &[Field], cattrs: &attr::Container) -> Fragment {
-    assert!(fields.len() as u64 <= u64::from(u32::MAX));
+    assert!(
+        fields.len() as u64 <= u64::from(u32::MAX),
+        "too many fields in {}: {}, maximum supported count is {}",
+        cattrs.name().serialize_name(),
+        fields.len(),
+        u32::MAX,
+    );
 
-    if cattrs.has_flatten() {
+    let has_non_skipped_flatten = fields
+        .iter()
+        .any(|field| field.attrs.flatten() && !field.attrs.skip_serializing());
+    if has_non_skipped_flatten {
         serialize_struct_as_map(params, fields, cattrs)
     } else {
         serialize_struct_as_struct(params, fields, cattrs)
@@ -370,26 +381,8 @@ fn serialize_struct_as_map(
 
     let let_mut = mut_if(serialized_fields.peek().is_some() || tag_field_exists);
 
-    let len = if cattrs.has_flatten() {
-        quote!(_serde::__private::None)
-    } else {
-        let len = serialized_fields
-            .map(|field| match field.attrs.skip_serializing_if() {
-                None => quote!(1),
-                Some(path) => {
-                    let field_expr = get_member(params, field, &field.member);
-                    quote!(if #path(#field_expr) { 0 } else { 1 })
-                }
-            })
-            .fold(
-                quote!(#tag_field_exists as usize),
-                |sum, expr| quote!(#sum + #expr),
-            );
-        quote!(_serde::__private::Some(#len))
-    };
-
     quote_block! {
-        let #let_mut __serde_state = _serde::Serializer::serialize_map(__serializer, #len)?;
+        let #let_mut __serde_state = _serde::Serializer::serialize_map(__serializer, _serde::__private::None)?;
         #tag_field
         #(#serialize_fields)*
         _serde::ser::SerializeMap::end(__serde_state)
@@ -741,6 +734,7 @@ fn serialize_adjacently_tagged_variant(
             phantom: _serde::__private::PhantomData<#this_type #ty_generics>,
         }
 
+        #[automatically_derived]
         impl #wrapper_impl_generics _serde::Serialize for __AdjacentlyTagged #wrapper_ty_generics #where_clause {
             fn serialize<__S>(&self, __serializer: __S) -> _serde::__private::Result<__S::Ok, __S::Error>
             where
@@ -807,9 +801,9 @@ fn serialize_untagged_variant(
 
 enum TupleVariant<'a> {
     ExternallyTagged {
-        type_name: &'a str,
+        type_name: &'a Name,
         variant_index: u32,
-        variant_name: &'a str,
+        variant_name: &'a Name,
     },
     Untagged,
 }
@@ -876,11 +870,11 @@ fn serialize_tuple_variant(
 enum StructVariant<'a> {
     ExternallyTagged {
         variant_index: u32,
-        variant_name: &'a str,
+        variant_name: &'a Name,
     },
     InternallyTagged {
         tag: &'a str,
-        variant_name: &'a str,
+        variant_name: &'a Name,
     },
     Untagged,
 }
@@ -889,7 +883,7 @@ fn serialize_struct_variant(
     context: StructVariant,
     params: &Parameters,
     fields: &[Field],
-    name: &str,
+    name: &Name,
 ) -> Fragment {
     if fields.iter().any(|field| field.attrs.flatten()) {
         return serialize_struct_variant_with_flatten(context, params, fields, name);
@@ -973,7 +967,7 @@ fn serialize_struct_variant_with_flatten(
     context: StructVariant,
     params: &Parameters,
     fields: &[Field],
-    name: &str,
+    name: &Name,
 ) -> Fragment {
     let struct_trait = StructTrait::SerializeMap;
     let serialize_fields = serialize_struct_visitor(fields, params, true, &struct_trait);
@@ -1005,6 +999,7 @@ fn serialize_struct_variant_with_flatten(
                     phantom: _serde::__private::PhantomData<#this_type #ty_generics>,
                 }
 
+                #[automatically_derived]
                 impl #wrapper_impl_generics _serde::Serialize for __EnumFlatten #wrapper_ty_generics #where_clause {
                     fn serialize<__S>(&self, __serializer: __S) -> _serde::__private::Result<__S::Ok, __S::Error>
                     where
@@ -1229,6 +1224,17 @@ fn wrap_serialize_with(
         })
     });
 
+    let self_var = quote!(self);
+    let serializer_var = quote!(__s);
+
+    // If #serialize_with returns wrong type, error will be reported on here.
+    // We attach span of the path to this piece so error will be reported
+    // on the #[serde(with = "...")]
+    //                       ^^^^^
+    let wrapper_serialize = quote_spanned! {serialize_with.span()=>
+        #serialize_with(#(#self_var.values.#field_access, )* #serializer_var)
+    };
+
     quote!({
         #[doc(hidden)]
         struct __SerializeWith #wrapper_impl_generics #where_clause {
@@ -1236,12 +1242,13 @@ fn wrap_serialize_with(
             phantom: _serde::__private::PhantomData<#this_type #ty_generics>,
         }
 
+        #[automatically_derived]
         impl #wrapper_impl_generics _serde::Serialize for __SerializeWith #wrapper_ty_generics #where_clause {
-            fn serialize<__S>(&self, __s: __S) -> _serde::__private::Result<__S::Ok, __S::Error>
+            fn serialize<__S>(&#self_var, #serializer_var: __S) -> _serde::__private::Result<__S::Ok, __S::Error>
             where
                 __S: _serde::Serializer,
             {
-                #serialize_with(#(self.values.#field_access, )* __s)
+                #wrapper_serialize
             }
         }
 

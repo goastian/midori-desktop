@@ -13,13 +13,13 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "net/dcsctp/common/sequence_numbers.h"
 #include "net/dcsctp/packet/chunk/forward_tsn_chunk.h"
@@ -120,14 +120,13 @@ class RetransmissionQueue {
   size_t rtx_packets_count() const { return rtx_packets_count_; }
   uint64_t rtx_bytes_count() const { return rtx_bytes_count_; }
 
-  // Returns the number of bytes of packets that are in-flight.
-  size_t unacked_bytes() const { return outstanding_data_.unacked_bytes(); }
+  // How many inflight bytes there are, as sent on the wire as packets.
+  size_t unacked_packet_bytes() const {
+    return outstanding_data_.unacked_packet_bytes();
+  }
 
   // Returns the number of DATA chunks that are in-flight.
   size_t unacked_items() const { return outstanding_data_.unacked_items(); }
-
-  // Indicates if the congestion control algorithm allows data to be sent.
-  bool can_send_data() const;
 
   // Given the current time `now`, it will evaluate if there are chunks that
   // have expired and that need to be discarded. It returns true if a
@@ -193,7 +192,7 @@ class RetransmissionQueue {
 
   // Update the congestion control algorithm given as the cumulative ack TSN
   // value has increased, as reported in an incoming SACK chunk.
-  void HandleIncreasedCumulativeTsnAck(size_t unacked_bytes,
+  void HandleIncreasedCumulativeTsnAck(size_t unacked_packet_bytes,
                                        size_t total_bytes_acked);
   // Update the congestion control algorithm, given as packet loss has been
   // detected, as reported in an incoming SACK chunk.
@@ -211,15 +210,8 @@ class RetransmissionQueue {
                : CongestionAlgorithmPhase::kCongestionAvoidance;
   }
 
-  // Returns the number of bytes that may be sent in a single packet according
-  // to the congestion control algorithm.
-  size_t max_bytes_to_send() const;
-
   DcSctpSocketCallbacks& callbacks_;
   const DcSctpOptions options_;
-  // The minimum bytes required to be available in the congestion window to
-  // allow packets to be sent - to avoid sending too small packets.
-  const size_t min_bytes_required_to_send_;
   // If the peer supports RFC3758 - SCTP Partial Reliability Extension.
   const bool partial_reliability_;
   const absl::string_view log_prefix_;
@@ -249,7 +241,7 @@ class RetransmissionQueue {
 
   // If set, fast recovery is enabled until this TSN has been cumulative
   // acked.
-  absl::optional<UnwrappedTSN> fast_recovery_exit_tsn_ = absl::nullopt;
+  std::optional<UnwrappedTSN> fast_recovery_exit_tsn_ = std::nullopt;
 
   // The send queue.
   SendQueue& send_queue_;

@@ -11,6 +11,7 @@
 #import "RTCDtmfSender.h"
 
 #include "api/dtmf_sender_interface.h"
+#include "api/scoped_refptr.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -22,7 +23,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /** Initialize an RTCDtmfSender with a native DtmfSenderInterface. */
 - (instancetype)initWithNativeDtmfSender:
-    (rtc::scoped_refptr<webrtc::DtmfSenderInterface>)nativeDtmfSender NS_DESIGNATED_INITIALIZER;
+    (rtc::scoped_refptr<webrtc::DtmfSenderInterface>)nativeDtmfSender
+    NS_DESIGNATED_INITIALIZER;
 
 @end
 

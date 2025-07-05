@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![cfg(feature = "serde_support")]
-
 use std::fmt;
 
 use serde::{
@@ -14,7 +12,7 @@ use serde::{
 use crate::Guid;
 
 struct GuidVisitor;
-impl<'de> Visitor<'de> for GuidVisitor {
+impl Visitor<'_> for GuidVisitor {
     type Value = Guid;
     #[inline]
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

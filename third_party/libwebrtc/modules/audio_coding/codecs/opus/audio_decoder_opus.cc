@@ -11,21 +11,22 @@
 #include "modules/audio_coding/codecs/opus/audio_decoder_opus.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/field_trials_view.h"
 #include "modules/audio_coding/codecs/opus/audio_coder_opus_common.h"
 #include "rtc_base/checks.h"
-#include "system_wrappers/include/field_trial.h"
 
 namespace webrtc {
 
-AudioDecoderOpusImpl::AudioDecoderOpusImpl(size_t num_channels,
+AudioDecoderOpusImpl::AudioDecoderOpusImpl(const FieldTrialsView& field_trials,
+                                           size_t num_channels,
                                            int sample_rate_hz)
     : channels_(num_channels),
       sample_rate_hz_(sample_rate_hz),
-      generate_plc_(field_trial::IsEnabled("WebRTC-Audio-OpusGeneratePlc")) {
+      generate_plc_(field_trials.IsEnabled("WebRTC-Audio-OpusGeneratePlc")) {
   RTC_DCHECK(num_channels == 1 || num_channels == 2);
   RTC_DCHECK(sample_rate_hz == 16000 || sample_rate_hz == 48000);
   const int error =
@@ -129,7 +130,7 @@ size_t AudioDecoderOpusImpl::Channels() const {
 }
 
 void AudioDecoderOpusImpl::GeneratePlc(
-    size_t requested_samples_per_channel,
+    size_t /* requested_samples_per_channel */,
     rtc::BufferT<int16_t>* concealment_audio) {
   if (!generate_plc_) {
     return;

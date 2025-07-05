@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "api/environment/environment.h"
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
 #include "api/peer_connection_interface.h"
@@ -70,7 +71,8 @@ struct RtpSenderInfo {
 // RtpTransceiver.
 class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
  public:
-  RtpTransmissionManager(bool is_unified_plan,
+  RtpTransmissionManager(const Environment& env,
+                         bool is_unified_plan,
                          ConnectionContext* context,
                          UsagePattern* usage_pattern,
                          PeerConnectionObserver* observer,
@@ -246,10 +248,11 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
 
   cricket::MediaEngineInterface* media_engine() const;
 
-  rtc::UniqueRandomIdGenerator* ssrc_generator() const {
+  UniqueRandomIdGenerator* ssrc_generator() const {
     return context_->ssrc_generator();
   }
 
+  const Environment env_;
   TransceiverList transceivers_;
 
   // These lists store sender info seen in local/remote descriptions.
@@ -269,7 +272,7 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   PeerConnectionObserver* observer_;
   LegacyStatsCollectorInterface* const legacy_stats_;
   std::function<void()> on_negotiation_needed_;
-  rtc::WeakPtrFactory<RtpTransmissionManager> weak_ptr_factory_
+  WeakPtrFactory<RtpTransmissionManager> weak_ptr_factory_
       RTC_GUARDED_BY(signaling_thread());
 };
 

@@ -27,8 +27,6 @@ rtc_library("incoming_video_stream") {
     "../../rtc_base:macromagic",
     "../../rtc_base:race_checker",
   ]
-
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
 rtc_library("video_render_frames") {
@@ -46,5 +44,4 @@ rtc_library("video_render_frames") {
     "../../rtc_base:timeutils",
     "../../system_wrappers:metrics",
   ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }

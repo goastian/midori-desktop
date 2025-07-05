@@ -5,6 +5,8 @@ Frontend parsers that consume binary and text shaders and load them into [`Modul
 mod interpolator;
 mod type_gen;
 
+#[cfg(feature = "spv-in")]
+pub mod atomic_upgrade;
 #[cfg(feature = "glsl-in")]
 pub mod glsl;
 #[cfg(feature = "spv-in")]
@@ -12,12 +14,14 @@ pub mod spv;
 #[cfg(feature = "wgsl-in")]
 pub mod wgsl;
 
+use alloc::{vec, vec::Vec};
+use core::ops;
+
 use crate::{
-    arena::{Arena, Handle, UniqueArena},
+    arena::{Arena, Handle, HandleVec, UniqueArena},
     proc::{ResolveContext, ResolveError, TypeResolution},
     FastHashMap,
 };
-use std::ops;
 
 /// A table of types for an `Arena<Expression>`.
 ///
@@ -50,13 +54,13 @@ use std::ops;
 /// [`LocalVariable`]: crate::LocalVariable
 #[derive(Debug, Default)]
 pub struct Typifier {
-    resolutions: Vec<TypeResolution>,
+    resolutions: HandleVec<crate::Expression, TypeResolution>,
 }
 
 impl Typifier {
     pub const fn new() -> Self {
         Typifier {
-            resolutions: Vec::new(),
+            resolutions: HandleVec::new(),
         }
     }
 
@@ -69,7 +73,7 @@ impl Typifier {
         expr_handle: Handle<crate::Expression>,
         types: &'a UniqueArena<crate::Type>,
     ) -> &'a crate::TypeInner {
-        self.resolutions[expr_handle.index()].inner_with(types)
+        self.resolutions[expr_handle].inner_with(types)
     }
 
     /// Add an expression's type to an `Arena<Type>`.
@@ -109,9 +113,9 @@ impl Typifier {
         if self.resolutions.len() <= expr_handle.index() {
             for (eh, expr) in expressions.iter().skip(self.resolutions.len()) {
                 //Note: the closure can't `Err` by construction
-                let resolution = ctx.resolve(expr, |h| Ok(&self.resolutions[h.index()]))?;
+                let resolution = ctx.resolve(expr, |h| Ok(&self.resolutions[h]))?;
                 log::debug!("Resolving {:?} = {:?} : {:?}", eh, expr, resolution);
-                self.resolutions.push(resolution);
+                self.resolutions.insert(eh, resolution);
             }
         }
         Ok(())
@@ -135,8 +139,8 @@ impl Typifier {
         } else {
             let expr = &expressions[expr_handle];
             //Note: the closure can't `Err` by construction
-            let resolution = ctx.resolve(expr, |h| Ok(&self.resolutions[h.index()]))?;
-            self.resolutions[expr_handle.index()] = resolution;
+            let resolution = ctx.resolve(expr, |h| Ok(&self.resolutions[h]))?;
+            self.resolutions[expr_handle] = resolution;
             Ok(())
         }
     }
@@ -145,7 +149,7 @@ impl Typifier {
 impl ops::Index<Handle<crate::Expression>> for Typifier {
     type Output = TypeResolution;
     fn index(&self, handle: Handle<crate::Expression>) -> &Self::Output {
-        &self.resolutions[handle.index()]
+        &self.resolutions[handle]
     }
 }
 
@@ -260,7 +264,7 @@ impl<Name, Var> SymbolTable<Name, Var> {
 
 impl<Name, Var> SymbolTable<Name, Var>
 where
-    Name: std::hash::Hash + Eq,
+    Name: core::hash::Hash + Eq,
 {
     /// Perform a lookup for a variable named `name`.
     ///
@@ -270,10 +274,10 @@ where
     /// scope.
     pub fn lookup<Q>(&self, name: &Q) -> Option<&Var>
     where
-        Name: std::borrow::Borrow<Q>,
-        Q: std::hash::Hash + Eq + ?Sized,
+        Name: core::borrow::Borrow<Q>,
+        Q: core::hash::Hash + Eq + ?Sized,
     {
-        // Iterate backwards trough the scopes and try to find the variable
+        // Iterate backwards through the scopes and try to find the variable
         for scope in self.scopes[..self.cursor].iter().rev() {
             if let Some(var) = scope.get(name) {
                 return Some(var);
@@ -316,7 +320,7 @@ impl<Name, Var> Default for SymbolTable<Name, Var> {
     }
 }
 
-use std::fmt;
+use core::fmt;
 
 impl<Name: fmt::Debug, Var: fmt::Debug> fmt::Debug for SymbolTable<Name, Var> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

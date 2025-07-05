@@ -3,13 +3,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-import json
 import logging
+import os
 import sys
 from concurrent import futures
 
 from slugid import nice as slugid
 
+from taskgraph.util import json
 from taskgraph.util.parameterization import resolve_timestamps
 from taskgraph.util.taskcluster import CONCURRENCY, get_session
 from taskgraph.util.time import current_json_time
@@ -115,15 +116,20 @@ def create_task(session, task_id, label, task_def):
             [task_id, task_def],
             sys.stdout,
             sort_keys=True,
-            indent=4,
-            separators=(",", ": "),
+            indent=2,
         )
         # add a newline
         print("")
         return
 
     logger.info(f"Creating task with taskId {task_id} for {label}")
-    res = session.put(f"http://taskcluster/queue/v1/task/{task_id}", json=task_def)
+    proxy_url = os.environ.get("TASKCLUSTER_PROXY_URL", "http://taskcluster").rstrip(
+        "/"
+    )
+    res = session.put(
+        f"{proxy_url}/queue/v1/task/{task_id}",
+        json=task_def,
+    )
     if res.status_code != 200:
         try:
             logger.error(res.json()["message"])

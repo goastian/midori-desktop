@@ -41,10 +41,10 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "common_audio/wav_file.h"
 #include "modules/audio_processing/test/conversational_speech/config.h"
 #include "modules/audio_processing/test/conversational_speech/mock_wavreader_factory.h"
@@ -53,6 +53,7 @@
 #include "modules/audio_processing/test/conversational_speech/timing.h"
 #include "modules/audio_processing/test/conversational_speech/wavreader_factory.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 #include "test/testsupport/file_utils.h"
@@ -101,17 +102,15 @@ std::unique_ptr<MockWavReaderFactory> CreateMockWavReaderFactory() {
 
 void CreateSineWavFile(absl::string_view filepath,
                        const MockWavReaderFactory::Params& params,
-                       float frequency = 440.0f) {
-  // Create samples.
-  constexpr double two_pi = 2.0 * M_PI;
+                       float frequency_hz = 440.0f) {
+  const double phase_step = 2 * M_PI * frequency_hz / params.sample_rate;
+  double phase = 0.0;
   std::vector<int16_t> samples(params.num_samples);
-  for (std::size_t i = 0; i < params.num_samples; ++i) {
-    // TODO(alessiob): the produced tone is not pure, improve.
-    samples[i] = std::lround(
-        32767.0f * std::sin(two_pi * i * frequency / params.sample_rate));
+  for (size_t i = 0; i < params.num_samples; ++i) {
+    samples[i] = saturated_cast<int16_t>(32767.0f * std::sin(phase));
+    phase += phase_step;
   }
 
-  // Write samples.
   WavWriter wav_writer(filepath, params.sample_rate, params.num_channels);
   wav_writer.WriteSamples(samples.data(), params.num_samples);
 }
@@ -152,7 +151,7 @@ void DeleteFolderAndContents(absl::string_view dir) {
   if (!DirExists(dir)) {
     return;
   }
-  absl::optional<std::vector<std::string>> dir_content = ReadDirectory(dir);
+  std::optional<std::vector<std::string>> dir_content = ReadDirectory(dir);
   EXPECT_TRUE(dir_content);
   for (const auto& path : *dir_content) {
     if (DirExists(path)) {

@@ -46,17 +46,16 @@ using ::webrtc::webrtc_pc_e2e::PeerConfigurer;
 
 // Adds a peer with some audio and video (the client should not care about
 // details about audio and video configs).
-void AddDefaultAudioVideoPeer(
-    absl::string_view peer_name,
-    absl::string_view audio_stream_label,
-    absl::string_view video_stream_label,
-    const PeerNetworkDependencies& network_dependencies,
-    PeerConnectionE2EQualityTestFixture& fixture) {
-  AudioConfig audio{std::string(audio_stream_label)};
-  audio.sync_group = std::string(peer_name);
+void AddDefaultAudioVideoPeer(absl::string_view peer_name,
+                              absl::string_view audio_stream_label,
+                              absl::string_view video_stream_label,
+                              EmulatedNetworkManagerInterface& network,
+                              PeerConnectionE2EQualityTestFixture& fixture) {
+  AudioConfig audio{.stream_label = std::string(audio_stream_label),
+                    .sync_group = std::string(peer_name)};
   VideoConfig video(std::string(video_stream_label), 320, 180, 15);
   video.sync_group = std::string(peer_name);
-  auto peer = std::make_unique<PeerConfigurer>(network_dependencies);
+  auto peer = std::make_unique<PeerConfigurer>(network);
   peer->SetName(peer_name);
   peer->SetAudioConfig(std::move(audio));
   peer->AddVideoConfig(std::move(video));
@@ -108,7 +107,7 @@ std::vector<MetricValidationInfo> ToValidationInfo(
 TEST(PeerConnectionE2EQualityTestMetricNamesTest,
      ExportedMetricsHasCorrectNamesAndAnnotation) {
   std::unique_ptr<NetworkEmulationManager> network_emulation =
-      CreateNetworkEmulationManager(TimeMode::kSimulated);
+      CreateNetworkEmulationManager({.time_mode = TimeMode::kSimulated});
   DefaultMetricsLogger metrics_logger(
       network_emulation->time_controller()->GetClock());
   PeerConnectionE2EQualityTest fixture(
@@ -135,9 +134,9 @@ TEST(PeerConnectionE2EQualityTestMetricNamesTest,
       network_emulation->CreateEmulatedNetworkManagerInterface({bob_endpoint});
 
   AddDefaultAudioVideoPeer("alice", "alice_audio", "alice_video",
-                           alice_network->network_dependencies(), fixture);
-  AddDefaultAudioVideoPeer("bob", "bob_audio", "bob_video",
-                           bob_network->network_dependencies(), fixture);
+                           *alice_network, fixture);
+  AddDefaultAudioVideoPeer("bob", "bob_audio", "bob_video", *bob_network,
+                           fixture);
   fixture.AddQualityMetricsReporter(
       std::make_unique<StatsBasedNetworkQualityMetricsReporter>(
           std::map<std::string, std::vector<EmulatedEndpoint*>>(
@@ -549,6 +548,18 @@ TEST(PeerConnectionE2EQualityTestMetricNamesTest,
                             "test_case"}}},
           MetricValidationInfo{
               .test_case = "test_case/alice_video",
+              .name = "rendered_frame_qp",
+              .unit = Unit::kUnitless,
+              .improvement_direction = ImprovementDirection::kSmallerIsBetter,
+              .metadata = {{MetricMetadataKey::kPeerMetadataKey, "alice"},
+                           {MetricMetadataKey::kVideoStreamMetadataKey,
+                            "alice_video"},
+                           {MetricMetadataKey::kSenderMetadataKey, "alice"},
+                           {MetricMetadataKey::kReceiverMetadataKey, "bob"},
+                           {MetricMetadataKey::kExperimentalTestNameMetadataKey,
+                            "test_case"}}},
+          MetricValidationInfo{
+              .test_case = "test_case/alice_video",
               .name = "actual_encode_bitrate",
               .unit = Unit::kKilobitsPerSecond,
               .improvement_direction = ImprovementDirection::kNeitherIsBetter,
@@ -810,6 +821,18 @@ TEST(PeerConnectionE2EQualityTestMetricNamesTest,
                            {MetricMetadataKey::kSenderMetadataKey, "bob"},
                            {MetricMetadataKey::kReceiverMetadataKey, "alice"},
                            {MetricMetadataKey::kSpatialLayerMetadataKey, "0"},
+                           {MetricMetadataKey::kExperimentalTestNameMetadataKey,
+                            "test_case"}}},
+          MetricValidationInfo{
+              .test_case = "test_case/bob_video",
+              .name = "rendered_frame_qp",
+              .unit = Unit::kUnitless,
+              .improvement_direction = ImprovementDirection::kSmallerIsBetter,
+              .metadata = {{MetricMetadataKey::kPeerMetadataKey, "bob"},
+                           {MetricMetadataKey::kVideoStreamMetadataKey,
+                            "bob_video"},
+                           {MetricMetadataKey::kSenderMetadataKey, "bob"},
+                           {MetricMetadataKey::kReceiverMetadataKey, "alice"},
                            {MetricMetadataKey::kExperimentalTestNameMetadataKey,
                             "test_case"}}},
           MetricValidationInfo{
@@ -1124,7 +1147,7 @@ TEST(PeerConnectionE2EQualityTestMetricNamesTest,
 TEST(PeerConnectionE2EQualityTestMetricNamesTest,
      ExportedNetworkMetricsHaveCustomNetworkLabelIfSet) {
   std::unique_ptr<NetworkEmulationManager> network_emulation =
-      CreateNetworkEmulationManager(TimeMode::kSimulated);
+      CreateNetworkEmulationManager({.time_mode = TimeMode::kSimulated});
   DefaultMetricsLogger metrics_logger(
       network_emulation->time_controller()->GetClock());
   PeerConnectionE2EQualityTest fixture(
@@ -1151,9 +1174,9 @@ TEST(PeerConnectionE2EQualityTestMetricNamesTest,
       network_emulation->CreateEmulatedNetworkManagerInterface({bob_endpoint});
 
   AddDefaultAudioVideoPeer("alice", "alice_audio", "alice_video",
-                           alice_network->network_dependencies(), fixture);
-  AddDefaultAudioVideoPeer("bob", "bob_audio", "bob_video",
-                           bob_network->network_dependencies(), fixture);
+                           *alice_network, fixture);
+  AddDefaultAudioVideoPeer("bob", "bob_audio", "bob_video", *bob_network,
+                           fixture);
   std::string kAliceNetworkLabel = "alice_label";
   std::string kBobNetworkLabel = "bob_label";
   fixture.AddQualityMetricsReporter(

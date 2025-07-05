@@ -12,12 +12,12 @@
 #include <stddef.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "net/dcsctp/common/math.h"
 #include "net/dcsctp/packet/bounded_byte_reader.h"
@@ -105,12 +105,12 @@ std::vector<uint8_t> SctpPacket::Builder::Build(bool write_checksum) {
   return out;
 }
 
-absl::optional<SctpPacket> SctpPacket::Parse(rtc::ArrayView<const uint8_t> data,
-                                             const DcSctpOptions& options) {
+std::optional<SctpPacket> SctpPacket::Parse(rtc::ArrayView<const uint8_t> data,
+                                            const DcSctpOptions& options) {
   if (data.size() < kHeaderSize + kChunkTlvHeaderSize ||
       data.size() > kMaxUdpPacketSize) {
     RTC_DLOG(LS_WARNING) << "Invalid packet size";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   BoundedByteReader<kHeaderSize> reader(data);
@@ -139,11 +139,11 @@ absl::optional<SctpPacket> SctpPacket::Parse(rtc::ArrayView<const uint8_t> data,
     BoundedByteWriter<kHeaderSize>(data_copy).Store32<8>(0);
     uint32_t calculated_checksum = GenerateCrc32C(data_copy);
     if (calculated_checksum != common_header.checksum) {
-      RTC_DLOG(LS_WARNING) << rtc::StringFormat(
+      RTC_DLOG(LS_WARNING) << webrtc::StringFormat(
           "Invalid packet checksum, packet_checksum=0x%08x, "
           "calculated_checksum=0x%08x",
           common_header.checksum, calculated_checksum);
-      return absl::nullopt;
+      return std::nullopt;
     }
     // Restore the checksum in the header.
     BoundedByteWriter<kHeaderSize>(data_copy).Store32<8>(
@@ -166,7 +166,7 @@ absl::optional<SctpPacket> SctpPacket::Parse(rtc::ArrayView<const uint8_t> data,
   while (!descriptor_data.empty()) {
     if (descriptor_data.size() < kChunkTlvHeaderSize) {
       RTC_DLOG(LS_WARNING) << "Too small chunk";
-      return absl::nullopt;
+      return std::nullopt;
     }
     BoundedByteReader<kChunkTlvHeaderSize> chunk_header(descriptor_data);
     uint8_t type = chunk_header.Load8<0>();
@@ -176,10 +176,10 @@ absl::optional<SctpPacket> SctpPacket::Parse(rtc::ArrayView<const uint8_t> data,
     if (padded_length > descriptor_data.size()) {
       RTC_DLOG(LS_WARNING) << "Too large chunk. length=" << length
                            << ", remaining=" << descriptor_data.size();
-      return absl::nullopt;
+      return std::nullopt;
     } else if (padded_length < kChunkTlvHeaderSize) {
       RTC_DLOG(LS_WARNING) << "Too small chunk. length=" << length;
-      return absl::nullopt;
+      return std::nullopt;
     }
     descriptors.emplace_back(type, flags,
                              descriptor_data.subview(0, padded_length));

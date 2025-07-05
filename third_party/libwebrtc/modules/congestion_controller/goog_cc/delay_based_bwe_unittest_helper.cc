@@ -13,9 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
 #include "api/units/data_size.h"
@@ -220,7 +220,7 @@ void DelayBasedBweTest::IncomingFeedback(Timestamp receive_time,
       bitrate_estimator_->IncomingPacketFeedbackVector(
           msg, acknowledged_bitrate_estimator_->bitrate(),
           probe_bitrate_estimator_->FetchAndResetLastEstimatedBitrate(),
-          /*network_estimate*/ absl::nullopt, /*in_alr*/ false);
+          /*network_estimate*/ std::nullopt, /*in_alr*/ false);
   if (result.updated) {
     bitrate_observer_.OnReceiveBitrateChanged(result.target_bitrate.bps());
   }
@@ -232,7 +232,7 @@ void DelayBasedBweTest::IncomingFeedback(Timestamp receive_time,
 // Returns true if an over-use was seen, false otherwise.
 // The StreamGenerator::updated() should be used to check for any changes in
 // target bitrate after the call to this function.
-bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t ssrc,
+bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t /* ssrc */,
                                                 uint32_t bitrate_bps) {
   stream_generator_->SetBitrateBps(bitrate_bps);
   std::vector<PacketResult> packets;
@@ -264,7 +264,7 @@ bool DelayBasedBweTest::GenerateAndProcessFrame(uint32_t ssrc,
       bitrate_estimator_->IncomingPacketFeedbackVector(
           msg, acknowledged_bitrate_estimator_->bitrate(),
           probe_bitrate_estimator_->FetchAndResetLastEstimatedBitrate(),
-          /*network_estimate*/ absl::nullopt, /*in_alr*/ false);
+          /*network_estimate*/ std::nullopt, /*in_alr*/ false);
   if (result.updated) {
     bitrate_observer_.OnReceiveBitrateChanged(result.target_bitrate.bps());
     if (!first_update_ && result.target_bitrate.bps() < bitrate_bps)
@@ -419,7 +419,7 @@ void DelayBasedBweTest::RateIncreaseRtpTimestampsTestHelper(
 
 void DelayBasedBweTest::CapacityDropTestHelper(
     int number_of_streams,
-    bool wrap_time_stamp,
+    bool /* wrap_time_stamp */,
     uint32_t expected_bitrate_drop_delta,
     int64_t receiver_clock_offset_change_ms) {
   const int kFramerate = 30;

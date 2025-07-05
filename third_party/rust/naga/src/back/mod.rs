@@ -1,38 +1,65 @@
 /*!
 Backend functions that export shader [`Module`](super::Module)s into binary and text formats.
 */
-#![allow(dead_code)] // can be dead if none of the enabled backends need it
+#![cfg_attr(
+    not(any(dot_out, glsl_out, hlsl_out, msl_out, spv_out, wgsl_out)),
+    allow(
+        dead_code,
+        reason = "shared helpers can be dead if none of the enabled backends need it"
+    )
+)]
 
-#[cfg(feature = "dot-out")]
+use alloc::string::String;
+
+#[cfg(dot_out)]
 pub mod dot;
-#[cfg(feature = "glsl-out")]
+#[cfg(glsl_out)]
 pub mod glsl;
-#[cfg(feature = "hlsl-out")]
+#[cfg(hlsl_out)]
 pub mod hlsl;
-#[cfg(feature = "msl-out")]
+#[cfg(msl_out)]
 pub mod msl;
-#[cfg(feature = "spv-out")]
+#[cfg(spv_out)]
 pub mod spv;
-#[cfg(feature = "wgsl-out")]
+#[cfg(wgsl_out)]
 pub mod wgsl;
 
-#[cfg(any(
-    feature = "hlsl-out",
-    feature = "msl-out",
-    feature = "spv-out",
-    feature = "glsl-out"
-))]
+#[cfg(any(hlsl_out, msl_out, spv_out, glsl_out))]
 pub mod pipeline_constants;
+
+#[cfg(any(hlsl_out, glsl_out))]
+mod continue_forward;
 
 /// Names of vector components.
 pub const COMPONENTS: &[char] = &['x', 'y', 'z', 'w'];
 /// Indent for backends.
 pub const INDENT: &str = "    ";
-/// Prefix used for baking.
-pub const BAKE_PREFIX: &str = "_e";
 
 /// Expressions that need baking.
 pub type NeedBakeExpressions = crate::FastHashSet<crate::Handle<crate::Expression>>;
+
+/// A type for displaying expression handles as baking identifiers.
+///
+/// Given an [`Expression`] [`Handle`] `h`, `Baked(h)` implements
+/// [`core::fmt::Display`], showing the handle's index prefixed by
+/// `_e`.
+///
+/// [`Expression`]: crate::Expression
+/// [`Handle`]: crate::Handle
+#[cfg_attr(
+    not(any(glsl_out, hlsl_out, msl_out, wgsl_out)),
+    allow(
+        dead_code,
+        reason = "shared helpers can be dead if none of the enabled backends need it"
+    )
+)]
+struct Baked(crate::Handle<crate::Expression>);
+
+impl core::fmt::Display for Baked {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.write_prefixed(f, "_e")
+    }
+}
 
 /// Specifies the values of pipeline-overridable constants in the shader module.
 ///
@@ -41,21 +68,48 @@ pub type NeedBakeExpressions = crate::FastHashSet<crate::Handle<crate::Expressio
 /// the key must be the constant's identifier name.
 ///
 /// The value may represent any of WGSL's concrete scalar types.
-pub type PipelineConstants = std::collections::HashMap<String, f64>;
+pub type PipelineConstants = hashbrown::HashMap<String, f64>;
 
 /// Indentation level.
 #[derive(Clone, Copy)]
 pub struct Level(pub usize);
 
 impl Level {
-    const fn next(&self) -> Self {
+    pub const fn next(&self) -> Self {
         Level(self.0 + 1)
     }
 }
 
-impl std::fmt::Display for Level {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl core::fmt::Display for Level {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         (0..self.0).try_for_each(|_| formatter.write_str(INDENT))
+    }
+}
+
+/// Locate the entry point(s) to write.
+///
+/// If `entry_point` is given, and the specified entry point exists, returns a
+/// length-1 `Range` containing the index of that entry point.  If no
+/// `entry_point` is given, returns the complete range of entry point indices.
+/// If `entry_point` is given but does not exist, returns an error.
+#[cfg(any(hlsl_out, msl_out))]
+fn get_entry_points(
+    module: &crate::ir::Module,
+    entry_point: Option<&(crate::ir::ShaderStage, String)>,
+) -> Result<core::ops::Range<usize>, (crate::ir::ShaderStage, String)> {
+    use alloc::borrow::ToOwned;
+
+    if let Some(&(stage, ref name)) = entry_point {
+        let Some(ep_index) = module
+            .entry_points
+            .iter()
+            .position(|ep| ep.stage == stage && ep.name == *name)
+        else {
+            return Err((stage, name.to_owned()));
+        };
+        Ok(ep_index..ep_index + 1)
+    } else {
+        Ok(0..module.entry_points.len())
     }
 }
 
@@ -232,20 +286,13 @@ pub const fn binary_operation_str(op: crate::BinaryOperator) -> &'static str {
     }
 }
 
-/// Helper function that returns the string corresponding to the [`VectorSize`](crate::VectorSize)
-const fn vector_size_str(size: crate::VectorSize) -> &'static str {
-    match size {
-        crate::VectorSize::Bi => "2",
-        crate::VectorSize::Tri => "3",
-        crate::VectorSize::Quad => "4",
-    }
-}
-
 impl crate::TypeInner {
     /// Returns true if this is a handle to a type rather than the type directly.
     pub const fn is_handle(&self) -> bool {
         match *self {
-            crate::TypeInner::Image { .. } | crate::TypeInner::Sampler { .. } => true,
+            crate::TypeInner::Image { .. }
+            | crate::TypeInner::Sampler { .. }
+            | crate::TypeInner::AccelerationStructure { .. } => true,
             _ => false,
         }
     }
@@ -271,10 +318,11 @@ bitflags::bitflags! {
     ///
     /// Note that these exactly correspond to the SPIR-V "Ray Flags" mask, and
     /// the SPIR-V backend passes them directly through to the
-    /// `OpRayQueryInitializeKHR` instruction. (We have to choose something, so
+    /// [`OpRayQueryInitializeKHR`][op] instruction. (We have to choose something, so
     /// we might as well make one back end's life easier.)
     ///
     /// [`RayDesc`]: crate::Module::generate_ray_desc_type
+    /// [op]: https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#OpRayQueryInitializeKHR
     #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     pub struct RayFlag: u32 {
         const OPAQUE = 0x01;

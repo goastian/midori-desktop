@@ -20,16 +20,13 @@ rtc_library("timer") {
     "../../../rtc_base/containers:flat_set",
     "../public:socket",
     "../public:types",
+    "//third_party/abseil-cpp/absl/memory",
+    "//third_party/abseil-cpp/absl/strings:string_view",
   ]
   sources = [
     "fake_timeout.h",
     "timer.cc",
     "timer.h",
-  ]
-  absl_deps = [
-    "//third_party/abseil-cpp/absl/memory",
-    "//third_party/abseil-cpp/absl/strings",
-    "//third_party/abseil-cpp/absl/types:optional",
   ]
 }
 
@@ -73,6 +70,5 @@ if (rtc_include_tests) {
       "task_queue_timeout_test.cc",
       "timer_test.cc",
     ]
-    absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
   }
 }

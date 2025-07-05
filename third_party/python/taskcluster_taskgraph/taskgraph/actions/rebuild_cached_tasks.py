@@ -11,6 +11,7 @@ from .util import create_tasks, fetch_graph_and_labels
     title="Rebuild Cached Tasks",
     symbol="rebuild-cached",
     description="Rebuild cached tasks.",
+    permission="rebuild-cached-tasks",
     order=1000,
     context=[],
 )

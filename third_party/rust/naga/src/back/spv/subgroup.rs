@@ -1,11 +1,7 @@
-use super::{Block, BlockContext, Error, Instruction};
-use crate::{
-    arena::Handle,
-    back::spv::{LocalType, LookupType},
-    TypeInner,
-};
+use super::{Block, BlockContext, Error, Instruction, NumericType};
+use crate::{arena::Handle, TypeInner};
 
-impl<'w> BlockContext<'w> {
+impl BlockContext<'_> {
     pub(super) fn write_subgroup_ballot(
         &mut self,
         predicate: &Option<Handle<crate::Expression>>,
@@ -16,11 +12,10 @@ impl<'w> BlockContext<'w> {
             "GroupNonUniformBallot",
             &[spirv::Capability::GroupNonUniformBallot],
         )?;
-        let vec4_u32_type_id = self.get_type_id(LookupType::Local(LocalType::Value {
-            vector_size: Some(crate::VectorSize::Quad),
+        let vec4_u32_type_id = self.get_numeric_type_id(NumericType::Vector {
+            size: crate::VectorSize::Quad,
             scalar: crate::Scalar::U32,
-            pointer_space: None,
-        }));
+        });
         let exec_scope_id = self.get_index_constant(spirv::Scope::Subgroup as u32);
         let predicate = if let Some(predicate) = *predicate {
             self.cached[predicate]
@@ -135,13 +130,15 @@ impl<'w> BlockContext<'w> {
             &[spirv::Capability::GroupNonUniformBallot],
         )?;
         match *mode {
-            crate::GatherMode::BroadcastFirst | crate::GatherMode::Broadcast(_) => {
+            crate::GatherMode::BroadcastFirst => {
                 self.writer.require_any(
                     "GroupNonUniformBallot",
                     &[spirv::Capability::GroupNonUniformBallot],
                 )?;
             }
-            crate::GatherMode::Shuffle(_) | crate::GatherMode::ShuffleXor(_) => {
+            crate::GatherMode::Shuffle(_)
+            | crate::GatherMode::ShuffleXor(_)
+            | crate::GatherMode::Broadcast(_) => {
                 self.writer.require_any(
                     "GroupNonUniformShuffle",
                     &[spirv::Capability::GroupNonUniformShuffle],

@@ -1,49 +1,78 @@
-From: Michael Froman <mfroman@mozilla.com>
-Date: Mon, 24 Oct 2022 13:00:00 -0500
-Subject: Bug 1797161 - pt1 - tweak BUILD.gn around task_queue_win usage. r?ng!
+From: Andreas Pehrson <apehrson@mozilla.com>
+Date: Mon, 12 Dec 2022 15:47:00 +0000
+Subject: Bug 1451394 - Expose mac camera capture backend in .gn and switch it
+ to gecko libyuv. r=webrtc-reviewers,mjf
 
-Add assurance that we will not build task_queue_win.cc to avoid
-possible win32k API usage.
-
-Differential Revision: https://phabricator.services.mozilla.com/D160115
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f097eb8cbd8b7686ce306a46a4db691194fd39c1
+Differential Revision: https://phabricator.services.mozilla.com/D163682
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/b0658888969395dca938597783c8a377b9bea209
 ---
- api/task_queue/BUILD.gn | 5 +++++
- rtc_base/BUILD.gn       | 4 ++++
- 2 files changed, 9 insertions(+)
+ BUILD.gn     | 4 ++++
+ sdk/BUILD.gn | 6 ++++++
+ 2 files changed, 10 insertions(+)
 
-diff --git a/api/task_queue/BUILD.gn b/api/task_queue/BUILD.gn
-index 8697f87433..4a320422fb 100644
---- a/api/task_queue/BUILD.gn
-+++ b/api/task_queue/BUILD.gn
-@@ -31,6 +31,11 @@ rtc_library("task_queue") {
-   ]
- }
+diff --git a/BUILD.gn b/BUILD.gn
+index f67e79408d..a760062978 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -632,6 +632,10 @@ if (!build_with_chromium) {
+       ]
+     }
  
-+# Mozilla - we want to ensure that rtc_include_tests is set to false
-+# to guarantee that default_task_queue_factory is not used so we
-+# know that remaining win32k code in task_queue_win.cc is not built.
-+# See Bug 1797161 for more info.
-+assert(!rtc_include_tests, "Mozilla - verify rtc_include_tests is off")
- if (rtc_include_tests) {
- rtc_library("task_queue_test") {
-   visibility = [ "*" ]
-diff --git a/rtc_base/BUILD.gn b/rtc_base/BUILD.gn
-index db3481e694..9ac0a8a76d 100644
---- a/rtc_base/BUILD.gn
-+++ b/rtc_base/BUILD.gn
-@@ -726,10 +726,14 @@ if (is_mac || is_ios) {
- if (is_win) {
-   rtc_library("rtc_task_queue_win") {
-     visibility = [ "../api/task_queue:default_task_queue_factory" ]
-+# See Bug 1797161 for more info.  Remove from build until win32k
-+# usage is removed.
-+if (!build_with_mozilla) {
-     sources = [
-       "task_queue_win.cc",
-       "task_queue_win.h",
-     ]
-+}
-     deps = [
-       ":checks",
-       ":logging",
++    if (build_with_mozilla && is_mac) {
++      deps += [ "sdk:videocapture_objc" ]
++    }
++
+     if (rtc_enable_protobuf) {
+       deps += [ "logging:rtc_event_log_proto" ]
+     }
+diff --git a/sdk/BUILD.gn b/sdk/BUILD.gn
+index e76b68c92e..627e59cfed 100644
+--- a/sdk/BUILD.gn
++++ b/sdk/BUILD.gn
+@@ -539,6 +539,7 @@ if (is_ios || is_mac) {
+       }
+     }
+ 
++    if (!build_with_mozilla) {
+     rtc_library("videosource_objc") {
+       sources = [
+         "objc/api/peerconnection/RTCVideoSource+Private.h",
+@@ -568,6 +569,7 @@ if (is_ios || is_mac) {
+         ":used_from_extension",
+       ]
+     }
++    }
+ 
+     rtc_library("videoframebuffer_objc") {
+       visibility = [ "*" ]
+@@ -600,6 +602,7 @@ if (is_ios || is_mac) {
+       ]
+     }
+ 
++    if (!build_with_mozilla) {
+     rtc_library("metal_objc") {
+       visibility = [ "*" ]
+       allow_poison = [
+@@ -661,6 +664,7 @@ if (is_ios || is_mac) {
+         ":videoframebuffer_objc",
+       ]
+     }
++    }
+ 
+     rtc_library("videocapture_objc") {
+       visibility = [ "*" ]
+@@ -689,6 +693,7 @@ if (is_ios || is_mac) {
+       ]
+     }
+ 
++    if (!build_with_mozilla) {
+     rtc_library("videocodec_objc") {
+       visibility = [ "*" ]
+       configs += [ "..:no_global_constructors" ]
+@@ -1781,5 +1786,6 @@ if (is_ios || is_mac) {
+         "VideoToolbox.framework",
+       ]
+     }
++    }
+   }
+ }

@@ -10,21 +10,49 @@
 
 #include "p2p/base/stun_port.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "api/candidate.h"
+#include "api/field_trials_view.h"
+#include "api/packet_socket_factory.h"
 #include "api/test/mock_async_dns_resolver.h"
+#include "api/test/rtc_error_matchers.h"
+#include "api/transport/stun.h"
+#include "api/units/time_delta.h"
 #include "p2p/base/basic_packet_socket_factory.h"
-#include "p2p/base/mock_dns_resolving_packet_socket_factory.h"
-#include "p2p/base/test_stun_server.h"
+#include "p2p/base/port.h"
+#include "p2p/base/stun_request.h"
+#include "p2p/test/mock_dns_resolving_packet_socket_factory.h"
+#include "p2p/test/nat_socket_factory.h"
+#include "p2p/test/test_stun_server.h"
 #include "rtc_base/async_packet_socket.h"
+#include "rtc_base/crypto_random.h"
+#include "rtc_base/dscp.h"
+#include "rtc_base/fake_clock.h"
+#include "rtc_base/fake_network.h"
 #include "rtc_base/gunit.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/ip_address.h"
+#include "rtc_base/mdns_responder_interface.h"
+#include "rtc_base/net_helpers.h"
+#include "rtc_base/network.h"
 #include "rtc_base/network/received_packet.h"
+#include "rtc_base/network_constants.h"
+#include "rtc_base/socket.h"
 #include "rtc_base/socket_address.h"
-#include "rtc_base/ssl_adapter.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
+#include "rtc_base/thread.h"
 #include "rtc_base/virtual_socket_server.h"
 #include "test/gmock.h"
+#include "test/gtest.h"
 #include "test/scoped_key_value_config.h"
+#include "test/wait_until.h"
 
 namespace {
 
@@ -32,18 +60,30 @@ using cricket::ServerAddresses;
 using rtc::SocketAddress;
 using ::testing::_;
 using ::testing::DoAll;
+using ::testing::Eq;
+using ::testing::IsTrue;
 using ::testing::Return;
 using ::testing::ReturnPointee;
 using ::testing::SetArgPointee;
 using webrtc::IceCandidateType;
 
-static const SocketAddress kLocalAddr("127.0.0.1", 0);
-static const SocketAddress kIPv6LocalAddr("::1", 0);
-static const SocketAddress kStunAddr1("127.0.0.1", 5000);
-static const SocketAddress kStunAddr2("127.0.0.1", 4000);
-static const SocketAddress kStunAddr3("127.0.0.1", 3000);
-static const SocketAddress kIPv6StunAddr1("::1", 5000);
+static const SocketAddress kPrivateIP("192.168.1.12", 0);
+static const SocketAddress kMsdnAddress("unittest-mdns-host-name.local", 0);
+static const SocketAddress kPublicIP("212.116.91.133", 0);
+static const SocketAddress kNatAddr(kPublicIP.ipaddr(),
+                                    rtc::NAT_SERVER_UDP_PORT);
+static const SocketAddress kStunServerAddr1("34.38.54.120", 5000);
+static const SocketAddress kStunServerAddr2("34.38.54.120", 4000);
+
+static const SocketAddress kPrivateIPv6("2001:4860:4860::8844", 0);
+static const SocketAddress kPublicIPv6("2002:4860:4860::8844", 5000);
+static const SocketAddress kNatAddrIPv6(kPublicIPv6.ipaddr(),
+                                        rtc::NAT_SERVER_UDP_PORT);
+static const SocketAddress kStunServerAddrIPv6Addr("2003:4860:4860::8844",
+                                                   5000);
+
 static const SocketAddress kBadAddr("0.0.0.1", 5000);
+static const SocketAddress kIPv6BadAddr("::ffff:0:1", 5000);
 static const SocketAddress kValidHostnameAddr("valid-hostname", 5000);
 static const SocketAddress kBadHostnameAddr("not-a-real-hostname", 5000);
 // STUN timeout (with all retries) is cricket::STUN_TOTAL_TIMEOUT.
@@ -52,9 +92,9 @@ static const int kTimeoutMs = cricket::STUN_TOTAL_TIMEOUT;
 // stun prio = 100 (srflx) << 24 | 30 (IPv4) << 8 | 256 - 1 (component)
 static const uint32_t kStunCandidatePriority =
     (100 << 24) | (30 << 8) | (256 - 1);
-// stun prio = 100 (srflx) << 24 | 60 (loopback IPv6) << 8 | 256 - 1 (component)
+// stun prio = 100 (srflx) << 24 | 40 (IPv6) << 8 | 256 - 1 (component)
 static const uint32_t kIPv6StunCandidatePriority =
-    (100 << 24) | (60 << 8) | (256 - 1);
+    (100 << 24) | (40 << 8) | (256 - 1);
 static const int kInfiniteLifetime = -1;
 static const int kHighCostPortKeepaliveLifetimeMs = 2 * 60 * 1000;
 
@@ -64,7 +104,7 @@ class FakeMdnsResponder : public webrtc::MdnsResponderInterface {
  public:
   void CreateNameForAddress(const rtc::IPAddress& addr,
                             NameCreatedCallback callback) override {
-    callback(addr, std::string("unittest-mdns-host-name.local"));
+    callback(addr, kMsdnAddress.HostAsSensitiveURIString());
   }
 
   void RemoveNameForAddress(const rtc::IPAddress& addr,
@@ -88,32 +128,43 @@ class FakeMdnsResponderProvider : public rtc::MdnsResponderProvider {
 class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
  public:
   StunPortTestBase()
-      : StunPortTestBase(
-            rtc::Network("unittest", "unittest", kLocalAddr.ipaddr(), 32),
-            kLocalAddr.ipaddr()) {}
+      : StunPortTestBase(kPrivateIP.ipaddr(),
+                         {kStunServerAddr1, kStunServerAddr2},
+                         kNatAddr) {}
 
-  StunPortTestBase(rtc::Network network, const rtc::IPAddress address)
+  StunPortTestBase(const rtc::IPAddress address,
+                   const std::set<rtc::SocketAddress>& stun_server_addresses,
+                   const rtc::SocketAddress& nat_server_address)
       : ss_(new rtc::VirtualSocketServer()),
         thread_(ss_.get()),
-        network_(network),
-        socket_factory_(ss_.get()),
-        stun_server_1_(
-            cricket::TestStunServer::Create(ss_.get(), kStunAddr1, thread_)),
-        stun_server_2_(
-            cricket::TestStunServer::Create(ss_.get(), kStunAddr2, thread_)),
+        nat_factory_(ss_.get(), nat_server_address, nat_server_address),
+        nat_socket_factory_(&nat_factory_),
         mdns_responder_provider_(new FakeMdnsResponderProvider()),
+        nat_server_(CreateNatServer(nat_server_address, rtc::NAT_OPEN_CONE)),
         done_(false),
         error_(false),
         stun_keepalive_delay_(1),
         stun_keepalive_lifetime_(-1) {
-    network_.AddIP(address);
+    network_ = MakeNetwork(address);
+    RTC_CHECK(address.family() == nat_server_address.family());
+    for (const auto& addr : stun_server_addresses) {
+      RTC_CHECK(addr.family() == address.family());
+      stun_servers_.push_back(
+          cricket::TestStunServer::Create(ss_.get(), addr, thread_));
+    }
+  }
+
+  std::unique_ptr<rtc::NATServer> CreateNatServer(const SocketAddress& addr,
+                                                  rtc::NATType type) {
+    return std::make_unique<rtc::NATServer>(type, thread_, ss_.get(), addr,
+                                            addr, thread_, ss_.get(), addr);
   }
 
   virtual rtc::PacketSocketFactory* socket_factory() {
-    return &socket_factory_;
+    return &nat_socket_factory_;
   }
 
-  rtc::VirtualSocketServer* ss() const { return ss_.get(); }
+  rtc::SocketServer* ss() const { return ss_.get(); }
   cricket::UDPPort* port() const { return stun_port_.get(); }
   rtc::AsyncPacketSocket* socket() const { return socket_.get(); }
   bool done() const { return done_; }
@@ -124,7 +175,7 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
   }
 
   void SetNetworkType(rtc::AdapterType adapter_type) {
-    network_.set_type(adapter_type);
+    network_->set_type(adapter_type);
   }
 
   void CreateStunPort(const rtc::SocketAddress& server_addr,
@@ -137,9 +188,13 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
   void CreateStunPort(const ServerAddresses& stun_servers,
                       const webrtc::FieldTrialsView* field_trials = nullptr) {
     stun_port_ = cricket::StunPort::Create(
-        rtc::Thread::Current(), socket_factory(), &network_, 0, 0,
-        rtc::CreateRandomString(16), rtc::CreateRandomString(22), stun_servers,
-        absl::nullopt, field_trials);
+        {.network_thread = &thread_,
+         .socket_factory = socket_factory(),
+         .network = network_,
+         .ice_username_fragment = rtc::CreateRandomString(16),
+         .ice_password = rtc::CreateRandomString(22),
+         .field_trials = field_trials},
+        0, 0, stun_servers, std::nullopt);
     stun_port_->SetIceTiebreaker(kTiebreakerDefault);
     stun_port_->set_stun_keepalive_delay(stun_keepalive_delay_);
     // If `stun_keepalive_lifetime_` is negative, let the stun port
@@ -162,22 +217,26 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
       socket_.reset(socket);
     } else {
       socket_.reset(socket_factory()->CreateUdpSocket(
-          rtc::SocketAddress(kLocalAddr.ipaddr(), 0), 0, 0));
+          rtc::SocketAddress(kPrivateIP.ipaddr(), 0), 0, 0));
     }
     ASSERT_TRUE(socket_ != NULL);
     socket_->RegisterReceivedPacketCallback(
         [&](rtc::AsyncPacketSocket* socket, const rtc::ReceivedPacket& packet) {
           OnReadPacket(socket, packet);
         });
-    stun_port_ = cricket::UDPPort::Create(
-        rtc::Thread::Current(), socket_factory(), &network_, socket_.get(),
-        rtc::CreateRandomString(16), rtc::CreateRandomString(22), false,
-        absl::nullopt, field_trials);
-    ASSERT_TRUE(stun_port_ != NULL);
-    stun_port_->SetIceTiebreaker(kTiebreakerDefault);
     ServerAddresses stun_servers;
     stun_servers.insert(server_addr);
+    stun_port_ = cricket::UDPPort::Create(
+        {.network_thread = &thread_,
+         .socket_factory = socket_factory(),
+         .network = network_,
+         .ice_username_fragment = rtc::CreateRandomString(16),
+         .ice_password = rtc::CreateRandomString(22),
+         .field_trials = field_trials},
+        socket_.get(), false, std::nullopt);
     stun_port_->set_server_addresses(stun_servers);
+    ASSERT_TRUE(stun_port_ != NULL);
+    stun_port_->SetIceTiebreaker(kTiebreakerDefault);
     stun_port_->SignalPortComplete.connect(this,
                                            &StunPortTestBase::OnPortComplete);
     stun_port_->SignalPortError.connect(this, &StunPortTestBase::OnPortError);
@@ -198,7 +257,7 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
   }
 
   void EnableMdnsObfuscation() {
-    network_.set_mdns_responder_provider(mdns_responder_provider_.get());
+    network_->set_mdns_responder_provider(mdns_responder_provider_.get());
   }
 
  protected:
@@ -207,16 +266,16 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
     rtc::InitRandom(NULL, 0);
   }
 
-  void OnPortComplete(cricket::Port* port) {
+  void OnPortComplete(cricket::Port* /* port */) {
     ASSERT_FALSE(done_);
     done_ = true;
     error_ = false;
   }
-  void OnPortError(cricket::Port* port) {
+  void OnPortError(cricket::Port* /* port */) {
     done_ = true;
     error_ = true;
   }
-  void OnCandidateError(cricket::Port* port,
+  void OnCandidateError(cricket::Port* /* port */,
                         const cricket::IceCandidateErrorEvent& event) {
     error_event_ = event;
   }
@@ -226,21 +285,31 @@ class StunPortTestBase : public ::testing::Test, public sigslot::has_slots<> {
     stun_keepalive_lifetime_ = lifetime;
   }
 
-  cricket::TestStunServer* stun_server_1() { return stun_server_1_.get(); }
-  cricket::TestStunServer* stun_server_2() { return stun_server_2_.get(); }
+  rtc::Network* MakeNetwork(const rtc::IPAddress& addr) {
+    networks_.emplace_back("unittest", "unittest", addr, 32);
+    networks_.back().AddIP(addr);
+    return &networks_.back();
+  }
+
+  cricket::TestStunServer* stun_server_1() { return stun_servers_[0].get(); }
+  cricket::TestStunServer* stun_server_2() { return stun_servers_[1].get(); }
 
   rtc::AutoSocketServerThread& thread() { return thread_; }
+  rtc::SocketFactory* nat_factory() { return &nat_factory_; }
 
  private:
+  std::vector<rtc::Network> networks_;
+  rtc::Network* network_;
+
   std::unique_ptr<rtc::VirtualSocketServer> ss_;
   rtc::AutoSocketServerThread thread_;
-  rtc::Network network_;
-  rtc::BasicPacketSocketFactory socket_factory_;
+  rtc::NATSocketFactory nat_factory_;
+  rtc::BasicPacketSocketFactory nat_socket_factory_;
   std::unique_ptr<cricket::UDPPort> stun_port_;
-  cricket::TestStunServer::StunServerPtr stun_server_1_;
-  cricket::TestStunServer::StunServerPtr stun_server_2_;
+  std::vector<cricket::TestStunServer::StunServerPtr> stun_servers_;
   std::unique_ptr<rtc::AsyncPacketSocket> socket_;
   std::unique_ptr<rtc::MdnsResponderProvider> mdns_responder_provider_;
+  std::unique_ptr<rtc::NATServer> nat_server_;
   bool done_;
   bool error_;
   int stun_keepalive_delay_;
@@ -261,26 +330,30 @@ class StunPortTest : public FakeClockBase, public StunPortTestBase {};
 
 // Test that we can create a STUN port.
 TEST_F(StunPortTest, TestCreateStunPort) {
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   EXPECT_EQ(IceCandidateType::kSrflx, port()->Type());
   EXPECT_EQ(0U, port()->Candidates().size());
 }
 
 // Test that we can create a UDP port.
 TEST_F(StunPortTest, TestCreateUdpPort) {
-  CreateSharedUdpPort(kStunAddr1, nullptr);
+  CreateSharedUdpPort(kStunServerAddr1, nullptr, nullptr);
   EXPECT_EQ(IceCandidateType::kHost, port()->Type());
   EXPECT_EQ(0U, port()->Candidates().size());
 }
 
 // Test that we can get an address from a STUN server.
 TEST_F(StunPortTest, TestPrepareAddress) {
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
-  std::string expected_server_url = "stun:127.0.0.1:5000";
+  EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[0].address()));
+  std::string expected_server_url = "stun:" + kStunServerAddr1.ToString();
   EXPECT_EQ(port()->Candidates()[0].url(), expected_server_url);
 }
 
@@ -288,22 +361,45 @@ TEST_F(StunPortTest, TestPrepareAddress) {
 TEST_F(StunPortTest, TestPrepareAddressFail) {
   CreateStunPort(kBadAddr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
-  EXPECT_EQ_SIMULATED_WAIT(error_event_.error_code,
-                           cricket::SERVER_NOT_REACHABLE_ERROR, kTimeoutMs,
-                           fake_clock);
-  ASSERT_NE(error_event_.error_text.find('.'), std::string::npos);
-  ASSERT_NE(error_event_.address.find(kLocalAddr.HostAsSensitiveURIString()),
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return error_event_.error_code; },
+                        Eq(cricket::STUN_ERROR_SERVER_NOT_REACHABLE),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_NE(error_event_.error_text.find('.'), std::string::npos);
+  EXPECT_NE(error_event_.address.find(kPrivateIP.HostAsSensitiveURIString()),
             std::string::npos);
   std::string server_url = "stun:" + kBadAddr.ToString();
-  ASSERT_EQ(error_event_.url, server_url);
+  EXPECT_EQ(error_event_.url, server_url);
+}
+
+// Test that we fail without emitting an error if we try to get an address from
+// a STUN server with a different address family. IPv4 local, IPv6 STUN.
+TEST_F(StunPortTest, TestServerAddressFamilyMismatch) {
+  CreateStunPort(kStunServerAddrIPv6Addr);
+  PrepareAddress();
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_TRUE(error());
+  EXPECT_EQ(0U, port()->Candidates().size());
+  EXPECT_EQ(0, error_event_.error_code);
 }
 
 class StunPortWithMockDnsResolverTest : public StunPortTest {
  public:
-  StunPortWithMockDnsResolverTest() : StunPortTest(), socket_factory_(ss()) {}
+  StunPortWithMockDnsResolverTest()
+      : StunPortTest(), socket_factory_(nat_factory()) {}
 
   rtc::PacketSocketFactory* socket_factory() override {
     return &socket_factory_;
@@ -324,21 +420,24 @@ TEST_F(StunPortWithMockDnsResolverTest, TestPrepareAddressHostname) {
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
         EXPECT_CALL(*resolver, Start(kValidHostnameAddr, /*family=*/AF_INET, _))
-            .WillOnce([](const rtc::SocketAddress& addr, int family,
+            .WillOnce([](const rtc::SocketAddress& /* addr */, int /* family */,
                          absl::AnyInvocable<void()> callback) { callback(); });
 
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillOnce(Return(0));
         EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET, _))
-            .WillOnce(DoAll(SetArgPointee<1>(SocketAddress("127.0.0.1", 5000)),
-                            Return(true)));
+            .WillOnce(DoAll(SetArgPointee<1>(kStunServerAddr1), Return(true)));
       });
   CreateStunPort(kValidHostnameAddr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[0].address()));
   EXPECT_EQ(kStunCandidatePriority, port()->Candidates()[0].priority());
 }
 
@@ -350,20 +449,23 @@ TEST_F(StunPortWithMockDnsResolverTest,
       [](webrtc::MockAsyncDnsResolver* resolver,
          webrtc::MockAsyncDnsResolverResult* resolver_result) {
         EXPECT_CALL(*resolver, Start(kValidHostnameAddr, /*family=*/AF_INET, _))
-            .WillOnce([](const rtc::SocketAddress& addr, int family,
+            .WillOnce([](const rtc::SocketAddress& /* addr */, int /* family */,
                          absl::AnyInvocable<void()> callback) { callback(); });
         EXPECT_CALL(*resolver, result)
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillOnce(Return(0));
         EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET, _))
-            .WillOnce(DoAll(SetArgPointee<1>(SocketAddress("127.0.0.1", 5000)),
-                            Return(true)));
+            .WillOnce(DoAll(SetArgPointee<1>(kStunServerAddr1), Return(true)));
       });
   CreateStunPort(kValidHostnameAddr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[0].address()));
   EXPECT_EQ(kStunCandidatePriority + (cricket::kMaxTurnServers << 8),
             port()->Candidates()[0].priority());
 }
@@ -372,33 +474,50 @@ TEST_F(StunPortWithMockDnsResolverTest,
 TEST_F(StunPortTestWithRealClock, TestPrepareAddressHostnameFail) {
   CreateStunPort(kBadHostnameAddr);
   PrepareAddress();
-  EXPECT_TRUE_WAIT(done(), kTimeoutMs);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs)}),
+      webrtc::IsRtcOk());
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
-  EXPECT_EQ_WAIT(error_event_.error_code, cricket::SERVER_NOT_REACHABLE_ERROR,
-                 kTimeoutMs);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return error_event_.error_code; },
+                        Eq(cricket::STUN_ERROR_SERVER_NOT_REACHABLE),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs)}),
+      webrtc::IsRtcOk());
 }
 
 // This test verifies keepalive response messages don't result in
 // additional candidate generation.
 TEST_F(StunPortTest, TestKeepAliveResponse) {
   SetKeepaliveDelay(500);  // 500ms of keepalive delay.
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[0].address()));
   SIMULATED_WAIT(false, 1000, fake_clock);
   EXPECT_EQ(1U, port()->Candidates().size());
 }
 
 // Test that a local candidate can be generated using a shared socket.
 TEST_F(StunPortTest, TestSharedSocketPrepareAddress) {
-  CreateSharedUdpPort(kStunAddr1, nullptr);
+  CreateSharedUdpPort(kStunServerAddr1, nullptr, nullptr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
-  ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  ASSERT_EQ(2U, port()->Candidates().size());
+  EXPECT_EQ(port()->Candidates()[0].type(), IceCandidateType::kHost);
+  EXPECT_TRUE(kPrivateIP.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_EQ(port()->Candidates()[1].type(), IceCandidateType::kSrflx);
+  EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[1].address()));
 }
 
 // Test that we still get a local candidate with invalid stun server hostname.
@@ -408,9 +527,12 @@ TEST_F(StunPortTestWithRealClock,
        TestSharedSocketPrepareAddressInvalidHostname) {
   CreateSharedUdpPort(kBadHostnameAddr, nullptr);
   PrepareAddress();
-  EXPECT_TRUE_WAIT(done(), kTimeoutMs);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs)}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPrivateIP.EqualIPs(port()->Candidates()[0].address()));
 
   // Send data to port after it's ready. This is to make sure, UDP port can
   // handle data with unresolved stun server address.
@@ -419,38 +541,33 @@ TEST_F(StunPortTestWithRealClock,
   // No crash is success.
 }
 
-// Test that a stun candidate (srflx candidate) is discarded whose address is
-// equal to that of a local candidate if mDNS obfuscation is not enabled.
-TEST_F(StunPortTest, TestStunCandidateDiscardedWithMdnsObfuscationNotEnabled) {
-  CreateSharedUdpPort(kStunAddr1, nullptr);
-  PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
-  ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
-  EXPECT_TRUE(port()->Candidates()[0].is_local());
-}
-
 // Test that a stun candidate (srflx candidate) is generated whose address is
 // equal to that of a local candidate if mDNS obfuscation is enabled.
 TEST_F(StunPortTest, TestStunCandidateGeneratedWithMdnsObfuscationEnabled) {
   EnableMdnsObfuscation();
-  CreateSharedUdpPort(kStunAddr1, nullptr);
+  CreateSharedUdpPort(kStunServerAddr1, nullptr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(2U, port()->Candidates().size());
-
-  // The addresses of the candidates are both equal to kLocalAddr.
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[0].address()));
-  EXPECT_TRUE(kLocalAddr.EqualIPs(port()->Candidates()[1].address()));
 
   // One of the generated candidates is a local candidate and the other is a
   // stun candidate.
   EXPECT_NE(port()->Candidates()[0].type(), port()->Candidates()[1].type());
   if (port()->Candidates()[0].is_local()) {
+    EXPECT_EQ(kMsdnAddress.HostAsSensitiveURIString(),
+              port()->Candidates()[0].address().HostAsSensitiveURIString());
     EXPECT_TRUE(port()->Candidates()[1].is_stun());
+    EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[1].address()));
   } else {
     EXPECT_TRUE(port()->Candidates()[0].is_stun());
+    EXPECT_TRUE(kPublicIP.EqualIPs(port()->Candidates()[0].address()));
     EXPECT_TRUE(port()->Candidates()[1].is_local());
+    EXPECT_EQ(kMsdnAddress.HostAsSensitiveURIString(),
+              port()->Candidates()[1].address().HostAsSensitiveURIString());
   }
 }
 
@@ -458,12 +575,16 @@ TEST_F(StunPortTest, TestStunCandidateGeneratedWithMdnsObfuscationEnabled) {
 // use.
 TEST_F(StunPortTest, TestNoDuplicatedAddressWithTwoStunServers) {
   ServerAddresses stun_servers;
-  stun_servers.insert(kStunAddr1);
-  stun_servers.insert(kStunAddr2);
+  stun_servers.insert(kStunServerAddr1);
+  stun_servers.insert(kStunServerAddr2);
   CreateStunPort(stun_servers);
   EXPECT_EQ(IceCandidateType::kSrflx, port()->Type());
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   EXPECT_EQ(1U, port()->Candidates().size());
   EXPECT_EQ(port()->Candidates()[0].relay_protocol(), "");
 }
@@ -472,16 +593,23 @@ TEST_F(StunPortTest, TestNoDuplicatedAddressWithTwoStunServers) {
 // which is not reachable.
 TEST_F(StunPortTest, TestMultipleStunServersWithBadServer) {
   ServerAddresses stun_servers;
-  stun_servers.insert(kStunAddr1);
+  stun_servers.insert(kStunServerAddr1);
   stun_servers.insert(kBadAddr);
   CreateStunPort(stun_servers);
   EXPECT_EQ(IceCandidateType::kSrflx, port()->Type());
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   EXPECT_EQ(1U, port()->Candidates().size());
   std::string server_url = "stun:" + kBadAddr.ToString();
-  ASSERT_EQ_SIMULATED_WAIT(error_event_.url, server_url, kTimeoutMs,
-                           fake_clock);
+  ASSERT_THAT(
+      webrtc::WaitUntil([&] { return error_event_.url; }, Eq(server_url),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
 }
 
 // Test that two candidates are allocated if the two STUN servers return
@@ -493,12 +621,16 @@ TEST_F(StunPortTest, TestTwoCandidatesWithTwoStunServersAcrossNat) {
   stun_server_2()->set_fake_stun_addr(kStunMappedAddr2);
 
   ServerAddresses stun_servers;
-  stun_servers.insert(kStunAddr1);
-  stun_servers.insert(kStunAddr2);
+  stun_servers.insert(kStunServerAddr1);
+  stun_servers.insert(kStunServerAddr2);
   CreateStunPort(stun_servers);
   EXPECT_EQ(IceCandidateType::kSrflx, port()->Type());
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   EXPECT_EQ(2U, port()->Candidates().size());
   EXPECT_EQ(port()->Candidates()[0].relay_protocol(), "");
   EXPECT_EQ(port()->Candidates()[1].relay_protocol(), "");
@@ -509,7 +641,7 @@ TEST_F(StunPortTest, TestTwoCandidatesWithTwoStunServersAcrossNat) {
 // changes.
 TEST_F(StunPortTest, TestStunPortGetStunKeepaliveLifetime) {
   // Lifetime for the default (unknown) network type is `kInfiniteLifetime`.
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   EXPECT_EQ(kInfiniteLifetime, port()->stun_keepalive_lifetime());
   // Lifetime for the cellular network is `kHighCostPortKeepaliveLifetimeMs`
   SetNetworkType(rtc::ADAPTER_TYPE_CELLULAR);
@@ -518,7 +650,7 @@ TEST_F(StunPortTest, TestStunPortGetStunKeepaliveLifetime) {
 
   // Lifetime for the wifi network is `kInfiniteLifetime`.
   SetNetworkType(rtc::ADAPTER_TYPE_WIFI);
-  CreateStunPort(kStunAddr2);
+  CreateStunPort(kStunServerAddr2);
   EXPECT_EQ(kInfiniteLifetime, port()->stun_keepalive_lifetime());
 }
 
@@ -527,7 +659,7 @@ TEST_F(StunPortTest, TestStunPortGetStunKeepaliveLifetime) {
 // if the network type changes.
 TEST_F(StunPortTest, TestUdpPortGetStunKeepaliveLifetime) {
   // Lifetime for the default (unknown) network type is `kInfiniteLifetime`.
-  CreateSharedUdpPort(kStunAddr1, nullptr);
+  CreateSharedUdpPort(kStunServerAddr1, nullptr);
   EXPECT_EQ(kInfiniteLifetime, port()->stun_keepalive_lifetime());
   // Lifetime for the cellular network is `kHighCostPortKeepaliveLifetimeMs`.
   SetNetworkType(rtc::ADAPTER_TYPE_CELLULAR);
@@ -536,7 +668,7 @@ TEST_F(StunPortTest, TestUdpPortGetStunKeepaliveLifetime) {
 
   // Lifetime for the wifi network type is `kInfiniteLifetime`.
   SetNetworkType(rtc::ADAPTER_TYPE_WIFI);
-  CreateSharedUdpPort(kStunAddr2, nullptr);
+  CreateSharedUdpPort(kStunServerAddr2, nullptr);
   EXPECT_EQ(kInfiniteLifetime, port()->stun_keepalive_lifetime());
 }
 
@@ -545,21 +677,35 @@ TEST_F(StunPortTest, TestUdpPortGetStunKeepaliveLifetime) {
 TEST_F(StunPortTest, TestStunBindingRequestShortLifetime) {
   SetKeepaliveDelay(101);
   SetKeepaliveLifetime(100);
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
-  EXPECT_TRUE_SIMULATED_WAIT(!HasPendingRequest(cricket::STUN_BINDING_REQUEST),
-                             2000, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_THAT(
+      webrtc::WaitUntil(
+          [&] { return !HasPendingRequest(cricket::STUN_BINDING_REQUEST); },
+          IsTrue(), {.clock = &fake_clock}),
+      webrtc::IsRtcOk());
 }
 
 // Test that by default, the STUN binding requests will last for a long time.
 TEST_F(StunPortTest, TestStunBindingRequestLongLifetime) {
   SetKeepaliveDelay(101);
-  CreateStunPort(kStunAddr1);
+  CreateStunPort(kStunServerAddr1);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
-  EXPECT_TRUE_SIMULATED_WAIT(HasPendingRequest(cricket::STUN_BINDING_REQUEST),
-                             1000, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_THAT(
+      webrtc::WaitUntil(
+          [&] { return HasPendingRequest(cricket::STUN_BINDING_REQUEST); },
+          IsTrue(), {.clock = &fake_clock}),
+      webrtc::IsRtcOk());
 }
 
 class MockAsyncPacketSocket : public rtc::AsyncPacketSocket {
@@ -594,17 +740,16 @@ class MockAsyncPacketSocket : public rtc::AsyncPacketSocket {
 // Test that outbound packets inherit the dscp value assigned to the socket.
 TEST_F(StunPortTest, TestStunPacketsHaveDscpPacketOption) {
   MockAsyncPacketSocket* socket = new MockAsyncPacketSocket();
-  CreateSharedUdpPort(kStunAddr1, socket);
-  EXPECT_CALL(*socket, GetLocalAddress()).WillRepeatedly(Return(kLocalAddr));
+  CreateSharedUdpPort(kStunServerAddr1, socket);
+  EXPECT_CALL(*socket, GetLocalAddress()).WillRepeatedly(Return(kPrivateIP));
   EXPECT_CALL(*socket, GetState())
       .WillRepeatedly(Return(rtc::AsyncPacketSocket::STATE_BOUND));
   EXPECT_CALL(*socket, SetOption(_, _)).WillRepeatedly(Return(0));
 
   // If DSCP is not set on the socket, stun packets should have no value.
-  EXPECT_CALL(*socket,
-              SendTo(_, _, _,
-                     ::testing::Field(&rtc::PacketOptions::dscp,
-                                      ::testing::Eq(rtc::DSCP_NO_CHANGE))))
+  EXPECT_CALL(*socket, SendTo(_, _, _,
+                              ::testing::Field(&rtc::PacketOptions::dscp,
+                                               Eq(rtc::DSCP_NO_CHANGE))))
       .WillOnce(Return(100));
   PrepareAddress();
 
@@ -612,25 +757,21 @@ TEST_F(StunPortTest, TestStunPacketsHaveDscpPacketOption) {
   port()->SetOption(rtc::Socket::OPT_DSCP, rtc::DSCP_AF41);
   EXPECT_CALL(*socket, SendTo(_, _, _,
                               ::testing::Field(&rtc::PacketOptions::dscp,
-                                               ::testing::Eq(rtc::DSCP_AF41))))
+                                               Eq(rtc::DSCP_AF41))))
       .WillRepeatedly(Return(100));
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
 }
 
 class StunIPv6PortTestBase : public StunPortTestBase {
  public:
   StunIPv6PortTestBase()
-      : StunPortTestBase(rtc::Network("unittestipv6",
-                                      "unittestipv6",
-                                      kIPv6LocalAddr.ipaddr(),
-                                      128),
-                         kIPv6LocalAddr.ipaddr()) {
-    stun_server_ipv6_1_ =
-        cricket::TestStunServer::Create(ss(), kIPv6StunAddr1, thread());
-  }
-
- protected:
-  cricket::TestStunServer::StunServerPtr stun_server_ipv6_1_;
+      : StunPortTestBase(kPrivateIPv6.ipaddr(),
+                         {kStunServerAddrIPv6Addr},
+                         kNatAddrIPv6) {}
 };
 
 class StunIPv6PortTestWithRealClock : public StunIPv6PortTestBase {};
@@ -639,42 +780,73 @@ class StunIPv6PortTest : public FakeClockBase, public StunIPv6PortTestBase {};
 
 // Test that we can get an address from a STUN server.
 TEST_F(StunIPv6PortTest, TestPrepareAddress) {
-  CreateStunPort(kIPv6StunAddr1);
+  CreateStunPort(kStunServerAddrIPv6Addr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kIPv6LocalAddr.EqualIPs(port()->Candidates()[0].address()));
-  std::string expected_server_url = "stun:::1:5000";
+  EXPECT_TRUE(kPublicIPv6.EqualIPs(port()->Candidates()[0].address()));
+  std::string expected_server_url = "stun:2003:4860:4860::8844:5000";
   EXPECT_EQ(port()->Candidates()[0].url(), expected_server_url);
 }
 
 // Test that we fail properly if we can't get an address.
 TEST_F(StunIPv6PortTest, TestPrepareAddressFail) {
-  CreateStunPort(kBadAddr);
+  CreateStunPort(kIPv6BadAddr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
-  EXPECT_EQ_SIMULATED_WAIT(error_event_.error_code,
-                           cricket::SERVER_NOT_REACHABLE_ERROR, kTimeoutMs,
-                           fake_clock);
-  ASSERT_NE(error_event_.error_text.find('.'), std::string::npos);
-  ASSERT_NE(
-      error_event_.address.find(kIPv6LocalAddr.HostAsSensitiveURIString()),
-      std::string::npos);
-  std::string server_url = "stun:" + kBadAddr.ToString();
-  ASSERT_EQ(error_event_.url, server_url);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return error_event_.error_code; },
+                        Eq(cricket::STUN_ERROR_SERVER_NOT_REACHABLE),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_NE(error_event_.error_text.find('.'), std::string::npos);
+  EXPECT_NE(error_event_.address.find(kPrivateIPv6.HostAsSensitiveURIString()),
+            std::string::npos);
+  std::string server_url = "stun:" + kIPv6BadAddr.ToString();
+  EXPECT_EQ(error_event_.url, server_url);
+}
+
+// Test that we fail without emitting an error if we try to get an address from
+// a STUN server with a different address family. IPv6 local, IPv4 STUN.
+TEST_F(StunIPv6PortTest, TestServerAddressFamilyMismatch) {
+  CreateStunPort(kStunServerAddr1);
+  PrepareAddress();
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
+  EXPECT_TRUE(error());
+  EXPECT_EQ(0U, port()->Candidates().size());
+  EXPECT_EQ(0, error_event_.error_code);
 }
 
 // Test that we handle hostname lookup failures properly with a real clock.
 TEST_F(StunIPv6PortTestWithRealClock, TestPrepareAddressHostnameFail) {
   CreateStunPort(kBadHostnameAddr);
   PrepareAddress();
-  EXPECT_TRUE_WAIT(done(), kTimeoutMs);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs)}),
+      webrtc::IsRtcOk());
   EXPECT_TRUE(error());
   EXPECT_EQ(0U, port()->Candidates().size());
-  EXPECT_EQ_WAIT(error_event_.error_code, cricket::SERVER_NOT_REACHABLE_ERROR,
-                 kTimeoutMs);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return error_event_.error_code; },
+                        Eq(cricket::STUN_ERROR_SERVER_NOT_REACHABLE),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs)}),
+      webrtc::IsRtcOk());
 }
 
 class StunIPv6PortTestWithMockDnsResolver : public StunIPv6PortTest {
@@ -709,14 +881,18 @@ TEST_F(StunIPv6PortTestWithMockDnsResolver, TestPrepareAddressHostname) {
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillOnce(Return(0));
         EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(DoAll(SetArgPointee<1>(SocketAddress("::1", 5000)),
-                            Return(true)));
+            .WillOnce(
+                DoAll(SetArgPointee<1>(kStunServerAddrIPv6Addr), Return(true)));
       });
   CreateStunPort(kValidHostnameAddr);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kIPv6LocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPrivateIPv6.EqualIPs(port()->Candidates()[0].address()));
   EXPECT_EQ(kIPv6StunCandidatePriority, port()->Candidates()[0].priority());
 }
 
@@ -736,14 +912,18 @@ TEST_F(StunIPv6PortTestWithMockDnsResolver,
             .WillRepeatedly(ReturnPointee(resolver_result));
         EXPECT_CALL(*resolver_result, GetError).WillOnce(Return(0));
         EXPECT_CALL(*resolver_result, GetResolvedAddress(AF_INET6, _))
-            .WillOnce(DoAll(SetArgPointee<1>(SocketAddress("::1", 5000)),
-                            Return(true)));
+            .WillOnce(
+                DoAll(SetArgPointee<1>(kStunServerAddrIPv6Addr), Return(true)));
       });
   CreateStunPort(kValidHostnameAddr, &field_trials);
   PrepareAddress();
-  EXPECT_TRUE_SIMULATED_WAIT(done(), kTimeoutMs, fake_clock);
+  EXPECT_THAT(
+      webrtc::WaitUntil([&] { return done(); }, IsTrue(),
+                        {.timeout = webrtc::TimeDelta::Millis(kTimeoutMs),
+                         .clock = &fake_clock}),
+      webrtc::IsRtcOk());
   ASSERT_EQ(1U, port()->Candidates().size());
-  EXPECT_TRUE(kIPv6LocalAddr.EqualIPs(port()->Candidates()[0].address()));
+  EXPECT_TRUE(kPrivateIPv6.EqualIPs(port()->Candidates()[0].address()));
   EXPECT_EQ(kIPv6StunCandidatePriority + (cricket::kMaxTurnServers << 8),
             port()->Candidates()[0].priority());
 }

@@ -13,8 +13,9 @@ See ``taskcluster/docs/optimization.rst`` for more information.
 
 import datetime
 import logging
-from abc import ABCMeta, abstractmethod, abstractproperty
+from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from typing import Dict, Set
 
 from slugid import nice as slugid
 
@@ -24,14 +25,16 @@ from taskgraph.util.parameterization import resolve_task_references, resolve_tim
 from taskgraph.util.python_path import import_sibling_modules
 from taskgraph.util.taskcluster import find_task_id_batched, status_task_batched
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("optimization")
 registry = {}
 
 
-def register_strategy(name, args=()):
+def register_strategy(name, args=(), kwargs=None):
+    kwargs = kwargs or {}
+
     def wrap(cls):
         if name not in registry:
-            registry[name] = cls(*args)
+            registry[name] = cls(*args, **kwargs)
             if not hasattr(registry[name], "description"):
                 registry[name].description = name
         return cls
@@ -331,9 +334,10 @@ def replace_tasks(
         dependents = [target_task_graph.tasks[l] for l in dependents_of[label]]
         deadline = None
         if dependents:
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.timezone.utc)
             deadline = max(
-                resolve_timestamps(now, task.task["deadline"]) for task in dependents
+                resolve_timestamps(now, task.task["deadline"])
+                for task in dependents  # type: ignore
             )
 
         if isinstance(opt, IndexSearch):
@@ -362,11 +366,11 @@ def replace_tasks(
 
 
 def get_subgraph(
-    target_task_graph,
-    removed_tasks,
-    replaced_tasks,
-    label_to_taskid,
-    decision_task_id,
+    target_task_graph: TaskGraph,
+    removed_tasks: Set[str],
+    replaced_tasks: Set[str],
+    label_to_taskid: Dict[str, str],
+    decision_task_id: str,
 ):
     """
     Return the subgraph of target_task_graph consisting only of
@@ -396,7 +400,9 @@ def get_subgraph(
     for label in sorted(
         target_task_graph.graph.nodes - removed_tasks - set(label_to_taskid)
     ):
-        label_to_taskid[label] = slugid()
+        task_id = slugid()
+        assert isinstance(task_id, str)
+        label_to_taskid[label] = task_id
 
     # resolve labels to taskIds and populate task['dependencies']
     tasks_by_taskid = {}
@@ -421,6 +427,7 @@ def get_subgraph(
                 }
             )
 
+        assert task.task_id
         task.task = resolve_task_references(
             task.label,
             task.task,
@@ -445,7 +452,7 @@ def get_subgraph(
         if left in tasks_by_taskid and right in tasks_by_taskid
     }
 
-    return TaskGraph(tasks_by_taskid, Graph(set(tasks_by_taskid), edges_by_taskid))
+    return TaskGraph(tasks_by_taskid, Graph(set(tasks_by_taskid), edges_by_taskid))  # type: ignore
 
 
 @register_strategy("never")
@@ -494,7 +501,8 @@ class CompositeStrategy(OptimizationStrategy, metaclass=ABCMeta):
         if kwargs:
             raise TypeError("unexpected keyword args")
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def description(self):
         """A textual description of the combined substrategies."""
 

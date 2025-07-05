@@ -4,17 +4,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![expect(clippy::unwrap_used, reason = "This is example code.")]
+
 use std::{
-    borrow::Cow,
     cell::RefCell,
-    cmp::min,
     collections::HashMap,
     fmt::{self, Display},
     rc::Rc,
+    slice,
     time::Instant,
 };
 
-use neqo_common::{hex, qdebug, qerror, qinfo, qwarn, Datagram, Header};
+use neqo_common::{header::HeadersExt as _, hex, qdebug, qerror, qinfo, Datagram, Header};
 use neqo_crypto::{generate_ech_keys, random, AntiReplay};
 use neqo_http3::{
     Http3OrWebTransportStream, Http3Parameters, Http3Server, Http3ServerEvent, StreamId,
@@ -22,18 +23,17 @@ use neqo_http3::{
 use neqo_transport::{server::ValidateAddress, ConnectionIdGenerator};
 
 use super::{qns_read_response, Args};
+use crate::send_data::SendData;
 
 pub struct HttpServer {
     server: Http3Server,
     /// Progress writing to each stream.
-    remaining_data: HashMap<StreamId, ResponseData>,
+    remaining_data: HashMap<StreamId, SendData>,
     posts: HashMap<Http3OrWebTransportStream, usize>,
     is_qns_test: bool,
 }
 
 impl HttpServer {
-    const MESSAGE: &'static [u8] = &[0; 4096];
-
     pub fn new(
         args: &Args,
         anti_replay: AntiReplay,
@@ -41,8 +41,8 @@ impl HttpServer {
     ) -> Self {
         let mut server = Http3Server::new(
             args.now(),
-            &[args.key.clone()],
-            &[args.shared.alpn.clone()],
+            slice::from_ref(&args.key),
+            slice::from_ref(&args.shared.alpn),
             anti_replay,
             cid_mgr,
             Http3Parameters::default()
@@ -54,7 +54,7 @@ impl HttpServer {
         )
         .expect("We cannot make a server!");
 
-        server.set_ciphers(&args.get_ciphers());
+        server.set_ciphers(args.get_ciphers());
         server.set_qlog_dir(args.shared.qlog_dir.clone());
         if args.retry {
             server.set_validation(ValidateAddress::Always);
@@ -64,8 +64,7 @@ impl HttpServer {
             server
                 .enable_ech(random::<1>()[0], "public.example", &sk, &pk)
                 .unwrap();
-            let cfg = server.ech_config();
-            qinfo!("ECHConfigList: {}", hex(cfg));
+            qinfo!("ECHConfigList: {}", hex(server.ech_config()));
         }
         Self {
             server,
@@ -83,7 +82,7 @@ impl Display for HttpServer {
 }
 
 impl super::HttpServer for HttpServer {
-    fn process(&mut self, dgram: Option<&Datagram>, now: Instant) -> neqo_http3::Output {
+    fn process(&mut self, dgram: Option<Datagram<&mut [u8]>>, now: Instant) -> neqo_http3::Output {
         self.server.process(dgram, now)
     }
 
@@ -91,21 +90,18 @@ impl super::HttpServer for HttpServer {
         while let Some(event) = self.server.next_event() {
             match event {
                 Http3ServerEvent::Headers {
-                    mut stream,
+                    stream,
                     headers,
                     fin,
                 } => {
                     qdebug!("Headers (request={stream} fin={fin}): {headers:?}");
 
-                    if headers
-                        .iter()
-                        .any(|h| h.name() == ":method" && h.value() == "POST")
-                    {
+                    if headers.contains_header(":method", "POST") {
                         self.posts.insert(stream, 0);
                         continue;
                     }
 
-                    let Some(path) = headers.iter().find(|&h| h.name() == ":path") else {
+                    let Some(path) = headers.find_header(":path") else {
                         stream
                             .cancel_fetch(neqo_http3::Error::HttpRequestIncomplete.code())
                             .unwrap();
@@ -114,7 +110,7 @@ impl super::HttpServer for HttpServer {
 
                     let mut response = if self.is_qns_test {
                         match qns_read_response(path.value()) {
-                            Ok(data) => ResponseData::from(data),
+                            Ok(data) => SendData::from(data),
                             Err(e) => {
                                 qerror!("Failed to read {}: {e}", path.value());
                                 stream
@@ -127,29 +123,29 @@ impl super::HttpServer for HttpServer {
                     } else if let Ok(count) =
                         path.value().trim_matches(|p| p == '/').parse::<usize>()
                     {
-                        ResponseData::repeat(Self::MESSAGE, count)
+                        SendData::zeroes(count)
                     } else {
-                        ResponseData::from(Self::MESSAGE)
+                        SendData::from(path.value())
                     };
 
                     stream
                         .send_headers(&[
                             Header::new(":status", "200"),
-                            Header::new("content-length", response.remaining.to_string()),
+                            Header::new("content-length", response.len().to_string()),
                         ])
                         .unwrap();
-                    response.send(&mut stream);
-                    if response.done() {
+                    let done = response.send(|chunk| stream.send_data(chunk).unwrap());
+                    if done {
                         stream.stream_close_send().unwrap();
                     } else {
                         self.remaining_data.insert(stream.stream_id(), response);
                     }
                 }
-                Http3ServerEvent::DataWritable { mut stream } => {
+                Http3ServerEvent::DataWritable { stream } => {
                     if self.posts.get_mut(&stream).is_none() {
                         if let Some(remaining) = self.remaining_data.get_mut(&stream.stream_id()) {
-                            remaining.send(&mut stream);
-                            if remaining.done() {
+                            let done = remaining.send(|chunk| stream.send_data(chunk).unwrap());
+                            if done {
                                 self.remaining_data.remove(&stream.stream_id());
                                 stream.stream_close_send().unwrap();
                             }
@@ -157,11 +153,7 @@ impl super::HttpServer for HttpServer {
                     }
                 }
 
-                Http3ServerEvent::Data {
-                    mut stream,
-                    data,
-                    fin,
-                } => {
+                Http3ServerEvent::Data { stream, data, fin } => {
                     if let Some(received) = self.posts.get_mut(&stream) {
                         *received += data.len();
                     }
@@ -183,62 +175,5 @@ impl super::HttpServer for HttpServer {
 
     fn has_events(&self) -> bool {
         self.server.has_events()
-    }
-}
-
-struct ResponseData {
-    data: Cow<'static, [u8]>,
-    offset: usize,
-    remaining: usize,
-}
-
-impl From<&[u8]> for ResponseData {
-    fn from(data: &[u8]) -> Self {
-        Self::from(data.to_vec())
-    }
-}
-
-impl From<Vec<u8>> for ResponseData {
-    fn from(data: Vec<u8>) -> Self {
-        let remaining = data.len();
-        Self {
-            data: Cow::Owned(data),
-            offset: 0,
-            remaining,
-        }
-    }
-}
-
-impl ResponseData {
-    fn repeat(buf: &'static [u8], total: usize) -> Self {
-        Self {
-            data: Cow::Borrowed(buf),
-            offset: 0,
-            remaining: total,
-        }
-    }
-
-    fn send(&mut self, stream: &mut Http3OrWebTransportStream) {
-        while self.remaining > 0 {
-            let end = min(self.data.len(), self.offset + self.remaining);
-            let slice = &self.data[self.offset..end];
-            match stream.send_data(slice) {
-                Ok(0) => {
-                    return;
-                }
-                Ok(sent) => {
-                    self.remaining -= sent;
-                    self.offset = (self.offset + sent) % self.data.len();
-                }
-                Err(e) => {
-                    qwarn!("Error writing to stream {}: {:?}", stream, e);
-                    return;
-                }
-            }
-        }
-    }
-
-    fn done(&self) -> bool {
-        self.remaining == 0
     }
 }

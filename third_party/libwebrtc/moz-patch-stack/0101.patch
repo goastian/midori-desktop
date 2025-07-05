@@ -1,33 +1,52 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Fri, 2 Feb 2024 18:43:00 +0000
-Subject: Bug 1878010 - Fix webrtc::VideoCaptureFactory for BSD.
- r=grulja,gaston,webrtc-reviewers,mjf
+From: Nico Grunbaum <na-g@nostrum.com>
+Date: Thu, 2 May 2024 00:47:00 -0700
+Subject: Bug 1892299 - fix-afaae4e38a - fix adapted_track_source build
+ exclusion;r?mjf
 
-Differential Revision: https://phabricator.services.mozilla.com/D200427
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f890637efe5abc0020fab83ff2224313cd0c8460
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/60304c5d8a86fdecfe7527e75629dbc65fc9cbc1
 ---
- modules/video_capture/video_capture_factory.cc | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ media/BUILD.gn | 17 +++++++++++------
+ 1 file changed, 11 insertions(+), 6 deletions(-)
 
-diff --git a/modules/video_capture/video_capture_factory.cc b/modules/video_capture/video_capture_factory.cc
-index e085ac2df8..2790fbbe1c 100644
---- a/modules/video_capture/video_capture_factory.cc
-+++ b/modules/video_capture/video_capture_factory.cc
-@@ -24,7 +24,7 @@ rtc::scoped_refptr<VideoCaptureModule> VideoCaptureFactory::Create(
-     const char* deviceUniqueIdUTF8) {
- // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
- // Android as well
--#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
-+#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
-   return nullptr;
- #else
-   return videocapturemodule::VideoCaptureImpl::Create(options,
-@@ -40,7 +40,7 @@ VideoCaptureModule::DeviceInfo* VideoCaptureFactory::CreateDeviceInfo(
-     VideoCaptureOptions* options) {
- // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
- // Android as well
--#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
-+#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
-   return nullptr;
- #else
-   return videocapturemodule::VideoCaptureImpl::CreateDeviceInfo(options);
+diff --git a/media/BUILD.gn b/media/BUILD.gn
+index 655b155c6a..39b31d16ce 100644
+--- a/media/BUILD.gn
++++ b/media/BUILD.gn
+@@ -55,6 +55,11 @@ rtc_library("rtc_media_base") {
+     "base/video_broadcaster.h",  # Used downstream
+     "base/video_common.h",  # Used downstream
+   ]
++  if (build_with_mozilla) {
++    sources -= [
++      "base/adapted_video_track_source.h",
++    ]
++  }
+   deps = [
+     ":adapted_video_track_source",
+     ":codec",
+@@ -127,12 +132,6 @@ rtc_library("rtc_media_base") {
+     "../video/config:encoder_config",
+     "//third_party/abseil-cpp/absl/base:core_headers",
+   ]
+-    if (build_with_mozilla) {
+-    sources -= [
+-      "base/adapted_video_track_source.cc",
+-      "base/adapted_video_track_source.h",
+-    ]
+-  }
+ }
+ 
+ rtc_library("adapted_video_track_source") {
+@@ -140,6 +139,12 @@ rtc_library("adapted_video_track_source") {
+     "base/adapted_video_track_source.cc",
+     "base/adapted_video_track_source.h",
+   ]
++  if (build_with_mozilla) {
++    sources -= [
++      "base/adapted_video_track_source.cc",
++      "base/adapted_video_track_source.h",
++    ]
++  }
+   deps = [
+     ":video_adapter",
+     ":video_broadcaster",

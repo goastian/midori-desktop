@@ -17,11 +17,11 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/audio_options.h"
 #include "api/candidate.h"
 #include "api/jsep.h"
@@ -38,6 +38,7 @@
 #include "api/set_remote_description_observer_interface.h"
 #include "api/uma_metrics.h"
 #include "api/video/video_bitrate_allocator_factory.h"
+#include "call/payload_type.h"
 #include "media/base/media_channel.h"
 #include "media/base/stream_params.h"
 #include "p2p/base/port_allocator.h"
@@ -55,7 +56,6 @@
 #include "pc/stream_collection.h"
 #include "pc/transceiver_list.h"
 #include "pc/webrtc_session_description_factory.h"
-#include "rtc_base/checks.h"
 #include "rtc_base/operations_chain.h"
 #include "rtc_base/ssl_stream_adapter.h"
 #include "rtc_base/thread.h"
@@ -80,8 +80,11 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
   static std::unique_ptr<SdpOfferAnswerHandler> Create(
       PeerConnectionSdpMethods* pc,
       const PeerConnectionInterface::RTCConfiguration& configuration,
-      PeerConnectionDependencies& dependencies,
-      ConnectionContext* context);
+      std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator,
+      std::unique_ptr<webrtc::VideoBitrateAllocatorFactory>
+          video_bitrate_allocator_factory,
+      ConnectionContext* context,
+      PayloadTypeSuggester* pt_suggester);
 
   void ResetSessionDescFactory() {
     RTC_DCHECK_RUN_ON(signaling_thread());
@@ -112,7 +115,7 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
 
   bool NeedsIceRestart(const std::string& content_name) const override;
   bool IceRestartPending(const std::string& content_name) const override;
-  absl::optional<rtc::SSLRole> GetDtlsRole(
+  std::optional<rtc::SSLRole> GetDtlsRole(
       const std::string& mid) const override;
 
   void RestartIce();
@@ -156,7 +159,7 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
   bool AddStream(MediaStreamInterface* local_stream);
   void RemoveStream(MediaStreamInterface* local_stream);
 
-  absl::optional<bool> is_caller() const;
+  std::optional<bool> is_caller() const;
   bool HasNewIceCredentials();
   void UpdateNegotiationNeeded();
   void AllocateSctpSids();
@@ -164,7 +167,7 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
   // directly getting the information from the transport.
   // This is used for allocating stream ids for data channels.
   // See also `InternalDataChannelInit::fallback_ssl_role`.
-  absl::optional<rtc::SSLRole> GuessSslRole() const;
+  std::optional<rtc::SSLRole> GuessSslRole() const;
 
   // Destroys all media BaseChannels.
   void DestroyMediaChannels();
@@ -179,6 +182,8 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
     }
     return false;
   }
+
+  SdpMungingType sdp_munging_type() const { return last_sdp_munging_type_; }
 
  private:
   class RemoteDescriptionOperation;
@@ -210,8 +215,11 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
   // once. Modifies dependencies.
   void Initialize(
       const PeerConnectionInterface::RTCConfiguration& configuration,
-      PeerConnectionDependencies& dependencies,
-      ConnectionContext* context);
+      std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator,
+      std::unique_ptr<webrtc::VideoBitrateAllocatorFactory>
+          video_bitrate_allocator_factory,
+      ConnectionContext* context,
+      PayloadTypeSuggester* pt_suggester);
 
   rtc::Thread* signaling_thread() const;
   rtc::Thread* network_thread() const;
@@ -532,9 +540,9 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
       const SessionDescriptionInterface* session_desc,
       RtpTransceiverDirection audio_direction,
       RtpTransceiverDirection video_direction,
-      absl::optional<size_t>* audio_index,
-      absl::optional<size_t>* video_index,
-      absl::optional<size_t>* data_index,
+      std::optional<size_t>* audio_index,
+      std::optional<size_t>* video_index,
+      std::optional<size_t>* data_index,
       cricket::MediaSessionOptions* session_options);
 
   // Generates the active MediaDescriptionOptions for the local data channel
@@ -601,12 +609,17 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
       RTC_GUARDED_BY(signaling_thread());
   std::unique_ptr<SessionDescriptionInterface> pending_remote_description_
       RTC_GUARDED_BY(signaling_thread());
+  std::unique_ptr<SessionDescriptionInterface> last_created_offer_
+      RTC_GUARDED_BY(signaling_thread());
+  std::unique_ptr<SessionDescriptionInterface> last_created_answer_
+      RTC_GUARDED_BY(signaling_thread());
+  SdpMungingType last_sdp_munging_type_ = SdpMungingType::kNoModification;
 
   PeerConnectionInterface::SignalingState signaling_state_
       RTC_GUARDED_BY(signaling_thread()) = PeerConnectionInterface::kStable;
 
   // Whether this peer is the caller. Set when the local description is applied.
-  absl::optional<bool> is_caller_ RTC_GUARDED_BY(signaling_thread());
+  std::optional<bool> is_caller_ RTC_GUARDED_BY(signaling_thread());
 
   // Streams added via AddStream.
   const rtc::scoped_refptr<StreamCollection> local_streams_
@@ -632,7 +645,7 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
 
   // MIDs will be generated using this generator which will keep track of
   // all the MIDs that have been seen over the life of the PeerConnection.
-  rtc::UniqueStringGenerator mid_generator_ RTC_GUARDED_BY(signaling_thread());
+  UniqueStringGenerator mid_generator_ RTC_GUARDED_BY(signaling_thread());
 
   // List of content names for which the remote side triggered an ICE restart.
   std::set<std::string> pending_ice_restarts_
@@ -679,9 +692,9 @@ class SdpOfferAnswerHandler : public SdpStateProvider {
 
   // Whether we are the initial offerer on the association. This
   // determines the SSL role.
-  absl::optional<bool> initial_offerer_ RTC_GUARDED_BY(signaling_thread());
+  std::optional<bool> initial_offerer_ RTC_GUARDED_BY(signaling_thread());
 
-  rtc::WeakPtrFactory<SdpOfferAnswerHandler> weak_ptr_factory_
+  WeakPtrFactory<SdpOfferAnswerHandler> weak_ptr_factory_
       RTC_GUARDED_BY(signaling_thread());
 };
 

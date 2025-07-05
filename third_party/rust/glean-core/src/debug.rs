@@ -17,15 +17,18 @@
 //! * **Debug tagging** - Adding the X-Debug-ID header to every ping request,
 //!         allowing these tagged pings to be sent to the ["Ping Debug Viewer"](https://mozilla.github.io/glean/book/dev/core/internal/debug-pings.html).
 //!         This may be set by calling glean.set_debug_view_tag(value: &str)
-//!         or by setting the environment variable GLEAN_DEBUG_VIEW_TAG=<some tag>;
+//!         or by setting the environment variable `GLEAN_DEBUG_VIEW_TAG=<some tag>`;
 //! * **Source tagging** - Adding the X-Source-Tags header to every ping request,
 //!         allowing pings to be tagged with custom labels.
-//!         This may be set by calling glean.set_source_tags(value: Vec<String>)
-//!         or by setting the environment variable GLEAN_SOURCE_TAGS=<some, tags>;
+//!         This may be set by calling `glean.set_source_tags(value: Vec<String>)`
+//!         or by setting the environment variable `GLEAN_SOURCE_TAGS=<some, tags>`;
 //!
 //! Bindings may implement other debugging features, e.g. sending pings on demand.
 
 use std::env;
+
+use malloc_size_of::MallocSizeOf;
+use malloc_size_of_derive::MallocSizeOf;
 
 const GLEAN_LOG_PINGS: &str = "GLEAN_LOG_PINGS";
 const GLEAN_DEBUG_VIEW_TAG: &str = "GLEAN_DEBUG_VIEW_TAG";
@@ -33,6 +36,7 @@ const GLEAN_SOURCE_TAGS: &str = "GLEAN_SOURCE_TAGS";
 const GLEAN_MAX_SOURCE_TAGS: usize = 5;
 
 /// A representation of all of Glean's debug options.
+#[derive(MallocSizeOf)]
 pub struct DebugOptions {
     /// Option to log the payload of pings that are successfully assembled into a ping request.
     pub log_pings: DebugOption<bool>,
@@ -81,6 +85,15 @@ pub struct DebugOption<T, E = fn(String) -> Option<T>, V = fn(&T) -> bool> {
     /// Optional function to validate the value parsed from the environment
     /// or passed to the `set` function.
     validation: Option<V>,
+}
+
+impl<T, E, V> MallocSizeOf for DebugOption<T, E, V>
+where
+    T: MallocSizeOf,
+{
+    fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+        self.env.size_of(ops) + self.value.size_of(ops)
+    }
 }
 
 impl<T, E, V> DebugOption<T, E, V>

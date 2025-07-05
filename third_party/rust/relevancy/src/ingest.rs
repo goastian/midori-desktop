@@ -5,55 +5,45 @@
 use crate::db::RelevancyDao;
 use crate::rs::{
     from_json, from_json_slice, RelevancyAttachmentData, RelevancyRecord,
-    RelevancyRemoteSettingsClient, REMOTE_SETTINGS_COLLECTION,
+    RelevancyRemoteSettingsClient,
 };
 use crate::url_hash::UrlHash;
 use crate::{Error, Interest, RelevancyDb, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use remote_settings::{Client, RemoteSettingsConfig, RemoteSettingsRecord, RemoteSettingsServer};
+use remote_settings::RemoteSettingsRecord;
 
 // Number of rows to write when inserting interest data before checking for interruption
 const WRITE_CHUNK_SIZE: usize = 100;
 
-pub fn ensure_interest_data_populated(db: &RelevancyDb) -> Result<()> {
+pub fn ensure_interest_data_populated<C: RelevancyRemoteSettingsClient>(
+    db: &RelevancyDb,
+    client: C,
+) -> Result<()> {
     if !db.read(|dao| dao.need_to_load_url_interests())? {
         return Ok(());
     }
 
-    match fetch_interest_data() {
+    match fetch_interest_data_inner(client) {
         Ok(data) => {
             db.read_write(move |dao| insert_interest_data(data, dao))?;
         }
         Err(e) => {
-            log::warn!("error fetching interest data: {e}");
+            crate::warn!("error fetching interest data: {e}");
             return Err(Error::FetchInterestDataError);
         }
     }
     Ok(())
 }
 
-fn fetch_interest_data() -> Result<Vec<(Interest, UrlHash)>> {
-    let rs = Client::new(RemoteSettingsConfig {
-        collection_name: REMOTE_SETTINGS_COLLECTION.to_string(),
-        server: Some(RemoteSettingsServer::Prod),
-        server_url: None,
-        bucket_name: None,
-    })?;
-    fetch_interest_data_inner(rs)
-}
-
 /// Fetch the interest data
-fn fetch_interest_data_inner(
-    rs: impl RelevancyRemoteSettingsClient,
+fn fetch_interest_data_inner<C: RelevancyRemoteSettingsClient>(
+    client: C,
 ) -> Result<Vec<(Interest, UrlHash)>> {
-    let remote_settings_response = rs.get_records()?;
+    let remote_settings_response = client.get_records()?;
     let mut result = vec![];
 
-    for record in remote_settings_response.records {
-        let attachment_data = match &record.attachment {
-            None => return Err(Error::FetchInterestDataError),
-            Some(a) => rs.get_attachment(&a.location)?,
-        };
+    for record in remote_settings_response {
+        let attachment_data = client.get_attachment(&record)?;
         let interest = get_interest(&record)?;
         let urls = get_hash_urls(attachment_data)?;
         result.extend(std::iter::repeat(interest).zip(urls));
@@ -105,7 +95,6 @@ mod test {
     use std::{cell::RefCell, collections::HashMap};
 
     use anyhow::Context;
-    use remote_settings::RemoteSettingsResponse;
     use serde_json::json;
 
     use super::*;
@@ -167,20 +156,12 @@ mod test {
     }
 
     impl RelevancyRemoteSettingsClient for SnapshotSettingsClient {
-        fn get_records(&self) -> Result<RemoteSettingsResponse> {
-            let records = self.snapshot.borrow().records.clone();
-            let last_modified = records
-                .iter()
-                .map(|record: &RemoteSettingsRecord| record.last_modified)
-                .max()
-                .unwrap_or(0);
-            Ok(RemoteSettingsResponse {
-                records,
-                last_modified,
-            })
+        fn get_records(&self) -> Result<Vec<RemoteSettingsRecord>> {
+            Ok(self.snapshot.borrow().records.clone())
         }
 
-        fn get_attachment(&self, location: &str) -> Result<Vec<u8>> {
+        fn get_attachment(&self, record: &RemoteSettingsRecord) -> Result<Vec<u8>> {
+            let location = record.attachment.as_ref().unwrap().location.as_str();
             Ok(self
                 .snapshot
                 .borrow()
@@ -189,6 +170,8 @@ mod test {
                 .unwrap_or_else(|| unreachable!("Unexpected request for attachment `{}`", location))
                 .clone())
         }
+
+        fn close(&self) {}
     }
 
     #[test]
@@ -342,7 +325,7 @@ mod test {
         }]))?
         .with_data(
             "data-1.json",
-            json!([ 
+            json!([
             {"domain": "J2jtyjQtYQ/+/p//xhz43Q=="},
             {"domain": "Zd4awCwGZLkat59nIWje3g=="}]),
         )?;
@@ -381,7 +364,7 @@ mod test {
         }]))?
         .with_data(
             "data-1.json",
-            json!([ 
+            json!([
                 {"domain": "badString"},
                 {"domain": "notBase64"}]),
         )?;

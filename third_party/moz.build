@@ -59,7 +59,7 @@ with Files('sipcc/**'):
     BUG_COMPONENT = ('Core', 'WebRTC: Signaling')
 
 with Files('sqlite3/**'):
-    BUG_COMPONENT = ('Toolkit', 'Storage')
+    BUG_COMPONENT = ("Core", "SQLite and Embedded Database Bindings")
 
 with Files('rlbox/**'):
     BUG_COMPONENT = ('Core', 'Security: RLBox')
@@ -92,4 +92,19 @@ with Files('libsrtp/**'):
     BUG_COMPONENT = ('Core', 'WebRTC: Networking')
 
 with Files("perfetto/**"):
-    BUG_COMPONENT = ("Core", "Performance")
+    BUG_COMPONENT = ("Core", "Performance Engineering")
+
+with Files("BUILD.gn"):
+    BUG_COMPONENT = ("Core", "WebRTC")
+
+with Files("chromium/**"):
+    BUG_COMPONENT = ("Core", "WebRTC")
+
+with Files("abseil-cpp/**"):
+    BUG_COMPONENT = ("Core", "WebRTC")
+
+with Files("build_overrides/**"):
+    BUG_COMPONENT = ("Core", "WebRTC")
+
+with Files("fmt"):
+    BUG_COMPONENT = ("Core", "MFBT")

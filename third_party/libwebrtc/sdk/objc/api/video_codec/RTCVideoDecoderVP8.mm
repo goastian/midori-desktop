@@ -11,10 +11,10 @@
 
 #import <Foundation/Foundation.h>
 
-#import "RTCMacros.h"
 #import "RTCNativeVideoDecoder.h"
 #import "RTCNativeVideoDecoderBuilder+Native.h"
 #import "RTCVideoDecoderVP8.h"
+#import "sdk/objc/base/RTCMacros.h"
 
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 
@@ -24,7 +24,8 @@
 
     @implementation RTC_OBJC_TYPE (RTCVideoDecoderVP8Builder)
 
-    - (std::unique_ptr<webrtc::VideoDecoder>)build:(const webrtc::Environment&)env {
+    - (std::unique_ptr<webrtc::VideoDecoder>)build:
+        (const webrtc::Environment&)env {
       return webrtc::CreateVp8Decoder(env);
     }
 

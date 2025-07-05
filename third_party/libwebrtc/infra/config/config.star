@@ -13,7 +13,7 @@ lucicfg.check_version("1.30.9")
 WEBRTC_GIT = "https://webrtc.googlesource.com/src"
 WEBRTC_GERRIT = "https://webrtc-review.googlesource.com/src"
 WEBRTC_TROOPER_EMAIL = "webrtc-troopers-robots@google.com"
-WEBRTC_XCODE14 = "14c18"
+WEBRTC_XCODE = "15f31d"
 DEFAULT_CPU = "x86-64"
 
 # Helpers:
@@ -52,7 +52,8 @@ def os_from_name(name):
 # Add names of builders to remove from LKGR finder to this list. This is
 # useful when a failure can be safely ignored while fixing it without
 # blocking the LKGR finder on it.
-skipped_lkgr_bots = []
+skipped_lkgr_bots = [
+]
 
 # Use LUCI Scheduler BBv2 names and add Scheduler realms configs.
 lucicfg.enable_experiment("crbug.com/1182002")
@@ -218,6 +219,10 @@ luci.realm(name = "pools/try-tests", bindings = [
 ])
 luci.realm(name = "try", bindings = [
     luci.binding(
+        roles = "role/buildbucket.creator",
+        groups = "project-webrtc-led-users",
+    ),
+    luci.binding(
         roles = "role/swarming.taskTriggerer",
         groups = "project-webrtc-led-users",
     ),
@@ -237,6 +242,10 @@ luci.realm(name = "pools/perf", bindings = [
 ])
 luci.realm(name = "perf", bindings = [
     luci.binding(
+        roles = "role/buildbucket.creator",
+        groups = "project-webrtc-led-users",
+    ),
+    luci.binding(
         roles = "role/swarming.taskTriggerer",
         groups = "project-webrtc-led-users",
     ),
@@ -246,6 +255,10 @@ luci.realm(name = "@root", bindings = [
     # Allow admins to use LED & Swarming "Debug" feature on all WebRTC bots.
     luci.binding(
         roles = "role/swarming.poolUser",
+        groups = "project-webrtc-admins",
+    ),
+    luci.binding(
+        roles = "role/buildbucket.creator",
         groups = "project-webrtc-admins",
     ),
     luci.binding(
@@ -264,6 +277,10 @@ luci.bucket(
             "project-webrtc-tryjob-access",
         ]),
     ],
+    constraints = luci.bucket_constraints(
+        pools = ["luci.webrtc.try"],
+        service_accounts = ["webrtc-try-builder@chops-service-accounts.iam.gserviceaccount.com"],
+    ),
 )
 
 luci.bucket(
@@ -273,6 +290,10 @@ luci.bucket(
             "project-webrtc-ci-schedulers",
         ]),
     ],
+    constraints = luci.bucket_constraints(
+        pools = ["luci.webrtc.ci"],
+        service_accounts = ["webrtc-ci-builder@chops-service-accounts.iam.gserviceaccount.com"],
+    ),
 )
 
 luci.bucket(
@@ -286,6 +307,10 @@ luci.bucket(
             "service-account-chromeperf",
         ]),
     ],
+    constraints = luci.bucket_constraints(
+        pools = ["luci.webrtc.perf"],
+        service_accounts = ["webrtc-ci-builder@chops-service-accounts.iam.gserviceaccount.com"],
+    ),
 )
 
 luci.bucket(
@@ -299,7 +324,7 @@ luci.cq_group(
     tree_status_host = "webrtc-status.appspot.com",
     watch = [cq.refset(repo = WEBRTC_GERRIT, refs = ["refs/heads/main"])],
     acls = [
-        acl.entry(acl.CQ_COMMITTER, groups = ["project-webrtc-committers"]),
+        acl.entry(acl.CQ_COMMITTER, groups = ["project-webrtc-submit-access"]),
         acl.entry(acl.CQ_DRY_RUNNER, groups = ["project-webrtc-tryjob-access"]),
     ],
     allow_owner_if_submittable = cq.ACTION_DRY_RUN,
@@ -311,7 +336,7 @@ luci.cq_group(
     name = "cq_branch",
     watch = [cq.refset(repo = WEBRTC_GERRIT, refs = ["refs/branch-heads/.+"])],
     acls = [
-        acl.entry(acl.CQ_COMMITTER, groups = ["project-webrtc-committers"]),
+        acl.entry(acl.CQ_COMMITTER, groups = ["project-webrtc-submit-access"]),
         acl.entry(acl.CQ_DRY_RUNNER, groups = ["project-webrtc-tryjob-access"]),
     ],
     retry_config = cq.RETRY_ALL_FAILURES,
@@ -388,6 +413,11 @@ luci.notifier(
         name = "infra_failure",
         body = io.read_file("luci-notify/email-templates/infra_failure.template"),
     ),
+)
+
+# Notify findit about completed builds for code coverage purposes
+luci.buildbucket_notification_topic(
+    name = "projects/findit-for-me/topics/buildbucket_notification",
 )
 
 # Tree closer definitions:
@@ -634,11 +664,7 @@ def perf_builder(name, perf_cat, **kwargs):
     add_milo(name, {"perf": perf_cat})
     properties = make_reclient_properties("rbe-webrtc-trusted")
     properties["builder_group"] = "client.webrtc.perf"
-    dimensions = {"pool": "luci.webrtc.perf", "os": "Linux", "cores": "2"}
-    if "Android" in name or "Fuchsia" in name:
-        # Android perf testers require more performant bots to finish under 3 hours.
-        # Fuchsia perf testers encountered "no space left on device" error on multiple runs.
-        dimensions["cores"] = "8"
+    dimensions = {"pool": "luci.webrtc.perf", "os": "Linux"}
     return webrtc_builder(
         name = name,
         dimensions = dimensions,
@@ -693,10 +719,10 @@ def normal_builder_factory(**common_kwargs):
 # Mixins:
 
 ios_builder, ios_try_job = normal_builder_factory(
-    properties = {"xcode_build_version": WEBRTC_XCODE14},
+    properties = {"xcode_build_version": WEBRTC_XCODE},
     caches = [swarming.cache(
-        name = "xcode_ios_" + WEBRTC_XCODE14,
-        path = "xcode_ios_" + WEBRTC_XCODE14 + ".app",
+        name = "xcode_ios_" + WEBRTC_XCODE,
+        path = "xcode_ios_" + WEBRTC_XCODE + ".app",
     )],
 )
 
@@ -733,6 +759,7 @@ ios_try_job("ios_compile_arm64_dbg")
 ios_builder("iOS64 Release", "iOS|arm64|rel")
 ios_try_job("ios_compile_arm64_rel")
 ios_builder("iOS Debug (simulator)", "iOS|x64|sim")
+
 ios_try_job("ios_dbg_simulator")
 ios_builder("iOS API Framework Builder", "iOS|fat|size", recipe = "ios_api_framework", prioritized = True)
 ios_try_job("ios_api_framework", recipe = "ios_api_framework")
@@ -820,6 +847,8 @@ try_builder("win11_release", cq = None)
 try_builder("win11_debug", cq = None)
 chromium_try_builder("win_chromium_compile")
 chromium_try_builder("win_chromium_compile_dbg")
+
+try_builder("iwyu_verifier", cq = None)
 
 try_builder(
     "presubmit",

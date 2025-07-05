@@ -9,13 +9,14 @@
  */
 #include "test/pc/e2e/analyzer/video/analyzing_video_sink.h"
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <set>
 #include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/test/metrics/metric.h"
 #include "api/test/metrics/metrics_logger.h"
 #include "api/test/pclf/media_configuration.h"
@@ -58,15 +59,16 @@ void AnalyzingVideoSink::UpdateSubscription(
     MutexLock lock(&mutex_);
     subscription_ = subscription;
     for (auto it = stream_sinks_.cbegin(); it != stream_sinks_.cend();) {
-      absl::optional<VideoResolution> new_requested_resolution =
+      std::optional<VideoResolution> new_requested_resolution =
           subscription_.GetResolutionForPeer(it->second.sender_peer_name);
-      if (!new_requested_resolution.has_value() ||
-          (*new_requested_resolution != it->second.resolution)) {
+      if (new_requested_resolution != it->second.resolution) {
         RTC_LOG(LS_INFO) << peer_name_ << ": Subscribed resolution for stream "
                          << it->first << " from " << it->second.sender_peer_name
                          << " was updated from "
                          << it->second.resolution.ToString() << " to "
-                         << new_requested_resolution->ToString()
+                         << (new_requested_resolution.has_value()
+                                 ? new_requested_resolution->ToString()
+                                 : "none")
                          << ". Repopulating all video sinks and recreating "
                          << "requested video writers";
         writers_to_close.insert(it->second.video_frame_writer);
@@ -140,8 +142,10 @@ VideoFrame AnalyzingVideoSink::ScaleVideoFrame(
     const VideoFrame& frame,
     const VideoResolution& required_resolution) {
   Timestamp processing_started = clock_->CurrentTime();
-  if (required_resolution.width() == static_cast<size_t>(frame.width()) &&
-      required_resolution.height() == static_cast<size_t>(frame.height())) {
+  if ((required_resolution.width() == static_cast<size_t>(frame.width()) &&
+       required_resolution.height() == static_cast<size_t>(frame.height())) ||
+      !required_resolution.IsRegular() ||
+      (required_resolution.width() == 0 || required_resolution.height() == 0)) {
     if (report_infra_stats_) {
       stats_.scaling_tims_ms.AddSample(
           (clock_->CurrentTime() - processing_started).ms<double>());
@@ -191,14 +195,14 @@ AnalyzingVideoSink::SinksDescriptor* AnalyzingVideoSink::PopulateSinks(
   }
 
   // Slow pass: we need to create and save sinks
-  absl::optional<std::pair<std::string, VideoConfig>> peer_and_config =
+  std::optional<std::pair<std::string, VideoConfig>> peer_and_config =
       sinks_helper_->GetPeerAndConfig(stream_label);
   RTC_CHECK(peer_and_config.has_value())
       << "No video config for stream " << stream_label;
   const std::string& sender_peer_name = peer_and_config->first;
   const VideoConfig& config = peer_and_config->second;
 
-  absl::optional<VideoResolution> resolution =
+  std::optional<VideoResolution> resolution =
       subscription_.GetResolutionForPeer(sender_peer_name);
   if (!resolution.has_value()) {
     RTC_LOG(LS_ERROR) << peer_name_ << " received stream " << stream_label

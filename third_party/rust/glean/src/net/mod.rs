@@ -7,6 +7,7 @@
 //! This doesn't perform the actual upload but rather handles
 //! retries, upload limitations and error tracking.
 
+use crossbeam_channel::{Receiver, Sender};
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -33,6 +34,26 @@ pub struct PingUploadRequest {
     pub ping_name: String,
 }
 
+/// A PingUploadRequest requiring proof of uploader capability.
+pub struct CapablePingUploadRequest {
+    request: PingUploadRequest,
+    capabilities: Vec<String>,
+}
+
+impl CapablePingUploadRequest {
+    /// If you are capable of satisfying this ping upload request's capabilities,
+    /// obtain the PingUploadRequest.
+    pub fn capable<F>(self, func: F) -> Option<PingUploadRequest>
+    where
+        F: FnOnce(Vec<String>) -> bool,
+    {
+        if func(self.capabilities) {
+            return Some(self.request);
+        }
+        None
+    }
+}
+
 /// A description of a component used to upload pings.
 pub trait PingUploader: std::fmt::Debug + Send + Sync {
     /// Uploads a ping to a server.
@@ -43,7 +64,7 @@ pub trait PingUploader: std::fmt::Debug + Send + Sync {
     /// * `body` - the serialized text data to send.
     /// * `headers` - a vector of tuples containing the headers to send with
     ///   the request, i.e. (Name, Value).
-    fn upload(&self, upload_request: PingUploadRequest) -> UploadResult;
+    fn upload(&self, upload_request: CapablePingUploadRequest) -> UploadResult;
 }
 
 /// The logic for uploading pings: this leaves the actual upload mechanism as
@@ -59,6 +80,8 @@ struct Inner {
     uploader: Box<dyn PingUploader + 'static>,
     thread_running: AtomicState,
     handle: Mutex<Option<JoinHandle<()>>>,
+    rx: Receiver<()>,
+    tx: Sender<()>,
 }
 
 impl UploadManager {
@@ -72,12 +95,15 @@ impl UploadManager {
         server_endpoint: String,
         new_uploader: Box<dyn PingUploader + 'static>,
     ) -> Self {
+        let (tx, rx) = crossbeam_channel::bounded(1);
         Self {
             inner: Arc::new(Inner {
                 server_endpoint,
                 uploader: new_uploader,
                 thread_running: AtomicState::new(State::Stopped),
                 handle: Mutex::new(None),
+                rx,
+                tx,
             }),
         }
     }
@@ -126,6 +152,10 @@ impl UploadManager {
                                 body_has_info_sections: request.body_has_info_sections,
                                 ping_name: request.ping_name,
                             };
+                            let upload_request = CapablePingUploadRequest {
+                                request: upload_request,
+                                capabilities: request.uploader_capabilities,
+                            };
                             let result = inner.uploader.upload(upload_request);
                             // Process the upload response.
                             match glean_core::glean_process_ping_upload_response(doc_id, result) {
@@ -141,7 +171,13 @@ impl UploadManager {
                         }
                         PingUploadTask::Wait { time } => {
                             log::trace!("Instructed to wait for {:?}ms", time);
-                            thread::sleep(Duration::from_millis(time));
+                            let _ = inner.rx.recv_timeout(Duration::from_millis(time));
+
+                            let status = inner.thread_running.load(Ordering::SeqCst);
+                            // asked to shut down. let's do it.
+                            if status == State::ShuttingDown {
+                                break;
+                            }
                         }
                         PingUploadTask::Done { .. } => {
                             log::trace!("Received PingUploadTask::Done. Exiting.");
@@ -192,6 +228,9 @@ impl UploadManager {
         let thread = handle.take();
 
         if let Some(thread) = thread {
+            // poke the thread in case it's in `Wait`.
+            let _ = self.inner.tx.send(());
+
             thread
                 .join()
                 .expect("couldn't join on the uploader thread.");

@@ -41,40 +41,38 @@ in where they occur. Use them to group features, for example.
 ## Examples:
 
 */
-// Note: because rustdoc escapes the first `#` of a line starting with `#`,
-// these docs comments have one more `#` ,
 #![doc = self_test!(/**
 [package]
 name = "..."
-## ...
+# ...
 
 [features]
 default = ["foo"]
-##! This comments goes on top
+#! This comments goes on top
 
-### The foo feature enables the `foo` functions
+## The foo feature enables the `foo` functions
 foo = []
 
-### The bar feature enables the bar module
+## The bar feature enables the bar module
 bar = []
 
-##! ### Experimental features
-##! The following features are experimental
+#! ### Experimental features
+#! The following features are experimental
 
-### Enable the fusion reactor
-###
-### ⚠️ Can lead to explosions
+## Enable the fusion reactor
+##
+## ⚠️ Can lead to explosions
 fusion = []
 
 [dependencies]
 document-features = "0.2"
 
-##! ### Optional dependencies
+#! ### Optional dependencies
 
-### Enable this feature to implement the trait for the types from the genial crate
+## Enable this feature to implement the trait for the types from the genial crate
 genial = { version = "0.2", optional = true }
 
-### This awesome dependency is specified in its own table
+## This awesome dependency is specified in its own table
 [dependencies.awesome]
 version = "1.3.5"
 optional = true
@@ -156,7 +154,7 @@ extern crate proc_macro;
 
 use proc_macro::{TokenStream, TokenTree};
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::Write;
 use std::path::Path;
@@ -256,11 +254,11 @@ fn document_features_impl(args: &Args) -> Result<TokenStream, TokenStream> {
     let mut cargo_toml = std::fs::read_to_string(Path::new(&path).join("Cargo.toml"))
         .map_err(|e| error(&format!("Can't open Cargo.toml: {:?}", e)))?;
 
-    if !cargo_toml.contains("\n##") && !cargo_toml.contains("\n#!") {
+    if !has_doc_comments(&cargo_toml) {
         // On crates.io, Cargo.toml is usually "normalized" and stripped of all comments.
         // The original Cargo.toml has been renamed Cargo.toml.orig
         if let Ok(orig) = std::fs::read_to_string(Path::new(&path).join("Cargo.toml.orig")) {
-            if orig.contains("##") || orig.contains("#!") {
+            if has_doc_comments(&orig) {
                 cargo_toml = orig;
             }
         }
@@ -268,6 +266,138 @@ fn document_features_impl(args: &Args) -> Result<TokenStream, TokenStream> {
 
     let result = process_toml(&cargo_toml, args).map_err(|e| error(&e))?;
     Ok(std::iter::once(proc_macro::TokenTree::from(proc_macro::Literal::string(&result))).collect())
+}
+
+/// Check if the Cargo.toml has comments that looks like doc comments.
+fn has_doc_comments(cargo_toml: &str) -> bool {
+    let mut lines = cargo_toml.lines().map(str::trim);
+    while let Some(line) = lines.next() {
+        if line.starts_with("## ") || line.starts_with("#! ") {
+            return true;
+        }
+        let before_coment = line.split_once('#').map_or(line, |(before, _)| before);
+        if line.starts_with("#") {
+            continue;
+        }
+        if let Some((_, mut quote)) = before_coment.split_once("\"\"\"") {
+            loop {
+                // skip slashes.
+                if let Some((_, s)) = quote.split_once('\\') {
+                    quote = s.strip_prefix('\\').or_else(|| s.strip_prefix('"')).unwrap_or(s);
+                    continue;
+                }
+                // skip quotes.
+                if let Some((_, out_quote)) = quote.split_once("\"\"\"") {
+                    let out_quote = out_quote.trim_start_matches('"');
+                    let out_quote =
+                        out_quote.split_once('#').map_or(out_quote, |(before, _)| before);
+                    if let Some((_, q)) = out_quote.split_once("\"\"\"") {
+                        quote = q;
+                        continue;
+                    }
+                    break;
+                };
+                match lines.next() {
+                    Some(l) => quote = l,
+                    None => return false,
+                }
+            }
+        }
+    }
+    false
+}
+
+#[test]
+fn test_has_doc_coment() {
+    assert!(has_doc_comments("foo\nbar\n## comment\nddd"));
+    assert!(!has_doc_comments("foo\nbar\n#comment\nddd"));
+    assert!(!has_doc_comments(
+        r#"
+[[package.metadata.release.pre-release-replacements]]
+exactly = 1 # not a doc comment
+file = "CHANGELOG.md"
+replace = """
+<!-- next-header -->
+## [Unreleased] - ReleaseDate
+"""
+search = "<!-- next-header -->"
+array = ["""foo""", """
+bar""", """eee
+## not a comment
+"""]
+    "#
+    ));
+    assert!(has_doc_comments(
+        r#"
+[[package.metadata.release.pre-release-replacements]]
+exactly = 1 # """
+file = "CHANGELOG.md"
+replace = """
+<!-- next-header -->
+## [Unreleased] - ReleaseDate
+"""
+search = "<!-- next-header -->"
+array = ["""foo""", """
+bar""", """eee
+## not a comment
+"""]
+## This is a comment
+feature = "45"
+        "#
+    ));
+
+    assert!(!has_doc_comments(
+        r#"
+[[package.metadata.release.pre-release-replacements]]
+value = """" string \"""
+## within the string
+\""""
+another_string = """"" # """
+## also within"""
+"#
+    ));
+
+    assert!(has_doc_comments(
+        r#"
+[[package.metadata.release.pre-release-replacements]]
+value = """" string \"""
+## within the string
+\""""
+another_string = """"" # """
+## also within"""
+## out of the string
+foo = bar
+        "#
+    ));
+}
+
+fn dependents(
+    feature_dependencies: &HashMap<String, Vec<String>>,
+    feature: &str,
+    collected: &mut HashSet<String>,
+) {
+    if collected.contains(feature) {
+        return;
+    }
+    collected.insert(feature.to_string());
+    if let Some(dependencies) = feature_dependencies.get(feature) {
+        for dependency in dependencies {
+            dependents(feature_dependencies, dependency, collected);
+        }
+    }
+}
+
+fn parse_feature_deps<'a>(
+    s: &'a str,
+    dep: &str,
+) -> Result<impl Iterator<Item = String> + 'a, String> {
+    Ok(s.trim()
+        .strip_prefix('[')
+        .and_then(|r| r.strip_suffix(']'))
+        .ok_or_else(|| format!("Parse error while parsing dependency {}", dep))?
+        .split(',')
+        .map(|d| d.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string())
+        .filter(|d: &String| !d.is_empty()))
 }
 
 fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
@@ -284,6 +414,7 @@ fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
     let mut features = vec![];
     let mut default_features = HashSet::new();
     let mut current_table = "";
+    let mut dependencies = HashMap::new();
     while let Some(line) = lines.next() {
         if let Some(x) = line.strip_prefix("#!") {
             if !x.is_empty() && !x.starts_with(' ') {
@@ -307,6 +438,7 @@ fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
                 .map(|(t, _)| t.trim())
                 .ok_or_else(|| format!("Parse error while parsing line: {}", line))?;
             if !current_comment.is_empty() {
+                #[allow(clippy::unnecessary_lazy_evaluations)]
                 let dep = current_table
                     .rsplit_once('.')
                     .and_then(|(table, dep)| table.trim().ends_with("dependencies").then(|| dep))
@@ -321,16 +453,17 @@ fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
             let dep = dep.trim().trim_matches('"');
             let rest = get_balanced(rest, &mut lines)
                 .map_err(|e| format!("Parse error while parsing value {}: {}", dep, e))?;
-            if current_table == "features" && dep == "default" {
-                let defaults = rest
-                    .trim()
-                    .strip_prefix('[')
-                    .and_then(|r| r.strip_suffix(']'))
-                    .ok_or_else(|| format!("Parse error while parsing dependency {}", dep))?
-                    .split(',')
-                    .map(|d| d.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string())
-                    .filter(|d| !d.is_empty());
-                default_features.extend(defaults);
+            if current_table == "features" {
+                if dep == "default" {
+                    default_features.extend(parse_feature_deps(&rest, dep)?);
+                } else {
+                    for d in parse_feature_deps(&rest, dep)? {
+                        dependencies
+                            .entry(dep.to_string())
+                            .or_insert_with(Vec::new)
+                            .push(d.clone());
+                    }
+                }
             }
             if !current_comment.is_empty() {
                 if current_table.ends_with("dependencies") {
@@ -355,6 +488,12 @@ fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
             }
         }
     }
+    let df = default_features.iter().cloned().collect::<Vec<_>>();
+    for feature in df {
+        let mut resolved = HashSet::new();
+        dependents(&dependencies, &feature, &mut resolved);
+        default_features.extend(resolved.into_iter());
+    }
     if !current_comment.is_empty() {
         return Err("Found comment not associated with a feature".into());
     }
@@ -364,27 +503,22 @@ fn process_toml(cargo_toml: &str, args: &Args) -> Result<String, String> {
     let mut result = String::new();
     for (f, top, comment) in features {
         let default = if default_features.contains(f) { " *(enabled by default)*" } else { "" };
-        if !comment.trim().is_empty() {
-            if let Some(feature_label) = &args.feature_label {
-                writeln!(
-                    result,
-                    "{}* {}{} —{}",
-                    top,
-                    feature_label.replace("{feature}", f),
-                    default,
-                    comment.trim_end(),
-                )
-                .unwrap();
-            } else {
-                writeln!(result, "{}* **`{}`**{} —{}", top, f, default, comment.trim_end())
-                    .unwrap();
-            }
-        } else if let Some(feature_label) = &args.feature_label {
-            writeln!(result, "{}* {}{}", top, feature_label.replace("{feature}", f), default,)
-                .unwrap();
+        let feature_label = args.feature_label.as_deref().unwrap_or("**`{feature}`**");
+        let comment = if comment.trim().is_empty() {
+            String::new()
         } else {
-            writeln!(result, "{}* **`{}`**{}", top, f, default).unwrap();
-        }
+            format!(" —{}", comment.trim_end())
+        };
+
+        writeln!(
+            result,
+            "{}* {}{}{}",
+            top,
+            feature_label.replace("{feature}", f),
+            default,
+            comment,
+        )
+        .unwrap();
     }
     result += &top_comment;
     Ok(result)
@@ -465,14 +599,20 @@ fn test_get_balanced() {
 #[doc(hidden)]
 /// Helper macro for the tests. Do not use
 pub fn self_test_helper(input: TokenStream) -> TokenStream {
-    process_toml((&input).to_string().trim_matches(|c| c == '"' || c == '#'), &Args::default())
-        .map_or_else(
-            |e| error(&e),
-            |r| {
-                std::iter::once(proc_macro::TokenTree::from(proc_macro::Literal::string(&r)))
-                    .collect()
-            },
-        )
+    let mut code = String::new();
+    for line in (&input).to_string().trim_matches(|c| c == '"' || c == '#').lines() {
+        // Rustdoc removes the lines that starts with `# ` and removes one `#` from lines that starts with # followed by space.
+        // We need to re-add the `#` that was removed by rustdoc to get the original.
+        if line.strip_prefix('#').map_or(false, |x| x.is_empty() || x.starts_with(' ')) {
+            code += "#";
+        }
+        code += line;
+        code += "\n";
+    }
+    process_toml(&code, &Args::default()).map_or_else(
+        |e| error(&e),
+        |r| std::iter::once(proc_macro::TokenTree::from(proc_macro::Literal::string(&r))).collect(),
+    )
 }
 
 #[cfg(feature = "self-test")]
@@ -506,6 +646,8 @@ macro_rules! self_test {
         )
     };
 }
+
+use self_test;
 
 // The following struct is inserted only during generation of the documentation in order to exploit doc-tests.
 // These doc-tests are used to check that invalid arguments to the `document_features!` macro cause a compile time error.
@@ -873,5 +1015,21 @@ default = ["teßt."]
             parsed,
             "* <span class=\"stab portability\"><code>teßt.</code></span> *(enabled by default)* —  This is a test\n* <span class=\"stab portability\"><code>dep</code></span> —  A dep\n"
         );
+    }
+
+    #[test]
+    fn recursive_default() {
+        let toml = r#"
+[features]
+default=["qqq"]
+
+## Qqq
+qqq=["www"]
+
+## Www
+www=[]
+        "#;
+        let parsed = process_toml(toml, &Args::default()).unwrap();
+        assert_eq!(parsed, "* **`qqq`** *(enabled by default)* —  Qqq\n* **`www`** *(enabled by default)* —  Www\n");
     }
 }

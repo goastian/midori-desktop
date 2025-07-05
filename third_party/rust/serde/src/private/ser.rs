@@ -51,11 +51,10 @@ enum Unsupported {
     String,
     ByteArray,
     Optional,
-    #[cfg(any(feature = "std", feature = "alloc"))]
-    UnitStruct,
     Sequence,
     Tuple,
     TupleStruct,
+    #[cfg(not(any(feature = "std", feature = "alloc")))]
     Enum,
 }
 
@@ -69,11 +68,10 @@ impl Display for Unsupported {
             Unsupported::String => formatter.write_str("a string"),
             Unsupported::ByteArray => formatter.write_str("a byte array"),
             Unsupported::Optional => formatter.write_str("an optional"),
-            #[cfg(any(feature = "std", feature = "alloc"))]
-            Unsupported::UnitStruct => formatter.write_str("unit struct"),
             Unsupported::Sequence => formatter.write_str("a sequence"),
             Unsupported::Tuple => formatter.write_str("a tuple"),
             Unsupported::TupleStruct => formatter.write_str("a tuple struct"),
+            #[cfg(not(any(feature = "std", feature = "alloc")))]
             Unsupported::Enum => formatter.write_str("an enum"),
         }
     }
@@ -1092,16 +1090,16 @@ where
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        Err(Self::bad_type(Unsupported::UnitStruct))
+        Ok(())
     }
 
     fn serialize_unit_variant(
         self,
         _: &'static str,
         _: u32,
-        _: &'static str,
+        variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        Err(Self::bad_type(Unsupported::Enum))
+        self.0.serialize_entry(variant, &())
     }
 
     fn serialize_newtype_struct<T>(
@@ -1125,8 +1123,7 @@ where
     where
         T: ?Sized + Serialize,
     {
-        tri!(self.0.serialize_key(variant));
-        self.0.serialize_value(value)
+        self.0.serialize_entry(variant, value)
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {

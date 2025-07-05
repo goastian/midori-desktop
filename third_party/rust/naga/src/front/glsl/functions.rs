@@ -1,3 +1,11 @@
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+use core::iter;
+
 use super::{
     ast::*,
     builtins::{inject_builtin, sampled_to_depth},
@@ -11,7 +19,6 @@ use crate::{
     Expression, Function, FunctionArgument, FunctionResult, Handle, Literal, LocalVariable, Scalar,
     ScalarKind, Span, Statement, StructMember, Type, TypeInner,
 };
-use std::iter;
 
 /// Struct detailing a store operation that must happen after a function call
 struct ProxyWrite {
@@ -140,7 +147,7 @@ impl Frontend {
                 )?
             }
             TypeInner::Vector { size, scalar } => {
-                if vector_size.map_or(true, |s| s != size) {
+                if vector_size != Some(size) {
                     value = ctx.vector_resize(size, value, expr_meta)?;
                 }
 
@@ -282,7 +289,7 @@ impl Frontend {
 
                 for i in 0..columns as u32 {
                     if i < ori_cols as u32 {
-                        use std::cmp::Ordering;
+                        use core::cmp::Ordering;
 
                         let vector = ctx.add_expression(
                             Expression::AccessIndex {
@@ -341,7 +348,7 @@ impl Frontend {
                 }
             }
             _ => {
-                components = iter::repeat(value).take(columns as usize).collect();
+                components = iter::repeat_n(value, columns as usize).collect();
             }
         }
 
@@ -622,7 +629,7 @@ impl Frontend {
                     // check that the format scalar kind matches
                     let good_format = overload_format == call_format
                         || (overload.internal
-                            && ScalarKind::from(overload_format) == ScalarKind::from(call_format));
+                            && Scalar::from(overload_format) == Scalar::from(call_format));
                     if !(good_size && good_format) {
                         continue 'outer;
                     }
@@ -634,7 +641,8 @@ impl Frontend {
                         self.errors.push(Error {
                             kind: ErrorKind::SemanticError(
                                 format!(
-                                    "'{name}': image needs {overload_access:?} access but only {call_access:?} was provided"
+                                    "'{}': image needs {:?} access but only {:?} was provided",
+                                    name, overload_access, call_access
                                 )
                                 .into(),
                             ),
@@ -784,10 +792,10 @@ impl Frontend {
             .zip(raw_args)
             .zip(&parameters)
         {
-            let (mut handle, meta) =
-                ctx.lower_expect_inner(stmt, self, *expr, parameter_info.qualifier.as_pos())?;
-
             if parameter_info.qualifier.is_lhs() {
+                // Reprocess argument in LHS position
+                let (handle, meta) = ctx.lower_expect_inner(stmt, self, *expr, ExprPos::Lhs)?;
+
                 self.process_lhs_argument(
                     ctx,
                     meta,
@@ -801,6 +809,8 @@ impl Frontend {
 
                 continue;
             }
+
+            let (mut handle, meta) = *call_argument;
 
             let scalar_comps = scalar_components(&ctx.module.types[*parameter].inner);
 
@@ -1065,6 +1075,7 @@ impl Frontend {
             expressions,
             named_expressions: crate::NamedExpressions::default(),
             body,
+            diagnostic_filter_leaf: None,
         };
 
         'outer: for decl in declaration.overloads.iter_mut() {
@@ -1226,7 +1237,7 @@ impl Frontend {
             + 3,
         );
 
-        let global_init_body = std::mem::replace(&mut ctx.body, body);
+        let global_init_body = core::mem::replace(&mut ctx.body, body);
 
         for arg in self.entry_args.iter() {
             if arg.storage != StorageQualifier::Input {
@@ -1362,6 +1373,7 @@ impl Frontend {
             early_depth_test: Some(crate::EarlyDepthTest { conservative: None })
                 .filter(|_| self.meta.early_fragment_tests),
             workgroup_size: self.meta.workgroup_size,
+            workgroup_size_overrides: None,
             function: Function {
                 arguments,
                 expressions,
@@ -1437,7 +1449,7 @@ impl Context<'_> {
                         location,
                         interpolation,
                         sampling: None,
-                        second_blend_source: false,
+                        blend_src: None,
                     };
                     location += 1;
 
@@ -1473,7 +1485,7 @@ impl Context<'_> {
                                 location,
                                 interpolation,
                                 sampling: None,
-                                second_blend_source: false,
+                                blend_src: None,
                             };
                             location += 1;
                             binding

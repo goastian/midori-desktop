@@ -12,7 +12,7 @@ from typing import Dict, List, Union
 
 import requests
 import taskcluster_urls as liburls
-from requests.packages.urllib3.util.retry import Retry
+from requests.packages.urllib3.util.retry import Retry  # type: ignore
 
 from taskgraph.task import Task
 from taskgraph.util import yaml
@@ -81,20 +81,25 @@ def requests_retry_session(
     status_forcelist=(500, 502, 503, 504),
     concurrency=CONCURRENCY,
     session=None,
+    allowed_methods=None,
 ):
     session = session or requests.Session()
+    kwargs = {}
+    if allowed_methods is not None:
+        kwargs["allowed_methods"] = allowed_methods
     retry = Retry(
         total=retries,
         read=retries,
         connect=retries,
         backoff_factor=backoff_factor,
         status_forcelist=status_forcelist,
+        **kwargs,
     )
 
     # Default HTTPAdapter uses 10 connections. Mount custom adapter to increase
     # that limit. Connections are established as needed, so using a large value
     # should not negatively impact performance.
-    http_adapter = requests.adapters.HTTPAdapter(
+    http_adapter = requests.adapters.HTTPAdapter(  # type: ignore
         pool_connections=concurrency,
         pool_maxsize=concurrency,
         max_retries=retry,
@@ -110,11 +115,17 @@ def get_session():
     return requests_retry_session(retries=5)
 
 
-def _do_request(url, method=None, **kwargs):
+@functools.lru_cache(maxsize=None)
+def get_retry_post_session():
+    allowed_methods = set(("POST",)) | Retry.DEFAULT_ALLOWED_METHODS
+    return requests_retry_session(retries=5, allowed_methods=allowed_methods)
+
+
+def _do_request(url, method=None, session=None, **kwargs):
     if method is None:
         method = "post" if kwargs else "get"
-
-    session = get_session()
+    if session is None:
+        session = get_session()
     if method == "get":
         kwargs["stream"] = True
 
@@ -132,7 +143,7 @@ def _handle_artifact(path, response):
     if path.endswith(".json"):
         return response.json()
     if path.endswith(".yml"):
-        return yaml.load_stream(response.text)
+        return yaml.load_stream(response.content)
     response.raw.read = functools.partial(response.raw.read, decode_content=True)
     return response.raw
 
@@ -186,7 +197,7 @@ def find_task_id(index_path, use_proxy=False):
     try:
         response = _do_request(get_index_url(index_path, use_proxy))
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
+        if e.response.status_code == 404:  # type: ignore
             raise KeyError(f"index path {index_path} not found")
         raise
     return response.json()["taskId"]
@@ -213,6 +224,7 @@ def find_task_id_batched(index_paths, use_proxy=False):
     while True:
         response = _do_request(
             endpoint,
+            session=get_retry_post_session(),
             json={
                 "indexes": index_paths,
             },
@@ -335,6 +347,7 @@ def status_task_batched(task_ids, use_proxy=False):
     while True:
         response = _do_request(
             endpoint,
+            session=get_retry_post_session(),
             json={
                 "taskIds": task_ids,
             },
@@ -372,7 +385,7 @@ def state_task(task_id, use_proxy=False):
     if testing:
         logger.info(f"Would have gotten state for {task_id}.")
     else:
-        status = status_task(task_id, use_proxy=use_proxy).get("state") or "unknown"
+        status = status_task(task_id, use_proxy=use_proxy).get("state") or "unknown"  # type: ignore
         return status
 
 
@@ -449,8 +462,14 @@ def list_task_group_incomplete_tasks(task_group_id):
 def _get_deps(task_ids, use_proxy):
     upstream_tasks = {}
     for task_id in task_ids:
-        task_def = get_task_definition(task_id, use_proxy)
-        upstream_tasks[task_def["metadata"]["name"]] = task_id
+        try:
+            task_def = get_task_definition(task_id, use_proxy)
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                continue
+            raise e
+
+        upstream_tasks[task_id] = task_def["metadata"]["name"]
 
         upstream_tasks.update(_get_deps(tuple(task_def["dependencies"]), use_proxy))
 
@@ -460,14 +479,14 @@ def _get_deps(task_ids, use_proxy):
 def get_ancestors(
     task_ids: Union[List[str], str], use_proxy: bool = False
 ) -> Dict[str, str]:
-    """Gets the ancestor tasks of the given task_ids as a dictionary of label -> taskid.
+    """Gets the ancestor tasks of the given task_ids as a dictionary of taskid -> label.
 
     Args:
         task_ids (str or [str]): A single task id or a list of task ids to find the ancestors of.
         use_proxy (bool): See get_root_url.
 
     Returns:
-        dict: A dict whose keys are task labels and values are task ids.
+        dict: A dict whose keys are task ids and values are task labels.
     """
     upstream_tasks: Dict[str, str] = {}
 
@@ -475,7 +494,15 @@ def get_ancestors(
         task_ids = [task_ids]
 
     for task_id in task_ids:
-        task_def = get_task_definition(task_id, use_proxy)
+        try:
+            task_def = get_task_definition(task_id, use_proxy)
+        except requests.HTTPError as e:
+            # Task has most likely expired, which means it's no longer a
+            # dependency for the purposes of this function.
+            if e.response.status_code == 404:
+                continue
+
+            raise e
 
         upstream_tasks.update(_get_deps(tuple(task_def["dependencies"]), use_proxy))
 

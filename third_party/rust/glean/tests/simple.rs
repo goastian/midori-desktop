@@ -36,12 +36,15 @@ mod metrics {
 }
 
 mod pings {
+    use super::*;
     use glean::private::PingType;
     use once_cell::sync::Lazy;
 
     #[allow(non_upper_case_globals)]
     pub static validation: Lazy<PingType> = Lazy::new(|| {
-        glean::private::PingType::new("validation", true, true, true, true, true, vec![], vec![])
+        common::PingBuilder::new("validation")
+            .with_send_if_empty(true)
+            .build()
     });
 }
 
@@ -60,6 +63,7 @@ fn simple_lifecycle() {
     let dir = tempfile::tempdir().unwrap();
     let tmpname = dir.path().to_path_buf();
 
+    _ = &*pings::validation;
     let cfg = ConfigurationBuilder::new(true, tmpname, "firefox-desktop")
         .with_server_endpoint("invalid-test-host")
         .build();

@@ -19,7 +19,7 @@ rtc_library("rnn_vad") {
 
   defines = []
   if (rtc_build_with_neon && target_cpu != "arm64") {
-    suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+    suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
     cflags = [ "-mfpu=neon" ]
   }
 
@@ -54,7 +54,6 @@ rtc_library("rnn_vad_auto_correlation") {
 }
 
 rtc_source_set("rnn_vad_common") {
-  # TODO(alessiob): Make this target visibility private.
   visibility = [
     ":*",
     "..:vad_wrapper",
@@ -88,7 +87,7 @@ rtc_source_set("rnn_vad_layers") {
 
   defines = []
   if (rtc_build_with_neon && current_cpu != "arm64") {
-    suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+    suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
     cflags = [ "-mfpu=neon" ]
   }
 
@@ -100,12 +99,12 @@ rtc_source_set("rnn_vad_layers") {
     "../../../../api:function_view",
     "../../../../rtc_base:checks",
     "../../../../rtc_base:safe_conversions",
+    "//third_party/abseil-cpp/absl/strings:string_view",
     "//third_party/rnnoise:rnn_vad",
   ]
   if (current_cpu == "x86" || current_cpu == "x64") {
     deps += [ ":vector_math_avx2" ]
   }
-  absl_deps = [ "//third_party/abseil-cpp/absl/strings" ]
 }
 
 rtc_source_set("vector_math") {
@@ -149,7 +148,7 @@ rtc_library("rnn_vad_pitch") {
 
   defines = []
   if (rtc_build_with_neon && current_cpu != "arm64") {
-    suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+    suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
     cflags = [ "-mfpu=neon" ]
   }
 
@@ -229,8 +228,8 @@ if (rtc_include_tests) {
       "../../../../rtc_base:safe_compare",
       "../../../../test:fileutils",
       "../../../../test:test_support",
+      "//third_party/abseil-cpp/absl/strings:string_view",
     ]
-    absl_deps = [ "//third_party/abseil-cpp/absl/strings" ]
   }
 
   unittest_resources = [
@@ -272,7 +271,7 @@ if (rtc_include_tests) {
 
     defines = []
     if (rtc_build_with_neon && current_cpu != "arm64") {
-      suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
+      suppressed_configs += [ "//chromium/build/config/compiler:compiler_arm_fpu" ]
       cflags = [ "-mfpu=neon" ]
     }
 
@@ -306,7 +305,6 @@ if (rtc_include_tests) {
     if (current_cpu == "x86" || current_cpu == "x64") {
       deps += [ ":vector_math_avx2" ]
     }
-    absl_deps = [ "//third_party/abseil-cpp/absl/memory" ]
     data = unittest_resources
     if (is_ios) {
       deps += [ ":unittests_bundle_data" ]

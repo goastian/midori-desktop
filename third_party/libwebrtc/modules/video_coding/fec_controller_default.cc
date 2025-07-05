@@ -30,8 +30,7 @@ FecControllerDefault::FecControllerDefault(
     VCMProtectionCallback* protection_callback)
     : env_(env),
       protection_callback_(protection_callback),
-      loss_prot_logic_(new media_optimization::VCMLossProtectionLogic(
-          env_.clock().TimeInMilliseconds())),
+      loss_prot_logic_(new media_optimization::VCMLossProtectionLogic(env_)),
       max_payload_size_(1460),
       overhead_threshold_(GetProtectionOverheadRateThreshold()) {}
 
@@ -81,7 +80,7 @@ uint32_t FecControllerDefault::UpdateFecRates(
     uint32_t estimated_bitrate_bps,
     int actual_framerate_fps,
     uint8_t fraction_lost,
-    std::vector<bool> loss_mask_vector,
+    std::vector<bool> /* loss_mask_vector */,
     int64_t round_trip_time_ms) {
   float target_bitrate_kbps =
       static_cast<float>(estimated_bitrate_bps) / 1000.0f;

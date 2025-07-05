@@ -5,8 +5,9 @@
 // except according to those terms.
 
 use std::{
+    fmt::{self, Display, Formatter},
     mem,
-    ops::{Deref, Div},
+    ops::{Deref, Div as _},
 };
 
 use neqo_common::{qtrace, Header};
@@ -25,7 +26,7 @@ use crate::{
     Error, Res,
 };
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct HeaderEncoder {
     buf: QpackData,
     base: u64,
@@ -34,8 +35,8 @@ pub struct HeaderEncoder {
     max_dynamic_index_ref: Option<u64>,
 }
 
-impl ::std::fmt::Display for HeaderEncoder {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for HeaderEncoder {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "HeaderEncoder")
     }
 }
@@ -60,7 +61,7 @@ impl HeaderEncoder {
     }
 
     pub fn encode_indexed_static(&mut self, index: u64) {
-        qtrace!([self], "encode static index {}.", index);
+        qtrace!("[{self}] encode static index {index}");
         self.buf
             .encode_prefixed_encoded_int(HEADER_FIELD_INDEX_STATIC, index);
     }
@@ -76,7 +77,7 @@ impl HeaderEncoder {
     }
 
     pub fn encode_indexed_dynamic(&mut self, index: u64) {
-        qtrace!([self], "encode dynamic index {}.", index);
+        qtrace!("[{self}] encode dynamic index {index}");
         if index < self.base {
             self.buf
                 .encode_prefixed_encoded_int(HEADER_FIELD_INDEX_DYNAMIC, self.base - index - 1);
@@ -88,13 +89,7 @@ impl HeaderEncoder {
     }
 
     pub fn encode_literal_with_name_ref(&mut self, is_static: bool, index: u64, value: &[u8]) {
-        qtrace!(
-            [self],
-            "encode literal with name ref - index={}, static={}, value={:x?}",
-            index,
-            is_static,
-            value
-        );
+        qtrace!("[{self}] encode literal with name ref - index={index}, static={is_static}, value={value:x?}");
         if is_static {
             self.buf
                 .encode_prefixed_encoded_int(HEADER_FIELD_LITERAL_NAME_REF_STATIC, index);
@@ -116,12 +111,7 @@ impl HeaderEncoder {
     }
 
     pub fn encode_literal_with_name_literal(&mut self, name: &[u8], value: &[u8]) {
-        qtrace!(
-            [self],
-            "encode literal with name literal - name={:x?}, value={:x?}.",
-            name,
-            value
-        );
+        qtrace!("[{self}] encode literal with name literal - name={name:x?}, value={value:x?}");
         self.buf
             .encode_literal(self.use_huffman, HEADER_FIELD_LITERAL_NAME_LITERAL, name);
         self.buf.encode_literal(self.use_huffman, NO_PREFIX, value);
@@ -148,13 +138,9 @@ impl HeaderEncoder {
                     }
                 });
         qtrace!(
-            [self],
-            "encode header block prefix max_dynamic_index_ref={:?}, base={}, enc_insert_cnt={}, delta={}, prefix={:?}.",
+            "[{self}] encode header block prefix max_dynamic_index_ref={:?}, base={}, enc_insert_cnt={enc_insert_cnt}, delta={delta}, prefix={prefix:?}",
             self.max_dynamic_index_ref,
-            self.base,
-            enc_insert_cnt,
-            delta,
-            prefix
+            self.base
         );
 
         self.buf
@@ -172,14 +158,14 @@ impl Deref for HeaderEncoder {
     }
 }
 
-pub(crate) struct HeaderDecoder<'a> {
+pub struct HeaderDecoder<'a> {
     buf: ReceiverBufferWrapper<'a>,
     base: u64,
     req_insert_cnt: u64,
 }
 
-impl<'a> ::std::fmt::Display for HeaderDecoder<'a> {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl Display for HeaderDecoder<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "HeaderDecoder")
     }
 }
@@ -191,7 +177,7 @@ pub enum HeaderDecoderResult {
 }
 
 impl<'a> HeaderDecoder<'a> {
-    pub fn new(buf: &'a [u8]) -> Self {
+    pub const fn new(buf: &'a [u8]) -> Self {
         Self {
             buf: ReceiverBufferWrapper::new(buf),
             base: 0,
@@ -224,8 +210,7 @@ impl<'a> HeaderDecoder<'a> {
 
         if table.base() < self.req_insert_cnt {
             qtrace!(
-                [self],
-                "decoding is blocked, requested inserts count={}",
+                "[{self}] decoding is blocked, requested inserts count={}",
                 self.req_insert_cnt
             );
             return Ok(HeaderDecoderResult::Blocked(self.req_insert_cnt));
@@ -274,11 +259,11 @@ impl<'a> HeaderDecoder<'a> {
             }
         }
 
-        qtrace!([self], "done decoding header block.");
+        qtrace!("[{self}] done decoding header block");
         Ok(HeaderDecoderResult::Headers(h))
     }
 
-    pub fn get_req_insert_cnt(&self) -> u64 {
+    pub const fn get_req_insert_cnt(&self) -> u64 {
         self.req_insert_cnt
     }
 
@@ -300,8 +285,7 @@ impl<'a> HeaderDecoder<'a> {
                 .ok_or(Error::DecompressionFailed)?
         };
         qtrace!(
-            [self],
-            "requested inserts count is {} and base is {}",
+            "[{self}] requested inserts count is {} and base is {}",
             self.req_insert_cnt,
             self.base
         );
@@ -335,7 +319,7 @@ impl<'a> HeaderDecoder<'a> {
         let index = self
             .buf
             .read_prefixed_int(HEADER_FIELD_INDEX_STATIC.len())?;
-        qtrace!([self], "decoder static indexed {}.", index);
+        qtrace!("[{self}] decoder static indexed {index}");
         let entry = HeaderTable::get_static(index)?;
         Ok(Header::new(
             parse_utf8(entry.name())?,
@@ -347,7 +331,7 @@ impl<'a> HeaderDecoder<'a> {
         let index = self
             .buf
             .read_prefixed_int(HEADER_FIELD_INDEX_DYNAMIC.len())?;
-        qtrace!([self], "decoder dynamic indexed {}.", index);
+        qtrace!("[{self}] decoder dynamic indexed {index}");
         let entry = table.get_dynamic(index, self.base, false)?;
         Ok(Header::new(
             parse_utf8(entry.name())?,
@@ -359,7 +343,7 @@ impl<'a> HeaderDecoder<'a> {
         let index = self
             .buf
             .read_prefixed_int(HEADER_FIELD_INDEX_DYNAMIC_POST.len())?;
-        qtrace!([self], "decode post-based {}.", index);
+        qtrace!("[{self}] decode post-based {index}");
         let entry = table.get_dynamic(index, self.base, true)?;
         Ok(Header::new(
             parse_utf8(entry.name())?,
@@ -368,10 +352,7 @@ impl<'a> HeaderDecoder<'a> {
     }
 
     fn read_literal_with_name_ref_static(&mut self) -> Res<Header> {
-        qtrace!(
-            [self],
-            "read literal with name reference to the static table."
-        );
+        qtrace!("[{self}] read literal with name reference to the static table");
 
         let index = self
             .buf
@@ -384,10 +365,7 @@ impl<'a> HeaderDecoder<'a> {
     }
 
     fn read_literal_with_name_ref_dynamic(&mut self, table: &HeaderTable) -> Res<Header> {
-        qtrace!(
-            [self],
-            "read literal with name reference ot the dynamic table."
-        );
+        qtrace!("[{self}] read literal with name reference of the dynamic table");
 
         let index = self
             .buf
@@ -400,7 +378,7 @@ impl<'a> HeaderDecoder<'a> {
     }
 
     fn read_literal_with_name_ref_dynamic_post(&mut self, table: &HeaderTable) -> Res<Header> {
-        qtrace!([self], "decoder literal with post-based index.");
+        qtrace!("[{self}] decoder literal with post-based index");
 
         let index = self
             .buf
@@ -413,7 +391,7 @@ impl<'a> HeaderDecoder<'a> {
     }
 
     fn read_literal_with_name_literal(&mut self) -> Res<Header> {
-        qtrace!([self], "decode literal with name literal.");
+        qtrace!("[{self}] decode literal with name literal");
 
         let name = self
             .buf
@@ -612,7 +590,7 @@ mod tests {
     const LITERAL_VALUE: &str = "custom-key";
 
     #[test]
-    fn test_encode_indexed_static() {
+    fn encode_indexed_static() {
         for (index, result, _, _) in INDEX_STATIC_TEST {
             let mut encoded_h = HeaderEncoder::new(0, true, 1000);
             encoded_h.encode_indexed_static(*index);
@@ -622,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_indexed_dynamic() {
+    fn encode_indexed_dynamic() {
         for (index, result, _, _) in INDEX_DYNAMIC_TEST {
             let mut encoded_h = HeaderEncoder::new(66, true, 1000);
             encoded_h.encode_indexed_dynamic(*index);
@@ -632,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_indexed_dynamic_post() {
+    fn encode_indexed_dynamic_post() {
         for (index, result, _, _) in INDEX_DYNAMIC_POST_TEST {
             let mut encoded_h = HeaderEncoder::new(0, true, 1000);
             encoded_h.encode_indexed_dynamic(*index);
@@ -642,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_literal_with_name_ref_static() {
+    fn encode_literal_with_name_ref_static() {
         for (index, result, _, _) in NAME_REF_STATIC {
             let mut encoded_h = HeaderEncoder::new(0, false, 1000);
             encoded_h.encode_literal_with_name_ref(true, *index, VALUE);
@@ -652,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_literal_with_name_ref_dynamic() {
+    fn encode_literal_with_name_ref_dynamic() {
         for (index, result, _, _) in NAME_REF_DYNAMIC {
             let mut encoded_h = HeaderEncoder::new(66, false, 1000);
             encoded_h.encode_literal_with_name_ref(false, *index, VALUE);
@@ -662,7 +640,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_literal_with_name_ref_dynamic_post() {
+    fn encode_literal_with_name_ref_dynamic_post() {
         for (index, result, _, _) in NAME_REF_DYNAMIC_POST {
             let mut encoded_h = HeaderEncoder::new(0, false, 1000);
             encoded_h.encode_literal_with_name_ref(false, *index, VALUE);
@@ -672,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_literal_with_name_ref_dynamic_huffman() {
+    fn encode_literal_with_name_ref_dynamic_huffman() {
         for (index, result, _, _) in NAME_REF_DYNAMIC_HUFFMAN {
             let mut encoded_h = HeaderEncoder::new(66, true, 1000);
             encoded_h.encode_literal_with_name_ref(false, *index, VALUE);
@@ -681,7 +659,7 @@ mod tests {
         }
     }
     #[test]
-    fn test_encode_literal_with_literal() {
+    fn encode_literal_with_literal() {
         let mut encoded_h = HeaderEncoder::new(66, false, 1000);
         encoded_h.encode_literal_with_name_literal(VALUE, VALUE);
         encoded_h.encode_header_block_prefix();

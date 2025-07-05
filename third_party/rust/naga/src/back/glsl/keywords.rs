@@ -1,3 +1,7 @@
+use crate::racy_lock::RacyLock;
+
+use hashbrown::HashSet;
+
 pub const RESERVED_KEYWORDS: &[&str] = &[
     //
     // GLSL 4.6 keywords, from https://github.com/KhronosGroup/OpenGL-Registry/blob/d00e11dc1a1ffba581d633f21f70202051248d5c/specs/gl/GLSLangSpec.4.60.html#L2004-L2322
@@ -250,6 +254,14 @@ pub const RESERVED_KEYWORDS: &[&str] = &[
     "namespace",
     "using",
     "sampler3DRect",
+    // Reserved keywords that were unreserved in GLSL 4.2
+    "image1DArrayShadow",
+    "image1DShadow",
+    "image2DArrayShadow",
+    "image2DShadow",
+    // Reserved keywords that were unreserved in GLSL 4.4
+    "packed",
+    "row_major",
     //
     // GLSL 4.6 Built-In Functions, from https://github.com/KhronosGroup/OpenGL-Registry/blob/d00e11dc1a1ffba581d633f21f70202051248d5c/specs/gl/GLSLangSpec.4.60.html#L13314
     //
@@ -482,3 +494,16 @@ pub const RESERVED_KEYWORDS: &[&str] = &[
     super::FREXP_FUNCTION,
     super::FIRST_INSTANCE_BINDING,
 ];
+
+/// The above set of reserved keywords, turned into a cached HashSet. This saves
+/// significant time during [`Namer::reset`](crate::proc::Namer::reset).
+///
+/// See <https://github.com/gfx-rs/wgpu/pull/7338> for benchmarks.
+pub static RESERVED_KEYWORD_SET: RacyLock<HashSet<&'static str>> = RacyLock::new(|| {
+    let mut set = HashSet::default();
+    set.reserve(RESERVED_KEYWORDS.len());
+    for &word in RESERVED_KEYWORDS {
+        set.insert(word);
+    }
+    set
+});

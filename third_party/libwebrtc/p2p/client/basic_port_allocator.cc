@@ -31,8 +31,8 @@
 #include "p2p/base/turn_port.h"
 #include "p2p/base/udp_port.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/experiments/field_trial_parser.h"
-#include "rtc_base/helpers.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network_constants.h"
 #include "rtc_base/strings/string_builder.h"
@@ -186,23 +186,6 @@ BasicPortAllocator::BasicPortAllocator(
   RTC_DCHECK(network_manager_);
   SetConfiguration(ServerAddresses(), std::vector<RelayServerConfig>(), 0,
                    webrtc::NO_PRUNE, customizer);
-}
-
-BasicPortAllocator::BasicPortAllocator(
-    rtc::NetworkManager* network_manager,
-    rtc::PacketSocketFactory* socket_factory,
-    const ServerAddresses& stun_servers,
-    const webrtc::FieldTrialsView* field_trials)
-    : field_trials_(field_trials),
-      network_manager_(network_manager),
-      socket_factory_(socket_factory),
-      default_relay_port_factory_(new TurnPortFactory()),
-      relay_port_factory_(default_relay_port_factory_.get()) {
-  RTC_CHECK(socket_factory_);
-  RTC_DCHECK(relay_port_factory_);
-  RTC_DCHECK(network_manager_);
-  SetConfiguration(stun_servers, std::vector<RelayServerConfig>(), 0,
-                   webrtc::NO_PRUNE, nullptr);
 }
 
 BasicPortAllocator::~BasicPortAllocator() {
@@ -494,7 +477,7 @@ void BasicPortAllocatorSession::GetCandidateStatsFromReadyPorts(
   for (auto* port : ports) {
     auto candidates = port->Candidates();
     for (const auto& candidate : candidates) {
-      absl::optional<StunStats> stun_stats;
+      std::optional<StunStats> stun_stats;
       port->GetStunStats(&stun_stats);
       CandidateStats candidate_stats(allocator_->SanitizeCandidate(candidate),
                                      std::move(stun_stats));
@@ -504,7 +487,7 @@ void BasicPortAllocatorSession::GetCandidateStatsFromReadyPorts(
 }
 
 void BasicPortAllocatorSession::SetStunKeepaliveIntervalForReadyPorts(
-    const absl::optional<int>& stun_keepalive_interval) {
+    const std::optional<int>& stun_keepalive_interval) {
   RTC_DCHECK_RUN_ON(network_thread_);
   auto ports = ReadyPorts();
   for (PortInterface* port : ports) {
@@ -937,8 +920,6 @@ void BasicPortAllocatorSession::AddAllocatedPort(Port* port,
   port->set_content_name(content_name());
   port->set_component(component());
   port->set_generation(generation());
-  if (allocator_->proxy().type != rtc::PROXY_NONE)
-    port->set_proxy(allocator_->user_agent(), allocator_->proxy());
   port->set_send_retransmit_count_attribute(
       (flags() & PORTALLOCATOR_ENABLE_STUN_RETRANSMIT_ATTRIBUTE) != 0);
 
@@ -1472,19 +1453,25 @@ void AllocationSequence::CreateUDPPorts() {
       !IsFlagSet(PORTALLOCATOR_DISABLE_DEFAULT_LOCAL_CANDIDATE);
   if (IsFlagSet(PORTALLOCATOR_ENABLE_SHARED_SOCKET) && udp_socket_) {
     port = UDPPort::Create(
-        session_->network_thread(), session_->socket_factory(), network_,
-        udp_socket_.get(), session_->username(), session_->password(),
-        emit_local_candidate_for_anyaddress,
-        session_->allocator()->stun_candidate_keepalive_interval(),
-        session_->allocator()->field_trials());
+        {.network_thread = session_->network_thread(),
+         .socket_factory = session_->socket_factory(),
+         .network = network_,
+         .ice_username_fragment = session_->username(),
+         .ice_password = session_->password(),
+         .field_trials = session_->allocator()->field_trials()},
+        udp_socket_.get(), emit_local_candidate_for_anyaddress,
+        session_->allocator()->stun_candidate_keepalive_interval());
   } else {
     port = UDPPort::Create(
-        session_->network_thread(), session_->socket_factory(), network_,
+        {.network_thread = session_->network_thread(),
+         .socket_factory = session_->socket_factory(),
+         .network = network_,
+         .ice_username_fragment = session_->username(),
+         .ice_password = session_->password(),
+         .field_trials = session_->allocator()->field_trials()},
         session_->allocator()->min_port(), session_->allocator()->max_port(),
-        session_->username(), session_->password(),
         emit_local_candidate_for_anyaddress,
-        session_->allocator()->stun_candidate_keepalive_interval(),
-        session_->allocator()->field_trials());
+        session_->allocator()->stun_candidate_keepalive_interval());
   }
 
   if (port) {
@@ -1518,11 +1505,15 @@ void AllocationSequence::CreateTCPPorts() {
   }
 
   std::unique_ptr<Port> port = TCPPort::Create(
-      session_->network_thread(), session_->socket_factory(), network_,
+      {.network_thread = session_->network_thread(),
+       .socket_factory = session_->socket_factory(),
+       .network = network_,
+       .ice_username_fragment = session_->username(),
+       .ice_password = session_->password(),
+       .field_trials = session_->allocator()->field_trials()},
       session_->allocator()->min_port(), session_->allocator()->max_port(),
-      session_->username(), session_->password(),
-      session_->allocator()->allow_tcp_listen(),
-      session_->allocator()->field_trials());
+
+      session_->allocator()->allow_tcp_listen());
   if (port) {
     port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     session_->AddAllocatedPort(port.release(), this);
@@ -1548,11 +1539,15 @@ void AllocationSequence::CreateStunPorts() {
   }
 
   std::unique_ptr<StunPort> port = StunPort::Create(
-      session_->network_thread(), session_->socket_factory(), network_,
+      {.network_thread = session_->network_thread(),
+       .socket_factory = session_->socket_factory(),
+       .network = network_,
+       .ice_username_fragment = session_->username(),
+       .ice_password = session_->password(),
+       .field_trials = session_->allocator()->field_trials()},
       session_->allocator()->min_port(), session_->allocator()->max_port(),
-      session_->username(), session_->password(), config_->StunServers(),
-      session_->allocator()->stun_candidate_keepalive_interval(),
-      session_->allocator()->field_trials());
+      config_->StunServers(),
+      session_->allocator()->stun_candidate_keepalive_interval());
   if (port) {
     port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     session_->AddAllocatedPort(port.release(), this);

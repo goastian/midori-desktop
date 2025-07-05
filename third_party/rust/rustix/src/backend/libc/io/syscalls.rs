@@ -20,7 +20,7 @@ use crate::ioctl::{IoctlOutput, RawOpcode};
 use core::cmp::min;
 #[cfg(all(feature = "fs", feature = "net"))]
 use libc_errno::errno;
-#[cfg(not(target_os = "espidf"))]
+#[cfg(not(any(target_os = "espidf", target_os = "horizon")))]
 use {
     crate::backend::MAX_IOV,
     crate::io::{IoSlice, IoSliceMut},
@@ -71,7 +71,7 @@ pub(crate) fn pwrite(fd: BorrowedFd<'_>, buf: &[u8], offset: u64) -> io::Result<
     unsafe { ret_usize(c::pwrite(borrowed_fd(fd), buf.as_ptr().cast(), len, offset)) }
 }
 
-#[cfg(not(target_os = "espidf"))]
+#[cfg(not(any(target_os = "espidf", target_os = "horizon")))]
 pub(crate) fn readv(fd: BorrowedFd<'_>, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
     unsafe {
         ret_usize(c::readv(
@@ -82,7 +82,7 @@ pub(crate) fn readv(fd: BorrowedFd<'_>, bufs: &mut [IoSliceMut<'_>]) -> io::Resu
     }
 }
 
-#[cfg(not(target_os = "espidf"))]
+#[cfg(not(any(target_os = "espidf", target_os = "horizon")))]
 pub(crate) fn writev(fd: BorrowedFd<'_>, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
     unsafe {
         ret_usize(c::writev(
@@ -96,6 +96,7 @@ pub(crate) fn writev(fd: BorrowedFd<'_>, bufs: &[IoSlice<'_>]) -> io::Result<usi
 #[cfg(not(any(
     target_os = "espidf",
     target_os = "haiku",
+    target_os = "horizon",
     target_os = "nto",
     target_os = "redox",
     target_os = "solaris",
@@ -122,6 +123,7 @@ pub(crate) fn preadv(
     target_os = "espidf",
     target_os = "haiku",
     target_os = "nto",
+    target_os = "horizon",
     target_os = "redox",
     target_os = "solaris",
     target_os = "vita"
@@ -197,6 +199,11 @@ const READ_LIMIT: usize = c::ssize_t::MAX as usize;
 
 pub(crate) unsafe fn close(raw_fd: RawFd) {
     let _ = c::close(raw_fd as c::c_int);
+}
+
+#[cfg(feature = "try_close")]
+pub(crate) unsafe fn try_close(raw_fd: RawFd) -> io::Result<()> {
+    ret(c::close(raw_fd as c::c_int))
 }
 
 #[inline]
@@ -309,6 +316,7 @@ pub(crate) fn dup2(fd: BorrowedFd<'_>, new: &mut OwnedFd) -> io::Result<()> {
     target_os = "dragonfly",
     target_os = "espidf",
     target_os = "haiku",
+    target_os = "horizon",
     target_os = "nto",
     target_os = "redox",
     target_os = "vita",
