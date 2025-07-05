@@ -1,10 +1,12 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 esid: sec-temporal.duration.prototype.total
-description: Fast path for converting other Temporal objects to Temporal.Calendar by reading internal slots
+description: >
+  Fast path for converting other Temporal objects to calendar ID by reading
+  internal slots
 info: |
     sec-temporal.duration.prototype.total step 4:
       4. Let _relativeTo_ be ? ToRelativeTemporalObject(_options_).

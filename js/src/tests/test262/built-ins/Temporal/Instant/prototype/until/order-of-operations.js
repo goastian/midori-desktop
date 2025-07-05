@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,23 +12,16 @@ features: [Temporal]
 const expected = [
   "get other.toString",
   "call other.toString",
-  "ownKeys options",
-  "getOwnPropertyDescriptor options.roundingIncrement",
-  "get options.roundingIncrement",
-  "getOwnPropertyDescriptor options.roundingMode",
-  "get options.roundingMode",
-  "getOwnPropertyDescriptor options.largestUnit",
   "get options.largestUnit",
-  "getOwnPropertyDescriptor options.smallestUnit",
-  "get options.smallestUnit",
-  "getOwnPropertyDescriptor options.additional",
-  "get options.additional",
   "get options.largestUnit.toString",
   "call options.largestUnit.toString",
+  "get options.roundingIncrement",
   "get options.roundingIncrement.valueOf",
   "call options.roundingIncrement.valueOf",
+  "get options.roundingMode",
   "get options.roundingMode.toString",
   "call options.roundingMode.toString",
+  "get options.smallestUnit",
   "get options.smallestUnit.toString",
   "call options.smallestUnit.toString",
 ];

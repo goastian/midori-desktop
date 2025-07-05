@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 André Bargull. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,9 +9,6 @@ description: >
 includes: [temporalHelpers.js]
 features: [Temporal]
 ---*/
-
-const plainDate = new Temporal.PlainDate(1970, 1, 1);
-const zonedDateTime = new Temporal.ZonedDateTime(0n, "UTC", "iso8601");
 
 // Largest temporal unit is "day".
 const duration1 = Temporal.Duration.from({nanoseconds: Number.MAX_SAFE_INTEGER});
@@ -29,32 +26,6 @@ TemporalHelpers.assertDuration(
   Number((nanos / 1000n) % 1000n),
   Number(nanos % 1000n),
   "duration1.add(duration2)"
-);
-
-TemporalHelpers.assertDuration(
-  duration1.add(duration2, {relativeTo: plainDate}),
-  0, 0, 0,
-  1 + Number((nanos / (24n * 60n * 60n * 1_000_000_000n))),
-  Number((nanos / (60n * 60n * 1_000_000_000n)) % 24n),
-  Number((nanos / (60n * 1_000_000_000n)) % 60n),
-  Number((nanos / 1_000_000_000n) % 60n),
-  Number((nanos / 1_000_000n) % 1000n),
-  Number((nanos / 1000n) % 1000n),
-  Number(nanos % 1000n),
-  "duration1.add(duration2, {relativeTo: plainDate})"
-);
-
-TemporalHelpers.assertDuration(
-  duration1.add(duration2, {relativeTo: zonedDateTime}),
-  0, 0, 0,
-  1 + Number((nanos / (24n * 60n * 60n * 1_000_000_000n))),
-  Number((nanos / (60n * 60n * 1_000_000_000n)) % 24n),
-  Number((nanos / (60n * 1_000_000_000n)) % 60n),
-  Number((nanos / 1_000_000_000n) % 60n),
-  Number((nanos / 1_000_000n) % 1000n),
-  Number((nanos / 1000n) % 1000n),
-  Number(nanos % 1000n),
-  "duration1.add(duration2, {relativeTo: zonedDateTime})"
 );
 
 reportCompare(0, 0);

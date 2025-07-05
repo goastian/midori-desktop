@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,16 +10,10 @@ features: [Temporal]
 
 const args = [2020, 12, 24];
 
-Object.defineProperty(Temporal.Calendar, "from", {
-  get() {
-    throw new Test262Error("Should not get Calendar.from");
-  },
-});
-
 const dateExplicit = new Temporal.PlainDate(...args, undefined);
-assert.sameValue(dateExplicit.getISOFields().calendar, "iso8601", "calendar slot should store string");
+assert.sameValue(dateExplicit.calendarId, "iso8601", "calendar string is iso8601");
 
 const dateImplicit = new Temporal.PlainDate(...args);
-assert.sameValue(dateImplicit.getISOFields().calendar, "iso8601", "calendar slot should store string");
+assert.sameValue(dateImplicit.calendarId, "iso8601", "calendar string is iso8601");
 
 reportCompare(0, 0);

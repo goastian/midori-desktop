@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,8 +8,7 @@ description: Checking the string form of an explicitly constructed instance with
 features: [Temporal]
 ---*/
 
-const calendar = Temporal.Calendar.from("iso8601");
-const datetime = new Temporal.PlainDateTime(1976, 11, 18, 15, 23, 30, 123, 456, 789, calendar);
+const datetime = new Temporal.PlainDateTime(1976, 11, 18, 15, 23, 30, 123, 456, 789, "iso8601");
 
 assert.sameValue(datetime.toString(), "1976-11-18T15:23:30.123456789", "check string value");
 

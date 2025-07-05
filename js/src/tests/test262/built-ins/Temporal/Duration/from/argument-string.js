@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -40,8 +40,6 @@ TemporalHelpers.assertDuration(Temporal.Duration.from("P1DT0,5H"),
 TemporalHelpers.assertDuration(Temporal.Duration.from("+P1D"),
    0, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 TemporalHelpers.assertDuration(Temporal.Duration.from("-P1D"),
-   0, 0, 0, -1, 0, 0, 0, 0, 0, 0);
-TemporalHelpers.assertDuration(Temporal.Duration.from("\u2212P1D"),
    0, 0, 0, -1, 0, 0, 0, 0, 0, 0);
 TemporalHelpers.assertDuration(Temporal.Duration.from("-P1Y1M1W1DT1H1M1.123456789S"),
    -1, -1, -1, -1, -1, -1, -1, -123, -456, -789);

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -22,7 +22,7 @@ features: [Temporal]
 ---*/
 
 TemporalHelpers.checkToTemporalCalendarFastPath((temporalObject) => {
-  const date = new Temporal.PlainDate(2000, 5, 2, temporalObject);
+  const date = new Temporal.PlainDate(2000, 5, 2, "iso8601");
   date.equals({ year: 2005, month: 6, day: 2, calendar: temporalObject });
 });
 

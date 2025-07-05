@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,8 +11,7 @@ features: [BigInt, Temporal]
 const instant = new Temporal.Instant(0n);
 
 function test(timeZoneIdentifier, expected, description) {
-  const timeZone = new Temporal.TimeZone(timeZoneIdentifier);
-  assert.sameValue(instant.toString({ timeZone }), expected, description);
+  assert.sameValue(instant.toString({ timeZone: timeZoneIdentifier }), expected, description);
 }
 
 test("UTC", "1970-01-01T00:00:00+00:00", "offset of UTC is +00:00");

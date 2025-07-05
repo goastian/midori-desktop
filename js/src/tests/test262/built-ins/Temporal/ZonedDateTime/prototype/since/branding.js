@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,7 +12,7 @@ const since = Temporal.ZonedDateTime.prototype.since;
 
 assert.sameValue(typeof since, "function");
 
-const args = [new Temporal.ZonedDateTime(123456n, new Temporal.TimeZone("UTC"))];
+const args = [new Temporal.ZonedDateTime(123456n, "UTC")];
 
 assert.throws(TypeError, () => since.apply(undefined, args), "undefined");
 assert.throws(TypeError, () => since.apply(null, args), "null");

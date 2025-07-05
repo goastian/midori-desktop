@@ -3,6 +3,9 @@
  * http://creativecommons.org/licenses/publicdomain/
  */
 
+// SKIP test262 export
+// https://github.com/tc39/ecma262/pull/2193
+
 //-----------------------------------------------------------------------------
 var BUGNUMBER = 609756;
 var summary =

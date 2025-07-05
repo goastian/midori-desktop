@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -20,7 +20,7 @@ TemporalHelpers.assertPlainYearMonth(ym.with({ month: 1, years: 2020 }), 2019, 1
 
 const withDay = ym.with({ year: 2019, get day() { throw new Test262Error("should not read the day property") } });
 TemporalHelpers.assertPlainYearMonth(withDay, 2019, 10, "M10", "day property");
-assert.sameValue(withDay.getISOFields().isoDay, 1);
-
+const isoDay = Number(withDay.toString({ calendarName: "always" }).split("-")[2].slice(0, 2));
+assert.sameValue(isoDay, 1);
 
 reportCompare(0, 0);

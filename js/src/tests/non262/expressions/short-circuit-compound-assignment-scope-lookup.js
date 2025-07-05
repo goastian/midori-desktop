@@ -1,3 +1,6 @@
+// SKIP test262 export
+// Pending review.
+
 // Test scope lookups are executed in the correct order.
 
 function createScope() {
@@ -50,7 +53,7 @@ function createScope() {
   }
   assertEq(environment.a, false);
 
-  assertDeepEq(log, [
+  assertDeepEq(log.slice(), [
     // Execution Contexts, 8.3.2 ResolveBinding ( name [ , env ] )
     // Lexical Environments, 8.1.2.1 GetIdentifierReference ( lex, name, strict )
     // Object Environment Records, 8.1.1.2.1 HasBinding ( N )
@@ -101,7 +104,7 @@ function createScope() {
   }
   assertEq(environment.a, true);
 
-  assertDeepEq(log, [
+  assertDeepEq(log.slice(), [
     // Execution Contexts, 8.3.2 ResolveBinding ( name [ , env ] )
     // Lexical Environments, 8.1.2.1 GetIdentifierReference ( lex, name, strict )
     // Object Environment Records, 8.1.1.2.1 HasBinding ( N )
@@ -152,7 +155,7 @@ function createScope() {
   }
   assertEq(environment.a, true);
 
-  assertDeepEq(log, [
+  assertDeepEq(log.slice(), [
     // Execution Contexts, 8.3.2 ResolveBinding ( name [ , env ] )
     // Lexical Environments, 8.1.2.1 GetIdentifierReference ( lex, name, strict )
     // Object Environment Records, 8.1.1.2.1 HasBinding ( N )

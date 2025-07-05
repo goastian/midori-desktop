@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,10 +9,9 @@ includes: [temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const calendar = new Temporal.Calendar("iso8601");
-const pd = new Temporal.PlainDate(1970, 12, 24, calendar);
+const pd = new Temporal.PlainDate(1970, 12, 24, "iso8601");
 const pmd = pd.toPlainMonthDay();
 TemporalHelpers.assertPlainMonthDay(pmd, "M12", 24);
-assert.sameValue(pmd.getISOFields().calendar, "iso8601");
+assert.sameValue(pmd.calendarId, "iso8601");
 
 reportCompare(0, 0);

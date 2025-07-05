@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -25,7 +25,7 @@ const tests = [
   ["1976-11-18T15:23:30.12345678", 15, 23, 30, 123, 456, 780],
   ["1976-11-18T15:23:30.123456789", 15, 23, 30, 123, 456, 789],
   ["1976-11-18T15:23:30,12", 15, 23, 30, 120, 0, 0],
-  ["1976-11-18T15:23:30.12\u221202:00", 15, 23, 30, 120, 0, 0],
+  ["1976-11-18T15:23:30.12-02:00", 15, 23, 30, 120, 0, 0],
   ["152330", 15, 23, 30, 0, 0, 0],
   ["152330.1", 15, 23, 30, 100, 0, 0],
   ["152330-08", 15, 23, 30, 0, 0, 0],

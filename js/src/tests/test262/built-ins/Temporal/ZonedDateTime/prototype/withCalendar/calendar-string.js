@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,33 +8,11 @@ description: A calendar ID is valid input for Calendar
 features: [Temporal]
 ---*/
 
-const instance = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC", {
-  dateAdd() {},
-  dateFromFields() {},
-  dateUntil() {},
-  day() {},
-  dayOfWeek() {},
-  dayOfYear() {},
-  daysInMonth() {},
-  daysInWeek() {},
-  daysInYear() {},
-  fields() {},
-  id: "replace-me",
-  inLeapYear() {},
-  mergeFields() {},
-  month() {},
-  monthCode() {},
-  monthDayFromFields() {},
-  monthsInYear() {},
-  weekOfYear() {},
-  year() {},
-  yearMonthFromFields() {},
-  yearOfWeek() {},
-});
+const instance = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC", "iso8601");
 
 const arg = "iso8601";
 
 const result = instance.withCalendar(arg);
-assert.sameValue(result.getISOFields().calendar, "iso8601", `Calendar created from string "${arg}"`);
+assert.sameValue(result.calendarId, "iso8601", `Calendar created from string "${arg}"`);
 
 reportCompare(0, 0);

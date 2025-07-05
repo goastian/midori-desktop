@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,7 +12,7 @@ const withCalendar = Temporal.ZonedDateTime.prototype.withCalendar;
 
 assert.sameValue(typeof withCalendar, "function");
 
-const args = [new Temporal.Calendar("iso8601")];
+const args = ["iso8601"];
 
 assert.throws(TypeError, () => withCalendar.apply(undefined, args), "undefined");
 assert.throws(TypeError, () => withCalendar.apply(null, args), "null");

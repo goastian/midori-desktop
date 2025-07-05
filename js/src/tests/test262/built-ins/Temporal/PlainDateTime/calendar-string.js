@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -11,6 +11,6 @@ features: [Temporal]
 const arg = "iso8601";
 
 const result = new Temporal.PlainDateTime(2000, 5, 2, 15, 23, 30, 987, 654, 321, arg);
-assert.sameValue(result.getISOFields().calendar, "iso8601", `Calendar created from string "${arg}"`);
+assert.sameValue(result.calendarId, "iso8601", `Calendar created from string "${arg}"`);
 
 reportCompare(0, 0);

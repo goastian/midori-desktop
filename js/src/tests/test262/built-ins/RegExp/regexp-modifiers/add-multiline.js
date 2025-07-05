@@ -1,4 +1,4 @@
-// |reftest| skip -- regexp-modifiers is not supported
+// |reftest| shell-option(--enable-regexp-modifiers) skip-if(release_or_beta||!xulRuntime.shell) -- regexp-modifiers is not released yet, requires shell-options
 // Copyright 2023 Ron Buckton. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -45,5 +45,17 @@ assert(re3.test("es\ns"), "$ should match newline in modified group");
 
 var re4 = new RegExp("(?m-:es$)");
 assert(re4.test("es\ns"), "$ should match newline in modified group");
+
+var re5 = /^a\n(?m:^b$)\nc$/;
+assert(re5.test("a\nb\nc"), "^ and $ should match newline in modified group");
+assert(!re5.test("\na\nb\nc"), "^ should not match newline outside modified group");
+assert(!re5.test("a\nb\nc\n"), "$ should not match newline outside modified group");
+assert(!re5.test("\na\nb\nc\n"), "^ and $ should not match newline outside modified group");
+
+var re6 = new RegExp("^a\\n(?m:^b$)\\nc$");
+assert(re6.test("a\nb\nc"), "^ and $ should match newline in modified group");
+assert(!re6.test("\na\nb\nc"), "^ should not match newline outside modified group");
+assert(!re6.test("a\nb\nc\n"), "$ should not match newline outside modified group");
+assert(!re6.test("\na\nb\nc\n"), "^ and $ should not match newline outside modified group");
 
 reportCompare(0, 0);

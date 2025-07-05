@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,10 +15,10 @@ includes: [compareArray.js, temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-TemporalHelpers.checkToTemporalPlainDateTimeFastPath((date, calendar) => {
+TemporalHelpers.checkToTemporalPlainDateTimeFastPath((date) => {
   const result = Temporal.PlainDateTime.from(date);
   TemporalHelpers.assertPlainDateTime(result, 2000, 5, "M05", 2, 0, 0, 0, 0, 0, 0, "midnight is assumed");
-  assert.sameValue(result.getCalendar(), calendar, "calendar result");
+  assert.sameValue(result.calendarId, "iso8601", "calendar result");
 });
 
 reportCompare(0, 0);

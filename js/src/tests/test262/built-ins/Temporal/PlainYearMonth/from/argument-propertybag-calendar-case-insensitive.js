@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,10 +9,15 @@ includes: [temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const calendar = "IsO8601";
-
-const arg = { year: 2019, monthCode: "M06", calendar };
+const arg = { year: 2019, monthCode: "M06", calendar: "IsO8601" };
 const result = Temporal.PlainYearMonth.from(arg);
 TemporalHelpers.assertPlainYearMonth(result, 2019, 6, "M06", "Calendar is case-insensitive");
+
+arg.calendar = "\u0130SO8601";
+assert.throws(
+  RangeError,
+  () => Temporal.PlainYearMonth.from(arg),
+  "calendar ID is capital dotted I is not lowercased"
+);
 
 reportCompare(0, 0);

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,12 +9,6 @@ features: [Temporal]
 ---*/
 
 const dateTimeArgs = [2020, 12, 24, 12, 34, 56, 123, 456, 789];
-
-Object.defineProperty(Temporal.Calendar, "from", {
-  get() {
-    throw new Test262Error("Should not get Calendar.from");
-  },
-});
 
 const dateTimeExplicit = new Temporal.PlainDateTime(...dateTimeArgs, undefined);
 assert.sameValue(dateTimeExplicit.calendarId, "iso8601");

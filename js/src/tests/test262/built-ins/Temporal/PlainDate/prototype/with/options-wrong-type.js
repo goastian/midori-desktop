@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,6 +21,8 @@ const instance = new Temporal.PlainDate(2000, 5, 2);
 for (const value of badOptions) {
   assert.throws(TypeError, () => instance.with({ day: 5 }, value),
     `TypeError on wrong options type ${typeof value}`);
+  assert.throws(RangeError, () => instance.with({ day: -1 }, value),
+    "Partial date processed before throwing TypeError");
 };
 
 reportCompare(0, 0);

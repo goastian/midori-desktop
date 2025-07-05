@@ -1,4 +1,4 @@
-// |reftest| skip -- regexp-modifiers is not supported
+// |reftest| shell-option(--enable-regexp-modifiers) skip-if(release_or_beta||!xulRuntime.shell) -- regexp-modifiers is not released yet, requires shell-options
 // Copyright 2023 Ron Buckton. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -43,5 +43,29 @@ var re2 = new RegExp("(?i:a)b");
 assert(!re2.test("AB"), "b should not match B in AB");
 assert(re2.test("Ab"), "a should match A in AB");
 assert(re2.test("ab"), "should match AB");
+
+var re3 = /b(?i:a)/;
+assert(!re3.test("BA"), "b should not match B in BA");
+assert(re3.test("bA"), "a should match A in BA");
+assert(re3.test("ba"), "should match BA");
+
+var re4 = new RegExp("b(?i:a)");
+assert(!re4.test("BA"), "b should not match B in BA");
+assert(re4.test("bA"), "a should match A in BA");
+assert(re4.test("ba"), "should match BA");
+
+var re5 = /a(?i:b)c/;
+assert(re5.test("abc"), "b should match b in abc");
+assert(re5.test("aBc"), "B should match b in abc");
+assert(!re5.test("ABc"), "A should not match a in abc");
+assert(!re5.test("aBC"), "C should not match c in abc");
+assert(!re5.test("ABC"), "should not match abc");
+
+var re6 = new RegExp("a(?i:b)c");
+assert(re6.test("abc"), "b should match b in abc");
+assert(re6.test("aBc"), "B should match b in abc");
+assert(!re6.test("ABc"), "A should not match a in abc");
+assert(!re6.test("aBC"), "C should not match c in abc");
+assert(!re6.test("ABC"), "should not match abc");
 
 reportCompare(0, 0);

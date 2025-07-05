@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2023 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,8 +13,8 @@ assert.throws(RangeError, () => new Temporal.Duration(4294967296), "years > max"
 assert.throws(RangeError, () => new Temporal.Duration(-4294967296), "years < min");
 assert.throws(RangeError, () => new Temporal.Duration(0, 4294967296), "months > max");
 assert.throws(RangeError, () => new Temporal.Duration(0, -4294967296), "months < min");
-assert.throws(RangeError, () => new Temporal.Duration(0, 0, 4294967296), "days > max");
-assert.throws(RangeError, () => new Temporal.Duration(0, 0, -4294967296), "days < min");
+assert.throws(RangeError, () => new Temporal.Duration(0, 0, 4294967296), "weeks > max");
+assert.throws(RangeError, () => new Temporal.Duration(0, 0, -4294967296), "weeks < min");
 
 // ceil(max safe integer / 86400) = 104249991375
 assert.throws(RangeError, () => new Temporal.Duration(0, 0, 0, 104249991375), "days > max");

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,14 +13,10 @@ const expected = [
   "get options.calendarName",
   "get options.calendarName.toString",
   "call options.calendarName.toString",
-  "get this.calendar.id",
 ];
 const actual = [];
 
-const calendar = TemporalHelpers.calendarObserver(actual, "this.calendar");
-const instance = new Temporal.PlainMonthDay(5, 2, calendar);
-// clear observable operations that occurred during the constructor call
-actual.splice(0);
+const instance = new Temporal.PlainMonthDay(5, 2, "iso8601");
 
 const options = TemporalHelpers.propertyBagObserver(actual, {
   calendarName: "auto",

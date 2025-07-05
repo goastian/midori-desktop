@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,7 +21,5 @@ const earlier = new Temporal.ZonedDateTime(1_000_000_000_000_000_000n, "UTC");
 const later = new Temporal.ZonedDateTime(1_000_000_000_000_000_005n, "UTC");
 const result = later.since(earlier, { roundingIncrement: 2.5, roundingMode: "trunc" });
 TemporalHelpers.assertDuration(result, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, "roundingIncrement 2.5 truncates to 2");
-const result2 = later.since(earlier, { smallestUnit: "days", roundingIncrement: 1e9 + 0.5, roundingMode: "expand" });
-TemporalHelpers.assertDuration(result2, 0, 0, 0, 1e9, 0, 0, 0, 0, 0, 0, "roundingIncrement 1e9 + 0.5 truncates to 1e9");
 
 reportCompare(0, 0);

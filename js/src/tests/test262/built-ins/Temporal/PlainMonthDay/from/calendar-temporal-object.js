@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,9 +21,9 @@ includes: [compareArray.js, temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-TemporalHelpers.checkToTemporalCalendarFastPath((temporalObject, calendar) => {
+TemporalHelpers.checkToTemporalCalendarFastPath((temporalObject) => {
   const result = Temporal.PlainMonthDay.from({ monthCode: "M05", day: 2, calendar: temporalObject });
-  assert.sameValue(result.getCalendar(), calendar, "Temporal object coerced to calendar");
+  assert.sameValue(result.calendarId, "iso8601", "Temporal object coerced to calendar");
 });
 
 reportCompare(0, 0);

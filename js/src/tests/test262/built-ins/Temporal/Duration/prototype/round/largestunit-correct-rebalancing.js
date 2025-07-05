@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2023 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -19,7 +19,7 @@ const tests = [ ["days", { days: day_duration }],
   ["microseconds", { microseconds: day_duration * 24 * 60 * 60 * 1000 * 1000 }],
   ["nanoseconds", { nanoseconds: day_duration * 24 * 60 * 60 * 1000 * 1000 * 1000 }]];
 
-for ([unit, duration_desc] of tests)
+for (const [unit, duration_desc] of tests)
   TemporalHelpers.assertDuration(Temporal.Duration.from(duration_desc).round({ relativeTo: '2023-02-21', largestUnit: 'month' }),
     0, 3, 0, 11, 0, 0, 0, 0, 0, 0, `rounding from ${unit}`);
 

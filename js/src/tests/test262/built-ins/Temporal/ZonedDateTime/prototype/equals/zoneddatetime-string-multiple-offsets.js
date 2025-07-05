@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,7 +8,7 @@ description: Sub-minute offset trailing zeroes allowed in ISO string but not in 
 features: [Temporal]
 ---*/
 
-const timeZone = new Temporal.TimeZone("+01:35");
+const timeZone = "+01:35";
 const instance = new Temporal.ZonedDateTime(0n, timeZone);
 let str = "1970-01-01T01:35:30+01:35:00.000000000[+01:35]";
 

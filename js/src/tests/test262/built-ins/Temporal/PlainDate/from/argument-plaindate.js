@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -18,7 +18,7 @@ TemporalHelpers.assertPlainDate(
   "PlainDate is copied"
 );
 
-assert.sameValue(result.getISOFields().calendar, orig.getISOFields().calendar, "Calendar is copied");
+assert.sameValue(result.calendarId, orig.calendarId, "Calendar is copied");
 
 assert.notSameValue(
   result,

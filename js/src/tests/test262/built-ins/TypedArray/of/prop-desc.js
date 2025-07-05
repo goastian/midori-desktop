@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -13,8 +12,10 @@ includes: [propertyHelper.js, testTypedArray.js]
 features: [TypedArray]
 ---*/
 
-verifyNotEnumerable(TypedArray, 'of');
-verifyWritable(TypedArray, 'of');
-verifyConfigurable(TypedArray, 'of');
+verifyProperty(TypedArray, 'of', {
+  writable: true,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

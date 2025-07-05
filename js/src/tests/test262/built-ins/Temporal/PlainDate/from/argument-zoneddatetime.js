@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,7 +9,7 @@ includes: [temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const calendar = new Temporal.Calendar("iso8601");
+const calendar = "iso8601";
 const zdt = new Temporal.ZonedDateTime(1_000_000_000_987_654_321n, "UTC", calendar);
 const result = Temporal.PlainDate.from(zdt);
 
@@ -20,7 +20,7 @@ TemporalHelpers.assertPlainDate(
 );
 
 assert.sameValue(
-  result.getCalendar(),
+  result.calendarId,
   calendar,
   "Calendar is copied"
 );

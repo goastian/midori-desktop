@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -13,7 +13,7 @@ const invalidStrings = [
   "-000000-12-07T03:24:30+01:00",
   "-000000-12-07T03:24:30+00:00[UTC]",
 ];
-const timeZone = new Temporal.TimeZone("UTC");
+const timeZone = "UTC";
 const instance = new Temporal.ZonedDateTime(0n, timeZone);
 invalidStrings.forEach((arg) => {
   assert.throws(

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2024 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -22,7 +22,7 @@ for (const calendar of [
   const arg = { year: 2019, monthCode: "M06", calendar };
   const result = Temporal.PlainYearMonth.from(arg);
   TemporalHelpers.assertPlainYearMonth(result, 2019, 6, "M06", `Calendar created from string "${calendar}"`);
-  assert.sameValue(result.getISOFields().calendar, "iso8601", "calendar slot stores a string");
+  assert.sameValue(result.calendarId, "iso8601", "calendar string is iso8601");
 }
 
 reportCompare(0, 0);

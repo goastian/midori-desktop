@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,12 +8,22 @@ description: The calendar name is case-insensitive
 features: [Temporal]
 ---*/
 
-const calendar = "IsO8601";
-
-const arg = { year: 1976, monthCode: "M11", day: 18, calendar };
+const arg = { year: 1976, monthCode: "M11", day: 18, calendar: "IsO8601" };
 const result1 = Temporal.PlainDateTime.compare(arg, new Temporal.PlainDateTime(1976, 11, 18));
 assert.sameValue(result1, 0, "Calendar is case-insensitive (first argument)");
 const result2 = Temporal.PlainDateTime.compare(new Temporal.PlainDateTime(1976, 11, 18), arg);
 assert.sameValue(result2, 0, "Calendar is case-insensitive (second argument)");
+
+arg.calendar = "\u0130SO8601";
+assert.throws(
+  RangeError,
+  () => Temporal.PlainDateTime.compare(arg, new Temporal.PlainDateTime(1976, 11, 18)),
+  "calendar ID is capital dotted I is not lowercased (first argument)"
+);
+assert.throws(
+  RangeError,
+  () => Temporal.PlainDateTime.compare(new Temporal.PlainDateTime(1976, 11, 18), arg),
+  "calendar ID is capital dotted I is not lowercased (second argument)"
+);
 
 reportCompare(0, 0);

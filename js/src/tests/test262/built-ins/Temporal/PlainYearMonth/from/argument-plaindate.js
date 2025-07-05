@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -12,10 +12,7 @@ features: [Temporal]
 const plainDate = Temporal.PlainDate.from("1976-11-18");
 const plainYearMonth = Temporal.PlainYearMonth.from(plainDate);
 TemporalHelpers.assertPlainYearMonth(plainYearMonth, 1976, 11, "M11");
-const fields = plainYearMonth.getISOFields();
-assert.sameValue(fields.calendar, "iso8601", "calendar slot should store a string");
-assert.sameValue(fields.isoDay, 1, "isoDay");
-assert.sameValue(fields.isoMonth, 11, "isoMonth");
-assert.sameValue(fields.isoYear, 1976, "isoYear");
+assert.sameValue(plainYearMonth.calendarId, "iso8601", "calendar string should be iso8601");
+assert.sameValue(plainYearMonth.toString({ calendarName: "always" }), "1976-11-01[u-ca=iso8601]", "iso reference date");
 
 reportCompare(0, 0);

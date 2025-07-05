@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2020 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,11 +9,9 @@ includes: [compareArray.js, temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const isoCalendar = Temporal.Calendar.from('iso8601');
-
 assert.throws(RangeError, () => new Temporal.PlainMonthDay(Infinity, 1));
 assert.throws(RangeError, () => new Temporal.PlainMonthDay(1, Infinity));
-assert.throws(RangeError, () => new Temporal.PlainMonthDay(1, 1, isoCalendar, Infinity));
+assert.throws(RangeError, () => new Temporal.PlainMonthDay(1, 1, "iso8601", Infinity));
 
 const O = (primitiveValue, propertyName) => (calls) => TemporalHelpers.toPrimitiveObserver(calls, primitiveValue, propertyName);
 const tests = [

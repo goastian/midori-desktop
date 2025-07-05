@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,12 +8,12 @@ description: A ZonedDateTime object is copied, not returned directly
 features: [Temporal]
 ---*/
 
-const orig = new Temporal.ZonedDateTime(946684800_000_000_010n, new Temporal.TimeZone("UTC"));
+const orig = new Temporal.ZonedDateTime(946684800_000_000_010n, "UTC");
 const result = Temporal.ZonedDateTime.from(orig);
 
 assert.sameValue(result.epochNanoseconds, 946684800_000_000_010n, "ZonedDateTime is copied");
 assert.sameValue(result.timeZone, orig.timeZone, "time zone is the same");
-assert.sameValue(result.getISOFields().calendar, orig.getISOFields().calendar, "calendar is the same");
+assert.sameValue(result.calendarId, orig.calendarId, "calendar is the same");
 
 assert.notSameValue(
   result,

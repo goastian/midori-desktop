@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -19,8 +19,6 @@ const tests = [
   [Temporal.PlainDate.from("2019-10-01"), "PlainDate object"],
   [{ monthCode: "M10", day: 1, calendar: "iso8601" }, "option bag with monthCode and explicit ISO calendar"],
   [{ month: 10, day: 1, calendar: "iso8601" }, "option bag with month and explicit ISO calendar"],
-  [{ monthCode: "M10", day: 1, calendar: Temporal.Calendar.from("iso8601") }, "option bag with monthCode and object ISO calendar"],
-  [{ month: 10, day: 1, calendar: Temporal.Calendar.from("iso8601") }, "option bag with month and object ISO calendar"],
 ];
 
 for (const [argument, description = argument] of tests) {

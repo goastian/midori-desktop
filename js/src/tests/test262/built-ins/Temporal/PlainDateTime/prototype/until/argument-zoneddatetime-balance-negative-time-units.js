@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -36,11 +36,10 @@ features: [Temporal]
 // This code path is encountered if the time zone offset is negative and its
 // absolute value in nanoseconds is greater than the nanosecond field of the
 // exact time's epoch parts
-const tz = TemporalHelpers.specificOffsetTimeZone(-2);
-const datetime = new Temporal.ZonedDateTime(3661_001_001_001n, tz);
+const datetime = new Temporal.ZonedDateTime(3661_001_001_001n, "-00:02");
 
 const diff = new Temporal.PlainDateTime(1970, 1, 1).until(datetime);
 
-TemporalHelpers.assertDuration(diff, 0, 0, 0, 0, 1, 1, 1, 1, 0, 999);
+TemporalHelpers.assertDuration(diff, 0, 0, 0, 0, 0, 59, 1, 1, 1, 1);
 
 reportCompare(0, 0);

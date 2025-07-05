@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -17,9 +17,8 @@ features: [Temporal]
 ---*/
 
 const datetime = new Temporal.PlainDateTime(2001, 9, 9, 1, 46, 40, 987, 654, 321);
-const timeZone = new Temporal.TimeZone("UTC");
 TemporalHelpers.checkStringOptionWrongType("disambiguation", "compatible",
-  (disambiguation) => datetime.toZonedDateTime(timeZone, { disambiguation }),
+  (disambiguation) => datetime.toZonedDateTime("UTC", { disambiguation }),
   (result, descr) => assert.sameValue(result.epochNanoseconds, 1_000_000_000_987_654_321n, descr),
 );
 

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,7 +8,7 @@ description: Leap second is a valid ISO string for a calendar in a property bag
 features: [Temporal]
 ---*/
 
-const timeZone = new Temporal.TimeZone("UTC");
+const timeZone = "UTC";
 const datetime = new Temporal.ZonedDateTime(217_123_200_000_000_000n, timeZone);
 const calendar = "2016-12-31T23:59:60+00:00[UTC]";
 

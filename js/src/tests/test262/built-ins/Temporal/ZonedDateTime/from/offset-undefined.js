@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -21,8 +21,7 @@ info: |
 features: [Temporal]
 ---*/
 
-const timeZone = new Temporal.TimeZone("-04:00");
-const propertyBag = { timeZone, offset: "+01:00", year: 2020, month: 2, day: 16, hour: 23, minute: 45 };
+const propertyBag = { timeZone: "-04:00", offset: "+01:00", year: 2020, month: 2, day: 16, hour: 23, minute: 45 };
 
 assert.throws(RangeError, () => Temporal.ZonedDateTime.from(propertyBag, { offset: undefined }), "default offset is reject");
 // See options-undefined.js for {}

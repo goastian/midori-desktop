@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-float16array) skip-if(!this.hasOwnProperty('Float16Array')||!xulRuntime.shell) -- Float16Array is not enabled unconditionally, requires shell-options
 // Copyright (C) 2024 Kevin Gibbons. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,8 +9,10 @@ features: [Float16Array]
 includes: [propertyHelper.js]
 ---*/
 
-verifyNotEnumerable(Math, "f16round");
-verifyWritable(Math, "f16round");
-verifyConfigurable(Math, "f16round");
+verifyProperty(Math, "f16round", {
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
 
 reportCompare(0, 0);

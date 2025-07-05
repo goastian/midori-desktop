@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -15,9 +15,7 @@ info: |
 features: [Temporal]
 ---*/
 
-const timeZone = new Temporal.TimeZone("-03:30");
-
-const datetime = new Temporal.ZonedDateTime(1572757201_000_000_000n, timeZone);
+const datetime = new Temporal.ZonedDateTime(1572757201_000_000_000n, "-03:30");
 const explicit = datetime.with({ minute: 31 }, { offset: undefined });
 assert.sameValue(explicit.epochNanoseconds, 1572757261_000_000_000n, "default offset is prefer");
 const implicit = datetime.with({ minute: 31 }, {});
