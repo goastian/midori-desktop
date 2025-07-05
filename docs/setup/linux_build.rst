@@ -26,62 +26,19 @@ Requirements
 1. System preparation
 ---------------------
 
-1.1 Install Python
-~~~~~~~~~~~~~~~~~~
-
-To build Firefox, it's necessary to have a Python of version 3.6 or later
+To build Firefox, it's necessary to have a Python of version 3.8 or later
 installed. Python 2 is no longer required to build Firefox, although it is still
 required for running some kinds of tests. Additionally, you will probably need
 Python development files as well to install some pip packages.
 
-You should be able to install Python using your system package manager:
+You should be able to install Python and git using your system package manager:
 
--  For Debian-based Linux (such as Ubuntu): ``sudo apt-get install curl python3 python3-pip``
--  For Fedora Linux: ``sudo dnf install python3 python3-pip``
+-  For Debian-based Linux (such as Ubuntu): ``sudo apt update && sudo apt install curl python3 python3-pip git``
+-  For Fedora Linux: ``sudo dnf install python3 python3-pip git``
 
-If you need a version of Python that your package manager doesn't have (e.g.:
-the provided Python 3 is too old, or you want Python 2 but it's not available),
+If you need a version of Python that your package manager doesn't have,
 then you can use `pyenv <https://github.com/pyenv/pyenv>`_, assuming that your
 system is supported.
-
-1.2 Install Mercurial
-~~~~~~~~~~~~~~~~~~~~~
-
-Mozilla's source code is hosted in Mercurial repositories. You will
-need Mercurial to download and update the code.
-
-Note that if you'd prefer to use the version of Mercurial that is
-packaged by your distro, you can skip this section. However, keep in
-mind that distro-packaged Mercurial may be outdated, and therefore
-slower and less supported.
-
-.. code-block:: shell
-
-    python3 -m pip install --user mercurial
-
-You can test that Mercurial is installed by running:
-
-.. code-block:: shell
-
-    hg version
-
-.. note::
-
-    If your shell is showing ``command not found: hg``, then Python's packages aren't
-    being found in the ``$PATH``. You can resolve this by doing the following and
-    restarting your shell:
-
-    .. code-block:: shell
-
-        # If you're using zsh
-        echo 'export PATH="'"$(python3 -m site --user-base)"'/bin:$PATH"' >> ~/.zshenv
-
-        # If you're using bash
-        echo 'export PATH="'"$(python3 -m site --user-base)"'/bin:$PATH"' >> ~/.bashrc
-
-        # If you're using a different shell, follow its documentation to see
-        # how to configure your PATH. Ensure that `$(python3 -m site --user-base)/bin`
-        # is prepended.
 
 2. Bootstrap a copy of the Firefox source code
 ----------------------------------------------
@@ -93,19 +50,9 @@ the interactive setup process.
 
 .. code-block:: shell
 
-    curl https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py -O
+    curl -LO https://raw.githubusercontent.com/mozilla-firefox/firefox/refs/heads/main/python/mozboot/bin/bootstrap.py
+
     python3 bootstrap.py
-
-.. note::
-
-    To use ``git``, you can grab the source code in "git" form by running the
-    bootstrap script with the ``vcs`` parameter:
-
-    .. code-block:: shell
-
-        python3 bootstrap.py --vcs=git
-
-    This uses `Git Cinnabar <https://github.com/glandium/git-cinnabar/>`_ under the hood.
 
 Choosing a build type
 ~~~~~~~~~~~~~~~~~~~~~
@@ -121,8 +68,8 @@ Now that your system is bootstrapped, you should be able to build!
 
 .. code-block:: shell
 
-    cd mozilla-unified
-    hg up -C central
+    cd firefox
+    git pull
     ./mach build
 
 🎉 Congratulations! You've built your own home-grown Firefox!
@@ -156,8 +103,17 @@ Build errors
 
 If you encounter a build error when trying to setup your development environment, please follow these steps:
    1. Copy the entire build error to your clipboard
-   2. Paste this error to `paste.mozilla.org <https://paste.mozilla.org>`_ in the text area and change the "Expire in one hour" option to "Expire in one week". Note: it won't take a week to get help but it's better to have the snippet be around for a bit longer than expected.
-   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the paste.mozilla.org snippet you created!
+   2. Paste this error to `gist.github.com <https://gist.github.com/>`_ in the text area
+   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the gist.github.com snippet you created!
+
+The CLOBBER file has been updated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is a normal error to encounter and tends to appear when working on a bug for a long period of time.
+If you encounter this error, you need to run ``./mach clobber`` before running ``./mach build``.
+Running ``./mach clobber`` will remove previous build artifacts to restart a build from scratch.
+If you are using an artifact build, this will mean that the next build will take slightly longer than usual.
+However, if you are using a non-artifact/full build, the next build will take significantly longer to complete.
 
 Using a non-native file system (NTFS, network drive, etc)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

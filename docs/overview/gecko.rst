@@ -26,13 +26,13 @@ Firefox and Thunderbird.
 
 :ref:`Read more <SpiderMonkey>`
 
-JavaScript modules
-##################
+System Modules
+--------------
 
-SpiderMonkey supports a proprietary type of JavaScript modules that was developed before the
-EcmaScript module standard and even before commonjs was popular. These modules define exports using
-an EXPORTED_SYMBOLS array containing a list of symbol names to be exported. This kind of module is
-being replaced with standard EcmaScript modules.
+Gecko uses a variant of the standard ECMAScript module to implement the browser
+internal.
+
+:ref:`Read more <System Modules>`
 
 XPCOM
 -----
@@ -115,7 +115,7 @@ The style system is responsible for parsing the document's CSS and using that to
 every CSS property on every element in the document.  This determines many characteristics of how
 each element will render (e.g. fonts, colors, size, layout model).
 
-:ref:`Read more <Layout & CSS>`
+:ref:`Read more <Style system (CSS) & Layout>`
 
 Layout
 ------
@@ -123,7 +123,7 @@ Layout
 The layout engine is responsible for taking the DOM and styles and generating and updating a frame
 tree ready for presentation to the user.
 
-:ref:`Read more <Layout & CSS>`
+:ref:`Read more <Style system (CSS) & Layout>`
 
 Graphics
 --------
@@ -142,8 +142,8 @@ locales.
 
 The exact process of localization management differs from project to project, but in the case of
 Gecko applications, the localization is primarily done via a web localization system called
-`Pontoon <https://pontoon.mozilla.org/>`_ and stored in HG repositories under
-`hg.mozilla.org/l10n-central <https://hg.mozilla.org/l10n-central/>`_.
+`Pontoon <https://pontoon.mozilla.org/>`_ and stored in a GitHub repository under
+`github.com/mozilla-l10n/firefox-l10n <https://github.com/mozilla-l10n/firefox-l10n>`_.
 
 :ref:`Read more <Localization>`
 

@@ -10,17 +10,38 @@ Don't hesitate to look at the :ref:`Firefox Contributors Quick Reference <Firefo
 
    /contributing/contributing_to_mozilla
 
+_______________________
+Setting Up Your Machine
+_______________________
+
+^^^^^^^^^^^^^^^^^^^
+For Firefox Desktop
+^^^^^^^^^^^^^^^^^^^
+
 .. toctree::
-   :caption: Setting Up Your Machine
    :maxdepth: 1
 
    windows_build
+   windows_wsl_build
    macos_build
    linux_build
    linux_32bit_build_on_64bit_OS
    common_build_errors
 
+^^^^^^^^^^^^^^^^^^^
+For Firefox Android
+^^^^^^^^^^^^^^^^^^^
+   :ref:`Firefox for Android`
+
+^^^^^^^^^^^^^^^^^^^
+For Firefox iOS
+^^^^^^^^^^^^^^^^^^^
+    :ref:`Firefox for iOS`
+
+___________________________
+Getting Ready to Contribute
+___________________________
+
 .. toctree::
-   :caption: Getting Ready To Contribute
 
    contributing_code

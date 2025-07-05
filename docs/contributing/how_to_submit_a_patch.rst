@@ -1,10 +1,6 @@
 How to submit a patch
 =====================
 
-+--------------------------------------------------------------------+
-| This page is an import from MDN and the contents might be outdated |
-+--------------------------------------------------------------------+
-
 Submitting a patch, getting it reviewed, and committed to the Firefox
 source tree involves several steps. This article explains how.
 
@@ -72,9 +68,9 @@ the proposed change.
 If module ownership is not clear, ask on the newsgroups or `on
 Matrix <https://chat.mozilla.org>`__. The revision log for the relevant
 file might also be helpful. For example, see the change log for
-``browser/base/content/browser.js``, by clicking the "Hg Log"
+``browser/base/content/browser.js``, by clicking the "Git Log"
 link at the top of `Searchfox <https://searchfox.org/mozilla-central/source/>`__, or
-by running ``hg log browser/base/content/browser.js``. The corresponding
+by running ``git log browser/base/content/browser.js``. The corresponding
 checkin message will contain something like "r=nickname", identifying
 active code submissions, and potential code reviewers.
 
@@ -84,9 +80,7 @@ Working on a patch
 
 Changes to the Firefox source code are presented in the form of a patch.
 A patch is a commit to version control. Firefox and related code is
-stored in our `Mercurial
-server <https://hg.mozilla.org/mozilla-central>`__. We have extensive
-documentation on using Mercurial in our guide, :ref:`Mercurial Overview`.
+stored in our `git repository <https://github.com/mozilla-firefox/firefox>`__.
 
 Each patch should represent a single complete change, separating
 distinct changes into multiple individual patches. If your change
@@ -118,7 +112,7 @@ choosing reviewers, and the full reviewer syntax, please see
 :ref:`Getting reviews`.
 
 You can edit the message of the current commit at any time using
-``hg commit --amend`` or ``hg histedit``.
+``git commit --amend`` or ``git rebase -i``.
 
 Also look at our :ref:`Reviewer Checklist` for a list
 of best practices for patch content that reviewers will check for or

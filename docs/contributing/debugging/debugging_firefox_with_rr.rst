@@ -78,13 +78,19 @@ You can also run the entire test harness in rr:
 The trace will contain many processes, so to debug the correct one, you'll want to use rr ps or rr replay -p firefox etc.
 
 Working with multiple processes
-------------------------------
+-------------------------------
 
 rr should work out of the box with multi-process Firefox. Once you have a recording you can use rr ps to show all the process that were recorded and rr replay -p <pid> to attach to a particular process.
 
 If you want to debug a particular part of code, you can use the :code:`MOZ_DBG` macro and :code:`getpid()` function to write the process id to stderr. `MOZ_LOG <https://firefox-source-docs.mozilla.org/xpcom/logging.html>`__ will include the pid in log messages by default.
 
 You can combine that with the -M and -g flags to jump to a particular point in a particular process's lifetime.
+
+Pernosco
+--------
+
+Pernosco is a commercial service for providing 'omniscient' debugging of :code:`rr`
+traces. If you have an trace you'd like to debug, see :doc:`debugging_firefox_with_pernosco`
 
 Get help!
 ---------

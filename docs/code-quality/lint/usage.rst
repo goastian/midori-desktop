@@ -40,8 +40,8 @@ You can see a list of the available linters by running:
     ./mach lint --list
 
 Finally, ``mozlint`` can lint the files touched by outgoing revisions or the working directory using
-the ``-o/--outgoing`` and ``-w/--workdir`` arguments respectively. These work both with mercurial and
-git. In the case of ``--outgoing``, the default remote repository the changes would be pushed to is
+the ``-o/--outgoing`` and ``-w/--workdir`` arguments respectively.
+In the case of ``--outgoing``, the default remote repository the changes would be pushed to is
 used as the comparison. If desired, a remote can be specified manually. In git, you may only want to
 lint staged commits from the working directory, this can be accomplished with ``--workdir=staged``.
 Examples:
@@ -54,45 +54,9 @@ Examples:
     ./mach lint --outgoing origin/master
     ./mach lint -wo
 
-.. _lint-vcs-hook:
-
-Using a VCS Hook
-----------------
-
-There are also both pre-commit and pre-push version control hooks that work in
-either hg or git. To enable a pre-push hg hook, add the following to hgrc:
-
-.. parsed-literal::
-
-    [hooks]
-    pre-push.lint = python:./tools/lint/hooks.py:hg
-
-
-To enable a pre-commit hg hook, add the following to hgrc:
-
-.. parsed-literal::
-
-    [hooks]
-    pretxncommit.lint = python:./tools/lint/hooks.py:hg
-
-
-To enable a pre-push git hook, run the following command:
-
-.. parsed-literal::
-
-    $ ln -s ../../tools/lint/hooks.py .git/hooks/pre-push
-
-
-To enable a pre-commit git hook, run the following command:
-
-.. parsed-literal::
-
-    $ ln -s ../../tools/lint/hooks.py .git/hooks/pre-commit
-
-Note that the symlink will be interpreted as ``.git/hooks/../../tools/lint/hooks.py``.
 
 Automatically Fixing Lint Errors
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``Mozlint`` has a best-effort ability to fix lint errors:
 
@@ -116,8 +80,59 @@ The ``--fix`` and ``--edit`` arguments can be combined, in which case any
 errors that can be fixed automatically will be, and the rest will be opened
 with your $EDITOR.
 
-Editor Integration
-==================
+VCS Integrations
+----------------
+
+.. _lint-vcs-hook:
+
+Using a Git Hook
+~~~~~~~~~~~~~~~~
+
+There are also both pre-commit and pre-push version control hooks that work in
+git.
+
+To enable a pre-push git hook, run the following command:
+
+.. code-block:: console
+
+    $ ln -s ../../tools/lint/hooks.py .git/hooks/pre-push
+
+
+To enable a pre-commit git hook, run the following command:
+
+.. code-block:: console
+
+    $ ln -s ../../tools/lint/hooks.py .git/hooks/pre-commit
+
+Note that the symlink will be interpreted as ``.git/hooks/../../tools/lint/hooks.py``.
+
+Jujutsu Integration
+~~~~~~~~~~~~~~~~~~~
+
+Mach lint can also integrate with `Jujutsu SCM's`_ ``jj fix`` command. Add
+the following to your repo config:
+
+.. code-block:: toml
+
+   [fix.tools.mozlint]
+   command = ["path/to/mozilla-unified/tools/lint/pipelint", "$path"]
+   patterns = ["glob:'**/*'"]
+
+
+.. note::
+    On Windows you must explicitly prepend ``"python3",`` to `command`.
+
+
+.. code-block:: toml
+
+   [fix.tools.mozlint]
+   command = ["python3", "path/to/mozilla-unified/tools/lint/pipelint", "$path"]
+   patterns = ["glob:'**/*'"]
+
+.. _Jujutsu SCM's: https://jj-vcs.github.io/jj/latest/
+
+Editor Integrations
+-------------------
 
 .. note::
 

@@ -10,13 +10,22 @@ If you'd prefer to build Firefox for Windows in a virtual machine,
 you may be interested in the `Windows images provided by Microsoft
 <https://developer.microsoft.com/en-us/windows/downloads/virtual-machines/>`_.
 
-Requirements
-------------
+System Requirements
+-------------------
 
 -  **Memory:** 4GB RAM minimum, 8GB+ recommended.
 -  **Disk Space:** At least 40GB of free disk space.
--  **Operating System:** Windows 10. It is advisable to have Windows Update be fully
+-  **Operating System:** Windows 10 or later. It is advisable to have Windows Update be fully
    up-to-date. See :ref:`build_hosts` for more information.
+
+Required Installations
+----------------------
+-  **git:** Ensure that the ``git`` command works from PowerShell.
+-  **Python:** Ensure that the ``python`` and ``pip3`` commands work from PowerShell. If it is not
+   set up, download `python 3.11 <https://www.python.org/downloads/release/python-3119/>`_, and add
+   the python directory
+   ``C:\Users\<user>\AppData\Local\Programs\Python\Python311`` and the pip3 directory
+   ``C:\Users\<user>\AppData\Local\Programs\Python\Python311\Scripts`` to your path.
 
 Recommended (For Windows 11 Users)
 ----------------------------------
@@ -61,7 +70,8 @@ the interactive setup process.
     cd c:/
     mkdir mozilla-source
     cd mozilla-source
-    wget https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py
+    wget https://raw.githubusercontent.com/mozilla-firefox/firefox/refs/heads/main/python/mozboot/bin/bootstrap.py
+
     python3 bootstrap.py
 .. note::
 
@@ -71,17 +81,6 @@ the interactive setup process.
     should select ``Yes`` on the UAC prompt, otherwise you will need
     to :ref:`follow some manual steps below <Ensure antivirus exclusions>`.
 
-.. note::
-
-    To use ``git``, you can grab the source code in "git" form by running the
-    bootstrap script with the ``vcs`` parameter:
-
-    .. code-block:: shell
-
-        python3 bootstrap.py --vcs=git
-
-    This uses `Git Cinnabar <https://github.com/glandium/git-cinnabar/>`_ under the hood.
-
 Choosing a build type
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -89,10 +88,9 @@ If you aren't modifying the Firefox backend, then select one of the
 :ref:`Artifact Mode <Understanding Artifact Builds>` options. If you are
 building Firefox for Android, you should also see the :ref:`GeckoView Contributor Guide <geckoview-contributor-guide>`.
 
-.. _Ensure antivirus exclusions:
-
 Ensure antivirus exclusions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _ensure-antivirus-exclusions:
 
 Microsoft Defender Antivirus and some third-party antivirus products
 are known to significantly degrade build times and sometimes even cause failed
@@ -126,7 +124,7 @@ Now that your system is bootstrapped, you should be able to build!
 
 .. code-block:: shell
 
-    cd c:/mozilla-source/mozilla-unified
+    cd c:/mozilla-source/firefox
     hg up -C central
     ./mach build
 
@@ -167,8 +165,17 @@ Build errors
 
 If you encounter a build error when trying to setup your development environment, please follow these steps:
    1. Copy the entire build error to your clipboard
-   2. Paste this error on `paste.mozilla.org <https://paste.mozilla.org>`_ in the text area and change the "Expire in one hour" option to "Expire in one week". Note: it won't take a week to get help but it's better to have the snippet be around for a bit longer than expected.
-   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the paste.mozilla.org snippet you created!
+   2. Paste this error on `gist.github.com <https://gist.github.com/>`_ in the text area
+   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the gist.github.com snippet you created!
+
+The CLOBBER file has been updated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is a normal error to encounter and tends to appear when working on a bug for a long period of time.
+If you encounter this error, you need to run ``./mach clobber`` before running ``./mach build``.
+Running ``./mach clobber`` will remove previous build artifacts to restart a build from scratch.
+If you are using an artifact build, this will mean that the next build will take slightly longer than usual.
+However, if you are using a non-artifact/full build, the next build will take significantly longer to complete.
 
 MozillaBuild out-of-date
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -182,7 +189,9 @@ Spaces in folder names
 
 **Firefox will not build** if the path to MozillaBuild or the Firefox source
 contain **spaces** or other breaking characters such as pluses, quotation marks,
-or metacharacters.  The Visual Studio tools and SDKs are an exception - they may
+or metacharacters. Windows usernames are a common cause for spaces in the path,
+so please ensure that your Windows username does not contain spaces, or miniconda
+will have errors during fenix builds. The Visual Studio tools and SDKs are an exception - they may
 be installed in a directory which contains spaces. It is strongly recommended
 that you accept the default settings for all installation locations.
 
@@ -192,6 +201,13 @@ Quotation marks in ``PATH``
 Quotation marks (") aren't translated properly when passed to MozillaBuild
 sub-shells. Since they're not usually necessary, you should ensure they're
 not in your ``PATH`` environment variable.
+
+Python failed to find files in directories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Python can sometimes fail to find files in directories when path length limits are reached,
+even when the root directory is kept relatively short: ``C:\mozilla-source\firefox``. This can be resolved by
+`turning Windows long paths on <https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=registry>`_.
 
 ``PYTHON`` environment variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

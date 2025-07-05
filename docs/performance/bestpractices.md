@@ -366,6 +366,27 @@ This also implies that *querying for size and position information* in
 *requestAnimationFrame()* has a high probability of causing a
 synchronous reflow.
 
+### Animating the content area
+
+There are certain scenarios where we might want to add animations that involve changing the size or position of the browser content area, but we should be careful to do so in a performant way.
+
+Animating via a screenshot overlay of the content area should be avoided for the following reasons:
+
+1. The `selectedBrowser.browsingContext.currentWindowGlobal.drawSnapshot()` method uses the fallback painting rendering path, which is not very efficient and doesn't support `backdrop-filter`. The screenshot overlay animation would therefore not look as expected on pages that makes heavy use of `backdrop-filter`.
+2. It's also fairly tricky to get the zoom-levels correct when using this method.
+
+Animating the width of the content area should also be avoided to prevent costly layout reflows.
+
+Instead, we should rely solely on compositor-powered animations and transforms/translations when possible to prevent recomputing layout each frame.
+
+For example, if we want to show the effect of a sidebar sliding out and the browser content area shrinking to fit it in, we should:
+
+1. Translate the sidebar into frame, whilst also
+2. Translating the <browser> element out of its way, and then
+3. Once the translations are done, resize the <browser> element for its new position in a single frame
+
+and do the reverse for collapsing that sidebar.
+
 ### Other useful methods
 
 Below you'll find some suggestions for other methods which may come in
@@ -398,7 +419,7 @@ a sync reflow.
 ### Writing tests to ensure you don’t add more unintentional reflow
 
 The interface
-[nsIReflowObserver](https://dxr.mozilla.org/mozilla-central/source/docshell/base/nsIReflowObserver.idl)
+[nsIReflowObserver](https://searchfox.org/mozilla-central/source/docshell/base/nsIReflowObserver.idl)
 lets us detect both interruptible and uninterruptible reflows. A number
 of tests have been written that exercise various functions of the
 browser [opening tabs](http://searchfox.org/mozilla-central/rev/78cefe75fb43195e7f5aee1d8042b8d8fc79fc70/browser/base/content/test/general/browser_tabopen_reflows.js),

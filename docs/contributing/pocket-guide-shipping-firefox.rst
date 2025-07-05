@@ -25,95 +25,73 @@ updated within a defined cadence and built into one of our Firefox
 products which are released through what is commonly referred to as
 :ref:`Channels <channels>`: Firefox Nightly, Firefox Beta, and Firefox Release.
 
-`Firefox Nightly <https://whattrainisitnow.com/release/?version=nightly>`__ offers access to the latest cutting edge features
-still under active development. Released every 12 hours with all the
-changes that have :ref:`landed <landing>` on mozilla-central for Desktop and on
-`main in firefox-android <https://github.com/mozilla-mobile/firefox-android/tree/main>`__ for Android.
+`Firefox Nightly <https://whattrainisitnow.com/release/?version=nightly>`__ offers access
+to the latest feature work still under active development. Released every 12 hours with all
+the changes that have :ref:`landed <landing>` on mozilla-central for Desktop and Android.
 
-Every `4 weeks <https://whattrainisitnow.com/calendar/>`__, we
-:ref:`merge <merge>` the code from mozilla-central to our
-mozilla-beta branch.
-For Android, we branch from main on firefox-android to a release branch.
-New code or features can be added to mozilla-beta
-outside of this 4 week cadence but will be required to land in
-mozilla-central and then be :ref:`uplifted <uplift>` into
-mozilla-beta.
-Similarly for Android, uplifts are required to land in main on firefox-android before
-backporting to the firefox-android release branch.
+Every `4 weeks <https://whattrainisitnow.com/calendar/>`__, we :ref:`merge <merge>` the code
+for Desktop and Android builds from mozilla-central to our mozilla-beta branch. New code or
+features can be added to mozilla-beta outside of this 4 week cadence but are required to land
+on mozilla-central before being :ref:`uplifted <uplift>` to mozilla-beta.
 
-`Firefox Beta <https://whattrainisitnow.com/release/?version=beta>`__ is for developers and early adopters who want to see
-and test what’s coming next in Firefox. We release a new Desktop/Android Beta version
-three times a week.
+`Firefox Beta <https://whattrainisitnow.com/release/?version=beta>`__ is for developers and early
+adopters who want to see and test what’s coming next in Firefox. We ship new Desktop and Android
+Beta builds three times a week.
 
 .. note::
 
   The first and second beta builds of a new cycle are shipped to a
   subset of our Beta population. The full Beta population gets updated
-  starting with Beta 3 only.*
-
-Each Beta cycle lasts a total of 4 weeks where a final build is
-validated by our QA and tagged for release into the mozilla-release
-branch for Desktop. On Android we release from the same release branch
-used during the Beta cycle.
+  starting with Beta 3 only.
 
 .. note::
 
-  **Firefox Developer Edition** *is a separate product based on
-  the mozilla-beta repo and is specifically tailored for Web Developers.*
+  **Firefox Developer Edition** is a separate Desktop-only product based on
+  the mozilla-beta branch and is specifically tailored for Web Developers.
 
-`Firefox Release <https://whattrainisitnow.com/release/?version=release>`__ is released every 4 weeks and is the end result
-of our Beta cycle. This is our primary product shipping to hundreds of
-millions of users. While a release is live, interim updates (dot releases)
-are used to ship important bug fixes to users prior to the next major release.
-These can happen on an as-needed basis when there is an important-enough
-:ref:`driver <dot release drivers>` to do so (such as a critical bug severely
-impairing the usability of the product for some users). In order to provide
-better predictability, there is also a planned dot release scheduled for two
-weeks after the initial go-live for less-critical fixes and other
+`Firefox Release <https://whattrainisitnow.com/release/?version=release>`__ is updated every 4 weeks
+when a given version reaches the end of its Beta cycle. This is the primary product we ship to end users.
+While a release is live, interim updates (dot releases) are used to ship important bug fixes prior to
+the next major release. These can happen on an as-needed basis when there is an important-enough
+:ref:`driver <dot release drivers>` to do so (such as a critical bug severely impairing the usability
+of the product for some users). In order to provide better predictability, there is also a planned
+dot release scheduled for two weeks after the initial go-live for less-critical fixes and other
 :ref:`ride-along fixes <ride alongs>` deemed low-risk enough to include.
 
 .. note::
-  `Firefox ESR (Extended Support Release) <https://whattrainisitnow.com/release/?version=esr>`__ *is a separate
-  product intended for Enterprise use. Major updates are rolled out once
-  per year to maintain stability and predictability. ESR also
-  contains a number of policy options not available in the standard
-  Firefox Release. Minor updates are shipped in sync with the Firefox
-  Release schedule for security and select quality fixes only.*
+  `Firefox ESR (Extended Support Release) <https://whattrainisitnow.com/release/?version=esr>`__ is
+  a separate product intended for enterprise use. Major updates are rolled out once per year to maintain
+  stability and predictability. ESR also contains a number of enterprise policy options not available on
+  the standard Firefox Release channel. Minor updates are shipped in sync with the Firefox Release
+  schedule and generally only contain security and select quality fixes.
 
 Further Reading/Useful links:
 
--  `Firefox
-   Trains <https://whattrainisitnow.com/>`__
--  `Release
-   Calendar <https://whattrainisitnow.com/calendar/>`__
--  `Firefox Release
-   Process <https://wiki.mozilla.org/Release_Management/Release_Process>`__
--  `Firefox Delivery
-   dashboard <https://mozilla.github.io/delivery-dashboard/>`__
+-  `Firefox Trains <https://whattrainisitnow.com/>`__
+-  `Release Calendar <https://whattrainisitnow.com/calendar/>`__
+-  `Firefox Release Process <https://wiki.mozilla.org/Release_Management/Release_Process>`__
+-  `Firefox Delivery dashboard <https://mozilla.github.io/delivery-dashboard/>`__
 
 Landing Code and Shipping Features
 ----------------------------------
 
-Mozillians (those employed by MoCo and the broader community) land lots
-of code in the Mozilla repositories: fixes, enhancements, compatibility,
-new features, etc. and is managed by :ref:`Mercurial <Mercurial Overview>` (aka
-hg). All new code is tracked in :ref:`Bugzilla <bugzilla>`, reviewed
-in :ref:`Phabricator <Phabricator>`, and then checked into the
-mozilla-central repository using :ref:`Lando <Lando>`.
+Mozillians (those employed by MoCo and the broader community) land lots of code in
+the Mozilla repositories: fixes, enhancements, compatibility, new features, etc. which are
+managed by git. All code development is tracked in
+:ref:`Bugzilla <bugzilla>`, reviewed in :ref:`Phabricator <Phabricator>`, and then checked
+into the mozilla-central repository using :ref:`Lando <Lando>`.
 
 .. note::
 
-  Some teams use :ref:`GitHub <github>` during development
-  but will still be required to use Phabricator (tracked in Bugzilla) to
-  check their code into the mozilla-central hg repository.
+  Some teams use :ref:`GitHub <github>` during development but will still be required to use
+  Phabricator (tracked in Bugzilla) to check their code into the mozilla-central hg repository.
 
-The standard process for code to be delivered to our users is by ‘riding
-the trains’, meaning that it’s landed in mozilla-central where it waits
-for the next Beta cycle to begin. After merging to Beta the code will
-stabilize over a 4 week period (along with everything else that merged
-from mozilla-central). At the end of the beta cycle a release candidate
-(:ref:`RC <rc>`) build will be generated, tested thoroughly, and
-eventually become the next version of Firefox.
+The standard process for code to be delivered to our users is by ‘riding the trains’, meaning that
+it’s landed in mozilla-central to ship in Nightly builds while it waits for the next Beta cycle to
+begin. After merging to Beta, the code stabilizes over a 4 week period (along with everything else
+that merged from mozilla-central from that development cycle). At the end of the Beta cycle, a
+release candidate (:ref:`RC <rc>`) build is generated, tested thoroughly, and eventually is released
+as the next major version of Firefox.
 
 Further Reading/Useful links:
 
@@ -124,118 +102,112 @@ Further Reading/Useful links:
 An exception to this process...
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Not all code can simply wait for the normal train model to be included
-in a Firefox build. There are a variety of reasons for this; critical
-fixes, security concerns, stabilizing a feature that’s already in Beta,
-shipping high priority features faster, and so on.
+Not all code can simply wait for the normal train model to be included in a Firefox build.
+There are a variety of reasons for this; critical fixes, security concerns, stabilizing a feature
+that’s already in Beta, shipping high-priority features/enhancements faster, and so on.
 
-In these situations an uplift can be requested to take a recent landing
-in mozilla-central and merge specific bits to another repository outside
-the standard train model. After the request is made within Bugzilla,
-:ref:`Release Management <release management>` will assess the potential risk
-and will make a decision on whether it’s accepted.
+In these situations, an uplift can be requested to take a recent landing in mozilla-central and
+merge specific bits to the Beta or Release repository outside the standard train model. After the
+request is made, :ref:`Release Management <release management>` will assess the potential risk and
+make a decision on whether it will be accepted or not.
+
+While uplifts are generally not the preferred way to ship new feature work, it is understood that there
+are times when business needs to do so justify the required effort. Our release process is designed to
+have the flexibility to accommodate these requests, though in general they need to be handled on a case
+by case basis to determine the suitability. Teams are encouraged to reach out to Release Management in
+the `#release-coordination` channel on Slack or `@relman` so their specific needs can be assessed.
+
+Factors that will need to be taken into account include:
+
+-  Size and scope of patches to be uplifted
+-  QA availability to test prior to shipping and during development
+-  Engineering resources to resolve any conflicts between different development branches
+-  String additions/changes which may impact available locales
 
 Further Reading/Useful links:
 
--  `Patch uplifting
-   rules <https://wiki.mozilla.org/Release_Management/Uplift_rules>`__
--  `Requesting an
-   uplift <https://wiki.mozilla.org/Release_Management/Requesting_an_Uplift>`__
+-  `Patch uplifting rules <https://wiki.mozilla.org/Release_Management/Uplift_rules>`__
+-  `Requesting an uplift <https://wiki.mozilla.org/Release_Management/Requesting_an_Uplift>`__
 
 Ensuring build stability
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Throughout the process of landing code in mozilla-central to riding the
-trains to Firefox Release, there are many milestones and quality
-checkpoints from a variety of teams. This process is designed to ensure
-a quality and compelling product will be consistently delivered to our
-users with each new version. See below for a distilled list of those
-milestones.
+Throughout the process of landing code in mozilla-central to riding the trains to Firefox Release,
+there are many milestones and quality checkpoints from a variety of teams. This process is designed
+to ensure a quality and compelling product will be consistently delivered to our users with each new
+version. See below for a detailed list of those milestones.
 
-=========================================== ================ ================= ===============================================================================
-Milestone                                   Week             Day of Week
-------------------------------------------- ---------------- ----------------- -------------------------------------------------------------------------------
-Merge Day                                   Nightly W1       Monday            Day 1 of the new Nightly Cycle
-PI Request deadline                         Nightly W1       Friday            Manual QA request deadline for high risk features
-Feature technical documentation due         Nightly W2       Friday            Deadline for features requiring manual QA
-Beta release notes draft                    Nightly W4       Wednesday
-Nightly features Go/No-Go decisions         Nightly W4       Wednesday
-Feature Complete Milestone                  Nightly W4       Thursday          Last day to land risky patches and/or enable new features
-Nightly soft code freeze start              Nightly W4       Thursday          Stabilization period in preparation to merge to Beta
-QA Test Plan approval due                   Nightly W4       Friday            Last day to provide QA with feature Test Plan sign-offs
-String freeze                               Nightly W4       Friday            Modification or deletion of strings exposed to the end-users is not allowed
-QA pre-merge regression testing completed   Nightly W4       Friday
-Merge Day                                   Beta W1          Monday            Day 1 of the new Beta cycle
-Pre-release sign off                        Beta W3          Friday            Final round of QA testing prior to Release
-Firefox RC week                             Beta W4          Monday            Validating Release Candidate builds in preparation for the next Firefox Release
-Release Notes ready                         Beta W4          Tuesday
-What’s new page ready                       Beta W4          Wednesday
-Firefox go-live @ 6am PT                    Release W1       Tuesday           Day 1 of the new Firefox Release to 25% of Release users
-Firefox Release bump to 100%                Release W1       Thursday          Increase deployment of new Firefox Release to 100% of Release users
-Scheduled dot release approval requests due Release W2       Friday            All requests required by EOD
-Scheduled dot release go-live               Release W3       Tuesday           By default, ships when ready. Specific time available upon request.
-=========================================== ================ ================= ===============================================================================
+===================================================== ================ ================= =======================================================================================
+Milestone                                             Week             Day of Week
+----------------------------------------------------- ---------------- ----------------- ---------------------------------------------------------------------------------------
+QA Request & Feature technical documentation deadline Nightly W0       Friday            QA feature testing should be requested prior to the start of the Nightly cycle
+Merge Day                                             Nightly W1       Monday            Day 1 of the new Nightly Cycle
+Feature Complete Milestone                            Nightly W2       Friday            Last day to land risky patches and/or enable new features
+QA Test Plan approval due                             Nightly W2       Friday            Last day to provide QA with feature Test Plan sign-offs
+Nightly features Go/No-Go decisions                   Nightly W4       Wednesday
+Beta release notes draft                              Nightly W4       Wednesday
+Nightly soft code freeze start                        Nightly W4       Thursday          Stabilization period in preparation to merge to Beta
+QA pre-merge regression testing completed             Nightly W4       Friday
+String freeze                                         Nightly W4       Friday            Modification or deletion of strings exposed to the end-users is not allowed
+Merge Day                                             Beta W1          Monday            Day 1 of the new Beta cycle
+User affecting changes identified & provided to SUMO  Beta W1          Friday
+End of Early Beta & intended pref state deadline      Beta W2          Friday            Post-B6
+Pre-release sign off                                  Beta W3          Wednesday         Final round of QA testing prior to Release
+Go/No-Go for features riding train                    Beta W3          Friday
+Firefox RC week                                       Beta W4          Monday            Validating Release Candidate builds in preparation for the next Firefox Release
+Release Notes ready                                   Beta W4          Tuesday
+What’s new page ready                                 Beta W4          Wednesday
+Firefox go-live @ 6am PT                              Release W1       Tuesday           Day 1 of the new Firefox Release to 25% of Release users
+Firefox Release bump to 100%                          Release W1       Thursday          Increase deployment of new Firefox Release to 100% of Release users
+Scheduled dot release approval requests due           Release W2       Friday            All requests required by EOD
+Scheduled dot release go-live                         Release W3       Tuesday           By default, ships when ready. Specific time available upon request.
+===================================================== ================ ================= =======================================================================================
 
 
-The Release Management team (aka “Relman”) monitors and enforces this
-process to protect the stability of Firefox. Each member of Relman
-rotates through end-to-end ownership of a given :ref:`release
-cycle <release cycle>`. The Relman owner of a cycle will focus on the
-overall release, blocker bugs, risks, backout rates, stability/crash
-reports, etc. Go here for a complete overview of the `Relman Release
-Process
-Checklist <https://wiki.mozilla.org/Release_Management/Release_Process_Checklist_Documentation>`__.
+The Release Management team (aka “Relman”) monitors and enforces this process to protect the
+stability of Firefox. Each member of Relman rotates through end-to-end ownership of a given
+:ref:`release cycle <release cycle>`. The Relman owner of a cycle will focus on the overall release,
+blocker bugs, risks, backout rates, stability/crash reports, etc. Go here for a complete overview of
+the `Relman Release Process Checklist <https://wiki.mozilla.org/Release_Management/Release_Process_Checklist_Documentation>`__.
 
 .. note::
 
-  While Relman will continually monitor the overall health of each
-  Release it is the responsibility of the engineering organization to
-  ensure the code they are landing is of high quality and the potential
-  risks are understood. Every Release has an assigned :ref:`Regression
-  Engineering Owner <reo>` (REO) to ensure a decision is made
-  about each regression reported in the release.*
+  While Relman continually monitors the overall health of each release, it is the responsibility
+  of the engineering organization to ensure that the code they are landing is of high quality and the
+  potential risks are understood. Every release has an assigned :ref:`Regression Engineering
+  Owner <reo>` (REO) to ensure a decision is made about each regression reported in the release.
 
 Further Reading/Useful links:
 
--  `Release Tracking
-   Rules <https://wiki.mozilla.org/Release_Management/Tracking_rules>`__
--  `Release
-   Owners <https://wiki.mozilla.org/Release_Management/Release_owners>`__
--  `Regression Engineering
-   Owners <https://wiki.mozilla.org/Platform#Regression_Engineering_Owner_.28REO.29>`__
--  `Commonly used Bugzilla queries for all
-   Channels <https://trainqueries.herokuapp.com/>`__
+-  `Release Tracking Rules <https://wiki.mozilla.org/Release_Management/Tracking_rules>`__
+-  `Release Owners <https://wiki.mozilla.org/Release_Management/Release_owners>`__
+-  `Commonly used Bugzilla queries for all Channels <https://trainqueries.herokuapp.com/>`__
 
 Enabling/Disabling code (Prefs)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Within Firefox we allow the ability to Enable/Disable bits of code or
-entire features using `Preferences <preferences>`. There are many
-reasons why this is useful. Here are some examples:
+Within Firefox we allow the ability to enable/disable bits of code or entire features using
+:ref:`Preferences <preferences>`. There are many reasons why this is useful. For example:
 
--  Continual development over multiple release cycles without exposing
-   partially completed features to our users
--  Provide the ability to quickly disable a feature if there is a
-   problem found during the release process
--  Control features which are experimental or not ready to be shown to a
-   specific channel population (e.g. enabled for Beta but disabled for
-   Release)
+-  Continual development over multiple release cycles without exposing partially-completed
+   features to our users
+-  Provide the ability to quickly disable a feature if there is a problem found during the
+   release process
+-  Control features which are experimental or not ready to be shown to a specific channel
+   population (e.g. enabled for Beta but disabled for Release)
 -  A/B testing via :ref:`telemetry <telemetry>` experiments
 
 .. note::
 
-  :ref:`Normandy <normandy>` Pref Rollout is a feature that
-  allows Mozilla to change the state of a preference for a targeted set of
-  users, without deploying an update to Firefox. This is especially useful
-  when conducting experiments or a gradual rollout of high risk features
+  :ref:`Nimbus <nimbus>` Pref Rollout is a feature that allows Mozilla to change the state of a
+  preference for a targeted set of users, without deploying an update to Firefox. This is
+  especially useful when conducting experiments or a gradual rollout of high risk features
   to our Release population.
 
 Further Reading/Useful links:
 
--  `Brief guide to Mozilla
-   preferences <https://developer.mozilla.org/en-US/docs/Mozilla/Preferences/A_brief_guide_to_Mozilla_preferences>`__
--  `Normandy Pref
-   rollout <https://wiki.mozilla.org/Firefox/Normandy/PreferenceRollout>`__
+-  `Mozilla preferences documentation <https://firefox-source-docs.mozilla.org/modules/libpref/index.html>`__
+-  `Nimbus documentation <https://experimenter.info/>`__
 
 Release & Feature QA
 ~~~~~~~~~~~~~~~~~~~~
@@ -273,11 +245,10 @@ Further Reading/Useful links:
 Experiments
 ~~~~~~~~~~~
 
-As we deliver new features to our users we continually ask ourselves
-about the potential impacts, both positive and negative. In many new
-features we will run an experiment to gather data around these impacts.
-A simple definition of an experiment is a way to measure how a change to
-our product affects how people use it.
+As we deliver new features to our users, we continually ask ourselves about the potential impacts,
+both positive and negative. For many new features, we will run an experiment to gather data around
+these impacts. A simple definition of an experiment is a way to measure how a change to our product
+affects how people use it.
 
 An experiment has three parts:
 
@@ -285,15 +256,12 @@ An experiment has three parts:
 2. A group of users to test the new feature
 3. Telemetry to measure how people interact with the new feature
 
-Experiments are managed by an in-house tool called
-`Experimenter <https://experimenter.services.mozilla.com/>`__.
+Experiments are managed by an in-house tool called `Experimenter <https://experimenter.services.mozilla.com/>`__.
 
 Further Reading/Useful links:
 
--  `More about experiments and
-   Experimenter <https://github.com/mozilla/experimenter>`__
--  `Requesting a new
-   Experiment <https://experimenter.services.mozilla.com/experiments/new/>`__
+-  `More about experiments and Experimenter <https://github.com/mozilla/experimenter>`__
+-  `Requesting a new Experiment <https://experimenter.services.mozilla.com/experiments/new/>`__
    (Follow the ‘help’ links to learn more)
 -  `Telemetry <https://wiki.mozilla.org/Telemetry>`__
 
@@ -342,11 +310,6 @@ enabled. The first 2 weeks of Beta releases during the cycle are early beta rele
 developing a high quality feature. This is typically an Engineering
 Manager or Product Manager.
 
-.. _fenix:
-
-**Fenix** - Also known as Firefox Preview is an all-new browser for
-Android based on GeckoView and Android Components
-
 .. _github:
 
 **Github** - Web-based version control and collaboration platform for
@@ -369,12 +332,6 @@ particular source code repository
 our `Phabricator instance <https://phabricator.services.mozilla.com>`__
 and can be used to land revisions to various repositories.
 
-.. _mercurial:
-
-**Mercurial** - A source-code management tool (just like git)
-which allows users to keep track of changes to the source code
-locally and share their changes with others. It is also called hg.
-
 .. _merge:
 
 **Merge** - General term used to describe the process of integrating and
@@ -386,9 +343,9 @@ reconciling file changes within the mozilla repositories
 just before the merge to beta during which landing risky or experimental code
 in the repository is discouraged.
 
-.. _normandy:
+.. _nimbus:
 
-**Normandy** - Normandy is a collection of servers, workflows, and
+**Nimbus** - Nimbus is a collection of servers, workflows, and
 Firefox components that enables Mozilla to remotely control Firefox
 clients in the wild based on precise criteria
 

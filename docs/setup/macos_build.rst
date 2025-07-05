@@ -37,32 +37,6 @@ Once done, finalize the installation in your terminal:
     sudo xcode-select --switch /Applications/Xcode.app
     sudo xcodebuild -license
 
-1.3 Install Mercurial
-~~~~~~~~~~~~~~~~~~~~~
-
-Mozilla's source code is hosted in Mercurial repositories. You will
-need Mercurial to download and update the code. Additionally, we'll
-put user-wide python package installations on the ``$PATH``, so that
-both ``hg`` and ``moz-phab`` will be easily accessible:
-
-.. code-block:: shell
-
-    echo 'export PATH="'"$(python3 -m site --user-base)"'/bin:$PATH"' >> ~/.zshenv
-    python3 -m pip install --user mercurial
-
-Now, restart your shell so that the ``PATH`` change took effect.
-You can test that Mercurial is installed by running:
-
-.. code-block:: shell
-
-    hg version
-
-.. note::
-
-    If you're using a shell other than ``zsh``, you'll need to manually add Python's
-    ``bin`` directory to your ``PATH``, as your shell probably won't pick up our
-    changes in ``~/.zshenv``.
-
 2. Bootstrap a copy of the Firefox source code
 ----------------------------------------------
 
@@ -73,19 +47,8 @@ the interactive setup process.
 
 .. code-block:: shell
 
-    curl https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py -O
+    curl -L https://raw.githubusercontent.com/mozilla-firefox/firefox/refs/heads/main/python/mozboot/bin/bootstrap.py -O
     python3 bootstrap.py
-
-.. note::
-
-    To use ``git``, you can grab the source code in "git" form by running the
-    bootstrap script with the ``vcs`` parameter:
-
-    .. code-block:: shell
-
-         python3 bootstrap.py --vcs=git
-
-    This uses `Git Cinnabar <https://github.com/glandium/git-cinnabar/>`_ under the hood.
 
 Choosing a build type
 ~~~~~~~~~~~~~~~~~~~~~
@@ -101,8 +64,8 @@ Now that your system is bootstrapped, you should be able to build!
 
 .. code-block:: shell
 
-    cd mozilla-unified
-    hg up -C central
+    cd firefox
+    git pull
     ./mach build
 
 🎉 Congratulations! You've built your own home-grown Firefox!
@@ -167,5 +130,41 @@ Build errors
 
 If you encounter a build error when trying to setup your development environment, please follow these steps:
    1. Copy the entire build error to your clipboard
-   2. Paste this error to `paste.mozilla.org <https://paste.mozilla.org>`_ in the text area and change the "Expire in one hour" option to "Expire in one week". Note: it won't take a week to get help but it's better to have the snippet be around for a bit longer than expected.
-   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the paste.mozilla.org snippet you created!
+   2. Paste this error to `gist.github.com <https://gist.github.com/>`__ in the text area
+   3. Go to the `introduction channel <https://chat.mozilla.org/#/room/#introduction:mozilla.org>`__ and ask for help with your build error. Make sure to post the link to the gist.github.com snippet you created!
+
+The CLOBBER file has been updated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is a normal error to encounter and tends to appear when working on a bug for a long period of time.
+If you encounter this error, you need to run ``./mach clobber`` before running ``./mach build``.
+Running ``./mach clobber`` will remove previous build artifacts to restart a build from scratch.
+If you are using an artifact build, this will mean that the next build will take slightly longer than usual.
+However, if you are using a non-artifact/full build, the next build will take significantly longer to complete.
+
+Python-related errors
+~~~~~~~~~~~~~~~~~~~~~
+
+Building, running, testing, etc. not always support the latest Python versions, therefore it is possible to encounter Python-related errors,
+especially after updating your Python distribution to a new version.
+
+The recommended way to work around this is to use a virtual environment with a compatible Python version.
+Please consider `mach's <https://searchfox.org/mozilla-central/source/mach>`_ ``MIN_PYTHON_VERSION`` and ``MAX_PYTHON_VERSION_TO_CONSIDER``
+for the range of compatible versions.
+
+Should you be using Python through Homebrew, you can install older releases like this:
+
+.. code-block:: shell
+
+   brew install python@3.<your-desired-version>
+
+You can set up the virtual environment manually or use a supporting tool such as `pyenv <https://github.com/pyenv/pyenv>`_ (recommended).
+Below is an example for manual setup.
+
+.. code-block:: shell
+
+   cd firefox
+   # Creates virtual environment for <your-desired-version> in folder .venv
+   python3.<your-desired-version> -m venv .venv
+   # Activates virtual environment
+   source .venv/bin/activate

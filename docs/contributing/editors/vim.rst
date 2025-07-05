@@ -22,7 +22,7 @@ default of :code:`nvim-lspconfig` is to search for the closest
 
 .. code ::
 
-    root_dir = lspconfig.util.root_pattern(".git", ".hg")
+    root_dir = lspconfig.util.root_pattern(".git")
 
 You also need to set some options to get full diagnostics:
 
@@ -31,6 +31,7 @@ You also need to set some options to get full diagnostics:
    "rust-analyzer.server.extraEnv": {
      "CARGO_TARGET_DIR": "/path/to/objdir"
    },
+   "rust-analyzer.vfs.extraIncludes": ["/path/to/objdir", "/optional/path/to/windows_rs_dir"],
    "rust-analyzer.check.overrideCommand": [ "/path/to/mach", "--log-no-times", "cargo", "check", "--all-crates", "--message-format-json" ],
    "rust-analyzer.cargo.buildScripts.overrideCommand": [ "/path/to/mach", "--log-no-times", "cargo", "check", "--all-crates", "--message-format-json" ],
 
