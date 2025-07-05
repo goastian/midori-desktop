@@ -5,10 +5,12 @@
 
 #include "SelectionState.h"
 
-#include "AutoRangeArray.h"  // for AutoRangeArray
-#include "EditorUtils.h"     // for EditorUtils, AutoRangeArray
-#include "ErrorList.h"
+#include "AutoClonedRangeArray.h"  // for AutoClonedRangeArray
+#include "EditorUtils.h"           // for EditorUtils
+#include "EditorLineBreak.h"       // for EditorLineBreak
+#include "HTMLEditHelpers.h"       // for DeleteRangeResult
 
+#include "ErrorList.h"
 #include "mozilla/Assertions.h"    // for MOZ_ASSERT, etc.
 #include "mozilla/IntegerRange.h"  // for IntegerRange
 #include "mozilla/Likely.h"        // For MOZ_LIKELY and MOZ_UNLIKELY
@@ -59,7 +61,7 @@ template nsresult RangeUpdater::SelAdjInsertNode(const EditorDOMPoint& aPoint);
 template nsresult RangeUpdater::SelAdjInsertNode(
     const EditorRawDOMPoint& aPoint);
 
-SelectionState::SelectionState(const AutoRangeArray& aRanges)
+SelectionState::SelectionState(const AutoClonedSelectionRangeArray& aRanges)
     : mDirection(aRanges.GetDirection()) {
   mArray.SetCapacity(aRanges.Ranges().Length());
   for (const OwningNonNull<nsRange>& range : aRanges.Ranges()) {
@@ -123,7 +125,7 @@ nsresult SelectionState::RestoreSelection(Selection& aSelection) {
   return NS_OK;
 }
 
-void SelectionState::ApplyTo(AutoRangeArray& aRanges) {
+void SelectionState::ApplyTo(AutoClonedSelectionRangeArray& aRanges) {
   aRanges.RemoveAllRanges();
   aRanges.SetDirection(mDirection);
   for (const RefPtr<RangeItem>& rangeItem : mArray) {
@@ -586,6 +588,60 @@ already_AddRefed<nsRange> RangeItem::GetRange() const {
       mStartContainer, mStartOffset, mEndContainer, mEndOffset, IgnoreErrors());
   NS_WARNING_ASSERTION(range, "nsRange::Create() failed");
   return range.forget();
+}
+
+/******************************************************************************
+ * mozilla::AutoTrackDOMPoint
+ ******************************************************************************/
+
+AutoTrackDOMPoint::AutoTrackDOMPoint(RangeUpdater& aRangeUpdater,
+                                     CaretPoint* aCaretPoint)
+    : AutoTrackDOMPoint(aRangeUpdater, &aCaretPoint->mCaretPoint) {}
+
+/******************************************************************************
+ * mozilla::AutoTrackDOMMoveNodeResult
+ ******************************************************************************/
+
+AutoTrackDOMMoveNodeResult::AutoTrackDOMMoveNodeResult(
+    RangeUpdater& aRangeUpdater, MoveNodeResult* aMoveNodeResult)
+    : mTrackCaretPoint(aRangeUpdater,
+                       static_cast<CaretPoint*>(aMoveNodeResult)),
+      mTrackNextInsertionPoint(aRangeUpdater,
+                               &aMoveNodeResult->mNextInsertionPoint),
+      mTrackMovedContentRange(aRangeUpdater,
+                              &aMoveNodeResult->mMovedContentRange) {}
+
+/******************************************************************************
+ * mozilla::AutoTrackDeleteRangeResult
+ ******************************************************************************/
+
+AutoTrackDOMDeleteRangeResult::AutoTrackDOMDeleteRangeResult(
+    RangeUpdater& aRangeUpdater, DeleteRangeResult* aDeleteRangeResult)
+    : mTrackCaretPoint(aRangeUpdater,
+                       static_cast<CaretPoint*>(aDeleteRangeResult)),
+      mTrackDeleteRange(aRangeUpdater, &aDeleteRangeResult->mDeleteRange) {}
+
+/******************************************************************************
+ * mozilla::AutoTrackLineBreak
+ ******************************************************************************/
+
+AutoTrackLineBreak::AutoTrackLineBreak(RangeUpdater& aRangeUpdater,
+                                       EditorLineBreak* aLineBreak)
+    : mLineBreak(aLineBreak->IsPreformattedLineBreak() ? aLineBreak : nullptr),
+      mPoint(mLineBreak ? mLineBreak->To<EditorDOMPoint>() : EditorDOMPoint()),
+      mTracker(aRangeUpdater, &mPoint) {
+  MOZ_ASSERT(aLineBreak->IsPreformattedLineBreak());
+}
+
+void AutoTrackLineBreak::FlushAndStopTracking() {
+  if (!mLineBreak) {
+    return;
+  }
+  mTracker.FlushAndStopTracking();
+  if (mPoint.GetContainer() == mLineBreak->mContent) {
+    mLineBreak->mOffsetInText = Some(mPoint.Offset());
+  }
+  mLineBreak = nullptr;
 }
 
 }  // namespace mozilla

@@ -80,8 +80,8 @@ NS_IMETHODIMP HTMLEditorEventListener::HandleEvent(Event* aEvent) {
 
       RefPtr<HTMLEditor> htmlEditor = mEditorBase->AsHTMLEditor();
       DebugOnly<nsresult> rvIgnored =
-          htmlEditor->UpdateResizerOrGrabberPositionTo(CSSIntPoint(
-              mouseMoveEvent->ClientX(), mouseMoveEvent->ClientY()));
+          htmlEditor->UpdateResizerOrGrabberPositionTo(
+              RoundedToInt(mouseMoveEvent->ClientPoint()));
       NS_WARNING_ASSERTION(
           NS_SUCCEEDED(rvIgnored),
           "HTMLEditor::UpdateResizerOrGrabberPositionTo() failed, but ignored");
@@ -245,7 +245,7 @@ nsresult HTMLEditorEventListener::MouseUp(MouseEvent* aMouseEvent) {
   //      on native anonymous node like a resizer.
 
   DebugOnly<nsresult> rvIgnored = htmlEditor->StopDraggingResizerOrGrabberAt(
-      CSSIntPoint(aMouseEvent->ClientX(), aMouseEvent->ClientY()));
+      RoundedToInt(aMouseEvent->ClientPoint()));
   NS_WARNING_ASSERTION(
       NS_SUCCEEDED(rvIgnored),
       "HTMLEditor::StopDraggingResizerOrGrabberAt() failed, but ignored");
@@ -404,14 +404,14 @@ nsresult HTMLEditorEventListener::MouseDown(MouseEvent* aMouseEvent) {
   return rv;
 }
 
-nsresult HTMLEditorEventListener::MouseClick(
-    WidgetMouseEvent* aMouseClickEvent) {
+nsresult HTMLEditorEventListener::PointerClick(
+    WidgetMouseEvent* aPointerClickEvent) {
   if (NS_WARN_IF(DetachedFromEditor())) {
     return NS_OK;
   }
 
   RefPtr<Element> element = Element::FromEventTargetOrNull(
-      aMouseClickEvent->GetOriginalDOMEventTarget());
+      aPointerClickEvent->GetOriginalDOMEventTarget());
   if (NS_WARN_IF(!element)) {
     return NS_ERROR_FAILURE;
   }
@@ -428,9 +428,9 @@ nsresult HTMLEditorEventListener::MouseClick(
     return NS_OK;
   }
 
-  nsresult rv = EditorEventListener::MouseClick(aMouseClickEvent);
+  nsresult rv = EditorEventListener::PointerClick(aPointerClickEvent);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
-                       "EditorEventListener::MouseClick() failed");
+                       "EditorEventListener::PointerClick() failed");
   return rv;
 }
 

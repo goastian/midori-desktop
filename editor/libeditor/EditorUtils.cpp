@@ -33,16 +33,6 @@ namespace mozilla {
 using namespace dom;
 
 /******************************************************************************
- * mozilla::EditActionResult
- *****************************************************************************/
-
-EditActionResult& EditActionResult::operator|=(
-    const MoveNodeResult& aMoveNodeResult) {
-  mHandled |= aMoveNodeResult.Handled();
-  return *this;
-}
-
-/******************************************************************************
  * some general purpose editor utils
  *****************************************************************************/
 
@@ -360,6 +350,15 @@ bool EditorDOMPointBase<
     PT, CT>::IsNextCharPreformattedNewLineCollapsedWithWhiteSpaces() const {
   return IsNextCharNewLine() &&
          EditorUtils::IsOnlyNewLinePreformatted(*ContainerAs<Text>());
+}
+
+template <typename PT, typename CT>
+bool EditorDOMPointBase<PT, CT>::IsContainerEditableRoot() const {
+  if (MOZ_UNLIKELY(!mParent) || MOZ_UNLIKELY(!mParent->IsEditable()) ||
+      NS_WARN_IF(mParent->IsInNativeAnonymousSubtree())) {
+    return false;
+  }
+  return HTMLEditUtils::ElementIsEditableRoot(*mParent);
 }
 
 /******************************************************************************

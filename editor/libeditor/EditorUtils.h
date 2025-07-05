@@ -12,6 +12,7 @@
 #include "mozilla/IntegerRange.h"       // for IntegerRange
 #include "mozilla/Maybe.h"              // for Maybe
 #include "mozilla/Result.h"             // for Result<>
+#include "mozilla/dom/DataTransfer.h"   // for dom::DataTransfer
 #include "mozilla/dom/Element.h"        // for dom::Element
 #include "mozilla/dom/HTMLBRElement.h"  // for dom::HTMLBRElement
 #include "mozilla/dom/Selection.h"      // for dom::Selection
@@ -100,6 +101,10 @@ class MOZ_STACK_CLASS CaretPoint {
     aPointToPutCaret = mCaretPoint;
     return true;
   }
+  bool CopyCaretPointTo(CaretPoint& aCaretPoint,
+                        const SuggestCaretOptions& aOptions) const {
+    return CopyCaretPointTo(aCaretPoint.mCaretPoint, aOptions);
+  }
   bool MoveCaretPointTo(EditorDOMPoint& aPointToPutCaret,
                         const SuggestCaretOptions& aOptions) {
     MOZ_ASSERT(!aOptions.contains(SuggestCaret::AndIgnoreTrivialError));
@@ -111,6 +116,10 @@ class MOZ_STACK_CLASS CaretPoint {
     }
     aPointToPutCaret = UnwrapCaretPoint();
     return true;
+  }
+  bool MoveCaretPointTo(CaretPoint& aCaretPoint,
+                        const SuggestCaretOptions& aOptions) {
+    return MoveCaretPointTo(aCaretPoint.mCaretPoint, aOptions);
   }
   bool CopyCaretPointTo(EditorDOMPoint& aPointToPutCaret,
                         const EditorBase& aEditorBase,
@@ -138,13 +147,15 @@ class MOZ_STACK_CLASS CaretPoint {
  private:
   EditorDOMPoint mCaretPoint;
   bool mutable mHandledCaretPoint = false;
+
+  friend class AutoTrackDOMPoint;
 };
 
 /***************************************************************************
  * EditActionResult is useful to return the handling state of edit sub actions
  * without out params.
  */
-class MOZ_STACK_CLASS EditActionResult final {
+class MOZ_STACK_CLASS EditActionResult {
  public:
   bool Canceled() const { return mCanceled; }
   bool Handled() const { return mHandled; }
@@ -158,8 +169,6 @@ class MOZ_STACK_CLASS EditActionResult final {
     mHandled |= aOther.mHandled;
     return *this;
   }
-
-  EditActionResult& operator|=(const MoveNodeResult& aMoveNodeResult);
 
   static EditActionResult IgnoredResult() {
     return EditActionResult(false, false);
@@ -176,14 +185,17 @@ class MOZ_STACK_CLASS EditActionResult final {
   EditActionResult(EditActionResult&&) = default;
   EditActionResult& operator=(EditActionResult&&) = default;
 
- private:
-  bool mCanceled = false;
-  bool mHandled = false;
-
+ protected:
   EditActionResult(bool aCanceled, bool aHandled)
       : mCanceled(aCanceled), mHandled(aHandled) {}
 
   EditActionResult() : mCanceled(false), mHandled(false) {}
+
+  void UnmarkAsCanceled() { mCanceled = false; }
+
+ private:
+  bool mCanceled = false;
+  bool mHandled = false;
 };
 
 /***************************************************************************
@@ -266,15 +278,15 @@ class MOZ_STACK_CLASS InsertTextResult final : public CaretPoint {
   explicit InsertTextResult(const EditorDOMPointType& aEndOfInsertedText)
       : CaretPoint(EditorDOMPoint()),
         mEndOfInsertedText(aEndOfInsertedText.template To<EditorDOMPoint>()) {}
-  explicit InsertTextResult(EditorDOMPointInText&& aEndOfInsertedText)
+  explicit InsertTextResult(EditorDOMPoint&& aEndOfInsertedText)
       : CaretPoint(EditorDOMPoint()),
         mEndOfInsertedText(std::move(aEndOfInsertedText)) {}
   template <typename PT, typename CT>
-  InsertTextResult(EditorDOMPointInText&& aEndOfInsertedText,
+  InsertTextResult(EditorDOMPoint&& aEndOfInsertedText,
                    const EditorDOMPointBase<PT, CT>& aCaretPoint)
       : CaretPoint(aCaretPoint.template To<EditorDOMPoint>()),
         mEndOfInsertedText(std::move(aEndOfInsertedText)) {}
-  InsertTextResult(EditorDOMPointInText&& aEndOfInsertedText,
+  InsertTextResult(EditorDOMPoint&& aEndOfInsertedText,
                    CaretPoint&& aCaretPoint)
       : CaretPoint(std::move(aCaretPoint)),
         mEndOfInsertedText(std::move(aEndOfInsertedText)) {
@@ -285,12 +297,12 @@ class MOZ_STACK_CLASS InsertTextResult final : public CaretPoint {
         mEndOfInsertedText(std::move(aOther.mEndOfInsertedText)) {}
 
   [[nodiscard]] bool Handled() const { return mEndOfInsertedText.IsSet(); }
-  const EditorDOMPointInText& EndOfInsertedTextRef() const {
+  const EditorDOMPoint& EndOfInsertedTextRef() const {
     return mEndOfInsertedText;
   }
 
  private:
-  EditorDOMPointInText mEndOfInsertedText;
+  EditorDOMPoint mEndOfInsertedText;
 };
 
 /***************************************************************************
@@ -330,6 +342,43 @@ class MOZ_STACK_CLASS AutoSelectionRangeArray final {
   }
 
   AutoTArray<mozilla::OwningNonNull<nsRange>, 8> mRanges;
+};
+
+/******************************************************************************
+ * AutoTrackDataTransferForPaste keeps track of whether the paste event handler
+ * in JS has modified the clipboard.
+ *****************************************************************************/
+class MOZ_STACK_CLASS AutoTrackDataTransferForPaste {
+ public:
+  MOZ_CAN_RUN_SCRIPT AutoTrackDataTransferForPaste(
+      const EditorBase& aEditorBase,
+      RefPtr<dom::DataTransfer>& aDataTransferForPaste)
+      : mEditorBase(aEditorBase),
+        mDataTransferForPaste(aDataTransferForPaste.get_address()) {
+    mEditorBase.GetDocument()->ClearClipboardCopyTriggered();
+  }
+
+  ~AutoTrackDataTransferForPaste() { FlushAndStopTracking(); }
+
+ private:
+  void FlushAndStopTracking() {
+    if (!mDataTransferForPaste ||
+        !mEditorBase.GetDocument()->IsClipboardCopyTriggered()) {
+      return;
+    }
+    // The paste event copied new data to the clipboard, so we need to use
+    // that data to paste into the DOM element below.
+    if (*mDataTransferForPaste) {
+      (*mDataTransferForPaste)->ClearForPaste();
+    }
+    // Just null this out so this data won't be used and we will get it directly
+    // from the clipboard in the future.
+    *mDataTransferForPaste = nullptr;
+    mDataTransferForPaste = nullptr;
+  }
+
+  MOZ_KNOWN_LIVE const EditorBase& mEditorBase;
+  RefPtr<dom::DataTransfer>* mDataTransferForPaste;
 };
 
 class EditorUtils final {
@@ -446,10 +495,10 @@ class EditorUtils final {
    * computed with nsFrameSelection that also requires flushed layout
    * information.
    */
-  template <typename SelectionOrAutoRangeArray>
+  template <typename SelectionOrAutoClonedRangeArray>
   static bool IsFrameSelectionRequiredToExtendSelection(
       nsIEditor::EDirection aDirectionAndAmount,
-      SelectionOrAutoRangeArray& aSelectionOrAutoRangeArray) {
+      SelectionOrAutoClonedRangeArray& aSelectionOrAutoClonedRangeArray) {
     switch (aDirectionAndAmount) {
       case nsIEditor::eNextWord:
       case nsIEditor::ePreviousWord:
@@ -458,7 +507,7 @@ class EditorUtils final {
         return true;
       case nsIEditor::ePrevious:
       case nsIEditor::eNext:
-        return aSelectionOrAutoRangeArray.IsCollapsed();
+        return aSelectionOrAutoClonedRangeArray.IsCollapsed();
       default:
         return false;
     }

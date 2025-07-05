@@ -46,7 +46,6 @@
 #include "nsError.h"
 #include "nsFocusManager.h"
 #include "nsGkAtoms.h"
-#include "nsIClipboard.h"
 #include "nsIContent.h"
 #include "nsINode.h"
 #include "nsIPrincipal.h"
@@ -481,56 +480,34 @@ already_AddRefed<Element> TextEditor::GetInputEventTargetElement() const {
 }
 
 bool TextEditor::IsEmpty() const {
-  // Even if there is no padding <br> element for empty editor, we should be
-  // detected as empty editor if all the children are text nodes and these
-  // have no content.
-  Element* anonymousDivElement = GetRoot();
-  if (!anonymousDivElement) {
-    return true;  // Don't warn it, this is possible, e.g., 997805.html
+  // This is a public method.  Therefore, it might have not been initialized yet
+  // when this is called.  Let's return true in such case, but warn it because
+  // it may return different value than actual value which is stored by the
+  // text control element.
+  MOZ_ASSERT_IF(mInitSucceeded, GetRoot());
+  if (NS_WARN_IF(!GetRoot())) {
+    NS_ASSERTION(false,
+                 "Make the root caller stop doing that before initializing or "
+                 "after destroying the TextEditor");
+    return true;
   }
-
-  MOZ_ASSERT(anonymousDivElement->GetFirstChild() &&
-             anonymousDivElement->GetFirstChild()->IsText());
-
-  // Only when there is non-empty text node, we are not empty.
-  return !anonymousDivElement->GetFirstChild()->Length();
+  const Text* const textNode = GetTextNode();
+  MOZ_DIAGNOSTIC_ASSERT_IF(textNode,
+                           !Text::FromNodeOrNull(textNode->GetNextSibling()));
+  return !textNode || !textNode->TextDataLength();
 }
 
 NS_IMETHODIMP TextEditor::GetTextLength(uint32_t* aCount) {
   MOZ_ASSERT(aCount);
 
-  // initialize out params
-  *aCount = 0;
-
-  // special-case for empty document, to account for the padding <br> element
-  // for empty editor.
-  // XXX This should be overridden by `HTMLEditor` and we should return the
-  //     first text node's length from `TextEditor` instead.  The following
-  //     code is too expensive.
-  if (IsEmpty()) {
-    return NS_OK;
-  }
-
-  Element* rootElement = GetRoot();
-  if (NS_WARN_IF(!rootElement)) {
+  if (NS_WARN_IF(!GetRoot())) {
     return NS_ERROR_FAILURE;
   }
 
-  uint32_t totalLength = 0;
-  PostContentIterator postOrderIter;
-  DebugOnly<nsresult> rvIgnored = postOrderIter.Init(rootElement);
-  NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
-                       "PostContentIterator::Init() failed, but ignored");
-  EditorType editorType = GetEditorType();
-  for (; !postOrderIter.IsDone(); postOrderIter.Next()) {
-    nsINode* currentNode = postOrderIter.GetCurrentNode();
-    if (currentNode && currentNode->IsText() &&
-        EditorUtils::IsEditableContent(*currentNode->AsText(), editorType)) {
-      totalLength += currentNode->Length();
-    }
-  }
-
-  *aCount = totalLength;
+  const Text* const textNode = GetTextNode();
+  MOZ_DIAGNOSTIC_ASSERT_IF(textNode,
+                           !Text::FromNodeOrNull(textNode->GetNextSibling()));
+  *aCount = textNode ? textNode->TextDataLength() : 0u;
   return NS_OK;
 }
 
@@ -565,20 +542,12 @@ bool TextEditor::IsCopyToClipboardAllowedInternal() const {
 }
 
 nsresult TextEditor::HandlePasteAsQuotation(
-    AutoEditActionDataSetter& aEditActionData, int32_t aClipboardType) {
+    AutoEditActionDataSetter& aEditActionData,
+    nsIClipboard::ClipboardType aClipboardType, DataTransfer* aDataTransfer) {
   MOZ_ASSERT(aClipboardType == nsIClipboard::kGlobalClipboard ||
              aClipboardType == nsIClipboard::kSelectionClipboard);
   if (NS_WARN_IF(!GetDocument())) {
     return NS_OK;
-  }
-
-  // Get Clipboard Service
-  nsresult rv;
-  nsCOMPtr<nsIClipboard> clipboard =
-      do_GetService("@mozilla.org/widget/clipboard;1", &rv);
-  if (NS_FAILED(rv)) {
-    NS_WARNING("Failed to get nsIClipboard service");
-    return rv;
   }
 
   // XXX Why don't we dispatch ePaste event here?
@@ -598,13 +567,9 @@ nsresult TextEditor::HandlePasteAsQuotation(
     return NS_OK;
   }
 
-  auto* windowContext = GetDocument()->GetWindowContext();
-  if (!windowContext) {
-    NS_WARNING("Editor didn't have document window context");
-    return NS_ERROR_FAILURE;
-  }
   // Get the Data from the clipboard
-  rv = clipboard->GetData(trans, aClipboardType, windowContext);
+  nsresult rv =
+      GetDataFromDataTransferOrClipboard(aDataTransfer, trans, aClipboardType);
 
   // Now we ask the transferable for the data
   // it still owns the data, we just have a pointer to it.
@@ -686,7 +651,7 @@ nsresult TextEditor::InsertWithQuotationsAsSubAction(
   //     also in single line editor)?
   MaybeDoAutoPasswordMasking();
 
-  nsresult rv = InsertTextAsSubAction(quotedStuff, SelectionHandling::Delete);
+  nsresult rv = InsertTextAsSubAction(quotedStuff, InsertTextFor::NormalText);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                        "EditorBase::InsertTextAsSubAction() failed");
   return rv;
@@ -772,15 +737,10 @@ nsresult TextEditor::OnFocus(const nsINode& aOriginalEventTargetNode) {
 
 nsresult TextEditor::OnBlur(const EventTarget* aEventTarget) {
   // check if something else is focused. If another element is focused, then
-  // we should not change the selection.
-  nsFocusManager* focusManager = nsFocusManager::GetFocusManager();
-  if (MOZ_UNLIKELY(!focusManager)) {
-    return NS_OK;
-  }
-
-  // If another element already has focus, we should not maintain the selection
-  // because we may not have the rights doing it.
-  if (focusManager->GetFocusedElement()) {
+  // we should not change the selection.  If another element already has focus,
+  // we should not maintain the selection because we may not have the rights
+  // doing it.
+  if (nsFocusManager::GetFocusedElementStatic()) {
     return NS_OK;
   }
 
@@ -896,8 +856,8 @@ void TextEditor::MaskString(nsString& aString, const Text& aTextNode,
   MOZ_ASSERT(aStartOffsetInString == 0 || aStartOffsetInText == 0);
 
   uint32_t unmaskStart = UINT32_MAX, unmaskLength = 0;
-  TextEditor* textEditor =
-      nsContentUtils::GetTextEditorFromAnonymousNodeWithoutCreation(&aTextNode);
+  const TextEditor* const textEditor =
+      nsContentUtils::GetExtantTextEditorFromAnonymousNode(&aTextNode);
   if (textEditor && textEditor->UnmaskedLength() > 0) {
     unmaskStart = textEditor->UnmaskedStart();
     unmaskLength = textEditor->UnmaskedLength();
@@ -965,11 +925,10 @@ nsresult TextEditor::SetUnmaskRangeInternal(uint32_t aStart, uint32_t aLength,
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  Element* rootElement = GetRoot();
-  if (NS_WARN_IF(!rootElement)) {
+  if (NS_WARN_IF(!GetRoot())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
-  Text* text = Text::FromNodeOrNull(rootElement->GetFirstChild());
+  Text* const text = GetTextNode();
   if (!text || !text->Length()) {
     // There is no anonymous text node in the editor.
     return aStart > 0 && aStart != UINT32_MAX ? NS_ERROR_INVALID_ARG : NS_OK;
@@ -983,8 +942,8 @@ nsresult TextEditor::SetUnmaskRangeInternal(uint32_t aStart, uint32_t aLength,
     // If aStart is middle of a surrogate pair, expand it to include the
     // preceding high surrogate because the caller may want to show a
     // character before the character at `aStart + 1`.
-    const nsTextFragment* textFragment = text->GetText();
-    if (textFragment->IsLowSurrogateFollowingHighSurrogateAt(aStart)) {
+    const nsTextFragment& textFragment = text->TextFragment();
+    if (textFragment.IsLowSurrogateFollowingHighSurrogateAt(aStart)) {
       mPasswordMaskData->mUnmaskedStart = aStart - 1;
       // If caller collapses the range, keep it.  Otherwise, expand the length.
       if (aLength > 0) {
@@ -999,7 +958,7 @@ nsresult TextEditor::SetUnmaskRangeInternal(uint32_t aStart, uint32_t aLength,
     // the following low surrogate because the caller may want to show a
     // character after the character at `aStart + aLength`.
     if (UnmaskedEnd() < valueLength &&
-        textFragment->IsLowSurrogateFollowingHighSurrogateAt(UnmaskedEnd())) {
+        textFragment.IsLowSurrogateFollowingHighSurrogateAt(UnmaskedEnd())) {
       mPasswordMaskData->mUnmaskedLength++;
     }
     // If it's first time to mask the unmasking characters with timer, create

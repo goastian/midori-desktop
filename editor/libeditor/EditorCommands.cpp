@@ -468,7 +468,7 @@ nsresult PasteCommand::DoCommand(Command aCommand, EditorBase& aEditorBase,
                                  nsIPrincipal* aPrincipal) const {
   nsresult rv = aEditorBase.PasteAsAction(nsIClipboard::kGlobalClipboard,
                                           EditorBase::DispatchPasteEvent::Yes,
-                                          aPrincipal);
+                                          nullptr, aPrincipal);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                        "EditorBase::PasteAsAction(nsIClipboard::"
                        "kGlobalClipboard, DispatchPasteEvent::Yes) failed");
@@ -754,7 +754,7 @@ nsresult SelectionMoveCommands::DoCommand(Command aCommand,
   }
 
   // scroll commands
-  for (size_t i = 0; i < ArrayLength(scrollCommands); i++) {
+  for (size_t i = 0; i < std::size(scrollCommands); i++) {
     const ScrollCommand& cmd = scrollCommands[i];
     if (aCommand == cmd.mReverseScroll) {
       return (selectionController->*(cmd.scroll))(false);
@@ -765,7 +765,7 @@ nsresult SelectionMoveCommands::DoCommand(Command aCommand,
   }
 
   // caret movement/selection commands
-  for (size_t i = 0; i < ArrayLength(moveCommands); i++) {
+  for (size_t i = 0; i < std::size(moveCommands); i++) {
     const MoveCommand& cmd = moveCommands[i];
     if (aCommand == cmd.mReverseMove) {
       return (selectionController->*(cmd.move))(false, false);
@@ -782,7 +782,7 @@ nsresult SelectionMoveCommands::DoCommand(Command aCommand,
   }
 
   // physical-direction movement/selection
-  for (size_t i = 0; i < ArrayLength(physicalCommands); i++) {
+  for (size_t i = 0; i < std::size(physicalCommands); i++) {
     const PhysicalCommand& cmd = physicalCommands[i];
     if (aCommand == cmd.mMove) {
       nsresult rv =
@@ -963,7 +963,7 @@ nsresult PasteQuotationCommand::DoCommand(Command aCommand,
                                           nsIPrincipal* aPrincipal) const {
   nsresult rv = aEditorBase.PasteAsQuotationAsAction(
       nsIClipboard::kGlobalClipboard, EditorBase::DispatchPasteEvent::Yes,
-      aPrincipal);
+      nullptr, aPrincipal);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                        "EditorBase::PasteAsQuotationAsAction(nsIClipboard::"
                        "kGlobalClipboard, DispatchPasteEvent::Yes) failed");
