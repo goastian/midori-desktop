@@ -27,6 +27,16 @@ XPCOM_MANIFESTS += [
     "components.conf",
 ]
 
+XPIDL_MODULE = "permissions"
+
+XPIDL_SOURCES += [
+    "nsIRemotePermissionService.idl",
+]
+
+EXTRA_JS_MODULES += [
+    "RemotePermissionService.sys.mjs",
+]
+
 LOCAL_INCLUDES += [
     "/caps",
 ]
@@ -37,3 +47,5 @@ FINAL_LIBRARY = "xul"
 
 with Files("**"):
     BUG_COMPONENT = ("Core", "Permission Manager")
+
+SPHINX_TREES["/permissions"] = "docs"
