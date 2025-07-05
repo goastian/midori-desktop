@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2021, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -12,9 +12,10 @@
 #include "av1/encoder/txb_rdopt.h"
 #include "av1/encoder/txb_rdopt_utils.h"
 
+#include "aom_ports/mem.h"
 #include "av1/common/idct.h"
 
-static INLINE void update_coeff_general(
+static inline void update_coeff_general(
     int *accu_rate, int64_t *accu_dist, int si, int eob, TX_SIZE tx_size,
     TX_CLASS tx_class, int bhl, int width, int64_t rdmult, int shift,
     int dc_sign_ctx, const int16_t *dequant, const int16_t *scan,
@@ -77,7 +78,8 @@ static AOM_FORCE_INLINE void update_coeff_simple(
     int bhl, int64_t rdmult, int shift, const int16_t *dequant,
     const int16_t *scan, const LV_MAP_COEFF_COST *txb_costs,
     const tran_low_t *tcoeff, tran_low_t *qcoeff, tran_low_t *dqcoeff,
-    uint8_t *levels, const qm_val_t *iqmatrix, const qm_val_t *qmatrix) {
+    uint8_t *levels, int sharpness, const qm_val_t *iqmatrix,
+    const qm_val_t *qmatrix) {
   const int dqv = get_dqv(dequant, scan[si], iqmatrix);
   (void)eob;
   // this simple version assumes the coeff's scan_idx is not DC (scan_idx != 0)
@@ -111,7 +113,9 @@ static AOM_FORCE_INLINE void update_coeff_simple(
         get_coeff_dist(abs_tqc, abs_dqc_low, shift, qmatrix, ci);
     const int64_t rd_low = RDCOST(rdmult, rate_low, dist_low);
 
-    if (rd_low < rd) {
+    int allow_lower_qc = sharpness ? (abs_qc > 1) : 1;
+
+    if (rd_low < rd && allow_lower_qc) {
       const int sign = (qc < 0) ? 1 : 0;
       qcoeff[ci] = (-sign ^ abs_qc_low) + sign;
       dqcoeff[ci] = (-sign ^ abs_dqc_low) + sign;
@@ -201,7 +205,10 @@ static AOM_FORCE_INLINE void update_coeff_eob(
       }
     }
 
-    if (sharpness == 0 || abs_qc > 1) {
+    const int qc_threshold = (si <= 5) ? 2 : 1;
+    const int allow_lower_qc = sharpness ? abs_qc > qc_threshold : 1;
+
+    if (allow_lower_qc) {
       if (rd_low < rd) {
         lower_level = 1;
         rd = rd_low;
@@ -210,7 +217,7 @@ static AOM_FORCE_INLINE void update_coeff_eob(
       }
     }
 
-    if (sharpness == 0 && rd_new_eob < rd) {
+    if ((sharpness == 0 || new_eob >= 5) && rd_new_eob < rd) {
       for (int ni = 0; ni < *nz_num; ++ni) {
         int last_ci = nz_ci[ni];
         levels[get_padded_idx(last_ci, bhl)] = 0;
@@ -239,7 +246,7 @@ static AOM_FORCE_INLINE void update_coeff_eob(
   }
 }
 
-static INLINE void update_skip(int *accu_rate, int64_t accu_dist, int *eob,
+static inline void update_skip(int *accu_rate, int64_t accu_dist, int *eob,
                                int nz_num, int *nz_ci, int64_t rdmult,
                                int skip_cost, int non_skip_cost,
                                tran_low_t *qcoeff, tran_low_t *dqcoeff) {
@@ -335,13 +342,21 @@ int av1_optimize_txb(const struct AV1_COMP *cpi, MACROBLOCK *x, int plane,
   const LV_MAP_EOB_COST *txb_eob_costs =
       &coeff_costs->eob_costs[eob_multi_size][plane_type];
 
-  const int rshift = 2;
+  // For the IQ and SSIMULACRA 2 tunings, increase rshift from 2 to 4.
+  // This biases trellis quantization towards keeping more coefficients, and
+  // together with the IQ and SSIMULACRA2 rdmult adjustment in
+  // av1_compute_rd_mult_based_on_qindex(), this helps preserve image
+  // features (like repeating patterns and camera noise/film grain), which
+  // improves SSIMULACRA 2 scores.
+  const int rshift = (cpi->oxcf.tune_cfg.tuning == AOM_TUNE_IQ ||
+                      cpi->oxcf.tune_cfg.tuning == AOM_TUNE_SSIMULACRA2)
+                         ? 7
+                         : 5;
 
-  const int64_t rdmult =
-      (((int64_t)x->rdmult *
-        (plane_rd_mult[is_inter][plane_type] << (2 * (xd->bd - 8)))) +
-       2) >>
-      rshift;
+  const int64_t rdmult = ROUND_POWER_OF_TWO(
+      (int64_t)x->rdmult * (8 - sharpness) *
+          (plane_rd_mult[is_inter][plane_type] << (2 * (xd->bd - 8))),
+      rshift);
 
   uint8_t levels_buf[TX_PAD_2D];
   uint8_t *const levels = set_levels(levels_buf, height);
@@ -411,7 +426,8 @@ int av1_optimize_txb(const struct AV1_COMP *cpi, MACROBLOCK *x, int plane,
     for (; si >= 1; --si) {                                                    \
       update_coeff_simple(&accu_rate, si, eob, tx_size, tx_class_literal, bhl, \
                           rdmult, shift, dequant, scan, txb_costs, tcoeff,     \
-                          qcoeff, dqcoeff, levels, iqmatrix, qmatrix);         \
+                          qcoeff, dqcoeff, levels, sharpness, iqmatrix,        \
+                          qmatrix);                                            \
     }                                                                          \
     break
   switch (tx_class) {
@@ -543,9 +559,38 @@ static AOM_FORCE_INLINE int warehouse_efficients_txb(
   return cost;
 }
 
-int av1_cost_coeffs_txb_estimate(const MACROBLOCK *x, const int plane,
-                                 const int block, const TX_SIZE tx_size,
-                                 const TX_TYPE tx_type) {
+/*!\brief Estimate the entropy cost of transform coefficients using Laplacian
+ * distribution.
+ *
+ * \ingroup coefficient_coding
+ *
+ * This function assumes each transform coefficient is of its own Laplacian
+ * distribution and the coefficient is the only observation of the Laplacian
+ * distribution.
+ *
+ * Based on that, each coefficient's coding cost can be estimated by computing
+ * the entropy of the corresponding Laplacian distribution.
+ *
+ * This function then return the sum of the estimated entropy cost for all
+ * coefficients in the transform block.
+ *
+ * Note that the entropy cost of end of block (eob) and transform type (tx_type)
+ * are not included.
+ *
+ * \param[in]    x              Pointer to structure holding the data for the
+                                current encoding macroblock
+ * \param[in]    plane          The index of the current plane
+ * \param[in]    block          The index of the current transform block in the
+ * macroblock. It's defined by number of 4x4 units that have been coded before
+ * the currernt transform block
+ * \param[in]    tx_size        The transform size
+ * \param[in]    tx_type        The transform type
+ * \return       int            Estimated entropy cost of coefficients in the
+ * transform block.
+ */
+static int av1_cost_coeffs_txb_estimate(const MACROBLOCK *x, const int plane,
+                                        const int block, const TX_SIZE tx_size,
+                                        const TX_TYPE tx_type) {
   assert(plane == 0);
 
   int cost = 0;

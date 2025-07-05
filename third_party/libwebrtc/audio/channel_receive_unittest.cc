@@ -11,20 +11,19 @@
 #include "audio/channel_receive.h"
 
 #include "absl/strings/escaping.h"
+#include "api/audio/audio_device.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/crypto/frame_decryptor_interface.h"
-#include "api/task_queue/default_task_queue_factory.h"
+#include "api/environment/environment_factory.h"
 #include "api/test/mock_frame_transformer.h"
-#include "logging/rtc_event_log/mock/mock_rtc_event_log.h"
-#include "modules/audio_device/include/audio_device.h"
 #include "modules/audio_device/include/mock_audio_device.h"
 #include "modules/rtp_rtcp/source/byte_io.h"
+#include "modules/rtp_rtcp/source/ntp_time_util.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/receiver_report.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/report_block.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/sdes.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/sender_report.h"
 #include "modules/rtp_rtcp/source/rtp_packet_received.h"
-#include "modules/rtp_rtcp/source/time_util.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/thread.h"
 #include "test/gmock.h"
@@ -61,14 +60,14 @@ class ChannelReceiveTest : public Test {
   std::unique_ptr<ChannelReceiveInterface> CreateTestChannelReceive() {
     CryptoOptions crypto_options;
     auto channel = CreateChannelReceive(
-        time_controller_.GetClock(),
+        CreateEnvironment(time_controller_.GetClock()),
         /* neteq_factory= */ nullptr, audio_device_module_.get(), &transport_,
-        &event_log_, kLocalSsrc, kRemoteSsrc,
+        kLocalSsrc, kRemoteSsrc,
         /* jitter_buffer_max_packets= */ 0,
         /* jitter_buffer_fast_playout= */ false,
         /* jitter_buffer_min_delay_ms= */ 0,
         /* enable_non_sender_rtt= */ false, audio_decoder_factory_,
-        /* codec_pair_id= */ absl::nullopt,
+        /* codec_pair_id= */ std::nullopt,
         /* frame_decryptor_interface= */ nullptr, crypto_options,
         /* frame_transformer= */ nullptr);
     channel->SetReceiveCodecs(
@@ -129,7 +128,7 @@ class ChannelReceiveTest : public Test {
     return packet;
   }
 
-  void HandleGeneratedRtcp(ChannelReceiveInterface& channel,
+  void HandleGeneratedRtcp(ChannelReceiveInterface& /* channel */,
                            rtc::ArrayView<const uint8_t> packet) {
     if (packet[1] == rtcp::ReceiverReport::kPacketType) {
       // Ignore RR, it requires no response
@@ -152,7 +151,7 @@ class ChannelReceiveTest : public Test {
     channel.OnRtpPacket(CreateRtpPacket());
     channel.GetAudioFrameWithInfo(kSampleRateHz, &audio_frame);
     CallReceiveStatistics stats = channel.GetRTCPStatistics();
-    return stats.capture_start_ntp_time_ms_;
+    return stats.capture_start_ntp_time_ms;
   }
 
  protected:
@@ -160,7 +159,6 @@ class ChannelReceiveTest : public Test {
   rtc::scoped_refptr<test::MockAudioDeviceModule> audio_device_module_;
   rtc::scoped_refptr<AudioDecoderFactory> audio_decoder_factory_;
   MockTransport transport_;
-  NiceMock<MockRtcEventLog> event_log_;
 };
 
 TEST_F(ChannelReceiveTest, CreateAndDestroy) {

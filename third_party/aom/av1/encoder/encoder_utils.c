@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2020, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -518,8 +518,6 @@ static void process_tpl_stats_frame(AV1_COMP *cpi) {
           const int gfu_boost = get_gfu_boost_from_r0_lap(
               min_boost_factor, MAX_GFUBOOST_FACTOR, cpi->rd.r0,
               cpi->ppi->p_rc.num_stats_required_for_gfu_boost);
-          // printf("old boost %d new boost %d\n", cpi->rc.gfu_boost,
-          //        gfu_boost);
           cpi->ppi->p_rc.gfu_boost = combine_prior_with_tpl_boost(
               min_boost_factor, MAX_BOOST_COMBINE_FACTOR,
               cpi->ppi->p_rc.gfu_boost, gfu_boost,
@@ -560,6 +558,11 @@ void av1_set_size_dependent_vars(AV1_COMP *cpi, int *q, int *bottom_index,
   // Decide q and q bounds.
   *q = av1_rc_pick_q_and_bounds(cpi, cm->width, cm->height, cpi->gf_frame_index,
                                 bottom_index, top_index);
+
+  if (cpi->oxcf.rc_cfg.mode == AOM_CBR && cpi->rc.force_max_q) {
+    *q = cpi->rc.worst_quality;
+    cpi->rc.force_max_q = 0;
+  }
 
 #if !CONFIG_REALTIME_ONLY
   if (cpi->oxcf.rc_cfg.mode == AOM_Q &&
@@ -611,6 +614,7 @@ void av1_set_size_dependent_vars(AV1_COMP *cpi, int *q, int *bottom_index,
     configure_static_seg_features(cpi);
 }
 
+#if !CONFIG_REALTIME_ONLY
 static void reset_film_grain_chroma_params(aom_film_grain_t *pars) {
   pars->num_cr_points = 0;
   pars->cr_mult = 0;
@@ -681,6 +685,7 @@ void av1_update_film_grain_parameters(struct AV1_COMP *cpi,
     memset(&cm->film_grain_params, 0, sizeof(cm->film_grain_params));
   }
 }
+#endif  // !CONFIG_REALTIME_ONLY
 
 void av1_scale_references(AV1_COMP *cpi, const InterpFilter filter,
                           const int phase, const int use_optimized_scaler) {
@@ -821,18 +826,24 @@ BLOCK_SIZE av1_select_sb_size(const AV1EncoderConfig *const oxcf, int width,
   if (oxcf->q_cfg.deltaq_mode == DELTA_Q_USER_RATING_BASED) return BLOCK_64X64;
 #endif
   // Force 64x64 superblock size to increase resolution in perceptual
-  // AQ mode.
+  // AQ and user rating based modes.
   if (oxcf->mode == ALLINTRA &&
       (oxcf->q_cfg.deltaq_mode == DELTA_Q_PERCEPTUAL_AI ||
        oxcf->q_cfg.deltaq_mode == DELTA_Q_USER_RATING_BASED)) {
     return BLOCK_64X64;
   }
+  // Variance Boost only supports 64x64 superblocks.
+  if (oxcf->q_cfg.deltaq_mode == DELTA_Q_VARIANCE_BOOST) {
+    return BLOCK_64X64;
+  }
   assert(oxcf->tool_cfg.superblock_size == AOM_SUPERBLOCK_SIZE_DYNAMIC);
 
-  if (number_spatial_layers > 1 ||
-      oxcf->resize_cfg.resize_mode != RESIZE_NONE) {
-    // Use the configured size (top resolution) for spatial layers or
-    // on resize.
+  if (number_spatial_layers > 1) {
+    // For spatial layers better selection may be done given the resolutions
+    // used across the layers, but for now use 64x64 for spatial layers.
+    return BLOCK_64X64;
+  } else if (oxcf->resize_cfg.resize_mode != RESIZE_NONE) {
+    // Use the configured size (top resolution) for resize.
     return AOMMIN(oxcf->frm_dim_cfg.width, oxcf->frm_dim_cfg.height) > 720
                ? BLOCK_128X128
                : BLOCK_64X64;
@@ -844,8 +855,8 @@ BLOCK_SIZE av1_select_sb_size(const AV1EncoderConfig *const oxcf, int width,
       // For multi-thread encode: if the number of (128x128) superblocks
       // per tile is low use 64X64 superblock.
       if (oxcf->row_mt == 1 && oxcf->max_threads >= 4 &&
-          oxcf->max_threads >= num_tiles && AOMMIN(width, height) > 720 &&
-          (width * height) / (128 * 128 * num_tiles) <= 38)
+          oxcf->max_threads >= num_tiles && AOMMIN(width, height) >= 720 &&
+          (width * height) / (128 * 128 * num_tiles) < 40)
         return BLOCK_64X64;
       else
         return AOMMIN(width, height) >= 720 ? BLOCK_128X128 : BLOCK_64X64;
@@ -1120,10 +1131,12 @@ void av1_determine_sc_tools_with_encoding(AV1_COMP *cpi, const int q_orig) {
     set_encoding_params_for_screen_content(cpi, pass);
     av1_set_quantizer(cm, q_cfg->qm_minlevel, q_cfg->qm_maxlevel,
                       q_for_screen_content_quick_run,
-                      q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq);
+                      q_cfg->enable_chroma_deltaq, q_cfg->enable_hdr_deltaq,
+                      oxcf->mode == ALLINTRA, oxcf->tune_cfg.tuning);
     av1_set_speed_features_qindex_dependent(cpi, oxcf->speed);
+
     av1_init_quantizer(&cpi->enc_quant_dequant_params, &cm->quant_params,
-                       cm->seq_params->bit_depth);
+                       cm->seq_params->bit_depth, oxcf->algo_cfg.sharpness);
 
     av1_set_variance_partition_thresholds(cpi, q_for_screen_content_quick_run,
                                           0);

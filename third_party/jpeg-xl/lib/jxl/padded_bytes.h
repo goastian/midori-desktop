@@ -17,7 +17,6 @@
 #include <initializer_list>
 #include <utility>  // swap
 
-#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/memory_manager_internal.h"
 
@@ -33,32 +32,16 @@ class PaddedBytes {
   explicit PaddedBytes(JxlMemoryManager* memory_manager)
       : memory_manager_(memory_manager), size_(0), capacity_(0) {}
 
-  PaddedBytes(JxlMemoryManager* memory_manager, size_t size)
-      : memory_manager_(memory_manager), size_(size), capacity_(0) {
-    reserve(size);
+  static StatusOr<PaddedBytes> WithInitialSpace(
+      JxlMemoryManager* memory_manager, size_t size) {
+    PaddedBytes result(memory_manager);
+    JXL_RETURN_IF_ERROR(result.Init(size));
+    return result;
   }
 
-  PaddedBytes(JxlMemoryManager* memory_manager, size_t size, uint8_t value)
-      : memory_manager_(memory_manager), size_(size), capacity_(0) {
-    reserve(size);
-    if (size_ != 0) {
-      memset(data(), value, size);
-    }
-  }
-
-  PaddedBytes(const PaddedBytes& other)
-      : memory_manager_(other.memory_manager_),
-        size_(other.size_),
-        capacity_(0) {
-    reserve(size_);
-    if (data() != nullptr) memcpy(data(), other.data(), size_);
-  }
-  PaddedBytes& operator=(const PaddedBytes& other) {
-    if (this == &other) return *this;
-    resize(other.size());
-    if (data() != nullptr) memmove(data(), other.data(), size_);
-    return *this;
-  }
+  // Deleting copy constructor and copy assignment operator to prevent copying
+  PaddedBytes(const PaddedBytes&) = delete;
+  PaddedBytes& operator=(const PaddedBytes&) = delete;
 
   // default is not OK - need to set other.size_ to 0!
   PaddedBytes(PaddedBytes&& other) noexcept
@@ -90,25 +73,19 @@ class PaddedBytes {
   }
 
   // If current capacity is greater than requested, then no-op. Otherwise
-  // copies existing data to newly allocated "data_". If allocation fails,
-  // data() == nullptr and size_ = capacity_ = 0.
+  // copies existing data to newly allocated "data_".
   // The new capacity will be at least 1.5 times the old capacity. This ensures
   // that we avoid quadratic behaviour.
-  void reserve(size_t capacity) {
-    if (capacity <= capacity_) return;
+  Status reserve(size_t capacity) {
+    if (capacity <= capacity_) return true;
 
     size_t new_capacity = std::max(capacity, 3 * capacity_ / 2);
     new_capacity = std::max<size_t>(64, new_capacity);
 
     // BitWriter writes up to 7 bytes past the end.
-    StatusOr<AlignedMemory> new_data_or =
-        AlignedMemory::Create(memory_manager_, new_capacity + 8);
-    if (!new_data_or.ok()) {
-      // Allocation failed, discard all data to ensure this is noticed.
-      size_ = capacity_ = 0;
-      return;
-    }
-    AlignedMemory new_data = std::move(new_data_or).value();
+    JXL_ASSIGN_OR_RETURN(
+        AlignedMemory new_data,
+        AlignedMemory::Create(memory_manager_, new_capacity + 8));
 
     if (data_.address<void>() == nullptr) {
       // First allocation: ensure first byte is initialized (won't be copied).
@@ -123,34 +100,37 @@ class PaddedBytes {
 
     capacity_ = new_capacity;
     data_ = std::move(new_data);
+    return true;
   }
 
   // NOTE: unlike vector, this does not initialize the new data!
   // However, we guarantee that write_bits can safely append after
   // the resize, as we zero-initialize the first new byte of data.
   // If size < capacity(), does not invalidate the memory.
-  void resize(size_t size) {
-    reserve(size);
-    size_ = (data() == nullptr) ? 0 : size;
+  Status resize(size_t size) {
+    JXL_RETURN_IF_ERROR(reserve(size));
+    size_ = size;
+    return true;
   }
 
   // resize(size) plus explicit initialization of the new data with `value`.
-  void resize(size_t size, uint8_t value) {
+  Status resize(size_t size, uint8_t value) {
     size_t old_size = size_;
-    resize(size);
+    JXL_RETURN_IF_ERROR(resize(size));
     if (size_ > old_size) {
       memset(data() + old_size, value, size_ - old_size);
     }
+    return true;
   }
 
   // Amortized constant complexity due to exponential growth.
-  void push_back(uint8_t x) {
+  Status push_back(uint8_t x) {
     if (size_ == capacity_) {
-      reserve(capacity_ + 1);
-      if (data() == nullptr) return;
+      JXL_RETURN_IF_ERROR(reserve(capacity_ + 1));
     }
 
     data_.address<uint8_t>()[size_++] = x;
+    return true;
   }
 
   size_t size() const { return size_; }
@@ -161,12 +141,16 @@ class PaddedBytes {
 
   // std::vector operations implemented in terms of the public interface above.
 
-  void clear() { resize(0); }
+  void clear() {
+    // Not passing on the Status, because resizing to 0 cannot fail.
+    static_cast<void>(resize(0));
+  }
   bool empty() const { return size() == 0; }
 
-  void assign(std::initializer_list<uint8_t> il) {
-    resize(il.size());
+  Status assign(std::initializer_list<uint8_t> il) {
+    JXL_RETURN_IF_ERROR(resize(il.size()));
     memcpy(data(), il.begin(), il.size());
+    return true;
   }
 
   uint8_t* begin() { return data(); }
@@ -183,33 +167,31 @@ class PaddedBytes {
     return data()[i];
   }
 
-  uint8_t& back() {
-    JXL_ASSERT(size() != 0);
-    return data()[size() - 1];
-  }
-  const uint8_t& back() const {
-    JXL_ASSERT(size() != 0);
-    return data()[size() - 1];
-  }
-
   template <typename T>
-  void append(const T& other) {
-    append(reinterpret_cast<const uint8_t*>(other.data()),
-           reinterpret_cast<const uint8_t*>(other.data()) + other.size());
+  Status append(const T& other) {
+    return append(
+        reinterpret_cast<const uint8_t*>(other.data()),
+        reinterpret_cast<const uint8_t*>(other.data()) + other.size());
   }
 
-  void append(const uint8_t* begin, const uint8_t* end) {
+  Status append(const uint8_t* begin, const uint8_t* end) {
     if (end - begin > 0) {
       size_t old_size = size();
-      resize(size() + (end - begin));
+      JXL_RETURN_IF_ERROR(resize(size() + (end - begin)));
       memcpy(data() + old_size, begin, end - begin);
     }
+    return true;
   }
 
  private:
+  Status Init(size_t size) {
+    size_ = size;
+    return reserve(size);
+  }
+
   void BoundsCheck(size_t i) const {
     // <= is safe due to padding and required by BitWriter.
-    JXL_ASSERT(i <= size());
+    JXL_DASSERT(i <= size());
   }
 
   JxlMemoryManager* memory_manager_;
@@ -217,14 +199,6 @@ class PaddedBytes {
   size_t capacity_;
   AlignedMemory data_;
 };
-
-template <typename T>
-static inline void Append(const T& s, PaddedBytes* out,
-                          size_t* JXL_RESTRICT byte_pos) {
-  memcpy(out->data() + *byte_pos, s.data(), s.size());
-  *byte_pos += s.size();
-  JXL_CHECK(*byte_pos <= out->size());
-}
 
 }  // namespace jxl
 

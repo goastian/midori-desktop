@@ -8,8 +8,8 @@
 
 import("../../../webrtc.gni")
 if (is_android) {
-  import("//build/config/android/config.gni")
-  import("//build/config/android/rules.gni")
+  import("//chromium/build/config/android/config.gni")
+  import("//chromium/build/config/android/rules.gni")
 }
 
 if (rtc_include_tests) {
@@ -17,6 +17,7 @@ if (rtc_include_tests) {
     testonly = true
     sources = [
       "audio_frame_unittest.cc",
+      "audio_view_unittest.cc",
       "echo_canceller3_config_unittest.cc",
     ]
     deps = [

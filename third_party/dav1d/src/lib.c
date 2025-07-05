@@ -31,7 +31,7 @@
 #include <errno.h>
 #include <string.h>
 
-#if defined(__linux__) && defined(HAVE_DLSYM)
+#if defined(__linux__) && HAVE_DLSYM
 #include <dlfcn.h>
 #endif
 
@@ -90,7 +90,7 @@ static void close_internal(Dav1dContext **const c_out, int flush);
 
 NO_SANITIZE("cfi-icall") // CFI is broken with dlsym()
 static COLD size_t get_stack_size_internal(const pthread_attr_t *const thread_attr) {
-#if defined(__linux__) && defined(HAVE_DLSYM) && defined(__GLIBC__)
+#if defined(__linux__) && HAVE_DLSYM && defined(__GLIBC__)
     /* glibc has an issue where the size of the TLS is subtracted from the stack
      * size instead of allocated separately. As a result the specified stack
      * size may be insufficient when used in an application with large amounts
@@ -263,7 +263,6 @@ COLD int dav1d_open(Dav1dContext **const c_out, const Dav1dSettings *const s) {
         f->c = c;
         f->task_thread.ttd = &c->task_thread;
         f->lf.last_sharpness = -1;
-        dav1d_refmvs_init(&f->rf);
     }
 
     for (unsigned m = 0; m < c->n_tc; m++) {
@@ -556,9 +555,9 @@ void dav1d_flush(Dav1dContext *const c) {
     if (c->n_fc == 1 && c->n_tc == 1) return;
     atomic_store(c->flush, 1);
 
-    // stop running tasks in worker threads
     if (c->n_tc > 1) {
         pthread_mutex_lock(&c->task_thread.lock);
+        // stop running tasks in worker threads
         for (unsigned i = 0; i < c->n_tc; i++) {
             Dav1dTaskContext *const tc = &c->tc[i];
             while (!tc->task_thread.flushed) {
@@ -580,7 +579,6 @@ void dav1d_flush(Dav1dContext *const c) {
         pthread_mutex_unlock(&c->task_thread.lock);
     }
 
-    // wait for threads to complete flushing
     if (c->n_fc > 1) {
         for (unsigned n = 0, next = c->frame_thread.next; n < c->n_fc; n++, next++) {
             if (next == c->n_fc) next = 0;
@@ -588,6 +586,7 @@ void dav1d_flush(Dav1dContext *const c) {
             dav1d_decode_frame_exit(f, -1);
             f->n_tile_data = 0;
             f->task_thread.retval = 0;
+            f->task_thread.error = 0;
             Dav1dThreadPicture *out_delayed = &c->frame_thread.out_delayed[next];
             if (out_delayed->p.frame_hdr) {
                 dav1d_thread_picture_unref(out_delayed);
@@ -664,7 +663,7 @@ static COLD void close_internal(Dav1dContext **const c_out, int flush) {
         dav1d_free(f->lf.lr_mask);
         dav1d_free(f->lf.tx_lpf_right_edge[0]);
         dav1d_free(f->lf.start_of_tile_row);
-        dav1d_refmvs_clear(&f->rf);
+        dav1d_free_aligned(f->rf.r);
         dav1d_free_aligned(f->lf.cdef_line_buf);
         dav1d_free_aligned(f->lf.lr_line_buf);
     }

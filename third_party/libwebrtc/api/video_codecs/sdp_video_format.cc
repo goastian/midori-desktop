@@ -10,11 +10,17 @@
 
 #include "api/video_codecs/sdp_video_format.h"
 
+#include <optional>
+#include <string>
+
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/rtp_parameters.h"
+#include "api/video/video_codec_type.h"
 #include "api/video_codecs/av1_profile.h"
 #include "api/video_codecs/h264_profile_level_id.h"
+#include "api/video_codecs/scalability_mode.h"
 #ifdef RTC_ENABLE_H265
 #include "api/video_codecs/h265_profile_tier_level.h"
 #endif
@@ -113,7 +119,8 @@ bool IsSameCodecSpecific(const std::string& name1,
              AV1IsSameLevelIdx(params1, params2);
 #ifdef RTC_ENABLE_H265
     case kVideoCodecH265:
-      return H265IsSameProfileTierLevel(params1, params2) &&
+      return H265IsSameProfile(params1, params2) &&
+             H265IsSameTier(params1, params2) &&
              IsSameH265TxMode(params1, params2);
 #endif
     default:
@@ -153,7 +160,7 @@ SdpVideoFormat& SdpVideoFormat::operator=(SdpVideoFormat&&) = default;
 SdpVideoFormat::~SdpVideoFormat() = default;
 
 std::string SdpVideoFormat::ToString() const {
-  rtc::StringBuilder builder;
+  StringBuilder builder;
   builder << "Codec name: " << name << ", parameters: {";
   for (const auto& kv : parameters) {
     builder << " " << kv.first << "=" << kv.second;
@@ -174,7 +181,7 @@ std::string SdpVideoFormat::ToString() const {
     builder << "]";
   }
 
-  return builder.str();
+  return builder.Release();
 }
 
 bool SdpVideoFormat::IsSameCodec(const SdpVideoFormat& other) const {
@@ -209,6 +216,10 @@ const SdpVideoFormat SdpVideoFormat::H264() {
   // * level-asymmetry-allowed (which defaults to 0 but 1 is more common)
   // * profile-level-id of which there are many.
   return SdpVideoFormat(cricket::kH264CodecName, {});
+}
+
+const SdpVideoFormat SdpVideoFormat::H265() {
+  return SdpVideoFormat(cricket::kH265CodecName, {});
 }
 
 const SdpVideoFormat SdpVideoFormat::VP9Profile0() {
@@ -253,10 +264,10 @@ const SdpVideoFormat SdpVideoFormat::AV1Profile1() {
                          {cricket::kAv1FmtpTier, "0"}});
 }
 
-absl::optional<SdpVideoFormat> FuzzyMatchSdpVideoFormat(
+std::optional<SdpVideoFormat> FuzzyMatchSdpVideoFormat(
     rtc::ArrayView<const SdpVideoFormat> supported_formats,
     const SdpVideoFormat& format) {
-  absl::optional<SdpVideoFormat> res;
+  std::optional<SdpVideoFormat> res;
   int best_parameter_match = 0;
   for (const auto& supported_format : supported_formats) {
     if (absl::EqualsIgnoreCase(supported_format.name, format.name)) {

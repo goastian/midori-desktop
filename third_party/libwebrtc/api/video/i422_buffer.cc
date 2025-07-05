@@ -12,13 +12,21 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 
 #include "api/make_ref_counted.h"
+#include "api/scoped_refptr.h"
 #include "api/video/i420_buffer.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_rotation.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/memory/aligned_malloc.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "third_party/libyuv/include/libyuv/convert.h"
+#include "third_party/libyuv/include/libyuv/convert_from.h"
 #include "third_party/libyuv/include/libyuv/planar_functions.h"
+#include "third_party/libyuv/include/libyuv/rotate.h"
 #include "third_party/libyuv/include/libyuv/scale.h"
 
 // Aligning pointer to 64 bytes for improved performance, e.g. use SIMD.
@@ -28,8 +36,14 @@ namespace webrtc {
 
 namespace {
 
-int I422DataSize(int height, int stride_y, int stride_u, int stride_v) {
-  return stride_y * height + stride_u * height + stride_v * height;
+int I422DataSize(int width,
+                 int height,
+                 int stride_y,
+                 int stride_u,
+                 int stride_v) {
+  CheckValidDimensions(width, height, stride_y, stride_u, stride_v);
+  int64_t h = height, y = stride_y, u = stride_u, v = stride_v;
+  return checked_cast<int>(y * h + u * h + v * h);
 }
 }  // namespace
 
@@ -46,12 +60,9 @@ I422Buffer::I422Buffer(int width,
       stride_y_(stride_y),
       stride_u_(stride_u),
       stride_v_(stride_v),
-      data_(static_cast<uint8_t*>(
-          AlignedMalloc(I422DataSize(height, stride_y, stride_u, stride_v),
-                        kBufferAlignment))) {
-  RTC_DCHECK_GT(width, 0);
-  RTC_DCHECK_GT(height, 0);
-  RTC_DCHECK_GE(stride_y, width);
+      data_(static_cast<uint8_t*>(AlignedMalloc(
+          I422DataSize(width, height, stride_y, stride_u, stride_v),
+          kBufferAlignment))) {
   RTC_DCHECK_GE(stride_u, (width + 1) / 2);
   RTC_DCHECK_GE(stride_v, (width + 1) / 2);
 }
@@ -162,7 +173,7 @@ rtc::scoped_refptr<I420BufferInterface> I422Buffer::ToI420() {
 
 void I422Buffer::InitializeData() {
   memset(data_.get(), 0,
-         I422DataSize(height_, stride_y_, stride_u_, stride_v_));
+         I422DataSize(width_, height_, stride_y_, stride_u_, stride_v_));
 }
 
 int I422Buffer::width() const {

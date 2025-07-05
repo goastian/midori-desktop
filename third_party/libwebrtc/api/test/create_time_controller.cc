@@ -18,20 +18,17 @@
 #include "api/environment/environment.h"
 #include "api/environment/environment_factory.h"
 #include "api/peer_connection_interface.h"
+#include "api/test/time_controller.h"
+#include "api/units/timestamp.h"
 #include "call/call.h"
 #include "call/call_config.h"
+#include "media/base/media_engine.h"
 #include "pc/media_factory.h"
 #include "rtc_base/checks.h"
 #include "system_wrappers/include/clock.h"
-#include "test/time_controller/external_time_controller.h"
 #include "test/time_controller/simulated_time_controller.h"
 
 namespace webrtc {
-
-std::unique_ptr<TimeController> CreateTimeController(
-    ControlledAlarmClock* alarm) {
-  return std::make_unique<ExternalTimeController>(alarm);
-}
 
 std::unique_ptr<TimeController> CreateSimulatedTimeController() {
   return std::make_unique<GlobalSimulatedTimeController>(
@@ -48,13 +45,12 @@ void EnableMediaWithDefaultsAndTimeController(
         absl::Nonnull<std::unique_ptr<MediaFactory>> media_factory)
         : clock_(clock), media_factory_(std::move(media_factory)) {}
 
-    std::unique_ptr<Call> CreateCall(const CallConfig& config) override {
+    std::unique_ptr<Call> CreateCall(CallConfig config) override {
       EnvironmentFactory env_factory(config.env);
       env_factory.Set(clock_);
 
-      CallConfig config_with_custom_clock = config;
-      config_with_custom_clock.env = env_factory.Create();
-      return media_factory_->CreateCall(config_with_custom_clock);
+      config.env = env_factory.Create();
+      return media_factory_->CreateCall(std::move(config));
     }
 
     std::unique_ptr<cricket::MediaEngineInterface> CreateMediaEngine(

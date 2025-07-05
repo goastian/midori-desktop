@@ -18,13 +18,11 @@
 
 namespace webrtc {
 
-AudioEgress::AudioEgress(RtpRtcpInterface* rtp_rtcp,
-                         Clock* clock,
-                         TaskQueueFactory* task_queue_factory)
+AudioEgress::AudioEgress(const Environment& env, RtpRtcpInterface* rtp_rtcp)
     : rtp_rtcp_(rtp_rtcp),
-      rtp_sender_audio_(clock, rtp_rtcp_->RtpSender()),
+      rtp_sender_audio_(&env.clock(), rtp_rtcp_->RtpSender()),
       audio_coding_(AudioCodingModule::Create()),
-      encoder_queue_(task_queue_factory->CreateTaskQueue(
+      encoder_queue_(env.task_queue_factory().CreateTaskQueue(
           "AudioEncoder",
           TaskQueueFactory::Priority::NORMAL)),
       encoder_queue_checker_(encoder_queue_.get()) {
@@ -109,7 +107,7 @@ void AudioEgress::SendAudioData(std::unique_ptr<AudioFrame> audio_frame) {
         }
 
         encoder_context_.frame_rtp_timestamp_ +=
-            rtc::dchecked_cast<uint32_t>(audio_frame->samples_per_channel_);
+            dchecked_cast<uint32_t>(audio_frame->samples_per_channel_);
       });
 }
 

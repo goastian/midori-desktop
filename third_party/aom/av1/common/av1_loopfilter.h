@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -45,6 +45,10 @@ struct loopfilter {
   int filter_level[2];
   int filter_level_u;
   int filter_level_v;
+
+  int backup_filter_level[2];
+  int backup_filter_level_u;
+  int backup_filter_level_v;
 
   int sharpness_level;
 
@@ -138,10 +142,6 @@ void av1_filter_block_plane_horz_opt_chroma(
     const uint32_t mi_col, AV1_DEBLOCKING_PARAMETERS *params_buf,
     TX_SIZE *tx_buf, int plane, bool joint_filter_chroma,
     int num_mis_in_lpf_unit_height_log2);
-
-uint8_t av1_get_filter_level(const struct AV1Common *cm,
-                             const loop_filter_info_n *lfi_n, const int dir_idx,
-                             int plane, const MB_MODE_INFO *mbmi);
 
 #ifdef __cplusplus
 }  // extern "C"

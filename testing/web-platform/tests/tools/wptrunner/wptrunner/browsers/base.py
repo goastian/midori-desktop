@@ -3,6 +3,8 @@ import errno
 import os
 import platform
 import socket
+import time
+import traceback
 from abc import ABCMeta, abstractmethod
 from typing import cast, Any, List, Mapping, Optional, Tuple, Type
 
@@ -10,6 +12,7 @@ import mozprocess
 from mozdebug import DebuggerInfo
 from mozlog.structuredlog import StructuredLogger
 
+from ..environment import wait_for_service
 from ..testloader import GroupMetadata
 from ..wptcommandline import require_arg  # noqa: F401
 from ..wpttest import Test
@@ -100,12 +103,20 @@ class Browser:
 
     init_timeout: float = 30
 
-    def __init__(self, logger: StructuredLogger):
+    def __init__(self, logger: StructuredLogger, *, manager_number: int, **kwargs: Any):
+        if kwargs:
+            logger.warning(f"Browser.__init__ kwargs: {kwargs!r}")
+        super().__init__()
         self.logger = logger
+        self.manager_number = manager_number
 
     def setup(self) -> None:
         """Used for browser-specific setup that happens at the start of a test run"""
         pass
+
+    def restart_on_test_type_change(self, new_test_type: str, old_test_type: str) -> bool:
+        """Determines if a restart is needed when there is a test type switch."""
+        return True
 
     def settings(self, test: Test) -> BrowserSettings:
         """Dictionary of metadata that is constant for a specific launch of a browser.
@@ -160,9 +171,6 @@ class Browser:
 
 
 class NullBrowser(Browser):
-    def __init__(self, logger: StructuredLogger, **kwargs: Any):
-        super().__init__(logger)
-
     def start(self, group_metadata: GroupMetadata, **kwargs: Any) -> None:
         """No-op browser to use in scenarios where the TestRunnerManager shouldn't
         actually own the browser process (e.g. Servo where we start one browser
@@ -298,7 +306,7 @@ class WebDriverBrowser(Browser):
                  env: Optional[Mapping[str, str]] = None,
                  supports_pac: bool = True,
                  **kwargs: Any):
-        super().__init__(logger)
+        super().__init__(logger, **kwargs)
 
         if webdriver_binary is None:
             raise ValueError("WebDriver server binary must be given "
@@ -316,6 +324,7 @@ class WebDriverBrowser(Browser):
         self.env = os.environ.copy() if env is None else env
         self.webdriver_args = webdriver_args if webdriver_args is not None else []
 
+        self.init_deadline: Optional[float] = None
         self._output_handler: Optional[OutputHandler] = None
         self._cmd = None
         self._proc: Optional[mozprocess.ProcessHandler] = None
@@ -326,6 +335,7 @@ class WebDriverBrowser(Browser):
         return [self.webdriver_binary] + self.webdriver_args
 
     def start(self, group_metadata: GroupMetadata, **kwargs: Any) -> None:
+        self.init_deadline = time.time() + self.init_timeout
         try:
             self._run_server(group_metadata, **kwargs)
         except KeyboardInterrupt:
@@ -340,6 +350,7 @@ class WebDriverBrowser(Browser):
         return OutputHandler(self.logger, cmd)
 
     def _run_server(self, group_metadata: GroupMetadata, **kwargs: Any) -> None:
+        assert self.init_deadline is not None
         cmd = self.make_command()
         self._output_handler = self.create_output_handler(cmd)
 
@@ -349,7 +360,7 @@ class WebDriverBrowser(Browser):
             env=self.env,
             storeOutput=False)
 
-        self.logger.debug("Starting WebDriver: %s" % ' '.join(cmd))
+        self.logger.info("Starting WebDriver: %s" % ' '.join(cmd))
         try:
             self._proc.run()
         except OSError as e:
@@ -359,8 +370,21 @@ class WebDriverBrowser(Browser):
             raise
         self._output_handler.after_process_start(self._proc.pid)
 
-        self._output_handler.start(group_metadata=group_metadata, **kwargs)
-        self.logger.debug("_run complete")
+        try:
+            wait_for_service(
+                self.logger,
+                self.host,
+                self.port,
+                timeout=self.init_deadline - time.time(),
+                server_process=self._proc,
+            )
+        except Exception:
+            self.logger.error(f"WebDriver was not accessible within {self.init_timeout} seconds.")
+            self.logger.error(traceback.format_exc())
+            raise
+        finally:
+            self._output_handler.start(group_metadata=group_metadata, **kwargs)
+        self.logger.info("Webdriver started successfully.")
 
     def stop(self, force: bool = False) -> bool:
         self.logger.debug("Stopping WebDriver")

@@ -30,7 +30,8 @@ README.md                {#LREADME}
         - [Running tests directly](#running-test_libaom-directly)
         - [Running tests via CMake](#running-the-tests-via-the-cmake-build)
 3. [Coding style](#coding-style)
-4. [Submitting patches](#submitting-patches)
+4. [License header](#license-header)
+5. [Submitting patches](#submitting-patches)
     - [Login cookie](#login-cookie)
     - [Contributor agreement](#contributor-agreement)
     - [Testing your code](#testing-your-code)
@@ -39,8 +40,8 @@ README.md                {#LREADME}
     - [Incorporating Reviewer Comments](#incorporating-reviewer-comments)
     - [Submitting your change](#submitting-your-change)
     - [Viewing change status](#viewing-the-status-of-uploaded-changes)
-5. [Support](#support)
-6. [Bug reports](#bug-reports)
+6. [Support](#support)
+7. [Bug reports](#bug-reports)
 
 ## Building the library and applications {#building-the-library-and-applications}
 
@@ -59,7 +60,9 @@ README.md                {#LREADME}
    present, yasm will be used by default. Pass -DENABLE_NASM=ON to cmake to
    select nasm.) If you download yasm with the intention to work with Visual
    Studio, please download win32.exe or win64.exe and rename it into yasm.exe.
-   DO NOT download or use vsyasm.exe.
+   DO NOT download or use vsyasm.exe. The MSYS2 version of the yasm binary can
+   also be used and avoids an issue caused by a missing Visual C++
+   Redistributable install (Visual Studio 2010, MSVCR100.dll).
 6. Building the documentation requires
    [doxygen version 1.8.10 or newer](http://doxygen.org).
 7. Emscripten builds require the portable
@@ -567,6 +570,25 @@ Some Git installations have clang-format integration. Here are some examples:
     $ git clang-format -f -p
 ~~~
 
+## License header {#license-header}
+
+Use the following comment block in new C/C++ source files, replacing "${year}"
+with the current year. The same comment should be added to other file types,
+adjusting the comment syntax as necessary.
+
+```
+/*
+ * Copyright (c) ${year}, Alliance for Open Media. All rights reserved.
+ *
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
+ */
+```
+
 ## Submitting patches {#submitting-patches}
 
 We manage the submission of patches using the
@@ -680,4 +702,5 @@ please email aomediacodec@jointdevelopment.kavi.com for help.
 ## Bug reports {#bug-reports}
 
 Bug reports can be filed in the Alliance for Open Media
-[issue tracker](https://bugs.chromium.org/p/aomedia/issues/list).
+[issue tracker](https://aomedia.issues.chromium.org/). For security reports,
+select 'Security report' from the Template dropdown.

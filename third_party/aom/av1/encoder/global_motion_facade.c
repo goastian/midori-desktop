@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2020, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -76,7 +76,7 @@ static int gm_get_params_cost(const WarpedMotionParams *gm,
 
 // For the given reference frame, computes the global motion parameters for
 // different motion models and finds the best.
-static AOM_INLINE void compute_global_motion_for_ref_frame(
+static inline void compute_global_motion_for_ref_frame(
     AV1_COMP *cpi, struct aom_internal_error_info *error_info,
     YV12_BUFFER_CONFIG *ref_buf[REF_FRAMES], int frame,
     MotionModel *motion_models, uint8_t *segment_map, const int segment_map_w,
@@ -91,13 +91,15 @@ static AOM_INLINE void compute_global_motion_for_ref_frame(
   GlobalMotionMethod global_motion_method = default_global_motion_method;
   int downsample_level = cpi->sf.gm_sf.downsample_level;
   int num_refinements = cpi->sf.gm_sf.num_refinement_steps;
+  int gm_erroradv_tr_level = cpi->sf.gm_sf.gm_erroradv_tr_level;
   bool mem_alloc_failed = false;
 
+  assert(gm_erroradv_tr_level < 2);
   // Select the best model based on fractional error reduction.
   // By initializing this to erroradv_tr, the same logic which is used to
   // select the best model will automatically filter out any model which
   // doesn't meet the required quality threshold
-  double best_erroradv = erroradv_tr;
+  double best_erroradv = erroradv_tr[gm_erroradv_tr_level];
   for (TransformationType model = FIRST_GLOBAL_TRANS_TYPE;
        model <= LAST_GLOBAL_TRANS_TYPE; ++model) {
     if (!aom_compute_global_motion(model, cpi->source, ref_buf[frame],
@@ -148,7 +150,8 @@ static AOM_INLINE void compute_global_motion_for_ref_frame(
           ref_buf[frame]->y_buffer, ref_buf[frame]->y_crop_width,
           ref_buf[frame]->y_crop_height, ref_buf[frame]->y_stride,
           cpi->source->y_buffer, src_width, src_height, src_stride,
-          num_refinements, ref_frame_error, segment_map, segment_map_w);
+          num_refinements, ref_frame_error, segment_map, segment_map_w,
+          erroradv_tr[gm_erroradv_tr_level]);
 
       // av1_refine_integerized_param() can return a simpler model type than
       // its input, so re-check model type here
@@ -160,7 +163,8 @@ static AOM_INLINE void compute_global_motion_for_ref_frame(
       if (!av1_is_enough_erroradvantage(
               erroradvantage,
               gm_get_params_cost(&tmp_wm_params, ref_params,
-                                 cm->features.allow_high_precision_mv))) {
+                                 cm->features.allow_high_precision_mv),
+              erroradv_tr[gm_erroradv_tr_level])) {
         continue;
       }
 
@@ -193,7 +197,7 @@ void av1_compute_gm_for_valid_ref_frames(
 }
 
 // Loops over valid reference frames and computes global motion estimation.
-static AOM_INLINE void compute_global_motion_for_references(
+static inline void compute_global_motion_for_references(
     AV1_COMP *cpi, YV12_BUFFER_CONFIG *ref_buf[REF_FRAMES],
     FrameDistPair reference_frame[REF_FRAMES - 1], int num_ref_frames,
     MotionModel *motion_models, uint8_t *segment_map, const int segment_map_w,
@@ -270,7 +274,7 @@ static int do_gm_search_logic(SPEED_FEATURES *const sf, int frame) {
 
 // Populates valid reference frames in past/future directions in
 // 'reference_frames' and their count in 'num_ref_frames'.
-static AOM_INLINE void update_valid_ref_frames_for_gm(
+static inline void update_valid_ref_frames_for_gm(
     AV1_COMP *cpi, YV12_BUFFER_CONFIG *ref_buf[REF_FRAMES],
     FrameDistPair reference_frames[MAX_DIRECTIONS][REF_FRAMES - 1],
     int *num_ref_frames) {
@@ -340,7 +344,7 @@ static AOM_INLINE void update_valid_ref_frames_for_gm(
 }
 
 // Initializes parameters used for computing global motion.
-static AOM_INLINE void setup_global_motion_info_params(AV1_COMP *cpi) {
+static inline void setup_global_motion_info_params(AV1_COMP *cpi) {
   GlobalMotionInfo *const gm_info = &cpi->gm_info;
   YV12_BUFFER_CONFIG *source = cpi->source;
 
@@ -381,7 +385,7 @@ static AOM_INLINE void setup_global_motion_info_params(AV1_COMP *cpi) {
 }
 
 // Computes global motion w.r.t. valid reference frames.
-static AOM_INLINE void global_motion_estimation(AV1_COMP *cpi) {
+static inline void global_motion_estimation(AV1_COMP *cpi) {
   GlobalMotionInfo *const gm_info = &cpi->gm_info;
   GlobalMotionData *gm_data = &cpi->td.gm_data;
 

@@ -185,6 +185,15 @@ moreData.prototype = {
   },
 };
 
+var resetLater = function () {};
+resetLater.prototype = {
+  resp: null,
+
+  onTimeout: function onTimeout() {
+    this.resp.stream.reset("HTTP_1_1_REQUIRED");
+  },
+};
+
 function executeRunLater(arg) {
   arg.onTimeout();
 }
@@ -514,7 +523,7 @@ function handleRequest(req, res) {
         arg => {
           writeResponse(arg[0], arg[1]);
         },
-        delay,
+        delay + 1,
         [response, buf]
       );
       return;
@@ -785,6 +794,17 @@ function handleRequest(req, res) {
       return;
     }
     res.setHeader("X-H11Required-Stream-Ok", h11required_header);
+  } else if (u.pathname === "/h11required_with_content") {
+    if (req.httpVersionMajor === 2) {
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Length", "ok".length);
+      res.writeHead(200);
+      res.write("ok");
+      let resetFunc = new resetLater();
+      resetFunc.resp = res;
+      setTimeout(executeRunLater, 1, resetFunc);
+      return;
+    }
   } else if (u.pathname === "/rstonce") {
     if (!didRst && req.httpVersionMajor === 2) {
       didRst = true;
@@ -883,14 +903,14 @@ function handleRequest(req, res) {
   // for use with test_http3.js
   else if (u.pathname === "/http3-test") {
     res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Alt-Svc", "h3-29=" + req.headers["x-altsvc"]);
+    res.setHeader("Alt-Svc", "h3=" + req.headers["x-altsvc"]);
   }
   // for use with test_http3.js
   else if (u.pathname === "/http3-test2") {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader(
       "Alt-Svc",
-      "h2=foo2.example.com:8000,h3-29=" + req.headers["x-altsvc"]
+      "h2=foo2.example.com:8000,h3=" + req.headers["x-altsvc"]
     );
   } else if (u.pathname === "/http3-test3") {
     res.setHeader("Cache-Control", "no-cache");
@@ -1168,7 +1188,7 @@ function handleRequest(req, res) {
           flush: false,
           data: {
             priority,
-            name: "foo.example.com",
+            name: packet.questions[0].name,
             values: [
               { key: "alpn", value: "h2" },
               { key: "port", value: serverPort },

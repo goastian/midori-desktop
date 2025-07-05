@@ -12,16 +12,15 @@
 #define API_VIDEO_CODECS_VIDEO_ENCODER_FACTORY_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "api/environment/environment.h"
 #include "api/units/data_rate.h"
 #include "api/video/render_resolution.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_encoder.h"
-#include "rtc_base/checks.h"
 
 namespace webrtc {
 
@@ -49,19 +48,19 @@ class VideoEncoderFactory {
 
     // Called every time the available bitrate is updated. Should return a
     // non-empty if an encoder switch should be performed.
-    virtual absl::optional<SdpVideoFormat> OnAvailableBitrate(
+    virtual std::optional<SdpVideoFormat> OnAvailableBitrate(
         const DataRate& rate) = 0;
 
     // Called every time the encoder input resolution change. Should return a
     // non-empty if an encoder switch should be performed.
-    virtual absl::optional<SdpVideoFormat> OnResolutionChange(
-        const RenderResolution& resolution) {
-      return absl::nullopt;
+    virtual std::optional<SdpVideoFormat> OnResolutionChange(
+        const RenderResolution& /* resolution */) {
+      return std::nullopt;
     }
 
     // Called if the currently used encoder reports itself as broken. Should
     // return a non-empty if an encoder switch should be performed.
-    virtual absl::optional<SdpVideoFormat> OnEncoderBroken() = 0;
+    virtual std::optional<SdpVideoFormat> OnEncoderBroken() = 0;
   };
 
   // Returns a list of supported video formats in order of preference, to use
@@ -85,7 +84,7 @@ class VideoEncoderFactory {
   // subject to change without notice.
   virtual CodecSupport QueryCodecSupport(
       const SdpVideoFormat& format,
-      absl::optional<std::string> scalability_mode) const {
+      std::optional<std::string> scalability_mode) const {
     // Default implementation, query for supported formats and check if the
     // specified format is supported. Returns false if scalability_mode is
     // specified.
@@ -97,21 +96,9 @@ class VideoEncoderFactory {
   }
 
   // Creates a VideoEncoder for the specified format.
-  virtual std::unique_ptr<VideoEncoder> Create(const Environment& env,
-                                               const SdpVideoFormat& format) {
-    return CreateVideoEncoder(format);
-  }
-
-  // Deprecated in favor of the `Create` above.
-  // TODO: bugs.webrtc.org/15860 - Make private when all callers are updated
-  // to use Create function above. Delete when all derived classes implement
-  // `Create` instead of this function.
-  virtual std::unique_ptr<VideoEncoder> CreateVideoEncoder(
-      const SdpVideoFormat& format) {
-    // Newer code shouldn't call this function,
-    // Older code should implement it in derived classes.
-    RTC_CHECK_NOTREACHED();
-  }
+  virtual std::unique_ptr<VideoEncoder> Create(
+      const Environment& env,
+      const SdpVideoFormat& format) = 0;
 
   // This method creates a EncoderSelector to use for a VideoSendStream.
   // (and hence should probably been called CreateEncoderSelector()).

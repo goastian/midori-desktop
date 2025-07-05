@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017, Alliance for Open Media. All rights reserved
+# Copyright (c) 2017, Alliance for Open Media. All rights reserved.
 #
 # This source code is subject to the terms of the BSD 2 Clause License and the
 # Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License was
@@ -35,6 +35,7 @@ list(APPEND AOM_TEST_DATA_FILE_NAMES
             "niklas_1280_720_30.y4m"
             "rush_hour_444.y4m"
             "screendata.y4m"
+            "screendata.1920_1080.y4m"
             "niklas_640_480_30.yuv"
             "vase10x10.yuv"
             "vase10x10_tiles.txt"

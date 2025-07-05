@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -1328,6 +1328,10 @@ typedef struct macroblock {
   //! Threshold on the number of colors for testing palette mode.
   int color_palette_thresh;
 
+  //! Used in REALTIME coding mode: flag to indicate if the color_sensitivity
+  // should be checked at the coding block level.
+  int force_color_check_block_level;
+
   //! The buffer used by search_tx_type() to swap dqcoeff in macroblockd_plane
   // so we can keep dqcoeff of the best tx_type.
   tran_low_t *dqcoeff_buf;
@@ -1348,6 +1352,10 @@ typedef struct macroblock {
   //! Flag to indicate to test the superblock MV for the coding block in the
   // nonrd_pickmode.
   int sb_me_block;
+  //! Flag to indicate superblock selected column scroll.
+  int sb_col_scroll;
+  //! Flag to indicate superblock selected row scroll.
+  int sb_row_scroll;
   //! Motion vector from superblock MV derived from int_pro_motion() in
   // the variance_partitioning.
   int_mv sb_me_mv;
@@ -1414,7 +1422,7 @@ typedef struct macroblock {
 // Zeroes out 'n_stats' elements in the array x->winner_mode_stats.
 // It only zeroes out what is necessary in 'color_index_map' (just the block
 // size, not the whole array).
-static INLINE void zero_winner_mode_stats(BLOCK_SIZE bsize, int n_stats,
+static inline void zero_winner_mode_stats(BLOCK_SIZE bsize, int n_stats,
                                           WinnerModeStats *stats) {
   // When winner mode stats are not required, the memory allocation is avoided
   // for x->winner_mode_stats. The stats pointer will be NULL in such cases.
@@ -1436,7 +1444,7 @@ static INLINE void zero_winner_mode_stats(BLOCK_SIZE bsize, int n_stats,
   }
 }
 
-static INLINE int is_rect_tx_allowed_bsize(BLOCK_SIZE bsize) {
+static inline int is_rect_tx_allowed_bsize(BLOCK_SIZE bsize) {
   static const char LUT[BLOCK_SIZES_ALL] = {
     0,  // BLOCK_4X4
     1,  // BLOCK_4X8
@@ -1465,13 +1473,13 @@ static INLINE int is_rect_tx_allowed_bsize(BLOCK_SIZE bsize) {
   return LUT[bsize];
 }
 
-static INLINE int is_rect_tx_allowed(const MACROBLOCKD *xd,
+static inline int is_rect_tx_allowed(const MACROBLOCKD *xd,
                                      const MB_MODE_INFO *mbmi) {
   return is_rect_tx_allowed_bsize(mbmi->bsize) &&
          !xd->lossless[mbmi->segment_id];
 }
 
-static INLINE int tx_size_to_depth(TX_SIZE tx_size, BLOCK_SIZE bsize) {
+static inline int tx_size_to_depth(TX_SIZE tx_size, BLOCK_SIZE bsize) {
   TX_SIZE ctx_size = max_txsize_rect_lookup[bsize];
   int depth = 0;
   while (tx_size != ctx_size) {
@@ -1482,7 +1490,7 @@ static INLINE int tx_size_to_depth(TX_SIZE tx_size, BLOCK_SIZE bsize) {
   return depth;
 }
 
-static INLINE void set_blk_skip(uint8_t txb_skip[], int plane, int blk_idx,
+static inline void set_blk_skip(uint8_t txb_skip[], int plane, int blk_idx,
                                 int skip) {
   if (skip)
     txb_skip[blk_idx] |= 1UL << plane;
@@ -1501,7 +1509,7 @@ static INLINE void set_blk_skip(uint8_t txb_skip[], int plane, int blk_idx,
 #endif
 }
 
-static INLINE int is_blk_skip(uint8_t *txb_skip, int plane, int blk_idx) {
+static inline int is_blk_skip(uint8_t *txb_skip, int plane, int blk_idx) {
 #ifndef NDEBUG
   // Check if this is initialized
   assert(!(txb_skip[blk_idx] & (1UL << (plane + 4))));

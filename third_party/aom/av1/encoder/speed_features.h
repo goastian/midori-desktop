@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -482,6 +482,11 @@ typedef struct HIGH_LEVEL_SPEED_FEATURES {
    * 1: Conditionally allow motion estimation based on 4x4 sub-blocks variance.
    */
   int allow_sub_blk_me_in_tf;
+
+  /*!
+   * Enable/disable temporal mv prediction.
+   */
+  int disable_ref_frame_mvs;
 } HIGH_LEVEL_SPEED_FEATURES;
 
 /*!
@@ -592,6 +597,10 @@ typedef struct GLOBAL_MOTION_SPEED_FEATURES {
 
   // Number of refinement steps to apply after initial model generation
   int num_refinement_steps;
+
+  // Error advantage threshold level used to determine whether global motion
+  // compensation should be enabled
+  int gm_erroradv_tr_level;
 } GLOBAL_MOTION_SPEED_FEATURES;
 
 typedef struct PARTITION_SPEED_FEATURES {
@@ -1498,6 +1507,15 @@ typedef struct LOOP_FILTER_SPEED_FEATURES {
   // level.
   int use_coarse_filter_level_search;
 
+  // Reset luma filter levels to zero based on minimum filter levels of
+  // reference frames and current frame's pyramid level.
+  int adaptive_luma_loop_filter_skip;
+
+  // Reset luma filter levels to zero when the percentage of SSE difference
+  // between the unfiltered and filtered versions of the current frame is below
+  // a threshold.
+  int skip_loop_filter_using_filt_error;
+
   // Control how the CDEF strength is determined.
   CDEF_PICK_METHOD cdef_pick_method;
 
@@ -1635,7 +1653,7 @@ typedef struct REAL_TIME_SPEED_FEATURES {
   // palette mode is used. Disabling it leads to better compression efficiency.
   // 0: off
   // 1: less aggressive pruning mode
-  // 2: more aggressive pruning mode
+  // 2, 3: more aggressive pruning mode
   int prune_palette_search_nonrd;
 
   // Compute variance/sse on source difference, prior to encoding superblock.
@@ -1647,6 +1665,12 @@ typedef struct REAL_TIME_SPEED_FEATURES {
 
   // Check for scene/content change detection on every frame before encoding.
   int check_scene_detection;
+
+  // For keyframes in rtc: adjust the rc_bits_per_mb, to reduce overshoot.
+  int rc_adjust_keyframe;
+
+  // On scene change: compute spatial variance.
+  int rc_compute_spatial_var_sc;
 
   // For nonrd mode: Prefer larger partition blks in variance based partitioning
   // 0: disabled, 1-3: increasing aggressiveness
@@ -1919,6 +1943,13 @@ typedef struct REAL_TIME_SPEED_FEATURES {
 
   // Flag to force skip encoding for non_reference_frame on slide/scene changes.
   int skip_encoding_non_reference_slide_change;
+
+  // Flag to indicate more aggressive QP downward adjustment for screen static
+  // content, to make convergence to min_qp faster.
+  int rc_faster_convergence_static;
+
+  // Skip NEWMV mode evaluation based on sad for screen content.
+  int skip_newmv_mode_sad_screen;
 } REAL_TIME_SPEED_FEATURES;
 
 /*!\endcond */

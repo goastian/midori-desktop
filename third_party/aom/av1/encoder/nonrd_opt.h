@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2022, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -12,6 +12,7 @@
 #ifndef AOM_AV1_ENCODER_NONRD_OPT_H_
 #define AOM_AV1_ENCODER_NONRD_OPT_H_
 
+#include "av1/encoder/context_tree.h"
 #include "av1/encoder/rdopt_utils.h"
 #include "av1/encoder/rdopt.h"
 
@@ -72,6 +73,7 @@ struct estimate_block_intra_args {
   RD_STATS *rdc;
   unsigned int best_sad;
   bool prune_mode_based_on_sad;
+  bool prune_palette_sad;
 };
 /*!\endcond */
 
@@ -392,7 +394,7 @@ DECLARE_ALIGNED(16, static const int16_t, av1_fast_idtx_iscan_16x16[256]) = {
 };
 
 // Indicates the blocks for which RD model should be based on special logic
-static INLINE int get_model_rd_flag(const AV1_COMP *cpi, const MACROBLOCKD *xd,
+static inline int get_model_rd_flag(const AV1_COMP *cpi, const MACROBLOCKD *xd,
                                     BLOCK_SIZE bsize) {
   const AV1_COMMON *const cm = &cpi->common;
   const int large_block = bsize >= BLOCK_32X32;
@@ -426,7 +428,7 @@ static INLINE int get_model_rd_flag(const AV1_COMP *cpi, const MACROBLOCKD *xd,
  * \remark Nothing is returned. Instead, predicted MVs are placed into
  * \c frame_mv array, and use_scaled_ref_frame is set.
  */
-static INLINE void find_predictors(
+static inline void find_predictors(
     AV1_COMP *cpi, MACROBLOCK *x, MV_REFERENCE_FRAME ref_frame,
     int_mv frame_mv[MB_MODE_COUNT][REF_FRAMES],
     struct buf_2d yv12_mb[8][MAX_MB_PLANE], BLOCK_SIZE bsize,
@@ -477,7 +479,7 @@ static INLINE void find_predictors(
   *use_scaled_ref_frame = ref_is_scaled && scaled_ref;
 }
 
-static INLINE void init_mbmi_nonrd(MB_MODE_INFO *mbmi,
+static inline void init_mbmi_nonrd(MB_MODE_INFO *mbmi,
                                    PREDICTION_MODE pred_mode,
                                    MV_REFERENCE_FRAME ref_frame0,
                                    MV_REFERENCE_FRAME ref_frame1,
@@ -498,7 +500,7 @@ static INLINE void init_mbmi_nonrd(MB_MODE_INFO *mbmi,
   set_default_interp_filters(mbmi, cm->features.interp_filter);
 }
 
-static INLINE void init_estimate_block_intra_args(
+static inline void init_estimate_block_intra_args(
     struct estimate_block_intra_args *args, AV1_COMP *cpi, MACROBLOCK *x) {
   args->cpi = cpi;
   args->x = x;
@@ -507,9 +509,10 @@ static INLINE void init_estimate_block_intra_args(
   args->rdc = 0;
   args->best_sad = UINT_MAX;
   args->prune_mode_based_on_sad = false;
+  args->prune_palette_sad = false;
 }
 
-static INLINE int get_pred_buffer(PRED_BUFFER *p, int len) {
+static inline int get_pred_buffer(PRED_BUFFER *p, int len) {
   for (int buf_idx = 0; buf_idx < len; buf_idx++) {
     if (!p[buf_idx].in_use) {
       p[buf_idx].in_use = 1;
@@ -519,16 +522,28 @@ static INLINE int get_pred_buffer(PRED_BUFFER *p, int len) {
   return -1;
 }
 
-static INLINE void free_pred_buffer(PRED_BUFFER *p) {
+static inline bool prune_palette_testing_inter(AV1_COMP *cpi,
+                                               unsigned int source_variance) {
+  return (
+      cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
+      cpi->oxcf.speed >= 11 && cpi->rc.high_source_sad &&
+      ((cpi->sf.rt_sf.prune_palette_search_nonrd > 2) ||
+       (cpi->sf.rt_sf.rc_compute_spatial_var_sc &&
+        cpi->rc.frame_spatial_variance < 1200 &&
+        cpi->rc.perc_spatial_flat_blocks < 5 &&
+        cpi->rc.percent_blocks_with_motion > 98 && source_variance < 4000)));
+}
+
+static inline void free_pred_buffer(PRED_BUFFER *p) {
   if (p != NULL) p->in_use = 0;
 }
 
 #if CONFIG_INTERNAL_STATS
-static INLINE void store_coding_context_nonrd(MACROBLOCK *x,
+static inline void store_coding_context_nonrd(MACROBLOCK *x,
                                               PICK_MODE_CONTEXT *ctx,
                                               int mode_index) {
 #else
-static INLINE void store_coding_context_nonrd(MACROBLOCK *x,
+static inline void store_coding_context_nonrd(MACROBLOCK *x,
                                               PICK_MODE_CONTEXT *ctx) {
 #endif  // CONFIG_INTERNAL_STATS
   MACROBLOCKD *const xd = &x->e_mbd;
@@ -570,6 +585,7 @@ void av1_estimate_intra_mode(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize,
                              PRED_BUFFER *tmp_buffers,
                              PRED_BUFFER **this_mode_pred, RD_STATS *best_rdc,
                              BEST_PICKMODE *best_pickmode,
-                             PICK_MODE_CONTEXT *ctx);
+                             PICK_MODE_CONTEXT *ctx,
+                             unsigned int *best_sad_norm);
 
 #endif  // AOM_AV1_ENCODER_NONRD_OPT_H_

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -103,15 +103,15 @@ int av1_cyclic_refresh_estimate_bits_at_q(const AV1_COMP *cpi,
     weight_segment2 = 0;
   }
   // Take segment weighted average for estimated bits.
-  const int estimated_bits =
-      (int)((1.0 - weight_segment1 - weight_segment2) *
-                av1_estimate_bits_at_q(cpi, base_qindex, correction_factor) +
-            weight_segment1 *
-                av1_estimate_bits_at_q(cpi, base_qindex + cr->qindex_delta[1],
-                                       correction_factor) +
-            weight_segment2 *
-                av1_estimate_bits_at_q(cpi, base_qindex + cr->qindex_delta[2],
-                                       correction_factor));
+  const int estimated_bits = (int)round(
+      (1.0 - weight_segment1 - weight_segment2) *
+          av1_estimate_bits_at_q(cpi, base_qindex, correction_factor) +
+      weight_segment1 *
+          av1_estimate_bits_at_q(cpi, base_qindex + cr->qindex_delta[1],
+                                 correction_factor) +
+      weight_segment2 *
+          av1_estimate_bits_at_q(cpi, base_qindex + cr->qindex_delta[2],
+                                 correction_factor));
   return estimated_bits;
 }
 
@@ -139,13 +139,13 @@ int av1_cyclic_refresh_rc_bits_per_mb(const AV1_COMP *cpi, int i,
   int deltaq = compute_deltaq(cpi, i, cr->rate_ratio_qdelta);
   const int accurate_estimate = cpi->sf.hl_sf.accurate_bit_estimate;
   // Take segment weighted average for bits per mb.
-  bits_per_mb =
-      (int)((1.0 - weight_segment) *
-                av1_rc_bits_per_mb(cpi, cm->current_frame.frame_type, i,
-                                   correction_factor, accurate_estimate) +
-            weight_segment * av1_rc_bits_per_mb(
-                                 cpi, cm->current_frame.frame_type, i + deltaq,
-                                 correction_factor, accurate_estimate));
+  bits_per_mb = (int)round(
+      (1.0 - weight_segment) *
+          av1_rc_bits_per_mb(cpi, cm->current_frame.frame_type, i,
+                             correction_factor, accurate_estimate) +
+      weight_segment * av1_rc_bits_per_mb(cpi, cm->current_frame.frame_type,
+                                          i + deltaq, correction_factor,
+                                          accurate_estimate));
   return bits_per_mb;
 }
 
@@ -439,7 +439,8 @@ void av1_cyclic_refresh_update_parameters(AV1_COMP *const cpi) {
   // should we enable cyclic refresh on this frame.
   cr->apply_cyclic_refresh = 1;
   if (frame_is_intra_only(cm) || is_lossless_requested(&cpi->oxcf.rc_cfg) ||
-      scene_change_detected || svc->temporal_layer_id > 0 ||
+      cpi->rc.high_motion_content_screen_rtc || scene_change_detected ||
+      svc->temporal_layer_id > 0 ||
       svc->prev_number_spatial_layers != svc->number_spatial_layers ||
       p_rc->avg_frame_qindex[INTER_FRAME] < qp_thresh ||
       (svc->number_spatial_layers > 1 &&
@@ -539,6 +540,19 @@ void av1_cyclic_refresh_update_parameters(AV1_COMP *const cpi) {
   }
 }
 
+static void cyclic_refresh_reset_resize(AV1_COMP *const cpi) {
+  const AV1_COMMON *const cm = &cpi->common;
+  CYCLIC_REFRESH *const cr = cpi->cyclic_refresh;
+  memset(cr->map, 0, cm->mi_params.mi_rows * cm->mi_params.mi_cols);
+  cr->sb_index = 0;
+  cr->last_sb_index = 0;
+  cpi->refresh_frame.golden_frame = true;
+  cr->apply_cyclic_refresh = 0;
+  cr->counter_encode_maxq_scene_change = 0;
+  cr->percent_refresh_adjustment = 5;
+  cr->rate_ratio_qdelta_adjustment = 0.25;
+}
+
 // Setup cyclic background refresh: set delta q and segmentation map.
 void av1_cyclic_refresh_setup(AV1_COMP *const cpi) {
   AV1_COMMON *const cm = &cpi->common;
@@ -551,15 +565,15 @@ void av1_cyclic_refresh_setup(AV1_COMP *const cpi) {
   const int layer_depth = AOMMIN(gf_group->layer_depth[cpi->gf_frame_index], 6);
   const FRAME_TYPE frame_type = cm->current_frame.frame_type;
 
-  // Set resolution_change flag: for svc only set it when the
-  // number of spatial layers has not changed.
-  const int resolution_change =
-      cm->prev_frame &&
-      (cm->width != cm->prev_frame->width ||
-       cm->height != cm->prev_frame->height) &&
-      cpi->svc.prev_number_spatial_layers == cpi->svc.number_spatial_layers;
+  // Set resolution_change flag: for single spatial layers only.
+  const int resolution_change = !cpi->rc.rtc_external_ratectrl &&
+                                cm->prev_frame &&
+                                cpi->svc.number_spatial_layers == 1 &&
+                                (cm->width != cm->prev_frame->width ||
+                                 cm->height != cm->prev_frame->height);
 
-  if (resolution_change) av1_cyclic_refresh_reset_resize(cpi);
+  if (resolution_change && cpi->svc.temporal_layer_id == 0)
+    cyclic_refresh_reset_resize(cpi);
   if (!cr->apply_cyclic_refresh) {
     // Don't disable and set seg_map to 0 if active_maps is enabled, unless
     // whole frame is set as inactive (since we only apply cyclic_refresh to
@@ -631,7 +645,7 @@ void av1_cyclic_refresh_setup(AV1_COMP *const cpi) {
         qindex2, cm->seq_params->bit_depth,
         cpi->ppi->gf_group.update_type[cpi->gf_frame_index], layer_depth,
         boost_index, frame_type, cpi->oxcf.q_cfg.use_fixed_qp_offsets,
-        is_stat_consumption_stage(cpi));
+        is_stat_consumption_stage(cpi), cpi->oxcf.tune_cfg.tuning);
 
     av1_set_segdata(seg, CR_SEGMENT_ID_BOOST1, SEG_LVL_ALT_Q, qindex_delta);
 
@@ -650,19 +664,6 @@ void av1_cyclic_refresh_setup(AV1_COMP *const cpi) {
 
 int av1_cyclic_refresh_get_rdmult(const CYCLIC_REFRESH *cr) {
   return cr->rdmult;
-}
-
-void av1_cyclic_refresh_reset_resize(AV1_COMP *const cpi) {
-  const AV1_COMMON *const cm = &cpi->common;
-  CYCLIC_REFRESH *const cr = cpi->cyclic_refresh;
-  memset(cr->map, 0, cm->mi_params.mi_rows * cm->mi_params.mi_cols);
-  cr->sb_index = 0;
-  cr->last_sb_index = 0;
-  cpi->refresh_frame.golden_frame = true;
-  cr->apply_cyclic_refresh = 0;
-  cr->counter_encode_maxq_scene_change = 0;
-  cr->percent_refresh_adjustment = 5;
-  cr->rate_ratio_qdelta_adjustment = 0.25;
 }
 
 int av1_cyclic_refresh_disable_lf_cdef(AV1_COMP *const cpi) {

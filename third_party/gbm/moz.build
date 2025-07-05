@@ -1,5 +1,0 @@
-if CONFIG['MOZ_WEBRTC']:
-    EXPORTS.gbm = [
-	'gbm/gbm.h',
-    ]
-

@@ -123,6 +123,12 @@
 #define EXTERN extern
 #endif
 
+#if ARCH_X86_64 && __has_attribute(model)
+#define ATTR_MCMODEL_SMALL __attribute__((model("small")))
+#else
+#define ATTR_MCMODEL_SMALL
+#endif
+
 #ifdef __clang__
 #define NO_SANITIZE(x) __attribute__((no_sanitize(x)))
 #else
@@ -189,9 +195,13 @@ static inline int clzll(const unsigned long long mask) {
 #ifndef static_assert
 #define CHECK_OFFSET(type, field, name) \
     struct check_##type##_##field { int x[(name == offsetof(type, field)) ? 1 : -1]; }
+#define CHECK_SIZE(type, size) \
+    struct check_##type##_size { int x[(size == sizeof(type)) ? 1 : -1]; }
 #else
 #define CHECK_OFFSET(type, field, name) \
     static_assert(name == offsetof(type, field), #field)
+#define CHECK_SIZE(type, size) \
+    static_assert(size == sizeof(type), #type)
 #endif
 
 #ifdef _MSC_VER

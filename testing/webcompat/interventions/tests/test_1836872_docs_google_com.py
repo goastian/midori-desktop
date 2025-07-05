@@ -20,23 +20,24 @@ async def are_font_submenus_accessible(client):
     font = client.execute_script(
         """
         const [menuitem] = arguments;
+
         // get the name of the font, which helps us know which panel to wait for docs to create
         const font = menuitem.querySelector("span[style]").style.fontFamily.replace("--Menu", "");
+
         // trigger a mouseover on the menu item so docs opens the panel
         menuitem.dispatchEvent(new MouseEvent("mouseover", {
           bubbles: true,
           cancelable: true,
           view: window,
         }));
+
         return font;
     """,
         menuitem,
     )
 
     # wait for the on-hover popup to actually be created and displayed
-    popup = client.await_xpath(
-        "//*[contains(@style, '{}')]".format(font), is_displayed=True
-    )
+    popup = client.await_xpath(f"//*[contains(@style, '{font}')]", is_displayed=True)
     assert popup
 
     return client.execute_script(

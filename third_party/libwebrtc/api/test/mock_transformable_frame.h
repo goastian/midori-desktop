@@ -15,6 +15,7 @@
 
 #include <optional>
 #include <string>
+#include <type_traits>
 
 #include "api/array_view.h"
 #include "api/frame_transformer_interface.h"
@@ -23,8 +24,10 @@
 
 namespace webrtc {
 
-class MockTransformableFrame : public webrtc::TransformableFrameInterface {
+class MockTransformableFrame : public TransformableFrameInterface {
  public:
+  MockTransformableFrame() : TransformableFrameInterface(Passkey()) {}
+
   MOCK_METHOD(rtc::ArrayView<const uint8_t>, GetData, (), (const, override));
   MOCK_METHOD(void, SetData, (rtc::ArrayView<const uint8_t>), (override));
   MOCK_METHOD(uint8_t, GetPayloadType, (), (const, override));
@@ -32,10 +35,16 @@ class MockTransformableFrame : public webrtc::TransformableFrameInterface {
   MOCK_METHOD(uint32_t, GetTimestamp, (), (const, override));
   MOCK_METHOD(void, SetRTPTimestamp, (uint32_t), (override));
   MOCK_METHOD(std::optional<webrtc::Timestamp>,
-              GetCaptureTimeIdentifier,
+              GetPresentationTimestamp,
               (),
               (const, override));
   MOCK_METHOD(std::string, GetMimeType, (), (const, override));
+  MOCK_METHOD(std::optional<Timestamp>, ReceiveTime, (), (const, override));
+  MOCK_METHOD(std::optional<Timestamp>, CaptureTime, (), (const, override));
+  MOCK_METHOD(std::optional<TimeDelta>,
+              SenderCaptureTimeOffset,
+              (),
+              (const, override));
 };
 
 static_assert(!std::is_abstract_v<MockTransformableFrame>, "");

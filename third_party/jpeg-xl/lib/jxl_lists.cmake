@@ -185,13 +185,6 @@ set(JPEGXL_INTERNAL_DEC_SOURCES
   jxl/entropy_coder.h
   jxl/epf.cc
   jxl/epf.h
-  jxl/fast_dct-inl.h
-  jxl/fast_dct128-inl.h
-  jxl/fast_dct16-inl.h
-  jxl/fast_dct256-inl.h
-  jxl/fast_dct32-inl.h
-  jxl/fast_dct64-inl.h
-  jxl/fast_dct8-inl.h
   jxl/field_encodings.h
   jxl/fields.cc
   jxl/fields.h
@@ -367,7 +360,6 @@ set(JPEGXL_INTERNAL_ENC_SOURCES
   jxl/enc_modular.h
   jxl/enc_noise.cc
   jxl/enc_noise.h
-  jxl/enc_optimize.cc
   jxl/enc_optimize.h
   jxl/enc_params.h
   jxl/enc_patch_dictionary.cc
@@ -429,6 +421,7 @@ set(JPEGXL_INTERNAL_EXTRAS_SOURCES
   extras/alpha_blend.h
   extras/common.cc
   extras/common.h
+  extras/compressed_icc.cc
   extras/dec/color_description.cc
   extras/dec/color_description.h
   extras/dec/color_hints.cc
@@ -547,6 +540,7 @@ set(JPEGXL_INTERNAL_PUBLIC_HEADERS
   include/jxl/cms_interface.h
   include/jxl/codestream_header.h
   include/jxl/color_encoding.h
+  include/jxl/compressed_icc.h
   include/jxl/decode.h
   include/jxl/decode_cxx.h
   include/jxl/encode.h
@@ -576,6 +570,7 @@ set(JPEGXL_INTERNAL_TESTLIB_FILES
 
 set(JPEGXL_INTERNAL_TESTS
   extras/codec_test.cc
+  extras/compressed_icc_test.cc
   extras/dec/color_description_test.cc
   extras/dec/pgx_test.cc
   extras/gain_map_test.cc
@@ -605,7 +600,6 @@ set(JPEGXL_INTERNAL_TESTS
   jxl/enc_photon_noise_test.cc
   jxl/encode_test.cc
   jxl/entropy_coder_test.cc
-  jxl/fast_dct_test.cc
   jxl/fast_math_test.cc
   jxl/fields_test.cc
   jxl/gamma_correct_test.cc

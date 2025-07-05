@@ -17,11 +17,13 @@
 #define API_MEDIA_STREAM_INTERFACE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "api/audio/audio_processing_statistics.h"
 #include "api/audio_options.h"
 #include "api/ref_count.h"
 #include "api/scoped_refptr.h"
@@ -30,7 +32,7 @@
 #include "api/video/video_sink_interface.h"
 #include "api/video/video_source_interface.h"
 #include "api/video_track_source_constraints.h"
-#include "modules/audio_processing/include/audio_processing_statistics.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
@@ -129,7 +131,7 @@ class VideoTrackSourceInterface : public MediaSourceInterface,
   // depending on video codec.
   // TODO(perkj): Remove this once denoising is done by the source, and not by
   // the encoder.
-  virtual absl::optional<bool> needs_denoising() const = 0;
+  virtual std::optional<bool> needs_denoising() const = 0;
 
   // Returns false if no stats are available, e.g, for a remote source, or a
   // source which has not seen its first frame yet.
@@ -159,7 +161,7 @@ class VideoTrackSourceInterface : public MediaSourceInterface,
   // The call is expected to happen on the network thread.
   // TODO(crbug/1255737): make pure virtual once downstream project adapts.
   virtual void ProcessConstraints(
-      const webrtc::VideoTrackSourceConstraints& constraints) {}
+      const webrtc::VideoTrackSourceConstraints& /* constraints */) {}
 
  protected:
   ~VideoTrackSourceInterface() override = default;
@@ -182,14 +184,14 @@ class RTC_EXPORT VideoTrackInterface
 
   // Register a video sink for this track. Used to connect the track to the
   // underlying video engine.
-  void AddOrUpdateSink(rtc::VideoSinkInterface<VideoFrame>* sink,
-                       const rtc::VideoSinkWants& wants) override {}
-  void RemoveSink(rtc::VideoSinkInterface<VideoFrame>* sink) override {}
+  void AddOrUpdateSink(rtc::VideoSinkInterface<VideoFrame>* /* sink */,
+                       const rtc::VideoSinkWants& /* wants */) override {}
+  void RemoveSink(rtc::VideoSinkInterface<VideoFrame>* /* sink */) override {}
 
   virtual VideoTrackSourceInterface* GetSource() const = 0;
 
   virtual ContentHint content_hint() const;
-  virtual void set_content_hint(ContentHint hint) {}
+  virtual void set_content_hint(ContentHint /* hint */) {}
 
  protected:
   ~VideoTrackInterface() override = default;
@@ -198,11 +200,11 @@ class RTC_EXPORT VideoTrackInterface
 // Interface for receiving audio data from a AudioTrack.
 class AudioTrackSinkInterface {
  public:
-  virtual void OnData(const void* audio_data,
-                      int bits_per_sample,
-                      int sample_rate,
-                      size_t number_of_channels,
-                      size_t number_of_frames) {
+  virtual void OnData(const void* /* audio_data */,
+                      int /* bits_per_sample */,
+                      int /* sample_rate */,
+                      size_t /* number_of_channels */,
+                      size_t /* number_of_frames */) {
     RTC_DCHECK_NOTREACHED() << "This method must be overridden, or not used.";
   }
 
@@ -210,12 +212,13 @@ class AudioTrackSinkInterface {
   // supposed to deliver the timestamp when this audio frame was originally
   // captured. This timestamp MUST be based on the same clock as
   // rtc::TimeMillis().
-  virtual void OnData(const void* audio_data,
-                      int bits_per_sample,
-                      int sample_rate,
-                      size_t number_of_channels,
-                      size_t number_of_frames,
-                      absl::optional<int64_t> absolute_capture_timestamp_ms) {
+  virtual void OnData(
+      const void* audio_data,
+      int bits_per_sample,
+      int sample_rate,
+      size_t number_of_channels,
+      size_t number_of_frames,
+      std::optional<int64_t> /* absolute_capture_timestamp_ms */) {
     // TODO(bugs.webrtc.org/10739): Deprecate the old OnData and make this one
     // pure virtual.
     return OnData(audio_data, bits_per_sample, sample_rate, number_of_channels,
@@ -249,15 +252,15 @@ class RTC_EXPORT AudioSourceInterface : public MediaSourceInterface {
   // Sets the volume of the source. `volume` is in  the range of [0, 10].
   // TODO(tommi): This method should be on the track and ideally volume should
   // be applied in the track in a way that does not affect clones of the track.
-  virtual void SetVolume(double volume) {}
+  virtual void SetVolume(double /* volume */) {}
 
   // Registers/unregisters observers to the audio source.
-  virtual void RegisterAudioObserver(AudioObserver* observer) {}
-  virtual void UnregisterAudioObserver(AudioObserver* observer) {}
+  virtual void RegisterAudioObserver(AudioObserver* /* observer */) {}
+  virtual void UnregisterAudioObserver(AudioObserver* /* observer */) {}
 
   // TODO(tommi): Make pure virtual.
-  virtual void AddSink(AudioTrackSinkInterface* sink) {}
-  virtual void RemoveSink(AudioTrackSinkInterface* sink) {}
+  virtual void AddSink(AudioTrackSinkInterface* /* sink */) {}
+  virtual void RemoveSink(AudioTrackSinkInterface* /* sink */) {}
 
   // Returns options for the AudioSource.
   // (for some of the settings this approach is broken, e.g. setting
@@ -337,34 +340,19 @@ class MediaStreamInterface : public webrtc::RefCountInterface,
   // Note: Default implementations are for avoiding link time errors in
   // implementations that mock this API.
   // TODO(bugs.webrtc.org/13980): Remove default implementations.
-  virtual bool AddTrack(rtc::scoped_refptr<AudioTrackInterface> track) {
+  virtual bool AddTrack(rtc::scoped_refptr<AudioTrackInterface> /* track */) {
     RTC_CHECK_NOTREACHED();
   }
-  virtual bool AddTrack(rtc::scoped_refptr<VideoTrackInterface> track) {
+  virtual bool AddTrack(rtc::scoped_refptr<VideoTrackInterface> /* track */) {
     RTC_CHECK_NOTREACHED();
   }
-  virtual bool RemoveTrack(rtc::scoped_refptr<AudioTrackInterface> track) {
+  virtual bool RemoveTrack(
+      rtc::scoped_refptr<AudioTrackInterface> /* track */) {
     RTC_CHECK_NOTREACHED();
   }
-  virtual bool RemoveTrack(rtc::scoped_refptr<VideoTrackInterface> track) {
+  virtual bool RemoveTrack(
+      rtc::scoped_refptr<VideoTrackInterface> /* track */) {
     RTC_CHECK_NOTREACHED();
-  }
-  // Deprecated: Should use scoped_refptr versions rather than pointers.
-  [[deprecated("Pass a scoped_refptr")]] virtual bool AddTrack(
-      AudioTrackInterface* track) {
-    return AddTrack(rtc::scoped_refptr<AudioTrackInterface>(track));
-  }
-  [[deprecated("Pass a scoped_refptr")]] virtual bool AddTrack(
-      VideoTrackInterface* track) {
-    return AddTrack(rtc::scoped_refptr<VideoTrackInterface>(track));
-  }
-  [[deprecated("Pass a scoped_refptr")]] virtual bool RemoveTrack(
-      AudioTrackInterface* track) {
-    return RemoveTrack(rtc::scoped_refptr<AudioTrackInterface>(track));
-  }
-  [[deprecated("Pass a scoped_refptr")]] virtual bool RemoveTrack(
-      VideoTrackInterface* track) {
-    return RemoveTrack(rtc::scoped_refptr<VideoTrackInterface>(track));
   }
 
  protected:

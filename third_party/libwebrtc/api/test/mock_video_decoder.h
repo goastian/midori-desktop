@@ -11,8 +11,11 @@
 #ifndef API_TEST_MOCK_VIDEO_DECODER_H_
 #define API_TEST_MOCK_VIDEO_DECODER_H_
 
-#include <utility>
+#include <cstdint>
+#include <optional>
 
+#include "api/video/encoded_image.h"
+#include "api/video/video_frame.h"
 #include "api/video_codecs/video_decoder.h"
 #include "test/gmock.h"
 
@@ -35,8 +38,8 @@ class MockDecodedImageCallback : public DecodedImageCallback {
   MOCK_METHOD(void,
               Decoded,
               (VideoFrame & decoded_image,  // NOLINT
-               absl::optional<int32_t> decode_time_ms,
-               absl::optional<uint8_t> qp),
+               std::optional<int32_t> decode_time_ms,
+               std::optional<uint8_t> qp),
               (override));
 };
 
@@ -61,8 +64,7 @@ class MockVideoDecoder : public VideoDecoder {
   MOCK_METHOD(bool, Configure, (const Settings& settings), (override));
   MOCK_METHOD(int32_t,
               Decode,
-              (const EncodedImage& input_image,
-               int64_t render_time_ms),
+              (const EncodedImage& input_image, int64_t render_time_ms),
               (override));
   MOCK_METHOD(int32_t,
               Decode,

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -239,11 +239,6 @@ int aom_realloc_frame_buffer(YV12_BUFFER_CONFIG *ybf, int width, int height,
                              aom_codec_frame_buffer_t *fb,
                              aom_get_frame_buffer_cb_fn_t cb, void *cb_priv,
                              bool alloc_pyramid, int alloc_y_plane_only) {
-#if CONFIG_SIZE_LIMIT
-  if (width > DECODE_WIDTH_LIMIT || height > DECODE_HEIGHT_LIMIT)
-    return AOM_CODEC_MEM_ERROR;
-#endif
-
   if (ybf) {
     int y_stride = 0;
     int uv_stride = 0;

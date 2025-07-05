@@ -14,10 +14,12 @@ def assert_browsing_context(
     info,
     context,
     children=None,
-    is_root=True,
+    original_opener=None,
+    parent_expected=True,
     parent=None,
     url=None,
     user_context="default",
+    client_window=None
 ):
     assert "children" in info
     if children is not None:
@@ -34,7 +36,7 @@ def assert_browsing_context(
     if context is not None:
         assert info["context"] == context
 
-    if is_root:
+    if parent_expected:
         if parent is None:
             # For a top-level browsing context there is no parent
             assert info["parent"] is None
@@ -51,6 +53,8 @@ def assert_browsing_context(
     assert isinstance(info["url"], str)
     assert info["url"] == url
     assert info["userContext"] == user_context
+    assert info["originalOpener"] == original_opener
+    assert info["clientWindow"] == client_window
 
 
 async def assert_document_status(bidi_session, context, visible, focused):
@@ -102,3 +106,14 @@ async def get_visibility_state(bidi_session, context: Mapping[str, Any]) -> str:
         target=ContextTarget(context["context"]),
         await_promise=False)
     return result["value"]
+
+
+def find_context_info(contexts, context):
+    return next(
+        (
+            context_info
+            for context_info in contexts
+            if context_info["context"] == context
+        ),
+        None,
+    )

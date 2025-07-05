@@ -11,15 +11,21 @@
 #ifndef API_TEST_MOCK_TRANSFORMABLE_AUDIO_FRAME_H_
 #define API_TEST_MOCK_TRANSFORMABLE_AUDIO_FRAME_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 
+#include "api/array_view.h"
 #include "api/frame_transformer_interface.h"
+#include "api/units/timestamp.h"
 #include "test/gmock.h"
 
 namespace webrtc {
 
 class MockTransformableAudioFrame : public TransformableAudioFrameInterface {
  public:
+  MockTransformableAudioFrame() : TransformableAudioFrameInterface(Passkey()) {}
+
   MOCK_METHOD(rtc::ArrayView<const uint8_t>, GetData, (), (const, override));
   MOCK_METHOD(void, SetData, (rtc::ArrayView<const uint8_t>), (override));
   MOCK_METHOD(void, SetRTPTimestamp, (uint32_t), (override));
@@ -30,8 +36,8 @@ class MockTransformableAudioFrame : public TransformableAudioFrameInterface {
   MOCK_METHOD(rtc::ArrayView<const uint32_t>,
               GetContributingSources,
               (),
-              (const override));
-  MOCK_METHOD(const absl::optional<uint16_t>,
+              (const, override));
+  MOCK_METHOD(const std::optional<uint16_t>,
               SequenceNumber,
               (),
               (const, override));
@@ -39,12 +45,20 @@ class MockTransformableAudioFrame : public TransformableAudioFrameInterface {
               GetDirection,
               (),
               (const, override));
-  MOCK_METHOD(absl::optional<uint64_t>,
+  MOCK_METHOD(std::optional<uint64_t>,
               AbsoluteCaptureTimestamp,
               (),
               (const, override));
   MOCK_METHOD(TransformableAudioFrameInterface::FrameType,
               Type,
+              (),
+              (const, override));
+  MOCK_METHOD(std::optional<uint8_t>, AudioLevel, (), (const, override));
+
+  MOCK_METHOD(std::optional<Timestamp>, ReceiveTime, (), (const, override));
+  MOCK_METHOD(std::optional<Timestamp>, CaptureTime, (), (const, override));
+  MOCK_METHOD(std::optional<TimeDelta>,
+              SenderCaptureTimeOffset,
               (),
               (const, override));
 };

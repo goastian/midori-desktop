@@ -11,9 +11,18 @@
 #include "api/video/frame_buffer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "api/array_view.h"
+#include "api/field_trials_view.h"
+#include "api/video/encoded_frame.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/sequence_number_util.h"
 #include "rtc_base/trace_event.h"
@@ -196,15 +205,15 @@ void FrameBuffer::UpdateDroppedFramesAndDiscardedPackets(FrameIterator begin_it,
   num_discarded_packets_ += num_discarded_packets;
 }
 
-absl::optional<int64_t> FrameBuffer::LastContinuousFrameId() const {
+std::optional<int64_t> FrameBuffer::LastContinuousFrameId() const {
   return last_continuous_frame_id_;
 }
 
-absl::optional<int64_t> FrameBuffer::LastContinuousTemporalUnitFrameId() const {
+std::optional<int64_t> FrameBuffer::LastContinuousTemporalUnitFrameId() const {
   return last_continuous_temporal_unit_frame_id_;
 }
 
-absl::optional<FrameBuffer::DecodabilityInfo>
+std::optional<FrameBuffer::DecodabilityInfo>
 FrameBuffer::DecodableTemporalUnitsInfo() const {
   return decodable_temporal_units_info_;
 }

@@ -260,7 +260,7 @@ TEST(EncodeTest, EncoderResetTest) {
   JxlEncoderPtr enc = JxlEncoderMake(nullptr);
   EXPECT_NE(nullptr, enc.get());
   VerifyFrameEncoding(50, 200, enc.get(),
-                      JxlEncoderFrameSettingsCreate(enc.get(), nullptr), 4577,
+                      JxlEncoderFrameSettingsCreate(enc.get(), nullptr), 4599,
                       false);
   // Encoder should become reusable for a new image from scratch after using
   // reset.
@@ -1453,12 +1453,12 @@ JXL_BOXES_TEST_P(EncodeBoxTest, BoxTest) {
       EXPECT_EQ(0, JxlDecoderReleaseBoxBuffer(dec.get()));
       JxlBoxType type;
       EXPECT_EQ(JXL_DEC_SUCCESS, JxlDecoderGetBoxType(dec.get(), type, true));
-      if (!memcmp(type, "Exif", 4)) {
+      if (memcmp(type, "Exif", 4) == 0) {
         // This box should have been encoded before the image frame
         EXPECT_EQ(false, post_frame);
         JxlDecoderSetBoxBuffer(dec.get(), dec_exif_box.data(),
                                dec_exif_box.size());
-      } else if (!memcmp(type, "XML ", 4)) {
+      } else if (memcmp(type, "XML ", 4) == 0) {
         // This box should have been encoded after the image frame
         EXPECT_EQ(true, post_frame);
         JxlDecoderSetBoxBuffer(dec.get(), dec_xml_box.data(),
@@ -1488,7 +1488,6 @@ JXL_GTEST_INSTANTIATE_TEST_SUITE_P(
 
 JXL_TRANSCODE_JPEG_TEST(EncodeTest, JPEGFrameTest) {
   TEST_LIBJPEG_SUPPORT();
-  JxlMemoryManager* memory_manager = jxl::test::MemoryManager();
   for (int skip_basic_info = 0; skip_basic_info < 2; skip_basic_info++) {
     for (int skip_color_encoding = 0; skip_color_encoding < 2;
          skip_color_encoding++) {
@@ -1496,9 +1495,9 @@ JXL_TRANSCODE_JPEG_TEST(EncodeTest, JPEGFrameTest) {
       if (skip_basic_info && !skip_color_encoding) continue;
       const std::string jpeg_path = "jxl/flower/flower_cropped.jpg";
       const std::vector<uint8_t> orig = jxl::test::ReadTestData(jpeg_path);
-      jxl::CodecInOut orig_io{memory_manager};
-      ASSERT_TRUE(SetFromBytes(jxl::Bytes(orig), &orig_io,
-                               /*pool=*/nullptr));
+      jxl::extras::PackedPixelFile orig_ppf;
+      ASSERT_TRUE(
+          DecodeBytes(jxl::Bytes(orig), jxl::extras::ColorHints(), &orig_ppf));
 
       JxlEncoderPtr enc = JxlEncoderMake(nullptr);
       JxlEncoderFrameSettings* frame_settings =
@@ -1508,8 +1507,8 @@ JXL_TRANSCODE_JPEG_TEST(EncodeTest, JPEGFrameTest) {
       if (!skip_basic_info) {
         JxlBasicInfo basic_info;
         JxlEncoderInitBasicInfo(&basic_info);
-        basic_info.xsize = orig_io.xsize();
-        basic_info.ysize = orig_io.ysize();
+        basic_info.xsize = orig_ppf.xsize();
+        basic_info.ysize = orig_ppf.ysize();
         basic_info.uses_original_profile = JXL_TRUE;
         EXPECT_EQ(JXL_ENC_SUCCESS,
                   JxlEncoderSetBasicInfo(enc.get(), &basic_info));
@@ -1541,13 +1540,11 @@ JXL_TRANSCODE_JPEG_TEST(EncodeTest, JPEGFrameTest) {
       compressed.resize(next_out - compressed.data());
       EXPECT_EQ(JXL_ENC_SUCCESS, process_result);
 
-      jxl::CodecInOut decoded_io{memory_manager};
-      EXPECT_TRUE(jxl::test::DecodeFile(
-          {}, jxl::Bytes(compressed.data(), compressed.size()), &decoded_io));
+      jxl::extras::PackedPixelFile decoded_ppf;
+      EXPECT_TRUE(DecodeBytes(jxl::Bytes(compressed.data(), compressed.size()),
+                              jxl::extras::ColorHints(), &decoded_ppf));
 
-      EXPECT_LE(ComputeDistance2(orig_io.Main(), decoded_io.Main(),
-                                 *JxlGetDefaultCms()),
-                3.5);
+      EXPECT_LE(jxl::test::ComputeDistance2(orig_ppf, decoded_ppf), 3.5);
     }
   }
 }
@@ -1768,14 +1765,15 @@ class EncoderStreamingTest : public testing::TestWithParam<StreamingTestParam> {
   static void SetupImage(const StreamingTestParam& p, size_t xsize,
                          size_t ysize, size_t num_channels,
                          size_t bits_per_sample, jxl::test::TestImage& image) {
-    image.SetDimensions(xsize, ysize)
-        .SetDataType(JXL_TYPE_UINT8)
-        .SetChannels(num_channels)
-        .SetAllBitDepths(bits_per_sample);
+    ASSERT_TRUE(image.SetDimensions(xsize, ysize));
+    image.SetDataType(JXL_TYPE_UINT8);
+    ASSERT_TRUE(image.SetChannels(num_channels));
+    image.SetAllBitDepths(bits_per_sample);
     if (p.onegroup()) {
       image.SetRowAlignment(128);
     }
-    image.AddFrame().RandomFill();
+    JXL_TEST_ASSIGN_OR_DIE(auto frame, image.AddFrame());
+    frame.RandomFill();
   }
   static void SetUpBasicInfo(JxlBasicInfo& basic_info, size_t xsize,
                              size_t ysize, size_t number_extra_channels,
@@ -2035,17 +2033,19 @@ TEST(EncoderTest, CMYK) {
   size_t xsize = 257;
   size_t ysize = 259;
   jxl::test::TestImage image;
-  image.SetDimensions(xsize, ysize)
-      .SetDataType(JXL_TYPE_UINT8)
-      .SetChannels(3)
-      .SetAllBitDepths(8);
-  image.AddFrame().RandomFill();
+  ASSERT_TRUE(image.SetDimensions(xsize, ysize));
+  image.SetDataType(JXL_TYPE_UINT8);
+  ASSERT_TRUE(image.SetChannels(3));
+  image.SetAllBitDepths(8);
+  JXL_TEST_ASSIGN_OR_DIE(auto frame0, image.AddFrame());
+  frame0.RandomFill();
   jxl::test::TestImage ec_image;
-  ec_image.SetDataType(JXL_TYPE_UINT8)
-      .SetDimensions(xsize, ysize)
-      .SetChannels(1)
-      .SetAllBitDepths(8);
-  ec_image.AddFrame().RandomFill();
+  ec_image.SetDataType(JXL_TYPE_UINT8);
+  ASSERT_TRUE(ec_image.SetDimensions(xsize, ysize));
+  ASSERT_TRUE(ec_image.SetChannels(1));
+  ec_image.SetAllBitDepths(8);
+  JXL_TEST_ASSIGN_OR_DIE(auto frame1, ec_image.AddFrame());
+  frame1.RandomFill();
   const auto& frame = image.ppf().frames[0].color;
   const auto& ec_frame = ec_image.ppf().frames[0].color;
   JxlBasicInfo basic_info = image.ppf().info;

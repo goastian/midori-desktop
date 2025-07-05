@@ -25,7 +25,9 @@
 #include "absl/strings/string_view.h"
 #include "api/array_view.h"
 #include "rtc_base/byte_buffer.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/ip_address.h"
+#include "rtc_base/net_helpers.h"
 #include "rtc_base/socket_address.h"
 
 namespace cricket {
@@ -91,13 +93,17 @@ enum StunAddressFamily {
 
 // These are the types of STUN error codes defined in RFC 5389.
 enum StunErrorCode {
+  // Not an actual error from RFC 5389 and not emitted via icecandidateerror.
+  STUN_ERROR_NOT_AN_ERROR = 0,
   STUN_ERROR_TRY_ALTERNATE = 300,
   STUN_ERROR_BAD_REQUEST = 400,
   STUN_ERROR_UNAUTHORIZED = 401,
   STUN_ERROR_UNKNOWN_ATTRIBUTE = 420,
   STUN_ERROR_STALE_NONCE = 438,
   STUN_ERROR_SERVER_ERROR = 500,
-  STUN_ERROR_GLOBAL_FAILURE = 600
+  STUN_ERROR_GLOBAL_FAILURE = 600,
+  // https://w3c.github.io/webrtc-pc/#dom-rtcpeerconnectioniceerrorevent-errorcode
+  STUN_ERROR_SERVER_NOT_REACHABLE = 701,
 };
 
 // Strings for the error codes above.
@@ -288,19 +294,6 @@ class StunMessage {
   bool EqualAttributes(const StunMessage* other,
                        std::function<bool(int type)> attribute_type_mask) const;
 
-  // Validates that a STUN message in byte buffer form
-  // has a correct MESSAGE-INTEGRITY value.
-  // These functions are not recommended and will be deprecated; use
-  // ValidateMessageIntegrity(password) on the parsed form instead.
-  [[deprecated("Use member function")]] static bool ValidateMessageIntegrity(
-      const char* data,
-      size_t size,
-      const std::string& password);
-  [[deprecated("Use member function")]] static bool ValidateMessageIntegrity32(
-      const char* data,
-      size_t size,
-      const std::string& password);
-
   // Expose raw-buffer ValidateMessageIntegrity function for testing.
   static bool ValidateMessageIntegrityForTesting(const char* data,
                                                  size_t size,
@@ -352,7 +345,7 @@ class StunAttribute {
   virtual StunAttributeValueType value_type() const = 0;
 
   // Only XorAddressAttribute needs this so far.
-  virtual void SetOwner(StunMessage* owner) {}
+  virtual void SetOwner(StunMessage* /* owner */) {}
 
   // Reads the body (not the type or length) for this type of attribute from
   // the given buffer.  Return value is true if successful.
@@ -645,45 +638,6 @@ std::unique_ptr<StunAttribute> CopyStunAttribute(
     const StunAttribute& attribute,
     rtc::ByteBufferWriter* tmp_buffer_ptr = 0);
 
-// TODO(?): Move the TURN/ICE stuff below out to separate files.
-extern const char TURN_MAGIC_COOKIE_VALUE[4];
-
-// "GTURN" STUN methods.
-// TODO(?): Rename these methods to GTURN_ to make it clear they aren't
-// part of standard STUN/TURN.
-enum RelayMessageType {
-  // For now, using the same defs from TurnMessageType below.
-  // STUN_ALLOCATE_REQUEST              = 0x0003,
-  // STUN_ALLOCATE_RESPONSE             = 0x0103,
-  // STUN_ALLOCATE_ERROR_RESPONSE       = 0x0113,
-  STUN_SEND_REQUEST = 0x0004,
-  STUN_SEND_RESPONSE = 0x0104,
-  STUN_SEND_ERROR_RESPONSE = 0x0114,
-  STUN_DATA_INDICATION = 0x0115,
-};
-
-// "GTURN"-specific STUN attributes.
-// TODO(?): Rename these attributes to GTURN_ to avoid conflicts.
-enum RelayAttributeType {
-  STUN_ATTR_LIFETIME = 0x000d,             // UInt32
-  STUN_ATTR_MAGIC_COOKIE = 0x000f,         // ByteString, 4 bytes
-  STUN_ATTR_BANDWIDTH = 0x0010,            // UInt32
-  STUN_ATTR_DESTINATION_ADDRESS = 0x0011,  // Address
-  STUN_ATTR_SOURCE_ADDRESS2 = 0x0012,      // Address
-  STUN_ATTR_DATA = 0x0013,                 // ByteString
-  STUN_ATTR_OPTIONS = 0x8001,              // UInt32
-};
-
-// A "GTURN" STUN message.
-class RelayMessage : public StunMessage {
- public:
-  using StunMessage::StunMessage;
-
- protected:
-  StunAttributeValueType GetAttributeValueType(int type) const override;
-  StunMessage* CreateNew() const override;
-};
-
 // Defined in TURN RFC 5766.
 enum TurnMessageType : uint16_t {
   STUN_ALLOCATE_REQUEST = 0x0003,
@@ -703,19 +657,15 @@ enum TurnMessageType : uint16_t {
 };
 
 enum TurnAttributeType {
-  STUN_ATTR_CHANNEL_NUMBER = 0x000C,    // UInt32
-  STUN_ATTR_TURN_LIFETIME = 0x000d,     // UInt32
-  STUN_ATTR_XOR_PEER_ADDRESS = 0x0012,  // XorAddress
-  // TODO(mallinath) - Uncomment after RelayAttributes are renamed.
-  // STUN_ATTR_DATA                     = 0x0013,  // ByteString
+  STUN_ATTR_CHANNEL_NUMBER = 0x000C,       // UInt32
+  STUN_ATTR_LIFETIME = 0x000d,             // UInt32
+  STUN_ATTR_XOR_PEER_ADDRESS = 0x0012,     // XorAddress
+  STUN_ATTR_DATA = 0x0013,                 // ByteString
   STUN_ATTR_XOR_RELAYED_ADDRESS = 0x0016,  // XorAddress
   STUN_ATTR_EVEN_PORT = 0x0018,            // ByteString, 1 byte.
   STUN_ATTR_REQUESTED_TRANSPORT = 0x0019,  // UInt32
   STUN_ATTR_DONT_FRAGMENT = 0x001A,        // No content, Length = 0
   STUN_ATTR_RESERVATION_TOKEN = 0x0022,    // ByteString, 8 bytes.
-  // TODO(mallinath) - Rename STUN_ATTR_TURN_LIFETIME to STUN_ATTR_LIFETIME and
-  // STUN_ATTR_TURN_DATA to STUN_ATTR_DATA. Also rename RelayMessage attributes
-  // by appending G to attribute name.
 };
 
 // RFC 5766-defined errors.
@@ -726,7 +676,8 @@ enum TurnErrorType {
   STUN_ERROR_UNSUPPORTED_PROTOCOL = 442
 };
 
-extern const int SERVER_NOT_REACHABLE_ERROR;
+[[deprecated("Use STUN_ERROR_SERVER_NOT_REACHABLE")]] extern const int
+    SERVER_NOT_REACHABLE_ERROR;
 
 extern const char STUN_ERROR_REASON_FORBIDDEN[];
 extern const char STUN_ERROR_REASON_ALLOCATION_MISMATCH[];
@@ -771,6 +722,9 @@ enum IceAttributeType {
   STUN_ATTR_GOOG_DELTA_SYNC_REQ = 0xC05E,  // Not yet implemented.
   // MESSAGE-INTEGRITY truncated to 32-bit.
   STUN_ATTR_GOOG_MESSAGE_INTEGRITY_32 = 0xC060,
+  // Experimental: piggybacking the DTLS handshake in STUN.
+  STUN_ATTR_META_DTLS_IN_STUN = 0xC070,
+  STUN_ATTR_META_DTLS_IN_STUN_ACK = 0xC071,
 };
 
 // When adding new attributes to STUN_ATTR_GOOG_MISC_INFO

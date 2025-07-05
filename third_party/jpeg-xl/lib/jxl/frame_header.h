@@ -68,10 +68,12 @@ inline std::array<int, 3> JpegOrder(ColorTransform ct, bool is_gray) {
   if (is_gray) {
     return {{0, 0, 0}};
   }
-  JXL_ASSERT(ct != ColorTransform::kXYB);
   if (ct == ColorTransform::kYCbCr) {
     return {{1, 0, 2}};
+  } else if (ct == ColorTransform::kNone) {
+    return {{0, 1, 2}};
   } else {
+    JXL_DEBUG_ABORT("Internal logic error");
     return {{0, 1, 2}};
   }
 }
@@ -426,7 +428,7 @@ struct FrameHeader : public Fields {
   uint32_t save_as_reference;
 
   // Whether to save this frame before or after the color transform. A frame
-  // that is saved before the color tansform can only be used for blending
+  // that is saved before the color transform can only be used for blending
   // through patches. On the contrary, a frame that is saved after the color
   // transform can only be used for blending through blending modes.
   // Irrelevant for extra channel blending. Can only be true if

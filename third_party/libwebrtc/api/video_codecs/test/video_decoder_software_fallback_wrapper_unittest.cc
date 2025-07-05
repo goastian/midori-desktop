@@ -12,14 +12,17 @@
 
 #include <stdint.h>
 
-#include "absl/types/optional.h"
+#include <memory>
+#include <optional>
+#include <string>
+
 #include "api/environment/environment.h"
 #include "api/environment/environment_factory.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_frame.h"
+#include "api/video/video_frame_type.h"
 #include "api/video_codecs/video_decoder.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
-#include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/checks.h"
 #include "test/explicit_key_value_config.h"
@@ -43,13 +46,13 @@ class VideoDecoderSoftwareFallbackWrapperTest : public ::testing::Test {
 
   class CountingFakeDecoder : public VideoDecoder {
    public:
-    bool Configure(const Settings& settings) override {
+    bool Configure(const Settings& /* settings */) override {
       ++configure_count_;
       return configure_return_value_;
     }
 
-    int32_t Decode(const EncodedImage& input_image,
-                   int64_t render_time_ms) override {
+    int32_t Decode(const EncodedImage& /* input_image */,
+                   int64_t /* render_time_ms */) override {
       ++decode_count_;
       return decode_return_code_;
     }
@@ -180,15 +183,15 @@ TEST_F(VideoDecoderSoftwareFallbackWrapperTest, ForwardsReleaseCall) {
 TEST_F(VideoDecoderSoftwareFallbackWrapperTest,
        ForwardsRegisterDecodeCompleteCallback) {
   class FakeDecodedImageCallback : public DecodedImageCallback {
-    int32_t Decoded(VideoFrame& decodedImage) override { return 0; }
-    int32_t Decoded(webrtc::VideoFrame& decodedImage,
-                    int64_t decode_time_ms) override {
+    int32_t Decoded(VideoFrame& /* decodedImage */) override { return 0; }
+    int32_t Decoded(webrtc::VideoFrame& /* decodedImage */,
+                    int64_t /* decode_time_ms */) override {
       RTC_DCHECK_NOTREACHED();
       return -1;
     }
-    void Decoded(webrtc::VideoFrame& decodedImage,
-                 absl::optional<int32_t> decode_time_ms,
-                 absl::optional<uint8_t> qp) override {
+    void Decoded(webrtc::VideoFrame& /* decodedImage */,
+                 std::optional<int32_t> /* decode_time_ms */,
+                 std::optional<uint8_t> /* qp */) override {
       RTC_DCHECK_NOTREACHED();
     }
   } callback;

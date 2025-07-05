@@ -9,7 +9,15 @@
  */
 #include "api/test/network_emulation/network_emulation_interfaces.h"
 
+#include <cstdint>
+
+#include "api/units/data_rate.h"
+#include "api/units/timestamp.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/copy_on_write_buffer.h"
 #include "rtc_base/net_helper.h"
+#include "rtc_base/net_helpers.h"
+#include "rtc_base/socket_address.h"
 
 namespace webrtc {
 
@@ -17,13 +25,15 @@ EmulatedIpPacket::EmulatedIpPacket(const rtc::SocketAddress& from,
                                    const rtc::SocketAddress& to,
                                    rtc::CopyOnWriteBuffer data,
                                    Timestamp arrival_time,
-                                   uint16_t application_overhead)
+                                   uint16_t application_overhead,
+                                   EcnMarking ecn)
     : from(from),
       to(to),
       data(data),
       headers_size(to.ipaddr().overhead() + application_overhead +
                    cricket::kUdpHeaderSize),
-      arrival_time(arrival_time) {
+      arrival_time(arrival_time),
+      ecn(ecn) {
   RTC_DCHECK(to.family() == AF_INET || to.family() == AF_INET6);
 }
 

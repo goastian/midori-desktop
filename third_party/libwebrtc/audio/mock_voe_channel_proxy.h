@@ -11,17 +11,36 @@
 #ifndef AUDIO_MOCK_VOE_CHANNEL_PROXY_H_
 #define AUDIO_MOCK_VOE_CHANNEL_PROXY_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <string>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "api/audio/audio_frame.h"
+#include "api/audio/audio_mixer.h"
+#include "api/audio_codecs/audio_encoder.h"
+#include "api/audio_codecs/audio_format.h"
+#include "api/call/audio_sink.h"
+#include "api/call/bitrate_allocation.h"
 #include "api/crypto/frame_decryptor_interface.h"
-#include "api/test/mock_frame_encryptor.h"
+#include "api/crypto/frame_encryptor_interface.h"
+#include "api/frame_transformer_interface.h"
+#include "api/function_view.h"
+#include "api/rtp_headers.h"
+#include "api/scoped_refptr.h"
+#include "api/transport/rtp/rtp_source.h"
+#include "api/units/data_rate.h"
 #include "audio/channel_receive.h"
 #include "audio/channel_send.h"
+#include "call/syncable.h"
+#include "modules/audio_coding/include/audio_coding_module_typedefs.h"
+#include "modules/rtp_rtcp/include/report_block_data.h"
 #include "modules/rtp_rtcp/source/rtp_packet_received.h"
+#include "modules/rtp_rtcp/source/rtp_rtcp_interface.h"
 #include "test/gmock.h"
 
 namespace webrtc {
@@ -30,6 +49,7 @@ namespace test {
 class MockChannelReceive : public voe::ChannelReceiveInterface {
  public:
   MOCK_METHOD(void, SetNACKStatus, (bool enable, int max_packets), (override));
+  MOCK_METHOD(void, SetRtcpMode, (RtcpMode mode), (override));
   MOCK_METHOD(void, SetNonSenderRttMeasurement, (bool enabled), (override));
   MOCK_METHOD(void,
               RegisterReceiverCongestionControlObjects,
@@ -61,11 +81,7 @@ class MockChannelReceive : public voe::ChannelReceiveInterface {
               (int sample_rate_hz, AudioFrame*),
               (override));
   MOCK_METHOD(int, PreferredSampleRate, (), (const, override));
-  MOCK_METHOD(void, SetSourceTracker, (SourceTracker*), (override));
-  MOCK_METHOD(void,
-              SetAssociatedSendChannel,
-              (const voe::ChannelSendInterface*),
-              (override));
+  MOCK_METHOD(std::vector<RtpSource>, GetSources, (), (const, override));
   MOCK_METHOD(bool,
               GetPlayoutRtpTimestamp,
               (uint32_t*, int64_t*),
@@ -74,18 +90,18 @@ class MockChannelReceive : public voe::ChannelReceiveInterface {
               SetEstimatedPlayoutNtpTimestampMs,
               (int64_t ntp_timestamp_ms, int64_t time_ms),
               (override));
-  MOCK_METHOD(absl::optional<int64_t>,
+  MOCK_METHOD(std::optional<int64_t>,
               GetCurrentEstimatedPlayoutNtpTimestampMs,
               (int64_t now_ms),
               (const, override));
-  MOCK_METHOD(absl::optional<Syncable::Info>,
+  MOCK_METHOD(std::optional<Syncable::Info>,
               GetSyncInfo,
               (),
               (const, override));
   MOCK_METHOD(bool, SetMinimumPlayoutDelay, (int delay_ms), (override));
   MOCK_METHOD(bool, SetBaseMinimumPlayoutDelayMs, (int delay_ms), (override));
   MOCK_METHOD(int, GetBaseMinimumPlayoutDelayMs, (), (const, override));
-  MOCK_METHOD((absl::optional<std::pair<int, SdpAudioFormat>>),
+  MOCK_METHOD((std::optional<std::pair<int, SdpAudioFormat>>),
               GetReceiveCodec,
               (),
               (const, override));
@@ -169,7 +185,6 @@ class MockChannelSend : public voe::ChannelSendInterface {
               (override));
   MOCK_METHOD(RtpRtcpInterface*, GetRtpRtcp, (), (const, override));
   MOCK_METHOD(int, GetTargetBitrate, (), (const, override));
-  MOCK_METHOD(int64_t, GetRTT, (), (const, override));
   MOCK_METHOD(void, StartSend, (), (override));
   MOCK_METHOD(void, StopSend, (), (override));
   MOCK_METHOD(void,
@@ -181,6 +196,11 @@ class MockChannelSend : public voe::ChannelSendInterface {
       SetEncoderToPacketizerFrameTransformer,
       (rtc::scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer),
       (override));
+  MOCK_METHOD(std::optional<DataRate>, GetUsedRate, (), (const, override));
+  MOCK_METHOD(void,
+              RegisterPacketOverhead,
+              (int packet_byte_overhead),
+              (override));
 };
 }  // namespace test
 }  // namespace webrtc

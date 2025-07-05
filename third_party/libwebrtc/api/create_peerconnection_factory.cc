@@ -13,14 +13,19 @@
 #include <memory>
 #include <utility>
 
+#include "api/audio/audio_device.h"
+#include "api/audio/audio_mixer.h"
+#include "api/audio/audio_processing.h"
+#include "api/audio/builtin_audio_processing_builder.h"
+#include "api/audio_codecs/audio_decoder_factory.h"
+#include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/enable_media.h"
+#include "api/field_trials_view.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/scoped_refptr.h"
-#include "api/task_queue/default_task_queue_factory.h"
-#include "api/transport/field_trial_based_config.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
+#include "api/video_codecs/video_decoder_factory.h"
+#include "api/video_codecs/video_encoder_factory.h"
 #include "rtc_base/thread.h"
 
 namespace webrtc {
@@ -38,16 +43,10 @@ rtc::scoped_refptr<PeerConnectionFactoryInterface> CreatePeerConnectionFactory(
     rtc::scoped_refptr<AudioProcessing> audio_processing,
     std::unique_ptr<AudioFrameProcessor> audio_frame_processor,
     std::unique_ptr<FieldTrialsView> field_trials) {
-  if (!field_trials) {
-    field_trials = std::make_unique<webrtc::FieldTrialBasedConfig>();
-  }
-
   PeerConnectionFactoryDependencies dependencies;
   dependencies.network_thread = network_thread;
   dependencies.worker_thread = worker_thread;
   dependencies.signaling_thread = signaling_thread;
-  dependencies.task_queue_factory =
-      CreateDefaultTaskQueueFactory(field_trials.get());
   dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>();
   dependencies.trials = std::move(field_trials);
 
@@ -59,10 +58,14 @@ rtc::scoped_refptr<PeerConnectionFactoryInterface> CreatePeerConnectionFactory(
   dependencies.audio_encoder_factory = std::move(audio_encoder_factory);
   dependencies.audio_decoder_factory = std::move(audio_decoder_factory);
   dependencies.audio_frame_processor = std::move(audio_frame_processor);
-  if (audio_processing) {
-    dependencies.audio_processing = std::move(audio_processing);
+  if (audio_processing != nullptr) {
+    dependencies.audio_processing_builder =
+        CustomAudioProcessing(std::move(audio_processing));
   } else {
-    dependencies.audio_processing = AudioProcessingBuilder().Create();
+#ifndef WEBRTC_EXCLUDE_AUDIO_PROCESSING_MODULE
+    dependencies.audio_processing_builder =
+        std::make_unique<BuiltinAudioProcessingBuilder>();
+#endif
   }
   dependencies.audio_mixer = std::move(audio_mixer);
   dependencies.video_encoder_factory = std::move(video_encoder_factory);

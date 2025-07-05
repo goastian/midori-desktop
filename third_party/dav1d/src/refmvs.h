@@ -43,22 +43,26 @@ PACKED(typedef struct refmvs_temporal_block {
     mv mv;
     int8_t ref;
 }) refmvs_temporal_block;
+CHECK_SIZE(refmvs_temporal_block, 5);
 
-typedef union refmvs_refpair {
+PACKED(typedef union refmvs_refpair {
     int8_t ref[2]; // [0] = 0: intra=1, [1] = -1: comp=0
     uint16_t pair;
-} refmvs_refpair;
+}) ALIGN(refmvs_refpair, 2);
+CHECK_SIZE(refmvs_refpair, 2);
 
 typedef union refmvs_mvpair {
     mv mv[2];
     uint64_t n;
 } refmvs_mvpair;
+CHECK_SIZE(refmvs_mvpair, 8);
 
 PACKED(typedef struct refmvs_block {
     refmvs_mvpair mv;
     refmvs_refpair ref;
     uint8_t bs, mf; // 1 = globalmv+affine, 2 = newmv
 }) ALIGN(refmvs_block, 4);
+CHECK_SIZE(refmvs_block, 12);
 
 typedef struct refmvs_frame {
     const Dav1dFrameHeader *frm_hdr;
@@ -72,14 +76,14 @@ typedef struct refmvs_frame {
     int mfmv_ref2ref[3][7];
     int n_mfmvs;
 
+    int n_blocks;
     refmvs_temporal_block *rp;
     /*const*/ refmvs_temporal_block *const *rp_ref;
     refmvs_temporal_block *rp_proj;
     ptrdiff_t rp_stride;
 
     refmvs_block *r; // 35 x r_stride memory
-    ptrdiff_t r_stride;
-    int n_tile_rows, n_tile_threads, n_frame_threads;
+    int n_tile_threads, n_frame_threads;
 } refmvs_frame;
 
 typedef struct refmvs_tile {
@@ -120,10 +124,6 @@ typedef struct Dav1dRefmvsDSPContext {
     save_tmvs_fn save_tmvs;
     splat_mv_fn splat_mv;
 } Dav1dRefmvsDSPContext;
-
-// call once per frame thread
-void dav1d_refmvs_init(refmvs_frame *rf);
-void dav1d_refmvs_clear(refmvs_frame *rf);
 
 // call once per frame
 int dav1d_refmvs_init_frame(refmvs_frame *rf,

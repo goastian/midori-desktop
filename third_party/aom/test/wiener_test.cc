@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2018, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "third_party/googletest/src/googletest/include/gtest/gtest.h"
+#include "gtest/gtest.h"
 
 #include "test/register_state_check.h"
 #include "test/acm_random.h"
@@ -572,6 +572,9 @@ class WienerTestHighbd : public ::testing::TestWithParam<WienerTestParam> {
   void RunWienerTest_ExtremeValues(const int32_t wiener_win,
                                    aom_bit_depth_t bit_depth);
 
+  void RunWienerTest_Overflow32bTest(const int32_t wiener_win,
+                                     aom_bit_depth_t bit_depth);
+
  private:
   compute_stats_Func target_func_;
   libaom_test::ACMRandom rng_;
@@ -722,6 +725,68 @@ void WienerTestHighbd::RunWienerTest_ExtremeValues(const int32_t wiener_win,
   }
 }
 
+void WienerTestHighbd::RunWienerTest_Overflow32bTest(
+    const int32_t wiener_win, aom_bit_depth_t bit_depth) {
+  const int32_t wiener_halfwin = wiener_win >> 1;
+  const int32_t wiener_win2 = wiener_win * wiener_win;
+  DECLARE_ALIGNED(32, int64_t, M_ref[WIENER_WIN2]);
+  DECLARE_ALIGNED(32, int64_t, H_ref[WIENER_WIN2 * WIENER_WIN2]);
+  DECLARE_ALIGNED(32, int64_t, M_test[WIENER_WIN2]);
+  DECLARE_ALIGNED(32, int64_t, H_test[WIENER_WIN2 * WIENER_WIN2]);
+  const int h_start = 16;
+  const int h_end = MAX_WIENER_BLOCK;
+  const int v_start = 16;
+  const int v_end = MAX_WIENER_BLOCK;
+  const int dgd_stride = h_end;
+  const int src_stride = MAX_DATA_BLOCK;
+  const int iters = 1;
+  int16_t *dgd_avg = buf;
+  int16_t *src_avg =
+      buf + (3 * RESTORATION_UNITSIZE_MAX * RESTORATION_UNITSIZE_MAX);
+  for (int iter = 0; iter < iters && !HasFatalFailure(); ++iter) {
+    // Fill src and dgd such that the intermediate values for M and H will at
+    // some point overflow a signed 32-bit value.
+    for (int i = 0; i < MAX_DATA_BLOCK * MAX_DATA_BLOCK; ++i) {
+      dgd_buf[i] = ((uint16_t)1 << bit_depth) - 1;
+      src_buf[i] = 0;
+    }
+
+    memset(dgd_buf, 0, MAX_DATA_BLOCK * 30 * sizeof(dgd_buf));
+    const uint8_t *dgd8 = CONVERT_TO_BYTEPTR(
+        dgd_buf + wiener_halfwin * MAX_DATA_BLOCK + wiener_halfwin);
+    const uint8_t *src8 = CONVERT_TO_BYTEPTR(src_buf);
+
+    av1_compute_stats_highbd_c(wiener_win, dgd8, src8, dgd_avg, src_avg,
+                               h_start, h_end, v_start, v_end, dgd_stride,
+                               src_stride, M_ref, H_ref, bit_depth);
+
+    target_func_(wiener_win, dgd8, src8, dgd_avg, src_avg, h_start, h_end,
+                 v_start, v_end, dgd_stride, src_stride, M_test, H_test,
+                 bit_depth);
+
+    int failed = 0;
+    for (int i = 0; i < wiener_win2; ++i) {
+      if (M_ref[i] != M_test[i]) {
+        failed = 1;
+        printf("win %d bd %d M iter %d [%4d] ref %6" PRId64 " test %6" PRId64
+               " \n",
+               wiener_win, bit_depth, iter, i, M_ref[i], M_test[i]);
+        break;
+      }
+    }
+    for (int i = 0; i < wiener_win2 * wiener_win2; ++i) {
+      if (H_ref[i] != H_test[i]) {
+        failed = 1;
+        printf("win %d bd %d H iter %d [%4d] ref %6" PRId64 " test %6" PRId64
+               " \n",
+               wiener_win, bit_depth, iter, i, H_ref[i], H_test[i]);
+        break;
+      }
+    }
+    ASSERT_EQ(failed, 0);
+  }
+}
+
 TEST_P(WienerTestHighbd, RandomValues) {
   RunWienerTest(WIENER_WIN, 1, AOM_BITS_8);
   RunWienerTest(WIENER_WIN_CHROMA, 1, AOM_BITS_8);
@@ -740,6 +805,14 @@ TEST_P(WienerTestHighbd, ExtremeValues) {
   RunWienerTest_ExtremeValues(WIENER_WIN_CHROMA, AOM_BITS_12);
 }
 
+TEST_P(WienerTestHighbd, Overflow32bTest) {
+  RunWienerTest_Overflow32bTest(WIENER_WIN, AOM_BITS_8);
+  RunWienerTest_Overflow32bTest(WIENER_WIN_CHROMA, AOM_BITS_8);
+  RunWienerTest_Overflow32bTest(WIENER_WIN, AOM_BITS_10);
+  RunWienerTest_Overflow32bTest(WIENER_WIN_CHROMA, AOM_BITS_10);
+  RunWienerTest_Overflow32bTest(WIENER_WIN, AOM_BITS_12);
+  RunWienerTest_Overflow32bTest(WIENER_WIN_CHROMA, AOM_BITS_12);
+}
 TEST_P(WienerTestHighbd, DISABLED_Speed) {
   RunWienerTest(WIENER_WIN, 200, AOM_BITS_8);
   RunWienerTest(WIENER_WIN_CHROMA, 200, AOM_BITS_8);
@@ -2015,6 +2088,241 @@ TEST(SearchWienerTest, 12bitSignedIntegerOverflowInLinsolveWiener) {
   EXPECT_EQ(pkt, nullptr);
 
   // Encode frame
+  EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
+  iter = nullptr;
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  ASSERT_NE(pkt, nullptr);
+  EXPECT_EQ(pkt->kind, AOM_CODEC_CX_FRAME_PKT);
+  // pkt->data.frame.flags is 0x20000.
+  EXPECT_EQ(pkt->data.frame.flags & AOM_FRAME_IS_KEY, 0u);
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  // Flush encoder
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_encode(&enc, nullptr, 0, 1, 0));
+  iter = nullptr;
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_destroy(&enc));
+}
+
+// A test that reproduces crbug.com/oss-fuzz/384759831: signed integer overflow
+// in linsolve_wiener().
+TEST(SearchWienerTest, DISABLED_12bitSignedIntegerOverflowInLinsolveWiener2) {
+  constexpr int kWidth = 4;
+  constexpr int kHeight = 2;
+  static constexpr uint16_t kBuffer1[kWidth * kHeight] = {
+    // Y plane:
+    32, 4095, 2080, 2592, 32, 3104, 4095, 32,
+  };
+  unsigned char *img_data1 =
+      reinterpret_cast<unsigned char *>(const_cast<uint16_t *>(kBuffer1));
+  static constexpr uint16_t kBuffer2[kWidth * kHeight] = {
+    // Y plane:
+    4095, 4095, 2080, 4095, 4095, 32, 4095, 544,
+  };
+  unsigned char *img_data2 =
+      reinterpret_cast<unsigned char *>(const_cast<uint16_t *>(kBuffer2));
+  static constexpr uint16_t kBuffer3[kWidth * kHeight] = {
+    // Y plane:
+    3872, 3872, 3872, 2848, 800, 4095, 32, 3104,
+  };
+  unsigned char *img_data3 =
+      reinterpret_cast<unsigned char *>(const_cast<uint16_t *>(kBuffer3));
+
+  aom_codec_iface_t *iface = aom_codec_av1_cx();
+  aom_codec_enc_cfg_t cfg;
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_enc_config_default(iface, &cfg, AOM_USAGE_GOOD_QUALITY));
+  cfg.rc_end_usage = AOM_Q;
+  cfg.g_profile = 2;
+  cfg.g_bit_depth = AOM_BITS_12;
+  cfg.g_input_bit_depth = 12;
+  cfg.g_w = kWidth;
+  cfg.g_h = kHeight;
+  cfg.g_lag_in_frames = 0;
+  cfg.g_threads = 32;
+  cfg.monochrome = 1;
+  cfg.rc_min_quantizer = 51;
+  cfg.rc_max_quantizer = 55;
+  aom_codec_ctx_t enc;
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_enc_init(&enc, iface, &cfg, AOM_CODEC_USE_HIGHBITDEPTH));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AOME_SET_CQ_LEVEL, 53));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AV1E_SET_TILE_ROWS, 3));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AV1E_SET_TILE_COLUMNS, 6));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AOME_SET_CPUUSED, 6));
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_control(&enc, AV1E_SET_COLOR_RANGE, AOM_CR_FULL_RANGE));
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_control(&enc, AOME_SET_TUNING, AOM_TUNE_SSIM));
+
+  aom_image_t img;
+
+  // Encode frame
+  EXPECT_EQ(&img, aom_img_wrap(&img, AOM_IMG_FMT_I42016, kWidth, kHeight, 1,
+                               img_data1));
+  img.monochrome = 1;
+  img.planes[1] = img.planes[2] = nullptr;
+  img.stride[1] = img.stride[2] = 0;
+  EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
+  aom_codec_iter_t iter = nullptr;
+  const aom_codec_cx_pkt_t *pkt = aom_codec_get_cx_data(&enc, &iter);
+  ASSERT_NE(pkt, nullptr);
+  EXPECT_EQ(pkt->kind, AOM_CODEC_CX_FRAME_PKT);
+  // pkt->data.frame.flags is 0x1f0011.
+  EXPECT_EQ(pkt->data.frame.flags & AOM_FRAME_IS_KEY, AOM_FRAME_IS_KEY);
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  // Encode frame
+  EXPECT_EQ(&img, aom_img_wrap(&img, AOM_IMG_FMT_I42016, kWidth, kHeight, 1,
+                               img_data2));
+  img.monochrome = 1;
+  img.planes[1] = img.planes[2] = nullptr;
+  img.stride[1] = img.stride[2] = 0;
+  EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
+  iter = nullptr;
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  ASSERT_NE(pkt, nullptr);
+  EXPECT_EQ(pkt->kind, AOM_CODEC_CX_FRAME_PKT);
+  // pkt->data.frame.flags is 0x20000.
+  EXPECT_EQ(pkt->data.frame.flags & AOM_FRAME_IS_KEY, 0u);
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  // Encode frame
+  EXPECT_EQ(&img, aom_img_wrap(&img, AOM_IMG_FMT_I42016, kWidth, kHeight, 1,
+                               img_data3));
+  img.monochrome = 1;
+  img.planes[1] = img.planes[2] = nullptr;
+  img.stride[1] = img.stride[2] = 0;
+  EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
+  iter = nullptr;
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  ASSERT_NE(pkt, nullptr);
+  EXPECT_EQ(pkt->kind, AOM_CODEC_CX_FRAME_PKT);
+  // pkt->data.frame.flags is 0x20000.
+  EXPECT_EQ(pkt->data.frame.flags & AOM_FRAME_IS_KEY, 0u);
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  // Flush encoder
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_encode(&enc, nullptr, 0, 1, 0));
+  iter = nullptr;
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_destroy(&enc));
+}
+
+// A test that reproduces crbug.com/oss-fuzz/42537236: signed integer overflow
+// in linsolve_wiener().
+TEST(SearchWienerTest, DISABLED_12bitSignedIntegerOverflowInLinsolveWiener3) {
+  constexpr int kWidth = 17;
+  constexpr int kHeight = 6;
+  // Since the image format is YUV 4:2:0, aom_img_wrap() expects the buffer is
+  // allocated with width and height aligned to a multiple of 2. Align the
+  // width to a multiple of 2 so that the stride set by aom_img_wrap() is
+  // correct.
+  static constexpr uint16_t kBuffer1[(kWidth + 1) * kHeight] = {
+    // Y plane:
+    // Row:
+    4095, 2408, 1907, 0, 1119, 0, 4095, 4095, 0, 4095, 2289, 4095, 0, 4095,
+    4095, 1545, 4095, 0,
+    // Row:
+    4095, 3437, 4095, 0, 4095, 4095, 4095, 0, 0, 4095, 0, 0, 1694, 4095, 4095,
+    404, 2728, 0,
+    // Row:
+    3756, 3051, 4095, 0, 0, 0, 841, 0, 0, 324, 0, 0, 0, 756, 4095, 2902, 0, 0,
+    // Row:
+    0, 0, 4095, 2779, 4095, 4095, 0, 4095, 0, 0, 4095, 4095, 1626, 3491, 4095,
+    4095, 1617, 0,
+    // Row:
+    4095, 4095, 0, 3039, 1218, 159, 4095, 3866, 4095, 438, 0, 0, 4095, 0, 0, 0,
+    0, 0,
+    // Row:
+    1091, 0, 4095, 0, 3587, 0, 4095, 0, 1409, 4095, 4095, 0, 3399, 0, 0, 0, 428,
+    0
+  };
+  unsigned char *img_data1 =
+      reinterpret_cast<unsigned char *>(const_cast<uint16_t *>(kBuffer1));
+  static constexpr uint16_t kBuffer2[(kWidth + 1) * kHeight] = {
+    // Y plane:
+    // Row:
+    561, 4095, 0, 1627, 4095, 2115, 4095, 4095, 0, 3397, 664, 2409, 0, 1235, 0,
+    4095, 0, 0,
+    // Row:
+    4095, 0, 1665, 0, 4095, 4095, 3541, 0, 4095, 1787, 2584, 4095, 0, 4095,
+    4095, 4095, 4095, 0,
+    // Row:
+    4095, 4095, 4095, 0, 0, 0, 0, 0, 0, 69, 0, 4095, 4095, 882, 4095, 4095,
+    4095, 0,
+    // Row:
+    4095, 3759, 4095, 0, 4095, 4095, 4095, 4095, 420, 0, 4095, 4095, 0, 0, 0, 0,
+    0, 0,
+    // Row:
+    2855, 2411, 4095, 2167, 4095, 2731, 0, 4095, 0, 4095, 0, 4011, 4095, 4095,
+    0, 4095, 1964, 0,
+    // Row:
+    4095, 2879, 2924, 0, 0, 4095, 3770, 4095, 0, 2172, 2825, 1287, 0, 4095,
+    4095, 0, 4095, 0
+  };
+  unsigned char *img_data2 =
+      reinterpret_cast<unsigned char *>(const_cast<uint16_t *>(kBuffer2));
+
+  aom_codec_iface_t *iface = aom_codec_av1_cx();
+  aom_codec_enc_cfg_t cfg;
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_enc_config_default(iface, &cfg, AOM_USAGE_GOOD_QUALITY));
+  cfg.rc_end_usage = AOM_Q;
+  cfg.g_profile = 2;
+  cfg.g_bit_depth = AOM_BITS_12;
+  cfg.g_input_bit_depth = 12;
+  cfg.g_w = kWidth;
+  cfg.g_h = kHeight;
+  cfg.g_lag_in_frames = 0;
+  cfg.g_threads = 34;
+  cfg.monochrome = 1;
+  cfg.rc_min_quantizer = 63;
+  cfg.rc_max_quantizer = 63;
+  aom_codec_ctx_t enc;
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_enc_init(&enc, iface, &cfg, AOM_CODEC_USE_HIGHBITDEPTH));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AOME_SET_CQ_LEVEL, 63));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AV1E_SET_TILE_ROWS, 5));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AV1E_SET_TILE_COLUMNS, 3));
+  EXPECT_EQ(AOM_CODEC_OK, aom_codec_control(&enc, AOME_SET_CPUUSED, 6));
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_control(&enc, AV1E_SET_COLOR_RANGE, AOM_CR_FULL_RANGE));
+  EXPECT_EQ(AOM_CODEC_OK,
+            aom_codec_control(&enc, AOME_SET_TUNING, AOM_TUNE_SSIM));
+
+  aom_image_t img;
+
+  // Encode frame
+  EXPECT_EQ(&img, aom_img_wrap(&img, AOM_IMG_FMT_I42016, kWidth, kHeight, 1,
+                               img_data1));
+  img.monochrome = 1;
+  img.planes[1] = img.planes[2] = nullptr;
+  img.stride[1] = img.stride[2] = 0;
+  EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
+  aom_codec_iter_t iter = nullptr;
+  const aom_codec_cx_pkt_t *pkt = aom_codec_get_cx_data(&enc, &iter);
+  ASSERT_NE(pkt, nullptr);
+  EXPECT_EQ(pkt->kind, AOM_CODEC_CX_FRAME_PKT);
+  // pkt->data.frame.flags is 0x1f0011.
+  EXPECT_EQ(pkt->data.frame.flags & AOM_FRAME_IS_KEY, AOM_FRAME_IS_KEY);
+  pkt = aom_codec_get_cx_data(&enc, &iter);
+  EXPECT_EQ(pkt, nullptr);
+
+  // Encode frame
+  EXPECT_EQ(&img, aom_img_wrap(&img, AOM_IMG_FMT_I42016, kWidth, kHeight, 1,
+                               img_data2));
+  img.monochrome = 1;
+  img.planes[1] = img.planes[2] = nullptr;
+  img.stride[1] = img.stride[2] = 0;
   EXPECT_EQ(aom_codec_encode(&enc, &img, 0, 1, 0), AOM_CODEC_OK);
   iter = nullptr;
   pkt = aom_codec_get_cx_data(&enc, &iter);

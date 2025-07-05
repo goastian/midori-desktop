@@ -3,14 +3,14 @@
 import pytest
 
 from tests.support.asserts import assert_error, assert_success
-from tests.support import platform_name
 
 
-@pytest.mark.skipif(platform_name is None, reason="Unsupported platform {}".format(platform_name))
-@pytest.mark.parametrize("body", [lambda key, value: {"alwaysMatch": {key: value}},
-                                  lambda key, value: {"firstMatch": [{key: value}]}])
-def test_platform_name(new_session, add_browser_capabilities, body):
-    capabilities = body("platformName", platform_name)
+@pytest.mark.parametrize("body", [
+    lambda key, value: {"alwaysMatch": {key: value}},
+    lambda key, value: {"firstMatch": [{key: value}]}
+], ids=["alwaysMatch", "firstMatch"])
+def test_platform_name(new_session, add_browser_capabilities, body, target_platform):
+    capabilities = body("platformName", target_platform)
     if "alwaysMatch" in capabilities:
         capabilities["alwaysMatch"] = add_browser_capabilities(capabilities["alwaysMatch"])
     else:
@@ -19,7 +19,7 @@ def test_platform_name(new_session, add_browser_capabilities, body):
     response, _ = new_session({"capabilities": capabilities})
     value = assert_success(response)
 
-    assert value["capabilities"]["platformName"] == platform_name
+    assert value["capabilities"]["platformName"] == target_platform
 
 
 invalid_merge = [
@@ -40,10 +40,21 @@ def test_merge_invalid(new_session, add_browser_capabilities, key, value):
     assert_error(response, "invalid argument")
 
 
-@pytest.mark.skipif(platform_name is None, reason="Unsupported platform {}".format(platform_name))
-def test_merge_platformName(new_session, add_browser_capabilities):
+def test_merge_platform_name(new_session, add_browser_capabilities, target_platform):
+    always_match = add_browser_capabilities({})
+
+    if "platformName" in always_match:
+        platform_name = always_match.pop("platformName")
+    else:
+        platform_name = target_platform
+
+    # Remove pageLoadStrategy so we can use it to validate the merging of the firstMatch
+    # capabilities, and guarantee platformName isn't simply ignored.
+    if "pageLoadStrategy" in always_match:
+        del always_match["pageLoadStrategy"]
+
     response, _ = new_session({"capabilities": {
-        "alwaysMatch": add_browser_capabilities({"timeouts": {"script": 10}}),
+        "alwaysMatch": always_match,
         "firstMatch": [{
             "platformName": platform_name.upper(),
             "pageLoadStrategy": "none",
@@ -59,24 +70,32 @@ def test_merge_platformName(new_session, add_browser_capabilities):
 
 
 def test_merge_browserName(new_session, add_browser_capabilities):
-    response, session = new_session({"capabilities": {"alwaysMatch": add_browser_capabilities({})}})
-    value = assert_success(response)
+    always_match = add_browser_capabilities({})
 
-    browser_settings = {
-        "browserName": value["capabilities"]["browserName"],
-        "browserVersion": value["capabilities"]["browserVersion"],
-    }
+    if "browserName" in always_match:
+        browser_name = always_match.pop("browserName")
+    else:
+        response, _ = new_session(
+            {"capabilities": {"alwaysMatch": always_match}})
+        value = assert_success(response)
+        browser_name = value["capabilities"]["browserName"]
+
+    # Remove pageLoadStrategy so we can use it to validate the merging of the firstMatch
+    # capabilities, and guarantee browserName isn't simply ignored.
+    if "pageLoadStrategy" in always_match:
+        del always_match["pageLoadStrategy"]
 
     response, _ = new_session({"capabilities": {
-        "alwaysMatch": add_browser_capabilities({"timeouts": {"script": 10}}),
+        "alwaysMatch": always_match,
         "firstMatch": [{
-            "browserName": browser_settings["browserName"] + "invalid",
+            "browserName": browser_name + "invalid",
             "pageLoadStrategy": "none",
         }, {
-            "browserName": browser_settings["browserName"],
+            "browserName": browser_name,
             "pageLoadStrategy": "eager",
         }]}}, delete_existing_session=True)
+
     value = assert_success(response)
 
-    assert value["capabilities"]["browserName"] == browser_settings['browserName']
+    assert value["capabilities"]["browserName"] == browser_name
     assert value["capabilities"]["pageLoadStrategy"] == "eager"

@@ -188,13 +188,6 @@ libjxl_dec_sources = [
     "jxl/entropy_coder.h",
     "jxl/epf.cc",
     "jxl/epf.h",
-    "jxl/fast_dct-inl.h",
-    "jxl/fast_dct128-inl.h",
-    "jxl/fast_dct16-inl.h",
-    "jxl/fast_dct256-inl.h",
-    "jxl/fast_dct32-inl.h",
-    "jxl/fast_dct64-inl.h",
-    "jxl/fast_dct8-inl.h",
     "jxl/field_encodings.h",
     "jxl/fields.cc",
     "jxl/fields.h",
@@ -370,7 +363,6 @@ libjxl_enc_sources = [
     "jxl/enc_modular.h",
     "jxl/enc_noise.cc",
     "jxl/enc_noise.h",
-    "jxl/enc_optimize.cc",
     "jxl/enc_optimize.h",
     "jxl/enc_params.h",
     "jxl/enc_patch_dictionary.cc",
@@ -432,6 +424,7 @@ libjxl_extras_sources = [
     "extras/alpha_blend.h",
     "extras/common.cc",
     "extras/common.h",
+    "extras/compressed_icc.cc",
     "extras/dec/color_description.cc",
     "extras/dec/color_description.h",
     "extras/dec/color_hints.cc",
@@ -549,15 +542,16 @@ libjxl_jpegli_wrapper_sources = [
 
 libjxl_major_version = 0
 
-libjxl_minor_version = 10
+libjxl_minor_version = 11
 
-libjxl_patch_version = 2
+libjxl_patch_version = 1
 
 libjxl_public_headers = [
     "include/jxl/cms.h",
     "include/jxl/cms_interface.h",
     "include/jxl/codestream_header.h",
     "include/jxl/color_encoding.h",
+    "include/jxl/compressed_icc.h",
     "include/jxl/decode.h",
     "include/jxl/decode_cxx.h",
     "include/jxl/encode.h",
@@ -587,6 +581,7 @@ libjxl_testlib_files = [
 
 libjxl_tests = [
     "extras/codec_test.cc",
+    "extras/compressed_icc_test.cc",
     "extras/dec/color_description_test.cc",
     "extras/dec/pgx_test.cc",
     "extras/gain_map_test.cc",
@@ -616,7 +611,6 @@ libjxl_tests = [
     "jxl/enc_photon_noise_test.cc",
     "jxl/encode_test.cc",
     "jxl/entropy_coder_test.cc",
-    "jxl/fast_dct_test.cc",
     "jxl/fast_math_test.cc",
     "jxl/fields_test.cc",
     "jxl/gamma_correct_test.cc",

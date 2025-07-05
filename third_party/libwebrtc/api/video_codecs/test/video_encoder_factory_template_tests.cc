@@ -8,9 +8,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "api/environment/environment.h"
 #include "api/environment/environment_factory.h"
 #include "api/test/mock_video_encoder.h"
+#include "api/video_codecs/scalability_mode.h"
+#include "api/video_codecs/sdp_video_format.h"
+#include "api/video_codecs/video_encoder.h"
+#include "api/video_codecs/video_encoder_factory.h"
 #include "api/video_codecs/video_encoder_factory_template.h"
 #include "api/video_codecs/video_encoder_factory_template_libaom_av1_adapter.h"
 #include "api/video_codecs/video_encoder_factory_template_libvpx_vp8_adapter.h"
@@ -42,7 +50,8 @@ struct FooEncoderTemplateAdapter {
   static std::vector<SdpVideoFormat> SupportedFormats() { return {kFooSdp}; }
 
   static std::unique_ptr<VideoEncoder> CreateEncoder(
-      const SdpVideoFormat& format) {
+      const Environment& /* env */,
+      const SdpVideoFormat& /* format */) {
     return std::make_unique<StrictMock<MockVideoEncoder>>();
   }
 
@@ -58,8 +67,8 @@ struct BarEncoderTemplateAdapter {
   }
 
   static std::unique_ptr<VideoEncoder> CreateEncoder(
-      const Environment& env,
-      const SdpVideoFormat& format) {
+      const Environment& /* env */,
+      const SdpVideoFormat& /* format */) {
     return std::make_unique<StrictMock<MockVideoEncoder>>();
   }
 
@@ -81,13 +90,13 @@ TEST(VideoEncoderFactoryTemplate, OneTemplateAdapterCreateEncoder) {
 
 TEST(VideoEncoderFactoryTemplate, OneTemplateAdapterCodecSupport) {
   VideoEncoderFactoryTemplate<FooEncoderTemplateAdapter> factory;
-  EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, absl::nullopt),
+  EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, std::nullopt),
               Field(&CodecSupport::is_supported, true));
   EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, "L1T2"),
               Field(&CodecSupport::is_supported, true));
   EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, "S3T3"),
               Field(&CodecSupport::is_supported, false));
-  EXPECT_THAT(factory.QueryCodecSupport(SdpVideoFormat("FooX"), absl::nullopt),
+  EXPECT_THAT(factory.QueryCodecSupport(SdpVideoFormat("FooX"), std::nullopt),
               Field(&CodecSupport::is_supported, false));
 }
 
@@ -112,29 +121,19 @@ TEST(VideoEncoderFactoryTemplate, TwoTemplateAdaptersCreateEncoders) {
   EXPECT_THAT(factory.Create(env, SdpVideoFormat("Bar")), NotNull());
 }
 
-TEST(VideoEncoderFactoryTemplate,
-     CreatesEncoderWithoutEnvironmentWhenNotNeeded) {
-  // FooEncoderTemplateAdapter::CreateEncoder doesn't take Environment parameter
-  // Expect it can be created both with newer and older api.
-  VideoEncoderFactoryTemplate<FooEncoderTemplateAdapter> factory;
-
-  EXPECT_THAT(factory.CreateVideoEncoder(kFooSdp), NotNull());
-  EXPECT_THAT(factory.Create(CreateEnvironment(), kFooSdp), NotNull());
-}
-
 TEST(VideoEncoderFactoryTemplate, TwoTemplateAdaptersCodecSupport) {
   VideoEncoderFactoryTemplate<FooEncoderTemplateAdapter,
                               BarEncoderTemplateAdapter>
       factory;
-  EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, absl::nullopt),
+  EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, std::nullopt),
               Field(&CodecSupport::is_supported, true));
   EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, "L1T2"),
               Field(&CodecSupport::is_supported, true));
   EXPECT_THAT(factory.QueryCodecSupport(kFooSdp, "S3T3"),
               Field(&CodecSupport::is_supported, false));
-  EXPECT_THAT(factory.QueryCodecSupport(kBarLowSdp, absl::nullopt),
+  EXPECT_THAT(factory.QueryCodecSupport(kBarLowSdp, std::nullopt),
               Field(&CodecSupport::is_supported, true));
-  EXPECT_THAT(factory.QueryCodecSupport(kBarHighSdp, absl::nullopt),
+  EXPECT_THAT(factory.QueryCodecSupport(kBarHighSdp, std::nullopt),
               Field(&CodecSupport::is_supported, true));
   EXPECT_THAT(factory.QueryCodecSupport(kBarLowSdp, "S2T1"),
               Field(&CodecSupport::is_supported, true));

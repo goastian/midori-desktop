@@ -11,22 +11,29 @@
 #ifndef API_TEST_NETWORK_EMULATION_MANAGER_H_
 #define API_TEST_NETWORK_EMULATION_MANAGER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/strings/string_view.h"
 #include "api/array_view.h"
+#include "api/field_trials_view.h"
 #include "api/packet_socket_factory.h"
 #include "api/test/network_emulation/cross_traffic.h"
 #include "api/test/network_emulation/network_emulation_interfaces.h"
-#include "api/test/peer_network_dependencies.h"
 #include "api/test/simulated_network.h"
 #include "api/test/time_controller.h"
-#include "api/units/timestamp.h"
+#include "api/units/data_rate.h"
+#include "rtc_base/ip_address.h"
 #include "rtc_base/network.h"
 #include "rtc_base/network_constants.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/socket_factory.h"
 #include "rtc_base/thread.h"
 
 namespace webrtc {
@@ -63,11 +70,11 @@ struct EmulatedEndpointConfig {
   enum class IpAddressFamily { kIpv4, kIpv6 };
 
   // If specified will be used to name endpoint for logging purposes.
-  absl::optional<std::string> name = absl::nullopt;
+  std::optional<std::string> name = std::nullopt;
   IpAddressFamily generated_ip_family = IpAddressFamily::kIpv4;
   // If specified will be used as IP address for endpoint node. Must be unique
   // among all created nodes.
-  absl::optional<rtc::IPAddress> ip;
+  std::optional<rtc::IPAddress> ip;
   // Should endpoint be enabled or not, when it will be created.
   // Enabled endpoints will be available for webrtc to send packets.
   bool start_as_enabled = true;
@@ -86,6 +93,7 @@ struct EmulatedEndpointConfig {
 struct EmulatedTURNServerConfig {
   EmulatedEndpointConfig client_config;
   EmulatedEndpointConfig peer_config;
+  bool enable_permission_checks = true;
 };
 
 // EmulatedTURNServer is an abstraction for a TURN server.
@@ -122,21 +130,34 @@ class EmulatedNetworkManagerInterface {
  public:
   virtual ~EmulatedNetworkManagerInterface() = default;
 
-  // Returns non-null pointer to thread that have to be used as network thread
+  // Returns thread that have to be used as network thread
   // for WebRTC to properly setup network emulation. Returned thread is owned
   // by EmulatedNetworkManagerInterface implementation.
-  virtual rtc::Thread* network_thread() = 0;
-  // Returns non-null pointer to network manager that have to be injected into
+  virtual absl::Nonnull<rtc::Thread*> network_thread() = 0;
+
+  // Returns network manager that have to be injected into
   // WebRTC to properly setup network emulation. Returned manager is owned by
   // EmulatedNetworkManagerInterface implementation.
-  virtual rtc::NetworkManager* network_manager() = 0;
-  // Returns non-null pointer to packet socket factory that have to be injected
+  // Deprecated in favor of injecting NetworkManager into PeerConnectionFactory
+  // instead of creating and injecting BasicPortAllocator into PeerConnection.
+  [[deprecated("bugs.webrtc.org/42232556")]]  //
+  virtual absl::Nonnull<rtc::NetworkManager*>
+  network_manager() = 0;
+
+  // Returns packet socket factory that have to be injected
   // into WebRTC to properly setup network emulation. Returned factory is owned
   // by EmulatedNetworkManagerInterface implementation.
-  virtual rtc::PacketSocketFactory* packet_socket_factory() = 0;
-  webrtc::webrtc_pc_e2e::PeerNetworkDependencies network_dependencies() {
-    return {network_thread(), network_manager(), packet_socket_factory()};
-  }
+  // Deprecated in favor of injecting SocketFactory into PeerConnectionFactory
+  // instead of creating and injecting BasicPortAllocator into PeerConnection.
+  [[deprecated("bugs.webrtc.org/42232556")]]  //
+  virtual absl::Nonnull<rtc::PacketSocketFactory*>
+  packet_socket_factory() = 0;
+
+  // Returns objects to pass to PeerConnectionFactoryDependencies.
+  virtual absl::Nonnull<rtc::SocketFactory*> socket_factory() = 0;
+  virtual absl::Nonnull<std::unique_ptr<rtc::NetworkManager>>
+  ReleaseNetworkManager() = 0;
+
   // Returns list of endpoints that are associated with this instance. Pointers
   // are guaranteed to be non-null and are owned by NetworkEmulationManager.
   virtual std::vector<EmulatedEndpoint*> endpoints() const = 0;
@@ -160,6 +181,26 @@ bool AbslParseFlag(absl::string_view text, TimeMode* mode, std::string* error);
 // `mode`.
 std::string AbslUnparseFlag(TimeMode mode);
 
+// The construction-time configuration options for NetworkEmulationManager.
+struct NetworkEmulationManagerConfig {
+  // The mode of the underlying time controller.
+  TimeMode time_mode = TimeMode::kRealTime;
+  // The mode that determines the set of metrics to collect into
+  // `EmulatedNetworkStats` and `EmulatedNetworkNodeStats`.
+  EmulatedNetworkStatsGatheringMode stats_gathering_mode =
+      EmulatedNetworkStatsGatheringMode::kDefault;
+  // Field trials that can alter the behavior of NetworkEmulationManager.
+  const FieldTrialsView* field_trials = nullptr;
+  // If this flag is set, NetworkEmulationManager ignores the sizes of peers'
+  // DTLS handshake packets when determining when to let the packets through
+  // a constrained emulated network. Actual hanshake's packet size is ignored
+  // and a hardcoded fake size is used to compute packet's use of link capacity.
+  // This is useful for tests that require deterministic packets scheduling
+  // timing-wise even when the sizes of DTLS hadshake packets are not
+  // deterministic. This mode make sense only together with the simulated time.
+  bool fake_dtls_handshake_sizes = false;
+};
+
 // Provides an API for creating and configuring emulated network layer.
 // All objects returned by this API are owned by NetworkEmulationManager itself
 // and will be deleted when manager will be deleted.
@@ -180,6 +221,7 @@ class NetworkEmulationManager {
       // values.
       Builder& config(BuiltInNetworkBehaviorConfig config);
       Builder& delay_ms(int queue_delay_ms);
+      Builder& capacity(DataRate link_capacity);
       Builder& capacity_kbps(int link_capacity_kbps);
       Builder& capacity_Mbps(int link_capacity_Mbps);
       Builder& loss(double loss_rate);
@@ -321,11 +363,11 @@ class NetworkEmulationManager {
   virtual void StopCrossTraffic(CrossTrafficGenerator* generator) = 0;
 
   // Creates EmulatedNetworkManagerInterface which can be used then to inject
-  // network emulation layer into PeerConnection. `endpoints` - are available
-  // network interfaces for PeerConnection. If endpoint is enabled, it will be
-  // immediately available for PeerConnection, otherwise user will be able to
-  // enable endpoint later to make it available for PeerConnection.
-  virtual EmulatedNetworkManagerInterface*
+  // network emulation layer into PeerConnectionFactory. `endpoints` are
+  // available network interfaces for PeerConnection. If endpoint is enabled, it
+  // will be immediately available for PeerConnection, otherwise user will be
+  // able to enable endpoint later to make it available for PeerConnection.
+  virtual absl::Nonnull<EmulatedNetworkManagerInterface*>
   CreateEmulatedNetworkManagerInterface(
       const std::vector<EmulatedEndpoint*>& endpoints) = 0;
 

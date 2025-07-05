@@ -15,10 +15,12 @@
 #include <vector>
 
 #include "api/task_queue/test/mock_task_queue_base.h"
+#include "call/test/mock_audio_receive_stream.h"
 #include "call/test/mock_audio_send_stream.h"
 #include "modules/audio_device/include/mock_audio_device.h"
 #include "modules/audio_mixer/audio_mixer_impl.h"
 #include "modules/audio_processing/include/mock_audio_processing.h"
+#include "rtc_base/thread.h"
 #include "test/gtest.h"
 
 namespace webrtc {
@@ -26,6 +28,7 @@ namespace test {
 namespace {
 
 using ::testing::_;
+using ::testing::InSequence;
 using ::testing::Matcher;
 using ::testing::NiceMock;
 using ::testing::StrictMock;
@@ -52,8 +55,8 @@ struct FakeAsyncAudioProcessingHelper {
     FakeTaskQueueFactory() = default;
     ~FakeTaskQueueFactory() override = default;
     std::unique_ptr<TaskQueueBase, TaskQueueDeleter> CreateTaskQueue(
-        absl::string_view name,
-        Priority priority) const override {
+        absl::string_view /* name */,
+        Priority /* priority */) const override {
       return std::unique_ptr<webrtc::TaskQueueBase, webrtc::TaskQueueDeleter>(
           new FakeTaskQueue());
     }
@@ -355,6 +358,172 @@ TEST_P(AudioStateTest,
   audio_state->audio_transport()->NeedMorePlayData(
       kSampleRate / 100, kNumberOfChannels * 2, kNumberOfChannels, kSampleRate,
       audio_buffer, n_samples_out, &elapsed_time_ms, &ntp_time_ms);
+}
+
+TEST_P(AudioStateTest, StartRecordingDoesNothingWithoutStream) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  EXPECT_CALL(*adm, InitRecording()).Times(0);
+  EXPECT_CALL(*adm, StartRecording()).Times(0);
+  EXPECT_CALL(*adm, StopRecording()).Times(1);
+  audio_state->SetRecording(false);
+  audio_state->SetRecording(true);
+}
+
+TEST_P(AudioStateTest, AddStreamDoesNothingIfRecordingDisabled) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  EXPECT_CALL(*adm, StopRecording()).Times(2);
+  audio_state->SetRecording(false);
+
+  MockAudioSendStream stream;
+  EXPECT_CALL(*adm, StartRecording).Times(0);
+  audio_state->AddSendingStream(&stream, kSampleRate, kNumberOfChannels);
+  audio_state->RemoveSendingStream(&stream);
+}
+
+TEST_P(AudioStateTest, AlwaysCallInitRecordingBeforeStartRecording) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  MockAudioSendStream stream;
+  {
+    InSequence s;
+    EXPECT_CALL(*adm, InitRecording());
+    EXPECT_CALL(*adm, StartRecording());
+    audio_state->AddSendingStream(&stream, kSampleRate, kNumberOfChannels);
+  }
+
+  EXPECT_CALL(*adm, StopRecording());
+  audio_state->SetRecording(false);
+
+  {
+    InSequence s;
+    EXPECT_CALL(*adm, InitRecording());
+    EXPECT_CALL(*adm, StartRecording());
+    audio_state->SetRecording(true);
+  }
+
+  EXPECT_CALL(*adm, StopRecording());
+  audio_state->RemoveSendingStream(&stream);
+}
+
+// The recording can also be initialized by WebRtcVoiceSendChannel
+// options_.init_recording_on_send. Make sure StopRecording is still
+// being called in this scenario.
+TEST_P(AudioStateTest, CallStopRecordingIfRecordingIsInitialized) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  audio_state->SetRecording(false);
+
+  EXPECT_CALL(*adm, StopRecording());
+  audio_state->SetRecording(false);
+}
+
+TEST_P(AudioStateTest, StartPlayoutDoesNothingWithoutStream) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  EXPECT_CALL(*adm, InitPlayout()).Times(0);
+  EXPECT_CALL(*adm, StartPlayout()).Times(0);
+  EXPECT_CALL(*adm, StopPlayout()).Times(1);
+  audio_state->SetPlayout(false);
+
+  audio_state->SetPlayout(true);
+}
+
+TEST_P(AudioStateTest, AlwaysCallInitPlayoutBeforeStartPlayout) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  MockAudioReceiveStream stream;
+  {
+    InSequence s;
+    EXPECT_CALL(*adm, InitPlayout());
+    EXPECT_CALL(*adm, StartPlayout());
+    audio_state->AddReceivingStream(&stream);
+  }
+
+  // SetPlayout(false) starts the NullAudioPoller...which needs a thread.
+  rtc::ThreadManager::Instance()->WrapCurrentThread();
+
+  EXPECT_CALL(*adm, StopPlayout());
+  audio_state->SetPlayout(false);
+
+  {
+    InSequence s;
+    EXPECT_CALL(*adm, InitPlayout());
+    EXPECT_CALL(*adm, StartPlayout());
+    audio_state->SetPlayout(true);
+  }
+
+  // Playout without streams starts the NullAudioPoller...
+  // which needs a thread.
+  rtc::ThreadManager::Instance()->WrapCurrentThread();
+
+  EXPECT_CALL(*adm, StopPlayout());
+  audio_state->RemoveReceivingStream(&stream);
+}
+
+TEST_P(AudioStateTest, CallStopPlayoutIfPlayoutIsInitialized) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  audio_state->SetPlayout(false);
+
+  EXPECT_CALL(*adm, StopPlayout());
+  audio_state->SetPlayout(false);
+}
+
+TEST_P(AudioStateTest, AddStreamDoesNothingIfPlayoutDisabled) {
+  ConfigHelper helper(GetParam());
+  rtc::scoped_refptr<internal::AudioState> audio_state(
+      rtc::make_ref_counted<internal::AudioState>(helper.config()));
+
+  auto* adm = reinterpret_cast<MockAudioDeviceModule*>(
+      helper.config().audio_device_module.get());
+
+  EXPECT_CALL(*adm, StopPlayout()).Times(2);
+  audio_state->SetPlayout(false);
+
+  // AddReceivingStream with playout disabled start the NullAudioPoller...
+  // which needs a thread.
+  rtc::ThreadManager::Instance()->WrapCurrentThread();
+
+  MockAudioReceiveStream stream;
+  audio_state->AddReceivingStream(&stream);
+  audio_state->RemoveReceivingStream(&stream);
 }
 
 INSTANTIATE_TEST_SUITE_P(AudioStateTest,

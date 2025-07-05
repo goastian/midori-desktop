@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -77,7 +77,7 @@ void av1_convert_model_to_params(const double *params,
                                  WarpedMotionParams *model);
 
 // Criteria for accepting a global motion model
-static const double erroradv_tr = 0.65;
+static const double erroradv_tr[2] = { 0.65, 0.2 };
 static const double erroradv_prod_tr = 20000;
 
 // Early exit threshold for global motion refinement
@@ -91,7 +91,8 @@ static const double erroradv_prod_tr = 20000;
 //    threshold even if the model is initially above the threshold
 static const double erroradv_early_tr = 0.70;
 
-int av1_is_enough_erroradvantage(double best_erroradvantage, int params_cost);
+int av1_is_enough_erroradvantage(double best_erroradvantage, int params_cost,
+                                 double gm_erroradv_tr);
 
 void av1_compute_feature_segmentation_map(uint8_t *segment_map, int width,
                                           int height, int *inliers,
@@ -102,23 +103,15 @@ int64_t av1_segmented_frame_error(int use_hbd, int bd, const uint8_t *ref,
                                   int p_width, int p_height,
                                   uint8_t *segment_map, int segment_map_stride);
 
-// Returns the error between the result of applying motion 'wm' to the frame
-// described by 'ref' and the frame described by 'dst'.
-int64_t av1_warp_error(WarpedMotionParams *wm, int use_hbd, int bd,
-                       const uint8_t *ref, int ref_width, int ref_height,
-                       int ref_stride, uint8_t *dst, int dst_stride, int p_col,
-                       int p_row, int p_width, int p_height, int subsampling_x,
-                       int subsampling_y, int64_t best_error,
-                       uint8_t *segment_map, int segment_map_stride);
-
-// Returns the av1_warp_error between "dst" and the result of applying the
+// Returns the warp error between "dst" and the result of applying the
 // motion params that result from fine-tuning "wm" to "ref". Note that "wm" is
 // modified in place.
 int64_t av1_refine_integerized_param(
     WarpedMotionParams *wm, TransformationType wmtype, int use_hbd, int bd,
     uint8_t *ref, int r_width, int r_height, int r_stride, uint8_t *dst,
     int d_width, int d_height, int d_stride, int n_refinements,
-    int64_t ref_frame_error, uint8_t *segment_map, int segment_map_stride);
+    int64_t ref_frame_error, uint8_t *segment_map, int segment_map_stride,
+    double gm_erroradv_tr);
 
 #ifdef __cplusplus
 }  // extern "C"

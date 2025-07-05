@@ -61,8 +61,10 @@ static void pal_idx_finish_c(uint8_t *dst, const uint8_t *src,
 }
 
 #if HAVE_ASM
-#if ARCH_X86
-#include "src/x86/pal.h"
+#if ARCH_RISCV
+#include "riscv/pal.h"
+#elif ARCH_X86
+#include "x86/pal.h"
 #endif
 #endif
 
@@ -70,7 +72,9 @@ COLD void dav1d_pal_dsp_init(Dav1dPalDSPContext *const c) {
     c->pal_idx_finish = pal_idx_finish_c;
 
 #if HAVE_ASM
-#if ARCH_X86
+#if ARCH_RISCV
+    pal_dsp_init_riscv(c);
+#elif ARCH_X86
     pal_dsp_init_x86(c);
 #endif
 #endif

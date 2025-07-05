@@ -30,6 +30,7 @@
 libdav1d_sources = files(
     'cdf.c',
     'cpu.c',
+    'ctx.c',
     'data.c',
     'decode.c',
     'dequant_tables.c',
@@ -73,14 +74,14 @@ libdav1d_tmpl_sources = files(
     'recon_tmpl.c',
 )
 
-libdav1d_arch_tmpl_sources = []
+libdav1d_arch_tmpl_sources = {}
 
 libdav1d_bitdepth_objs = []
 
 # ASM specific sources
 libdav1d_asm_objs = []
 # Arch-specific flags
-arch_flags = []
+arch_flags = {}
 if is_asm_enabled
     if (host_machine.cpu_family() == 'aarch64' or
         host_machine.cpu_family().startswith('arm'))
@@ -119,6 +120,7 @@ if is_asm_enabled
                     'arm/64/loopfilter16.S',
                     'arm/64/looprestoration16.S',
                     'arm/64/mc16.S',
+                    'arm/64/mc16_sve.S',
                 )
             endif
         elif host_machine.cpu_family().startswith('arm')
@@ -174,7 +176,6 @@ if is_asm_enabled
             'x86/itx_avx512.asm',
             'x86/cdef_avx2.asm',
             'x86/itx_avx2.asm',
-            'x86/looprestoration_avx2.asm',
             'x86/cdef_sse.asm',
             'x86/itx_sse.asm',
         )
@@ -190,6 +191,7 @@ if is_asm_enabled
                 'x86/filmgrain_avx2.asm',
                 'x86/ipred_avx2.asm',
                 'x86/loopfilter_avx2.asm',
+                'x86/looprestoration_avx2.asm',
                 'x86/mc_avx2.asm',
                 'x86/filmgrain_sse.asm',
                 'x86/ipred_sse.asm',
@@ -232,11 +234,13 @@ if is_asm_enabled
             'loongarch/cpu.c',
         )
 
-        libdav1d_arch_tmpl_sources += files(
+        libdav1d_arch_tmpl_sources += {'default': files(
             'loongarch/looprestoration_tmpl.c',
-        )
+        )}
 
         libdav1d_sources_asm = files(
+            'loongarch/cdef.S',
+            'loongarch/ipred.S',
             'loongarch/mc.S',
             'loongarch/loopfilter.S',
             'loongarch/looprestoration.S',
@@ -246,22 +250,46 @@ if is_asm_enabled
         )
         libdav1d_asm_objs += libdav1d_sources_asm
     elif host_machine.cpu() == 'ppc64le'
-        arch_flags = ['-maltivec', '-mvsx']
+        arch_flags += {'vsx': ['-maltivec', '-mvsx', '-DDAV1D_VSX']}
         libdav1d_sources += files(
             'ppc/cpu.c',
         )
-        libdav1d_arch_tmpl_sources += files(
+        libdav1d_arch_tmpl_sources += {'vsx': files(
             'ppc/cdef_tmpl.c',
             'ppc/looprestoration_tmpl.c',
-        )
+        )}
+        arch_flags += {'pwr9': ['-mcpu=power9', '-DDAV1D_PWR9']}
+        libdav1d_arch_tmpl_sources += {'pwr9': files(
+            'ppc/itx_tmpl.c',
+            'ppc/loopfilter_tmpl.c',
+            'ppc/mc_tmpl.c',
+        )}
     elif host_machine.cpu_family().startswith('riscv')
         libdav1d_sources += files(
             'riscv/cpu.c',
         )
         if host_machine.cpu_family() == 'riscv64'
             libdav1d_sources += files(
-                'riscv/64/itx.S',
+                'riscv/64/cpu.S',
+                'riscv/64/pal.S',
             )
+
+            if dav1d_bitdepths.contains('8')
+                libdav1d_sources += files(
+                    'riscv/64/cdef.S',
+                    'riscv/64/ipred.S',
+                    'riscv/64/itx.S',
+                    'riscv/64/mc.S',
+                )
+            endif
+
+            if dav1d_bitdepths.contains('16')
+                libdav1d_sources += files(
+                    'riscv/64/cdef16.S',
+                    'riscv/64/ipred16.S',
+                    'riscv/64/mc16.S',
+                )
+            endif
         endif
     endif
 endif
@@ -320,15 +348,17 @@ endforeach
 
 # Helper library for each bitdepth and architecture-specific flags
 foreach bitdepth : dav1d_bitdepths
-    libdav1d_bitdepth_objs += static_library(
-        'dav1d_arch_bitdepth_@0@'.format(bitdepth),
-        libdav1d_arch_tmpl_sources, config_h_target,
-        include_directories: dav1d_inc_dirs,
-        dependencies : [stdatomic_dependencies],
-        c_args : ['-DBITDEPTH=@0@'.format(bitdepth)] + libdav1d_flags + arch_flags,
-        install : false,
-        build_by_default : false,
-    ).extract_all_objects(recursive: true)
+    foreach subarch : libdav1d_arch_tmpl_sources.keys()
+        libdav1d_bitdepth_objs += static_library(
+            'dav1d_arch_bitdepth_@0@_@1@'.format(bitdepth,subarch),
+            libdav1d_arch_tmpl_sources[subarch], config_h_target,
+            include_directories: dav1d_inc_dirs,
+            dependencies : [stdatomic_dependencies],
+            c_args : ['-DBITDEPTH=@0@'.format(bitdepth)] + libdav1d_flags + arch_flags.get(subarch, []),
+            install : false,
+            build_by_default : false,
+        ).extract_all_objects(recursive: true)
+    endforeach
 endforeach
 
 # The final dav1d library
@@ -363,7 +393,7 @@ libdav1d = library('dav1d',
 )
 
 dav1d_dep = declare_dependency(link_with: libdav1d,
-    include_directories : include_directories('../include/dav1d')
+    include_directories : include_directories('../include')
 )
 
 #

@@ -8,11 +8,11 @@ import errno
 import logging
 import os
 import sys
-from multiprocessing import cpu_count
 
 from mach.decorators import Command
 from mozbuild.base import BinaryNotFoundException, MozbuildObject
 from mozbuild.base import MachCommandConditions as conditions
+from mozbuild.util import cpu_count, macos_performance_cores
 from mozlog import structured
 from xpcshellcommandline import parser_desktop, parser_remote
 
@@ -168,7 +168,7 @@ class AndroidXPCShellRunner(MozbuildObject):
             for root, _, paths in os.walk(os.path.join(kwargs["objdir"], "gradle")):
                 for file_name in paths:
                     if file_name.endswith(".apk") and file_name.startswith(
-                        "test_runner-withGeckoBinaries"
+                        "test_runner"
                     ):
                         kwargs["localAPK"] = os.path.join(root, file_name)
                         print("using APK: %s" % kwargs["localAPK"])
@@ -177,6 +177,11 @@ class AndroidXPCShellRunner(MozbuildObject):
                     break
             else:
                 raise Exception("APK not found in objdir. You must specify an APK.")
+
+        if not kwargs["xrePath"]:
+            MOZ_HOST_BIN = os.environ.get("MOZ_HOST_BIN")
+            if MOZ_HOST_BIN:
+                kwargs["xrePath"] = MOZ_HOST_BIN
 
         xpcshell = remotexpcshelltests.XPCShellRemote(kwargs, log)
 
@@ -237,8 +242,20 @@ def run_xpcshell_test(command_context, test_objects=None, **params):
         )
 
     if not params["threadCount"]:
-        # pylint --py3k W1619
-        params["threadCount"] = int((cpu_count() * 3) / 2)
+        if sys.platform == "darwin":
+            # On Apple Silicon, we have found that increasing the number of
+            # threads (processes) above the CPU count reduces the performance
+            # (bug 1917833), and makes the machine less performant. It is even
+            # better if we can use the exact number of performance cores, so we
+            # attempt to do that here.
+            perf_cores = macos_performance_cores()
+            if perf_cores > 0:
+                params["threadCount"] = perf_cores
+            else:
+                params["threadCount"] = int((cpu_count() * 3) / 2)
+        else:
+            # pylint --py3k W1619
+            params["threadCount"] = int((cpu_count() * 3) / 2)
 
     if conditions.is_android(command_context):
         from mozrunner.devices.android_device import (
@@ -261,6 +278,37 @@ def run_xpcshell_test(command_context, test_objects=None, **params):
     else:
         xpcshell = command_context._spawn(XPCShellRunner)
     xpcshell.cwd = command_context._mach_context.cwd
+
+    if sys.platform == "linux":
+        install_portal_test_dependencies = False
+        if "manifest" in params and params["manifest"]:
+            # When run from "mach test", the manifest is available now.
+            try:
+                tags = " ".join(params["manifest"].get("tags")).split(" ")
+            except KeyError:
+                # .get("tags") may raise KeyError.
+                tags = []
+            if "webextensions" in tags and "portal" in tags:
+                install_portal_test_dependencies = True
+        else:
+            # When run from "mach xpcshell-test", the manifest is not available
+            # yet. We could default to True to force the initialization of the
+            # virtualenv, but that would force this dependency on every use of
+            # "mach xpcshell-test". So for now, force it to False.
+            # If a dev wants to run the test, they can run "mach test" instead.
+            install_portal_test_dependencies = False
+
+        if install_portal_test_dependencies:
+            dir_relpath = params["manifest"].get("dir_relpath")[0]
+            # Only Linux Native Messaging Portal xpcshell tests need this.
+            req = os.path.join(
+                dir_relpath,
+                "linux_native-messaging-portal_requirements.txt",
+            )
+            command_context.virtualenv_manager.activate()
+            command_context.virtualenv_manager.install_pip_requirements(
+                req, require_hashes=False
+            )
 
     try:
         return xpcshell.run_test(**params)

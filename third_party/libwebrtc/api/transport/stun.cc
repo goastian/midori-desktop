@@ -12,18 +12,28 @@
 
 #include <string.h>
 
-#include <algorithm>
+#include <algorithm>  // IWYU pragma: keep
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/string_view.h"
+#include "api/array_view.h"
+#include "rtc_base/byte_buffer.h"
 #include "rtc_base/byte_order.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/crc32.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
+#include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/message_digest.h"
+#include "rtc_base/net_helpers.h"
+#include "rtc_base/socket_address.h"
 #include "system_wrappers/include/metrics.h"
 
 using rtc::ByteBufferReader;
@@ -99,7 +109,6 @@ const char STUN_ERROR_REASON_UNSUPPORTED_PROTOCOL[] = "Unsupported Protocol";
 const char STUN_ERROR_REASON_ROLE_CONFLICT[] = "Role Conflict";
 const char STUN_ERROR_REASON_SERVER_ERROR[] = "Server Error";
 
-const char TURN_MAGIC_COOKIE_VALUE[] = {'\x72', '\xC6', '\x4B', '\xC6'};
 const char EMPTY_TRANSACTION_ID[] = "0000000000000000";
 const uint32_t STUN_FINGERPRINT_XOR_VALUE = 0x5354554E;
 const int SERVER_NOT_REACHABLE_ERROR = 701;
@@ -352,24 +361,6 @@ bool StunMessage::ValidateMessageIntegrity32ForTesting(
     const char* data,
     size_t size,
     const std::string& password) {
-  return ValidateMessageIntegrityOfType(STUN_ATTR_GOOG_MESSAGE_INTEGRITY_32,
-                                        kStunMessageIntegrity32Size, data, size,
-                                        password);
-}
-
-// Deprecated
-bool StunMessage::ValidateMessageIntegrity(const char* data,
-                                           size_t size,
-                                           const std::string& password) {
-  return ValidateMessageIntegrityOfType(STUN_ATTR_MESSAGE_INTEGRITY,
-                                        kStunMessageIntegritySize, data, size,
-                                        password);
-}
-
-// Deprecated
-bool StunMessage::ValidateMessageIntegrity32(const char* data,
-                                             size_t size,
-                                             const std::string& password) {
   return ValidateMessageIntegrityOfType(STUN_ATTR_GOOG_MESSAGE_INTEGRITY_32,
                                         kStunMessageIntegrity32Size, data, size,
                                         password);
@@ -815,7 +806,7 @@ void StunAttribute::WritePadding(ByteBufferWriter* buf) const {
   int remainder = length_ % 4;
   if (remainder > 0) {
     uint8_t zeroes[4] = {0};
-    buf->WriteBytes(zeroes, 4 - remainder);
+    buf->Write(webrtc::ArrayView<const uint8_t>(zeroes, 4 - remainder));
   }
 }
 
@@ -949,12 +940,14 @@ bool StunAddressAttribute::Write(ByteBufferWriter* buf) const {
   switch (address_.family()) {
     case AF_INET: {
       in_addr v4addr = address_.ipaddr().ipv4_address();
-      buf->WriteBytes(reinterpret_cast<uint8_t*>(&v4addr), sizeof(v4addr));
+      buf->Write(webrtc::ArrayView<const uint8_t>(
+          reinterpret_cast<uint8_t*>(&v4addr), sizeof(v4addr)));
       break;
     }
     case AF_INET6: {
       in6_addr v6addr = address_.ipaddr().ipv6_address();
-      buf->WriteBytes(reinterpret_cast<uint8_t*>(&v6addr), sizeof(v6addr));
+      buf->Write(webrtc::ArrayView<const uint8_t>(
+          reinterpret_cast<uint8_t*>(&v6addr), sizeof(v6addr)));
       break;
     }
   }
@@ -1039,14 +1032,14 @@ bool StunXorAddressAttribute::Write(ByteBufferWriter* buf) const {
   switch (xored_ip.family()) {
     case AF_INET: {
       in_addr v4addr = xored_ip.ipv4_address();
-      buf->WriteBytes(reinterpret_cast<const uint8_t*>(&v4addr),
-                      sizeof(v4addr));
+      buf->Write(webrtc::ArrayView<const uint8_t>(
+          reinterpret_cast<const uint8_t*>(&v4addr), sizeof(v4addr)));
       break;
     }
     case AF_INET6: {
       in6_addr v6addr = xored_ip.ipv6_address();
-      buf->WriteBytes(reinterpret_cast<const uint8_t*>(&v6addr),
-                      sizeof(v6addr));
+      buf->Write(webrtc::ArrayView<const uint8_t>(
+          reinterpret_cast<const uint8_t*>(&v6addr), sizeof(v6addr)));
       break;
     }
   }
@@ -1172,7 +1165,7 @@ bool StunByteStringAttribute::Write(ByteBufferWriter* buf) const {
   if (!LengthValid(type(), length())) {
     return false;
   }
-  buf->WriteBytes(bytes_, length());
+  buf->Write(webrtc::ArrayView<const uint8_t>(bytes_, length()));
   WritePadding(buf);
   return true;
 }
@@ -1431,36 +1424,11 @@ std::unique_ptr<StunAttribute> CopyStunAttribute(
   return copy;
 }
 
-StunAttributeValueType RelayMessage::GetAttributeValueType(int type) const {
-  switch (type) {
-    case STUN_ATTR_LIFETIME:
-      return STUN_VALUE_UINT32;
-    case STUN_ATTR_MAGIC_COOKIE:
-      return STUN_VALUE_BYTE_STRING;
-    case STUN_ATTR_BANDWIDTH:
-      return STUN_VALUE_UINT32;
-    case STUN_ATTR_DESTINATION_ADDRESS:
-      return STUN_VALUE_ADDRESS;
-    case STUN_ATTR_SOURCE_ADDRESS2:
-      return STUN_VALUE_ADDRESS;
-    case STUN_ATTR_DATA:
-      return STUN_VALUE_BYTE_STRING;
-    case STUN_ATTR_OPTIONS:
-      return STUN_VALUE_UINT32;
-    default:
-      return StunMessage::GetAttributeValueType(type);
-  }
-}
-
-StunMessage* RelayMessage::CreateNew() const {
-  return new RelayMessage();
-}
-
 StunAttributeValueType TurnMessage::GetAttributeValueType(int type) const {
   switch (type) {
     case STUN_ATTR_CHANNEL_NUMBER:
       return STUN_VALUE_UINT32;
-    case STUN_ATTR_TURN_LIFETIME:
+    case STUN_ATTR_LIFETIME:
       return STUN_VALUE_UINT32;
     case STUN_ATTR_XOR_PEER_ADDRESS:
       return STUN_VALUE_XOR_ADDRESS;

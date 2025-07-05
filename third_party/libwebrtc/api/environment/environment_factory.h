@@ -24,11 +24,12 @@ namespace webrtc {
 
 // These classes are forward declared to reduce amount of headers exposed
 // through api header.
+// IWYU pragma: begin_keep
 class Clock;
 class TaskQueueFactory;
 class FieldTrialsView;
 class RtcEventLog;
-
+// IWYU pragma: end_keep
 // Constructs `Environment`.
 // Individual utilities are provided using one of the `Set` functions.
 // `Set` functions do nothing when nullptr value is passed.
@@ -123,7 +124,7 @@ inline void EnvironmentFactory::Set(absl::Nullable<RtcEventLog*> utility) {
 
 namespace webrtc_create_environment_internal {
 
-inline void Set(EnvironmentFactory& factory) {}
+inline void Set(EnvironmentFactory& /* factory */) {}
 
 template <typename FirstUtility, typename... Utilities>
 void Set(EnvironmentFactory& factory,

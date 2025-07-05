@@ -18,6 +18,11 @@ def pytest_generate_tests(metafunc):
     argvalues = []
     ids = []
 
+    if "only_firefox_versions" in marks:
+        for mark in metafunc.function.pytestmark:
+            if mark.name == "only_firefox_versions":
+                otherargs["only_firefox_versions"] = mark.args
+
     if "only_platforms" in marks:
         for mark in metafunc.function.pytestmark:
             if mark.name == "only_platforms":
@@ -28,6 +33,16 @@ def pytest_generate_tests(metafunc):
             if mark.name == "skip_platforms":
                 otherargs["skip_platforms"] = mark.args
 
+    if "only_channels" in marks:
+        for mark in metafunc.function.pytestmark:
+            if mark.name == "only_channels":
+                otherargs["only_channels"] = mark.args
+
+    if "skip_channels" in marks:
+        for mark in metafunc.function.pytestmark:
+            if mark.name == "skip_channels":
+                otherargs["skip_channels"] = mark.args
+
     if "with_interventions" in marks:
         argvalues.append([dict({"interventions": True}, **otherargs)])
         ids.append("with_interventions")
@@ -35,6 +50,17 @@ def pytest_generate_tests(metafunc):
     if "without_interventions" in marks:
         argvalues.append([dict({"interventions": False}, **otherargs)])
         ids.append("without_interventions")
+
+    if "need_visible_scrollbars" in marks:
+        for mark in metafunc.function.pytestmark:
+            if mark.name == "need_visible_scrollbars":
+                otherargs["need_visible_scrollbars"] = mark.args
+
+    if "no_overlay_scrollbars" in marks:
+        otherargs["no_overlay_scrollbars"] = True
+
+    if "disable_moztransform" in marks:
+        otherargs["disable_moztransform"] = True
 
     metafunc.parametrize(["session"], argvalues, ids=ids, indirect=True)
 
@@ -47,10 +73,16 @@ async def test_config(request, driver):
     print(f"use_interventions {use_interventions}")
     if use_interventions is None:
         raise ValueError(
-            "Missing intervention marker in %s:%s"
-            % (request.fspath, request.function.__name__)
+            f"Missing intervention marker in {request.fspath}:{request.function.__name__}"
         )
 
     return {
+        "enable_moztransform": params.get("enable_moztransform", False),
+        "disable_moztransform": params.get("disable_moztransform", False),
+        "need_visible_scrollbars": params.get("need_visible_scrollbars", False),
+        "no_overlay_scrollbars": params.get("no_overlay_scrollbars", False),
         "use_interventions": use_interventions,
+        "use_pbm": params.get("with_private_browsing", False),
+        "use_strict_etp": params.get("with_strict_etp", False),
+        "without_tcp": params.get("without_tcp", False),
     }

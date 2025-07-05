@@ -369,7 +369,7 @@ static int decode_coefs(Dav1dTaskContext *const t,
             const enum IntraPredMode y_mode_nofilt = b->y_mode == FILTER_PRED ?
                 dav1d_filter_mode_to_y_mode[b->y_angle] : b->y_mode;
             if (f->frame_hdr->reduced_txtp_set || t_dim->min == TX_16X16) {
-                idx = dav1d_msac_decode_symbol_adapt4(&ts->msac,
+                idx = dav1d_msac_decode_symbol_adapt8(&ts->msac,
                           ts->cdf.m.txtp_intra2[t_dim->min][y_mode_nofilt], 4);
                 *txtp = dav1d_tx_types_per_set[idx + 0];
             } else {
@@ -402,7 +402,8 @@ static int decode_coefs(Dav1dTaskContext *const t,
 
     // find end-of-block (eob)
     int eob_bin;
-    const int tx2dszctx = imin(t_dim->lw, TX_32X32) + imin(t_dim->lh, TX_32X32);
+    const int slw = imin(t_dim->lw, TX_32X32), slh = imin(t_dim->lh, TX_32X32);
+    const int tx2dszctx = slw + slh;
     const enum TxClass tx_class = dav1d_tx_type_class[*txtp];
     const int is_1d = tx_class != TX_CLASS_2D;
     switch (tx2dszctx) {
@@ -412,7 +413,7 @@ static int decode_coefs(Dav1dTaskContext *const t,
         eob_bin = dav1d_msac_decode_symbol_adapt##ns(&ts->msac, eob_bin_cdf, 4 + sz); \
         break; \
     }
-    case_sz(0,   16,  4, [is_1d]);
+    case_sz(0,   16,  8, [is_1d]);
     case_sz(1,   32,  8, [is_1d]);
     case_sz(2,   64,  8, [is_1d]);
     case_sz(3,  128,  8, [is_1d]);
@@ -449,10 +450,9 @@ static int decode_coefs(Dav1dTaskContext *const t,
     if (eob) {
         uint16_t (*const lo_cdf)[4] = ts->cdf.coef.base_tok[t_dim->ctx][chroma];
         uint8_t *const levels = t->scratch.levels; // bits 0-5: tok, 6-7: lo_tok
-        const int sw = imin(t_dim->w, 8), sh = imin(t_dim->h, 8);
 
         /* eob */
-        unsigned ctx = 1 + (eob > sw * sh * 2) + (eob > sw * sh * 4);
+        unsigned ctx = 1 + (eob > 2 << tx2dszctx) + (eob > 4 << tx2dszctx);
         int eob_tok = dav1d_msac_decode_symbol_adapt4(&ts->msac, eob_cdf[ctx], 2);
         int tok = eob_tok + 1;
         int level_tok = tok * 0x41;
@@ -460,6 +460,7 @@ static int decode_coefs(Dav1dTaskContext *const t,
 
 #define DECODE_COEFS_CLASS(tx_class) \
         unsigned x, y; \
+        uint8_t *level; \
         if (tx_class == TX_CLASS_2D) \
             rc = scan[eob], x = rc >> shift, y = rc & mask; \
         else if (tx_class == TX_CLASS_H) \
@@ -480,7 +481,11 @@ static int decode_coefs(Dav1dTaskContext *const t,
                        ts->msac.rng); \
         } \
         cf[rc] = tok << 11; \
-        levels[x * stride + y] = (uint8_t) level_tok; \
+        if (TX_CLASS_2D) \
+            level = levels + rc; \
+        else \
+            level = levels + x * stride + y; \
+        *level = (uint8_t) level_tok; \
         for (int i = eob - 1; i > 0; i--) { /* ac */ \
             unsigned rc_i; \
             if (tx_class == TX_CLASS_2D) \
@@ -490,7 +495,10 @@ static int decode_coefs(Dav1dTaskContext *const t,
             else /* tx_class == TX_CLASS_V */ \
                 x = i & mask, y = i >> shift, rc_i = (x << shift2) | y; \
             assert(x < 32 && y < 32); \
-            uint8_t *const level = levels + x * stride + y; \
+            if (TX_CLASS_2D) \
+                level = levels + rc; \
+            else \
+                level = levels + x * stride + y; \
             ctx = get_lo_ctx(level, tx_class, &mag, lo_ctx_offsets, x, y, stride); \
             if (tx_class == TX_CLASS_2D) \
                 y |= x; \
@@ -547,26 +555,26 @@ static int decode_coefs(Dav1dTaskContext *const t,
             const uint8_t (*const lo_ctx_offsets)[5] =
                 dav1d_lo_ctx_offsets[nonsquare_tx + (tx & nonsquare_tx)];
             scan = dav1d_scans[tx];
-            const ptrdiff_t stride = 4 * sh;
-            const unsigned shift = t_dim->lh < 4 ? t_dim->lh + 2 : 5, shift2 = 0;
-            const unsigned mask = 4 * sh - 1;
-            memset(levels, 0, stride * (4 * sw + 2));
+            const ptrdiff_t stride = 4 << slh;
+            const unsigned shift = slh + 2, shift2 = 0;
+            const unsigned mask = (4 << slh) - 1;
+            memset(levels, 0, stride * ((4 << slw) + 2));
             DECODE_COEFS_CLASS(TX_CLASS_2D);
         }
         case TX_CLASS_H: {
             const uint8_t (*const lo_ctx_offsets)[5] = NULL;
             const ptrdiff_t stride = 16;
-            const unsigned shift = t_dim->lh + 2, shift2 = 0;
-            const unsigned mask = 4 * sh - 1;
-            memset(levels, 0, stride * (4 * sh + 2));
+            const unsigned shift = slh + 2, shift2 = 0;
+            const unsigned mask = (4 << slh) - 1;
+            memset(levels, 0, stride * ((4 << slh) + 2));
             DECODE_COEFS_CLASS(TX_CLASS_H);
         }
         case TX_CLASS_V: {
             const uint8_t (*const lo_ctx_offsets)[5] = NULL;
             const ptrdiff_t stride = 16;
-            const unsigned shift = t_dim->lw + 2, shift2 = t_dim->lh + 2;
-            const unsigned mask = 4 * sw - 1;
-            memset(levels, 0, stride * (4 * sw + 2));
+            const unsigned shift = slw + 2, shift2 = slh + 2;
+            const unsigned mask = (4 << slw) - 1;
+            memset(levels, 0, stride * ((4 << slw) + 2));
             DECODE_COEFS_CLASS(TX_CLASS_V);
         }
 #undef DECODE_COEFS_CLASS
@@ -785,21 +793,15 @@ static void read_coef_tree(Dav1dTaskContext *const t,
             if (DEBUG_BLOCK_INFO)
                 printf("Post-y-cf-blk[tx=%d,txtp=%d,eob=%d]: r=%d\n",
                        ytx, txtp, eob, ts->msac.rng);
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-            rep_macro(type, t->dir lcoef, off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-            memset(&t->dir lcoef[off], cf_ctx, sz)
-            case_set_upto16_with_default(imin(txh, f->bh - t->by), l., 1, by4);
-            case_set_upto16_with_default(imin(txw, f->bw - t->bx), a->, 0, bx4);
-#undef default_memset
-#undef set_ctx
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
+            dav1d_memset_likely_pow2(&t->a->lcoef[bx4], cf_ctx, imin(txw, f->bw - t->bx));
+            dav1d_memset_likely_pow2(&t->l.lcoef[by4], cf_ctx, imin(txh, f->bh - t->by));
+#define set_ctx(rep_macro) \
             for (int y = 0; y < txh; y++) { \
-                rep_macro(type, txtp_map, 0, mul * txtp); \
+                rep_macro(txtp_map, 0, txtp); \
                 txtp_map += 32; \
             }
             uint8_t *txtp_map = &t->scratch.txtp_map[by4 * 32 + bx4];
-            case_set_upto16(txw,,,);
+            case_set_upto16(t_dim->lw);
 #undef set_ctx
             if (t->frame_thread.pass == 1)
                 *ts->frame_thread[1].cbi++ = eob * (1 << 5) + txtp;
@@ -838,18 +840,16 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTaskContext *const t,
                            (bh4 > ss_ver || t->by & 1);
 
     if (b->skip) {
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-        rep_macro(type, t->dir lcoef, off, mul * 0x40)
-        case_set(bh4, l., 1, by4);
-        case_set(bw4, a->, 0, bx4);
-#undef set_ctx
+        BlockContext *const a = t->a;
+        dav1d_memset_pow2[b_dim[2]](&a->lcoef[bx4], 0x40);
+        dav1d_memset_pow2[b_dim[3]](&t->l.lcoef[by4], 0x40);
         if (has_chroma) {
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-            rep_macro(type, t->dir ccoef[0], off, mul * 0x40); \
-            rep_macro(type, t->dir ccoef[1], off, mul * 0x40)
-            case_set(cbh4, l., 1, cby4);
-            case_set(cbw4, a->, 0, cbx4);
-#undef set_ctx
+            dav1d_memset_pow2_fn memset_cw = dav1d_memset_pow2[ulog2(cbw4)];
+            dav1d_memset_pow2_fn memset_ch = dav1d_memset_pow2[ulog2(cbh4)];
+            memset_cw(&a->ccoef[0][cbx4], 0x40);
+            memset_cw(&a->ccoef[1][cbx4], 0x40);
+            memset_ch(&t->l.ccoef[0][cby4], 0x40);
+            memset_ch(&t->l.ccoef[1][cby4], 0x40);
         }
         return;
     }
@@ -890,16 +890,8 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTaskContext *const t,
                                    b->tx, txtp, eob, ts->msac.rng);
                         *ts->frame_thread[1].cbi++ = eob * (1 << 5) + txtp;
                         ts->frame_thread[1].cf += imin(t_dim->w, 8) * imin(t_dim->h, 8) * 16;
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                        rep_macro(type, t->dir lcoef, off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-                        memset(&t->dir lcoef[off], cf_ctx, sz)
-                        case_set_upto16_with_default(imin(t_dim->h, f->bh - t->by),
-                                                     l., 1, by4 + y);
-                        case_set_upto16_with_default(imin(t_dim->w, f->bw - t->bx),
-                                                     a->, 0, bx4 + x);
-#undef default_memset
-#undef set_ctx
+                        dav1d_memset_likely_pow2(&t->a->lcoef[bx4 + x], cf_ctx, imin(t_dim->w, f->bw - t->bx));
+                        dav1d_memset_likely_pow2(&t->l.lcoef[by4 + y], cf_ctx, imin(t_dim->h, f->bh - t->by));
                     }
                 }
                 t->bx -= x;
@@ -933,18 +925,10 @@ void bytefn(dav1d_read_coef_blocks)(Dav1dTaskContext *const t,
                                    pl, b->uvtx, txtp, eob, ts->msac.rng);
                         *ts->frame_thread[1].cbi++ = eob * (1 << 5) + txtp;
                         ts->frame_thread[1].cf += uv_t_dim->w * uv_t_dim->h * 16;
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                        rep_macro(type, t->dir ccoef[pl], off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-                        memset(&t->dir ccoef[pl][off], cf_ctx, sz)
-                        case_set_upto16_with_default( \
-                                 imin(uv_t_dim->h, (f->bh - t->by + ss_ver) >> ss_ver),
-                                 l., 1, cby4 + y);
-                        case_set_upto16_with_default( \
-                                 imin(uv_t_dim->w, (f->bw - t->bx + ss_hor) >> ss_hor),
-                                 a->, 0, cbx4 + x);
-#undef default_memset
-#undef set_ctx
+                        int ctw = imin(uv_t_dim->w, (f->bw - t->bx + ss_hor) >> ss_hor);
+                        int cth = imin(uv_t_dim->h, (f->bh - t->by + ss_ver) >> ss_ver);
+                        dav1d_memset_likely_pow2(&t->a->ccoef[pl][cbx4 + x], cf_ctx, ctw);
+                        dav1d_memset_likely_pow2(&t->l.ccoef[pl][cby4 + y], cf_ctx, cth);
                     }
                     t->bx -= x << ss_hor;
                 }
@@ -1329,16 +1313,8 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                             if (DEBUG_BLOCK_INFO)
                                 printf("Post-y-cf-blk[tx=%d,txtp=%d,eob=%d]: r=%d\n",
                                        b->tx, txtp, eob, ts->msac.rng);
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                            rep_macro(type, t->dir lcoef, off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-                            memset(&t->dir lcoef[off], cf_ctx, sz)
-                            case_set_upto16_with_default(imin(t_dim->h, f->bh - t->by), \
-                                                         l., 1, by4 + y);
-                            case_set_upto16_with_default(imin(t_dim->w, f->bw - t->bx), \
-                                                         a->, 0, bx4 + x);
-#undef default_memset
-#undef set_ctx
+                            dav1d_memset_likely_pow2(&t->a->lcoef[bx4 + x], cf_ctx, imin(t_dim->w, f->bw - t->bx));
+                            dav1d_memset_likely_pow2(&t->l.lcoef[by4 + y], cf_ctx, imin(t_dim->h, f->bh - t->by));
                         }
                         if (eob >= 0) {
                             if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
@@ -1353,11 +1329,8 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                          t_dim->w * 4, t_dim->h * 4, "recon");
                         }
                     } else if (!t->frame_thread.pass) {
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                        rep_macro(type, t->dir lcoef, off, mul * 0x40)
-                        case_set_upto16(t_dim->h, l., 1, by4 + y);
-                        case_set_upto16(t_dim->w, a->, 0, bx4 + x);
-#undef set_ctx
+                        dav1d_memset_pow2[t_dim->lw](&t->a->lcoef[bx4 + x], 0x40);
+                        dav1d_memset_pow2[t_dim->lh](&t->l.lcoef[by4 + y], 0x40);
                     }
                     dst += 4 * t_dim->w;
                 }
@@ -1554,18 +1527,10 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                     printf("Post-uv-cf-blk[pl=%d,tx=%d,"
                                            "txtp=%d,eob=%d]: r=%d [x=%d,cbx4=%d]\n",
                                            pl, b->uvtx, txtp, eob, ts->msac.rng, x, cbx4);
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                                rep_macro(type, t->dir ccoef[pl], off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-                                memset(&t->dir ccoef[pl][off], cf_ctx, sz)
-                                case_set_upto16_with_default( \
-                                         imin(uv_t_dim->h, (f->bh - t->by + ss_ver) >> ss_ver),
-                                         l., 1, cby4 + y);
-                                case_set_upto16_with_default( \
-                                         imin(uv_t_dim->w, (f->bw - t->bx + ss_hor) >> ss_hor),
-                                         a->, 0, cbx4 + x);
-#undef default_memset
-#undef set_ctx
+                                int ctw = imin(uv_t_dim->w, (f->bw - t->bx + ss_hor) >> ss_hor);
+                                int cth = imin(uv_t_dim->h, (f->bh - t->by + ss_ver) >> ss_ver);
+                                dav1d_memset_likely_pow2(&t->a->ccoef[pl][cbx4 + x], cf_ctx, ctw);
+                                dav1d_memset_likely_pow2(&t->l.ccoef[pl][cby4 + y], cf_ctx, cth);
                             }
                             if (eob >= 0) {
                                 if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)
@@ -1579,11 +1544,8 @@ void bytefn(dav1d_recon_b_intra)(Dav1dTaskContext *const t, const enum BlockSize
                                              uv_t_dim->h * 4, "recon");
                             }
                         } else if (!t->frame_thread.pass) {
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                            rep_macro(type, t->dir ccoef[pl], off, mul * 0x40)
-                            case_set_upto16(uv_t_dim->h, l., 1, cby4 + y);
-                            case_set_upto16(uv_t_dim->w, a->, 0, cbx4 + x);
-#undef set_ctx
+                            dav1d_memset_pow2[uv_t_dim->lw](&t->a->ccoef[pl][cbx4 + x], 0x40);
+                            dav1d_memset_pow2[uv_t_dim->lh](&t->l.ccoef[pl][cby4 + y], 0x40);
                         }
                         dst += uv_t_dim->w * 4;
                     }
@@ -1921,18 +1883,16 @@ int bytefn(dav1d_recon_b_inter)(Dav1dTaskContext *const t, const enum BlockSize 
 
     if (b->skip) {
         // reset coef contexts
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-        rep_macro(type, t->dir lcoef, off, mul * 0x40)
-        case_set(bh4, l., 1, by4);
-        case_set(bw4, a->, 0, bx4);
-#undef set_ctx
+        BlockContext *const a = t->a;
+        dav1d_memset_pow2[b_dim[2]](&a->lcoef[bx4], 0x40);
+        dav1d_memset_pow2[b_dim[3]](&t->l.lcoef[by4], 0x40);
         if (has_chroma) {
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-            rep_macro(type, t->dir ccoef[0], off, mul * 0x40); \
-            rep_macro(type, t->dir ccoef[1], off, mul * 0x40)
-            case_set(cbh4, l., 1, cby4);
-            case_set(cbw4, a->, 0, cbx4);
-#undef set_ctx
+            dav1d_memset_pow2_fn memset_cw = dav1d_memset_pow2[ulog2(cbw4)];
+            dav1d_memset_pow2_fn memset_ch = dav1d_memset_pow2[ulog2(cbh4)];
+            memset_cw(&a->ccoef[0][cbx4], 0x40);
+            memset_cw(&a->ccoef[1][cbx4], 0x40);
+            memset_ch(&t->l.ccoef[0][cby4], 0x40);
+            memset_ch(&t->l.ccoef[1][cby4], 0x40);
         }
         return 0;
     }
@@ -1998,18 +1958,10 @@ int bytefn(dav1d_recon_b_inter)(Dav1dTaskContext *const t, const enum BlockSize 
                                 printf("Post-uv-cf-blk[pl=%d,tx=%d,"
                                        "txtp=%d,eob=%d]: r=%d\n",
                                        pl, b->uvtx, txtp, eob, ts->msac.rng);
-#define set_ctx(type, dir, diridx, off, mul, rep_macro) \
-                            rep_macro(type, t->dir ccoef[pl], off, mul * cf_ctx)
-#define default_memset(dir, diridx, off, sz) \
-                            memset(&t->dir ccoef[pl][off], cf_ctx, sz)
-                            case_set_upto16_with_default( \
-                                     imin(uvtx->h, (f->bh - t->by + ss_ver) >> ss_ver),
-                                     l., 1, cby4 + y);
-                            case_set_upto16_with_default( \
-                                     imin(uvtx->w, (f->bw - t->bx + ss_hor) >> ss_hor),
-                                     a->, 0, cbx4 + x);
-#undef default_memset
-#undef set_ctx
+                            int ctw = imin(uvtx->w, (f->bw - t->bx + ss_hor) >> ss_hor);
+                            int cth = imin(uvtx->h, (f->bh - t->by + ss_ver) >> ss_ver);
+                            dav1d_memset_likely_pow2(&t->a->ccoef[pl][cbx4 + x], cf_ctx, ctw);
+                            dav1d_memset_likely_pow2(&t->l.ccoef[pl][cby4 + y], cf_ctx, cth);
                         }
                         if (eob >= 0) {
                             if (DEBUG_BLOCK_INFO && DEBUG_B_PIXELS)

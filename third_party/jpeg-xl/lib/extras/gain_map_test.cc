@@ -5,35 +5,21 @@
 
 #include "jxl/gain_map.h"
 
+#include <jxl/color_encoding.h>
 #include <jxl/encode.h>
-#include <stdint.h>
+#include <jxl/types.h>
 
-#include <fstream>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <vector>
 
-#include "lib/jxl/base/span.h"
-#include "lib/jxl/base/status.h"
-#include "lib/jxl/fields.h"
-#include "lib/jxl/test_memory_manager.h"
 #include "lib/jxl/test_utils.h"
 #include "lib/jxl/testing.h"
 
 namespace {
-bool ColorEncodingsEqual(const JxlColorEncoding& lhs,
-                         const JxlColorEncoding& rhs) {
-  return lhs.color_space == rhs.color_space &&
-         lhs.white_point == rhs.white_point &&
-         std::memcmp(lhs.white_point_xy, rhs.white_point_xy,
-                     sizeof(lhs.white_point_xy)) == 0 &&
-         lhs.primaries == rhs.primaries &&
-         std::memcmp(lhs.primaries_red_xy, rhs.primaries_red_xy,
-                     sizeof(lhs.primaries_red_xy)) == 0 &&
-         std::memcmp(lhs.primaries_green_xy, rhs.primaries_green_xy,
-                     sizeof(lhs.primaries_green_xy)) == 0 &&
-         std::memcmp(lhs.primaries_blue_xy, rhs.primaries_blue_xy,
-                     sizeof(lhs.primaries_blue_xy)) == 0 &&
-         lhs.transfer_function == rhs.transfer_function &&
-         lhs.gamma == rhs.gamma && lhs.rendering_intent == rhs.rendering_intent;
-}
 
 std::vector<uint8_t> GoldenTestGainMap(bool has_icc, bool has_color_encoding) {
   // Define the parts of the gain map
@@ -49,7 +35,7 @@ std::vector<uint8_t> GoldenTestGainMap(bool has_icc, bool has_color_encoding) {
 
   std::vector<uint8_t> icc_size = {0x00, 0x00, 0x00, 0x00};
   if (has_icc) {
-    icc_size = {0x00, 0x00, 0x01, 0x7A};  // 378 in decimal
+    icc_size = {0x00, 0x00, 0x00, 0x88};  // 136 in decimal
   }
   std::vector<uint8_t> icc_data = jxl::test::GetCompressedIccTestProfile();
   std::string second_placeholder =
@@ -107,7 +93,7 @@ TEST_P(GainMapTest, GainMapRoundtrip) {
   orig_bundle.gain_map_metadata = gain_map_metadata.data();
 
   // Use the ICC profile from the parameter
-  orig_bundle.has_color_encoding = params.has_color_encoding;
+  orig_bundle.has_color_encoding = TO_JXL_BOOL(params.has_color_encoding);
   if (orig_bundle.has_color_encoding) {
     JxlColorEncoding color_encoding = {};
     JxlColorEncodingSetToLinearSRGB(&color_encoding, /*is_gray=*/JXL_FALSE);
@@ -133,9 +119,6 @@ TEST_P(GainMapTest, GainMapRoundtrip) {
   ASSERT_TRUE(JxlGainMapWriteBundle(&orig_bundle, buffer.data(), buffer.size(),
                                     &bytes_written));
   EXPECT_EQ(bytes_written, bundle_size);
-  std::ofstream dump("/tmp/gainmap.bin", std::ios::out);
-  dump.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
-  dump.close();
   EXPECT_EQ(buffer[0], orig_bundle.jhgm_version);
   EXPECT_EQ(buffer.size(), golden_gain_map.size());
   EXPECT_TRUE(

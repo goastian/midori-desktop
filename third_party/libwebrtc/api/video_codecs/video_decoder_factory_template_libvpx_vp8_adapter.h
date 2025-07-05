@@ -16,6 +16,7 @@
 
 #include "api/environment/environment.h"
 #include "api/video_codecs/sdp_video_format.h"
+#include "api/video_codecs/video_decoder.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 
 namespace webrtc {
@@ -26,7 +27,7 @@ struct LibvpxVp8DecoderTemplateAdapter {
 
   static std::unique_ptr<VideoDecoder> CreateDecoder(
       const Environment& env,
-      const SdpVideoFormat& format) {
+      const SdpVideoFormat& /* format */) {
     return CreateVp8Decoder(env);
   }
 };

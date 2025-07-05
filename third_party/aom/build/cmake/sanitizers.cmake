@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017, Alliance for Open Media. All rights reserved
+# Copyright (c) 2017, Alliance for Open Media. All rights reserved.
 #
 # This source code is subject to the terms of the BSD 2 Clause License and the
 # Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License was
@@ -31,6 +31,9 @@ if("${SANITIZE}" MATCHES "cfi" AND CMAKE_C_COMPILER_ID MATCHES "Clang")
 else()
   require_linker_flag("-fsanitize=${SANITIZE}")
   require_compiler_flag("-fsanitize=${SANITIZE}" YES)
+  if("${SANITIZE}" MATCHES "integer|undefined")
+    require_compiler_flag("-fsanitize=float-cast-overflow" YES)
+  endif()
 endif()
 
 # Make callstacks accurate.

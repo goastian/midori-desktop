@@ -12,24 +12,24 @@
 #define API_NETEQ_NETEQ_H_
 
 #include <stddef.h>  // Provide access to size_t.
+#include <stdint.h>
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "api/array_view.h"
 #include "api/audio_codecs/audio_codec_pair_id.h"
-#include "api/audio_codecs/audio_decoder.h"
 #include "api/audio_codecs/audio_format.h"
 #include "api/rtp_headers.h"
-#include "api/scoped_refptr.h"
+#include "api/rtp_packet_info.h"
+#include "api/units/timestamp.h"
 
 namespace webrtc {
 
 // Forward declarations.
 class AudioFrame;
-class AudioDecoderFactory;
-class Clock;
 
 struct NetEqNetworkStatistics {
   uint16_t current_buffer_size_ms;    // Current jitter buffer size in ms.
@@ -93,6 +93,7 @@ struct NetEqLifetimeStatistics {
   int32_t total_interruption_duration_ms = 0;
   // Total number of comfort noise samples generated during DTX.
   uint64_t generated_noise_samples = 0;
+  uint64_t total_processing_delay_us = 0;
 };
 
 // Metrics that describe the operations performed in NetEq, and the internal
@@ -136,7 +137,7 @@ class NetEq {
     bool enable_fast_accelerate = false;
     bool enable_muted_state = false;
     bool enable_rtx_handling = false;
-    absl::optional<AudioCodecPairId> codec_pair_id;
+    std::optional<AudioCodecPairId> codec_pair_id;
     bool for_test_no_time_stretching = false;  // Use only for testing.
   };
 
@@ -176,6 +177,7 @@ class NetEq {
 
   // Return type for GetDecoderFormat.
   struct DecoderFormat {
+    int payload_type;
     int sample_rate_hz;
     int num_channels;
     SdpAudioFormat sdp_format;
@@ -183,10 +185,28 @@ class NetEq {
 
   virtual ~NetEq() {}
 
+  virtual int InsertPacket(const RTPHeader& rtp_header,
+                           rtc::ArrayView<const uint8_t> payload) {
+    return InsertPacket(rtp_header, payload,
+                        /*receive_time=*/Timestamp::MinusInfinity());
+  }
+
+  // TODO: webrtc:343501093 - removed unused method.
+  virtual int InsertPacket(const RTPHeader& rtp_header,
+                           rtc::ArrayView<const uint8_t> payload,
+                           Timestamp receive_time) {
+    return InsertPacket(rtp_header, payload,
+                        RtpPacketInfo(rtp_header, receive_time));
+  }
+
   // Inserts a new packet into NetEq.
   // Returns 0 on success, -1 on failure.
+  // TODO: webrtc:343501093 - Make this method pure virtual.
   virtual int InsertPacket(const RTPHeader& rtp_header,
-                           rtc::ArrayView<const uint8_t> payload) = 0;
+                           rtc::ArrayView<const uint8_t> payload,
+                           const RtpPacketInfo& /* rtp_packet_info */) {
+    return InsertPacket(rtp_header, payload);
+  }
 
   // Lets NetEq know that a packet arrived with an empty payload. This typically
   // happens when empty packets are used for probing the network channel, and
@@ -210,9 +230,9 @@ class NetEq {
   // Returns kOK on success, or kFail in case of an error.
   virtual int GetAudio(
       AudioFrame* audio_frame,
-      bool* muted,
+      bool* muted = nullptr,
       int* current_sample_rate_hz = nullptr,
-      absl::optional<Operation> action_override = absl::nullopt) = 0;
+      std::optional<Operation> action_override = std::nullopt) = 0;
 
   // Replaces the current set of decoders with the given one.
   virtual void SetCodecs(const std::map<int, SdpAudioFormat>& codecs) = 0;
@@ -278,7 +298,7 @@ class NetEq {
 
   // Returns the RTP timestamp for the last sample delivered by GetAudio().
   // The return value will be empty if no valid timestamp is available.
-  virtual absl::optional<uint32_t> GetPlayoutTimestamp() const = 0;
+  virtual std::optional<uint32_t> GetPlayoutTimestamp() const = 0;
 
   // Returns the sample rate in Hz of the audio produced in the last GetAudio
   // call. If GetAudio has not been called yet, the configured sample rate
@@ -287,8 +307,16 @@ class NetEq {
 
   // Returns the decoder info for the given payload type. Returns empty if no
   // such payload type was registered.
-  virtual absl::optional<DecoderFormat> GetDecoderFormat(
-      int payload_type) const = 0;
+  [[deprecated(
+      "Use GetCurrentDecoderFormat")]] virtual std::optional<DecoderFormat>
+  GetDecoderFormat(int /* payload_type */) const {
+    return std::nullopt;
+  }
+
+  // Returns info for the most recently used decoder.
+  virtual std::optional<DecoderFormat> GetCurrentDecoderFormat() const {
+    return std::nullopt;
+  }
 
   // Flushes both the packet buffer and the sync buffer.
   virtual void FlushBuffers() = 0;

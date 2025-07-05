@@ -13,10 +13,13 @@
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "api/environment/environment.h"
 #include "api/peer_connection_interface.h"
-#include "call/create_call.h"
-#include "media/engine/webrtc_media_engine.h"
+#include "api/scoped_refptr.h"
+#include "call/call.h"
+#include "call/call_config.h"
+#include "media/base/media_engine.h"
 #include "media/engine/webrtc_video_engine.h"
 #include "media/engine/webrtc_voice_engine.h"
 #include "pc/media_factory.h"
@@ -36,18 +39,26 @@ class MediaFactoryImpl : public MediaFactory {
   MediaFactoryImpl& operator=(const MediaFactoryImpl&) = delete;
   ~MediaFactoryImpl() override = default;
 
-  std::unique_ptr<Call> CreateCall(const CallConfig& config) override {
-    return webrtc::CreateCall(config);
+  std::unique_ptr<Call> CreateCall(CallConfig config) override {
+    return webrtc::Call::Create(std::move(config));
   }
 
   std::unique_ptr<MediaEngineInterface> CreateMediaEngine(
       const Environment& env,
       PeerConnectionFactoryDependencies& deps) override {
+    absl::Nullable<scoped_refptr<AudioProcessing>> audio_processing =
+        deps.audio_processing_builder != nullptr
+            ? std::move(deps.audio_processing_builder)->Build(env)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            : std::move(deps.audio_processing);
+#pragma clang diagnostic pop
+
     auto audio_engine = std::make_unique<WebRtcVoiceEngine>(
         &env.task_queue_factory(), deps.adm.get(),
         std::move(deps.audio_encoder_factory),
         std::move(deps.audio_decoder_factory), std::move(deps.audio_mixer),
-        std::move(deps.audio_processing), std::move(deps.audio_frame_processor),
+        std::move(audio_processing), std::move(deps.audio_frame_processor),
         env.field_trials());
     auto video_engine = std::make_unique<WebRtcVideoEngine>(
         std::move(deps.video_encoder_factory),

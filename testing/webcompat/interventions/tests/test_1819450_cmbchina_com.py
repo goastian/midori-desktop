@@ -2,7 +2,7 @@ import pytest
 
 URL = "https://www.cmbchina.com/"
 DESKTOP_CSS = "#aspnetForm"
-MOBILE_CSS = "#app .mobile-header"
+MOBILE_CSS = ".swiper-container-android"
 
 
 @pytest.mark.only_platforms("android")

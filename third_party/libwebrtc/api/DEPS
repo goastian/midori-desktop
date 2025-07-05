@@ -49,6 +49,7 @@ specific_include_rules = {
   ],
 
   ".*\.h": [
+    "+rtc_base/arraysize.h",
     "+rtc_base/checks.h",
     "+rtc_base/system/rtc_export.h",
     "+rtc_base/system/rtc_export_template.h",
@@ -74,6 +75,10 @@ specific_include_rules = {
     "+rtc_base/socket_address.h",
   ],
 
+  "audio_device_defines\.h": [
+    "+rtc_base/strings/string_builder.h",
+  ],
+
   "candidate\.h": [
     "+rtc_base/network_constants.h",
     "+rtc_base/socket_address.h",
@@ -95,13 +100,9 @@ specific_include_rules = {
     "+modules/include/module_fec_types.h",
   ],
 
-  "media_stream_interface\.h": [
-    "+modules/audio_processing/include/audio_processing_statistics.h",
-  ],
-
   "packet_socket_factory\.h": [
-    "+rtc_base/proxy_info.h",
     "+rtc_base/async_packet_socket.h",
+    "+rtc_base/socket_address.h",
   ],
 
   "peer_connection_interface\.h": [
@@ -116,6 +117,7 @@ specific_include_rules = {
     "+rtc_base/rtc_certificate.h",
     "+rtc_base/rtc_certificate_generator.h",
     "+rtc_base/socket_address.h",
+    "+rtc_base/socket_factory.h",
     "+rtc_base/ssl_certificate.h",
     "+rtc_base/ssl_stream_adapter.h",
     "+rtc_base/thread.h",
@@ -133,6 +135,8 @@ specific_include_rules = {
 
   "rtc_error\.h": [
     "+rtc_base/logging.h",
+    "+absl/strings/has_absl_stringify.h",
+    "+absl/strings/str_format.h",
   ],
   "rtc_event_log_output_file.h": [
     # For private member and constructor.
@@ -140,6 +144,7 @@ specific_include_rules = {
   ],
 
   "legacy_stats_types\.h": [
+    "+rtc_base/thread_annotations.h",
     "+rtc_base/thread_checker.h",
   ],
 
@@ -149,14 +154,6 @@ specific_include_rules = {
 
   "audio_encoder\.h": [
     "+rtc_base/buffer.h",
-  ],
-
-  "audioproc_float\.h": [
-    "+modules/audio_processing/include/audio_processing.h",
-  ],
-
-  "echo_detector_creator\.h": [
-    "+modules/audio_processing/include/audio_processing.h",
   ],
 
   "make_ref_counted\.h": [
@@ -177,6 +174,11 @@ specific_include_rules = {
 
   "notifier\.h": [
     "+rtc_base/system/no_unique_address.h",
+    "+rtc_base/thread_annotations.h",
+  ],
+
+  "priority\.h": [
+    "+rtc_base/strong_alias.h",
   ],
 
   "simulated_network\.h": [
@@ -196,21 +198,30 @@ specific_include_rules = {
     "+modules/video_coding/include/video_codec_interface.h"
   ],
 
+  "rtp_parameters\.h": [
+    "+absl/strings/str_format.h",
+  ],
+
   "sequence_checker\.h": [
     "+rtc_base/synchronization/sequence_checker_internal.h",
     "+rtc_base/thread_annotations.h",
   ],
 
-  "wrapping_async_dns_resolver\.h": [
-    "+rtc_base/async_resolver.h",
-    "+rtc_base/async_resolver_interface.h",
-    "+rtc_base/socket_address.h",
-    "+rtc_base/third_party/sigslot/sigslot.h",
-    "+rtc_base/thread_annotations.h",
-  ],
-
   "video_encoder_factory_template.*\.h": [
     "+modules/video_coding",
+  ],
+
+  "video_encoder_factory_interface\.h": [
+    "+rtc_base/numerics",
+  ],
+
+  "video_encoder_interface\.h": [
+    "+rtc_base/numerics",
+  ],
+
+  "simple_encoder_wrapper\.h": [
+    "+common_video",
+    "+modules",
   ],
 
   "video_decoder_factory_template.*\.h": [

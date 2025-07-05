@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -14,7 +14,7 @@
 
 #include "aom_ports/mem.h"
 
-static INLINE unsigned int sad64xh_avx2(const uint8_t *src_ptr, int src_stride,
+static inline unsigned int sad64xh_avx2(const uint8_t *src_ptr, int src_stride,
                                         const uint8_t *ref_ptr, int ref_stride,
                                         int h) {
   int i;
@@ -42,7 +42,7 @@ static INLINE unsigned int sad64xh_avx2(const uint8_t *src_ptr, int src_stride,
   return res;
 }
 
-static INLINE unsigned int sad32xh_avx2(const uint8_t *src_ptr, int src_stride,
+static inline unsigned int sad32xh_avx2(const uint8_t *src_ptr, int src_stride,
                                         const uint8_t *ref_ptr, int ref_stride,
                                         int h) {
   int i;
@@ -101,11 +101,17 @@ static INLINE unsigned int sad32xh_avx2(const uint8_t *src_ptr, int src_stride,
                             h / 2);                                           \
   }
 
+#if CONFIG_HIGHWAY
+#define FSAD64  \
+  FSADS64_H(64) \
+  FSADS64_H(32)
+#else
 #define FSAD64  \
   FSAD64_H(64)  \
   FSAD64_H(32)  \
   FSADS64_H(64) \
   FSADS64_H(32)
+#endif
 
 #define FSAD32  \
   FSAD32_H(64)  \

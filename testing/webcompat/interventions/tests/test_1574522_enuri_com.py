@@ -1,10 +1,13 @@
 import pytest
 
-# The site puts an exclamation mark in front of width="703"
-# for Chrome UAs, but not for Firefox.
+URL = "http://enuri.com"
+DESKTOP_VP = "width=1280"
+MOBILE_VP = "width=device-width,initial-scale=1.0"
 
-URL = "http://enuri.com/knowcom/detail.jsp?kbno=474985"
-CHECK_CSS = "td[width='703']"
+
+def get_meta_viewport_content(client):
+    mvp = client.await_css("meta[name=viewport]")
+    return client.get_element_attribute(mvp, "content")
 
 
 @pytest.mark.only_platforms("android")
@@ -12,7 +15,7 @@ CHECK_CSS = "td[width='703']"
 @pytest.mark.with_interventions
 async def test_enabled(client):
     await client.navigate(URL)
-    assert not client.find_css(CHECK_CSS)
+    assert MOBILE_VP == get_meta_viewport_content(client)
 
 
 @pytest.mark.only_platforms("android")
@@ -20,4 +23,4 @@ async def test_enabled(client):
 @pytest.mark.without_interventions
 async def test_disabled(client):
     await client.navigate(URL)
-    assert client.find_css(CHECK_CSS)
+    assert DESKTOP_VP == get_meta_viewport_content(client)

@@ -30,38 +30,10 @@
 #include "src/mc.h"
 #include "src/cpu.h"
 
-#define decl_8tap_gen(decl_name, fn_name, opt) \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_regular,        opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_regular_smooth, opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_regular_sharp,  opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_smooth_regular, opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_smooth,         opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_smooth_sharp,   opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_sharp_regular,  opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_sharp_smooth,   opt)); \
-    decl_##decl_name##_fn(BF(dav1d_##fn_name##_8tap_sharp,          opt))
-
-#define decl_8tap_fns(opt) \
-    decl_8tap_gen(mc,  put,  opt); \
-    decl_8tap_gen(mct, prep, opt)
-
-#define init_8tap_gen(name, opt) \
-    init_##name##_fn(FILTER_2D_8TAP_REGULAR,        8tap_regular,        opt); \
-    init_##name##_fn(FILTER_2D_8TAP_REGULAR_SMOOTH, 8tap_regular_smooth, opt); \
-    init_##name##_fn(FILTER_2D_8TAP_REGULAR_SHARP,  8tap_regular_sharp,  opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SMOOTH_REGULAR, 8tap_smooth_regular, opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SMOOTH,         8tap_smooth,         opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SMOOTH_SHARP,   8tap_smooth_sharp,   opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SHARP_REGULAR,  8tap_sharp_regular,  opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SHARP_SMOOTH,   8tap_sharp_smooth,   opt); \
-    init_##name##_fn(FILTER_2D_8TAP_SHARP,          8tap_sharp,          opt)
-
-#define init_8tap_fns(opt) \
-    init_8tap_gen(mc,  opt); \
-    init_8tap_gen(mct, opt)
-
 decl_8tap_fns(neon);
 decl_8tap_fns(neon_dotprod);
+decl_8tap_fns(neon_i8mm);
+decl_8tap_fns(sve2);
 
 decl_mc_fn(BF(dav1d_put_bilin, neon));
 decl_mct_fn(BF(dav1d_prep_bilin, neon));
@@ -110,10 +82,26 @@ static ALWAYS_INLINE void mc_dsp_init_arm(Dav1dMCDSPContext *const c) {
     c->emu_edge = BF(dav1d_emu_edge, neon);
 
 #if ARCH_AARCH64
-#if HAVE_DOTPROD && BITDEPTH == 8
-    if (!(flags & DAV1D_ARM_CPU_FLAG_DOTPROD)) return;
+#if BITDEPTH == 8
+#if HAVE_DOTPROD
+    if (flags & DAV1D_ARM_CPU_FLAG_DOTPROD) {
+        init_8tap_fns(neon_dotprod);
+    }
+#endif  // HAVE_DOTPROD
 
-    init_8tap_fns(neon_dotprod);
-#endif  // HAVE_DOTPROD && BITDEPTH == 8
+#if HAVE_I8MM
+    if (flags & DAV1D_ARM_CPU_FLAG_I8MM) {
+        init_8tap_fns(neon_i8mm);
+    }
+#endif  // HAVE_I8MM
+#endif  // BITDEPTH == 8
+
+#if BITDEPTH == 16
+#if HAVE_SVE2
+    if (flags & DAV1D_ARM_CPU_FLAG_SVE2) {
+        init_8tap_fns(sve2);
+    }
+#endif  // HAVE_SVE2
+#endif  // BITDEPTH == 16
 #endif  // ARCH_AARCH64
 }

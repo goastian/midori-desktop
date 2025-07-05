@@ -11,15 +11,18 @@
 #include "api/environment/environment.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/optional.h"
+#include "absl/strings/string_view.h"
 #include "api/environment/environment_factory.h"
 #include "api/field_trials_view.h"
+#include "api/rtc_event_log/rtc_event.h"
 #include "api/rtc_event_log/rtc_event_log.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "api/units/timestamp.h"
 #include "system_wrappers/include/clock.h"
@@ -51,7 +54,9 @@ class FakeFieldTrials : public FieldTrialsView {
     }
   }
 
-  std::string Lookup(absl::string_view key) const override { return "fake"; }
+  std::string Lookup(absl::string_view /* key */) const override {
+    return "fake";
+  }
 
  private:
   absl::AnyInvocable<void() &&> on_destroyed_;
@@ -69,8 +74,8 @@ class FakeTaskQueueFactory : public TaskQueueFactory {
   }
 
   std::unique_ptr<TaskQueueBase, TaskQueueDeleter> CreateTaskQueue(
-      absl::string_view name,
-      Priority priority) const override {
+      absl::string_view /* name */,
+      Priority /* priority */) const override {
     return nullptr;
   }
 
@@ -165,10 +170,10 @@ TEST(EnvironmentTest, KeepsUtilityAliveWhileEnvironmentIsAlive) {
       /*on_destroyed=*/[&] { utility_destroyed = true; });
 
   // Wrap Environment into optional to have explicit control when it is deleted.
-  absl::optional<Environment> env = CreateEnvironment(std::move(field_trials));
+  std::optional<Environment> env = CreateEnvironment(std::move(field_trials));
 
   EXPECT_FALSE(utility_destroyed);
-  env = absl::nullopt;
+  env = std::nullopt;
   EXPECT_TRUE(utility_destroyed);
 }
 
@@ -177,13 +182,13 @@ TEST(EnvironmentTest, KeepsUtilityAliveWhileCopyOfEnvironmentIsAlive) {
   auto field_trials = std::make_unique<FakeFieldTrials>(
       /*on_destroyed=*/[&] { utility_destroyed = true; });
 
-  absl::optional<Environment> env1 = CreateEnvironment(std::move(field_trials));
-  absl::optional<Environment> env2 = env1;
+  std::optional<Environment> env1 = CreateEnvironment(std::move(field_trials));
+  std::optional<Environment> env2 = env1;
 
   EXPECT_FALSE(utility_destroyed);
-  env1 = absl::nullopt;
+  env1 = std::nullopt;
   EXPECT_FALSE(utility_destroyed);
-  env2 = absl::nullopt;
+  env2 = std::nullopt;
   EXPECT_TRUE(utility_destroyed);
 }
 
@@ -231,27 +236,27 @@ TEST(EnvironmentTest, FactoryCanCreateNewEnvironmentFromExistingOne) {
 TEST(EnvironmentTest, KeepsOwnershipsWhenCreateNewEnvironmentFromExistingOne) {
   bool utility1_destroyed = false;
   bool utility2_destroyed = false;
-  absl::optional<Environment> env1 =
+  std::optional<Environment> env1 =
       CreateEnvironment(std::make_unique<FakeTaskQueueFactory>(
           /*on_destroyed=*/[&] { utility1_destroyed = true; }));
 
-  absl::optional<EnvironmentFactory> factory = EnvironmentFactory(*env1);
+  std::optional<EnvironmentFactory> factory = EnvironmentFactory(*env1);
 
   // Destroy env1, check utility1 it was using is still alive.
-  env1 = absl::nullopt;
+  env1 = std::nullopt;
   EXPECT_FALSE(utility1_destroyed);
 
   factory->Set(std::make_unique<FakeFieldTrials>(
       /*on_destroyed=*/[&] { utility2_destroyed = true; }));
-  absl::optional<Environment> env2 = factory->Create();
+  std::optional<Environment> env2 = factory->Create();
 
   // Destroy the factory, check all utilities used by env2 are alive.
-  factory = absl::nullopt;
+  factory = std::nullopt;
   EXPECT_FALSE(utility1_destroyed);
   EXPECT_FALSE(utility2_destroyed);
 
   // Once last Environment object is deleted, utilties should be deleted too.
-  env2 = absl::nullopt;
+  env2 = std::nullopt;
   EXPECT_TRUE(utility1_destroyed);
   EXPECT_TRUE(utility2_destroyed);
 }
@@ -263,11 +268,11 @@ TEST(EnvironmentTest, DestroysUtilitiesInReverseProvidedOrder) {
   auto task_queue_factory = std::make_unique<FakeTaskQueueFactory>(
       /*on_destroyed=*/[&] { destroyed.push_back("task_queue_factory"); });
 
-  absl::optional<Environment> env =
+  std::optional<Environment> env =
       CreateEnvironment(std::move(field_trials), std::move(task_queue_factory));
 
   ASSERT_THAT(destroyed, IsEmpty());
-  env = absl::nullopt;
+  env = std::nullopt;
   EXPECT_THAT(destroyed, ElementsAre("task_queue_factory", "field_trials"));
 }
 

@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "api/audio/audio_processing.h"
 #include "api/audio_codecs/audio_encoder.h"
 #include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/audio_codecs/audio_format.h"
@@ -34,7 +35,6 @@
 #include "media/base/media_channel.h"
 #include "modules/audio_coding/codecs/cng/audio_encoder_cng.h"
 #include "modules/audio_coding/codecs/red/audio_encoder_copy_red.h"
-#include "modules/audio_processing/include/audio_processing.h"
 #include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -44,13 +44,13 @@
 namespace webrtc {
 namespace {
 
-void UpdateEventLogStreamConfig(RtcEventLog* event_log,
+void UpdateEventLogStreamConfig(RtcEventLog& event_log,
                                 const AudioSendStream::Config& config,
                                 const AudioSendStream::Config* old_config) {
   using SendCodecSpec = AudioSendStream::Config::SendCodecSpec;
   // Only update if any of the things we log have changed.
-  auto payload_types_equal = [](const absl::optional<SendCodecSpec>& a,
-                                const absl::optional<SendCodecSpec>& b) {
+  auto payload_types_equal = [](const std::optional<SendCodecSpec>& a,
+                                const std::optional<SendCodecSpec>& b) {
     if (a.has_value() && b.has_value()) {
       return a->format.name == b->format.name &&
              a->payload_type == b->payload_type;
@@ -72,7 +72,7 @@ void UpdateEventLogStreamConfig(RtcEventLog* event_log,
     rtclog_config->codecs.emplace_back(config.send_codec_spec->format.name,
                                        config.send_codec_spec->payload_type, 0);
   }
-  event_log->Log(std::make_unique<RtcEventAudioSendStreamConfig>(
+  event_log.Log(std::make_unique<RtcEventAudioSendStreamConfig>(
       std::move(rtclog_config)));
 }
 
@@ -100,65 +100,51 @@ AudioAllocationConfig::AudioAllocationConfig(
 
 namespace internal {
 AudioSendStream::AudioSendStream(
-    Clock* clock,
+    const Environment& env,
     const webrtc::AudioSendStream::Config& config,
     const rtc::scoped_refptr<webrtc::AudioState>& audio_state,
-    TaskQueueFactory* task_queue_factory,
     RtpTransportControllerSendInterface* rtp_transport,
     BitrateAllocatorInterface* bitrate_allocator,
-    RtcEventLog* event_log,
     RtcpRttStats* rtcp_rtt_stats,
-    const absl::optional<RtpState>& suspended_rtp_state,
-    const FieldTrialsView& field_trials)
-    : AudioSendStream(clock,
+    const std::optional<RtpState>& suspended_rtp_state)
+    : AudioSendStream(env,
                       config,
                       audio_state,
-                      task_queue_factory,
                       rtp_transport,
                       bitrate_allocator,
-                      event_log,
                       suspended_rtp_state,
-                      voe::CreateChannelSend(clock,
-                                             task_queue_factory,
+                      voe::CreateChannelSend(env,
                                              config.send_transport,
                                              rtcp_rtt_stats,
-                                             event_log,
                                              config.frame_encryptor.get(),
                                              config.crypto_options,
                                              config.rtp.extmap_allow_mixed,
                                              config.rtcp_report_interval_ms,
                                              config.rtp.ssrc,
                                              config.frame_transformer,
-                                             rtp_transport,
-                                             field_trials),
-                      field_trials) {}
+                                             rtp_transport)) {}
 
 AudioSendStream::AudioSendStream(
-    Clock* clock,
+    const Environment& env,
     const webrtc::AudioSendStream::Config& config,
     const rtc::scoped_refptr<webrtc::AudioState>& audio_state,
-    TaskQueueFactory* task_queue_factory,
     RtpTransportControllerSendInterface* rtp_transport,
     BitrateAllocatorInterface* bitrate_allocator,
-    RtcEventLog* event_log,
-    const absl::optional<RtpState>& suspended_rtp_state,
-    std::unique_ptr<voe::ChannelSendInterface> channel_send,
-    const FieldTrialsView& field_trials)
-    : clock_(clock),
-      field_trials_(field_trials),
+    const std::optional<RtpState>& suspended_rtp_state,
+    std::unique_ptr<voe::ChannelSendInterface> channel_send)
+    : env_(env),
       allocate_audio_without_feedback_(
-          field_trials_.IsEnabled("WebRTC-Audio-ABWENoTWCC")),
+          env_.field_trials().IsEnabled("WebRTC-Audio-ABWENoTWCC")),
       enable_audio_alr_probing_(
-          !field_trials_.IsDisabled("WebRTC-Audio-AlrProbing")),
-      allocation_settings_(field_trials_),
+          !env_.field_trials().IsDisabled("WebRTC-Audio-AlrProbing")),
+      allocation_settings_(env_.field_trials()),
       config_(Config(/*send_transport=*/nullptr)),
       audio_state_(audio_state),
       channel_send_(std::move(channel_send)),
-      event_log_(event_log),
       use_legacy_overhead_calculation_(
-          field_trials_.IsEnabled("WebRTC-Audio-LegacyOverhead")),
+          env_.field_trials().IsEnabled("WebRTC-Audio-LegacyOverhead")),
       enable_priority_bitrate_(
-          !field_trials_.IsDisabled("WebRTC-Audio-PriorityBitrate")),
+          !env_.field_trials().IsDisabled("WebRTC-Audio-PriorityBitrate")),
       bitrate_allocator_(bitrate_allocator),
       rtp_transport_(rtp_transport),
       rtp_rtcp_module_(channel_send_->GetRtpRtcp()),
@@ -227,7 +213,7 @@ void AudioSendStream::ConfigureStream(
     SetParametersCallback callback) {
   RTC_LOG(LS_INFO) << "AudioSendStream::ConfigureStream: "
                    << new_config.ToString();
-  UpdateEventLogStreamConfig(event_log_, new_config,
+  UpdateEventLogStreamConfig(env_.event_log(), new_config,
                              first_time ? nullptr : &config_);
 
   const auto& old_config = config_;
@@ -494,7 +480,7 @@ uint32_t AudioSendStream::OnBitrateUpdated(BitrateAllocationUpdate update) {
   // Pick a target bitrate between the constraints. Overrules the allocator if
   // it 1) allocated a bitrate of zero to disable the stream or 2) allocated a
   // higher than max to allow for e.g. extra FEC.
-  absl::optional<TargetAudioBitrateConstraints> constraints =
+  std::optional<TargetAudioBitrateConstraints> constraints =
       GetMinMaxBitrateConstraints();
   if (constraints) {
     update.target_bitrate.Clamp(constraints->min, constraints->max);
@@ -504,6 +490,10 @@ uint32_t AudioSendStream::OnBitrateUpdated(BitrateAllocationUpdate update) {
   // The amount of audio protection is not exposed by the encoder, hence
   // always returning 0.
   return 0;
+}
+
+std::optional<DataRate> AudioSendStream::GetUsedRate() const {
+  return channel_send_->GetUsedRate();
 }
 
 void AudioSendStream::SetTransportOverhead(
@@ -528,6 +518,7 @@ void AudioSendStream::UpdateOverheadPerPacket() {
   if (registered_with_allocator_) {
     ConfigureBitrateObserver();
   }
+  channel_send_->RegisterPacketOverhead(overhead_per_packet_bytes);
 }
 
 size_t AudioSendStream::TestOnlyGetPerPacketOverheadBytes() const {
@@ -573,9 +564,10 @@ bool AudioSendStream::SetupSendCodec(const Config& new_config) {
   const auto& spec = *new_config.send_codec_spec;
 
   RTC_DCHECK(new_config.encoder_factory);
-  std::unique_ptr<AudioEncoder> encoder =
-      new_config.encoder_factory->MakeAudioEncoder(
-          spec.payload_type, spec.format, new_config.codec_pair_id);
+  std::unique_ptr<AudioEncoder> encoder = new_config.encoder_factory->Create(
+      env_, spec.format,
+      {.payload_type = spec.payload_type,
+       .codec_pair_id = new_config.codec_pair_id});
 
   if (!encoder) {
     RTC_DLOG(LS_ERROR) << "Unable to create encoder for "
@@ -592,7 +584,7 @@ bool AudioSendStream::SetupSendCodec(const Config& new_config) {
   // Enable ANA if configured (currently only used by Opus).
   if (new_config.audio_network_adaptor_config) {
     if (encoder->EnableAudioNetworkAdaptor(
-            *new_config.audio_network_adaptor_config, event_log_)) {
+            *new_config.audio_network_adaptor_config, &env_.event_log())) {
       RTC_LOG(LS_INFO) << "Audio network adaptor enabled on SSRC "
                        << new_config.rtp.ssrc;
     } else {
@@ -621,7 +613,7 @@ bool AudioSendStream::SetupSendCodec(const Config& new_config) {
     red_config.payload_type = *spec.red_payload_type;
     red_config.speech_encoder = std::move(encoder);
     encoder = std::make_unique<AudioEncoderCopyRed>(std::move(red_config),
-                                                    field_trials_);
+                                                    env_.field_trials());
     format.name = cricket::kRedCodecName;
   }
 
@@ -666,7 +658,7 @@ bool AudioSendStream::ReconfigureSendCodec(const Config& new_config) {
     return SetupSendCodec(new_config);
   }
 
-  const absl::optional<int>& new_target_bitrate_bps =
+  const std::optional<int>& new_target_bitrate_bps =
       new_config.send_codec_spec->target_bitrate_bps;
   // If a bitrate has been specified for the codec, use it over the
   // codec's default.
@@ -693,7 +685,7 @@ void AudioSendStream::ReconfigureANA(const Config& new_config) {
     channel_send_->CallEncoder([&](AudioEncoder* encoder) {
       RTC_DCHECK_RUN_ON(&worker_thread_checker_);
       if (encoder->EnableAudioNetworkAdaptor(
-              *new_config.audio_network_adaptor_config, event_log_)) {
+              *new_config.audio_network_adaptor_config, &env_.event_log())) {
         RTC_LOG(LS_INFO) << "Audio network adaptor enabled on SSRC "
                          << new_config.rtp.ssrc;
         if (overhead_per_packet_ > 0) {
@@ -821,7 +813,8 @@ void AudioSendStream::ConfigureBitrateObserver() {
           constraints->min.bps<uint32_t>(), constraints->max.bps<uint32_t>(), 0,
           priority_bitrate.bps(), true,
           allocation_settings_.bitrate_priority.value_or(
-              config_.bitrate_priority)});
+              config_.bitrate_priority),
+          TrackRateElasticity::kCanContributeUnusedRate});
 
   registered_with_allocator_ = true;
 }
@@ -831,14 +824,14 @@ void AudioSendStream::RemoveBitrateObserver() {
   bitrate_allocator_->RemoveObserver(this);
 }
 
-absl::optional<AudioSendStream::TargetAudioBitrateConstraints>
+std::optional<AudioSendStream::TargetAudioBitrateConstraints>
 AudioSendStream::GetMinMaxBitrateConstraints() const {
   if (config_.min_bitrate_bps < 0 || config_.max_bitrate_bps < 0) {
     RTC_LOG(LS_WARNING) << "Config is invalid: min_bitrate_bps="
                         << config_.min_bitrate_bps
                         << "; max_bitrate_bps=" << config_.max_bitrate_bps
                         << "; both expected greater or equal to 0";
-    return absl::nullopt;
+    return std::nullopt;
   }
   TargetAudioBitrateConstraints constraints{
       DataRate::BitsPerSec(config_.min_bitrate_bps),
@@ -861,7 +854,7 @@ AudioSendStream::GetMinMaxBitrateConstraints() const {
   if (constraints.max < constraints.min) {
     RTC_LOG(LS_WARNING) << "TargetAudioBitrateConstraints::max is less than "
                         << "TargetAudioBitrateConstraints::min";
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (use_legacy_overhead_calculation_) {
     // OverheadPerPacket = Ipv4(20B) + UDP(8B) + SRTP(10B) + RTP(12)
@@ -874,7 +867,7 @@ AudioSendStream::GetMinMaxBitrateConstraints() const {
   } else {
     if (!frame_length_range_.has_value()) {
       RTC_LOG(LS_WARNING) << "frame_length_range_ is not set";
-      return absl::nullopt;
+      return std::nullopt;
     }
     const DataSize overhead_per_packet = DataSize::Bytes(overhead_per_packet_);
     constraints.min += overhead_per_packet / frame_length_range_->second;

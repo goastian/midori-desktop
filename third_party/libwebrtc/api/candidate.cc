@@ -10,12 +10,19 @@
 
 #include "api/candidate.h"
 
-#include "absl/base/attributes.h"
+#include <algorithm>  // IWYU pragma: keep
+#include <cstdint>
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "p2p/base/p2p_constants.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/crc32.h"
-#include "rtc_base/helpers.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/ip_address.h"
-#include "rtc_base/logging.h"
+#include "rtc_base/network_constants.h"
+#include "rtc_base/socket_address.h"
+#include "rtc_base/string_encode.h"
 #include "rtc_base/strings/string_builder.h"
 
 using webrtc::IceCandidateType;
@@ -36,26 +43,6 @@ absl::string_view IceCandidateTypeToString(IceCandidateType type) {
 }  // namespace webrtc
 
 namespace cricket {
-
-ABSL_CONST_INIT const absl::string_view LOCAL_PORT_TYPE = "local";
-ABSL_CONST_INIT const absl::string_view STUN_PORT_TYPE = "stun";
-ABSL_CONST_INIT const absl::string_view PRFLX_PORT_TYPE = "prflx";
-ABSL_CONST_INIT const absl::string_view RELAY_PORT_TYPE = "relay";
-
-namespace {
-IceCandidateType CandidateTypeFromString(absl::string_view type) {
-  if (type == LOCAL_PORT_TYPE) {
-    return IceCandidateType::kHost;
-  } else if (type == STUN_PORT_TYPE) {
-    return IceCandidateType::kSrflx;
-  } else if (type == PRFLX_PORT_TYPE) {
-    return IceCandidateType::kPrflx;
-  } else {
-    RTC_DCHECK_EQ(type, RELAY_PORT_TYPE);
-    return IceCandidateType::kRelay;
-  }
-}
-}  // namespace
 
 Candidate::Candidate()
     : id_(rtc::CreateRandomString(8)),
@@ -93,39 +80,12 @@ Candidate::Candidate(int component,
       network_id_(network_id),
       network_cost_(network_cost) {}
 
-Candidate::Candidate(int component,
-                     absl::string_view protocol,
-                     const rtc::SocketAddress& address,
-                     uint32_t priority,
-                     absl::string_view username,
-                     absl::string_view password,
-                     absl::string_view type,
-                     uint32_t generation,
-                     absl::string_view foundation,
-                     uint16_t network_id,
-                     uint16_t network_cost)
-    : Candidate(component,
-                protocol,
-                address,
-                priority,
-                username,
-                password,
-                CandidateTypeFromString(type),
-                generation,
-                foundation,
-                network_id,
-                network_cost) {}
-
 Candidate::Candidate(const Candidate&) = default;
 
 Candidate::~Candidate() = default;
 
 void Candidate::generate_id() {
   id_ = rtc::CreateRandomString(8);
-}
-
-void Candidate::set_type(absl::string_view type ABSL_ATTRIBUTE_LIFETIME_BOUND) {
-  set_type(CandidateTypeFromString(type));
 }
 
 bool Candidate::is_local() const {

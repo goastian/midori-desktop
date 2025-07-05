@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2017, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -10,6 +10,7 @@
  */
 
 #include <assert.h>
+#include <stdbool.h>
 
 #include "config/aom_config.h"
 #include "config/aom_scale_rtcd.h"
@@ -134,6 +135,7 @@ static uint32_t read_sequence_header_obu(AV1Decoder *pbi,
     seq_params->display_model_info_present_flag = 0;
     seq_params->operating_points_cnt_minus_1 = 0;
     seq_params->operating_point_idc[0] = 0;
+    seq_params->has_nonzero_operating_point_idc = false;
     if (!read_bitstream_level(&seq_params->seq_level_idx[0], rb)) {
       pbi->error.error_code = AOM_CODEC_UNSUP_BITSTREAM;
       return 0;
@@ -155,9 +157,12 @@ static uint32_t read_sequence_header_obu(AV1Decoder *pbi,
     seq_params->display_model_info_present_flag = aom_rb_read_bit(rb);
     seq_params->operating_points_cnt_minus_1 =
         aom_rb_read_literal(rb, OP_POINTS_CNT_MINUS_1_BITS);
+    seq_params->has_nonzero_operating_point_idc = false;
     for (int i = 0; i < seq_params->operating_points_cnt_minus_1 + 1; i++) {
       seq_params->operating_point_idc[i] =
           aom_rb_read_literal(rb, OP_POINTS_IDC_BITS);
+      if (seq_params->operating_point_idc[i] != 0)
+        seq_params->has_nonzero_operating_point_idc = true;
       if (!read_bitstream_level(&seq_params->seq_level_idx[i], rb)) {
         pbi->error.error_code = AOM_CODEC_UNSUP_BITSTREAM;
         return 0;
@@ -623,7 +628,7 @@ static void alloc_read_metadata(AV1Decoder *const pbi,
 
 // On failure, calls aom_internal_error() and does not return.
 static void read_metadata_itut_t35(AV1Decoder *const pbi, const uint8_t *data,
-                                   size_t sz) {
+                                   size_t sz, bool has_obu_extension_header) {
   if (sz == 0) {
     aom_internal_error(&pbi->error, AOM_CODEC_CORRUPT_FRAME,
                        "itu_t_t35_country_code is missing");
@@ -652,7 +657,9 @@ static void read_metadata_itut_t35(AV1Decoder *const pbi, const uint8_t *data,
                        data[end_index]);
   }
   alloc_read_metadata(pbi, OBU_METADATA_TYPE_ITUT_T35, data, end_index,
-                      AOM_MIF_ANY_FRAME);
+                      has_obu_extension_header
+                          ? AOM_MIF_ANY_FRAME_LAYER_SPECIFIC
+                          : AOM_MIF_ANY_FRAME);
 }
 
 // On success, returns the number of bytes read from 'data'. On failure, calls
@@ -779,7 +786,8 @@ static uint8_t get_last_nonzero_byte(const uint8_t *data, size_t sz) {
 // On success, returns the number of bytes read from 'data'. On failure, sets
 // pbi->common.error.error_code and returns 0, or calls aom_internal_error()
 // and does not return.
-static size_t read_metadata(AV1Decoder *pbi, const uint8_t *data, size_t sz) {
+static size_t read_metadata(AV1Decoder *pbi, const uint8_t *data, size_t sz,
+                            bool has_obu_extension_header) {
   size_t type_length;
   uint64_t type_value;
   if (aom_uleb_decode(data, sz, &type_value, &type_length) < 0) {
@@ -798,7 +806,8 @@ static size_t read_metadata(AV1Decoder *pbi, const uint8_t *data, size_t sz) {
   }
   if (metadata_type == OBU_METADATA_TYPE_ITUT_T35) {
     // read_metadata_itut_t35() checks trailing bits.
-    read_metadata_itut_t35(pbi, data + type_length, sz - type_length);
+    read_metadata_itut_t35(pbi, data + type_length, sz - type_length,
+                           has_obu_extension_header);
     return sz;
   } else if (metadata_type == OBU_METADATA_TYPE_HDR_CLL) {
     size_t bytes_read =
@@ -1052,10 +1061,12 @@ int aom_decode_frame_from_obus(struct AV1Decoder *pbi, const uint8_t *data,
         }
         pbi->num_tile_groups++;
         break;
-      case OBU_METADATA:
-        decoded_payload_size = read_metadata(pbi, data, payload_size);
+      case OBU_METADATA: {
+        decoded_payload_size =
+            read_metadata(pbi, data, payload_size, obu_header.has_extension);
         if (pbi->error.error_code != AOM_CODEC_OK) return -1;
         break;
+      }
       case OBU_TILE_LIST:
         if (CONFIG_NORMAL_TILE_MODE) {
           pbi->error.error_code = AOM_CODEC_UNSUP_BITSTREAM;

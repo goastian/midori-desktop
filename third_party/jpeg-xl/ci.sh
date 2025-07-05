@@ -12,7 +12,8 @@ set -eu
 
 OS=`uname -s`
 
-MYDIR=$(dirname $(realpath "$0"))
+SELF=$(realpath "$0")
+MYDIR=$(dirname "${SELF}")
 
 ### Environment parameters:
 TEST_STACK_LIMIT="${TEST_STACK_LIMIT:-256}"
@@ -498,7 +499,7 @@ cmd_release() {
 
 cmd_opt() {
   CMAKE_BUILD_TYPE="RelWithDebInfo"
-  CMAKE_CXX_FLAGS+=" -DJXL_DEBUG_WARNING -DJXL_DEBUG_ON_ERROR"
+  CMAKE_CXX_FLAGS+=" -DJXL_IS_DEBUG_BUILD"
   cmake_configure "$@"
   cmake_build_and_test
 }
@@ -592,9 +593,9 @@ cmd_msanfuzz() {
 
 cmd_asan() {
   SANITIZER="asan"
-  CMAKE_C_FLAGS+=" -DJXL_ENABLE_ASSERT=1 -g -DADDRESS_SANITIZER \
+  CMAKE_C_FLAGS+=" -g -DADDRESS_SANITIZER \
     -fsanitize=address ${UBSAN_FLAGS[@]}"
-  CMAKE_CXX_FLAGS+=" -DJXL_ENABLE_ASSERT=1 -g -DADDRESS_SANITIZER \
+  CMAKE_CXX_FLAGS+=" -g -DADDRESS_SANITIZER \
     -fsanitize=address ${UBSAN_FLAGS[@]}"
   strip_dead_code
   cmake_configure "$@" -DJPEGXL_ENABLE_TCMALLOC=OFF
@@ -604,7 +605,6 @@ cmd_asan() {
 cmd_tsan() {
   SANITIZER="tsan"
   local tsan_args=(
-    -DJXL_ENABLE_ASSERT=1
     -g
     -DTHREAD_SANITIZER
     -fsanitize=thread
@@ -630,7 +630,6 @@ cmd_msan() {
     -fsanitize=memory
     -fno-omit-frame-pointer
 
-    -DJXL_ENABLE_ASSERT=1
     -g
     -DMEMORY_SANITIZER
 
@@ -1211,7 +1210,7 @@ cmd_lint() {
   # It is ok, if buildifier is not installed.
   if which buildifier >/dev/null; then
     local buildifier_patch="${tmpdir}/buildifier.patch"
-    local bazel_files=`git -C ${MYDIR} ls-files | grep -E "/BUILD$|WORKSPACE|.bzl$"`
+    local bazel_files=`git -C "${MYDIR}" ls-files | grep -E "/BUILD$|WORKSPACE|.bzl$"`
     set -x
     buildifier -d ${bazel_files} >"${buildifier_patch}"|| true
     { set +x; } 2>/dev/null
@@ -1227,8 +1226,8 @@ cmd_lint() {
   # It is ok, if spell-checker is not installed.
   if which typos >/dev/null; then
     local src_ext="bazel|bzl|c|cc|cmake|gni|h|html|in|java|js|m|md|nix|py|rst|sh|ts|txt|yaml|yml"
-    local sources=`git -C ${MYDIR} ls-files | grep -E "\.(${src_ext})$"`
-    typos -c ${MYDIR}/tools/scripts/typos.toml ${sources}
+    local sources=`git -C "${MYDIR}" ls-files | grep -E "\.(${src_ext})$"`
+    typos -c "${MYDIR}/tools/scripts/typos.toml" ${sources}
   else
     echo "Consider installing https://github.com/crate-ci/typos for spell-checking"
   fi
