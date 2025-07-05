@@ -55,11 +55,6 @@ unique(
 )
 )
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kValuesTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const type = kValuesTypes[t.params.type];
   const expectedResult = isRepresentable(
@@ -302,20 +297,22 @@ const kTests = {
     src: `_ = atan2(1, 2, 3);`,
     pass: false,
     is_f16: false
+  },
+
+  must_use: {
+    src: `atan2(1, 2);`,
+    pass: false,
+    is_f16: false
   }
 };
 
 g.test('parameters').
 desc(`Test that ${builtin} is validated correctly.`).
 params((u) => u.combine('test', keysOf(kTests))).
-beforeAllSubcases((t) => {
-  if (kTests[t.params.test].is_f16 === true) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const src = kTests[t.params.test].src;
   const code = `
+${kTests[t.params.test].is_f16 ? 'enable f16;' : ''}
 alias f32_alias = f32;
 
 @group(0) @binding(0) var s: sampler;

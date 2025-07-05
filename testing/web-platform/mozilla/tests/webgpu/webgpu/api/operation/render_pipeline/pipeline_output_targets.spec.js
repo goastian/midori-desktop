@@ -6,10 +6,13 @@
 import { range } from '../../../../common/util/util.js';
 import {
   computeBytesPerSampleFromFormats,
-  kRenderableColorTextureFormats,
-  kTextureFormatInfo } from
+  getColorRenderByteCost,
+  getTextureFormatType,
+  isSintOrUintFormat,
+  kPossibleColorRenderableTextureFormats } from
 '../../../format_info.js';
-import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as ttu from '../../../texture_test_utils.js';
 import { getFragmentShaderCodeWithOutput, getPlainTypeInfo } from '../../../util/shader.js';
 import { kTexelRepresentationInfo } from '../../../util/texture/texel_data.js';
 
@@ -25,7 +28,7 @@ const kVertexShader = `
 }
 `;
 
-export const g = makeTestGroup(TextureTestMixin(GPUTest));
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 // Values to write into each attachment
 // We make values different for each attachment index and each channel
@@ -50,36 +53,33 @@ g.test('color,attachments').
 desc(`Test that pipeline with sparse color attachments write values correctly.`).
 params((u) =>
 u.
-combine('format', kRenderableColorTextureFormats).
+combine('format', kPossibleColorRenderableTextureFormats).
 beginSubcases().
 combine('attachmentCount', [2, 3, 4]).
 expand('emptyAttachmentId', (p) => range(p.attachmentCount, (i) => i))
 ).
-beforeAllSubcases((t) => {
-  const info = kTextureFormatInfo[t.params.format];
-  t.skipIfTextureFormatNotSupported(t.params.format);
-  t.selectDeviceOrSkipTestCase(info.feature);
-}).
 fn((t) => {
   const { format, attachmentCount, emptyAttachmentId } = t.params;
+
+  t.skipIfTextureFormatNotSupported(format);
+  t.skipIfTextureFormatNotUsableAsRenderAttachment(format);
+
   const componentCount = kTexelRepresentationInfo[format].componentOrder.length;
-  const info = kTextureFormatInfo[format];
 
   // We only need to test formats that have a valid color attachment bytes per sample.
-  const pixelByteCost = kTextureFormatInfo[format].colorRender?.byteCost;
+  const pixelByteCost = getColorRenderByteCost(format);
   t.skipIf(
     pixelByteCost === undefined ||
     computeBytesPerSampleFromFormats(range(attachmentCount, () => format)) >
     t.device.limits.maxColorAttachmentBytesPerSample
   );
 
-  const writeValues =
-  info.color.type === 'sint' || info.color.type === 'uint' ?
+  const writeValues = isSintOrUintFormat(format) ?
   attachmentsIntWriteValues :
   attachmentsFloatWriteValues;
 
   const renderTargets = range(attachmentCount, () =>
-  t.device.createTexture({
+  t.createTextureTracked({
     format,
     size: { width: 1, height: 1, depthOrArrayLayers: 1 },
     usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
@@ -106,7 +106,7 @@ fn((t) => {
             writeValues[i].B,
             writeValues[i].A],
 
-            plainType: getPlainTypeInfo(info.color.type),
+            plainType: getPlainTypeInfo(getTextureFormatType(format)),
             componentCount
           }
           )
@@ -125,9 +125,9 @@ fn((t) => {
     null :
     {
       view: renderTargets[i].createView(),
-      storeOp: 'store',
       clearValue: { r: 0.5, g: 0.5, b: 0.5, a: 0.5 },
-      loadOp: 'clear'
+      loadOp: 'clear',
+      storeOp: 'store'
     }
     )
   });
@@ -140,7 +140,7 @@ fn((t) => {
     if (i === emptyAttachmentId) {
       continue;
     }
-    t.expectSinglePixelComparisonsAreOkInTexture({ texture: renderTargets[i] }, [
+    ttu.expectSinglePixelComparisonsAreOkInTexture(t, { texture: renderTargets[i] }, [
     { coord: { x: 0, y: 0 }, exp: writeValues[i] }]
     );
   }
@@ -152,25 +152,21 @@ desc(
 ).
 params((u) =>
 u.
-combine('format', kRenderableColorTextureFormats).
+combine('format', kPossibleColorRenderableTextureFormats).
 beginSubcases().
 combine('componentCount', [1, 2, 3, 4]).
 filter((x) => x.componentCount >= kTexelRepresentationInfo[x.format].componentOrder.length)
 ).
-beforeAllSubcases((t) => {
-  const info = kTextureFormatInfo[t.params.format];
-  t.skipIfTextureFormatNotSupported(t.params.format);
-  t.selectDeviceOrSkipTestCase(info.feature);
-}).
 fn((t) => {
   const { format, componentCount } = t.params;
-  const info = kTextureFormatInfo[format];
+  t.skipIfTextureFormatNotSupported(format);
+  t.skipIfTextureFormatNotUsableAsRenderAttachment(format);
 
   // expected RGBA values
   // extra channels are discarded
   const values = [0, 1, 0, 1];
 
-  const renderTarget = t.device.createTexture({
+  const renderTarget = t.createTextureTracked({
     format,
     size: { width: 1, height: 1, depthOrArrayLayers: 1 },
     usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
@@ -189,7 +185,7 @@ fn((t) => {
         code: getFragmentShaderCodeWithOutput([
         {
           values,
-          plainType: getPlainTypeInfo(info.color.type),
+          plainType: getPlainTypeInfo(getTextureFormatType(format)),
           componentCount
         }]
         )
@@ -205,9 +201,9 @@ fn((t) => {
     colorAttachments: [
     {
       view: renderTarget.createView(),
-      storeOp: 'store',
       clearValue: { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
-      loadOp: 'clear'
+      loadOp: 'clear',
+      storeOp: 'store'
     }]
 
   });
@@ -364,10 +360,6 @@ beginSubcases()
 ).
 filter((x) => x.output.length >= kTexelRepresentationInfo[x.format].componentOrder.length)
 ).
-beforeAllSubcases((t) => {
-  const info = kTextureFormatInfo[t.params.format];
-  t.selectDeviceOrSkipTestCase(info.feature);
-}).
 fn((t) => {
   const {
     format,
@@ -378,10 +370,12 @@ fn((t) => {
     alphaSrcFactor,
     alphaDstFactor
   } = t.params;
-  const componentCount = output.length;
-  const info = kTextureFormatInfo[format];
+  t.skipIfTextureFormatNotSupported(format);
+  t.skipIfTextureFormatNotBlendable(format);
 
-  const renderTarget = t.device.createTexture({
+  const componentCount = output.length;
+
+  const renderTarget = t.createTextureTracked({
     format,
     size: { width: 1, height: 1, depthOrArrayLayers: 1 },
     usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
@@ -400,7 +394,7 @@ fn((t) => {
         code: getFragmentShaderCodeWithOutput([
         {
           values: output,
-          plainType: getPlainTypeInfo(info.color.type),
+          plainType: getPlainTypeInfo(getTextureFormatType(format)),
           componentCount
         }]
         )
@@ -432,9 +426,9 @@ fn((t) => {
     colorAttachments: [
     {
       view: renderTarget.createView(),
-      storeOp: 'store',
       clearValue: { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
-      loadOp: 'clear'
+      loadOp: 'clear',
+      storeOp: 'store'
     }]
 
   });

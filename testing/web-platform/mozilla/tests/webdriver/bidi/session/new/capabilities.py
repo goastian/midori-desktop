@@ -1,20 +1,18 @@
 import pytest
-from tests.support import platform_name
 from webdriver.bidi.modules.script import ContextTarget
 
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.mark.skipif(
-    platform_name is None, reason="Unsupported platform {}".format(platform_name)
-)
 @pytest.mark.parametrize("match_type", ["alwaysMatch", "firstMatch"])
-async def test_platform_name(new_session, match_capabilities, match_type):
-    capabilities = match_capabilities(match_type, "platformName", platform_name)
+async def test_platform_name(
+    new_session, match_capabilities, target_platform, match_type
+):
+    capabilities = match_capabilities(match_type, "platformName", target_platform)
 
     bidi_session = await new_session(capabilities=capabilities)
 
-    assert bidi_session.capabilities["platformName"] == platform_name
+    assert bidi_session.capabilities["platformName"] == target_platform
 
 
 @pytest.mark.parametrize("match_type", ["alwaysMatch", "firstMatch"])
@@ -49,6 +47,48 @@ async def test_proxy(
     )
 
     assert response == {"type": "string", "value": page_content}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "accept",
+        "accept and notify",
+        "dismiss",
+        "dismiss and notify",
+        "ignore",
+    ],
+)
+async def test_unhandledPromptBehavior_string(new_session, match_capabilities, value):
+    capabilities = match_capabilities("alwaysMatch", "unhandledPromptBehavior", value)
+
+    bidi_session = await new_session(capabilities=capabilities)
+
+    assert bidi_session.capabilities.get("unhandledPromptBehavior") == value
+
+
+async def test_unhandledPromptBehavior_without_value(new_session, match_capabilities):
+    capabilities = match_capabilities("alwaysMatch", "unhandledPromptBehavior", None)
+
+    bidi_session = await new_session(capabilities=capabilities)
+
+    assert "unhandledPromptBehavior" not in bidi_session.capabilities
+
+
+@pytest.mark.parametrize("handler", ["accept", "dismiss", "ignore"])
+@pytest.mark.parametrize("prompt_type", ["alert", "beforeUnload", "confirm", "prompt"])
+async def test_unhandledPromptBehavior_object(
+    new_session, match_capabilities, handler, prompt_type
+):
+    capabilities = match_capabilities(
+        "alwaysMatch", "unhandledPromptBehavior", {prompt_type: handler}
+    )
+
+    bidi_session = await new_session(capabilities=capabilities)
+
+    assert bidi_session.capabilities.get("unhandledPromptBehavior") == {
+        prompt_type: handler
+    }
 
 
 @pytest.mark.parametrize("match_type", ["alwaysMatch", "firstMatch"])

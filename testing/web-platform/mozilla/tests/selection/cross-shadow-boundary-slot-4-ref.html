@@ -6,9 +6,5 @@
 </div>
 <script>
   window.getSelection()
-      .setBaseAndExtent(outer.firstChild, 3, outer.firstChild, 5);
-
-  const range = new Range();
-  range.selectNode(inner);
-  window.getSelection().addRange(range);
+      .setBaseAndExtent(outer.firstChild, 3, inner.firstChild, 5);
 </script>

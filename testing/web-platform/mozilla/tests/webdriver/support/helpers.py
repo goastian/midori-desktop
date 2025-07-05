@@ -4,10 +4,12 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 from contextlib import suppress
+from copy import deepcopy
 from urllib.parse import urlparse
 
 import webdriver
@@ -22,49 +24,82 @@ class Browser:
         self,
         binary,
         profile,
-        use_bidi=False,
-        use_cdp=False,
+        env=None,
         extra_args=None,
         extra_prefs=None,
-        env=None,
+        log_level=None,
+        truncate_enabled=True,
+        use_bidi=False,
+        use_cdp=False,
+        use_marionette=False,
     ):
         self.profile = profile
-        self.use_bidi = use_bidi
-        self.bidi_port_file = None
-        self.use_cdp = use_cdp
-        self.cdp_port_file = None
+
         self.extra_args = extra_args
         self.extra_prefs = extra_prefs
+        self.log_level = log_level
+        self.truncate_enabled = truncate_enabled
+        self.use_bidi = use_bidi
+        self.use_cdp = use_cdp
+        self.use_marionette = use_marionette
 
+        self.bidi_port_file = None
+        self.cdp_port_file = None
         self.debugger_address = None
         self.remote_agent_host = None
         self.remote_agent_port = None
 
-        if self.extra_prefs is not None:
-            self.profile.set_preferences(self.extra_prefs)
-
-        if use_cdp:
-            self.cdp_port_file = os.path.join(
-                self.profile.profile, "DevToolsActivePort"
-            )
-            with suppress(FileNotFoundError):
-                os.remove(self.cdp_port_file)
+        active_protocols = 0
+        cmdargs = ["-no-remote"]
 
         if use_bidi:
+            active_protocols += 1
             self.webdriver_bidi_file = os.path.join(
                 self.profile.profile, "WebDriverBiDiServer.json"
             )
             with suppress(FileNotFoundError):
                 os.remove(self.webdriver_bidi_file)
 
-        cmdargs = ["-no-remote"]
+        if use_cdp:
+            active_protocols += 2
+            self.cdp_port_file = os.path.join(
+                self.profile.profile, "DevToolsActivePort"
+            )
+            with suppress(FileNotFoundError):
+                os.remove(self.cdp_port_file)
+
+        if use_marionette:
+            cmdargs.extend(["-marionette"])
+
+        # Avoid modifying extra_prefs to prevent side-effects with the "browser" fixture,
+        # which checks session equality and would create a new session each time.
+        prefs = self.extra_prefs or {}
+        prefs.update({"remote.active-protocols": active_protocols})
+
+        if log_level is not None:
+            prefs.update({"remote.log.level": log_level})
+
+        if truncate_enabled is False:
+            prefs.update({"remote.log.truncate": False})
+
+        self.profile.set_preferences(prefs)
+
         if self.use_bidi or self.use_cdp:
             cmdargs.extend(["--remote-debugging-port", "0"])
         if self.extra_args is not None:
             cmdargs.extend(self.extra_args)
+
+        print(f"Run command: {binary} {cmdargs}")
         self.runner = FirefoxRunner(
             binary=binary, profile=self.profile, cmdargs=cmdargs, env=env
         )
+
+    @property
+    def websocket_url(self):
+        if self.remote_agent_host is None or self.remote_agent_port is None:
+            raise Exception("No WebSocket server running")
+
+        return f"ws://{self.remote_agent_host}:{self.remote_agent_port}"
 
     @property
     def is_running(self):
@@ -114,12 +149,13 @@ class Browser:
 class Geckodriver:
     PORT_RE = re.compile(rb".*Listening on [^ :]*:(\d+)")
 
-    def __init__(self, configuration, hostname=None, extra_args=None):
+    def __init__(self, configuration, hostname=None, extra_args=None, extra_env=None):
         self.config = configuration["webdriver"]
         self.requested_capabilities = configuration["capabilities"]
         self.hostname = hostname or configuration["host"]
         self.extra_args = extra_args or []
         self.env = configuration["browser"]["env"]
+        self.extra_env = extra_env or {}
 
         self.command = None
         self.proc = None
@@ -144,7 +180,10 @@ class Geckodriver:
         )
 
         print(f"Running command: {' '.join(self.command)}")
-        self.proc = subprocess.Popen(self.command, env=self.env, stdout=subprocess.PIPE)
+        all_env = deepcopy(self.env)
+        all_env.update(self.extra_env)
+
+        self.proc = subprocess.Popen(self.command, env=all_env, stdout=subprocess.PIPE)
 
         self.reader_thread = threading.Thread(
             target=readOutputLine,
@@ -182,6 +221,8 @@ class Geckodriver:
         return self
 
     def processOutputLine(self, line):
+        sys.stdout.write(line)
+
         if self.port is None:
             m = self.PORT_RE.match(line)
             if m is not None:

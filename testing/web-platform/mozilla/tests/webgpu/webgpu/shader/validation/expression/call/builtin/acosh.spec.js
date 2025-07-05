@@ -46,11 +46,6 @@ unique(
 )
 )
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kValuesTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const type = kValuesTypes[t.params.type];
   const expectedResult = isRepresentable(
@@ -178,6 +173,11 @@ const kTests = {
 
   less_then_one: {
     src: `_ = acosh(.9f);`,
+    pass: false
+  },
+
+  must_use: {
+    src: `acosh(1);`,
     pass: false
   }
 };

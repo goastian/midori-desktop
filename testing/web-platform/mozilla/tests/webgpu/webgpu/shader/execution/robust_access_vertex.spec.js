@@ -61,7 +61,8 @@ and drawIndexedIndirect it should always be 0. Once there is an extension to all
 it should be added into drawCallTestParameter list.
 `;import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { assert } from '../../../common/util/util.js';
-import { GPUTest, TextureTestMixin } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../gpu_test.js';
+import * as ttu from '../../texture_test_utils.js';
 
 // Encapsulates a draw call (either indexed or non-indexed)
 class DrawCall {
@@ -210,7 +211,7 @@ class DrawCall {
       size -= 1; // Shave off one byte from the buffer size.
       length -= 1; // And one whole element from the writeBuffer.
     }
-    const buffer = this.test.device.createBuffer({
+    const buffer = this.test.createBufferTracked({
       size,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST // Ensure that buffer can be used by writeBuffer
     });
@@ -273,7 +274,7 @@ const typeInfoMap = {
   }
 };
 
-class F extends TextureTestMixin(GPUTest) {
+class F extends AllFeaturesMaxLimitsGPUTest {
   generateBufferContents(
   numVertices,
   attributesPerBuffer,
@@ -487,7 +488,7 @@ class F extends TextureTestMixin(GPUTest) {
       buffers
     });
 
-    const colorAttachment = this.device.createTexture({
+    const colorAttachment = this.createTextureTracked({
       format: 'rgba8unorm',
       size: { width: 2, height: 1, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
@@ -499,9 +500,9 @@ class F extends TextureTestMixin(GPUTest) {
       colorAttachments: [
       {
         view: colorAttachmentView,
-        storeOp: 'store',
         clearValue: { r: 0.0, g: 1.0, b: 0.0, a: 1.0 },
-        loadOp: 'clear'
+        loadOp: 'clear',
+        storeOp: 'store'
       }]
 
     });
@@ -514,7 +515,7 @@ class F extends TextureTestMixin(GPUTest) {
     this.device.queue.submit([encoder.finish()]);
 
     // Validate we see green on the left pixel, showing that no failure case is detected
-    this.expectSinglePixelComparisonsAreOkInTexture({ texture: colorAttachment }, [
+    ttu.expectSinglePixelComparisonsAreOkInTexture(this, { texture: colorAttachment }, [
     { coord: { x: 0, y: 0 }, exp: new Uint8Array([0x00, 0xff, 0x00, 0xff]) }]
     );
   }

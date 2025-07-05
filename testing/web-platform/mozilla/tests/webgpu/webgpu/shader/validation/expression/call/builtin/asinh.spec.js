@@ -49,11 +49,6 @@ expand('value', (u) =>
 unique(fullRangeForType(kValuesTypes[u.type]), additionalRangeForType(kValuesTypes[u.type]))
 )
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kValuesTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const type = kValuesTypes[t.params.type];
   const expectedResult = isRepresentable(
@@ -176,6 +171,11 @@ const kTests = {
   },
   too_many_params: {
     src: `_ = asinh(1, 2);`,
+    pass: false
+  },
+
+  must_use: {
+    src: `asinh(1);`,
     pass: false
   }
 };

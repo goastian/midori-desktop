@@ -4,10 +4,10 @@
 Validation tests for various texture types in shaders.
 `;import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import {
-  isTextureFormatUsableAsStorageFormat,
+  getTextureFormatType,
+  isTextureFormatUsableAsStorageFormatInCreateShaderModule,
   kAllTextureFormats,
-  kColorTextureFormats,
-  kTextureFormatInfo } from
+  kPossibleStorageTextureFormats } from
 '../../../format_info.js';
 import { getPlainTypeInfo } from '../../../util/shader.js';
 import { ShaderValidationTest } from '../shader_validation_test.js';
@@ -20,24 +20,14 @@ desc(
 ).
 params((u) =>
 u.
-combine('format', kColorTextureFormats).
-filter((p) => kTextureFormatInfo[p.format].color.storage).
+combine('format', kPossibleStorageTextureFormats).
 beginSubcases().
 combine('shaderScalarType', ['f32', 'u32', 'i32', 'bool', 'f16'])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.shaderScalarType === 'f16') {
-    t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-  }
-
-  if (!isTextureFormatUsableAsStorageFormat(t.params.format, t.isCompatibility)) {
-    t.skip('storage usage is unsupported');
-  }
-}).
 fn((t) => {
   const { format, shaderScalarType } = t.params;
-  const info = kTextureFormatInfo[format];
-  const validShaderScalarType = getPlainTypeInfo(info.color.type);
+  t.skipIfTextureFormatNotUsableAsStorageTexture(format);
+  const validShaderScalarType = getPlainTypeInfo(getTextureFormatType(format));
   const shaderValueType = `vec4<${shaderScalarType}>`;
   const wgsl = `
     @group(0) @binding(0) var tex: texture_storage_2d<${format}, read>;
@@ -80,17 +70,18 @@ combine('sampledType', [
 '1.0',
 '1',
 '1u']
-)
+).
+combine('comma', ['', ','])
 ).
 fn((t) => {
-  const { textureType, sampledType } = t.params;
-  const wgsl = `@group(0) @binding(0) var tex: ${textureType}<${sampledType}>;`;
+  const { textureType, sampledType, comma } = t.params;
+  const wgsl = `@group(0) @binding(0) var tex: ${textureType}<${sampledType}${comma}>;`;
   t.expectCompileResult(kValidTextureSampledTypes.includes(sampledType), wgsl);
 });
 
 g.test('external_sampled_texture_types').
 desc(
-  `Test that texture_extenal compiles and cannot specify address space
+  `Test that texture_external compiles and cannot specify address space
 `
 ).
 fn((t) => {
@@ -110,19 +101,19 @@ Besides, the shader compilation should always pass regardless of whether the for
 `
 ).
 params((u) =>
-u.combine('access', [...kAccessModes, 'storage']).combine('format', kAllTextureFormats)
+u.
+combine('access', [...kAccessModes, 'storage']).
+combine('format', kAllTextureFormats).
+combine('comma', ['', ','])
 ).
 fn((t) => {
-  const { format, access } = t.params;
-  const info = kTextureFormatInfo[format];
-  // bgra8unorm is considered a valid storage format at shader compilation stage
-  const isFormatValid =
-  info.color?.storage ||
-  info.depth?.storage ||
-  info.stencil?.storage ||
-  format === 'bgra8unorm';
+  const { format, access, comma } = t.params;
+  const isFormatValid = isTextureFormatUsableAsStorageFormatInCreateShaderModule(
+    t.device,
+    format
+  );
   const isAccessValid = kAccessModes.includes(access);
-  const wgsl = `@group(0) @binding(0) var tex: texture_storage_2d<${format}, ${access}>;`;
+  const wgsl = `@group(0) @binding(0) var tex: texture_storage_2d<${format}, ${access}${comma}>;`;
   t.expectCompileResult(isFormatValid && isAccessValid, wgsl);
 });
 

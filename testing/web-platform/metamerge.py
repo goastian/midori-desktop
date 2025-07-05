@@ -105,7 +105,7 @@ def get_manifest(manifest_path):
                 f.seek(0)
                 sys.stderr.write("Error parsing:\n%s" % f.read().decode("utf8"))
                 raise
-    except IOError:
+    except OSError:
         return None
 
 
@@ -116,7 +116,7 @@ def indent(str_data, indent=2):
     return "\n".join(rv)
 
 
-class Differences(object):
+class Differences:
     def __init__(self):
         self.added = []
         self.deleted = []

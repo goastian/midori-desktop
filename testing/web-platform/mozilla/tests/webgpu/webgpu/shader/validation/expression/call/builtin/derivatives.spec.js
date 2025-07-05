@@ -112,11 +112,6 @@ Derivative builtins only accept f32 scalar and vector types.
 params((u) =>
 u.combine('type', keysOf(kArgumentTypes)).combine('call', ['', ...kDerivativeBuiltins])
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kArgumentTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const type = kArgumentTypes[t.params.type];
   const code = `
@@ -126,4 +121,15 @@ fn foo() {
   let x: ${type.toString()} = ${t.params.call}(${type.create(1).wgsl()});
 }`;
   t.expectCompileResult(kArgumentTypes[t.params.type] === Type.f32 || t.params.call === '', code);
+});
+
+g.test('must_use').
+desc('Tests that the result must be used').
+params((u) => u.combine('use', [true, false]).combine('func', kDerivativeBuiltins)).
+fn((t) => {
+  const code = `
+    fn foo() {
+      ${t.params.use ? '_ =' : ''} ${t.params.func}(1.0);
+    }`;
+  t.expectCompileResult(t.params.use, code);
 });

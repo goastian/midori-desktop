@@ -243,14 +243,13 @@ t,
 textureType,
 bindConfig)
 {
-  const texture = t.device.createTexture({
+  const texture = t.createTextureTracked({
     size: [2, 1, 1],
     mipLevelCount: 2,
     format: 'rgba8unorm',
     usage:
     textureType === 'storage' ? GPUTextureUsage.STORAGE_BINDING : GPUTextureUsage.TEXTURE_BINDING
   });
-  t.trackForCleanup(texture);
 
   const module = getRenderShaderModule(t.device, textureType, bindConfig);
   const pipeline = t.device.createRenderPipeline({
@@ -274,14 +273,13 @@ t,
 textureType,
 bindConfig)
 {
-  const texture = t.device.createTexture({
+  const texture = t.createTextureTracked({
     size: [2, 1, 1],
     mipLevelCount: 2,
     format: 'rgba8unorm',
     usage:
     textureType === 'storage' ? GPUTextureUsage.STORAGE_BINDING : GPUTextureUsage.TEXTURE_BINDING
   });
-  t.trackForCleanup(texture);
 
   const module = getComputeShaderModule(t.device, textureType, bindConfig);
   const pipeline = t.device.createComputePipeline({
@@ -331,13 +329,21 @@ filter(
 ).
 fn((t) => {
   const { encoderType, bindCase, useCase, textureType } = t.params;
+
+  t.skipIf(
+    t.isCompatibility &&
+    textureType === 'storage' &&
+    !(t.device.limits.maxStorageBuffersInFragmentStage > 2),
+    `device only supports maxStorageBuffersInFragmentStage(${t.device.limits.maxStorageBuffersInFragmentStage}) but test needs 2`
+  );
+
   const { bindConfig, fn } = kBindCases[bindCase];
   const { texture, pipeline } = createResourcesForRenderPassTest(t, textureType, bindConfig);
   const { encoder, validateFinish } = t.createEncoder(encoderType);
   encoder.setPipeline(pipeline);
   const { shouldSucceed } = fn(t.device, pipeline, encoder, texture);
   kDrawUseCases[useCase](t, encoder);
-  validateFinish(shouldSucceed);
+  validateFinish(!t.isCompatibility || shouldSucceed);
 });
 
 g.test('twoDifferentTextureViews,render_pass,unused').
@@ -349,6 +355,13 @@ Tests that binding 2 different views of the same texture but not using them does
 params((u) => u.combine('encoderType', kRenderEncodeTypes).combine('textureType', kTextureTypes)).
 fn((t) => {
   const { encoderType, textureType } = t.params;
+
+  t.skipIf(
+    t.isCompatibility &&
+    textureType === 'storage' &&
+    !(t.device.limits.maxStorageBuffersInFragmentStage > 2)
+  );
+
   const { texture, pipeline } = createResourcesForRenderPassTest(
     t,
     textureType,
@@ -399,7 +412,7 @@ fn((t) => {
   encoder.setPipeline(pipeline);
   const { shouldSucceed } = fn(t.device, pipeline, encoder, texture);
   kDispatchUseCases[useCase](t, encoder);
-  validateFinish(shouldSucceed);
+  validateFinish(!t.isCompatibility || shouldSucceed);
 });
 
 g.test('twoDifferentTextureViews,compute_pass,unused').

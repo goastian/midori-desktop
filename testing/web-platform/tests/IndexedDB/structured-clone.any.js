@@ -40,12 +40,15 @@ function cloneTest(value, verifyFunc) {
         indexedDB.deleteDatabase(db.name);
       }
     });
-    const tx = db.transaction('store', 'readwrite', {durability: 'relaxed'});
+    const tx = db.transaction('store', 'readwrite');
     const store = tx.objectStore('store');
     await promiseForRequest(t, store.put(value, 'key'));
     const result = await promiseForRequest(t, store.get('key'));
-    await verifyFunc(value, result);
+    // Because the async verifyFunc may await async values that are independent
+    // of the transaction lifetime (ex: blob.text()), we must only await it
+    // after adding listeners to the transaction.
     await promiseForTransaction(t, tx);
+    await verifyFunc(value, result);
   }, describe(value));
 }
 
@@ -70,7 +73,7 @@ function cloneFailureTest(value) {
         indexedDB.deleteDatabase(db.name);
       }
     });
-    const tx = db.transaction('store', 'readwrite', {durability: 'relaxed'});
+    const tx = db.transaction('store', 'readwrite');
     const store = tx.objectStore('store');
     assert_throws_dom('DataCloneError', () => store.put(value, 'key'));
   }, 'Not serializable: ' + describe(value));

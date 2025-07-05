@@ -6,10 +6,10 @@ Tests for capabilities added by bgra8unorm-storage flag.
 import { assert } from '../../../../common/util/util.js';
 import { kTextureUsages } from '../../../capability_info.js';
 import { GPUConst } from '../../../constants.js';
+import { UniqueFeaturesOrLimitsGPUTest } from '../../../gpu_test.js';
 import { kAllCanvasTypes, createCanvas } from '../../../util/create_elements.js';
-import { ValidationTest } from '../validation_test.js';
 
-class BGRA8UnormStorageValidationTests extends ValidationTest {
+class BGRA8UnormStorageValidationTests extends UniqueFeaturesOrLimitsGPUTest {
   testCreateShaderModuleWithBGRA8UnormStorage(
   shaderType,
   success)
@@ -55,7 +55,7 @@ fn((t) => {
     format: 'bgra8unorm',
     usage: GPUConst.TextureUsage.STORAGE
   };
-  t.device.createTexture(descriptor);
+  t.createTextureTracked(descriptor);
 });
 
 g.test('create_bind_group_layout').
@@ -126,7 +126,12 @@ with 'bgra8unorm-storage' enabled.
 `
 ).
 beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase('bgra8unorm-storage');
+  t.selectDeviceOrSkipTestCase({
+    requiredFeatures: ['bgra8unorm-storage'],
+    requiredLimits: {
+      maxStorageTexturesInFragmentStage: 1
+    }
+  });
 }).
 params((u) =>
 u.

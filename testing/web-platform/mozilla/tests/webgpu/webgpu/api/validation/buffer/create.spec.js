@@ -10,10 +10,10 @@ import {
   kBufferUsages } from
 '../../../capability_info.js';
 import { GPUConst } from '../../../constants.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
 import { kMaxSafeMultipleOf8 } from '../../../util/math.js';
-import { ValidationTest } from '../validation_test.js';
 
-export const g = makeTestGroup(ValidationTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 assert(kBufferSizeAlignment === 4);
 g.test('size').
@@ -36,10 +36,9 @@ fn((t) => {
   const { mappedAtCreation, size } = t.params;
   const isValid = !mappedAtCreation || size % kBufferSizeAlignment === 0;
   const usage = BufferUsage.COPY_SRC;
-  t.expectGPUError(
-    'validation',
-    () => t.device.createBuffer({ size, usage, mappedAtCreation }),
-    !isValid
+
+  t.shouldThrow(isValid ? false : 'RangeError', () =>
+  t.createBufferTracked({ size, usage, mappedAtCreation })
   );
 });
 
@@ -51,7 +50,7 @@ fn((t) => {
   const size = t.makeLimitVariant('maxBufferSize', { mult: 1, add: sizeAddition });
   const isValid = size <= t.device.limits.maxBufferSize;
   const usage = BufferUsage.COPY_SRC;
-  t.expectGPUError('validation', () => t.device.createBuffer({ size, usage }), !isValid);
+  t.expectGPUError('validation', () => t.createBufferTracked({ size, usage }), !isValid);
 });
 
 const kInvalidUsage = 0x8000;
@@ -79,7 +78,7 @@ fn((t) => {
 
   t.expectGPUError(
     'validation',
-    () => t.device.createBuffer({ size: kBufferSizeAlignment * 2, usage, mappedAtCreation }),
+    () => t.createBufferTracked({ size: kBufferSizeAlignment * 2, usage, mappedAtCreation }),
     !isValid
   );
 });
@@ -109,5 +108,5 @@ u.combineWithParams([
 fn((t) => {
   const { _valid, usage, size } = t.params;
 
-  t.expectGPUError('validation', () => t.device.createBuffer({ size, usage }), !_valid);
+  t.expectGPUError('validation', () => t.createBufferTracked({ size, usage }), !_valid);
 });

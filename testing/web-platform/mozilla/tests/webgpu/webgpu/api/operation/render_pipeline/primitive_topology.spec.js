@@ -56,7 +56,8 @@ Test locations are framebuffer coordinates:
    v1       v3        v5                                        Triangle {v2, v3, v4}
                                                                 and {v3, v4, v5}.
 `;import { makeTestGroup } from '../../../../common/framework/test_group.js';
-import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../gpu_test.js';
+import * as ttu from '../../../texture_test_utils.js';
 
 
 const kRTSize = 56;
@@ -279,9 +280,9 @@ function generateVertexBuffer(vertexLocations) {
 }
 
 const kDefaultDrawCount = 6;
-class PrimitiveTopologyTest extends TextureTestMixin(GPUTest) {
+class PrimitiveTopologyTest extends AllFeaturesMaxLimitsGPUTest {
   makeAttachmentTexture() {
-    return this.device.createTexture({
+    return this.createTextureTracked({
       format: kColorFormat,
       size: { width: kRTSize, height: kRTSize, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
@@ -410,7 +411,11 @@ class PrimitiveTopologyTest extends TextureTestMixin(GPUTest) {
     renderPass.end();
 
     this.device.queue.submit([encoder.finish()]);
-    this.expectSinglePixelComparisonsAreOkInTexture({ texture: colorAttachment }, testLocations);
+    ttu.expectSinglePixelComparisonsAreOkInTexture(
+      this,
+      { texture: colorAttachment },
+      testLocations
+    );
   }
 }
 

@@ -6,7 +6,7 @@ export const kTestFolderName = "image-tests";
 // (https://web.dev/articles/fetch-priority#browser_priority_and_fetchpriority).
 const kExpectedRequestsOfInitialLoad = [
     {   fileNameAndSuffix: "square_25px_x_25px.png?1",
-        internalPriority: SpecialPowers.Ci.nsISupportsPriority.PRIORITY_LOW
+        internalPriority: SpecialPowers.Ci.nsISupportsPriority.PRIORITY_LOWEST
     },
     {   fileNameAndSuffix: "square_25px_x_25px.png?2",
         internalPriority: SpecialPowers.Ci.nsISupportsPriority.PRIORITY_HIGH
@@ -40,13 +40,11 @@ const kExpectedRequestsOfDynamicLoadDisabled = kExpectedRequestsOfInitialLoadDis
 
 const kExpectedRequestsOfInitialLoadForSVGImageTagDisabled = kExpectedRequestsOfInitialLoadDisabled;
 
-// TODO(bug 1865837): Should SVG's `<image>` element support the `fetchpriority` attribute?
 const kExpectedRequestsOfInitialLoadForSVGImageTag = kExpectedRequestsOfInitialLoadForSVGImageTagDisabled;
 
 const kExpectedRequestsOfDynamicLoadForSVGImageTagDisabled = kExpectedRequestsOfDynamicLoadDisabled;
 
-// TODO(bug 1865837): Should SVG's `<image>` element support the `fetchpriority` attribute?
-const kExpectedRequestsOfDynamicLoadForSVGImageTag = kExpectedRequestsOfDynamicLoadForSVGImageTagDisabled;
+const kExpectedRequestsOfDynamicLoadForSVGImageTag = kExpectedRequestsOfInitialLoad;
 
 const kExpectedRequestsShapeOutsideImage = [
     {   fileNameAndSuffix: "square_25px_x_25px.png?1",

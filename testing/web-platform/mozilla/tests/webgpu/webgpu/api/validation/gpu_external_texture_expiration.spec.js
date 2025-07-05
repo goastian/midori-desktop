@@ -2,7 +2,8 @@
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/export const description = `
 GPUExternalTexture expiration mechanism validation tests.
-`;import { makeTestGroup } from '../../../common/framework/test_group.js';
+`;import { AllFeaturesMaxLimitsGPUTest } from '../.././gpu_test.js';
+import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { assert } from '../../../common/util/util.js';
 import {
   getVideoElement,
@@ -12,15 +13,13 @@ import {
   waitForNextTask } from
 '../../web_platform/util.js';
 
-import { ValidationTest } from './validation_test.js';
-
-class GPUExternalTextureExpireTest extends ValidationTest {
+class GPUExternalTextureExpireTest extends AllFeaturesMaxLimitsGPUTest {
   submitCommandBuffer(bindGroup, success) {
     const kHeight = 16;
     const kWidth = 16;
     const kFormat = 'rgba8unorm';
 
-    const colorAttachment = this.device.createTexture({
+    const colorAttachment = this.createTextureTracked({
       format: kFormat,
       size: { width: kWidth, height: kHeight, depthOrArrayLayers: 1 },
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
@@ -225,7 +224,7 @@ fn(async (t) => {
     } else {
       bindGroup = t.device.createBindGroup({
         layout: t.getDefaultBindGroupLayout(),
-        entries: [{ binding: 0, resource: externalTexture }]
+        entries: [{ binding: 0, resource: mayBeTheSameExternalTexture }]
       });
       t.submitCommandBuffer(bindGroup, true);
     }

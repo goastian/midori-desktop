@@ -6,15 +6,13 @@ Validation tests for the ${builtin}() builtin.
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { keysOf, objectsToRecord } from '../../../../../../common/util/data_tables.js';
 import {
-  Type,
   kConvertableToFloatScalarsAndVectors,
   scalarTypeOf } from
-
 '../../../../../util/conversion.js';
-import { quantizeToF16, quantizeToF32 } from '../../../../../util/math.js';
 import { ShaderValidationTest } from '../../../shader_validation_test.js';
 
 import {
+  ConstantOrOverrideValueChecker,
   fullRangeForType,
   kConstantAndOverrideStages,
   stageSupportsType,
@@ -24,17 +22,6 @@ import {
 export const g = makeTestGroup(ShaderValidationTest);
 
 const kValidArgumentTypes = objectsToRecord(kConvertableToFloatScalarsAndVectors);
-
-function quantizeFunctionForScalarType(type) {
-  switch (type) {
-    case Type.f32:
-      return quantizeToF32;
-    case Type.f16:
-      return quantizeToF16;
-    default:
-      return (v) => v;
-  }
-}
 
 g.test('values').
 desc(
@@ -51,37 +38,24 @@ beginSubcases().
 expand('a', (u) => fullRangeForType(kValidArgumentTypes[u.type], 5)).
 expand('b', (u) => fullRangeForType(kValidArgumentTypes[u.type], 5))
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kValidArgumentTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
-  let expectedResult = true;
-
   const scalarType = scalarTypeOf(kValidArgumentTypes[t.params.type]);
-  const quantizeFn = quantizeFunctionForScalarType(scalarType);
+  const vCheck = new ConstantOrOverrideValueChecker(t, scalarType);
 
   // Distance equation: length(a - b)
   // Should be invalid if the calculations result in intermediate values that
   // exceed the maximum representable float value for the given type.
   const a = Number(t.params.a);
   const b = Number(t.params.b);
-  const ab = quantizeFn(a - b);
-
-  if (!Number.isFinite(ab)) {
-    expectedResult = false;
-  }
+  const ab = vCheck.checkedResult(a - b);
 
   // Only calculates the full length if the type is a vector. Otherwise abs(a-b) is used.
   if (kValidArgumentTypes[t.params.type].width > 1) {
-    const ab2 = quantizeFn(ab * ab);
-    const sqrLen = quantizeFn(ab2 * kValidArgumentTypes[t.params.type].width);
-    // Square root does not need to be calculated because it can never fail if
-    // the previous results are finite.
-
-    if (!Number.isFinite(ab2) || !Number.isFinite(sqrLen)) {
-      expectedResult = false;
+    const ab2 = vCheck.checkedResult(ab * ab);
+    const sqrLen = vCheck.checkedResult(ab2 * kValidArgumentTypes[t.params.type].width);
+    // If the squared length is near zero it may fail on some implementations, so skip the test.
+    if (vCheck.isNearZero(sqrLen)) {
+      t.skip(`Squared length of ${sqrLen} is at or near 0.`);
     }
   }
 
@@ -91,7 +65,7 @@ fn((t) => {
   validateConstOrOverrideBuiltinEval(
     t,
     builtin,
-    expectedResult,
+    vCheck.allChecksPassed(),
     [type.create(t.params.a), type.create(t.params.b)],
     t.params.stage
   );

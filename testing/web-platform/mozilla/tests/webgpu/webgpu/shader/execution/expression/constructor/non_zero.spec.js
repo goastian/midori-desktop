@@ -3,7 +3,7 @@
 **/export const description = `
 Execution Tests for value constructors from components
 `;import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
 import {
   ArrayValue,
 
@@ -17,9 +17,14 @@ import {
   vec3 } from
 '../../../../util/conversion.js';
 import { FP } from '../../../../util/floating_point.js';
-import { allInputSources, basicExpressionBuilder, run } from '../expression.js';
+import {
 
-export const g = makeTestGroup(GPUTest);
+  allInputSources,
+  basicExpressionBuilder,
+  run } from
+'../expression.js';
+
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 /** @returns true if 'v' is 'min' or 'max' */
 function isMinOrMax(v) {
@@ -68,12 +73,12 @@ combine('type', ['bool', 'i32', 'u32', 'f32', 'f16']).
 combine('value', ['min', 'max', 1, 2, 5, 100])
 ).
 beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
   t.skipIf(t.params.type === 'bool' && !isMinOrMax(t.params.value));
 }).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const type = Type[t.params.type];
   const value = valueFor(t.params.value, t.params.type);
   await run(
@@ -96,12 +101,10 @@ combine('type', ['bool', 'i32', 'u32', 'f32', 'f16']).
 combine('width', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const vectorType = Type.vec(t.params.width, elementType);
   const elements = [];
@@ -141,12 +144,12 @@ combine('width', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
 beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
   t.skipIf(t.params.type === 'bool' && !isMinOrMax(t.params.value));
 }).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const value = valueFor(t.params.value, t.params.type);
   const elementType = Type[t.params.type];
   const vectorType = Type.vec(t.params.width, elementType);
@@ -171,12 +174,10 @@ expand('concrete_type', (t) => kConcreteTypesForAbstractType[t.abstract_type]).
 combine('value', [1, 2, 5, 100]).
 combine('width', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.concrete_type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.concrete_type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const suffix = t.params.abstract_type === 'abstract-float' ? '.0' : '';
   const concreteElementType = Type[t.params.concrete_type];
   const concreteVectorType = Type.vec(t.params.width, concreteElementType);
@@ -186,7 +187,7 @@ fn(async (t) => {
     basicExpressionBuilder((_) => `${fn}(${t.params.value * 0x100000000}${suffix}) / 0x100000000`),
     [],
     concreteVectorType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [{ input: [], expected: concreteVectorType.create(t.params.value) }]
   );
 });
@@ -201,12 +202,10 @@ combine('type', ['bool', 'i32', 'u32', 'f32', 'f16']).
 combine('width', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const vectorType = Type.vec(t.params.width, elementType);
   const elements = [];
@@ -243,12 +242,10 @@ combine('abstract_type', ['abstract-int', 'abstract-float']).
 expand('concrete_type', (t) => kConcreteTypesForAbstractType[t.abstract_type]).
 combine('width', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.concrete_type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.concrete_type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const suffix = t.params.abstract_type === 'abstract-float' ? '.0' : '';
   const concreteElementType = Type[t.params.concrete_type];
   const concreteVectorType = Type.vec(t.params.width, concreteElementType);
@@ -264,7 +261,7 @@ fn(async (t) => {
     ),
     [],
     concreteVectorType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [{ input: [], expected: concreteVectorType.create(elements) }]
   );
 });
@@ -292,12 +289,10 @@ combine('type', ['bool', 'i32', 'u32', 'f32', 'f16']).
 combine('signature', kMixSignatures).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   let width = 0;
   const elementValue = (i) => t.params.type === 'bool' ? i & 1 : (i + 1) * 10;
@@ -349,12 +344,10 @@ combine('abstract_type', ['abstract-int', 'abstract-float']).
 expand('concrete_type', (t) => kConcreteTypesForAbstractType[t.abstract_type]).
 combine('signature', kMixSignatures)
 ).
-beforeAllSubcases((t) => {
-  if (t.params.concrete_type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.concrete_type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   let width = 0;
   const suffix = t.params.abstract_type === 'abstract-float' ? '.0' : '';
   const concreteElementType = Type[t.params.concrete_type];
@@ -386,7 +379,7 @@ fn(async (t) => {
     basicExpressionBuilder((_) => `${fn}(${args.join(', ')}) / 0x100000000`),
     [],
     concreteVectorType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [
     {
       input: [],
@@ -407,12 +400,10 @@ combine('columns', [2, 3, 4]).
 combine('rows', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const matrixType = Type.mat(t.params.columns, t.params.rows, elementType);
   const elements = [];
@@ -448,12 +439,10 @@ combine('columns', [2, 3, 4]).
 combine('rows', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const matrixType = Type.mat(t.params.columns, t.params.rows, elementType);
   const elements = [];
@@ -487,12 +476,10 @@ combine('concrete_type', ['f32', 'f16']).
 combine('columns', [2, 3, 4]).
 combine('rows', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.concrete_type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.concrete_type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const concreteElementType = Type[t.params.concrete_type];
   const concreteMatrixType = Type.mat(t.params.columns, t.params.rows, concreteElementType);
   const elements = [];
@@ -509,7 +496,7 @@ fn(async (t) => {
     ),
     [],
     concreteMatrixType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [
     {
       input: [],
@@ -530,12 +517,10 @@ combine('columns', [2, 3, 4]).
 combine('rows', [2, 3, 4]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const columnType = Type.vec(t.params.rows, elementType);
   const matrixType = Type.mat(t.params.columns, t.params.rows, elementType);
@@ -575,12 +560,10 @@ combine('concrete_type', ['f32', 'f16']).
 combine('columns', [2, 3, 4]).
 combine('rows', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.concrete_type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.concrete_type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const concreteElementType = Type[t.params.concrete_type];
   const concreteMatrixType = Type.mat(t.params.columns, t.params.rows, concreteElementType);
   const elements = [];
@@ -600,7 +583,7 @@ fn(async (t) => {
     basicExpressionBuilder((_) => `${fn}(${columnVectors.join(', ')}) * (1.0 / 0x100000000)`),
     [],
     concreteMatrixType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [
     {
       input: [],
@@ -620,12 +603,10 @@ combine('type', ['bool', 'i32', 'u32', 'f32', 'f16', 'vec3f', 'vec4i']).
 combine('length', [1, 5, 10]).
 combine('infer_type', [false, true])
 ).
-beforeAllSubcases((t) => {
-  if (t.params.type === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.type === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const elementType = Type[t.params.type];
   const arrayType = Type.array(t.params.length, elementType);
   const elements = [];
@@ -663,12 +644,10 @@ combine('abstract_type', [
 expand('concrete_type', (t) => kConcreteTypesForAbstractType[t.abstract_type]).
 combine('length', [1, 5, 10])
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(Type[t.params.concrete_type]).kind === 'f16') {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (scalarTypeOf(Type[t.params.concrete_type]).kind === 'f16') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const count = t.params.length;
   const concreteElementType = Type[t.params.concrete_type];
   const concreteArrayType = Type.array(count, concreteElementType);
@@ -729,7 +708,7 @@ fn(async (t) => {
     basicExpressionBuilder((_) => `${fn}(${elements.map((e) => e.args).join(', ')})`),
     [],
     concreteArrayType,
-    { inputSource: 'const' },
+    { inputSource: 'const', constEvaluationMode: 'direct' },
     [
     {
       input: [],
@@ -757,12 +736,10 @@ combine('nested', [false, true]).
 beginSubcases().
 expand('member_index', (t) => t.member_types.map((_, i) => i))
 ).
-beforeAllSubcases((t) => {
-  if (t.params.member_types.includes('f16')) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn(async (t) => {
+  if (t.params.member_types.includes('f16')) {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const memberType = Type[t.params.member_types[t.params.member_index]];
   const values = t.params.member_types.map((ty, i) => Type[ty].create(i));
 
@@ -773,11 +750,11 @@ fn(async (t) => {
   );
   await run(
     t,
-    (parameterTypes, resultType, cases, inputSource) => {
+    (params) => {
       return `
 ${t.params.member_types.includes('f16') ? 'enable f16;' : ''}
 
-${builder(parameterTypes, resultType, cases, inputSource)}
+${builder(params)}
 
 struct MyStruct {
 ${t.params.member_types.map((ty, i) => `  member_${i} : ${ty},`).join('\n')}

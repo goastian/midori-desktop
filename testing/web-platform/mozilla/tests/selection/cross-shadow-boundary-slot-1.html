@@ -13,10 +13,7 @@
 <script>
   // Selected contents are:
   //   er
-  //   Slot Inner
-  // In shadow including order, the shadow root is always before
-  // the light DOM elements, so setting the endpoint to "Slot" causes
-  // the "Inner" to be selected.
+  //   Slot
   window.getSelection()
       .setBaseAndExtent(outer.firstChild, 3, slotted.firstChild, 4);
 </script>

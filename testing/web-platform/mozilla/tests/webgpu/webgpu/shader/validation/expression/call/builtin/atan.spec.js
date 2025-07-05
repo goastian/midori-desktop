@@ -8,8 +8,7 @@ import { keysOf, objectsToRecord } from '../../../../../../common/util/data_tabl
 import {
   Type,
   kConcreteIntegerScalarsAndVectors,
-  kConvertableToFloatScalarsAndVectors,
-  scalarTypeOf } from
+  kConvertableToFloatScalarsAndVectors } from
 '../../../../../util/conversion.js';
 import { ShaderValidationTest } from '../../../shader_validation_test.js';
 
@@ -45,11 +44,6 @@ unique(
 )
 )
 ).
-beforeAllSubcases((t) => {
-  if (scalarTypeOf(kValuesTypes[t.params.type]) === Type.f16) {
-    t.selectDeviceOrSkipTestCase('shader-f16');
-  }
-}).
 fn((t) => {
   const type = kValuesTypes[t.params.type];
   const expectedResult = true;
@@ -168,6 +162,11 @@ const kTests = {
   },
   too_many_params: {
     src: `_ = atan(1, 2);`,
+    pass: false
+  },
+
+  must_use: {
+    src: `atan(1);`,
     pass: false
   }
 };
