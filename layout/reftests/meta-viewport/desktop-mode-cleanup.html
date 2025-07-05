@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html class="reftest-wait">
+<!-- This reftest isn't really a test; it's really just a helper to do
+     some cleanup after its neighbor "desktop-mode.html" has finished.
+ -->
+<script>
+async function go() {
+  let win = SpecialPowers.wrap(window);
+  let origVal = await SpecialPowers.spawnChrome([win.browsingContext.id],
+                                                id => {
+    // Restore forceDesktopViewport to its default value (false), to clean up
+    // after the prior reftest, desktop-mode.html.
+    let ctx = BrowsingContext.get(id);
+    let origVal = ctx.forceDesktopViewport;
+    ctx.forceDesktopViewport = false;
+    return origVal;
+  });
+
+  if (!origVal) {
+    // UNEXPECTED: if we get here, then forceDesktopViewport was somehow
+    // false (at its default value). We expect it to be 'true' when this
+    // reftest runs, because this reftest should be run immediately after
+    // 'desktop-mode.html' which sets forceDesktopViewport to true (and this
+    // reftest only exists to clean that up).
+    //
+    // NOTE: We could signal a test-failure in this circumstance,
+    // by e.g. setting the background to red...
+    //   document.body.style.background = "red";
+    // ...but that also makes this test trivially fail in 'test-verify' runs
+    // per bug 1915025 comment 17 through 19, so let's not do that for now.
+    // So for now, we handle this unexpected condition silently/gracefully.
+    // I'm leaving this (no-op) if-check in the test in case it's useful
+    // for debugging/logging at some point, though.
+  }
+  document.documentElement.classList.remove('reftest-wait');
+}
+
+go();
+</script>
+</html>

@@ -1,0 +1,88 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Core :: Preferences: Backend'
+
+security:
+  pref_usage_content_process:
+    type: event
+    description: >
+      We block certain preferences from being sent to the content process
+      because they contain sensitive user data. Some preferences are
+      blocked by name, others by heuristic. If one of the preferences so
+      blocked is accidently accessed we want to know about it so we can
+      allowlist it or refactor the access.
+      This event was generated to correspond to the Legacy Telemetry event
+      security.prefUsage#contentProcess.
+    bugs:
+      - https://bugzil.la/1782544
+      - https://bugzil.la/1708798
+    data_reviews:
+      - https://bugzil.la/1782544
+      - https://bugzil.la/1708798
+    notification_emails:
+      - tom@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+          The name of the pref.
+        type: string
+    telemetry_mirror: Security_Prefusage_Contentprocess
+
+preferences:
+  prefs_file_was_invalid:
+    type: boolean
+    description: >
+      Set to true if a failure occurred reading profile/prefs.js.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar preferences.prefs_file_was_invalid.
+    bugs:
+      - https://bugzil.la/1367813
+      - https://bugzil.la/1682571
+    data_reviews:
+      - https://bugzil.la/1367813
+      - https://bugzil.la/1682571
+    notification_emails:
+      - kwright@mozilla.com
+    expires: never
+    telemetry_mirror: PREFERENCES_PREFS_FILE_WAS_INVALID
+
+  user_prefs:
+    type: object
+    lifetime: application
+    description: |
+      The fossilized remains of the Legacy Telemetry Environment's
+      `settings.userPrefs` structure.
+      A list of pref names and values.
+      Some values will be the string "<user-set>" to obscure the value.
+      Do not add more prefs to this list.
+      Prefer instead to instrument your prefs directly with individual metrics.
+      See Environment.sys.mjs' `DEFAULT_ENVIRONMENT_PREFS`.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950389
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950389
+    notification_emails:
+      - chutten@mozilla.com
+    data_sensitivity:
+      - technical
+    expires: never
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          value:
+            type: string

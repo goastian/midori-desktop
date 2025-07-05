@@ -1,0 +1,40 @@
+[DEFAULT]
+apps = "firefox, chrome, custom-car"
+alert_threshold = 2.0
+browser_cycles = 1
+gecko_profile_interval = 1
+subtest_lower_is_better = false
+owner = "Network Team"
+page_cycles = 1
+page_timeout = 1800000
+output_timeout = 2000000
+subtest_unit = "mbps"
+type = "pageload"
+unit = "mbps"
+custom_data = true
+lower_is_better = false
+subtest_name_filters = "tests/,iterations/"
+test_url = "None"
+support_class = "network_bench.py"
+
+# upload/download performance custom tests
+
+# http/3
+
+["h3-upload"]
+browsertime_args = "--browsertime.test_type=h3_upload --browsertime.iterations=10 --firefox.preference=network.http.http3.enable:true"
+test_script = "network_bench.js"
+
+["h3-download"]
+browsertime_args = "--browsertime.test_type=h3_download --browsertime.iterations=10 --firefox.preference=network.http.http3.enable:true"
+test_script = "network_bench.js"
+
+# http/2
+
+["h2-upload"]
+browsertime_args = "--browsertime.test_type=h2_upload --browsertime.iterations=10 --firefox.preference=network.http.http3.enable:false"
+test_script = "network_bench.js"
+
+["h2-download"]
+browsertime_args = "--browsertime.test_type=h2_download --browsertime.iterations=10 --firefox.preference=network.http.http3.enable:false"
+test_script = "network_bench.js"

@@ -1,0 +1,83 @@
+.. _mozilla_projects_nss_nss_3_104_release_notes:
+
+NSS 3.104 release notes
+========================
+
+`Introduction <#introduction>`__
+--------------------------------
+
+.. container::
+
+   Network Security Services (NSS) 3.104 was released on *1 August 2024**.
+
+`Distribution Information <#distribution_information>`__
+--------------------------------------------------------
+
+.. container::
+
+   The HG tag is NSS_3_104_RTM. NSS 3.104 requires NSPR 4.35 or newer.
+
+   NSS 3.104 source distributions are available on ftp.mozilla.org for secure HTTPS download:
+
+   -  Source tarballs:
+      https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_3_104_RTM/src/
+
+   Other releases are available :ref:`mozilla_projects_nss_releases`.
+
+.. _changes_in_nss_3.104:
+
+`Changes in NSS 3.104 <#changes_in_nss_3.104>`__
+------------------------------------------------------------------
+
+.. container::
+
+   - Bug 1910071 - Copy original corpus to heap-allocated buffer
+   - Bug 1910079 - Fix min ssl version for DTLS client fuzzer
+   - Bug 1908990 - Remove OS2 support just like we did on NSPR
+   - Bug 1910605 - clang-format NSS improvements
+   - Bug 1902078 - Adding basicutil.h to use HexString2SECItem function
+   - Bug 1908990 - removing dirent.c from build
+   - Bug 1902078 - Allow handing in keymaterial to shlibsign to make the output reproducible (
+   - Bug 1908990 - remove nec4.3, sunos4, riscos and SNI references
+   - Bug 1908990 - remove other old OS (BSDI, old HP UX, NCR, openunix, sco, unixware or reliantUnix
+   - Bug 1908990 - remove mentions of WIN95
+   - Bug 1908990 - remove mentions of WIN16
+   - Bug 1913750 - More explicit directory naming
+   - Bug 1913755 - Add more options to TLS server fuzz target
+   - Bug 1913675 - Add more options to TLS client fuzz target
+   - Bug 1835240 - Use OSS-Fuzz corpus in NSS CI
+   - Bug 1908012 - set nssckbi version number to 2.70.
+   - Bug 1914499 - Remove Email Trust bit from ACCVRAIZ1 root cert.
+   - Bug 1908009 - Remove Email Trust bit from certSIGN ROOT CA.
+   - Bug 1908006 - Add Cybertrust Japan Roots to NSS.
+   - Bug 1908004 - Add Taiwan CA Roots to NSS.
+   - Bug 1911354 - remove search by decoded serial in nssToken_FindCertificateByIssuerAndSerialNumber.
+   - Bug 1913132 - Fix tstclnt CI build failure
+   - Bug 1913047 - vfyserv: ensure peer cert chain is in db for CERT_VerifyCertificateNow.
+   - Bug 1912427 - Enable all supported protocol versions for UDP
+   - Bug 1910361 - Actually use random PSK hash type
+   - Bug 1911576: Initialize NSS DB once
+   - Bug 1910361 - Additional ECH cipher suites and PSK hash types
+   - Bug 1903604: Automate corpus file generation for TLS client Fuzzer
+   - Bug 1910364 - Fix crash with UNSAFE_FUZZER_MODE
+   - Bug 1910605 - clang-format shlibsign.c
+
+`Compatibility <#compatibility>`__
+----------------------------------
+
+.. container::
+
+   NSS 3.104 shared libraries are backwards-compatible with all older NSS 3.x shared
+   libraries. A program linked with older NSS 3.x shared libraries will work with
+   this new version of the shared libraries without recompiling or
+   relinking. Furthermore, applications that restrict their use of NSS APIs to the
+   functions listed in NSS Public Functions will remain compatible with future
+   versions of the NSS shared libraries.
+
+`Feedback <#feedback>`__
+------------------------
+
+.. container::
+
+   Bugs discovered should be reported by filing a bug report on
+   `bugzilla.mozilla.org <https://bugzilla.mozilla.org/enter_bug.cgi?product=NSS>`__ (product NSS).

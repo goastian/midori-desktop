@@ -1,0 +1,39 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+translations.inference:
+    description: The bergamot-translator WASM artifact (version 2.0)
+    fetch:
+        artifact-name: bergamot-translator
+        type: static-url
+        url: https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-wasm/ec4aab08-4e7c-4a62-a7a5-ee6874a5d1a2.wasm
+        sha256: e67e2f8be1a3fc0d9b00adce8b641cdf767bf3de90f1b3ccf732c2d711304fa3
+        size: 4956176
+
+translations.esen.lex:
+    description: The Spanish to English translation lex artifact (version 1.0)
+    fetch:
+        artifact-name: lex.50.50.esen.s2t.bin
+        type: static-url
+        url: https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/54c5d8e2-3900-4a31-860e-8a18f7d028b5.bin
+        sha256: f11a2c23ef85ab1fee1c412b908d69bc20d66fd59faa8f7da5a5f0347eddf969
+        size: 3860888
+
+translations.esen.model:
+    description: The Spanish to English translation model artifact (version 1.0)
+    fetch:
+        artifact-name: model.esen.intgemm.alphas.bin
+        type: static-url
+        url: https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/9ee26e91-9b52-44ba-8d30-c0230dd587b2.bin
+        sha256: 4b6b7f451094aaa447d012658af158ffc708fc8842dde2f871a58404f5457fe0
+        size: 17140755
+
+translations.esen.vocab:
+    description: The Spanish to English translation vocab artifact (version 1.0)
+    fetch:
+        artifact-name: vocab.esen.spm
+        type: static-url
+        url: https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/cab5e093-7b55-47ea-a247-9747cc0109e3.spm
+        sha256: 909b1eea1face0d7f90a474fe29a8c0fef8d104b6e41e65616f864c964ba8845
+        size: 825463

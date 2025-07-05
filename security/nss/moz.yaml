@@ -1,0 +1,33 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: "Security: PSM"
+
+origin:
+  name: NSS
+  description: nss
+  url: https://hg-edge.mozilla.org/projects/nss
+
+  release: 1e1bcffeb9e087080bf28f546919f62900e18ef6 (2025-05-23T13:07:49Z).
+  revision: 1e1bcffeb9e087080bf28f546919f62900e18ef6
+
+  license: MPL-2.0
+  license-file: COPYING
+
+vendoring:
+  url: https://github.com/nss-dev/nss
+  source-hosting: github
+  vendor-directory: security/nss/
+  skip-vendoring-steps:
+    - update-moz-build
+  exclude:
+    - .hgignore
+    - .hgtags
+
+updatebot:
+  maintainer-phab: "#nss-reviewers"
+  maintainer-bz: jschanck@mozilla.com
+  tasks:
+    - type: vendoring
+      enabled: true

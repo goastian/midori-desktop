@@ -1,0 +1,68 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+loader: taskgraph.loader.transform:loader
+
+kind-dependencies:
+    - toolchain
+
+transforms:
+    - gecko_taskgraph.transforms.job:transforms
+    - gecko_taskgraph.transforms.task:transforms
+
+task-defaults:
+    treeherder:
+        kind: other
+        tier: 2
+    worker:
+        max-run-time: 10800
+        artifacts: []
+
+tasks:
+    windows2012-64-firefox:
+        worker-type: win11-64-24h2-source
+        description: Test updates on Win64
+        run-on-projects: []
+        treeherder:
+            symbol: update-test(firefox)
+            platform: windows2012-64/opt
+        index:
+            product: firefox
+            job-name: update-test-win64
+        run:
+            using: run-task
+            cwd: "{checkout}"
+            command: >-
+                ./mach update-test
+
+    macosx64-firefox:
+        worker-type: t-osx-1500-m4
+        description: Test updates on macOS
+        run-on-projects: []
+        treeherder:
+            symbol: update-test(firefox)
+            platform: macosx/opt
+        index:
+            product: firefox
+            job-name: update-test-macOS
+        run:
+            using: run-task
+            cwd: "{checkout}"
+            command: >-
+                ./mach update-test
+
+    linux64-firefox:
+        worker-type: t-linux-xlarge-source
+        worker:
+            docker-image: {in-tree: ubuntu2404-test}
+        description: Test updates on Linux
+        run-on-projects: []
+        treeherder:
+            symbol: update-test(firefox)
+            platform: linux64/opt
+        run:
+            using: run-task
+            cwd: "{checkout}"
+            command: >-
+                . $HOME/scripts/xvfb.sh && start_xvfb '1600x1200x24' 0 && ./mach update-test

@@ -1,0 +1,127 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+ort.jsep.wasm:
+    description: Onnx runtime wasm SIMD, threaded and JSEP 1.22.0-dev.20250409-89f8206ba4
+    fetch:
+        type: static-url
+        url: https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0-dev.20250409-89f8206ba4/dist/ort-wasm-simd-threaded.jsep.wasm
+        sha256: c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39
+        size: 21596019
+
+wllama.wasm:
+    description: Llama.cpp WASM files
+    fetch:
+        type: static-url
+        url: https://storage.googleapis.com/moz-model-hub/wasm/3.0.4/wllama.wasm
+        sha256: a46b325da7a75012b268fdec4a078c6b32a7dd29834af39f7dabe47906f941b1
+        size: 1555738
+
+xenova-all-minilm-l6-v2:
+    description: feature extraction model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Xenova/all-MiniLM-L6-v2
+        revision: 5f8986ea538762fd82a43a768d583a5a9d71d1ec
+        path-prefix: "onnx-models/Xenova/all-MiniLM-L6-v2/main/"
+        artifact-name: all-MiniLM-L6-v2.tar.zst
+
+mozilla-ner:
+    description: named entity model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/distilbert-uncased-NER-LoRA
+        revision: 7cd1d24c22a55fea06dd2d52e449235954d6c51d
+        path-prefix: "onnx-models/Mozilla/distilbert-uncased-NER-LoRA/main/"
+        artifact-name: distilbert-uncased-NER-LoRA.tar.zst
+
+mozilla-intent:
+    description: intent model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/mobilebert-uncased-finetuned-LoRA-intent-classifier
+        revision: 67edcd40da2b681d03072d5ea4943d2bff1284ef
+        path-prefix: "onnx-models/Mozilla/mobilebert-uncased-finetuned-LoRA-intent-classifier/main/"
+        artifact-name: mobilebert-uncased-finetuned-LoRA-intent-classifier.tar.zst
+
+mozilla-autofill:
+    description: autofill model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/tinybert-uncased-autofill
+        revision: a8cdc0f19f2f5b6a099e4d7f24725a0b57073cb4
+        path-prefix: "onnx-models/Mozilla/tinybert-uncased-autofill/main/"
+        artifact-name: tinybert-uncased-autofill.tar.zst
+
+distilbart-cnn-12-6:
+    description: Distilbart-cnn-12-6 text summarization model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/distilbart-cnn-12-6
+        revision: 7e89ed86d5904288460b5ebb3ebebd9992588701
+        path-prefix: "onnx-models/Mozilla/distilbart-cnn-12-6/main/"
+        artifact-name: distilbart-cnn-12-6.tar.zst
+
+qwen2.5-0.5-instruct:
+    description: Qwen text summarization model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/Qwen2.5-0.5B-Instruct
+        revision: fd3f0e7171371df20d5eefc7851cf96706c391de
+        path-prefix: "onnx-models/Mozilla/Qwen2.5-0.5B-Instruct/main/"
+        artifact-name: qwen2_5-0_5_instruct.tar.zst
+
+mozilla-smart-tab-topic:
+    description: Smart Tab Topic Model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/smart-tab-topic
+        revision: 4d6d7848b9ee62ce4a6db08c69f6ab698cb671d1
+        path-prefix: "onnx-models/Mozilla/smart-tab-topic/main/"
+        artifact-name: smart-tab-topic.tar.zst
+
+mozilla-smart-tab-emb:
+    description: Smart Tab Embedding Model
+    fetch:
+        type: git
+        repo: https://huggingface.co/Mozilla/smart-tab-embedding
+        revision: 2278e76f67ada584cfd3149fd2661dad03674e4d
+        path-prefix: "onnx-models/Mozilla/smart-tab-embedding/main/"
+        artifact-name: smart-tab-embedding.tar.zst
+
+smollm2-360-instruct-gguf:
+    description: SmolLM2 360M text summarization model GGUF
+    fetch:
+        type: git
+        repo: https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF
+        revision: 593b5a2e04c8f3e4ee880263f93e0bd2901ad47f
+        path-prefix: "onnx-models/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/main/"
+        artifact-name: smollm2-360-instruct-gguf.tar.zst
+
+speecht5-tts:
+    description: microsoft/speecht5_tts with ONNX weights to be compatible with Transformers.js
+    fetch:
+        type: git
+        repo: https://huggingface.co/Xenova/speecht5_tts
+        revision: 73001d8bf5a9a7532c9cede52b5d3c21936939b1
+        path-prefix: "onnx-models/Xenova/speecht5_tts/main/"
+        artifact-name: speecht5_tts.tar.zst
+
+speecht5-tts-vocoder:
+    description: vocoder for speecht5_tts
+    fetch:
+        type: git
+        repo: https://huggingface.co/Xenova/speecht5_hifigan
+        revision: 05bbb2dea568f207f71113f71c9ecc216840238e
+        path-prefix: "onnx-models/Xenova/speecht5_hifigan/main/"
+        artifact-name: speecht5_tts_hifigan.tar.zst
+
+speecht5-tts-speaker:
+    description: speaker embedding for speecht5_tts
+    fetch:
+        type: git
+        repo: https://huggingface.co/datasets/Xenova/transformers.js-docs
+        revision: 4cc21eccd7f4ad1174c2f721c02468e43bf39b60
+        path-prefix: "onnx-models/Xenova/transformers.js-docs/main/"
+        artifact-name: speecht5_tts_speaker_embedding.tar.zst

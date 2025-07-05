@@ -1,0 +1,56 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+plugins {
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    defaultConfig {
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    namespace = 'mozilla.components.compose.base'
+}
+
+dependencies {
+    implementation platform(libs.androidx.compose.bom)
+    implementation project(":support-ktx")
+    implementation project(":support-utils")
+    implementation project(":ui-colors")
+    implementation project(":ui-icons")
+
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.tooling.preview
+    implementation libs.androidx.compose.foundation
+    implementation libs.androidx.compose.material
+
+    debugImplementation libs.androidx.compose.ui.tooling
+
+    testImplementation project(':support-test')
+    testImplementation libs.androidx.compose.ui.test
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+}
+
+apply from: '../../../android-lint.gradle'
+apply from: '../../../publish.gradle'
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

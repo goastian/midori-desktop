@@ -1,0 +1,165 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: Firefox Accounts'
+
+client_association:
+  uid:
+    type: string
+    description: |
+      The Mozilla Account UID associated with the user.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1889123
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1889123
+    data_sensitivity:
+      - highly_sensitive
+    notification_emails:
+      - mreid@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    send_in_pings:
+      - fx-accounts
+  legacy_client_id:
+    type: uuid
+    description: |
+      The legacy Telemetry client ID associated with this user profile.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1889123
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1889123
+    data_sensitivity:
+      - highly_sensitive
+    notification_emails:
+      - mreid@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    send_in_pings:
+      - fx-accounts
+
+fxa:
+  connect_account:
+    type: event
+    description: >
+      Records when a Firefox Account, or a Firefox Account service, is
+      explicitly connected from the browser via an intentional user action.
+      This event was generated to correspond to the Legacy Telemetry event
+      fxa.connect#account.
+    bugs: &fxa_connect_bugs
+      - https://bugzil.la/1595954
+    data_reviews: &fxa_connect_data_reviews
+      - https://bugzil.la/1595954
+    notification_emails: &fxa_connect_emails
+      - sync-dev@mozilla.org
+    expires: never
+    extra_keys: &fxa_connect_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+      fxa:
+        description: >
+          Whether the account itself was connected or disconnected.
+        type: string
+      sync:
+        description: >
+          Whether sync was connected or disconnected.
+        type: string
+    telemetry_mirror: Fxa_Connect_Account
+
+  disconnect_account:
+    type: event
+    description: >
+      Records when a Firefox Account, or a Firefox Account service, is
+      explicitly disconnected from the browser via an intentional user action.
+      This event was generated to correspond to the Legacy Telemetry event
+      fxa.disconnect#account.
+    bugs: *fxa_connect_bugs
+    data_reviews: *fxa_connect_data_reviews
+    notification_emails: *fxa_connect_emails
+    expires: never
+    extra_keys: *fxa_connect_extra
+    telemetry_mirror: Fxa_Disconnect_Account
+
+  sync_enabled:
+    type: boolean
+    lifetime: application
+    description: |
+      Whether the weave service is present and enabled.
+      Implies `fxa.account_enabled`.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950399
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950399
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - sync-dev@mozilla.org
+    expires: never
+
+  account_enabled:
+    type: boolean
+    lifetime: application
+    description: |
+      Whether the user's logged in to an FxA account.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950399
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950399
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - sync-dev@mozilla.org
+    expires: never
+
+sync_settings:
+  open_choose_what_to_sync_menu:
+    type: event
+    description: |
+      Records when the user opens the choose what to sync menu.
+    bugs:
+      - https://bugzil.la/1964832
+    data_reviews:
+      - https://bugzil.la/1964832
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sync-dev@mozilla.org
+    expires: never
+    extra_keys:
+      why:
+        description: |
+          Records why the user opened the choose what to sync menu. Value is callToAction, setupSync,
+          or manageSyncSettings.
+        type: string
+
+  save:
+    type: event
+    description: |
+      Records when the user clicks the save button after opening the choose what to sync menu.
+    bugs:
+      - https://bugzil.la/1964832
+    data_reviews:
+      - https://bugzil.la/1964832
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - sync-dev@mozilla.org
+    expires: never
+    extra_keys:
+      enabled_engines:
+        description: |
+          A comma-delimited list of engines that were enabled by the user.
+        type: string
+      disabled_engines:
+        description: |
+          A comma-delimited list of engines that were disabled by the user.
+        type: string

@@ -1,0 +1,114 @@
+<!DOCTYPE HTML>
+<title>Test for InspectorUtils.getMatchingCSSRules for starting style</title>
+<script src="/tests/SimpleTest/SimpleTest.js"></script>
+<link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css">
+<style>
+  @starting-style {
+    tagname {
+      color: red;
+    }
+  }
+  tagname {
+    color: blue;
+    opacity: 1;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
+  @starting-style {
+    body > tagnametwo {
+      background-color: salmon;
+    }
+  }
+  body tagnametwo {
+    background-color: tomato;
+
+    @starting-style {
+      background-color: gold;
+    }
+  }
+</style>
+<pre id="log"></pre>
+<tagname></tagname>
+<tagnametwo></tagnametwo>
+<script>
+/**
+ * This test checks that InspectorUtils.getMatchingCSSRules setting
+ * withStartingStyle:true returns correct style set in various cases.
+ * To avoid effects from UA sheets, we use an element with "unknowntagname".
+ */
+
+const InspectorUtils = SpecialPowers.InspectorUtils;
+
+add_task(async function testBasic() {
+  info("Check the basic case of @starting-style")
+
+  const styleSheet = document.styleSheets[1];
+  const el = document.querySelector("tagname");
+  let rules = InspectorUtils.getMatchingCSSRules(el, "", false, true);
+  is(rules.length, 3, "Expected rules");
+
+  is(
+    rules[0].cssText,
+    styleSheet.cssRules[0].cssRules[0].cssText,
+    "first returned rule is the one in the top-level starting-style rule"
+  );
+
+  is(
+    rules[1].cssText,
+    styleSheet.cssRules[1].cssText,
+    "second returned rule is top-level tagname rule"
+  );
+
+  is(
+    rules[2].cssText,
+    styleSheet.cssRules[1].cssRules[0].cssRules[0].cssText,
+    "third returned rule is the starting-style nested in tagname rule"
+  );
+
+  info(
+    "Check that starting style rules are not returned when withStartingStyle " +
+    "param is false"
+  );
+  rules = InspectorUtils.getMatchingCSSRules(el, "", false);
+  is(rules.length, 1, "Expected rules");
+
+  is(
+    rules[0].cssText,
+    styleSheet.cssRules[1].cssText,
+    "Only returned rule is top-level tagname rule"
+  );
+});
+
+add_task(async function testCombinator() {
+  info("Check that @starting-style with child/descendant combinator " +
+       "selectors are retrieved")
+
+  const styleSheet = document.styleSheets[1];
+  const el = document.querySelector("tagnametwo");
+  const rules = InspectorUtils.getMatchingCSSRules(el, "", false, true);
+  is(rules.length, 3, "Got expected rules");
+
+  is(
+    rules[0].cssText,
+    styleSheet.cssRules[2].cssRules[0].cssText,
+    "first returned rule for `tagnametwo` is the one in the top-level " +
+    "starting-style rule"
+  );
+
+  is(
+    rules[1]?.cssText,
+    styleSheet.cssRules[3].cssText,
+    "second returned rule for `tagnametwo` is top-level `body tagnametwo` rule"
+  );
+
+  is(
+    rules[2]?.cssText,
+    styleSheet.cssRules[3].cssRules[0].cssRules[0].cssText,
+    "third returned rule for `tagnametwo` is the starting-style nested " +
+    "in `body tagnametwo` rule"
+  );
+});
+</script>
