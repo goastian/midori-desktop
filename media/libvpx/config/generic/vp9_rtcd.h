@@ -1,3 +1,13 @@
+/*
+ *  Copyright (c) 2025 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 // This file is generated. Do not edit.
 #ifndef VP9_RTCD_H_
 #define VP9_RTCD_H_
@@ -16,6 +26,9 @@
 #include "vp9/common/vp9_common.h"
 #include "vp9/common/vp9_enums.h"
 #include "vp9/common/vp9_filter.h"
+#if !CONFIG_REALTIME_ONLY && CONFIG_VP9_ENCODER
+#include "vp9/encoder/vp9_temporal_filter.h"
+#endif
 
 struct macroblockd;
 
@@ -75,6 +88,15 @@ void vp9_quantize_fp_32x32_c(const tran_low_t *coeff_ptr, intptr_t n_coeffs, con
 void vp9_scale_and_extend_frame_c(const struct yv12_buffer_config *src, struct yv12_buffer_config *dst, INTERP_FILTER filter_type, int phase_scaler);
 #define vp9_scale_and_extend_frame vp9_scale_and_extend_frame_c
 
+void vpx_convolve12_c(const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const InterpKernel12 *filter, int x0_q4, int x_step_q4, int y0_q4, int y_step_q4, int w, int h);
+#define vpx_convolve12 vpx_convolve12_c
+
+void vpx_convolve12_horiz_c(const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const InterpKernel12 *filter, int x0_q4, int x_step_q4, int y0_q4, int y_step_q4, int w, int h);
+#define vpx_convolve12_horiz vpx_convolve12_horiz_c
+
+void vpx_convolve12_vert_c(const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const InterpKernel12 *filter, int x0_q4, int x_step_q4, int y0_q4, int y_step_q4, int w, int h);
+#define vpx_convolve12_vert vpx_convolve12_vert_c
+
 void vp9_rtcd(void);
 
 #include "vpx_config.h"
@@ -89,4 +111,4 @@ static void setup_rtcd_internal(void)
 }  // extern "C"
 #endif
 
-#endif
+#endif  // VP9_RTCD_H_

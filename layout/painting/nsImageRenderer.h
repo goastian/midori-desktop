@@ -227,8 +227,9 @@ class nsImageRenderer {
   ImgDrawResult DrawBorderImageComponent(
       nsPresContext* aPresContext, gfxContext& aRenderingContext,
       const nsRect& aDirtyRect, const nsRect& aFill,
-      const mozilla::CSSIntRect& aSrc, mozilla::StyleBorderImageRepeat aHFill,
-      mozilla::StyleBorderImageRepeat aVFill, const nsSize& aUnitSize,
+      const mozilla::CSSIntRect& aSrc,
+      mozilla::StyleBorderImageRepeatKeyword aHFill,
+      mozilla::StyleBorderImageRepeatKeyword aVFill, const nsSize& aUnitSize,
       uint8_t aIndex, const mozilla::Maybe<nsSize>& aSVGViewportSize,
       const bool aHasIntrinsicRatio);
 
@@ -239,7 +240,7 @@ class nsImageRenderer {
   ImgDrawResult DrawShapeImage(nsPresContext* aPresContext,
                                gfxContext& aRenderingContext);
 
-  bool IsRasterImage();
+  bool IsRasterImage() const;
 
   /// Retrieves the image associated with this nsImageRenderer, if there is one.
   already_AddRefed<imgIContainer> GetImage();

@@ -18,11 +18,7 @@
 
 using namespace mozilla;
 
-namespace mozilla {
-namespace detail {
-const AlignedFrameListBytes gEmptyFrameListBytes = {0};
-}  // namespace detail
-}  // namespace mozilla
+const nsFrameList nsFrameList::sEmptyList;
 
 void* nsFrameList::operator new(size_t sz, mozilla::PresShell* aPresShell) {
   return aPresShell->AllocateByObjectID(eArenaObjectID_nsFrameList, sz);
@@ -180,7 +176,9 @@ nsFrameList nsFrameList::TakeFramesBefore(nsIFrame* aFrame) {
 
 nsIFrame* nsFrameList::FrameAt(int32_t aIndex) const {
   MOZ_ASSERT(aIndex >= 0, "invalid arg");
-  if (aIndex < 0) return nullptr;
+  if (aIndex < 0) {
+    return nullptr;
+  }
   nsIFrame* frame = mFirstChild;
   while ((aIndex-- > 0) && frame) {
     frame = frame->GetNextSibling();
@@ -191,7 +189,9 @@ nsIFrame* nsFrameList::FrameAt(int32_t aIndex) const {
 int32_t nsFrameList::IndexOf(nsIFrame* aFrame) const {
   int32_t count = 0;
   for (nsIFrame* f = mFirstChild; f; f = f->GetNextSibling()) {
-    if (f == aFrame) return count;
+    if (f == aFrame) {
+      return count;
+    }
     ++count;
   }
   return -1;
@@ -249,10 +249,14 @@ void nsFrameList::List(FILE* out) const {
 #endif
 
 nsIFrame* nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const {
-  if (!mFirstChild) return nullptr;
+  if (!mFirstChild) {
+    return nullptr;
+  }
 
   nsIFrame* parent = mFirstChild->GetParent();
-  if (!parent) return aFrame ? aFrame->GetPrevSibling() : LastChild();
+  if (!parent) {
+    return aFrame ? aFrame->GetPrevSibling() : LastChild();
+  }
 
   mozilla::intl::BidiDirection paraDir =
       nsBidiPresUtils::ParagraphDirection(mFirstChild);
@@ -286,7 +290,9 @@ nsIFrame* nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const {
   int32_t thisLine;
   if (aFrame) {
     thisLine = iter->FindLineContaining(aFrame);
-    if (thisLine < 0) return nullptr;
+    if (thisLine < 0) {
+      return nullptr;
+    }
   } else {
     thisLine = iter->GetNumLines();
   }
@@ -321,10 +327,14 @@ nsIFrame* nsFrameList::GetPrevVisualFor(nsIFrame* aFrame) const {
 }
 
 nsIFrame* nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const {
-  if (!mFirstChild) return nullptr;
+  if (!mFirstChild) {
+    return nullptr;
+  }
 
   nsIFrame* parent = mFirstChild->GetParent();
-  if (!parent) return aFrame ? aFrame->GetPrevSibling() : mFirstChild;
+  if (!parent) {
+    return aFrame ? aFrame->GetPrevSibling() : mFirstChild;
+  }
 
   mozilla::intl::BidiDirection paraDir =
       nsBidiPresUtils::ParagraphDirection(mFirstChild);
@@ -358,7 +368,9 @@ nsIFrame* nsFrameList::GetNextVisualFor(nsIFrame* aFrame) const {
   int32_t thisLine;
   if (aFrame) {
     thisLine = iter->FindLineContaining(aFrame);
-    if (thisLine < 0) return nullptr;
+    if (thisLine < 0) {
+      return nullptr;
+    }
   } else {
     thisLine = -1;
   }
@@ -443,8 +455,6 @@ const char* ChildListName(FrameChildListID aListID) {
   switch (aListID) {
     case FrameChildListID::Principal:
       return "";
-    case FrameChildListID::Caption:
-      return "CaptionList";
     case FrameChildListID::ColGroup:
       return "ColGroupList";
     case FrameChildListID::Absolute:

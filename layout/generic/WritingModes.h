@@ -296,32 +296,13 @@ class WritingMode {
    */
   bool IsAlphabeticalBaseline() const { return !IsCentralBaseline(); }
 
-  static mozilla::PhysicalAxis PhysicalAxisForLogicalAxis(
-      uint8_t aWritingModeValue, LogicalAxis aAxis) {
-    // This relies on bit 0 of a writing-value mode indicating vertical
-    // orientation and bit 0 of a LogicalAxis value indicating the inline axis,
-    // so that it can correctly form mozilla::PhysicalAxis values using bit
-    // manipulation.
-    static_assert(uint8_t(StyleWritingModeProperty::HorizontalTb) == 0 &&
-                      uint8_t(StyleWritingModeProperty::VerticalRl) == 1 &&
-                      uint8_t(StyleWritingModeProperty::VerticalLr) == 3 &&
-                      uint8_t(LogicalAxis::Block) == 0 &&
-                      uint8_t(LogicalAxis::Inline) == 1 &&
-                      uint8_t(PhysicalAxis::Vertical) == 0 &&
-                      uint8_t(PhysicalAxis::Horizontal) == 1,
-                  "unexpected writing-mode, logical axis or physical axis "
-                  "constant values");
-    return mozilla::PhysicalAxis((aWritingModeValue ^ uint8_t(aAxis)) & 0x1);
-  }
-
+  /**
+   * Convert LogicalAxis to PhysicalAxis given the current writing mode.
+   */
   mozilla::PhysicalAxis PhysicalAxis(LogicalAxis aAxis) const {
-    // This will set wm to either StyleWritingModel::HorizontalTB or
-    // StyleWritingModeProperty::VerticalRL, and not the other two (real
-    // and hypothetical) values.  But this is fine; we only need to
-    // distinguish between vertical and horizontal in
-    // PhysicalAxisForLogicalAxis.
-    const auto wm = (mWritingMode & StyleWritingMode::VERTICAL)._0;
-    return PhysicalAxisForLogicalAxis(wm, aAxis);
+    const bool isInline = aAxis == LogicalAxis::Inline;
+    return isInline == IsVertical() ? PhysicalAxis::Vertical
+                                    : PhysicalAxis::Horizontal;
   }
 
   static mozilla::Side PhysicalSideForBlockAxis(uint8_t aWritingModeValue,
@@ -480,9 +461,8 @@ class WritingMode {
   }
 
   /**
-   * Default constructor gives us a horizontal, LTR writing mode.
-   * XXX We will probably eliminate this and require explicit initialization
-   *     in all cases once transition is complete.
+   * Construct a default WritingMode, equivalent to specifying
+   * 'writing-mode: horizontal-tb' and 'direction: ltr' in CSS.
    */
   WritingMode() : mWritingMode{0} {}
 
@@ -509,8 +489,6 @@ class WritingMode {
    * the rtl-ness doesn't match), then we correct the direction by flipping the
    * same bits that get flipped in the constructor's CSS 'direction'-based
    * chunk.
-   *
-   * XXX change uint8_t to UBiDiLevel after bug 924851
    */
   void SetDirectionFromBidiLevel(mozilla::intl::BidiEmbeddingLevel level) {
     if (level.IsRTL() == IsBidiLTR()) {
@@ -591,8 +569,9 @@ class WritingMode {
   }
 
   /**
-   * Constructing a WritingMode with an arbitrary value is a private operation
-   * currently only used by the Unknown() and IgnoreSideways() methods.
+   * Constructing a WritingMode with an arbitrary value is a private operation.
+   * This is currently only used by the Unknown() and IgnoreSideways() methods,
+   * and a friend struct IMENotification.
    */
   explicit WritingMode(uint8_t aValue) : mWritingMode{aValue} {}
 
@@ -770,6 +749,47 @@ class LogicalPoint {
                : LogicalPoint(aToMode,
                               GetPhysicalPoint(aFromMode, aContainerSize),
                               aContainerSize);
+  }
+
+  /**
+   * Considering 'this' LogicalPoint as the origin of some rect, as expressed
+   * in writing mode aFromMode: this method returns the origin of that same
+   * rect, as expressed in writing mode aToMode.
+   *
+   * The two points ('this' and the return value) may correspond to *different*
+   * physical corners of the rect.  Each point is using its own writing-mode
+   * to determine which corner is the origin.
+   *
+   * @param aToMode The writing mode to use for the return value.
+   * @param aFromMode The writing mode for 'this' LogicalPoint.
+   * @param aRectSize The physical size of the rectangle whose origin
+   *                  is being requested.
+   * @param aContainerSize The physical size of the container that defines the
+   *                       local coordinate space.  (Our points' coordinates are
+   *                       relative to the bounds of this container.)
+   */
+  LogicalPoint ConvertRectOriginTo(WritingMode aToMode, WritingMode aFromMode,
+                                   const nsSize& aRectSize,
+                                   const nsSize& aContainerSize) const {
+    CHECK_WRITING_MODE(aFromMode);
+    if (aFromMode == aToMode) {
+      return *this;
+    }
+
+    // Note: this might *look* like it's abusing ConvertTo(), since the last
+    // param to ConvertTo() is named as if it's just a container-size rather
+    // than the difference-in-sizes that we're passing here.  But this calling
+    // pattern is actually correct for what we're trying to do here.
+    //
+    // Conceptually, ConvertTo()'s aContainerSize param just represents how
+    // much extra space the container has *around* the converted thing in each
+    // physical axis. When we're just converting a LogicalPoint with zero
+    // thickness -- the way ConvertTo() expects to be called -- the extra space
+    // around it in its container is simply the container size. But here, we're
+    // converting the origin of a *rect*, and the rect has some
+    // potentially-nonzero-thickness; so here, the extra space is the
+    // container's size *minus* the rect's size.
+    return ConvertTo(aToMode, aFromMode, aContainerSize - aRectSize);
   }
 
   bool operator==(const LogicalPoint& aOther) const {
@@ -990,7 +1010,10 @@ class LogicalSize {
   /**
    * Test if a size is (0, 0).
    */
-  bool IsAllZero() const { return ISize() == 0 && BSize() == 0; }
+  bool IsAllZero() const { return IsAllValues(0); }
+  bool IsAllValues(nscoord aValue) const {
+    return ISize() == aValue && BSize() == aValue;
+  }
 
   /**
    * Various binary operators on LogicalSize. These are valid ONLY for operands
@@ -1423,10 +1446,7 @@ class LogicalMargin {
     return *this;
   }
 
-  bool IsAllZero() const {
-    return (mMargin.left == 0 && mMargin.top == 0 && mMargin.right == 0 &&
-            mMargin.bottom == 0);
-  }
+  bool IsAllZero() const { return mMargin.IsAllZero(); }
 
   bool operator==(const LogicalMargin& aMargin) const {
     CHECK_WRITING_MODE(aMargin.GetWritingMode());
@@ -2095,50 +2115,87 @@ inline AspectRatio AspectRatio::ConvertToWritingMode(
   return aWM.IsVertical() ? Inverted() : *this;
 }
 
+template <>
+inline bool StyleSize::BehavesLikeInitialValue(LogicalAxis aAxis) const {
+  return aAxis == LogicalAxis::Inline ? IsAuto()
+                                      : BehavesLikeInitialValueOnBlockAxis();
+}
+
+template <>
+inline bool StyleMaxSize::BehavesLikeInitialValue(LogicalAxis aAxis) const {
+  return aAxis == LogicalAxis::Inline ? IsNone()
+                                      : BehavesLikeInitialValueOnBlockAxis();
+}
+
 }  // namespace mozilla
 
 // Definitions of inline methods for nsStylePosition, declared in
 // nsStyleStruct.h but not defined there because they need WritingMode.
-inline const mozilla::StyleSize& nsStylePosition::ISize(WritingMode aWM) const {
-  return aWM.IsVertical() ? mHeight : mWidth;
-}
-inline const mozilla::StyleSize& nsStylePosition::MinISize(
-    WritingMode aWM) const {
-  return aWM.IsVertical() ? mMinHeight : mMinWidth;
-}
-inline const mozilla::StyleMaxSize& nsStylePosition::MaxISize(
-    WritingMode aWM) const {
-  return aWM.IsVertical() ? mMaxHeight : mMaxWidth;
-}
-inline const mozilla::StyleSize& nsStylePosition::BSize(WritingMode aWM) const {
-  return aWM.IsVertical() ? mWidth : mHeight;
-}
-inline const mozilla::StyleSize& nsStylePosition::MinBSize(
-    WritingMode aWM) const {
-  return aWM.IsVertical() ? mMinWidth : mMinHeight;
-}
-inline const mozilla::StyleMaxSize& nsStylePosition::MaxBSize(
-    WritingMode aWM) const {
-  return aWM.IsVertical() ? mMaxWidth : mMaxHeight;
-}
-inline const mozilla::StyleSize& nsStylePosition::Size(
-    mozilla::LogicalAxis aAxis, WritingMode aWM) const {
-  return aAxis == mozilla::LogicalAxis::Inline ? ISize(aWM) : BSize(aWM);
-}
-inline const mozilla::StyleSize& nsStylePosition::MinSize(
-    mozilla::LogicalAxis aAxis, WritingMode aWM) const {
-  return aAxis == mozilla::LogicalAxis::Inline ? MinISize(aWM) : MinBSize(aWM);
-}
-inline const mozilla::StyleMaxSize& nsStylePosition::MaxSize(
-    mozilla::LogicalAxis aAxis, WritingMode aWM) const {
-  return aAxis == mozilla::LogicalAxis::Inline ? MaxISize(aWM) : MaxBSize(aWM);
+
+inline AnchorResolvedInset nsStylePosition::GetAnchorResolvedInset(
+    mozilla::LogicalSide aSide, WritingMode aWM,
+    mozilla::StylePositionProperty aPosition) const {
+  return GetAnchorResolvedInset(aWM.PhysicalSide(aSide), aPosition);
 }
 
-inline bool nsStylePosition::ISizeDependsOnContainer(WritingMode aWM) const {
-  const auto& iSize = ISize(aWM);
-  return iSize.IsAuto() || ISizeCoordDependsOnContainer(iSize);
+inline AnchorResolvedSize nsStylePosition::ISize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetHeight(aProp) : GetWidth(aProp);
 }
-inline bool nsStylePosition::MinISizeDependsOnContainer(WritingMode aWM) const {
+
+inline AnchorResolvedSize nsStylePosition::MinISize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetMinHeight(aProp) : GetMinWidth(aProp);
+}
+
+inline AnchorResolvedMaxSize nsStylePosition::MaxISize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetMaxHeight(aProp) : GetMaxWidth(aProp);
+}
+
+inline AnchorResolvedSize nsStylePosition::BSize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetWidth(aProp) : GetHeight(aProp);
+}
+
+inline AnchorResolvedSize nsStylePosition::MinBSize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetMinWidth(aProp) : GetMinHeight(aProp);
+}
+
+inline AnchorResolvedMaxSize nsStylePosition::MaxBSize(
+    WritingMode aWM, mozilla::StylePositionProperty aProp) const {
+  return aWM.IsVertical() ? GetMaxWidth(aProp) : GetMaxHeight(aProp);
+}
+
+inline AnchorResolvedSize nsStylePosition::Size(
+    mozilla::LogicalAxis aAxis, WritingMode aWM,
+    mozilla::StylePositionProperty aProp) const {
+  return aAxis == mozilla::LogicalAxis::Inline ? ISize(aWM, aProp)
+                                               : BSize(aWM, aProp);
+}
+
+inline AnchorResolvedSize nsStylePosition::MinSize(
+    mozilla::LogicalAxis aAxis, WritingMode aWM,
+    mozilla::StylePositionProperty aProp) const {
+  return aAxis == mozilla::LogicalAxis::Inline ? MinISize(aWM, aProp)
+                                               : MinBSize(aWM, aProp);
+}
+
+inline AnchorResolvedMaxSize nsStylePosition::MaxSize(
+    mozilla::LogicalAxis aAxis, mozilla::WritingMode aWM,
+    mozilla::StylePositionProperty aProp) const {
+  return aAxis == mozilla::LogicalAxis::Inline ? MaxISize(aWM, aProp)
+                                               : MaxBSize(aWM, aProp);
+}
+
+inline bool nsStylePosition::ISizeDependsOnContainer(
+    const AnchorResolvedSize& aSize) {
+  return aSize->IsAuto() || ISizeCoordDependsOnContainer(*aSize);
+}
+
+inline bool nsStylePosition::MinISizeDependsOnContainer(
+    const AnchorResolvedSize& aSize) {
   // NOTE: For a flex item, "min-inline-size:auto" is supposed to behave like
   // "min-content", which does depend on the container, so you might think we'd
   // need a special case for "flex item && min-inline-size:auto" here. However,
@@ -2147,42 +2204,62 @@ inline bool nsStylePosition::MinISizeDependsOnContainer(WritingMode aWM) const {
   // it's 0) until the flex container explicitly considers it. So -- since the
   // flex container doesn't rely on this method, we don't need to worry about
   // special behavior for flex items' "min-inline-size:auto" values here.
-  return ISizeCoordDependsOnContainer(MinISize(aWM));
+  return ISizeCoordDependsOnContainer(*aSize);
 }
-inline bool nsStylePosition::MaxISizeDependsOnContainer(WritingMode aWM) const {
+
+inline bool nsStylePosition::MaxISizeDependsOnContainer(
+    const AnchorResolvedMaxSize& aSize) {
   // NOTE: The comment above MinISizeDependsOnContainer about flex items
   // applies here, too.
-  return ISizeCoordDependsOnContainer(MaxISize(aWM));
+  return ISizeCoordDependsOnContainer(*aSize);
 }
+
 // Note that these functions count `auto` as depending on the container
 // since that's the case for absolutely positioned elements.
 // However, some callers do not care about this case and should check
 // for it, since it is the most common case.
 // FIXME: We should probably change the assumption to be the other way
 // around.
-inline bool nsStylePosition::BSizeDependsOnContainer(WritingMode aWM) const {
-  const auto& bSize = BSize(aWM);
-  return bSize.BehavesLikeInitialValueOnBlockAxis() ||
-         BSizeCoordDependsOnContainer(bSize);
-}
-inline bool nsStylePosition::MinBSizeDependsOnContainer(WritingMode aWM) const {
-  return BSizeCoordDependsOnContainer(MinBSize(aWM));
-}
-inline bool nsStylePosition::MaxBSizeDependsOnContainer(WritingMode aWM) const {
-  return BSizeCoordDependsOnContainer(MaxBSize(aWM));
+inline bool nsStylePosition::BSizeDependsOnContainer(
+    const AnchorResolvedSize& aSize) {
+  return aSize->BehavesLikeInitialValueOnBlockAxis() ||
+         BSizeCoordDependsOnContainer(*aSize);
 }
 
-inline bool nsStyleMargin::HasBlockAxisAuto(mozilla::WritingMode aWM) const {
-  return mMargin.GetBStart(aWM).IsAuto() || mMargin.GetBEnd(aWM).IsAuto();
+inline bool nsStylePosition::MinBSizeDependsOnContainer(
+    const AnchorResolvedSize& aSize) {
+  return BSizeCoordDependsOnContainer(*aSize);
 }
 
-inline bool nsStyleMargin::HasInlineAxisAuto(mozilla::WritingMode aWM) const {
-  return mMargin.GetIStart(aWM).IsAuto() || mMargin.GetIEnd(aWM).IsAuto();
+inline bool nsStylePosition::MaxBSizeDependsOnContainer(
+    const AnchorResolvedMaxSize& aSize) {
+  return BSizeCoordDependsOnContainer(*aSize);
 }
-inline bool nsStyleMargin::HasAuto(mozilla::LogicalAxis aAxis,
-                                   mozilla::WritingMode aWM) const {
-  return aAxis == mozilla::LogicalAxis::Inline ? HasInlineAxisAuto(aWM)
-                                               : HasBlockAxisAuto(aWM);
+
+inline bool nsStyleMargin::HasBlockAxisAuto(
+    mozilla::WritingMode aWM, mozilla::StylePositionProperty aPosition) const {
+  return GetMargin(mozilla::LogicalSide::BStart, aWM, aPosition)->IsAuto() ||
+         GetMargin(mozilla::LogicalSide::BEnd, aWM, aPosition)->IsAuto();
+}
+
+inline bool nsStyleMargin::HasInlineAxisAuto(
+    mozilla::WritingMode aWM, mozilla::StylePositionProperty aPosition) const {
+  return GetMargin(mozilla::LogicalSide::IStart, aWM, aPosition)->IsAuto() ||
+         GetMargin(mozilla::LogicalSide::IEnd, aWM, aPosition)->IsAuto();
+}
+
+inline bool nsStyleMargin::HasAuto(
+    mozilla::LogicalAxis aAxis, mozilla::WritingMode aWM,
+    mozilla::StylePositionProperty aPosition) const {
+  return aAxis == mozilla::LogicalAxis::Inline
+             ? HasInlineAxisAuto(aWM, aPosition)
+             : HasBlockAxisAuto(aWM, aPosition);
+}
+
+inline AnchorResolvedMargin nsStyleMargin::GetMargin(
+    mozilla::LogicalSide aSide, mozilla::WritingMode aWM,
+    mozilla::StylePositionProperty aPosition) const {
+  return GetMargin(aWM.PhysicalSide(aSide), aPosition);
 }
 
 inline mozilla::StyleAlignFlags nsStylePosition::UsedSelfAlignment(
@@ -2194,6 +2271,48 @@ inline mozilla::StyleAlignFlags nsStylePosition::UsedSelfAlignment(
 inline mozilla::StyleContentDistribution nsStylePosition::UsedContentAlignment(
     mozilla::LogicalAxis aAxis) const {
   return aAxis == mozilla::LogicalAxis::Block ? mAlignContent : mJustifyContent;
+}
+
+inline mozilla::UsedFloat nsStyleDisplay::UsedFloat(
+    mozilla::WritingMode aCBWM) const {
+  switch (mFloat) {
+    case mozilla::StyleFloat::None:
+      return mozilla::UsedFloat::None;
+    case mozilla::StyleFloat::Left:
+      return mozilla::UsedFloat::Left;
+    case mozilla::StyleFloat::Right:
+      return mozilla::UsedFloat::Right;
+    case mozilla::StyleFloat::InlineStart:
+      return aCBWM.IsBidiLTR() ? mozilla::UsedFloat::Left
+                               : mozilla::UsedFloat::Right;
+    case mozilla::StyleFloat::InlineEnd:
+      return aCBWM.IsBidiLTR() ? mozilla::UsedFloat::Right
+                               : mozilla::UsedFloat::Left;
+  }
+  MOZ_ASSERT_UNREACHABLE("all cases are handled above!");
+  return mozilla::UsedFloat::None;
+}
+
+inline mozilla::UsedClear nsStyleDisplay::UsedClear(
+    mozilla::WritingMode aCBWM) const {
+  switch (mClear) {
+    case mozilla::StyleClear::None:
+      return mozilla::UsedClear::None;
+    case mozilla::StyleClear::Left:
+      return mozilla::UsedClear::Left;
+    case mozilla::StyleClear::Right:
+      return mozilla::UsedClear::Right;
+    case mozilla::StyleClear::Both:
+      return mozilla::UsedClear::Both;
+    case mozilla::StyleClear::InlineStart:
+      return aCBWM.IsBidiLTR() ? mozilla::UsedClear::Left
+                               : mozilla::UsedClear::Right;
+    case mozilla::StyleClear::InlineEnd:
+      return aCBWM.IsBidiLTR() ? mozilla::UsedClear::Right
+                               : mozilla::UsedClear::Left;
+  }
+  MOZ_ASSERT_UNREACHABLE("all cases are handled above!");
+  return mozilla::UsedClear::None;
 }
 
 #endif  // WritingModes_h_

@@ -405,7 +405,7 @@ void ImageLoader::ClearFrames(nsPresContext* aPresContext) {
 }
 
 static CORSMode EffectiveCorsMode(nsIURI* aURI,
-                                  const StyleComputedImageUrl& aImage) {
+                                  const StyleComputedUrl& aImage) {
   MOZ_ASSERT(aURI);
   StyleCorsMode mode = aImage.CorsMode();
   if (mode == StyleCorsMode::None) {
@@ -420,7 +420,7 @@ static CORSMode EffectiveCorsMode(nsIURI* aURI,
 
 /* static */
 already_AddRefed<imgRequestProxy> ImageLoader::LoadImage(
-    const StyleComputedImageUrl& aImage, Document& aDocument) {
+    const StyleComputedUrl& aImage, Document& aDocument) {
   MOZ_ASSERT(NS_IsMainThread());
   nsIURI* uri = aImage.GetURI();
   if (!uri) {
@@ -527,7 +527,7 @@ static void InvalidateImages(nsIFrame* aFrame, imgIRequest* aRequest,
     return aFrame->InvalidateFrame();
   }
 
-  if (aFrame->IsPrimaryFrameOfRootOrBodyElement()) {
+  if (aFrame->ShouldPropagateRepaintsToRoot()) {
     if (auto* canvas = aFrame->PresShell()->GetCanvasFrame()) {
       // Try to invalidate the canvas too, in the probable case the background
       // was propagated to it.

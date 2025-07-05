@@ -2,67 +2,62 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+plugins {
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-parcelize'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     buildFeatures {
-        compose true
+        compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = Versions.compose_compiler
-    }
-
-    namespace 'mozilla.components.compose.browser.awesomebar'
-
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-Xjvm-default=all"
+    namespace = 'mozilla.components.compose.browser.awesomebar'
 }
 
 dependencies {
-    implementation platform(ComponentsDependencies.androidx_compose_bom)
+    implementation platform(libs.androidx.compose.bom)
     implementation project(":concept-awesomebar")
     implementation project(":browser-state")
     implementation project(":support-base")
     implementation project(":support-utils")
     implementation project(":ui-icons")
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_compose_ui
-    implementation ComponentsDependencies.androidx_compose_ui_tooling_preview
-    implementation ComponentsDependencies.androidx_compose_foundation
-    implementation ComponentsDependencies.androidx_compose_material
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.tooling.preview
+    implementation libs.androidx.compose.foundation
+    implementation libs.androidx.compose.material
 
-    debugImplementation ComponentsDependencies.androidx_compose_ui_tooling
+    debugImplementation libs.androidx.compose.ui.tooling
 
     testImplementation project(':support-test')
-    testImplementation ComponentsDependencies.androidx_compose_ui_test
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.compose.ui.test
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

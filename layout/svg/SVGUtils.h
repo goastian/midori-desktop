@@ -17,7 +17,6 @@
 #include "gfxPoint.h"
 #include "gfxRect.h"
 #include "mozilla/gfx/Rect.h"
-#include "nsAlgorithm.h"
 #include "nsChangeHint.h"
 #include "nsColor.h"
 #include "nsCOMPtr.h"
@@ -258,9 +257,8 @@ class SVGUtils final {
   /*
    * Returns whether the frame is transformed and what those transforms are.
    */
-  static bool IsSVGTransformed(const nsIFrame* aFrame,
-                               gfx::Matrix* aOwnTransform,
-                               gfx::Matrix* aFromParentTransform);
+  static bool GetParentSVGTransforms(const nsIFrame* aFrame,
+                                     gfx::Matrix* aFromParentTransform);
 
   /**
    * Notify the descendants of aFrame of a change to one of their ancestors
@@ -424,6 +422,12 @@ class SVGUtils final {
                                            gfxMatrix* aUserToOuterSVG);
 
   /**
+   * We need to track whether content has non-scaling-stroke because we can't
+   * asynchronously animate it with a scaling transform.
+   */
+  static void UpdateNonScalingStrokeStateBit(nsIFrame* aFrame);
+
+  /**
    * Compute the maximum possible device space stroke extents of a path given
    * the path's device space path extents, its stroke style and its ctm.
    *
@@ -448,8 +452,7 @@ class SVGUtils final {
    * the range of valid integers.
    */
   static int32_t ClampToInt(double aVal) {
-    return NS_lround(
-        std::max(double(INT32_MIN), std::min(double(INT32_MAX), aVal)));
+    return NS_lround(std::clamp(aVal, double(INT32_MIN), double(INT32_MAX)));
   }
 
   /**
@@ -462,7 +465,7 @@ class SVGUtils final {
   }
 
   static nscolor GetFallbackOrPaintColor(
-      const ComputedStyle&, StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+      const ComputedStyle&, StyleSVGPaint nsStyleSVG::* aFillOrStroke,
       nscolor aDefaultContextFallbackColor);
 
   static void MakeFillPatternFor(nsIFrame* aFrame, gfxContext* aContext,
@@ -507,6 +510,13 @@ class SVGUtils final {
 
   static AntialiasMode ToAntialiasMode(StyleTextRendering aTextRendering) {
     return aTextRendering == StyleTextRendering::Optimizespeed
+               ? AntialiasMode::NONE
+               : AntialiasMode::SUBPIXEL;
+  }
+
+  static AntialiasMode ToAntialiasMode(StyleShapeRendering aShapeRendering) {
+    return (aShapeRendering == StyleShapeRendering::Optimizespeed ||
+            aShapeRendering == StyleShapeRendering::Crispedges)
                ? AntialiasMode::NONE
                : AntialiasMode::SUBPIXEL;
   }
@@ -612,14 +622,6 @@ class SVGUtils final {
    * its usual dev pixels to SVG user units/CSS px to keep the SVG code happy.
    */
   static gfxMatrix GetCSSPxToDevPxMatrix(const nsIFrame* aNonSVGFrame);
-
-  /**
-   * It is a replacement of
-   * SVGElement::PrependLocalTransformsTo(eUserSpaceToParent).
-   * If no CSS transform is involved, they should behave exactly the same;
-   * if there are CSS transforms, this one will take them into account
-   * while SVGElement::PrependLocalTransformsTo won't.
-   */
   static gfxMatrix GetTransformMatrixInUserSpace(const nsIFrame* aFrame);
 };
 

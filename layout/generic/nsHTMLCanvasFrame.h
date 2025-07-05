@@ -48,15 +48,16 @@ class nsHTMLCanvasFrame final : public nsContainerFrame {
   bool UpdateWebRenderCanvasData(nsDisplayListBuilder* aBuilder,
                                  WebRenderCanvasData* aCanvasData);
 
-  /* get the size of the canvas's image */
-  nsIntSize GetCanvasSize() const;
+  // Get the size of the canvas's image in CSS pixels.
+  mozilla::CSSIntSize GetCanvasSize() const;
 
-  virtual nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  virtual nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
+
   virtual mozilla::IntrinsicSize GetIntrinsicSize() override;
   mozilla::AspectRatio GetIntrinsicRatio() const override;
 
-  void UnionChildOverflow(mozilla::OverflowAreas& aOverflowAreas) override;
+  void UnionChildOverflow(mozilla::OverflowAreas&, bool aAsIfScrolled) override;
 
   SizeComputationResult ComputeSize(
       gfxContext* aRenderingContext, mozilla::WritingMode aWM,

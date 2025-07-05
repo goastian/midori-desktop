@@ -191,16 +191,6 @@ INSTALL-LIBS-$(CONFIG_STATIC) += $(LIBSUBDIR)/libvpx.a
 INSTALL-LIBS-$(CONFIG_DEBUG_LIBS) += $(LIBSUBDIR)/libvpx_g.a
 endif
 
-ifeq ($(CONFIG_VP9_ENCODER)$(CONFIG_RATE_CTRL),yesyes)
-  SIMPLE_ENCODE_SRCS := $(call enabled,CODEC_SRCS)
-  SIMPLE_ENCODE_SRCS += $(VP9_PREFIX)simple_encode.cc
-  SIMPLE_ENCODE_SRCS += $(VP9_PREFIX)simple_encode.h
-  SIMPLE_ENCODE_SRCS += ivfenc.h
-  SIMPLE_ENCODE_SRCS += ivfenc.c
-  INSTALL-SRCS-$(CONFIG_CODEC_SRCS) += $(VP9_PREFIX)simple_encode.cc
-  INSTALL-SRCS-$(CONFIG_CODEC_SRCS) += $(VP9_PREFIX)simple_encode.h
-endif
-
 CODEC_SRCS=$(call enabled,CODEC_SRCS)
 
 INSTALL-SRCS-$(CONFIG_CODEC_SRCS) += $(CODEC_SRCS)
@@ -213,6 +203,11 @@ libvpx_srcs.txt:
 	@echo "    [CREATE] $@"
 	@echo $(CODEC_SRCS) | xargs -n1 echo | LC_ALL=C sort -u > $@
 CLEAN-OBJS += libvpx_srcs.txt
+
+libvpxrc_srcs.txt:
+	@echo "    [CREATE] $@"
+	@echo $(RC_RTC_SRCS) | xargs -n1 echo | LC_ALL=C sort -u > $@
+CLEAN-OBJS += libvpxrc_srcs.txt
 
 # Assembly files that are included, but don't define symbols themselves.
 # Filtered out to avoid Windows build warnings.
@@ -313,7 +308,7 @@ $(BUILD_PFX)libvpx_g.a: $(LIBVPX_OBJS)
 # To determine SO_VERSION_{MAJOR,MINOR,PATCH}, calculate c,a,r with current
 # SO_VERSION_* then follow the rules in the link to detemine the new version
 # (c1, a1, r1) and set MAJOR to [c1-a1], MINOR to a1 and PATCH to r1
-SO_VERSION_MAJOR := 9
+SO_VERSION_MAJOR := 11
 SO_VERSION_MINOR := 0
 SO_VERSION_PATCH := 0
 ifeq ($(filter darwin%,$(TGT_OS)),$(TGT_OS))
@@ -419,13 +414,6 @@ ifeq ($(CONFIG_ENCODERS),yes)
   $(BUILD_PFX)libvpxrc_g.a: $(RC_RTC_OBJS)
 endif
 
-ifeq ($(CONFIG_VP9_ENCODER)$(CONFIG_RATE_CTRL),yesyes)
-  SIMPLE_ENCODE_OBJS=$(call objs,$(SIMPLE_ENCODE_SRCS))
-  OBJS-yes += $(SIMPLE_ENCODE_OBJS)
-  LIBS-yes += $(BUILD_PFX)libsimple_encode.a $(BUILD_PFX)libsimple_encode_g.a
-  $(BUILD_PFX)libsimple_encode_g.a: $(SIMPLE_ENCODE_OBJS)
-endif
-
 endif # ifeq ($(CONFIG_EXTERNAL_BUILD),yes)
 
 libvpx.ver: $(call enabled,CODEC_EXPORTS)
@@ -512,11 +500,6 @@ RC_INTERFACE_TEST_SRCS=$(call addprefix_clean,test/,\
                        $(call enabled,RC_INTERFACE_TEST_SRCS))
 RC_INTERFACE_TEST_OBJS := $(sort $(call objs,$(RC_INTERFACE_TEST_SRCS)))
 endif
-
-SIMPLE_ENCODE_TEST_BIN=./test_simple_encode$(EXE_SFX)
-SIMPLE_ENCODE_TEST_SRCS=$(call addprefix_clean,test/,\
-                        $(call enabled,SIMPLE_ENCODE_TEST_SRCS))
-SIMPLE_ENCODE_TEST_OBJS := $(sort $(call objs,$(SIMPLE_ENCODE_TEST_SRCS)))
 
 libvpx_test_srcs.txt:
 	@echo "    [CREATE] $@"
@@ -687,18 +670,6 @@ $(eval $(call linkerxx_template,$(RC_INTERFACE_TEST_BIN), \
               -L. -lvpx -lgtest -lvpxrc $(extralibs) -lm))
 endif  # RC_INTERFACE_TEST
 endif  # CONFIG_ENCODERS
-
-ifneq ($(strip $(SIMPLE_ENCODE_TEST_OBJS)),)
-$(SIMPLE_ENCODE_TEST_OBJS) $(SIMPLE_ENCODE_TEST_OBJS:.o=.d): \
-  CXXFLAGS += $(GTEST_INCLUDES)
-OBJS-yes += $(SIMPLE_ENCODE_TEST_OBJS)
-BINS-yes += $(SIMPLE_ENCODE_TEST_BIN)
-
-$(SIMPLE_ENCODE_TEST_BIN): $(TEST_LIBS) libsimple_encode.a
-$(eval $(call linkerxx_template,$(SIMPLE_ENCODE_TEST_BIN), \
-              $(SIMPLE_ENCODE_TEST_OBJS) \
-              -L. -lsimple_encode -lvpx -lgtest $(extralibs) -lm))
-endif  # SIMPLE_ENCODE_TEST
 
 endif  # CONFIG_EXTERNAL_BUILD
 

@@ -258,7 +258,7 @@ static StyleAbsoluteColor Interpolate(const StyleAbsoluteColor& aLeft,
       StyleColorSpace::Srgb,
       StyleHueInterpolationMethod::Shorter,
   };
-  return Servo_InterpolateColor(kMethod, &aRight, &aLeft, aFrac);
+  return Servo_InterpolateColor(kMethod, &aLeft, &aRight, aFrac);
 }
 
 static nscoord FindTileStart(nscoord aDirtyCoord, nscoord aTilePos,
@@ -366,6 +366,11 @@ static void ResolveMidpoints(nsTArray<ColorStop>& stops) {
       continue;
     }
 
+    // Calculate the intermediate color stops per the formula of the CSS
+    // images spec. http://dev.w3.org/csswg/css-images/#color-stop-syntax
+    // 9 points were chosen since it is the minimum number of stops that always
+    // give the smoothest appearace regardless of midpoint position and
+    // difference in luminance of the end points.
     float midpoint = (offset - offset1) / (offset2 - offset1);
     ColorStop newStops[9];
     if (midpoint > .5f) {
@@ -383,34 +388,13 @@ static void ResolveMidpoints(nsTArray<ColorStop>& stops) {
         newStops[y + 2].mPosition = offset + (offset2 - offset) * y / 13;
       }
     }
-    // calculate colors
 
+    // calculate colors
     for (auto& newStop : newStops) {
-      // Calculate the intermediate color stops per the formula of the CSS
-      // images spec. http://dev.w3.org/csswg/css-images/#color-stop-syntax 9
-      // points were chosen since it is the minimum number of stops that always
-      // give the smoothest appearace regardless of midpoint position and
-      // difference in luminance of the end points.
       const float relativeOffset =
           (newStop.mPosition - offset1) / (offset2 - offset1);
       const float multiplier = powf(relativeOffset, logf(.5f) / logf(midpoint));
-
-      auto srgb1 = color1.ToColorSpace(StyleColorSpace::Srgb);
-      auto srgb2 = color2.ToColorSpace(StyleColorSpace::Srgb);
-
-      const float red =
-          srgb1.components._0 +
-          multiplier * (srgb2.components._0 - srgb1.components._0);
-      const float green =
-          srgb1.components._1 +
-          multiplier * (srgb2.components._1 - srgb1.components._1);
-      const float blue =
-          srgb1.components._2 +
-          multiplier * (srgb2.components._2 - srgb1.components._2);
-      const float alpha =
-          srgb1.alpha + multiplier * (srgb2.alpha - srgb1.alpha);
-
-      newStop.mColor = StyleAbsoluteColor::SrgbLegacy(red, green, blue, alpha);
+      newStop.mColor = Interpolate(color1, color2, multiplier);
     }
 
     stops.ReplaceElementsAt(x, 1, newStops, 9);
@@ -608,8 +592,8 @@ static nsTArray<ColorStop> ComputeColorStopsForItems(
     ComputedStyle* aComputedStyle,
     Span<const StyleGenericGradientItem<StyleColor, T>> aItems,
     CSSCoord aLineLength) {
-  MOZ_ASSERT(aItems.Length() >= 2,
-             "The parser should reject gradients with less than two stops");
+  MOZ_ASSERT(!aItems.IsEmpty(),
+             "The parser should reject gradients with no stops");
 
   nsTArray<ColorStop> stops(aItems.Length());
 
@@ -1005,11 +989,40 @@ void nsCSSGradientRenderer::Paint(gfxContext& aContext, const nsRect& aDest,
   // CreateGradientStops (also the implied backend type) Note that GradientStop
   // is a simple struct with a stop value (while GradientStops has the surface).
   nsTArray<gfx::GradientStop> rawStops(mStops.Length());
-  rawStops.SetLength(mStops.Length());
-  for (uint32_t i = 0; i < mStops.Length(); i++) {
-    rawStops[i].color = ToDeviceColor(mStops[i].mColor);
-    rawStops[i].color.a *= aOpacity;
-    rawStops[i].offset = stopScale * (mStops[i].mPosition - stopOrigin);
+  StyleColorInterpolationMethod styleColorInterpolationMethod =
+      mGradient->ColorInterpolationMethod();
+  if (styleColorInterpolationMethod.space != StyleColorSpace::Srgb ||
+      gfxPlatform::GetCMSMode() == CMSMode::All) {
+    class MOZ_STACK_CLASS GradientStopInterpolator final
+        : public ColorStopInterpolator<GradientStopInterpolator> {
+     public:
+      GradientStopInterpolator(
+          const nsTArray<ColorStop>& aStops,
+          const StyleColorInterpolationMethod& aStyleColorInterpolationMethod,
+          bool aExtend, nsTArray<gfx::GradientStop>& aResult)
+          : ColorStopInterpolator(aStops, aStyleColorInterpolationMethod,
+                                  aExtend),
+            mStops(aResult) {}
+      void CreateStop(float aPosition, gfx::DeviceColor aColor) {
+        mStops.AppendElement(gfx::GradientStop{aPosition, aColor});
+      }
+
+     private:
+      nsTArray<gfx::GradientStop>& mStops;
+    };
+
+    bool extend = !isRepeat && styleColorInterpolationMethod.hue ==
+                                   StyleHueInterpolationMethod::Longer;
+    GradientStopInterpolator interpolator(mStops, styleColorInterpolationMethod,
+                                          extend, rawStops);
+    interpolator.CreateStops();
+  } else {
+    rawStops.SetLength(mStops.Length());
+    for (uint32_t i = 0; i < mStops.Length(); i++) {
+      rawStops[i].color = ToDeviceColor(mStops[i].mColor);
+      rawStops[i].color.a *= aOpacity;
+      rawStops[i].offset = stopScale * (mStops[i].mPosition - stopOrigin);
+    }
   }
   RefPtr<mozilla::gfx::GradientStops> gs =
       gfxGradientCache::GetOrCreateGradientStops(
@@ -1022,7 +1035,9 @@ void nsCSSGradientRenderer::Paint(gfxContext& aContext, const nsRect& aDest,
   // up by drawing tiles into temporary surfaces and copying those to the
   // destination, but after pixel-snapping tiles may not all be the same size.
   nsRect dirty;
-  if (!dirty.IntersectRect(aDirtyRect, aFillArea)) return;
+  if (!dirty.IntersectRect(aDirtyRect, aFillArea)) {
+    return;
+  }
 
   gfxRect areaToFill =
       nsLayoutUtils::RectToGfxRect(aFillArea, appUnitsPerDevPixel);
@@ -1195,9 +1210,8 @@ class MOZ_STACK_CLASS WrColorStopInterpolator
   WrColorStopInterpolator(
       const nsTArray<ColorStop>& aStops,
       const StyleColorInterpolationMethod& aStyleColorInterpolationMethod,
-      float aOpacity, nsTArray<wr::GradientStop>& aResult, bool aExtendLastStop)
-      : ColorStopInterpolator(aStops, aStyleColorInterpolationMethod,
-                              aExtendLastStop),
+      float aOpacity, nsTArray<wr::GradientStop>& aResult, bool aExtend)
+      : ColorStopInterpolator(aStops, aStyleColorInterpolationMethod, aExtend),
         mResult(aResult),
         mOpacity(aOpacity),
         mOutputStop(0) {}
@@ -1273,11 +1287,11 @@ void nsCSSGradientRenderer::BuildWebRenderParameters(
     // gradient, we have to pretend there is another stop at position=1.0 that
     // duplicates the last stop, this is probably only used for things like a
     // color wheel.  No such problem for SVG as it doesn't have that complexity.
-    bool extendLastStop = aMode == wr::ExtendMode::Clamp &&
-                          styleColorInterpolationMethod.hue ==
-                              StyleHueInterpolationMethod::Longer;
+    bool extend = aMode == wr::ExtendMode::Clamp &&
+                  styleColorInterpolationMethod.hue ==
+                      StyleHueInterpolationMethod::Longer;
     WrColorStopInterpolator interpolator(mStops, styleColorInterpolationMethod,
-                                         aOpacity, aStops, extendLastStop);
+                                         aOpacity, aStops, extend);
     interpolator.CreateStops();
   } else {
     aStops.SetLength(mStops.Length());

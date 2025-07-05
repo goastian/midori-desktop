@@ -51,24 +51,30 @@ nsresult nsRubyFrame::GetFrameName(nsAString& aResult) const {
 #endif
 
 /* virtual */
-void nsRubyFrame::AddInlineMinISize(gfxContext* aRenderingContext,
-                                    nsIFrame::InlineMinISizeData* aData) {
-  auto handleChildren = [aRenderingContext](auto frame, auto data) {
+void nsRubyFrame::AddInlineMinISize(const IntrinsicSizeInput& aInput,
+                                    InlineMinISizeData* aData) {
+  auto handleChildren = [&](auto frame, auto data) {
+    // Ruby frames shouldn't have percentage block sizes that require a
+    // percentage basis for resolution.
+    const IntrinsicSizeInput input(aInput.mContext, Nothing(), Nothing());
     for (RubySegmentEnumerator e(static_cast<nsRubyFrame*>(frame)); !e.AtEnd();
          e.Next()) {
-      e.GetBaseContainer()->AddInlineMinISize(aRenderingContext, data);
+      e.GetBaseContainer()->AddInlineMinISize(input, data);
     }
   };
   DoInlineIntrinsicISize(aData, handleChildren);
 }
 
 /* virtual */
-void nsRubyFrame::AddInlinePrefISize(gfxContext* aRenderingContext,
-                                     nsIFrame::InlinePrefISizeData* aData) {
-  auto handleChildren = [aRenderingContext](auto frame, auto data) {
+void nsRubyFrame::AddInlinePrefISize(const IntrinsicSizeInput& aInput,
+                                     InlinePrefISizeData* aData) {
+  auto handleChildren = [&](auto frame, auto data) {
+    // Ruby frames shouldn't have percentage block sizes that require a
+    // percentage basis for resolution.
+    const IntrinsicSizeInput input(aInput.mContext, Nothing(), Nothing());
     for (RubySegmentEnumerator e(static_cast<nsRubyFrame*>(frame)); !e.AtEnd();
          e.Next()) {
-      e.GetBaseContainer()->AddInlinePrefISize(aRenderingContext, data);
+      e.GetBaseContainer()->AddInlinePrefISize(input, data);
     }
   };
   DoInlineIntrinsicISize(aData, handleChildren);

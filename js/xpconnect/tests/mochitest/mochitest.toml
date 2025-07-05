@@ -44,8 +44,8 @@ support-files = [
   "shadow_realm_module.js",
 ]
 prefs = [
-  "javascript.options.weakrefs=true",
   "javascript.options.spectre.disable_for_isolated_content=true",
+  "javascript.options.experimental.json_parse_with_source=true",
   "javascript.options.experimental.shadow_realms=true",
 ]
 
@@ -152,8 +152,6 @@ skip-if = ["os == 'android' && debug"]
 
 ["test_bug764389.html"]
 
-["test_bug772288.html"]
-
 ["test_bug781476.html"]
 
 ["test_bug789713.html"]
@@ -258,6 +256,8 @@ skip-if = ["!debug"]
 ["test_getweakmapkeys.html"]
 
 ["test_isRemoteProxy.html"]
+
+["test_json_parse_with_source_worker.html"]
 
 ["test_nukeContentWindow.html"]
 

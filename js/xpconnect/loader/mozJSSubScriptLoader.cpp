@@ -21,6 +21,7 @@
 #include "xpcprivate.h"                   // xpc::OptionsBase
 #include "js/CompilationAndEvaluation.h"  // JS::Compile
 #include "js/CompileOptions.h"  // JS::ReadOnlyCompileOptions, JS::DecodeOptions
+#include "js/EnvironmentChain.h"  // JS::EnvironmentChain
 #include "js/friend/JSMEnvironment.h"  // JS::ExecuteInJSMEnvironment, JS::IsJSMEnvironment
 #include "js/SourceText.h"             // JS::Source{Ownership,Text}
 #include "js/Wrapper.h"
@@ -146,7 +147,7 @@ static bool EvalStencil(JSContext* cx, HandleObject targetObj,
     }
     retval.setUndefined();
   } else {
-    JS::RootedObjectVector envChain(cx);
+    JS::EnvironmentChain envChain(cx, JS::SupportUnscopables::No);
     if (!envChain.append(targetObj)) {
       return false;
     }
@@ -349,7 +350,7 @@ nsresult mozJSSubScriptLoader::DoLoadSubScriptWithOptions(
 
   // Figure out who's calling us
   JS::AutoFilename filename;
-  if (!JS::DescribeScriptedCaller(cx, &filename)) {
+  if (!JS::DescribeScriptedCaller(&filename, cx)) {
     // No scripted frame means we don't know who's calling, bail.
     return NS_ERROR_FAILURE;
   }

@@ -319,7 +319,9 @@ void nsXULTooltipListener::RemoveTooltipSupport(nsIContent* aNode) {
 
 void nsXULTooltipListener::CheckTreeBodyMove(MouseEvent* aMouseEvent) {
   nsCOMPtr<nsIContent> sourceNode = do_QueryReferent(mSourceNode);
-  if (!sourceNode) return;
+  if (!sourceNode) {
+    return;
+  }
 
   // get the documentElement of the document the tree is in
   Document* doc = sourceNode->GetComposedDoc();
@@ -327,7 +329,8 @@ void nsXULTooltipListener::CheckTreeBodyMove(MouseEvent* aMouseEvent) {
   RefPtr<XULTreeElement> tree = GetSourceTree();
   Element* root = doc ? doc->GetRootElement() : nullptr;
   if (root && root->GetPrimaryFrame() && tree) {
-    CSSIntPoint pos = aMouseEvent->ScreenPoint(CallerType::System);
+    CSSIntPoint pos =
+        RoundedToInt(aMouseEvent->ScreenPoint(CallerType::System));
 
     // subtract off the documentElement's position
     // XXX Isn't this just converting to client points?
@@ -653,7 +656,9 @@ void nsXULTooltipListener::KillTooltipTimer() {
 
 void nsXULTooltipListener::sTooltipCallback(nsITimer* aTimer, void* aListener) {
   RefPtr<nsXULTooltipListener> instance = sInstance;
-  if (instance) instance->ShowTooltip();
+  if (instance) {
+    instance->ShowTooltip();
+  }
 }
 
 XULTreeElement* nsXULTooltipListener::GetSourceTree() {

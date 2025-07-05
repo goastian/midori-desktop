@@ -77,7 +77,6 @@ class SVGContainerFrame : public nsContainerFrame {
                     const nsLineList::iterator* aPrevFrameLine,
                     nsFrameList&& aFrameList) override;
   void RemoveFrame(DestroyContext&, ChildListID, nsIFrame*) override;
-
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override {}
 
@@ -117,6 +116,7 @@ class SVGDisplayContainerFrame : public SVGContainerFrame,
   NS_DECL_ABSTRACT_FRAME(SVGDisplayContainerFrame)
 
   // nsIFrame:
+  void DidSetComputedStyle(ComputedStyle*) override;
   void InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
                     const nsLineList::iterator* aPrevFrameLine,
                     nsFrameList&& aFrameList) override;
@@ -127,8 +127,7 @@ class SVGDisplayContainerFrame : public SVGContainerFrame,
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  bool IsSVGTransformed(Matrix* aOwnTransform = nullptr,
-                        Matrix* aFromParentTransform = nullptr) const override;
+  bool DoGetParentSVGTransforms(Matrix*) const override;
 
   // ISVGDisplayableFrame interface:
   void PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,

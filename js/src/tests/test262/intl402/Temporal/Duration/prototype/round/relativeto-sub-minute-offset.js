@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -35,8 +35,7 @@ TemporalHelpers.assertDateDuration(result, 1, 0, 0, 1, "unrounded HH:MM:SS is ac
 relativeTo = "1970-01-01T00:00+00:44:30.123456789[+00:45]";
 assert.throws(RangeError, () => action(relativeTo), "rounding is not accepted between ISO offset and time zone");
 
-const timeZone = Temporal.TimeZone.from("Africa/Monrovia");
-relativeTo = { year: 1970, month: 1, day: 1, offset: "+00:45", timeZone };
+relativeTo = { year: 1970, month: 1, day: 1, offset: "+00:45", timeZone: "Africa/Monrovia" };
 assert.throws(RangeError, () => action(relativeTo), "rounded HH:MM not accepted as offset in property bag");
 
 reportCompare(0, 0);

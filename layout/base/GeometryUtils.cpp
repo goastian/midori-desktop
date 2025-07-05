@@ -36,15 +36,23 @@ enum GeometryNodeType {
 };
 
 static nsIFrame* GetFrameForNode(nsINode* aNode, GeometryNodeType aType,
-                                 bool aCreateFramesForSuppressedWhitespace) {
-  Document* doc = aNode->OwnerDoc();
-  if (aType == GEOMETRY_NODE_TEXT && aCreateFramesForSuppressedWhitespace) {
-    if (PresShell* presShell = doc->GetPresShell()) {
-      presShell->FrameConstructor()->EnsureFrameForTextNodeIsCreatedAfterFlush(
-          static_cast<CharacterData*>(aNode));
-    }
+                                 const GeometryUtilsOptions& aOptions) {
+  RefPtr<Document> doc = aNode->GetComposedDoc();
+  if (!doc) {
+    return nullptr;
   }
-  doc->FlushPendingNotifications(FlushType::Layout);
+
+  if (aOptions.mFlush) {
+    if (aType == GEOMETRY_NODE_TEXT &&
+        aOptions.mCreateFramesForSuppressedWhitespace) {
+      if (PresShell* presShell = doc->GetPresShell()) {
+        presShell->FrameConstructor()
+            ->EnsureFrameForTextNodeIsCreatedAfterFlush(
+                static_cast<CharacterData*>(aNode));
+      }
+    }
+    doc->FlushPendingNotifications(FlushType::Layout);
+  }
 
   switch (aType) {
     case GEOMETRY_NODE_TEXT:
@@ -62,81 +70,73 @@ static nsIFrame* GetFrameForNode(nsINode* aNode, GeometryNodeType aType,
 
 static nsIFrame* GetFrameForGeometryNode(
     const Optional<OwningGeometryNode>& aGeometryNode, nsINode* aDefaultNode,
-    bool aCreateFramesForSuppressedWhitespace) {
+    const GeometryUtilsOptions& aOptions) {
   if (!aGeometryNode.WasPassed()) {
     return GetFrameForNode(aDefaultNode->OwnerDoc(), GEOMETRY_NODE_DOCUMENT,
-                           aCreateFramesForSuppressedWhitespace);
+                           aOptions);
   }
 
   const OwningGeometryNode& value = aGeometryNode.Value();
   if (value.IsElement()) {
     return GetFrameForNode(value.GetAsElement(), GEOMETRY_NODE_ELEMENT,
-                           aCreateFramesForSuppressedWhitespace);
+                           aOptions);
   }
   if (value.IsDocument()) {
     return GetFrameForNode(value.GetAsDocument(), GEOMETRY_NODE_DOCUMENT,
-                           aCreateFramesForSuppressedWhitespace);
+                           aOptions);
   }
-  return GetFrameForNode(value.GetAsText(), GEOMETRY_NODE_TEXT,
-                         aCreateFramesForSuppressedWhitespace);
+  return GetFrameForNode(value.GetAsText(), GEOMETRY_NODE_TEXT, aOptions);
 }
 
-static nsIFrame* GetFrameForGeometryNode(const GeometryNode& aGeometryNode) {
-  // This will create frames for suppressed whitespace nodes.
+static nsIFrame* GetFrameForGeometryNode(const GeometryNode& aGeometryNode,
+                                         const GeometryUtilsOptions& aOptions) {
   if (aGeometryNode.IsElement()) {
     return GetFrameForNode(&aGeometryNode.GetAsElement(), GEOMETRY_NODE_ELEMENT,
-                           true);
+                           aOptions);
   }
   if (aGeometryNode.IsDocument()) {
     return GetFrameForNode(&aGeometryNode.GetAsDocument(),
-                           GEOMETRY_NODE_DOCUMENT, true);
+                           GEOMETRY_NODE_DOCUMENT, aOptions);
   }
-  return GetFrameForNode(&aGeometryNode.GetAsText(), GEOMETRY_NODE_TEXT, true);
+  return GetFrameForNode(&aGeometryNode.GetAsText(), GEOMETRY_NODE_TEXT,
+                         aOptions);
 }
 
 static nsIFrame* GetFrameForNode(nsINode* aNode,
-                                 bool aCreateFramesForSuppressedWhitespace) {
+                                 const GeometryUtilsOptions& aOptions) {
   if (aNode->IsElement()) {
-    return GetFrameForNode(aNode, GEOMETRY_NODE_ELEMENT,
-                           aCreateFramesForSuppressedWhitespace);
+    return GetFrameForNode(aNode, GEOMETRY_NODE_ELEMENT, aOptions);
   }
   if (aNode == aNode->OwnerDoc()) {
-    return GetFrameForNode(aNode, GEOMETRY_NODE_DOCUMENT,
-                           aCreateFramesForSuppressedWhitespace);
+    return GetFrameForNode(aNode, GEOMETRY_NODE_DOCUMENT, aOptions);
   }
   NS_ASSERTION(aNode->IsText(), "Unknown node type");
-  return GetFrameForNode(aNode, GEOMETRY_NODE_TEXT,
-                         aCreateFramesForSuppressedWhitespace);
+  return GetFrameForNode(aNode, GEOMETRY_NODE_TEXT, aOptions);
 }
 
 static nsIFrame* GetFirstNonAnonymousFrameForGeometryNode(
     const Optional<OwningGeometryNode>& aNode, nsINode* aDefaultNode,
-    bool aCreateFramesForSuppressedWhitespace) {
-  nsIFrame* f = GetFrameForGeometryNode(aNode, aDefaultNode,
-                                        aCreateFramesForSuppressedWhitespace);
-  if (f) {
-    f = nsLayoutUtils::GetFirstNonAnonymousFrame(f);
+    const GeometryUtilsOptions& aOptions) {
+  if (nsIFrame* f = GetFrameForGeometryNode(aNode, aDefaultNode, aOptions)) {
+    return nsLayoutUtils::GetFirstNonAnonymousFrame(f);
   }
-  return f;
+  return nullptr;
 }
 
 static nsIFrame* GetFirstNonAnonymousFrameForGeometryNode(
-    const GeometryNode& aNode) {
-  // This will create frames for suppressed whitespace nodes.
-  nsIFrame* f = GetFrameForGeometryNode(aNode);
-  if (f) {
-    f = nsLayoutUtils::GetFirstNonAnonymousFrame(f);
+    const GeometryNode& aNode, const GeometryUtilsOptions& aOptions) {
+  if (nsIFrame* f = GetFrameForGeometryNode(aNode, aOptions)) {
+    return nsLayoutUtils::GetFirstNonAnonymousFrame(f);
   }
-  return f;
+  return nullptr;
 }
 
-static nsIFrame* GetFirstNonAnonymousFrameForNode(nsINode* aNode) {
-  // This will create frames for suppressed whitespace nodes.
-  nsIFrame* f = GetFrameForNode(aNode, true);
-  if (f) {
-    f = nsLayoutUtils::GetFirstNonAnonymousFrame(f);
+static nsIFrame* GetFirstNonAnonymousFrameForNode(
+    nsINode* aNode, const GeometryUtilsOptions& aOptions) {
+  if (nsIFrame* f = GetFrameForNode(aNode, aOptions)) {
+    return nsLayoutUtils::GetFirstNonAnonymousFrame(f);
   }
-  return f;
+  return nullptr;
 }
 
 /**
@@ -175,19 +175,20 @@ static nsRect GetBoxRectForFrame(nsIFrame** aFrame, CSSBoxType aType) {
   return r;
 }
 
-class AccumulateQuadCallback : public nsLayoutUtils::BoxCallback {
+class MOZ_STACK_CLASS AccumulateQuadCallback final
+    : public nsLayoutUtils::BoxCallback {
  public:
   AccumulateQuadCallback(Document* aParentObject,
-                         nsTArray<RefPtr<DOMQuad> >& aResult,
+                         nsTArray<RefPtr<DOMQuad>>& aResult,
                          nsIFrame* aRelativeToFrame,
                          const nsPoint& aRelativeToBoxTopLeft,
-                         CSSBoxType aBoxType)
+                         const BoxQuadOptions& aOptions)
       : mParentObject(ToSupports(aParentObject)),
         mResult(aResult),
         mRelativeToFrame(aRelativeToFrame),
         mRelativeToBoxTopLeft(aRelativeToBoxTopLeft),
-        mBoxType(aBoxType) {
-    if (mBoxType == CSSBoxType::Margin) {
+        mOptions(aOptions) {
+    if (mOptions.mBox == CSSBoxType::Margin) {
       // Don't include the caption margin when computing margins for a
       // table
       mIncludeCaptionBoxForTable = false;
@@ -196,28 +197,31 @@ class AccumulateQuadCallback : public nsLayoutUtils::BoxCallback {
 
   void AddBox(nsIFrame* aFrame) override {
     nsIFrame* f = aFrame;
-    if (mBoxType == CSSBoxType::Margin && f->IsTableFrame()) {
+    if (mOptions.mBox == CSSBoxType::Margin && f->IsTableFrame()) {
       // Margin boxes for table frames should be taken from the table wrapper
       // frame, since that has the margin.
       f = f->GetParent();
     }
-    nsRect box = GetBoxRectForFrame(&f, mBoxType);
-    nsPoint appUnits[4] = {box.TopLeft(), box.TopRight(), box.BottomRight(),
-                           box.BottomLeft()};
-    CSSPoint points[4];
-    for (uint32_t i = 0; i < 4; ++i) {
-      points[i] =
-          CSSPoint(nsPresContext::AppUnitsToFloatCSSPixels(appUnits[i].x),
-                   nsPresContext::AppUnitsToFloatCSSPixels(appUnits[i].y));
-    }
-    nsLayoutUtils::TransformResult rv = nsLayoutUtils::TransformPoints(
-        RelativeTo{f}, RelativeTo{mRelativeToFrame}, 4, points);
-    if (rv == nsLayoutUtils::TRANSFORM_SUCCEEDED) {
-      CSSPoint delta(
-          nsPresContext::AppUnitsToFloatCSSPixels(mRelativeToBoxTopLeft.x),
-          nsPresContext::AppUnitsToFloatCSSPixels(mRelativeToBoxTopLeft.y));
-      for (uint32_t i = 0; i < 4; ++i) {
-        points[i] -= delta;
+    const nsRect box = GetBoxRectForFrame(&f, mOptions.mBox);
+    CSSPoint points[4] = {CSSPoint::FromAppUnits(box.TopLeft()),
+                          CSSPoint::FromAppUnits(box.TopRight()),
+                          CSSPoint::FromAppUnits(box.BottomRight()),
+                          CSSPoint::FromAppUnits(box.BottomLeft())};
+    const auto delta = [&]() -> Maybe<CSSPoint> {
+      if (mOptions.mIgnoreTransforms) {
+        return Some(CSSPoint::FromAppUnits(f->GetOffsetTo(mRelativeToFrame) -
+                                           mRelativeToBoxTopLeft));
+      }
+      nsLayoutUtils::TransformResult rv = nsLayoutUtils::TransformPoints(
+          RelativeTo{f}, RelativeTo{mRelativeToFrame}, 4, points);
+      if (rv != nsLayoutUtils::TRANSFORM_SUCCEEDED) {
+        return Nothing();
+      }
+      return Some(CSSPoint::FromAppUnits(-mRelativeToBoxTopLeft));
+    }();
+    if (delta) {
+      for (auto& point : points) {
+        point += *delta;
       }
     } else {
       PodArrayZero(points);
@@ -225,11 +229,11 @@ class AccumulateQuadCallback : public nsLayoutUtils::BoxCallback {
     mResult.AppendElement(new DOMQuad(mParentObject, points));
   }
 
-  nsISupports* mParentObject;
-  nsTArray<RefPtr<DOMQuad> >& mResult;
-  nsIFrame* mRelativeToFrame;
-  nsPoint mRelativeToBoxTopLeft;
-  CSSBoxType mBoxType;
+  nsISupports* const mParentObject;
+  nsTArray<RefPtr<DOMQuad>>& mResult;
+  nsIFrame* const mRelativeToFrame;
+  const nsPoint mRelativeToBoxTopLeft;
+  const BoxQuadOptions& mOptions;
 };
 
 static nsPresContext* FindTopLevelPresContext(nsPresContext* aPC) {
@@ -262,10 +266,9 @@ static bool CheckFramesInSameTopLevelBrowsingContext(nsIFrame* aFrame1,
 }
 
 void GetBoxQuads(nsINode* aNode, const dom::BoxQuadOptions& aOptions,
-                 nsTArray<RefPtr<DOMQuad> >& aResult, CallerType aCallerType,
+                 nsTArray<RefPtr<DOMQuad>>& aResult, CallerType aCallerType,
                  ErrorResult& aRv) {
-  nsIFrame* frame =
-      GetFrameForNode(aNode, aOptions.mCreateFramesForSuppressedWhitespace);
+  nsIFrame* frame = GetFrameForNode(aNode, aOptions);
   if (!frame) {
     // No boxes to return
     return;
@@ -273,14 +276,12 @@ void GetBoxQuads(nsINode* aNode, const dom::BoxQuadOptions& aOptions,
   AutoWeakFrame weakFrame(frame);
   Document* ownerDoc = aNode->OwnerDoc();
   nsIFrame* relativeToFrame = GetFirstNonAnonymousFrameForGeometryNode(
-      aOptions.mRelativeTo, ownerDoc,
-      aOptions.mCreateFramesForSuppressedWhitespace);
+      aOptions.mRelativeTo, ownerDoc, aOptions);
   // The first frame might be destroyed now if the above call lead to an
   // EnsureFrameForTextNode call.  We need to get the first frame again
   // when that happens and re-check it.
   if (!weakFrame.IsAlive()) {
-    frame =
-        GetFrameForNode(aNode, aOptions.mCreateFramesForSuppressedWhitespace);
+    frame = GetFrameForNode(aNode, aOptions);
     if (!frame) {
       // No boxes to return
       return;
@@ -301,7 +302,7 @@ void GetBoxQuads(nsINode* aNode, const dom::BoxQuadOptions& aOptions,
   nsPoint relativeToTopLeft =
       GetBoxRectForFrame(&relativeToFrame, CSSBoxType::Border).TopLeft();
   AccumulateQuadCallback callback(ownerDoc, aResult, relativeToFrame,
-                                  relativeToTopLeft, aOptions.mBox);
+                                  relativeToTopLeft, aOptions);
 
   // Bug 1624653: Refactor this to get boxes in layer pixels, which we will
   // then convert into CSS units.
@@ -310,7 +311,7 @@ void GetBoxQuads(nsINode* aNode, const dom::BoxQuadOptions& aOptions,
 
 void GetBoxQuadsFromWindowOrigin(nsINode* aNode,
                                  const dom::BoxQuadOptions& aOptions,
-                                 nsTArray<RefPtr<DOMQuad> >& aResult,
+                                 nsTArray<RefPtr<DOMQuad>>& aResult,
                                  ErrorResult& aRv) {
   // We want the quads relative to the window. To do this, we ignore the
   // provided aOptions.mRelativeTo and instead use the document node of
@@ -395,14 +396,15 @@ static void TransformPoints(nsINode* aTo, const GeometryNode& aFrom,
                             uint32_t aPointCount, CSSPoint* aPoints,
                             const ConvertCoordinateOptions& aOptions,
                             CallerType aCallerType, ErrorResult& aRv) {
-  nsIFrame* fromFrame = GetFirstNonAnonymousFrameForGeometryNode(aFrom);
+  nsIFrame* fromFrame =
+      GetFirstNonAnonymousFrameForGeometryNode(aFrom, aOptions);
   AutoWeakFrame weakFrame(fromFrame);
-  nsIFrame* toFrame = GetFirstNonAnonymousFrameForNode(aTo);
+  nsIFrame* toFrame = GetFirstNonAnonymousFrameForNode(aTo, aOptions);
   // The first frame might be destroyed now if the above call lead to an
   // EnsureFrameForTextNode call.  We need to get the first frame again
   // when that happens.
   if (fromFrame && !weakFrame.IsAlive()) {
-    fromFrame = GetFirstNonAnonymousFrameForGeometryNode(aFrom);
+    fromFrame = GetFirstNonAnonymousFrameForGeometryNode(aFrom, aOptions);
   }
   if (!fromFrame || !toFrame) {
     aRv.ThrowNotFoundError(

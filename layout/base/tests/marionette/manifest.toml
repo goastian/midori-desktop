@@ -3,5 +3,11 @@ prefs = ["gfx.font_loader.delay=0"]
 run-if = ["buildapp == 'browser'"]
 
 ["test_accessiblecaret_cursor_mode.py"]
+skip-if = [
+  "os == 'mac' && debug", # Bug 1841181
+]
 
 ["test_accessiblecaret_selection_mode.py"]
+skip-if = [
+  "os == 'win' && os_version == '11.2009' && (debug || asan)", # Bug 1855083
+]

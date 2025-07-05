@@ -7,6 +7,7 @@ package mozilla.components.browser.state.engine.middleware
 import kotlinx.coroutines.test.runTest
 import mozilla.components.browser.state.action.BrowserAction
 import mozilla.components.browser.state.action.InitAction
+import mozilla.components.browser.state.action.LocaleAction
 import mozilla.components.browser.state.action.TranslationsAction
 import mozilla.components.browser.state.selector.findTab
 import mozilla.components.browser.state.state.BrowserState
@@ -48,6 +49,7 @@ import org.mockito.Mockito.atLeastOnce
 import org.mockito.Mockito.never
 import org.mockito.Mockito.spy
 import org.mockito.Mockito.verify
+import java.util.Locale
 
 class TranslationsMiddlewareTest {
 
@@ -203,6 +205,22 @@ class TranslationsMiddlewareTest {
     }
 
     @Test
+    fun `GIVEN automaticallyInitialize is false WHEN InitAction is dispatched THEN do nothing`() = runTest {
+        val middleware = TranslationsMiddleware(
+            engine = engine,
+            automaticallyInitialize = false,
+            scope = scope,
+        )
+        middleware.invoke(context = context, next = {}, action = InitAction)
+        waitForIdle()
+
+        verify(store, never()).dispatch(
+            TranslationsAction.InitTranslationsBrowserState,
+        )
+        waitForIdle()
+    }
+
+    @Test
     fun `WHEN InitTranslationsBrowserState is dispatched AND the engine is supported THEN SetSupportedLanguagesAction is also dispatched`() = runTest {
         // Send Action
         translationsMiddleware.invoke(context = context, next = {}, action = TranslationsAction.InitTranslationsBrowserState)
@@ -271,7 +289,7 @@ class TranslationsMiddlewareTest {
     }
 
     @Test
-    fun `WHEN InitTranslationsBrowserState is dispatched AND an error occurs THEN TranslateExceptionAction is dispatched for language settings`() = runTest() {
+    fun `WHEN InitTranslationsBrowserState is dispatched AND an error occurs THEN TranslateExceptionAction is dispatched for language settings`() = runTest {
         // Send Action
         translationsMiddleware.invoke(context = context, next = {}, action = TranslationsAction.InitTranslationsBrowserState)
         waitForIdle()
@@ -360,7 +378,7 @@ class TranslationsMiddlewareTest {
     }
 
     @Test
-    fun `WHEN InitTranslationsBrowserState is dispatched AND has an issue with the engine THEN EngineExceptionAction is dispatched`() = runTest() {
+    fun `WHEN InitTranslationsBrowserState is dispatched AND has an issue with the engine THEN EngineExceptionAction is dispatched`() = runTest {
         // Send Action
         // Note: Implicitly called once due to connection with InitAction
         translationsMiddleware.invoke(context = context, next = {}, action = TranslationsAction.InitTranslationsBrowserState)
@@ -640,7 +658,7 @@ class TranslationsMiddlewareTest {
     }
 
     @Test
-    fun `WHEN an Operation to FETCH_AUTOMATIC_LANGUAGE_SETTINGS has an error THEN EngineExceptionAction and TranslateExceptionAction are dispatched for language setting`() = runTest() {
+    fun `WHEN an Operation to FETCH_AUTOMATIC_LANGUAGE_SETTINGS has an error THEN EngineExceptionAction and TranslateExceptionAction are dispatched for language setting`() = runTest {
         // Send Action
         val action =
             TranslationsAction.OperationRequestedAction(
@@ -1096,8 +1114,13 @@ class TranslationsMiddlewareTest {
 
     @Test
     fun `WHEN ManageLanguageModelsAction is dispatched and fails THEN SetLanguageModelsAction is dispatched and an error is dispatched`() = runTest {
+        setupMockState()
         // Send Action
-        val options = ModelManagementOptions(languageToManage = "es", operation = ModelOperation.DOWNLOAD, operationLevel = OperationLevel.LANGUAGE)
+        val options = ModelManagementOptions(
+            languageToManage = "es",
+            operation = ModelOperation.DELETE,
+            operationLevel = OperationLevel.LANGUAGE,
+        )
         val action =
             TranslationsAction.ManageLanguageModelsAction(
                 options,
@@ -1114,29 +1137,60 @@ class TranslationsMiddlewareTest {
             onError = updateModelsErrorCallback.capture(),
         )
         updateModelsErrorCallback.value.invoke(Throwable())
-
         waitForIdle()
 
-        // Verify engine call to get models happened (due to failure)
-        val modelListCallback = argumentCaptor<((List<LanguageModel>) -> Unit)>()
-        verify(engine, atLeastOnce()).getTranslationsModelDownloadStates(
-            onSuccess = modelListCallback.capture(),
-            onError = any(),
+        // Verify expected error state set
+        val responseLanguageModels = mutableListOf(
+            LanguageModel(language = mockLanguage, status = ModelState.ERROR_DELETION, size = mockSize),
         )
-        modelListCallback.value.invoke(mockLanguageModels)
-        waitForIdle()
-
-        // Should set the latest state
         verify(store, atLeastOnce()).dispatch(
             TranslationsAction.SetLanguageModelsAction(
-                languageModels = mockLanguageModels,
+                languageModels = responseLanguageModels,
             ),
         )
+
         // Should report an error
         verify(store, atLeastOnce()).dispatch(
             TranslationsAction.EngineExceptionAction(
                 error = TranslationError.LanguageModelUpdateError(any()),
             ),
         )
+    }
+
+    @Test
+    fun `WHEN UpdateLocaleAction is dispatched THEN SetLanguageSettingsAction AND SetLanguageModelsAction are also dispatched`() = runTest {
+        // Send Action
+        translationsMiddleware.invoke(context = context, next = {}, action = LocaleAction.UpdateLocaleAction(locale = Locale.forLanguageTag("es")))
+        waitForIdle()
+
+        // Mock responses
+        val languageCallback = argumentCaptor<((TranslationSupport) -> Unit)>()
+        verify(engine, atLeastOnce()).getSupportedTranslationLanguages(onSuccess = languageCallback.capture(), onError = any())
+        val supportedLanguages = TranslationSupport(
+            fromLanguages = listOf(Language("en", "English")),
+            toLanguages = listOf(Language("en", "English")),
+        )
+        languageCallback.value.invoke(supportedLanguages)
+
+        val modelCallback = argumentCaptor<((List<LanguageModel>) -> Unit)>()
+        verify(engine, atLeastOnce()).getTranslationsModelDownloadStates(onSuccess = modelCallback.capture(), onError = any())
+        modelCallback.value.invoke(mockLanguageModels)
+
+        waitForIdle()
+
+        // Check expectations
+        // Verifying at least once due to this also occurring at initialization
+        verify(store, atLeastOnce()).dispatch(
+            TranslationsAction.SetSupportedLanguagesAction(
+                supportedLanguages = supportedLanguages,
+            ),
+        )
+        verify(store, atLeastOnce()).dispatch(
+            TranslationsAction.SetLanguageModelsAction(
+                languageModels = mockLanguageModels,
+            ),
+        )
+
+        waitForIdle()
     }
 }

@@ -85,8 +85,7 @@ class SVGImageFrame final : public nsIFrame,
 
   void DidSetComputedStyle(ComputedStyle* aOldStyle) final;
 
-  bool IsSVGTransformed(Matrix* aOwnTransforms = nullptr,
-                        Matrix* aFromParentTransforms = nullptr) const override;
+  bool DoGetParentSVGTransforms(Matrix*) const override;
 
   bool GetIntrinsicImageDimensions(gfx::Size& aSize,
                                    AspectRatio& aAspectRatio) const;
@@ -138,7 +137,7 @@ class DisplaySVGImage final : public DisplaySVGItem {
     MOZ_COUNT_CTOR(DisplaySVGImage);
   }
 
-  MOZ_COUNTED_DTOR_OVERRIDE(DisplaySVGImage)
+  MOZ_COUNTED_DTOR_FINAL(DisplaySVGImage)
 
   NS_DISPLAY_DECL_NAME("DisplaySVGImage", TYPE_SVG_IMAGE)
 

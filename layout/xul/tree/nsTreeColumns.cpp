@@ -67,15 +67,21 @@ bool nsTreeColumn::IsLastVisible(nsTreeBodyFrame* aBodyFrame) {
   NS_ASSERTION(GetFrame(), "should have checked for this already");
 
   // cyclers are fixed width, don't adjust them
-  if (IsCycler()) return false;
+  if (IsCycler()) {
+    return false;
+  }
 
   // we're certainly not the last visible if we're not visible
-  if (GetFrame()->GetRect().width == 0) return false;
+  if (GetFrame()->GetRect().width == 0) {
+    return false;
+  }
 
   // try to find a visible successor
   for (nsTreeColumn* next = GetNext(); next; next = next->GetNext()) {
     nsIFrame* frame = next->GetFrame();
-    if (frame && frame->GetRect().width > 0) return false;
+    if (frame && frame->GetRect().width > 0) {
+      return false;
+    }
   }
   return true;
 }
@@ -88,18 +94,12 @@ nsresult nsTreeColumn::GetRect(nsTreeBodyFrame* aBodyFrame, nscoord aY,
     return NS_ERROR_FAILURE;
   }
 
-  const bool isRTL =
-      aBodyFrame->StyleVisibility()->mDirection == StyleDirection::Rtl;
   *aResult = frame->GetRect();
   if (frame->StyleVisibility()->IsCollapse()) {
     aResult->SizeTo(nsSize());
   }
   aResult->y = aY;
   aResult->height = aHeight;
-  if (isRTL)
-    aResult->x += aBodyFrame->mAdjustWidth;
-  else if (IsLastVisible(aBodyFrame))
-    aResult->width += aBodyFrame->mAdjustWidth;
   return NS_OK;
 }
 
@@ -122,7 +122,6 @@ nsresult nsTreeColumn::GetWidthInTwips(nsTreeBodyFrame* aBodyFrame,
     return NS_ERROR_FAILURE;
   }
   *aResult = frame->GetRect().width;
-  if (IsLastVisible(aBodyFrame)) *aResult += aBodyFrame->mAdjustWidth;
   return NS_OK;
 }
 
@@ -319,13 +318,18 @@ nsTreeColumn* nsTreeColumns::GetKeyColumn() {
        currCol = currCol->GetNext()) {
     // Skip hidden columns.
     if (currCol->mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidden,
-                                       nsGkAtoms::_true, eCaseMatters))
+                                       nsGkAtoms::_true, eCaseMatters)) {
       continue;
+    }
 
     // Skip non-text column
-    if (currCol->GetType() != TreeColumn_Binding::TYPE_TEXT) continue;
+    if (currCol->GetType() != TreeColumn_Binding::TYPE_TEXT) {
+      continue;
+    }
 
-    if (!first) first = currCol;
+    if (!first) {
+      first = currCol;
+    }
 
     if (nsContentUtils::HasNonEmptyAttr(currCol->mContent, kNameSpaceID_None,
                                         nsGkAtoms::sortDirection)) {
@@ -334,12 +338,19 @@ nsTreeColumn* nsTreeColumns::GetKeyColumn() {
       break;
     }
 
-    if (currCol->IsPrimary())
-      if (!primary) primary = currCol;
+    if (currCol->IsPrimary()) {
+      if (!primary) {
+        primary = currCol;
+      }
+    }
   }
 
-  if (sorted) return sorted;
-  if (primary) return primary;
+  if (sorted) {
+    return sorted;
+  }
+  if (primary) {
+    return primary;
+  }
   return first;
 }
 
@@ -419,21 +430,31 @@ nsTreeColumn* nsTreeColumns::GetPrimaryColumn() {
 void nsTreeColumns::EnsureColumns() {
   if (mTree && !mFirstColumn) {
     nsIContent* treeContent = mTree->GetBaseElement();
-    if (!treeContent) return;
+    if (!treeContent) {
+      return;
+    }
 
     nsIContent* colsContent =
         nsTreeUtils::GetDescendantChild(treeContent, nsGkAtoms::treecols);
-    if (!colsContent) return;
+    if (!colsContent) {
+      return;
+    }
 
     nsIContent* colContent =
         nsTreeUtils::GetDescendantChild(colsContent, nsGkAtoms::treecol);
-    if (!colContent) return;
+    if (!colContent) {
+      return;
+    }
 
     nsIFrame* colFrame = colContent->GetPrimaryFrame();
-    if (!colFrame) return;
+    if (!colFrame) {
+      return;
+    }
 
     colFrame = colFrame->GetParent();
-    if (!colFrame || !colFrame->GetContent()) return;
+    if (!colFrame || !colFrame->GetContent()) {
+      return;
+    }
 
     nsTreeColumn* currCol = nullptr;
 

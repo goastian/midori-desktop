@@ -38,16 +38,20 @@ nsAtom* nsCSSPseudoElements::GetPseudoAtom(Type aType) {
   return nsGkAtoms::GetAtomByIndex(index);
 }
 
+static bool IsFunctionalPseudo(PseudoStyleType aType) {
+  return aType == PseudoStyleType::highlight ||
+         PseudoStyle::IsNamedViewTransitionPseudoElement(aType);
+}
+
 /* static */
-std::tuple<mozilla::Maybe<PseudoStyleType>, RefPtr<nsAtom>>
-nsCSSPseudoElements::ParsePseudoElement(const nsAString& aPseudoElement,
-                                        CSSEnabledState aEnabledState) {
+Maybe<PseudoStyleRequest> nsCSSPseudoElements::ParsePseudoElement(
+    const nsAString& aPseudoElement, CSSEnabledState aEnabledState) {
   if (DOMStringIsNull(aPseudoElement) || aPseudoElement.IsEmpty()) {
-    return {Some(PseudoStyleType::NotPseudo), nullptr};
+    return Some(PseudoStyleRequest());
   }
 
   if (aPseudoElement.First() != char16_t(':')) {
-    return {};
+    return Nothing();
   }
 
   // deal with two-colon forms of aPseudoElt
@@ -74,13 +78,13 @@ nsCSSPseudoElements::ParsePseudoElement(const nsAString& aPseudoElement,
   Maybe<uint32_t> index = nsStaticAtomUtils::Lookup(pseudo, GetAtomBase(),
                                                     kAtomCount_PseudoElements);
   if (index.isNothing()) {
-    return {};
+    return Nothing();
   }
   auto type = static_cast<Type>(*index);
   RefPtr<nsAtom> functionalPseudoParameter;
   if (hasParameter) {
-    if (type != PseudoStyleType::highlight) {
-      return {};
+    if (!IsFunctionalPseudo(type)) {
+      return Nothing();
     }
     functionalPseudoParameter =
         [&aPseudoElement, parameterPosition]() -> already_AddRefed<nsAtom> {
@@ -93,23 +97,23 @@ nsCSSPseudoElements::ParsePseudoElement(const nsAString& aPseudoElement,
       }
       return NS_Atomize(Substring(start, end));
     }();
+
+    // The universal selector is pre-defined and should not be a valid name for
+    // a named view-transition pseudo element.
+    if (PseudoStyle::IsNamedViewTransitionPseudoElement(type) &&
+        functionalPseudoParameter == nsGkAtoms::_asterisk) {
+      return Nothing();
+    }
   }
 
   if (!haveTwoColons &&
       !PseudoElementHasFlags(type, CSS_PSEUDO_ELEMENT_IS_CSS2)) {
-    return {};
+    return Nothing();
   }
   if (IsEnabled(type, aEnabledState)) {
-    return {Some(type), functionalPseudoParameter};
+    return Some(PseudoStyleRequest{type, functionalPseudoParameter});
   }
-  return {};
-}
-
-/* static */
-mozilla::Maybe<PseudoStyleType> nsCSSPseudoElements::GetPseudoType(
-    const nsAString& aPseudoElement, CSSEnabledState aEnabledState) {
-  auto [pseudoType, _] = ParsePseudoElement(aPseudoElement, aEnabledState);
-  return pseudoType;
+  return Nothing();
 }
 
 /* static */
@@ -120,17 +124,31 @@ bool nsCSSPseudoElements::PseudoElementSupportsUserActionState(
 }
 
 /* static */
-nsString nsCSSPseudoElements::PseudoTypeAsString(Type aPseudoType) {
-  switch (aPseudoType) {
+nsString nsCSSPseudoElements::PseudoRequestAsString(
+    const Request& aPseudoRequest) {
+  switch (aPseudoRequest.mType) {
     case PseudoStyleType::before:
       return u"::before"_ns;
     case PseudoStyleType::after:
       return u"::after"_ns;
     case PseudoStyleType::marker:
       return u"::marker"_ns;
+    case PseudoStyleType::viewTransition:
+      return u"::view-transition"_ns;
+    case PseudoStyleType::viewTransitionGroup:
+      return u"::view-transition-group("_ns +
+             nsAtomString(aPseudoRequest.mIdentifier) + u")"_ns;
+    case PseudoStyleType::viewTransitionImagePair:
+      return u"::view-transition-image-pair("_ns +
+             nsAtomString(aPseudoRequest.mIdentifier) + u")"_ns;
+    case PseudoStyleType::viewTransitionOld:
+      return u"::view-transition-old("_ns +
+             nsAtomString(aPseudoRequest.mIdentifier) + u")"_ns;
+    case PseudoStyleType::viewTransitionNew:
+      return u"::view-transition-new("_ns +
+             nsAtomString(aPseudoRequest.mIdentifier) + u")"_ns;
     default:
-      MOZ_ASSERT(aPseudoType == PseudoStyleType::NotPseudo,
-                 "Unexpected pseudo type");
+      MOZ_ASSERT(aPseudoRequest.IsNotPseudo(), "Unexpected pseudo type");
       return u""_ns;
   }
 }

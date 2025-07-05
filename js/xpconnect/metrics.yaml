@@ -11,49 +11,20 @@ $tags:
   - 'Core :: XPConnect'
 
 
-performance.clone.deserialize:
-  size:
-    description: >
-      Size of deserialized data, in bytes
-    type: memory_distribution
-    memory_unit: byte
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631#c4
-    notification_emails:
-      - sfink@mozilla.com
-    expires: never
-
-  items:
-    description: >
-      Size of deserialized data, in items
-    type: custom_distribution
-    unit: Serialized items
-    histogram_type: exponential
-    range_max: 2147483646
-    bucket_count: 50
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631#c4
-    notification_emails:
-      - sfink@mozilla.com
-    expires: never
-
-  time:
-    description: >
-      Time spent deserializing structured data
+javascript.ion:
+  compile_time:
     type: timing_distribution
     time_unit: microsecond
+    description: >
+      Time in microseconds of an Ion compilation.
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918166
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1717631#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918166
     notification_emails:
-      - sfink@mozilla.com
+      - dpalmeiro@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
     expires: never
-
 
 javascript.gc:
   total_time:
@@ -183,3 +154,858 @@ javascript.gc:
       - dev-telemetry-gc-alerts@mozilla.org
       - jcoppeard@mozilla.com
     expires: never
+
+  budget:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Requested GC slice budget.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  budget_overrun:
+    type: timing_distribution
+    time_unit: microsecond
+    description: >
+      How long a GC slice ran over its budget.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  animation:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Time spent running JS GC when animating.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  max_pause:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Longest GC slice in a GC.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  mark_gray:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Time spent marking gray GC objects.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  mark_weak:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Time spent marking GC objects held live through weakmaps.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  time_between:
+    type: timing_distribution
+    time_unit: second
+    description: >
+      Time spent in between garbage collections for the main runtime.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  time_between_slices:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      Time spent in between garbage collections for the main runtime.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  task_start_delay:
+    type: timing_distribution
+    time_unit: microsecond
+    description: >
+      Delay between queuing a GC task and the task starting.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932957
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  nursery_bytes:
+    type: memory_distribution
+    memory_unit: byte
+    description: >
+      Size of the GC nursery in bytes.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  effectiveness:
+    type: custom_distribution
+    range_min: 0
+    range_max: 50000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: "MB/s"
+    description: >
+      GC effectiveness, the amount of memory freed divided by main-thread collection time (MB/s)
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  zone_count:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 20
+    histogram_type: exponential
+    unit: "zones"
+    description: >
+      Total number of GC zones
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  zones_collected:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 20
+    histogram_type: exponential
+    unit: "zones"
+    description: >
+      Number of zones collected in a zone GC.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  pretenure_count:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 20
+    histogram_type: exponential
+    description: >
+      How many allocation sites were selected for pretenuring by a minor GC
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  mark_rate:
+    type: custom_distribution
+    range_min: 1000
+    range_max: 300000
+    bucket_count: 50
+    histogram_type: exponential
+    unit: "objects/ms"
+    description: >
+      The number of objects marked per ms during GC.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  slice_count:
+    type: custom_distribution
+    range_min: 0
+    range_max: 200
+    bucket_count: 50
+    histogram_type: exponential
+    unit: "objects/ms"
+    description: >
+      The number of slices in an incremental GC for the main runtime.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  parallel_mark_speedup:
+    type: custom_distribution
+    range_min: 50
+    range_max: 800
+    bucket_count: 50
+    histogram_type: exponential
+    description: >
+      Ratio of total helper thread time spent marking to main thread time for parallel marking, scaled by 100.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  parallel_mark_interruptions:
+    type: custom_distribution
+    range_min: 1
+    range_max: 500
+    bucket_count: 50
+    histogram_type: exponential
+    description: >
+      Number of interruptions/donations per slice during parallel marking.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  parallel_mark_utilization:
+    type: custom_distribution
+    range_min: 1
+    range_max: 100
+    bucket_count: 50
+    histogram_type: linear
+    unit: "percentage"
+    description: >
+      Ratio of helper thread time spent marking to total helper thread time for parallel marking.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  mmu_50:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 20
+    histogram_type: linear
+    unit: "percentage"
+    description: >
+      Minimum percentage of time spent outside GC over any 50ms window.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  nursery_promotion_rate:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 50
+    histogram_type: linear
+    unit: "percentage"
+    description: >
+      The percentage of nursery objects that were promoted to the tenured heap.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  tenured_survival_rate:
+    type: custom_distribution
+    range_min: 0
+    range_max: 100
+    bucket_count: 50
+    histogram_type: linear
+    unit: "percentage"
+    description: >
+      The percentage of tenured GC things that survived a collection.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+
+  is_zone_gc:
+    type: labeled_counter
+    description: >
+      Is it a zone GC?
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  budget_was_increased:
+    type: labeled_counter
+    description: >
+      Whether the budget was increased due to taking too long or approaching the incremental limit
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  slice_was_long:
+    type: labeled_counter
+    description: >
+      Whether a GC slice took 1.5 times or 5ms more than its budget
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  reset:
+    type: labeled_counter
+    description: >
+      Was an incremental GC canceled?
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  non_incremental:
+    type: labeled_counter
+    description: >
+      Was the GC non-incremental?
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  parallel_mark_used:
+    type: labeled_counter
+    description: >
+      Whether parallel marking was used for this collection
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels:
+      - "false"
+      - "true"
+
+  reason:
+    type: labeled_counter
+    description: >
+      Reason (enum value) for initiating a GC
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: &gc_reasons
+      - API
+      - EAGER_ALLOC_TRIGGER
+      - DESTROY_RUNTIME
+      - ROOTS_REMOVED
+      - LAST_DITCH
+      - TOO_MUCH_MALLOC
+      - ALLOC_TRIGGER
+      - DEBUG_GC
+      - COMPARTMENT_REVIVED
+      - RESET
+      - OUT_OF_NURSERY
+      - EVICT_NURSERY
+      - SHARED_MEMORY_LIMIT
+      - EAGER_NURSERY_COLLECTION
+      - BG_TASK_FINISHED
+      - ABORT_GC
+      - FULL_WHOLE_CELL_BUFFER
+      - FULL_GENERIC_BUFFER
+      - FULL_VALUE_BUFFER
+      - FULL_CELL_PTR_OBJ_BUFFER
+      - FULL_SLOT_BUFFER
+      - FULL_SHAPE_BUFFER
+      - TOO_MUCH_WASM_MEMORY
+      - DISABLE_GENERATIONAL_GC
+      - FINISH_GC
+      - PREPARE_FOR_TRACING
+      - FULL_WASM_ANYREF_BUFFER
+      - FULL_CELL_PTR_STR_BUFFER
+      - TOO_MUCH_JIT_CODE
+      - FULL_CELL_PTR_BIGINT_BUFFER
+      - NURSERY_TRAILERS
+      - NURSERY_MALLOC_BUFFERS
+      - DOM_WINDOW_UTILS
+      - COMPONENT_UTILS
+      - MEM_PRESSURE
+      - CC_FINISHED
+      - CC_FORCED
+      - LOAD_END
+      - UNUSED3
+      - PAGE_HIDE
+      - NSJSCONTEXT_DESTROY
+      - WORKER_SHUTDOWN
+      - SET_DOC_SHELL
+      - DOM_UTILS
+      - DOM_IPC
+      - DOM_WORKER
+      - INTER_SLICE_GC
+      - UNUSED1
+      - FULL_GC_TIMER
+      - SHUTDOWN_CC
+      - UNUSED2
+      - USER_INACTIVE
+      - XPCONNECT_SHUTDOWN
+      - DOCSHELL
+      - HTML_PARSER
+      - DOM_TESTUTILS
+      - PREPARE_FOR_PAGELOAD
+
+  slow_phase:
+    type: labeled_counter
+    description: >
+      The longest phase in any slice that goes over 2x the budget. The phase values are defined in js/src/gc/GenerateStatsPhases.py.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: &gc_phases
+      - MUTATOR
+      - GC_BEGIN
+      - MARK_CCWS
+      - MARK_STACK
+      - MARK_RUNTIME_DATA
+      - MARK_EMBEDDING
+      - MARK_ROOTS
+      - EVICT_NURSERY_FOR_MAJOR_GC
+      - WAIT_BACKGROUND_THREAD
+      - UNMARK
+      - UNMARK_WEAKMAPS
+      - MARK_DISCARD_CODE
+      - RELAZIFY_FUNCTIONS
+      - PURGE
+      - PURGE_PROP_MAP_TABLES
+      - PURGE_SOURCE_URLS
+      - JOIN_PARALLEL_TASKS
+      - PREPARE
+      - MARK_DELAYED
+      - MARK_GRAY_WEAK
+      - MARK_WEAK
+      - MARK_INCOMING_GRAY
+      - MARK_GRAY
+      - PARALLEL_MARK_MARK
+      - PARALLEL_MARK_WAIT
+      - PARALLEL_MARK_OTHER
+      - PARALLEL_MARK
+      - MARK
+      - WEAK_ZONES_CALLBACK
+      - WEAK_COMPARTMENT_CALLBACK
+      - FINALIZE_START
+      - UPDATE_ATOMS_BITMAP
+      - SWEEP_ATOMS_TABLE
+      - SWEEP_JIT_SCRIPTS
+      - SWEEP_INNER_VIEWS
+      - SWEEP_CC_WRAPPER
+      - SWEEP_BASE_SHAPE
+      - SWEEP_INITIAL_SHAPE
+      - SWEEP_REGEXP
+      - SWEEP_COMPRESSION
+      - SWEEP_WEAKMAPS
+      - SWEEP_UNIQUEIDS
+      - SWEEP_WEAK_POINTERS
+      - SWEEP_FINALIZATION_OBSERVERS
+      - SWEEP_JIT_DATA
+      - SWEEP_WEAK_CACHES
+      - SWEEP_MISC
+      - SWEEP_COMPARTMENTS
+      - SWEEP_PROP_MAP
+      - FINALIZE_END
+      - DESTROY
+      - FIND_DEAD_COMPARTMENTS
+      - SWEEP
+      - COMPACT_MOVE
+      - COMPACT_UPDATE_CELLS
+      - COMPACT_UPDATE
+      - COMPACT
+      - DECOMMIT
+      - GC_END
+      - MINOR_GC
+      - EVICT_NURSERY
+      - TRACE_HEAP
+
+  slow_task:
+    type: labeled_counter
+    description: >
+      The longest parallel task in any slice that goes over 2x the budget. The phase values are defined in js/src/gc/GenerateStatsPhases.py.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: *gc_phases
+
+  reset_reason:
+    type: labeled_counter
+    description: >
+      Reason for cancelling an ongoing GC (see js::GCAbortReason)
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: &gc_abort_reasons
+      - None
+      - NonIncrementalRequested
+      - AbortRequested
+      - Unused1
+      - IncrementalDisabled
+      - ModeChange
+      - MallocBytesTrigger
+      - GCBytesTrigger
+      - ZoneChange
+      - CompartmentRevived
+      - GrayRootBufferingFailed
+      - JitCodeBytesTrigger
+
+
+  non_incremental_reason:
+    type: labeled_counter
+    description: >
+      Reason for performing a non-incremental GC (see js::GCAbortReason)
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: *gc_abort_reasons
+
+  minor_reason:
+    type: labeled_counter
+    description: >
+      Reason (enum value) for initiating a minor GC
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: *gc_reasons
+
+  minor_reason_long:
+    type: labeled_counter
+    description: >
+      Reason (enum value) that caused a long (>1ms) minor GC
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1932686
+    notification_emails:
+      - dev-telemetry-gc-alerts@mozilla.org
+      - jcoppeard@mozilla.com
+    expires: never
+    labels: *gc_reasons
+
+slow_script_warning:
+  shown_browser:
+    type: event
+    description: >
+      Recorded when a slow script hang is resolved.
+      This event was generated to correspond to the Legacy Telemetry event
+      slow_script_warning.shown#browser.
+    bugs: &slow_script_warning_shown_bugs
+      - https://bugzil.la/1652613
+      - https://bugzil.la/1667245
+      - https://bugzil.la/1672572
+    data_reviews: &slow_script_warning_shown_data_reviews
+      - https://bugzil.la/1652613
+      - https://bugzil.la/1667245
+      - https://bugzil.la/1672572
+    notification_emails: &slow_script_warning_shown_emails
+      - dothayer@mozilla.com
+      - esmyth@mozilla.com
+      - gkruitbosch@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
+    expires: never
+    extra_keys:
+      hang_duration:
+        description: >
+          How long we believe the hang continued (ms).
+        type: string
+      uri_type:
+        description: >
+          The kind of script URL that hung.
+        type: string
+    telemetry_mirror: Slow_script_warning_Shown_Browser
+
+  shown_content:
+    type: event
+    description: >
+      Recorded when a slow script hang is resolved.
+      This event was generated to correspond to the Legacy Telemetry event
+      slow_script_warning.shown#content.
+    bugs: *slow_script_warning_shown_bugs
+    data_reviews: *slow_script_warning_shown_data_reviews
+    notification_emails: *slow_script_warning_shown_emails
+    expires: never
+    extra_keys:
+      end_reason:
+        description: >
+          Why the warning was hidden (user action, the process becoming responsive again, the browser quitting, etc.)
+        type: string
+      wait_count:
+        description: >
+          How many times the user elected to wait.
+        type: quantity
+      hang_duration:
+        description: >
+          How long we believe the hang continued (ms).
+        type: string
+      n_tab_deselect:
+        description: >
+          How many times the user switched away from a tab affected by this hang.
+        type: quantity
+      uri_type:
+        description: >
+          The kind of script URL that hung.
+        type: string
+      uptime:
+        description: >
+          How long the notification was up (ms).
+        type: string
+    telemetry_mirror: Slow_script_warning_Shown_Content
+    no_lint:
+      - COMMON_PREFIX
+
+  notify_delay:
+    type: timing_distribution
+    description: >
+      The difference between the js slow script timeout for content set in prefs
+      and the actual time we waited before displaying the notification (msec).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram SLOW_SCRIPT_NOTIFY_DELAY.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1271978
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1271978
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: SLOW_SCRIPT_NOTIFY_DELAY
+
+script.preloader:
+  mainthread_recompile:
+    type: counter
+    description: >
+      How many times we ended up recompiling a script from the script
+      preloader on the main thread.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar script.preloader.mainthread_recompile.
+    bugs:
+      - https://bugzil.la/1364235
+      - https://bugzil.la/1590385
+      - https://bugzil.la/1623098
+      - https://bugzil.la/1649954
+      - https://bugzil.la/1689257
+      - https://bugzil.la/1754639
+    data_reviews:
+      - https://bugzil.la/1364235
+      - https://bugzil.la/1590385
+      - https://bugzil.la/1623098
+      - https://bugzil.la/1649954
+      - https://bugzil.la/1689257
+      - https://bugzil.la/1754639
+    notification_emails:
+      - dothayer@mozilla.com
+      - plawless@mozilla.com
+    expires: never
+    telemetry_mirror: SCRIPT_PRELOADER_MAINTHREAD_RECOMPILE
+
+  requests:
+    type: labeled_counter
+    description: >
+      Record hits and misses to the script preloader, with categories.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram SCRIPT_PRELOADER_REQUESTS.
+    labels:
+      - Hit
+      - HitChild
+      - Miss
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1364235
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590385
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1623098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1649954
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1689257
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754639
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1364235
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590385
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1623098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1649954
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1689257
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754639
+    notification_emails:
+      - dothayer@mozilla.com
+      - plawless@mozilla.com
+    expires: never
+    telemetry_mirror: h#SCRIPT_PRELOADER_REQUESTS
+
+  wait_time:
+    type: timing_distribution
+    description: >
+      Time spent waiting for off-thread compiles in the script preloader.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram SCRIPT_PRELOADER_WAIT_TIME.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1364235
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590385
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1623098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1649954
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1689257
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754639
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1364235
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590385
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1623098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1649954
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1689257
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754639
+    notification_emails:
+      - dothayer@mozilla.com
+      - plawless@mozilla.com
+    expires: never
+    telemetry_mirror: SCRIPT_PRELOADER_WAIT_TIME

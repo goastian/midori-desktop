@@ -6,6 +6,7 @@ package mozilla.components.feature.search.internal
 
 import android.net.Uri
 import android.text.TextUtils
+import androidx.core.net.toUri
 import mozilla.components.browser.state.search.OS_SEARCH_ENGINE_TERMS_PARAM
 import mozilla.components.browser.state.search.SearchEngine
 import java.io.UnsupportedEncodingException
@@ -18,7 +19,7 @@ import java.util.Locale
 // constructing the strings manually.
 
 // Supported OpenSearch parameters
-// See http://opensearch.a9.com/spec/1.1/querysyntax/#core
+// See https://web.archive.org/web/20060203040832/http://opensearch.a9.com/spec/1.1/querysyntax/#core
 private const val OS_PARAM_USER_DEFINED = OS_SEARCH_ENGINE_TERMS_PARAM
 private const val OS_PARAM_INPUT_ENCODING = "{" + "inputEncoding" + "}"
 private const val OS_PARAM_LANGUAGE = "{" + "language" + "}"
@@ -37,6 +38,11 @@ internal class SearchUrlBuilder(
     fun buildSuggestionUrl(searchTerms: String): String? {
         val template = searchEngine.suggestUrl ?: return null
         return buildUrl(template, searchTerms)
+    }
+
+    fun buildTrendingUrl(): String? {
+        val template = searchEngine.trendingUrl ?: return null
+        return buildUrl(template, "")
     }
 
     private fun buildUrl(template: String, searchTerms: String): String {
@@ -73,11 +79,11 @@ private fun paramSubstitution(template: String, query: String, inputEncoding: St
 }
 
 private fun normalize(input: String): String {
-    val trimmedInput = input.trim { it <= ' ' }
-    var uri = Uri.parse(trimmedInput)
+    val trimmedInput = input.trim()
+    var uri = trimmedInput.toUri()
 
     if (TextUtils.isEmpty(uri.scheme)) {
-        uri = Uri.parse("http://$trimmedInput")
+        uri = "http://$trimmedInput".toUri()
     }
 
     return uri.toString()

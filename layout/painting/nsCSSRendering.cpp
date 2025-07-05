@@ -60,7 +60,6 @@
 #include "ImageContainer.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/StaticPrefs_layout.h"
-#include "mozilla/Telemetry.h"
 #include "gfxUtils.h"
 #include "gfxGradientCache.h"
 #include "nsInlineFrame.h"
@@ -716,8 +715,10 @@ ImgDrawResult nsCSSRendering::CreateWebRenderCommandsForBorderWithStyleBorder(
     return ImgDrawResult::NOT_SUPPORTED;
   }
 
-  if (aStyleBorder.mBorderImageRepeatH == StyleBorderImageRepeat::Space ||
-      aStyleBorder.mBorderImageRepeatV == StyleBorderImageRepeat::Space) {
+  if (aStyleBorder.mBorderImageRepeat._0 ==
+          StyleBorderImageRepeatKeyword::Space ||
+      aStyleBorder.mBorderImageRepeat._1 ==
+          StyleBorderImageRepeatKeyword::Space) {
     return ImgDrawResult::NOT_SUPPORTED;
   }
 
@@ -1151,9 +1152,10 @@ static nsIFrame* GetPageSequenceForCanvas(const nsIFrame* aCanvasFrame) {
   return ps;
 }
 
-auto nsCSSRendering::FindEffectiveBackgroundColor(
-    nsIFrame* aFrame, bool aStopAtThemed,
-    bool aPreferBodyToCanvas) -> EffectiveBackgroundColor {
+auto nsCSSRendering::FindEffectiveBackgroundColor(nsIFrame* aFrame,
+                                                  bool aStopAtThemed,
+                                                  bool aPreferBodyToCanvas)
+    -> EffectiveBackgroundColor {
   MOZ_ASSERT(aFrame);
   nsPresContext* pc = aFrame->PresContext();
   auto BgColorIfNotTransparent = [&](nsIFrame* aFrame) -> Maybe<nscolor> {
@@ -1517,7 +1519,9 @@ void nsCSSRendering::PaintBoxShadowOuter(nsPresContext* aPresContext,
           shadowRect, shadowSpread, blurRadius, oneDevPixel, &aRenderingContext,
           aDirtyRect, useSkipGfxRect ? &skipGfxRect : nullptr,
           nsContextBoxBlur::FORCE_MASK);
-      if (!shadowContext) continue;
+      if (!shadowContext) {
+        continue;
+      }
 
       MOZ_ASSERT(shadowContext == blurringArea.GetContext());
 
@@ -1961,7 +1965,9 @@ ImgDrawResult nsCSSRendering::BuildWebRenderDisplayItemsForStyleImageLayer(
 
 static bool IsOpaqueBorderEdge(const nsStyleBorder& aBorder,
                                mozilla::Side aSide) {
-  if (aBorder.GetComputedBorder().Side(aSide) == 0) return true;
+  if (aBorder.GetComputedBorder().Side(aSide) == 0) {
+    return true;
+  }
   switch (aBorder.GetBorderStyle(aSide)) {
     case StyleBorderStyle::Solid:
     case StyleBorderStyle::Groove:
@@ -3143,7 +3149,9 @@ nsBackgroundLayerState nsCSSRendering::PrepareImageLayer(
   nsSize imageSize = ComputeDrawnSizeForBackground(
       intrinsicSize, bgPositionSize, aLayer.mSize, repeatX, repeatY);
 
-  if (imageSize.width <= 0 || imageSize.height <= 0) return state;
+  if (imageSize.width <= 0 || imageSize.height <= 0) {
+    return state;
+  }
 
   state.mImageRenderer.SetPreferredSize(intrinsicSize, imageSize);
 
@@ -3283,7 +3291,7 @@ static void DrawDashedSegment(DrawTarget& aDrawTarget, nsRect aRect,
   dash[1] = dash[0];
 
   strokeOptions.mDashPattern = dash;
-  strokeOptions.mDashLength = MOZ_ARRAY_LENGTH(dash);
+  strokeOptions.mDashLength = std::size(dash);
 
   if (aHorizontal) {
     nsPoint left = (aRect.TopLeft() + aRect.BottomLeft()) / 2;
@@ -4087,21 +4095,16 @@ void nsCSSRendering::PaintDecorationLine(
       aFrame->StyleText()->mTextDecorationSkipInk;
   bool skipInkEnabled =
       skipInk != mozilla::StyleTextDecorationSkipInk::None &&
-      aParams.decoration != StyleTextDecorationLine::LINE_THROUGH;
+      aParams.decoration != StyleTextDecorationLine::LINE_THROUGH &&
+      aParams.allowInkSkipping && aFrame->IsTextFrame();
 
   if (!skipInkEnabled || aParams.glyphRange.Length() == 0) {
     PaintDecorationLineInternal(aFrame, aDrawTarget, aParams, rect);
     return;
   }
 
-  // check if the frame is a text frame or not
-  nsTextFrame* textFrame = nullptr;
-  if (aFrame->IsTextFrame()) {
-    textFrame = static_cast<nsTextFrame*>(aFrame);
-  } else {
-    PaintDecorationLineInternal(aFrame, aDrawTarget, aParams, rect);
-    return;
-  }
+  // Must be a text frame, otherwise skipInkEnabled (above) would be false.
+  nsTextFrame* textFrame = static_cast<nsTextFrame*>(aFrame);
 
   // get text run and current text offset (for line wrapping)
   gfxTextRun* textRun =
@@ -4249,7 +4252,7 @@ void nsCSSRendering::PaintDecorationLineInternal(
       dash[0] = dashWidth;
       dash[1] = dashWidth;
       strokeOptions.mDashPattern = dash;
-      strokeOptions.mDashLength = MOZ_ARRAY_LENGTH(dash);
+      strokeOptions.mDashLength = std::size(dash);
       strokeOptions.mLineCap = CapStyle::BUTT;
       aRect = ExpandPaintingRectForDecorationLine(
           aFrame, aParams.style, aRect, aParams.icoordInFrame, dashWidth * 2,
@@ -4270,7 +4273,7 @@ void nsCSSRendering::PaintDecorationLineInternal(
         dash[1] = dashWidth;
       }
       strokeOptions.mDashPattern = dash;
-      strokeOptions.mDashLength = MOZ_ARRAY_LENGTH(dash);
+      strokeOptions.mDashLength = std::size(dash);
       aRect = ExpandPaintingRectForDecorationLine(
           aFrame, aParams.style, aRect, aParams.icoordInFrame, dashWidth * 2,
           aParams.vertical);

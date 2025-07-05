@@ -31,7 +31,7 @@ random-if(cocoaWidget) == subpixel-1.html about:blank # see bug 1192616, re-enab
 == text-rtl-alignment-test.html text-rtl-alignment-ref.html
 
 fuzzy-if(winWidget,0-1,0-256) == text-horzline-with-bottom.html text-horzline.html
-fuzzy-if(winWidget,0-1,0-256) fails-if(cocoaWidget) == text-horzline-with-top.html text-horzline.html
+fuzzy-if(winWidget,0-1,0-256) == text-horzline-with-top.html text-horzline.html
 
 != text-big-stroke.html text-blank.html
 != text-big-stroke.html text-big-fill.html
@@ -53,7 +53,7 @@ fuzzy-if(winWidget,0-1,0-256) fails-if(cocoaWidget) == text-horzline-with-top.ht
 == text-measure.html text-measure-ref.html
 == text-small-caps-1.html text-small-caps-1-ref.html
 
-random-if(!winWidget) != text-subpixel-1.html text-subpixel-1-ref.html
+random != text-subpixel-1.html text-subpixel-1-ref.html
 
 == strokeText-path.html strokeText-path-ref.html
 
@@ -103,8 +103,8 @@ fuzzy(0-1,0-43) == 1201272-1.html 1201272-1-ref.html
 == 1238795-1.html 1238795-1-ref.html
 == 1303534-1.html 1303534-1-ref.html
 
-fuzzy-if(cocoaWidget,0-1,0-1410) == 1304353-text-global-alpha-1.html 1304353-text-global-alpha-1-ref.html
-fuzzy(0-1,0-1410) == 1304353-text-global-alpha-2.html 1304353-text-global-alpha-2-ref.html
+fuzzy-if(cocoaWidget,0-1,0-1420) fuzzy-if(winWidget,0-1,0-1420) == 1304353-text-global-alpha-1.html 1304353-text-global-alpha-1-ref.html
+fuzzy(0-1,0-1420) == 1304353-text-global-alpha-2.html 1304353-text-global-alpha-2-ref.html
 fuzzy-if(winWidget,0-94,0-1575) fuzzy-if(cocoaWidget,0-1,0-34) == 1304353-text-global-composite-op-1.html 1304353-text-global-composite-op-1-ref.html
 
 == text-indent-1a.html text-indent-1-ref.html
@@ -127,3 +127,6 @@ fuzzy-if(winWidget,0-94,0-1575) fuzzy-if(cocoaWidget,0-1,0-34) == 1304353-text-g
 != 1850727-1.html 1850727-1-ref.html
 
 == transformed-line-stroke.html transformed-line-stroke-ref.html
+
+== 1909718-1.html 1909718-1-ref.html
+== 1909718-2.html 1909718-2-ref.html

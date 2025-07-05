@@ -6,7 +6,7 @@ buildscript {
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -15,13 +15,13 @@ buildscript {
     }
 
     dependencies {
-        classpath "org.mozilla.telemetry:glean-gradle-plugin:${Versions.mozilla_glean}"
-        classpath  ComponentsDependencies.plugin_serialization
+        classpath libs.glean.gradle.plugin
+        classpath libs.plugin.serialization
     }
 }
 
 plugins {
-    id "com.jetbrains.python.envs" version "$python_envs_plugin"
+    alias(libs.plugins.python.envs.plugin)
 }
 
 apply plugin: 'com.android.library'
@@ -31,9 +31,9 @@ apply plugin: 'kotlinx-serialization'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -50,51 +50,55 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     buildFeatures {
-        viewBinding true
-        buildConfig true
+        viewBinding = true
+        buildConfig = true
     }
 
-    namespace 'mozilla.components.lib.crash'
+    namespace = 'mozilla.components.lib.crash'
 }
 
 dependencies {
-    implementation ComponentsDependencies.kotlin_coroutines
-    implementation ComponentsDependencies.kotlin_json
+    implementation libs.kotlin.coroutines
+    implementation libs.kotlin.json
 
-    implementation ComponentsDependencies.androidx_appcompat
-    implementation ComponentsDependencies.androidx_constraintlayout
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_recyclerview
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.recyclerview
 
     implementation project(':support-base')
     implementation project(':support-ktx')
     implementation project(':support-utils')
 
-    implementation ComponentsDependencies.androidx_room_runtime
-    ksp ComponentsDependencies.androidx_room_compiler
+    implementation libs.androidx.room.runtime
+    ksp libs.androidx.room.compiler
 
     // We only compile against GeckoView and Glean. It's up to the app to add those dependencies if it wants to
     // send crash reports to Socorro (GV).
-    compileOnly project(":service-glean")
-    testImplementation project(":service-glean")
-    testImplementation ComponentsDependencies.androidx_work_testing
+    compileOnly libs.mozilla.glean
+    testImplementation libs.mozilla.glean
+    testImplementation libs.androidx.work.testing
 
     testImplementation project(':support-test')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_mockwebserver
-    testImplementation ComponentsDependencies.mozilla_glean_forUnitTests
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.mockwebserver
+    testImplementation libs.mozilla.glean.forUnitTests
 }
 
+ext {
+    gleanNamespace = "mozilla.telemetry.glean"
+    gleanPythonEnvDir = gradle.mozconfig.substs.GRADLE_GLEAN_PARSER_VENV
+}
 apply plugin: "org.mozilla.telemetry.glean-gradle-plugin"
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

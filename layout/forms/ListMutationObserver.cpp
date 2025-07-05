@@ -15,10 +15,10 @@ ListMutationObserver::~ListMutationObserver() = default;
 
 void ListMutationObserver::Attach(bool aRepaint) {
   nsAutoString id;
-  if (InputElement().GetAttr(nsGkAtoms::list_, id)) {
+  if (InputElement().GetAttr(nsGkAtoms::list, id)) {
     Unlink();
     RefPtr<nsAtom> idAtom = NS_AtomizeMainThread(id);
-    ResetWithID(InputElement(), idAtom);
+    ResetToID(InputElement(), idAtom);
     AddObserverIfNeeded();
   }
   if (aRepaint) {
@@ -76,8 +76,8 @@ void ListMutationObserver::ContentInserted(nsIContent* aChild) {
   mOwningElementFrame->InvalidateFrame();
 }
 
-void ListMutationObserver::ContentRemoved(nsIContent* aChild,
-                                          nsIContent* aPreviousSibling) {
+void ListMutationObserver::ContentWillBeRemoved(nsIContent* aChild,
+                                                const BatchRemovalState*) {
   mOwningElementFrame->InvalidateFrame();
 }
 

@@ -55,7 +55,6 @@ import mozilla.components.support.base.Component.FEATURE_SITEPERMISSIONS
 import mozilla.components.support.base.facts.Action
 import mozilla.components.support.base.facts.processor.CollectionProcessor
 import mozilla.components.support.base.feature.OnNeedToRequestPermissions
-import mozilla.components.support.ktx.kotlin.stripDefaultPort
 import mozilla.components.support.test.any
 import mozilla.components.support.test.eq
 import mozilla.components.support.test.ext.joinBlocking
@@ -82,6 +81,7 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.spy
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
+import java.net.URL
 import java.security.InvalidParameterException
 import java.util.UUID
 import mozilla.components.ui.icons.R as iconsR
@@ -136,6 +136,29 @@ class SitePermissionsFeatureTest {
                 store = mockStore,
                 sessionId = SESSION_ID,
             ),
+        )
+    }
+
+    @Test
+    fun `GIVEN an url WHEN calling trimOriginHttpsSchemeAndPort THEN default https scheme and default port are trimmed`() {
+        assertEquals(
+            sitePermissionFeature.trimOriginHttpsSchemeAndPort("https://https-scheme-https-port.test:443"),
+            "https-scheme-https-port.test",
+        )
+
+        assertEquals(
+            sitePermissionFeature.trimOriginHttpsSchemeAndPort("https://https-scheme-random-port.test:8080"),
+            "https-scheme-random-port.test:8080",
+        )
+
+        assertEquals(
+            sitePermissionFeature.trimOriginHttpsSchemeAndPort("https://https-scheme-nonhttps-port.test:80"),
+            "https-scheme-nonhttps-port.test:80",
+        )
+
+        assertEquals(
+            sitePermissionFeature.trimOriginHttpsSchemeAndPort("http://http-scheme-http-port.test:80"),
+            "http://http-scheme-http-port.test",
         )
     }
 
@@ -1134,7 +1157,7 @@ class SitePermissionsFeatureTest {
     @Test
     fun `GIVEN a ContentStorageAccess request WHEN handlingSingleContentPermissions is called THEN create a specific prompt`() {
         // given
-        val host = "https://mozilla.org"
+        val origin = "https://mozilla.org"
         val permission = ContentCrossOriginStorageAccess(id = "permission")
         val permissionRequest: PermissionRequest = mock {
             whenever(permissions).thenReturn(listOf(permission))
@@ -1142,12 +1165,12 @@ class SitePermissionsFeatureTest {
         }
 
         // when
-        sitePermissionFeature.handlingSingleContentPermissions(permissionRequest, permission, host)
+        sitePermissionFeature.handlingSingleContentPermissions(permissionRequest, permission, origin)
 
         // then
         verify(sitePermissionFeature).createContentCrossOriginStorageAccessPermissionPrompt(
             context = testContext,
-            host,
+            origin,
             permissionRequest,
             false,
             true,
@@ -1157,7 +1180,8 @@ class SitePermissionsFeatureTest {
     @Test
     fun `GIVEN a ContentStorageAccess request WHEN createContentStorageAccessPermissionPrompt is called THEN create a specific SitePermissionsDialogFragment`() {
         // given
-        val host = "https://mozilla.org"
+        val origin = "https://mozilla.org:443"
+        val host = "mozilla.org"
         val permission = ContentCrossOriginStorageAccess(id = "permission")
         val permissionRequest: PermissionRequest = mock {
             whenever(permissions).thenReturn(listOf(permission))
@@ -1167,7 +1191,7 @@ class SitePermissionsFeatureTest {
         // when
         val dialog = sitePermissionFeature.createContentCrossOriginStorageAccessPermissionPrompt(
             testContext,
-            host,
+            origin,
             permissionRequest,
             false,
             true,
@@ -1178,8 +1202,8 @@ class SitePermissionsFeatureTest {
         assertEquals(
             testContext.getString(
                 R.string.mozac_feature_sitepermissions_storage_access_title,
-                host.stripDefaultPort(),
-                selectedTab.content.url.stripDefaultPort(),
+                host,
+                URL(selectedTab.content.url).host,
             ),
             dialog.title,
         )
@@ -1192,7 +1216,7 @@ class SitePermissionsFeatureTest {
         assertEquals(
             testContext.getString(
                 R.string.mozac_feature_sitepermissions_storage_access_message,
-                host.stripDefaultPort(),
+                host,
             ),
             dialog.message,
         )
@@ -1225,6 +1249,8 @@ class SitePermissionsFeatureTest {
             override fun containsVideoAndAudioSources() = true
 
             override fun reject() = Unit
+
+            override fun merge(permissionRequest: PermissionRequest) = Unit
         }
         val sitePermissionsDialogFragment = SitePermissionsDialogFragment()
         doReturn(sitePermissionsDialogFragment).`when`(sitePermissionFeature)
@@ -1290,6 +1316,8 @@ class SitePermissionsFeatureTest {
                 override fun containsVideoAndAudioSources() = true
 
                 override fun reject() = Unit
+
+                override fun merge(permissionRequest: PermissionRequest) = Unit
             }
             val sitePermissionsDialogFragment = SitePermissionsDialogFragment()
             doReturn(sitePermissionsDialogFragment).`when`(sitePermissionFeature)
@@ -1498,6 +1526,8 @@ class SitePermissionsFeatureTest {
                 }
 
                 override fun reject() = Unit
+
+                override fun merge(permissionRequest: PermissionRequest) = Unit
             }
 
             mockStorage = mock()

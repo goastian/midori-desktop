@@ -29,8 +29,9 @@ namespace mozilla {
 class ServoStyleSet;
 
 namespace dom {
+class Document;
 class Element;
-}
+}  // namespace dom
 
 /**
  * A stack class used to pass some common restyle state in a slightly more
@@ -197,6 +198,7 @@ class ServoRestyleState {
 enum class ServoPostTraversalFlags : uint32_t;
 
 class RestyleManager {
+  friend class dom::Document;
   friend class ServoStyleSet;
 
  public:
@@ -270,42 +272,43 @@ class RestyleManager {
     void Put(nsIContent* aContent, ComputedStyle* aComputedStyle) {
       MOZ_ASSERT(aContent);
       PseudoStyleType pseudoType = aComputedStyle->GetPseudoType();
-      if (pseudoType == PseudoStyleType::NotPseudo) {
-        mContents.AppendElement(aContent);
+      if (pseudoType == PseudoStyleType::NotPseudo ||
+          PseudoStyle::IsViewTransitionPseudoElement(pseudoType)) {
+        mContents.AppendElement(aContent->AsElement());
       } else if (pseudoType == PseudoStyleType::before) {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
                    nsGkAtoms::mozgeneratedcontentbefore);
-        mBeforeContents.AppendElement(aContent->GetParent());
+        mBeforeContents.AppendElement(aContent->GetParent()->AsElement());
       } else if (pseudoType == PseudoStyleType::after) {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
                    nsGkAtoms::mozgeneratedcontentafter);
-        mAfterContents.AppendElement(aContent->GetParent());
+        mAfterContents.AppendElement(aContent->GetParent()->AsElement());
       } else if (pseudoType == PseudoStyleType::marker) {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
                    nsGkAtoms::mozgeneratedcontentmarker);
-        mMarkerContents.AppendElement(aContent->GetParent());
+        mMarkerContents.AppendElement(aContent->GetParent()->AsElement());
       }
     }
 
     void StopAnimationsForElementsWithoutFrames();
 
    private:
-    void StopAnimationsWithoutFrame(nsTArray<RefPtr<nsIContent>>& aArray,
-                                    PseudoStyleType aPseudoType);
+    void StopAnimationsWithoutFrame(nsTArray<RefPtr<Element>>& aArray,
+                                    const PseudoStyleRequest& aPseudoRequest);
 
     RestyleManager* mRestyleManager;
     AutoRestore<AnimationsWithDestroyedFrame*> mRestorePointer;
 
-    // Below three arrays might include elements that have already had their
+    // Below four arrays might include elements that have already had their
     // animations or transitions stopped.
     //
     // mBeforeContents, mAfterContents and mMarkerContents hold the real element
     // rather than the content node for the generated content (which might
-    // change during a reframe)
-    nsTArray<RefPtr<nsIContent>> mContents;
-    nsTArray<RefPtr<nsIContent>> mBeforeContents;
-    nsTArray<RefPtr<nsIContent>> mAfterContents;
-    nsTArray<RefPtr<nsIContent>> mMarkerContents;
+    // change during a reframe).
+    nsTArray<RefPtr<Element>> mContents;
+    nsTArray<RefPtr<Element>> mBeforeContents;
+    nsTArray<RefPtr<Element>> mAfterContents;
+    nsTArray<RefPtr<Element>> mMarkerContents;
   };
 
   /**
@@ -319,13 +322,8 @@ class RestyleManager {
   void ContentInserted(nsIContent* aChild);
   void ContentAppended(nsIContent* aFirstNewContent);
 
-  // This would be have the same logic as RestyleForInsertOrChange if we got the
-  // notification before the removal.  However, we get it after, so we need the
-  // following sibling in addition to the old child.
-  //
-  // aFollowingSibling is the sibling that used to come after aOldChild before
-  // the removal.
-  void ContentRemoved(nsIContent* aOldChild, nsIContent* aFollowingSibling);
+  // Restyling for a content removal that is about to happen.
+  void ContentWillBeRemoved(nsIContent* aOldChild);
 
   // Restyling for a ContentInserted (notification after insertion) or
   // for some CharacterDataChanged.
@@ -347,7 +345,7 @@ class RestyleManager {
    * restyling process and this restyle event will be processed in the second
    * traversal of the same restyling process.
    */
-  void PostRestyleEventForAnimations(dom::Element*, PseudoStyleType,
+  void PostRestyleEventForAnimations(dom::Element*, const PseudoStyleRequest&,
                                      RestyleHint);
 
   void NextRestyleIsForCSSRuleChanges() { mRestyleForCSSRuleChanges = true; }
@@ -390,10 +388,12 @@ class RestyleManager {
    * element's parent has NODE_HAS_SLOW_SELECTOR_NTH_OF and the element has a
    * relevant attribute dependency.
    */
-  void MaybeRestyleForNthOfAttribute(dom::Element* aChild, nsAtom* aAttribute,
+  void MaybeRestyleForNthOfAttribute(dom::Element* aChild, int32_t aNameSpaceID,
+                                     nsAtom* aAttribute,
                                      const nsAttrValue* aOldValue);
 
   void MaybeRestyleForRelativeSelectorAttribute(dom::Element* aElement,
+                                                int32_t aNameSpaceID,
                                                 nsAtom* aAttribute,
                                                 const nsAttrValue* aOldValue);
   void MaybeRestyleForRelativeSelectorState(ServoStyleSet& aStyleSet,
@@ -432,8 +432,9 @@ class RestyleManager {
   //
   // This is normally performed automatically by ProcessPendingRestyles
   // but it is also called when we have out-of-band changes to animations
-  // such as changes made through the Web Animations API.
-  void IncrementAnimationGeneration();
+  // such as changes made through the Web Animations API or cascading result
+  // changes by modifying classes, etc.
+  void IncrementAnimationGeneration() { ++mAnimationGeneration; }
 
   // Apply change hints for animations on the compositor.
   //
@@ -504,6 +505,7 @@ class RestyleManager {
 
   ServoStyleSet* StyleSet() const { return PresContext()->StyleSet(); }
 
+  void RestyleWholeContainer(nsINode* aContainer, NodeSelectorFlags);
   void RestylePreviousSiblings(nsIContent* aStartingSibling);
   void RestyleSiblingsStartingWith(nsIContent* aStartingSibling);
 
@@ -545,6 +547,9 @@ class RestyleManager {
   // ProcessRestyledFrames, so we don't try to touch them again even if
   // they're referenced again later in the changelist.
   mozilla::UniquePtr<nsTHashSet<const nsIFrame*>> mDestroyedFrames;
+
+  // Containers we've already fully restyled / invalidated.
+  nsTHashSet<RefPtr<nsINode>> mRestyledAsWholeContainer;
 
  protected:
   // True if we're in the middle of a nsRefreshDriver refresh

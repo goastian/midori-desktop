@@ -6,7 +6,6 @@ package mozilla.components.browser.icons.generator
 
 import android.content.Context
 import android.content.res.Resources
-import android.graphics.Bitmap
 import android.graphics.Bitmap.Config.ARGB_8888
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -17,6 +16,7 @@ import androidx.annotation.ColorInt
 import androidx.annotation.ColorRes
 import androidx.annotation.DimenRes
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 import mozilla.components.browser.icons.Icon
 import mozilla.components.browser.icons.IconRequest
 import mozilla.components.browser.icons.R
@@ -38,7 +38,7 @@ class DefaultIconGenerator(
         val size = context.resources.getDimension(request.size.dimen)
         val sizePx = size.toInt()
 
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, ARGB_8888)
+        val bitmap = createBitmap(sizePx, sizePx, ARGB_8888)
         val canvas = Canvas(bitmap)
 
         val backgroundColor = request.color ?: pickColor(context.resources, request.url)
@@ -52,8 +52,8 @@ class DefaultIconGenerator(
 
         val character = request.url.getRepresentativeCharacter()
 
-        // The text size is calculated dynamically based on the target icon size (1/8th). For an icon
-        // size of 112dp we'd use a text size of 14dp (112 / 8).
+        // The text size is calculated dynamically based on the target icon size (1/5th). For an icon
+        // size of 100dp we'd use a text size of 20dp (100 / 5).
         val textSize = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
             size * TARGET_ICON_RATIO,
@@ -101,6 +101,6 @@ class DefaultIconGenerator(
     }
 
     companion object {
-        private const val TARGET_ICON_RATIO = 1 / 8f
+        private const val TARGET_ICON_RATIO = 1 / 5f
     }
 }

@@ -2,27 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+plugins {
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
-
-    packagingOptions {
-        resources {
-            excludes += ['META-INF/proguard/androidx-annotations.pro']
         }
     }
 
@@ -34,14 +32,10 @@ android {
     }
 
     buildFeatures {
-        compose true
+        compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = Versions.compose_compiler
-    }
-
-    namespace 'mozilla.components.browser.icons'
+    namespace = 'mozilla.components.browser.icons'
 }
 
 tasks.register("updateBuiltInExtensionVersion", Copy) { task ->
@@ -49,44 +43,45 @@ tasks.register("updateBuiltInExtensionVersion", Copy) { task ->
 }
 
 dependencies {
+    api project(':support-images')
+
+    implementation project(':browser-state')
     implementation project(':concept-base')
     implementation project(':concept-engine')
     implementation project(':concept-fetch')
-    implementation project(':browser-state')
-    implementation project(':support-images')
     implementation project(':support-ktx')
 
-    implementation ComponentsDependencies.androidx_annotation
-    implementation ComponentsDependencies.androidx_compose_material
-    implementation ComponentsDependencies.androidx_compose_ui
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_palette
+    implementation libs.androidx.annotation
+    implementation libs.androidx.compose.material
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.palette
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.thirdparty_disklrucache
+    implementation libs.thirdparty.disklrucache
 
-    implementation ComponentsDependencies.thirdparty_androidsvg
+    implementation libs.thirdparty.androidsvg
 
     testImplementation project(':support-test')
     testImplementation project(':lib-fetch-httpurlconnection')
     testImplementation project(':lib-fetch-okhttp')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.kotlin_reflect
-    testImplementation ComponentsDependencies.testing_mockwebserver
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.kotlin.reflect
+    testImplementation libs.testing.mockwebserver
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
 
-    androidTestImplementation ComponentsDependencies.androidx_test_core
-    androidTestImplementation ComponentsDependencies.androidx_test_runner
-    androidTestImplementation ComponentsDependencies.androidx_test_rules
-    androidTestImplementation ComponentsDependencies.testing_coroutines
+    androidTestImplementation libs.androidx.test.core
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.androidx.test.rules
+    androidTestImplementation libs.testing.coroutines
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)
 
 preBuild.dependsOn updateBuiltInExtensionVersion

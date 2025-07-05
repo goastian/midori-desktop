@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -10,9 +10,7 @@ features: [Temporal]
 
 const zdt = Temporal.Now.zonedDateTimeISO("America/Los_Angeles");
 assert(zdt instanceof Temporal.ZonedDateTime);
-assert.sameValue(typeof zdt.getISOFields().calendar, "string", "calendar slot should store a string");
 assert.sameValue(zdt.calendarId, "iso8601");
-assert.sameValue(typeof zdt.getISOFields().timeZone, "string", "time zone slot should store a string");
 assert.sameValue(zdt.timeZoneId, "America/Los_Angeles");
 
 reportCompare(0, 0);

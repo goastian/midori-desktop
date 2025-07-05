@@ -9,30 +9,20 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    packagingOptions {
-        resources {
-            excludes += ['META-INF/proguard/androidx-annotations.pro']
-        }
-    }
-
-    namespace 'mozilla.components.browser.thumbnails'
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+    namespace = 'mozilla.components.browser.thumbnails'
 }
 
 dependencies {
@@ -42,22 +32,22 @@ dependencies {
     implementation project(':support-ktx')
     implementation project(':support-images')
 
-    implementation ComponentsDependencies.androidx_annotation
-    implementation ComponentsDependencies.androidx_core_ktx
+    implementation libs.androidx.annotation
+    implementation libs.androidx.core.ktx
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.thirdparty_disklrucache
+    implementation libs.thirdparty.disklrucache
 
     testImplementation project(':support-test')
     testImplementation project(':support-test-libstate')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

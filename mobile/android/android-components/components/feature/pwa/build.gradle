@@ -10,9 +10,9 @@ apply plugin: 'com.google.devtools.ksp'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ksp {
@@ -29,7 +29,7 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
@@ -38,11 +38,7 @@ android {
         androidTest.assets.srcDirs += files("$projectDir/schemas".toString())
     }
 
-    namespace 'mozilla.components.feature.pwa'
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+    namespace = 'mozilla.components.feature.pwa'
 }
 
 dependencies {
@@ -60,30 +56,30 @@ dependencies {
     implementation project(':support-ktx')
     implementation project(':support-utils')
 
-    implementation ComponentsDependencies.androidx_browser
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_lifecycle_runtime
+    implementation libs.androidx.browser
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.lifecycle.runtime
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_room_runtime
-    ksp ComponentsDependencies.androidx_room_compiler
+    implementation libs.androidx.room.runtime
+    ksp libs.androidx.room.compiler
 
     testImplementation project(':support-test')
     testImplementation project(':support-test-libstate')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.kotlin_reflect
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.kotlin.reflect
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.robolectric
 
-    androidTestImplementation ComponentsDependencies.androidx_test_core
-    androidTestImplementation ComponentsDependencies.androidx_test_runner
-    androidTestImplementation ComponentsDependencies.androidx_test_rules
-    androidTestImplementation ComponentsDependencies.androidx_room_testing
+    androidTestImplementation libs.androidx.test.core
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.androidx.test.rules
+    androidTestImplementation libs.androidx.room.testing
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

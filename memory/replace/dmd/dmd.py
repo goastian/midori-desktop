@@ -58,7 +58,7 @@ def cmp(a, b):
     return (a > b) - (a < b)
 
 
-class Record(object):
+class Record:
     """A record is an aggregation of heap blocks that have identical stack
     traces. It can also be used to represent the difference between two
     records."""
@@ -71,6 +71,7 @@ class Record(object):
         self.allocatedAtDesc = None
         self.reportedAtDescs = []
         self.usableSizes = collections.defaultdict(int)
+        self.addrs = []
 
     def isZero(self, args):
         return (
@@ -163,7 +164,7 @@ def parseCommandLine():
     def range_1_24(string):
         value = int(string)
         if value < 1 or value > 24:
-            msg = "{:s} is not in the range 1..24".format(string)
+            msg = f"{string:s} is not in the range 1..24"
             raise argparse.ArgumentTypeError(msg)
         return value
 
@@ -319,7 +320,7 @@ def getDigestFromFile(args, inputFile):
         j = json.load(f)
 
     if j["version"] != outputVersion:
-        raise Exception("'version' property isn't '{:d}'".format(outputVersion))
+        raise Exception(f"'version' property isn't '{outputVersion:d}'")
 
     # Extract the main parts of the JSON object.
     invocation = j["invocation"]
@@ -335,16 +336,16 @@ def getDigestFromFile(args, inputFile):
     unrecordedTraceID = "ut"
     unrecordedFrameID = "uf"
     traceTable[unrecordedTraceID] = [unrecordedFrameID]
-    frameTable[
-        unrecordedFrameID
-    ] = "#00: (no stack trace recorded due to --stacks=partial)"
+    frameTable[unrecordedFrameID] = (
+        "#00: (no stack trace recorded due to --stacks=partial)"
+    )
 
     # For the purposes of this script, 'scan' behaves like 'live'.
     if mode == "scan":
         mode = "live"
 
     if mode not in ["live", "dark-matter", "cumulative"]:
-        raise Exception("bad 'mode' property: '{:s}'".format(mode))
+        raise Exception(f"bad 'mode' property: '{mode:s}'")
 
     # Remove allocation functions at the start of traces.
     if args.ignore_alloc_fns:
@@ -504,6 +505,10 @@ def getDigestFromFile(args, inputFile):
                 traceTable, frameTable, allocatedAtTraceKey
             )
 
+        # In heap scan mode, we record the address of every block.
+        if "addr" in block:
+            record.addrs.append(block["addr"])
+
         if mode in ["live", "cumulative"]:
             pass
         elif mode == "dark-matter":
@@ -597,7 +602,7 @@ def printDigest(args, digest):
 
     def number(n):
         """Format a number with comma as a separator."""
-        return "{:,d}".format(n)
+        return f"{n:,d}"
 
     def perc(m, n):
         return 0 if n == 0 else (100 * m / n)
@@ -653,33 +658,31 @@ def printDigest(args, digest):
 
         # Second iteration: print.
         if numRecords == 0:
-            out("# no {:} heap blocks\n".format(recordKind))
+            out(f"# no {recordKind} heap blocks\n")
 
         kindCumulativeUsableSize = 0
         for i, record in enumerate(sortedRecords, start=1):
             # Stop printing at the |maxRecord|th record.
             if i == maxRecord:
-                out(
-                    "# {:}: stopping after {:,d} heap block records\n".format(
-                        RecordKind, i
-                    )
-                )
+                out(f"# {RecordKind}: stopping after {i:,d} heap block records\n")
                 break
 
             kindCumulativeUsableSize += record.usableSize
 
             out(RecordKind + " {")
             out(
-                "  {:} block{:} in heap block record {:,d} of {:,d}".format(
-                    number(record.numBlocks), plural(record.numBlocks), i, numRecords
-                )
+                f"  {number(record.numBlocks)} block{plural(record.numBlocks)} in heap block record {i:,d} of {numRecords:,d}"
             )
+            if record.addrs:
+                if args.filter_stacks_for_testing:
+                    # These addresses will vary, so for testing replace them with a fixed value.
+                    baseAddrs = ["dadadada" for a in record.addrs]
+                else:
+                    baseAddrs = sorted(record.addrs)
+                addrsString = ", ".join([f"0x{a}" for a in baseAddrs])
+                out("  block addresses: " + addrsString)
             out(
-                "  {:} bytes ({:} requested / {:} slop)".format(
-                    number(record.usableSize),
-                    number(record.reqSize),
-                    number(record.slopSize),
-                )
+                f"  {number(record.usableSize)} bytes ({number(record.reqSize)} requested / {number(record.slopSize)} slop)"
             )
 
             usableSizes = sorted(
@@ -696,27 +699,20 @@ def printDigest(args, digest):
                     for usableSize, count in usableSizes:
                         if not isFirst:
                             out("; ", end="")
-                        out("{:}".format(number(usableSize)), end="")
+                        out(f"{number(usableSize)}", end="")
                         if count > 1:
-                            out(" x {:,d}".format(count), end="")
+                            out(f" x {count:,d}", end="")
                         isFirst = False
                 out()
 
             out(
-                "  {:4.2f}% of the heap ({:4.2f}% cumulative)".format(
-                    perc(record.usableSize, heapUsableSize),
-                    perc(kindCumulativeUsableSize, heapUsableSize),
-                )
+                f"  {perc(record.usableSize, heapUsableSize):4.2f}% of the heap ({perc(kindCumulativeUsableSize, heapUsableSize):4.2f}% cumulative)"
             )
             if mode in ["live", "cumulative"]:
                 pass
             elif mode == "dark-matter":
                 out(
-                    "  {:4.2f}% of {:} ({:4.2f}% cumulative)".format(
-                        perc(record.usableSize, kindUsableSize),
-                        recordKind,
-                        perc(kindCumulativeUsableSize, kindUsableSize),
-                    )
+                    f"  {perc(record.usableSize, kindUsableSize):4.2f}% of {recordKind} ({perc(kindCumulativeUsableSize, kindUsableSize):4.2f}% cumulative)"
                 )
             out("  Allocated at {")
             printStack(record.allocatedAtDesc)
@@ -726,7 +722,7 @@ def printDigest(args, digest):
             elif mode == "dark-matter":
                 for n, reportedAtDesc in enumerate(record.reportedAtDescs):
                     again = "again " if n > 0 else ""
-                    out("  Reported {:}at {{".format(again))
+                    out(f"  Reported {again}at {{")
                     printStack(reportedAtDesc)
                     out("  }")
             out("}\n")
@@ -734,7 +730,7 @@ def printDigest(args, digest):
         return (kindUsableSize, kindBlocks)
 
     def printInvocation(n, dmdEnvVar, mode):
-        out("Invocation{:} {{".format(n))
+        out(f"Invocation{n} {{")
         if dmdEnvVar is None:
             out("  $DMD is undefined")
         else:
@@ -777,9 +773,7 @@ def printDigest(args, digest):
     out("Summary {")
     if mode in ["live", "cumulative"]:
         out(
-            "  Total: {:} bytes in {:} blocks".format(
-                number(liveOrCumulativeUsableSize), number(liveOrCumulativeBlocks)
-            )
+            f"  Total: {number(liveOrCumulativeUsableSize)} bytes in {number(liveOrCumulativeBlocks)} blocks"
         )
     elif mode == "dark-matter":
         fmt = "  {:15} {:>12} bytes ({:6.2f}%) in {:>7} blocks ({:6.2f}%)"
@@ -840,7 +834,7 @@ def prettyPrintDmdJson(out, j):
     first = True
     for k, l in j["traceTable"].items():
         out.write("" if first else ",")
-        out.write('\n  "{0}": {1}'.format(k, json.dumps(l)))
+        out.write(f'\n  "{k}": {json.dumps(l)}')
         first = False
     out.write("\n },\n")
 
@@ -848,7 +842,7 @@ def prettyPrintDmdJson(out, j):
     first = True
     for k, v in j["frameTable"].items():
         out.write("" if first else ",")
-        out.write('\n  "{0}": {1}'.format(k, json.dumps(v)))
+        out.write(f'\n  "{k}": {json.dumps(v)}')
         first = False
     out.write("\n }\n")
 
@@ -947,7 +941,7 @@ def clampBlockList(args, inputFileName, isZipped, opener):
         j = json.load(f)
 
     if j["version"] != outputVersion:
-        raise Exception("'version' property isn't '{:d}'".format(outputVersion))
+        raise Exception(f"'version' property isn't '{outputVersion:d}'")
 
     # Check that the invocation is reasonable for contents clamping.
     invocation = j["invocation"]

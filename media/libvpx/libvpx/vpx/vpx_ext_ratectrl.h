@@ -8,6 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+/*!\file
+ * \brief Defines structs and callbacks needed for external rate control.
+ *
+ */
 #ifndef VPX_VPX_VPX_EXT_RATECTRL_H_
 #define VPX_VPX_VPX_EXT_RATECTRL_H_
 
@@ -26,34 +30,51 @@ extern "C" {
  * types, removing or reassigning enums, adding/removing/rearranging
  * fields to structures.
  */
-#define VPX_EXT_RATECTRL_ABI_VERSION (5 + VPX_TPL_ABI_VERSION)
+#define VPX_EXT_RATECTRL_ABI_VERSION (6 + VPX_TPL_ABI_VERSION)
 
-/*!\brief This is correspondent to MAX_STATIC_GF_GROUP_LENGTH defined in
- * vp9_ratectrl.h
+/*!\brief Corresponds to MAX_STATIC_GF_GROUP_LENGTH defined in vp9_ratectrl.h
  */
 #define VPX_RC_MAX_STATIC_GF_GROUP_LENGTH 250
 
-/*!\brief Max number of ref frames returned by the external RC. Correspondent to
- * MAX_REF_FRAMES defined in vp9_blockd.h. */
+/*!\brief Max number of ref frames returned by the external RC.
+ *
+ * Corresponds to MAX_REF_FRAMES defined in vp9_blockd.h.
+ */
 #define VPX_RC_MAX_REF_FRAMES 4
 
-/*!\brief The control type of the inference API.
- * In VPX_RC_QP mode, the external rate control model determines the
- * quantization parameter (QP) for each frame.
- * In VPX_RC_GOP mode, the external rate control model determines the
- * group of picture (GOP) of the video sequence.
- * In VPX_RC_RDMULT mode, the external rate control model determines the
- * rate-distortion multiplier (rdmult) for the current frame.
- * In VPX_RC_GOP_QP mode, the external rate control model determines
- * both the QP and the GOP.
- * In VPX_RC_GOP_QP_RDMULT mode, the external rate control model determines
- * the QP, GOP and the rdmult.
+/*!\brief The type of the external rate control.
+ *
+ * This controls what encoder parameters are determined by the external rate
+ * control.
  */
 typedef enum vpx_rc_type {
+  /*!
+   * The external rate control doesn't determine anything.
+   * This mode is used as baseline.
+   */
+  VPX_RC_NONE = 0,
+  /*!
+   * The external rate control model determines the quantization parameter (QP)
+   * for each frame.
+   */
   VPX_RC_QP = 1 << 0,
+  /*!
+   * The external rate control model determines the group of picture (GOP) of
+   * the video sequence.
+   */
   VPX_RC_GOP = 1 << 1,
+  /*!
+   * The external rate control model determines the rate-distortion multiplier
+   * (rdmult) for the current frame.
+   */
   VPX_RC_RDMULT = 1 << 2,
+  /*!
+   * The external rate control model determines both QP and GOP.
+   */
   VPX_RC_GOP_QP = VPX_RC_QP | VPX_RC_GOP,
+  /*!
+   * The external rate control model determines the QP, GOP and the rdmult.
+   */
   VPX_RC_GOP_QP_RDMULT = VPX_RC_QP | VPX_RC_GOP | VPX_RC_RDMULT
 } vpx_rc_type_t;
 
@@ -65,7 +86,7 @@ typedef enum vpx_ext_rc_mode {
   VPX_RC_CQ = 2,
 } vpx_ext_rc_mode_t;
 
-/*!\brief This is correspondent to FRAME_UPDATE_TYPE defined in vp9_firstpass.h.
+/*!\brief Corresponds to FRAME_UPDATE_TYPE defined in vp9_firstpass.h.
  */
 typedef enum vpx_rc_frame_update_type {
   VPX_RC_INVALID_UPDATE_TYPE = -1,
@@ -78,8 +99,10 @@ typedef enum vpx_rc_frame_update_type {
   VPX_RC_USE_BUF_FRAME = 6,
 } vpx_rc_frame_update_type_t;
 
-/*!\brief Name for the ref frames returned by the external RC. Correspondent to
- * the ref frames defined in vp9_blockd.h. */
+/*!\brief Name for the ref frames returned by the external RC.
+ *
+ * Corresponds to the ref frames defined in vp9_blockd.h.
+ */
 typedef enum vpx_rc_ref_name {
   VPX_RC_INVALID_REF_FRAME = -1,
   VPX_RC_INTRA_FRAME = 0,
@@ -90,8 +113,8 @@ typedef enum vpx_rc_ref_name {
 
 /*!\brief Abstract rate control model handler
  *
- * The encoder will receive the model handler from create_model() defined in
- * vpx_rc_funcs_t.
+ * The encoder will receive the model handler from
+ * vpx_rc_funcs_t::create_model().
  */
 typedef void *vpx_rc_model_t;
 
@@ -109,20 +132,35 @@ typedef void *vpx_rc_model_t;
  */
 #define VPX_DEFAULT_RDMULT -1
 
+/*!\brief Superblock quantization parameters
+ * Store the superblock quantiztaion parameters
+ */
+typedef struct sb_parameters {
+  int q_index; /**< Quantizer step index [0..255]*/
+  int rdmult;  /**< Superblock level Lagrangian multiplier*/
+} sb_params;
+
 /*!\brief Encode frame decision made by the external rate control model
  *
  * The encoder will receive the decision from the external rate control model
- * through get_encodeframe_decision() defined in vpx_rc_funcs_t.
+ * through vpx_rc_funcs_t::get_encodeframe_decision().
  */
 typedef struct vpx_rc_encodeframe_decision {
-  int q_index; /**< Quantizer step index [0..255]*/
-  int rdmult;  /**< Frame level Lagrangian multiplier*/
+  int q_index;    /**< Required: Quantizer step index [0..255]*/
+  int rdmult;     /**< Required: Frame level Lagrangian multiplier*/
+  int delta_q_uv; /**< Required: Delta QP for UV */
+  /*!
+   * Optional: Superblock quantization parameters
+   * It is zero initialized by default. It will be set for key and ARF frames
+   * but not leaf frames.
+   */
+  sb_params *sb_params_list;
 } vpx_rc_encodeframe_decision_t;
 
 /*!\brief Information for the frame to be encoded.
  *
  * The encoder will send the information to external rate control model through
- * get_encodeframe_decision() defined in vpx_rc_funcs_t.
+ * vpx_rc_funcs_t::get_encodeframe_decision().
  *
  */
 typedef struct vpx_rc_encodeframe_info {
@@ -160,12 +198,10 @@ typedef struct vpx_rc_encodeframe_info {
 /*!\brief Frame coding result
  *
  * The encoder will send the result to the external rate control model through
- * update_encodeframe_result() defined in vpx_rc_funcs_t.
+ * vpx_rc_funcs_t::update_encodeframe_result().
  */
 typedef struct vpx_rc_encodeframe_result {
-  int64_t sse;         /**< sum of squared error of the reconstructed frame */
-  int64_t bit_count;   /**< number of bits spent on coding the frame*/
-  int64_t pixel_count; /**< number of pixels in YUV planes of the frame*/
+  int64_t bit_count;          /**< number of bits spent on coding the frame*/
   int actual_encoding_qindex; /**< the actual qindex used to encode the frame*/
 } vpx_rc_encodeframe_result_t;
 
@@ -347,13 +383,24 @@ typedef struct vpx_rc_config {
   vpx_ext_rc_mode_t rc_mode; /**< Q mode or VBR mode */
   int overshoot_percent;     /**< for VBR mode only */
   int undershoot_percent;    /**< for VBR mode only */
+  int min_base_q_index;      /**< for VBR mode only */
+  int max_base_q_index;      /**< for VBR mode only */
   int base_qp;               /**< base QP for leaf frames, 0-255 */
 } vpx_rc_config_t;
 
 /*!\brief Control what ref frame to use and its index.
  */
 typedef struct vpx_rc_ref_frame {
+  /*!
+   * Ref frame index. Corresponding to |lst_fb_idx|, |gld_fb_idx| or
+   * |alt_fb_idx| in VP9_COMP depending on the ref frame #name.
+   */
   int index[VPX_RC_MAX_REF_FRAMES];
+  /*!
+   * Ref frame name. This decides whether the #index is used as
+   * |lst_fb_idx|, |gld_fb_idx| or |alt_fb_idx| in VP9_COMP.
+   *
+   */
   vpx_rc_ref_name_t name[VPX_RC_MAX_REF_FRAMES];
 } vpx_rc_ref_frame_t;
 
@@ -364,15 +411,25 @@ typedef struct vpx_rc_gop_decision {
   int gop_coding_frames; /**< The number of frames of this GOP */
   int use_alt_ref;       /**< Whether to use alt ref for this GOP */
   int use_key_frame;     /**< Whether to set key frame for this GOP */
-  // Frame type for each frame in this GOP.
-  // This will be populated to |update_type| in GF_GROUP defined in
-  // vp9_firstpass.h
+  /*!
+   * Frame type for each frame in this GOP.
+   * This will be populated to |update_type| in GF_GROUP defined in
+   * vp9_firstpass.h
+   */
   vpx_rc_frame_update_type_t update_type[VPX_RC_MAX_STATIC_GF_GROUP_LENGTH + 2];
-  // Ref frame buffer index to be updated for each frame in this GOP.
+  /*! Ref frame buffer index to be updated for each frame in this GOP. */
   int update_ref_index[VPX_RC_MAX_STATIC_GF_GROUP_LENGTH + 2];
-  // Ref frame list to be used for each frame in this GOP.
+  /*! Ref frame list to be used for each frame in this GOP. */
   vpx_rc_ref_frame_t ref_frame_list[VPX_RC_MAX_STATIC_GF_GROUP_LENGTH + 2];
 } vpx_rc_gop_decision_t;
+
+/*!\brief The decision made by the external rate control model to set the
+ * key frame location and the show frame count in the key frame group
+ */
+typedef struct vpx_rc_key_frame_decision {
+  int key_frame_show_index; /**< This key frame's show index in the video */
+  int key_frame_group_size; /**< Show frame count of this key frame group */
+} vpx_rc_key_frame_decision_t;
 
 /*!\brief Create an external rate control model callback prototype
  *
@@ -437,6 +494,18 @@ typedef vpx_rc_status_t (*vpx_rc_update_encodeframe_result_cb_fn_t)(
     vpx_rc_model_t rate_ctrl_model,
     const vpx_rc_encodeframe_result_t *encode_frame_result);
 
+/*!\brief Get the key frame decision from the external rate control model.
+ *
+ * This callback is invoked by the encoder to get key frame decision from
+ * the external rate control model.
+ *
+ * \param[in]  rate_ctrl_model    rate control model
+ * \param[out] key_frame_decision key frame decision from the model
+ */
+typedef vpx_rc_status_t (*vpx_rc_get_key_frame_decision_cb_fn_t)(
+    vpx_rc_model_t rate_ctrl_model,
+    vpx_rc_key_frame_decision_t *key_frame_decision);
+
 /*!\brief Get the GOP structure from the external rate control model.
  *
  * This callback is invoked by the encoder to get GOP decisions from
@@ -475,7 +544,7 @@ typedef vpx_rc_status_t (*vpx_rc_delete_model_cb_fn_t)(
  *
  * The user can enable external rate control by registering
  * a set of callback functions with the codec control flag
- * VP9E_SET_EXTERNAL_RATE_CONTROL.
+ * #VP9E_SET_EXTERNAL_RATE_CONTROL.
  */
 typedef struct vpx_rc_funcs {
   /*!
@@ -503,6 +572,10 @@ typedef struct vpx_rc_funcs {
    */
   vpx_rc_update_encodeframe_result_cb_fn_t update_encodeframe_result;
   /*!
+   * Get key frame decision from the external rate control model.
+   */
+  vpx_rc_get_key_frame_decision_cb_fn_t get_key_frame_decision;
+  /*!
    * Get GOP decisions from the external rate control model.
    */
   vpx_rc_get_gop_decision_cb_fn_t get_gop_decision;
@@ -514,6 +587,11 @@ typedef struct vpx_rc_funcs {
    * Delete the external rate control model.
    */
   vpx_rc_delete_model_cb_fn_t delete_model;
+
+  /*!
+   * Rate control log path.
+   */
+  const char *rate_ctrl_log_path;
   /*!
    * Private data for the external rate control model.
    */

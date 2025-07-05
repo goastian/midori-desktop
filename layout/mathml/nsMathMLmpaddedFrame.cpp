@@ -19,18 +19,6 @@ using namespace mozilla;
 // <mpadded> -- adjust space around content - implementation
 //
 
-#define NS_MATHML_SIGN_INVALID -1  // if the attribute is not there
-#define NS_MATHML_SIGN_UNSPECIFIED 0
-#define NS_MATHML_SIGN_MINUS 1
-#define NS_MATHML_SIGN_PLUS 2
-
-#define NS_MATHML_PSEUDO_UNIT_UNSPECIFIED 0
-#define NS_MATHML_PSEUDO_UNIT_ITSELF 1  // special
-#define NS_MATHML_PSEUDO_UNIT_WIDTH 2
-#define NS_MATHML_PSEUDO_UNIT_HEIGHT 3
-#define NS_MATHML_PSEUDO_UNIT_DEPTH 4
-#define NS_MATHML_PSEUDO_UNIT_NAMEDSPACE 5
-
 nsIFrame* NS_NewMathMLmpaddedFrame(PresShell* aPresShell,
                                    ComputedStyle* aStyle) {
   return new (aPresShell)
@@ -51,81 +39,66 @@ nsMathMLmpaddedFrame::InheritAutomaticData(nsIFrame* aParent) {
   return NS_OK;
 }
 
-void nsMathMLmpaddedFrame::ProcessAttributes() {
-  // clang-format off
-  /*
-  parse the attributes
+nsresult nsMathMLmpaddedFrame::AttributeChanged(int32_t aNameSpaceID,
+                                                nsAtom* aAttribute,
+                                                int32_t aModType) {
+  if (aNameSpaceID == kNameSpaceID_None) {
+    bool hasDirtyAttributes = false;
+    IntrinsicDirty intrinsicDirty = IntrinsicDirty::None;
+    if (aAttribute == nsGkAtoms::width) {
+      mWidth.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+      intrinsicDirty = IntrinsicDirty::FrameAndAncestors;
+    } else if (aAttribute == nsGkAtoms::height) {
+      mHeight.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+    } else if (aAttribute == nsGkAtoms::depth) {
+      mDepth.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+    } else if (aAttribute == nsGkAtoms::lspace) {
+      mLeadingSpace.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+      intrinsicDirty = IntrinsicDirty::FrameAndAncestors;
+    } else if (aAttribute == nsGkAtoms::voffset) {
+      mVerticalOffset.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+    }
+    if (hasDirtyAttributes) {
+      PresShell()->FrameNeedsReflow(this, intrinsicDirty, NS_FRAME_IS_DIRTY);
+    }
+    return NS_OK;
+  }
+  return nsMathMLContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
+                                                  aModType);
+}
 
-  width  = [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | h-unit | namedspace)
-  height = [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | v-unit | namedspace)
-  depth  = [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | v-unit | namedspace)
-  lspace = [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | h-unit | namedspace)
-  voffset= [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | v-unit | namedspace)
-  */
-  // clang-format on
-
+void nsMathMLmpaddedFrame::ParseAttribute(nsAtom* aAtom,
+                                          Attribute& aAttribute) {
+  if (aAttribute.mState != Attribute::ParsingState::Dirty) {
+    return;
+  }
   nsAutoString value;
-
-  // width
-  mWidthSign = NS_MATHML_SIGN_INVALID;
-  mContent->AsElement()->GetAttr(nsGkAtoms::width, value);
+  aAttribute.mState = Attribute::ParsingState::Invalid;
+  mContent->AsElement()->GetAttr(aAtom, value);
   if (!value.IsEmpty()) {
-    if (!ParseAttribute(value, mWidthSign, mWidth, mWidthPseudoUnit)) {
-      ReportParseError(nsGkAtoms::width->GetUTF16String(), value.get());
-    }
-  }
-
-  // height
-  mHeightSign = NS_MATHML_SIGN_INVALID;
-  mContent->AsElement()->GetAttr(nsGkAtoms::height, value);
-  if (!value.IsEmpty()) {
-    if (!ParseAttribute(value, mHeightSign, mHeight, mHeightPseudoUnit)) {
-      ReportParseError(nsGkAtoms::height->GetUTF16String(), value.get());
-    }
-  }
-
-  // depth
-  mDepthSign = NS_MATHML_SIGN_INVALID;
-  mContent->AsElement()->GetAttr(nsGkAtoms::depth_, value);
-  if (!value.IsEmpty()) {
-    if (!ParseAttribute(value, mDepthSign, mDepth, mDepthPseudoUnit)) {
-      ReportParseError(nsGkAtoms::depth_->GetUTF16String(), value.get());
-    }
-  }
-
-  // lspace
-  mLeadingSpaceSign = NS_MATHML_SIGN_INVALID;
-  mContent->AsElement()->GetAttr(nsGkAtoms::lspace_, value);
-  if (!value.IsEmpty()) {
-    if (!ParseAttribute(value, mLeadingSpaceSign, mLeadingSpace,
-                        mLeadingSpacePseudoUnit)) {
-      ReportParseError(nsGkAtoms::lspace_->GetUTF16String(), value.get());
-    }
-  }
-
-  // voffset
-  mVerticalOffsetSign = NS_MATHML_SIGN_INVALID;
-  mContent->AsElement()->GetAttr(nsGkAtoms::voffset_, value);
-  if (!value.IsEmpty()) {
-    if (!ParseAttribute(value, mVerticalOffsetSign, mVerticalOffset,
-                        mVerticalOffsetPseudoUnit)) {
-      ReportParseError(nsGkAtoms::voffset_->GetUTF16String(), value.get());
+    if (!ParseAttribute(value, aAttribute)) {
+      ReportParseError(aAtom->GetUTF16String(), value.get());
     }
   }
 }
 
-// parse an input string in the following format (see bug 148326 for testcases):
-// [+|-] unsigned-number (% [pseudo-unit] | pseudo-unit | css-unit | namedspace)
-bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
-                                          nsCSSValue& aCSSValue,
-                                          int32_t& aPseudoUnit) {
-  aCSSValue.Reset();
-  aSign = NS_MATHML_SIGN_INVALID;
-  aPseudoUnit = NS_MATHML_PSEUDO_UNIT_UNSPECIFIED;
+bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString,
+                                          Attribute& aAttribute) {
+  // See https://www.w3.org/TR/MathML3/chapter3.html#presm.mpaddedatt
+  aAttribute.Reset();
+  aAttribute.mState = Attribute::ParsingState::Invalid;
+
   aString.CompressWhitespace();  // aString is not a const in this code
 
   int32_t stringLength = aString.Length();
-  if (!stringLength) return false;
+  if (!stringLength) {
+    return false;
+  }
 
   nsAutoString number, unit;
 
@@ -135,13 +108,14 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
   int32_t i = 0;
 
   if (aString[0] == '+') {
-    aSign = NS_MATHML_SIGN_PLUS;
+    aAttribute.mSign = Attribute::Sign::Plus;
     i++;
   } else if (aString[0] == '-') {
-    aSign = NS_MATHML_SIGN_MINUS;
+    aAttribute.mSign = Attribute::Sign::Minus;
     i++;
-  } else
-    aSign = NS_MATHML_SIGN_UNSPECIFIED;
+  } else {
+    aAttribute.mSign = Attribute::Sign::Unspecified;
+  }
 
   // get the number
   bool gotDot = false, gotPercent = false;
@@ -149,13 +123,12 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
     char16_t c = aString[i];
     if (gotDot && c == '.') {
       // error - two dots encountered
-      aSign = NS_MATHML_SIGN_INVALID;
       return false;
     }
 
-    if (c == '.')
+    if (c == '.') {
       gotDot = true;
-    else if (!IsAsciiDigit(c)) {
+    } else if (!IsAsciiDigit(c)) {
       break;
     }
     number.Append(c);
@@ -165,14 +138,12 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
   // floatValue = 1, to cater for cases such as width="height", but that
   // wouldn't be in line with the spec which requires an explicit number
   if (number.IsEmpty()) {
-    aSign = NS_MATHML_SIGN_INVALID;
     return false;
   }
 
   nsresult errorCode;
   float floatValue = number.ToFloat(&errorCode);
   if (NS_FAILED(errorCode)) {
-    aSign = NS_MATHML_SIGN_INVALID;
     return false;
   }
 
@@ -188,34 +159,37 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
   if (unit.IsEmpty()) {
     if (gotPercent) {
       // case ["+"|"-"] unsigned-number "%"
-      aCSSValue.SetPercentValue(floatValue / 100.0f);
-      aPseudoUnit = NS_MATHML_PSEUDO_UNIT_ITSELF;
+      aAttribute.mValue.SetPercentValue(floatValue / 100.0f);
+      aAttribute.mPseudoUnit = Attribute::PseudoUnit::ItSelf;
+      aAttribute.mState = Attribute::ParsingState::Valid;
       return true;
     } else {
       // case ["+"|"-"] unsigned-number
       // XXXfredw: should we allow non-zero unitless values? See bug 757703.
       if (!floatValue) {
-        aCSSValue.SetFloatValue(floatValue, eCSSUnit_Number);
-        aPseudoUnit = NS_MATHML_PSEUDO_UNIT_ITSELF;
+        aAttribute.mValue.SetFloatValue(floatValue, eCSSUnit_Number);
+        aAttribute.mPseudoUnit = Attribute::PseudoUnit::ItSelf;
+        aAttribute.mState = Attribute::ParsingState::Valid;
         return true;
       }
     }
-  } else if (unit.EqualsLiteral("width"))
-    aPseudoUnit = NS_MATHML_PSEUDO_UNIT_WIDTH;
-  else if (unit.EqualsLiteral("height"))
-    aPseudoUnit = NS_MATHML_PSEUDO_UNIT_HEIGHT;
-  else if (unit.EqualsLiteral("depth"))
-    aPseudoUnit = NS_MATHML_PSEUDO_UNIT_DEPTH;
-  else if (!gotPercent) {  // percentage can only apply to a pseudo-unit
+  } else if (unit.EqualsLiteral("width")) {
+    aAttribute.mPseudoUnit = Attribute::PseudoUnit::Width;
+  } else if (unit.EqualsLiteral("height")) {
+    aAttribute.mPseudoUnit = Attribute::PseudoUnit::Height;
+  } else if (unit.EqualsLiteral("depth")) {
+    aAttribute.mPseudoUnit = Attribute::PseudoUnit::Depth;
+  } else if (!gotPercent) {  // percentage can only apply to a pseudo-unit
 
     // see if the unit is a named-space
     if (dom::MathMLElement::ParseNamedSpaceValue(
-            unit, aCSSValue, dom::MathMLElement::PARSE_ALLOW_NEGATIVE,
+            unit, aAttribute.mValue, dom::MathMLElement::PARSE_ALLOW_NEGATIVE,
             *mContent->OwnerDoc())) {
       // re-scale properly, and we know that the unit of the named-space is 'em'
-      floatValue *= aCSSValue.GetFloatValue();
-      aCSSValue.SetFloatValue(floatValue, eCSSUnit_EM);
-      aPseudoUnit = NS_MATHML_PSEUDO_UNIT_NAMEDSPACE;
+      floatValue *= aAttribute.mValue.GetFloatValue();
+      aAttribute.mValue.SetFloatValue(floatValue, eCSSUnit_EM);
+      aAttribute.mPseudoUnit = Attribute::PseudoUnit::NamedSpace;
+      aAttribute.mState = Attribute::ParsingState::Valid;
       return true;
     }
 
@@ -224,19 +198,23 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
     // value here.
     number.Append(unit);  // leave the sign out if it was there
     if (dom::MathMLElement::ParseNumericValue(
-            number, aCSSValue, dom::MathMLElement::PARSE_SUPPRESS_WARNINGS,
-            nullptr))
+            number, aAttribute.mValue,
+            dom::MathMLElement::PARSE_SUPPRESS_WARNINGS, nullptr)) {
+      aAttribute.mState = Attribute::ParsingState::Valid;
       return true;
+    }
   }
 
   // if we enter here, we have a number that will act as a multiplier on a
   // pseudo-unit
-  if (aPseudoUnit != NS_MATHML_PSEUDO_UNIT_UNSPECIFIED) {
-    if (gotPercent)
-      aCSSValue.SetPercentValue(floatValue / 100.0f);
-    else
-      aCSSValue.SetFloatValue(floatValue, eCSSUnit_Number);
+  if (aAttribute.mPseudoUnit != Attribute::PseudoUnit::Unspecified) {
+    if (gotPercent) {
+      aAttribute.mValue.SetPercentValue(floatValue / 100.0f);
+    } else {
+      aAttribute.mValue.SetFloatValue(floatValue, eCSSUnit_Number);
+    }
 
+    aAttribute.mState = Attribute::ParsingState::Valid;
     return true;
   }
 
@@ -245,30 +223,33 @@ bool nsMathMLmpaddedFrame::ParseAttribute(nsString& aString, int32_t& aSign,
          NS_LossyConvertUTF16toASCII(aString).get());
 #endif
   // if we reach here, it means we encounter an unexpected input
-  aSign = NS_MATHML_SIGN_INVALID;
   return false;
 }
 
-void nsMathMLmpaddedFrame::UpdateValue(int32_t aSign, int32_t aPseudoUnit,
-                                       const nsCSSValue& aCSSValue,
+void nsMathMLmpaddedFrame::UpdateValue(const Attribute& aAttribute,
+                                       Attribute::PseudoUnit aSelfUnit,
                                        const ReflowOutput& aDesiredSize,
                                        nscoord& aValueToUpdate,
-                                       float aFontSizeInflation) const {
-  nsCSSUnit unit = aCSSValue.GetUnit();
-  if (NS_MATHML_SIGN_INVALID != aSign && eCSSUnit_Null != unit) {
+                                       float aFontSizeInflation) {
+  nsCSSUnit unit = aAttribute.mValue.GetUnit();
+  if (aAttribute.IsValid() && eCSSUnit_Null != unit) {
     nscoord scaler = 0, amount = 0;
 
     if (eCSSUnit_Percent == unit || eCSSUnit_Number == unit) {
-      switch (aPseudoUnit) {
-        case NS_MATHML_PSEUDO_UNIT_WIDTH:
+      auto pseudoUnit = aAttribute.mPseudoUnit;
+      if (pseudoUnit == Attribute::PseudoUnit::ItSelf) {
+        pseudoUnit = aSelfUnit;
+      }
+      switch (pseudoUnit) {
+        case Attribute::PseudoUnit::Width:
           scaler = aDesiredSize.Width();
           break;
 
-        case NS_MATHML_PSEUDO_UNIT_HEIGHT:
+        case Attribute::PseudoUnit::Height:
           scaler = aDesiredSize.BlockStartAscent();
           break;
 
-        case NS_MATHML_PSEUDO_UNIT_DEPTH:
+        case Attribute::PseudoUnit::Depth:
           scaler = aDesiredSize.Height() - aDesiredSize.BlockStartAscent();
           break;
 
@@ -280,42 +261,39 @@ void nsMathMLmpaddedFrame::UpdateValue(int32_t aSign, int32_t aPseudoUnit,
       }
     }
 
-    if (eCSSUnit_Number == unit)
-      amount = NSToCoordRound(float(scaler) * aCSSValue.GetFloatValue());
-    else if (eCSSUnit_Percent == unit)
-      amount = NSToCoordRound(float(scaler) * aCSSValue.GetPercentValue());
-    else
-      amount = CalcLength(PresContext(), mComputedStyle, aCSSValue,
-                          aFontSizeInflation);
+    if (eCSSUnit_Number == unit) {
+      amount =
+          NSToCoordRound(float(scaler) * aAttribute.mValue.GetFloatValue());
+    } else if (eCSSUnit_Percent == unit) {
+      amount =
+          NSToCoordRound(float(scaler) * aAttribute.mValue.GetPercentValue());
+    } else {
+      amount = CalcLength(aAttribute.mValue, aFontSizeInflation, this);
+    }
 
-    if (NS_MATHML_SIGN_PLUS == aSign)
-      aValueToUpdate += amount;
-    else if (NS_MATHML_SIGN_MINUS == aSign)
-      aValueToUpdate -= amount;
-    else
-      aValueToUpdate = amount;
+    switch (aAttribute.mSign) {
+      case Attribute::Sign::Plus:
+        aValueToUpdate += amount;
+        break;
+      case Attribute::Sign::Minus:
+        aValueToUpdate -= amount;
+        break;
+      case Attribute::Sign::Unspecified:
+        aValueToUpdate = amount;
+        break;
+    }
   }
 }
 
-void nsMathMLmpaddedFrame::Reflow(nsPresContext* aPresContext,
-                                  ReflowOutput& aDesiredSize,
-                                  const ReflowInput& aReflowInput,
-                                  nsReflowStatus& aStatus) {
-  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
-
-  ProcessAttributes();
-
-  ///////////////
-  // Let the base class format our content like an inferred mrow
-  nsMathMLContainerFrame::Reflow(aPresContext, aDesiredSize, aReflowInput,
-                                 aStatus);
-  // NS_ASSERTION(aStatus.IsComplete(), "bad status");
-}
-
 /* virtual */
-nsresult nsMathMLmpaddedFrame::Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
+nsresult nsMathMLmpaddedFrame::Place(DrawTarget* aDrawTarget,
+                                     const PlaceFlags& aFlags,
                                      ReflowOutput& aDesiredSize) {
-  nsresult rv = nsMathMLContainerFrame::Place(aDrawTarget, false, aDesiredSize);
+  // First perform normal row layout without border/padding.
+  PlaceFlags flags = aFlags + PlaceFlag::MeasureOnly +
+                     PlaceFlag::IgnoreBorderPadding +
+                     PlaceFlag::DoNotAdjustForWidthAndHeight;
+  nsresult rv = nsMathMLContainerFrame::Place(aDrawTarget, flags, aDesiredSize);
   if (NS_FAILED(rv)) {
     DidReflowChildren(PrincipalChildList().FirstChild());
     return rv;
@@ -351,47 +329,41 @@ nsresult nsMathMLmpaddedFrame::Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
   nscoord width = aDesiredSize.Width();
   nscoord voffset = 0;
 
-  int32_t pseudoUnit;
   nscoord initialWidth = width;
   float fontSizeInflation = nsLayoutUtils::FontSizeInflationFor(this);
 
   // update width
-  pseudoUnit = (mWidthPseudoUnit == NS_MATHML_PSEUDO_UNIT_ITSELF)
-                   ? NS_MATHML_PSEUDO_UNIT_WIDTH
-                   : mWidthPseudoUnit;
-  UpdateValue(mWidthSign, pseudoUnit, mWidth, aDesiredSize, width,
+  ParseAttribute(nsGkAtoms::width, mWidth);
+  UpdateValue(mWidth, Attribute::PseudoUnit::Width, aDesiredSize, width,
               fontSizeInflation);
   width = std::max(0, width);
 
   // update "height" (this is the ascent in the terminology of the REC)
-  pseudoUnit = (mHeightPseudoUnit == NS_MATHML_PSEUDO_UNIT_ITSELF)
-                   ? NS_MATHML_PSEUDO_UNIT_HEIGHT
-                   : mHeightPseudoUnit;
-  UpdateValue(mHeightSign, pseudoUnit, mHeight, aDesiredSize, height,
+  ParseAttribute(nsGkAtoms::height, mHeight);
+  UpdateValue(mHeight, Attribute::PseudoUnit::Height, aDesiredSize, height,
               fontSizeInflation);
   height = std::max(0, height);
 
   // update "depth" (this is the descent in the terminology of the REC)
-  pseudoUnit = (mDepthPseudoUnit == NS_MATHML_PSEUDO_UNIT_ITSELF)
-                   ? NS_MATHML_PSEUDO_UNIT_DEPTH
-                   : mDepthPseudoUnit;
-  UpdateValue(mDepthSign, pseudoUnit, mDepth, aDesiredSize, depth,
+  ParseAttribute(nsGkAtoms::depth, mDepth);
+  UpdateValue(mDepth, Attribute::PseudoUnit::Depth, aDesiredSize, depth,
               fontSizeInflation);
   depth = std::max(0, depth);
 
   // update lspace
-  if (mLeadingSpacePseudoUnit != NS_MATHML_PSEUDO_UNIT_ITSELF) {
-    pseudoUnit = mLeadingSpacePseudoUnit;
-    UpdateValue(mLeadingSpaceSign, pseudoUnit, mLeadingSpace, aDesiredSize,
+  ParseAttribute(nsGkAtoms::lspace, mLeadingSpace);
+  if (mLeadingSpace.mPseudoUnit != Attribute::PseudoUnit::ItSelf) {
+    UpdateValue(mLeadingSpace, Attribute::PseudoUnit::Unspecified, aDesiredSize,
                 lspace, fontSizeInflation);
   }
 
   // update voffset
-  if (mVerticalOffsetPseudoUnit != NS_MATHML_PSEUDO_UNIT_ITSELF) {
-    pseudoUnit = mVerticalOffsetPseudoUnit;
-    UpdateValue(mVerticalOffsetSign, pseudoUnit, mVerticalOffset, aDesiredSize,
-                voffset, fontSizeInflation);
+  ParseAttribute(nsGkAtoms::voffset, mVerticalOffset);
+  if (mVerticalOffset.mPseudoUnit != Attribute::PseudoUnit::ItSelf) {
+    UpdateValue(mVerticalOffset, Attribute::PseudoUnit::Unspecified,
+                aDesiredSize, voffset, fontSizeInflation);
   }
+
   // do the padding now that we have everything
   // The idea here is to maintain the invariant that <mpadded>...</mpadded>
   // (i.e., with no attributes) looks the same as <mrow>...</mrow>. But when
@@ -399,13 +371,13 @@ nsresult nsMathMLmpaddedFrame::Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
   // desired visual effects.
 
   const bool isRTL = StyleVisibility()->mDirection == StyleDirection::Rtl;
-  if ((isRTL ? mWidthSign : mLeadingSpaceSign) != NS_MATHML_SIGN_INVALID) {
+  if (isRTL ? mWidth.IsValid() : mLeadingSpace.IsValid()) {
     // there was padding on the left. dismiss the left italic correction now
     // (so that our parent won't correct us)
     mBoundingMetrics.leftBearing = 0;
   }
 
-  if ((isRTL ? mLeadingSpaceSign : mWidthSign) != NS_MATHML_SIGN_INVALID) {
+  if (isRTL ? mLeadingSpace.IsValid() : mWidth.IsValid()) {
     // there was padding on the right. dismiss the right italic correction now
     // (so that our parent won't correct us)
     mBoundingMetrics.width = width;
@@ -421,20 +393,24 @@ nsresult nsMathMLmpaddedFrame::Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
   mBoundingMetrics.descent = depth;
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
 
+  // Apply width/height to math content box.
+  auto sizes = GetWidthAndHeightForPlaceAdjustment(aFlags);
+  dx += ApplyAdjustmentForWidthAndHeight(aFlags, sizes, aDesiredSize,
+                                         mBoundingMetrics);
+
+  // Add padding+border.
+  auto borderPadding = GetBorderPaddingForPlace(aFlags);
+  InflateReflowAndBoundingMetrics(borderPadding, aDesiredSize,
+                                  mBoundingMetrics);
+  dx += borderPadding.left;
+
   mReference.x = 0;
   mReference.y = aDesiredSize.BlockStartAscent();
 
-  if (aPlaceOrigin) {
+  if (!aFlags.contains(PlaceFlag::MeasureOnly)) {
     // Finish reflowing child frames, positioning their origins.
     PositionRowChildFrames(dx, aDesiredSize.BlockStartAscent() - voffset);
   }
 
   return NS_OK;
-}
-
-/* virtual */
-nsresult nsMathMLmpaddedFrame::MeasureForWidth(DrawTarget* aDrawTarget,
-                                               ReflowOutput& aDesiredSize) {
-  ProcessAttributes();
-  return Place(aDrawTarget, false, aDesiredSize);
 }

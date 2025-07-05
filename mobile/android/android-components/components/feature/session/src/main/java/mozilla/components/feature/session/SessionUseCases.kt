@@ -4,7 +4,6 @@
 
 package mozilla.components.feature.session
 
-import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.LastAccessAction
@@ -34,10 +33,11 @@ class SessionUseCases(
         /**
          * Loads the provided URL using the currently selected session.
          */
-        fun invoke(
+        operator fun invoke(
             url: String,
             flags: LoadUrlFlags = LoadUrlFlags.none(),
             additionalHeaders: Map<String, String>? = null,
+            originalInput: String? = null,
         )
     }
 
@@ -54,13 +54,16 @@ class SessionUseCases(
          * @param url The URL to be loaded using the selected session.
          * @param flags The [LoadUrlFlags] to use when loading the provided url.
          * @param additionalHeaders the extra headers to use when loading the provided url.
+         * @param originalInput If the user entered a URL, this is the
+         * original user input before any fixups were applied to it.
          */
         override operator fun invoke(
             url: String,
             flags: LoadUrlFlags,
             additionalHeaders: Map<String, String>?,
+            originalInput: String?,
         ) {
-            this.invoke(url, store.state.selectedTabId, flags, additionalHeaders)
+            this.invoke(url, store.state.selectedTabId, flags, additionalHeaders, originalInput)
         }
 
         /**
@@ -72,12 +75,15 @@ class SessionUseCases(
          * @param sessionId the ID of the session for which the URL should be loaded.
          * @param flags The [LoadUrlFlags] to use when loading the provided url.
          * @param additionalHeaders the extra headers to use when loading the provided url.
+         * @param originalInput If the user entered a URL, this is the
+         * original user input before any fixups were applied to it.
          */
         operator fun invoke(
             url: String,
             sessionId: String? = null,
             flags: LoadUrlFlags = LoadUrlFlags.none(),
             additionalHeaders: Map<String, String>? = null,
+            originalInput: String? = null,
         ) {
             val loadSessionId = sessionId
                 ?: store.state.selectedTabId
@@ -93,13 +99,7 @@ class SessionUseCases(
                     url = url,
                     flags = flags,
                     additionalHeaders = additionalHeaders,
-                )
-                // Update the url in content immediately until the engine updates with any new changes to the state.
-                store.dispatch(
-                    ContentAction.UpdateUrlAction(
-                        loadSessionId,
-                        url,
-                    ),
+                    originalInput = originalInput,
                 )
                 store.dispatch(
                     EngineAction.OptimizedLoadUrlTriggeredAction(

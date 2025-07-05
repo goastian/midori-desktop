@@ -6,10 +6,9 @@ package org.mozilla.samples.glean
 
 import android.app.Application
 import android.content.Context
-import android.net.Uri
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import mozilla.components.lib.fetch.httpurlconnection.HttpURLConnectionClient
-import mozilla.components.service.glean.Glean
-import mozilla.components.service.glean.config.Configuration
 import mozilla.components.service.glean.net.ConceptFetchHttpUploader
 import mozilla.components.service.nimbus.Nimbus
 import mozilla.components.service.nimbus.NimbusApi
@@ -19,6 +18,8 @@ import mozilla.components.support.base.log.Log
 import mozilla.components.support.base.log.sink.AndroidLogSink
 import mozilla.components.support.rusthttp.RustHttpConfig
 import mozilla.components.support.rustlog.RustLog
+import mozilla.telemetry.glean.Glean
+import mozilla.telemetry.glean.config.Configuration
 import org.mozilla.samples.glean.GleanMetrics.Basic
 import org.mozilla.samples.glean.GleanMetrics.Custom
 import org.mozilla.samples.glean.GleanMetrics.GleanBuildInfo
@@ -69,10 +70,7 @@ class GleanApplication : Application() {
         // Set a sample value for a metric.
         Basic.os.set("Android")
 
-        settings
-            .edit()
-            .putBoolean(PREF_IS_FIRST_RUN, false)
-            .apply()
+        settings.edit { putBoolean(PREF_IS_FIRST_RUN, false) }
     }
 
     /**
@@ -82,7 +80,7 @@ class GleanApplication : Application() {
     private fun initNimbus(isFirstRun: Boolean) {
         RustLog.enable()
         RustHttpConfig.setClient(lazy { HttpURLConnectionClient() })
-        val url = Uri.parse(getString(R.string.nimbus_default_endpoint))
+        val url = getString(R.string.nimbus_default_endpoint).toUri()
         val appInfo = NimbusAppInfo(
             appName = "samples-glean",
             channel = "samples",
@@ -91,6 +89,7 @@ class GleanApplication : Application() {
             context = this,
             appInfo = appInfo,
             server = NimbusServerSettings(url),
+            recordedContext = null,
         ).also { nimbus ->
             if (isFirstRun) {
                 // This file is bundled with the app, but derived from the server at build time.

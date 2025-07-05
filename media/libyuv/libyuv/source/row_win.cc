@@ -12,9 +12,12 @@
 
 // This module is for Visual C 32/64 bit
 #if !defined(LIBYUV_DISABLE_X86) && defined(_MSC_VER) && \
-    !defined(__clang__) && (defined(_M_IX86) || defined(_M_X64))
+    (defined(_M_IX86) || defined(_M_X64)) &&             \
+    (!defined(__clang__) || defined(LIBYUV_ENABLE_ROWWIN))
 
-#if defined(_M_X64)
+#if defined(_M_ARM64EC)
+#include <intrin.h>
+#elif defined(_M_X64)
 #include <emmintrin.h>
 #include <tmmintrin.h>  // For _mm_maddubs_epi16
 #endif
@@ -180,15 +183,52 @@ void I444AlphaToARGBRow_SSSE3(const uint8_t* y_buf,
 
 // 32 bit
 #else  // defined(_M_X64)
-#ifdef HAS_ARGBTOYROW_SSSE3
 
-// Constants for ARGB.
-static const vec8 kARGBToY = {13, 65, 33, 0, 13, 65, 33, 0,
-                              13, 65, 33, 0, 13, 65, 33, 0};
+#ifdef HAS_ARGBTOUVROW_SSSE3
+
+// 8 bit fixed point 0.5, for bias of UV.
+static const ulvec8 kBiasUV128 = {
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
+
+// NV21 shuf 8 VU to 16 UV.
+static const lvec8 kShuffleNV21 = {
+    1, 0, 1, 0, 3, 2, 3, 2, 5, 4, 5, 4, 7, 6, 7, 6,
+    1, 0, 1, 0, 3, 2, 3, 2, 5, 4, 5, 4, 7, 6, 7, 6,
+};
+
+// YUY2 shuf 16 Y to 32 Y.
+static const lvec8 kShuffleYUY2Y = {0,  0,  2,  2,  4,  4,  6,  6,  8,  8, 10,
+                                    10, 12, 12, 14, 14, 0,  0,  2,  2,  4, 4,
+                                    6,  6,  8,  8,  10, 10, 12, 12, 14, 14};
+
+// YUY2 shuf 8 UV to 16 UV.
+static const lvec8 kShuffleYUY2UV = {1,  3,  1,  3,  5,  7,  5,  7,  9,  11, 9,
+                                     11, 13, 15, 13, 15, 1,  3,  1,  3,  5,  7,
+                                     5,  7,  9,  11, 9,  11, 13, 15, 13, 15};
+
+// UYVY shuf 16 Y to 32 Y.
+static const lvec8 kShuffleUYVYY = {1,  1,  3,  3,  5,  5,  7,  7,  9,  9, 11,
+                                    11, 13, 13, 15, 15, 1,  1,  3,  3,  5, 5,
+                                    7,  7,  9,  9,  11, 11, 13, 13, 15, 15};
+
+// UYVY shuf 8 UV to 16 UV.
+static const lvec8 kShuffleUYVYUV = {0,  2,  0,  2,  4,  6,  4,  6,  8,  10, 8,
+                                     10, 12, 14, 12, 14, 0,  2,  0,  2,  4,  6,
+                                     4,  6,  8,  10, 8,  10, 12, 14, 12, 14};
 
 // JPeg full range.
 static const vec8 kARGBToYJ = {15, 75, 38, 0, 15, 75, 38, 0,
                                15, 75, 38, 0, 15, 75, 38, 0};
+#endif
+
+// vpermd for vphaddw + vpackuswb vpermd.
+static const lvec32 kPermdARGBToY_AVX = {0, 4, 1, 5, 2, 6, 3, 7};
+
+// Constants for ARGB.
+static const vec8 kARGBToY = {13, 65, 33, 0, 13, 65, 33, 0,
+                              13, 65, 33, 0, 13, 65, 33, 0};
 
 static const vec8 kARGBToU = {112, -74, -38, 0, 112, -74, -38, 0,
                               112, -74, -38, 0, 112, -74, -38, 0};
@@ -244,12 +284,6 @@ static const uvec8 kAddY16 = {16u, 16u, 16u, 16u, 16u, 16u, 16u, 16u,
 // 7 bit fixed point 0.5.
 static const vec16 kAddYJ64 = {64, 64, 64, 64, 64, 64, 64, 64};
 
-// 8 bit fixed point 0.5, for bias of UV.
-static const ulvec8 kBiasUV128 = {
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
-
 // Shuffle table for converting RGB24 to ARGB.
 static const uvec8 kShuffleMaskRGB24ToARGB = {
     0u, 1u, 2u, 12u, 3u, 4u, 5u, 13u, 6u, 7u, 8u, 14u, 9u, 10u, 11u, 15u};
@@ -284,32 +318,6 @@ static const uvec8 kShuffleMaskARGBToRAW = {
 // Shuffle table for converting ARGBToRGB24 for I422ToRGB24.  First 8 + next 4
 static const uvec8 kShuffleMaskARGBToRGB24_0 = {
     0u, 1u, 2u, 4u, 5u, 6u, 8u, 9u, 128u, 128u, 128u, 128u, 10u, 12u, 13u, 14u};
-
-// YUY2 shuf 16 Y to 32 Y.
-static const lvec8 kShuffleYUY2Y = {0,  0,  2,  2,  4,  4,  6,  6,  8,  8, 10,
-                                    10, 12, 12, 14, 14, 0,  0,  2,  2,  4, 4,
-                                    6,  6,  8,  8,  10, 10, 12, 12, 14, 14};
-
-// YUY2 shuf 8 UV to 16 UV.
-static const lvec8 kShuffleYUY2UV = {1,  3,  1,  3,  5,  7,  5,  7,  9,  11, 9,
-                                     11, 13, 15, 13, 15, 1,  3,  1,  3,  5,  7,
-                                     5,  7,  9,  11, 9,  11, 13, 15, 13, 15};
-
-// UYVY shuf 16 Y to 32 Y.
-static const lvec8 kShuffleUYVYY = {1,  1,  3,  3,  5,  5,  7,  7,  9,  9, 11,
-                                    11, 13, 13, 15, 15, 1,  1,  3,  3,  5, 5,
-                                    7,  7,  9,  9,  11, 11, 13, 13, 15, 15};
-
-// UYVY shuf 8 UV to 16 UV.
-static const lvec8 kShuffleUYVYUV = {0,  2,  0,  2,  4,  6,  4,  6,  8,  10, 8,
-                                     10, 12, 14, 12, 14, 0,  2,  0,  2,  4,  6,
-                                     4,  6,  8,  10, 8,  10, 12, 14, 12, 14};
-
-// NV21 shuf 8 VU to 16 UV.
-static const lvec8 kShuffleNV21 = {
-    1, 0, 1, 0, 3, 2, 3, 2, 5, 4, 5, 4, 7, 6, 7, 6,
-    1, 0, 1, 0, 3, 2, 3, 2, 5, 4, 5, 4, 7, 6, 7, 6,
-};
 
 // Duplicates gray value 3 times and fills in alpha opaque.
 __declspec(naked) void J400ToARGBRow_SSE2(const uint8_t* src_y,
@@ -893,7 +901,7 @@ __declspec(naked) void ARGBToRGB565Row_SSE2(const uint8_t* src_argb,
 
 __declspec(naked) void ARGBToRGB565DitherRow_SSE2(const uint8_t* src_argb,
                                                   uint8_t* dst_rgb,
-                                                  const uint32_t dither4,
+                                                  uint32_t dither4,
                                                   int width) {
   __asm {
 
@@ -940,7 +948,7 @@ __declspec(naked) void ARGBToRGB565DitherRow_SSE2(const uint8_t* src_argb,
 #ifdef HAS_ARGBTORGB565DITHERROW_AVX2
 __declspec(naked) void ARGBToRGB565DitherRow_AVX2(const uint8_t* src_argb,
                                                   uint8_t* dst_rgb,
-                                                  const uint32_t dither4,
+                                                  uint32_t dither4,
                                                   int width) {
   __asm {
     mov        eax, [esp + 4]  // src_argb
@@ -1238,8 +1246,6 @@ __declspec(naked) void ARGBToYJRow_SSSE3(const uint8_t* src_argb,
 }
 
 #ifdef HAS_ARGBTOYROW_AVX2
-// vpermd for vphaddw + vpackuswb vpermd.
-static const lvec32 kPermdARGBToY_AVX = {0, 4, 1, 5, 2, 6, 3, 7};
 
 // Convert 32 ARGB pixels (128 bytes) to 32 Y values.
 __declspec(naked) void ARGBToYRow_AVX2(const uint8_t* src_argb,
@@ -1509,7 +1515,9 @@ __declspec(naked) void ARGBToUVJRow_SSSE3(const uint8_t* src_argb,
     mov        edx, [esp + 8 + 12]  // dst_u
     mov        edi, [esp + 8 + 16]  // dst_v
     mov        ecx, [esp + 8 + 20]  // width
+    // TODO: change biasuv to 0x8000
     movdqa     xmm5, xmmword ptr kBiasUV128
+        // TODO: use negated coefficients to allow -128
     movdqa     xmm6, xmmword ptr kARGBToVJ
     movdqa     xmm7, xmmword ptr kARGBToUJ
     sub        edi, edx  // stride from u to v
@@ -1550,10 +1558,12 @@ __declspec(naked) void ARGBToUVJRow_SSSE3(const uint8_t* src_argb,
     pmaddubsw  xmm3, xmm6
     phaddw     xmm0, xmm2
     phaddw     xmm1, xmm3
+        // TODO: negate by subtracting from 0x8000
     paddw      xmm0, xmm5  // +.5 rounding -> unsigned
     paddw      xmm1, xmm5
     psraw      xmm0, 8
     psraw      xmm1, 8
+    // TODO: packuswb
     packsswb   xmm0, xmm1
 
         // step 3 - store 8 U and 8 V values
@@ -1979,7 +1989,6 @@ __declspec(naked) void RGBAToUVRow_SSSE3(const uint8_t* src_argb,
     ret
   }
 }
-#endif  // HAS_ARGBTOYROW_SSSE3
 
 // Read 16 UV from 444
 #define READYUV444_AVX2 \
@@ -3461,17 +3470,14 @@ __declspec(naked) void MergeUVRow_AVX2(const uint8_t* src_u,
     sub        edx, eax
 
   convertloop:
-    vmovdqu    ymm0, [eax]  // read 32 U's
-    vmovdqu    ymm1, [eax + edx]  // and 32 V's
-    lea        eax,  [eax + 32]
-    vpunpcklbw ymm2, ymm0, ymm1  // low 16 UV pairs. mutated qqword 0,2
-    vpunpckhbw ymm0, ymm0, ymm1  // high 16 UV pairs. mutated qqword 1,3
-    vextractf128 [edi], ymm2, 0  // bytes 0..15
-    vextractf128 [edi + 16], ymm0, 0  // bytes 16..31
-    vextractf128 [edi + 32], ymm2, 1  // bytes 32..47
-    vextractf128 [edi + 48], ymm0, 1  // bytes 47..63
-    lea        edi, [edi + 64]
-    sub        ecx, 32
+    vpmovzxbw  ymm0, [eax]
+    vpmovzxbw  ymm1, [eax + edx]
+    lea        eax,  [eax + 16]
+    vpsllw     ymm1, ymm1, 8
+    vpor       ymm2, ymm1, ymm0
+    vmovdqu    [edi], ymm2
+    lea        edi, [edi + 32]
+    sub        ecx, 16
     jg         convertloop
 
     pop        edi

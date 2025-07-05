@@ -4,13 +4,14 @@
 
 package mozilla.components.lib.dataprotect
 
-import android.annotation.TargetApi
 import android.content.Context
 import android.content.Context.MODE_PRIVATE
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Build.VERSION_CODES.M
 import android.util.Base64
+import androidx.annotation.RequiresApi
+import androidx.core.content.edit
 import mozilla.components.support.base.log.logger.Logger
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
@@ -132,17 +133,23 @@ private class InsecurePreferencesImpl21(
 
     override fun getString(key: String) = prefs.getString(key, null)
 
-    override fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
+    override fun putString(key: String, value: String) {
+        prefs.edit { putString(key, value) }
+    }
 
-    override fun remove(key: String) = prefs.edit().remove(key).apply()
+    override fun remove(key: String) {
+        prefs.edit { remove(key) }
+    }
 
-    override fun clear() = prefs.edit().clear().apply()
+    override fun clear() {
+        prefs.edit { clear() }
+    }
 }
 
 /**
  * A [KeyValuePreferences] which is backed by [SharedPreferences] and performs encryption/decryption of values.
  */
-@TargetApi(M)
+@RequiresApi(M)
 private class SecurePreferencesImpl23(
     context: Context,
     name: String,
@@ -206,17 +213,19 @@ private class SecurePreferencesImpl23(
 
     override fun putString(key: String, value: String) {
         generateManagedKeyIfNecessary()
-        val editor = prefs.edit()
-
         val encrypted = keystore.encryptBytes(value.toByteArray(StandardCharsets.UTF_8))
         val data = Base64.encodeToString(encrypted, BASE_64_FLAGS)
 
-        editor.putString(key, data).apply()
+        prefs.edit { putString(key, data) }
     }
 
-    override fun remove(key: String) = prefs.edit().remove(key).apply()
+    override fun remove(key: String) {
+        prefs.edit { remove(key) }
+    }
 
-    override fun clear() = prefs.edit().clear().apply()
+    override fun clear() {
+        prefs.edit { clear() }
+    }
 
     /**
      * Generates a "managed key" - a key used to encrypt data stored by this class. This key is "managed" by [Keystore],

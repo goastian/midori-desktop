@@ -147,9 +147,9 @@ void SVGForeignObjectFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                                            &newList);
 }
 
-bool SVGForeignObjectFrame::IsSVGTransformed(
-    Matrix* aOwnTransform, Matrix* aFromParentTransform) const {
-  return SVGUtils::IsSVGTransformed(this, aOwnTransform, aFromParentTransform);
+bool SVGForeignObjectFrame::DoGetParentSVGTransforms(
+    Matrix* aFromParentTransform) const {
+  return SVGUtils::GetParentSVGTransforms(this, aFromParentTransform);
 }
 
 void SVGForeignObjectFrame::PaintSVG(gfxContext& aContext,
@@ -236,8 +236,12 @@ void SVGForeignObjectFrame::ReflowSVG() {
       static_cast<SVGElement*>(GetContent()), &x, &y, &w, &h);
 
   // If mRect's width or height are negative, reflow blows up! We must clamp!
-  if (w < 0.0f) w = 0.0f;
-  if (h < 0.0f) h = 0.0f;
+  if (w < 0.0f) {
+    w = 0.0f;
+  }
+  if (h < 0.0f) {
+    h = 0.0f;
+  }
 
   mRect = nsLayoutUtils::RoundGfxRectToAppRect(gfxRect(x, y, w, h),
                                                AppUnitsPerCSSPixel());
@@ -292,10 +296,11 @@ void SVGForeignObjectFrame::NotifySVGChanged(uint32_t aFlags) {
       needNewCanvasTM = true;
     }
 
+    const auto positionProperty = StyleDisplay()->mPosition;
     // Our coordinate context's width/height has changed. If we have a
     // percentage width/height our dimensions will change so we must reflow.
-    if (StylePosition()->mWidth.HasPercent() ||
-        StylePosition()->mHeight.HasPercent()) {
+    if (StylePosition()->GetWidth(positionProperty)->HasPercent() ||
+        StylePosition()->GetHeight(positionProperty)->HasPercent()) {
       needNewBounds = true;
       needReflow = true;
     }
@@ -351,8 +356,12 @@ SVGBBox SVGForeignObjectFrame::GetBBoxContribution(
   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
       content, &x, &y, &w, &h);
 
-  if (w < 0.0f) w = 0.0f;
-  if (h < 0.0f) h = 0.0f;
+  if (w < 0.0f) {
+    w = 0.0f;
+  }
+  if (h < 0.0f) {
+    h = 0.0f;
+  }
 
   if (aToBBoxUserspace.IsSingular()) {
     // XXX ReportToConsole
@@ -366,13 +375,10 @@ SVGBBox SVGForeignObjectFrame::GetBBoxContribution(
 gfxMatrix SVGForeignObjectFrame::GetCanvasTM() {
   if (!mCanvasTM) {
     NS_ASSERTION(GetParent(), "null parent");
-
     auto* parent = static_cast<SVGContainerFrame*>(GetParent());
     auto* content = static_cast<SVGForeignObjectElement*>(GetContent());
-
-    gfxMatrix tm = content->PrependLocalTransformsTo(parent->GetCanvasTM());
-
-    mCanvasTM = MakeUnique<gfxMatrix>(tm);
+    mCanvasTM = MakeUnique<gfxMatrix>(content->ChildToUserSpaceTransform() *
+                                      parent->GetCanvasTM());
   }
   return *mCanvasTM;
 }

@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.BrowserAction
 import mozilla.components.browser.state.action.InitAction
 import mozilla.components.browser.state.action.SearchAction
+import mozilla.components.browser.state.action.UpdateDistribution
 import mozilla.components.browser.state.search.RegionState
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.lib.state.Middleware
@@ -44,6 +45,8 @@ class RegionMiddleware(
     ) {
         if (action is InitAction || action is SearchAction.RefreshSearchEnginesAction) {
             updateJob = determineRegion(context.store)
+        } else if (action is UpdateDistribution) {
+            updateJob = determineRegion(context.store, action.distributionId)
         }
 
         next(action)
@@ -52,21 +55,23 @@ class RegionMiddleware(
     @OptIn(DelicateCoroutinesApi::class)
     private fun determineRegion(
         store: Store<BrowserState, BrowserAction>,
+        newDistributionId: String? = null,
     ) = GlobalScope.launch(ioDispatcher) {
         // Get the region state from the RegionManager. If there's none then dispatch the default
         // region to be used.
+        val distributionId = newDistributionId ?: store.state.distributionId
         val region = regionManager.region()
         if (region != null) {
-            store.dispatch(SearchAction.SetRegionAction(region))
+            store.dispatch(SearchAction.SetRegionAction(region, distributionId))
         } else {
-            store.dispatch(SearchAction.SetRegionAction(RegionState.Default))
+            store.dispatch(SearchAction.SetRegionAction(RegionState.Default, distributionId))
         }
 
         // Ask the RegionManager to perform an update. If the "home" region changed then it will
         // return a new RegionState.
         val update = regionManager.update()
         if (update != null) {
-            store.dispatch(SearchAction.SetRegionAction(update))
+            store.dispatch(SearchAction.SetRegionAction(update, distributionId))
         }
     }
 }

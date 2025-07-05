@@ -4,11 +4,19 @@
 
 package mozilla.components.support.ktx.android.view
 
-import android.os.Build
 import android.os.Build.VERSION.SDK_INT
+import android.os.Build.VERSION_CODES
+import android.view.View
 import android.view.Window
+import android.view.WindowManager
 import androidx.annotation.ColorInt
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat.Type.displayCutout
+import androidx.core.view.WindowInsetsCompat.Type.systemBars
 import androidx.core.view.WindowInsetsControllerCompat
+import mozilla.components.support.ktx.android.content.isEdgeToEdgeDisabled
 import mozilla.components.support.utils.ColorUtils.isDark
 
 /**
@@ -17,7 +25,7 @@ import mozilla.components.support.utils.ColorUtils.isDark
  */
 fun Window.setStatusBarTheme(@ColorInt color: Int) {
     createWindowInsetsController().isAppearanceLightStatusBars = !isDark(color)
-    statusBarColor = color
+    setStatusBarColorCompat(color)
 }
 
 /**
@@ -29,13 +37,10 @@ fun Window.setNavigationBarTheme(
     @ColorInt navBarDividerColor: Int? = null,
 ) {
     navBarColor?.let {
-        navigationBarColor = it
+        setNavigationBarColorCompat(it)
         createWindowInsetsController().isAppearanceLightNavigationBars = !isDark(it)
     }
-
-    if (SDK_INT >= Build.VERSION_CODES.P) {
-        navigationBarDividerColor = navBarDividerColor ?: 0
-    }
+    setNavigationBarDividerColorCompat(navBarDividerColor)
 }
 
 /**
@@ -43,4 +48,86 @@ fun Window.setNavigationBarTheme(
  */
 fun Window.createWindowInsetsController(): WindowInsetsControllerCompat {
     return WindowInsetsControllerCompat(this, this.decorView)
+}
+
+/**
+ * Sets the status bar color.
+ *
+ * @param color The color to set as the status bar color.
+ * Note that if edge-to-edge behavior is enabled, the color will be transparent and cannot be changed.
+ */
+fun Window.setStatusBarColorCompat(@ColorInt color: Int) {
+    if (context.isEdgeToEdgeDisabled()) {
+        @Suppress("DEPRECATION")
+        statusBarColor = color
+    } else {
+        // setting status bar color has no effect
+    }
+}
+
+/**
+ * Sets the navigation bar color.
+ *
+ * @param color The color to set as the navigation bar color.
+ * Note that if edge-to-edge behavior is enabled, the color will be transparent and cannot be changed.
+ */
+fun Window.setNavigationBarColorCompat(@ColorInt color: Int) {
+    if (context.isEdgeToEdgeDisabled()) {
+        @Suppress("DEPRECATION")
+        navigationBarColor = color
+    } else {
+        // setting navigation bar color has no effect
+    }
+}
+
+/**
+ * Sets the navigation bar divider color.
+ *
+ * @param color The color to set as the navigation bar divider color.
+ * Note that if edge-to-edge behavior is enabled, the color will be transparent and cannot be changed.
+ */
+fun Window.setNavigationBarDividerColorCompat(@ColorInt color: Int?) {
+    if (SDK_INT >= VERSION_CODES.P && context.isEdgeToEdgeDisabled()) {
+        @Suppress("DEPRECATION")
+        navigationBarDividerColor = color ?: 0
+    } else {
+        // setting navigation bar divider color has no effect
+    }
+}
+
+/**
+ * Setup handling persistent insets - system bars and display cutouts ourselves instead of the framework.
+ * This results in keeping the same behavior for such insets while allowing to separately control the behavior
+ * for other dynamic insets.
+ *
+ * This only works on Android 13 and above. On older versions calling this will result in no-op.
+ */
+fun Window.setupPersistentInsets() {
+    if (SDK_INT >= VERSION_CODES.TIRAMISU) {
+        WindowCompat.setDecorFitsSystemWindows(this, false)
+
+        val rootView = decorView.findViewById<View>(android.R.id.content)
+        val persistentInsetsTypes = systemBars() or displayCutout()
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { _, windowInsets ->
+            val isInImmersiveMode = attributes.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS != 0
+            val persistentInsets = when (isInImmersiveMode) {
+                true -> {
+                    // If we are in immersive mode we need to reset current paddings and avoid setting others.
+                    Insets.of(0, 0, 0, 0)
+                }
+                false -> windowInsets.getInsets(persistentInsetsTypes)
+            }
+
+            rootView.setPadding(
+                persistentInsets.left,
+                persistentInsets.top,
+                persistentInsets.right,
+                persistentInsets.bottom,
+            )
+
+            // Pass window insets further to allow below listeners also know when there is a change.
+            return@setOnApplyWindowInsetsListener windowInsets
+        }
+    }
 }

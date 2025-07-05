@@ -18,12 +18,13 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+using namespace mozilla::unicode;
 
 // static
 bool nsTextFrameUtils::IsSpaceCombiningSequenceTail(const char16_t* aChars,
                                                     int32_t aLength) {
   return aLength > 0 &&
-         (mozilla::unicode::IsClusterExtenderExcludingJoiners(aChars[0]) ||
+         (IsClusterExtenderExcludingJoiners(aChars[0]) ||
           (IsBidiControl(aChars[0]) &&
            IsSpaceCombiningSequenceTail(aChars + 1, aLength - 1)));
 }
@@ -85,7 +86,8 @@ static CharT* TransformWhiteSpaces(
     const CharT* aText, uint32_t aLength, uint32_t aBegin, uint32_t aEnd,
     bool aHasSegmentBreak, bool& aInWhitespace, CharT* aOutput,
     nsTextFrameUtils::Flags& aFlags,
-    nsTextFrameUtils::CompressionMode aCompression, gfxSkipChars* aSkipChars) {
+    nsTextFrameUtils::CompressionMode aCompression, gfxSkipChars* aSkipChars,
+    bool aLangIsJapaneseOrChinese) {
   MOZ_ASSERT(aCompression == nsTextFrameUtils::COMPRESS_WHITESPACE ||
                  aCompression == nsTextFrameUtils::COMPRESS_WHITESPACE_NEWLINE,
              "whitespaces should be skippable!!");
@@ -98,24 +100,42 @@ static CharT* TransformWhiteSpaces(
        (aEnd < aLength && IS_ZERO_WIDTH_SPACE(aText[aEnd])));
   if (sizeof(CharT) > 1 && !isSegmentBreakSkippable && aBegin > 0 &&
       aEnd < aLength) {
-    uint32_t ucs4before;
-    uint32_t ucs4after;
-    if (aBegin > 1 &&
-        NS_IS_SURROGATE_PAIR(aText[aBegin - 2], aText[aBegin - 1])) {
-      ucs4before = SURROGATE_TO_UCS4(aText[aBegin - 2], aText[aBegin - 1]);
-    } else {
-      ucs4before = aText[aBegin - 1];
-    }
-    if (aEnd + 1 < aLength &&
-        NS_IS_SURROGATE_PAIR(aText[aEnd], aText[aEnd + 1])) {
-      ucs4after = SURROGATE_TO_UCS4(aText[aEnd], aText[aEnd + 1]);
-    } else {
-      ucs4after = aText[aEnd];
-    }
-    // Discard newlines between characters that have F, W, or H
-    // EastAsianWidth property and neither side is Hangul.
+    // Get the characters before and after the segment break, skipping past
+    // any default-ignorable characters (e.g. variation selectors, various
+    // invisible control chars, etc)
+    uint32_t ucs4before, ucs4after;
+    uint32_t pos = aBegin;
+    do {
+      if (pos > 1 && NS_IS_SURROGATE_PAIR(aText[pos - 2], aText[pos - 1])) {
+        ucs4before = SURROGATE_TO_UCS4(aText[pos - 2], aText[pos - 1]);
+        pos -= 2;
+      } else {
+        ucs4before = aText[pos - 1];
+        pos -= 1;
+      }
+    } while (IsDefaultIgnorable(ucs4before) && pos > 0);
+
+    pos = aEnd;
+    do {
+      if (pos + 1 < aLength &&
+          NS_IS_SURROGATE_PAIR(aText[pos], aText[pos + 1])) {
+        ucs4after = SURROGATE_TO_UCS4(aText[pos], aText[pos + 1]);
+        pos += 2;
+      } else {
+        ucs4after = aText[pos];
+        pos += 1;
+      }
+    } while (IsDefaultIgnorable(ucs4after) && pos < aLength);
+
+    // Discard newlines between characters that have F, W, or H EastAsianWidth
+    // property and neither side is Hangul.
+    // For Japanese/Chinese, also discard if *either* character is a fullwidth/
+    // wide punctuation character.
     isSegmentBreakSkippable =
-        IsSegmentBreakSkipChar(ucs4before) && IsSegmentBreakSkipChar(ucs4after);
+        (IsSegmentBreakSkipChar(ucs4before) &&
+         IsSegmentBreakSkipChar(ucs4after)) ||
+        (aLangIsJapaneseOrChinese && (IsEastAsianPunctuation(ucs4before) ||
+                                      IsEastAsianPunctuation(ucs4after)));
   }
 
   for (uint32_t i = aBegin; i < aEnd; ++i) {
@@ -187,12 +207,10 @@ static CharT* TransformWhiteSpaces(
 }
 
 template <class CharT>
-CharT* nsTextFrameUtils::TransformText(const CharT* aText, uint32_t aLength,
-                                       CharT* aOutput,
-                                       CompressionMode aCompression,
-                                       uint8_t* aIncomingFlags,
-                                       gfxSkipChars* aSkipChars,
-                                       Flags* aAnalysisFlags) {
+CharT* nsTextFrameUtils::TransformText(
+    const CharT* aText, uint32_t aLength, CharT* aOutput,
+    CompressionMode aCompression, uint8_t* aIncomingFlags,
+    gfxSkipChars* aSkipChars, Flags* aAnalysisFlags, const nsAtom* aLanguage) {
   Flags flags = Flags();
 #ifdef DEBUG
   int32_t skipCharsOffset = aSkipChars->GetOriginalCharCount();
@@ -233,6 +251,19 @@ CharT* nsTextFrameUtils::TransformText(const CharT* aText, uint32_t aLength,
     }
     *aIncomingFlags &= ~INCOMING_WHITESPACE;
   } else {
+    bool langIsJapaneseOrChinese = [=]() {
+      if (!aLanguage || aLanguage->GetLength() < 2) {
+        return false;
+      }
+      const char16_t* text = aLanguage->GetUTF16String();
+      if ((ToLowerCaseASCII(text[0]) == char16_t('j') &&
+           ToLowerCaseASCII(text[1]) == char16_t('a')) ||
+          (ToLowerCaseASCII(text[0]) == char16_t('z') &&
+           ToLowerCaseASCII(text[1]) == char16_t('h'))) {
+        return aLanguage->GetLength() == 2 || text[2] == '-';
+      }
+      return false;
+    }();
     bool inWhitespace = (*aIncomingFlags & INCOMING_WHITESPACE) != 0;
     uint32_t i;
     for (i = 0; i < aLength; ++i) {
@@ -270,9 +301,9 @@ CharT* nsTextFrameUtils::TransformText(const CharT* aText, uint32_t aLength,
           j--;
         }
         if (j > i) {
-          aOutput = TransformWhiteSpaces(aText, aLength, i, j, hasSegmentBreak,
-                                         inWhitespace, aOutput, flags,
-                                         aCompression, aSkipChars);
+          aOutput = TransformWhiteSpaces(
+              aText, aLength, i, j, hasSegmentBreak, inWhitespace, aOutput,
+              flags, aCompression, aSkipChars, langIsJapaneseOrChinese);
         }
         // We need to keep KeepChar()/SkipChar() in order, so process the
         // last white space first, then process the trailing discardables.
@@ -333,11 +364,11 @@ CharT* nsTextFrameUtils::TransformText(const CharT* aText, uint32_t aLength,
 template uint8_t* nsTextFrameUtils::TransformText(
     const uint8_t* aText, uint32_t aLength, uint8_t* aOutput,
     CompressionMode aCompression, uint8_t* aIncomingFlags,
-    gfxSkipChars* aSkipChars, Flags* aAnalysisFlags);
+    gfxSkipChars* aSkipChars, Flags* aAnalysisFlags, const nsAtom* aLanguage);
 template char16_t* nsTextFrameUtils::TransformText(
     const char16_t* aText, uint32_t aLength, char16_t* aOutput,
     CompressionMode aCompression, uint8_t* aIncomingFlags,
-    gfxSkipChars* aSkipChars, Flags* aAnalysisFlags);
+    gfxSkipChars* aSkipChars, Flags* aAnalysisFlags, const nsAtom* aLanguage);
 template bool nsTextFrameUtils::IsSkippableCharacterForTransformText(
     uint8_t aChar);
 template bool nsTextFrameUtils::IsSkippableCharacterForTransformText(

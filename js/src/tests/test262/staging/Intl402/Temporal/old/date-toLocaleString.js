@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -26,11 +26,5 @@ assert.sameValue(`${ date.toLocaleString("en-US", { timeZone: "America/New_York"
 assert.sameValue(`${ date.toLocaleString("de-AT", { timeZone: "Europe/Vienna" }) }`, "18.11.1976");
 var fmt = maybeGetWeekdayOnlyFormat();
 if (fmt) assert.sameValue(fmt.format(date), "Thursday");
-
-// should ignore units not in the data type
-assert.sameValue(date.toLocaleString("en-US", { timeZoneName: "long" }), "11/18/1976");
-assert.sameValue(date.toLocaleString("en-US", { hour: "numeric" }), "11/18/1976");
-assert.sameValue(date.toLocaleString("en-US", { minute: "numeric" }), "11/18/1976");
-assert.sameValue(date.toLocaleString("en-US", { second: "numeric" }), "11/18/1976");
 
 reportCompare(0, 0);

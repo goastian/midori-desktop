@@ -109,7 +109,9 @@ int main() {
   }
   MOZ_RELEASE_ASSERT(10 == Foo::sNumDestroyed);
 
-  { RefPtr<Foo> f1 = new Bar(); }
+  {
+    RefPtr<Foo> f1 = new Bar();
+  }
   MOZ_RELEASE_ASSERT(11 == Foo::sNumDestroyed);
 
   {
@@ -118,6 +120,15 @@ int main() {
     MOZ_RELEASE_ASSERT(11 == Foo::sNumDestroyed);
   }
   MOZ_RELEASE_ASSERT(11 == Foo::sNumDestroyed);
+
+  {
+    RefPtr<Foo> f = new Foo();
+
+    auto& alias = f;
+    f = std::move(static_cast<RefPtr<Foo>&>(alias));
+    MOZ_RELEASE_ASSERT(11 == Foo::sNumDestroyed);
+  }
+  MOZ_RELEASE_ASSERT(12 == Foo::sNumDestroyed);
 
   {
     bool condition = true;

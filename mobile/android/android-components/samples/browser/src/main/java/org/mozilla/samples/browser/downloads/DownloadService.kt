@@ -6,6 +6,8 @@ package org.mozilla.samples.browser.downloads
 
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.feature.downloads.AbstractFetchDownloadService
+import mozilla.components.feature.downloads.DateTimeProvider
+import mozilla.components.feature.downloads.FileSizeFormatter
 import mozilla.components.support.base.android.NotificationsDelegate
 import org.mozilla.samples.browser.ext.components
 
@@ -13,4 +15,6 @@ class DownloadService : AbstractFetchDownloadService() {
     override val httpClient by lazy { components.client }
     override val store: BrowserStore by lazy { components.store }
     override val notificationsDelegate: NotificationsDelegate by lazy { components.notificationsDelegate }
+    override val fileSizeFormatter: FileSizeFormatter by lazy { components.fileSizeFormatter }
+    override val dateTimeProvider: DateTimeProvider by lazy { components.dateTimeProvider }
 }

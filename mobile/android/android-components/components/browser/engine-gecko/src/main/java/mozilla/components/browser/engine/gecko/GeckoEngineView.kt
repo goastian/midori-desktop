@@ -8,8 +8,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Build
 import android.util.AttributeSet
-import android.view.View
 import android.widget.FrameLayout
 import androidx.annotation.VisibleForTesting
 import androidx.core.view.ViewCompat
@@ -23,6 +23,7 @@ import org.mozilla.geckoview.BasicSelectionActionDelegate
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import java.lang.ref.WeakReference
+import androidx.core.view.OnApplyWindowInsetsListener as AndroidxOnApplyWindowInsetsListener
 
 /**
  * Gecko-based EngineView implementation.
@@ -63,8 +64,9 @@ class GeckoEngineView @JvmOverloads constructor(
     }.apply {
         // Explicitly mark this view as important for autofill. The default "auto" doesn't seem to trigger any
         // autofill behavior for us here.
-        @Suppress("WrongConstant")
-        ViewCompat.setImportantForAutofill(this, View.IMPORTANT_FOR_ACCESSIBILITY_YES)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ViewCompat.setImportantForAutofill(this, IMPORTANT_FOR_AUTOFILL_YES)
+        }
     }
 
     internal fun setColorScheme(preferredColorScheme: PreferredColorScheme) {
@@ -232,6 +234,13 @@ class GeckoEngineView @JvmOverloads constructor(
         geckoView.visibility = visibility
         super.setVisibility(visibility)
     }
+
+    override fun addWindowInsetsListener(
+        key: String,
+        listener: AndroidxOnApplyWindowInsetsListener?,
+    ) = geckoView.addWindowInsetsListener(key, listener)
+
+    override fun removeWindowInsetsListener(key: String) = geckoView.removeWindowInsetsListener(key)
 
     companion object {
         internal const val DARK_COVER = 0xFF2A2A2E.toInt()

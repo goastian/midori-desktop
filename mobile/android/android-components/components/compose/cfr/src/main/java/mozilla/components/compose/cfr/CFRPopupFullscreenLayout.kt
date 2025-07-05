@@ -40,6 +40,7 @@ import mozilla.components.compose.cfr.CFRPopup.IndicatorDirection.UP
 import mozilla.components.compose.cfr.CFRPopup.PopupAlignment.BODY_CENTERED_IN_SCREEN
 import mozilla.components.compose.cfr.CFRPopup.PopupAlignment.BODY_TO_ANCHOR_CENTER
 import mozilla.components.compose.cfr.CFRPopup.PopupAlignment.BODY_TO_ANCHOR_START
+import mozilla.components.compose.cfr.CFRPopup.PopupAlignment.BODY_TO_ANCHOR_START_WITH_OFFSET
 import mozilla.components.compose.cfr.CFRPopup.PopupAlignment.INDICATOR_CENTERED_IN_ANCHOR
 import mozilla.components.compose.cfr.CFRPopupShape.Companion
 import mozilla.components.compose.cfr.helper.DisplayOrientationListener
@@ -78,6 +79,7 @@ internal data class PopupHorizontalBounds(
  * @param properties [CFRPopupProperties] allowing to customize the popup behavior.
  * @param onDismiss Callback for when the popup is dismissed indicating also if the dismissal
  * was explicit - by tapping the "X" button or not.
+ * @param title Optional [Text] composable to show just above the popup text.
  * @param text [Text] already styled and ready to be shown in the popup.
  * @param action Optional other composable to show just below the popup text.
  */
@@ -86,6 +88,7 @@ internal class CFRPopupFullscreenLayout(
     private val anchor: View,
     private val properties: CFRPopupProperties,
     private val onDismiss: (Boolean) -> Unit,
+    private val title: @Composable (() -> Unit)? = null,
     private val text: @Composable (() -> Unit),
     private val action: @Composable (() -> Unit) = {},
 ) : AbstractComposeView(anchor.context), ViewRootForInspector {
@@ -128,13 +131,20 @@ internal class CFRPopupFullscreenLayout(
      * with such behavior set in [CFRPopupProperties].
      */
     fun show() {
-        setViewTreeLifecycleOwner(anchor.findViewTreeLifecycleOwner())
-        this.setViewTreeSavedStateRegistryOwner(anchor.findViewTreeSavedStateRegistryOwner())
-        anchor.addOnAttachStateChangeListener(anchorDetachedListener)
-        orientationChangeListener = getDisplayOrientationListener(anchor.context).also {
-            it.start()
+        if (!isAttachedToWindow) {
+            val anchorViewTreeLifecycleOwner = anchor.findViewTreeLifecycleOwner()
+            val anchorViewTreeSavedStateRegistryOwner = anchor.findViewTreeSavedStateRegistryOwner()
+
+            if (anchorViewTreeLifecycleOwner != null && anchorViewTreeSavedStateRegistryOwner != null) {
+                setViewTreeLifecycleOwner(anchorViewTreeLifecycleOwner)
+                this.setViewTreeSavedStateRegistryOwner(anchorViewTreeSavedStateRegistryOwner)
+                anchor.addOnAttachStateChangeListener(anchorDetachedListener)
+                orientationChangeListener = getDisplayOrientationListener(anchor.context).also {
+                    it.start()
+                }
+                windowManager.addView(this, createLayoutParams())
+            }
         }
-        windowManager.addView(this, createLayoutParams())
     }
 
     @Composable
@@ -176,7 +186,7 @@ internal class CFRPopupFullscreenLayout(
             onDismissRequest = {
                 // For when tapping outside the popup.
                 dismiss()
-                onDismiss(false)
+                onDismiss(true)
             },
         ) {
             CFRPopupContent(
@@ -197,6 +207,7 @@ internal class CFRPopupFullscreenLayout(
                 } else {
                     properties.popupWidth
                 },
+                title = title,
                 text = text,
                 action = action,
             )
@@ -303,6 +314,10 @@ internal class CFRPopupFullscreenLayout(
                 Pixels(anchor.x.roundToInt() + leftInsets.value)
             }
 
+            BODY_TO_ANCHOR_START_WITH_OFFSET -> {
+                Pixels(anchor.x.roundToInt() + leftInsets.value + properties.popupStartOffset.toPx())
+            }
+
             BODY_TO_ANCHOR_CENTER -> {
                 Pixels(
                     anchor.x.roundToInt()
@@ -383,6 +398,9 @@ internal class CFRPopupFullscreenLayout(
         var startCoord = when (properties.popupAlignment) {
             BODY_TO_ANCHOR_START -> {
                 Pixels(anchor.x.roundToInt() + anchor.width + leftInsets.value)
+            }
+            BODY_TO_ANCHOR_START_WITH_OFFSET -> {
+                Pixels(anchor.x.roundToInt() + anchor.width + leftInsets.value + properties.popupStartOffset.toPx())
             }
             BODY_TO_ANCHOR_CENTER -> {
                 val anchorEndCoord = anchor.x.roundToInt() + anchor.width
@@ -467,6 +485,7 @@ internal class CFRPopupFullscreenLayout(
     ): Pixels {
         return when (properties.popupAlignment) {
             BODY_TO_ANCHOR_START,
+            BODY_TO_ANCHOR_START_WITH_OFFSET,
             BODY_TO_ANCHOR_CENTER,
             -> Pixels(properties.indicatorArrowStartOffset.toPx())
             BODY_CENTERED_IN_SCREEN,
@@ -488,12 +507,14 @@ internal class CFRPopupFullscreenLayout(
      * Clients are not automatically informed about this. Use a separate call to [onDismiss] if needed.
      */
     internal fun dismiss() {
-        anchor.removeOnAttachStateChangeListener(anchorDetachedListener)
-        orientationChangeListener.stop()
-        disposeComposition()
-        setViewTreeLifecycleOwner(null)
-        this.setViewTreeSavedStateRegistryOwner(null)
-        windowManager.removeViewImmediate(this)
+        if (isAttachedToWindow) {
+            anchor.removeOnAttachStateChangeListener(anchorDetachedListener)
+            orientationChangeListener.stop()
+            disposeComposition()
+            setViewTreeLifecycleOwner(null)
+            this.setViewTreeSavedStateRegistryOwner(null)
+            windowManager.removeViewImmediate(this)
+        }
     }
 
     /**

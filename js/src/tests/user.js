@@ -5,6 +5,7 @@ user_pref("devtools.console.stdout.chrome", true);
 user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("security.fileuri.strict_origin_policy", false);
+user_pref("security.OCSP.enabled", 0);
 user_pref("dom.allow_scripts_to_close_windows", true);
 user_pref("dom.disable_open_during_load", false);
 user_pref("dom.max_script_run_time", 0);
@@ -27,9 +28,5 @@ user_pref("privacy.trackingprotection.enabled", false);
 user_pref("privacy.trackingprotection.pbmode.enabled", false);
 user_pref("general.useragent.updates.enabled", false);
 user_pref("browser.webapps.checkForUpdates", 0);
-user_pref("javascript.options.weakrefs", true);
 user_pref("javascript.options.experimental.weakrefs.expose_cleanupSome", true);
 user_pref("javascript.options.experimental.iterator_helpers", true);
-user_pref("javascript.options.experimental.import_attributes", true);
-user_pref("javascript.options.experimental.import_attributes.assert_syntax", true);
-

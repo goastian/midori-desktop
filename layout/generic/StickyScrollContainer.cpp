@@ -16,6 +16,7 @@
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsLayoutUtils.h"
+#include "PresShell.h"
 
 namespace mozilla {
 
@@ -61,14 +62,17 @@ StickyScrollContainer::GetStickyScrollContainerForScrollFrame(
   return aFrame->GetProperty(StickyScrollContainerProperty());
 }
 
-static nscoord ComputeStickySideOffset(
-    Side aSide, const StyleRect<LengthPercentageOrAuto>& aOffset,
-    nscoord aPercentBasis) {
-  auto& side = aOffset.Get(aSide);
-  if (side.IsAuto()) {
+static nscoord ComputeStickySideOffset(Side aSide,
+                                       const nsStylePosition& aPosition,
+                                       nscoord aPercentBasis) {
+  // Guaranteed to resolve any use of anchor function as invalid.
+  const auto& side =
+      aPosition.GetAnchorResolvedInset(aSide, StylePositionProperty::Sticky);
+  if (side->IsAuto()) {
     return NS_AUTOOFFSET;
   }
-  return nsLayoutUtils::ComputeCBDependentValue(aPercentBasis, side);
+  return nsLayoutUtils::ComputeCBDependentValue(aPercentBasis,
+                                                side->AsLengthPercentage());
 }
 
 // static
@@ -83,21 +87,20 @@ void StickyScrollContainer::ComputeStickyOffsets(nsIFrame* aFrame) {
     return;
   }
 
-  nsSize scrollContainerSize = scrollContainerFrame->GetScrolledFrame()
-                                   ->GetContentRectRelativeToSelf()
-                                   .Size();
+  nsSize scrollContainerSize =
+      scrollContainerFrame->GetScrolledFrameSizeAccountingForDynamicToolbar();
 
   nsMargin computedOffsets;
   const nsStylePosition* position = aFrame->StylePosition();
 
-  computedOffsets.left = ComputeStickySideOffset(eSideLeft, position->mOffset,
-                                                 scrollContainerSize.width);
-  computedOffsets.right = ComputeStickySideOffset(eSideRight, position->mOffset,
-                                                  scrollContainerSize.width);
-  computedOffsets.top = ComputeStickySideOffset(eSideTop, position->mOffset,
-                                                scrollContainerSize.height);
-  computedOffsets.bottom = ComputeStickySideOffset(
-      eSideBottom, position->mOffset, scrollContainerSize.height);
+  computedOffsets.left =
+      ComputeStickySideOffset(eSideLeft, *position, scrollContainerSize.width);
+  computedOffsets.right =
+      ComputeStickySideOffset(eSideRight, *position, scrollContainerSize.width);
+  computedOffsets.top =
+      ComputeStickySideOffset(eSideTop, *position, scrollContainerSize.height);
+  computedOffsets.bottom = ComputeStickySideOffset(eSideBottom, *position,
+                                                   scrollContainerSize.height);
 
   // Store the offset
   nsMargin* offsets = aFrame->GetProperty(nsIFrame::ComputedOffsetProperty());
@@ -194,7 +197,8 @@ void StickyScrollContainer::ComputeStickyLimits(nsIFrame* aFrame,
                        computedOffsets->top - sfOffset.y);
   }
 
-  nsSize sfSize = scrolledFrame->GetContentRectRelativeToSelf().Size();
+  nsSize sfSize =
+      mScrollContainerFrame->GetScrolledFrameSizeAccountingForDynamicToolbar();
 
   // Bottom
   if (computedOffsets->bottom != NS_AUTOOFFSET &&
@@ -387,4 +391,10 @@ void StickyScrollContainer::ScrollPositionDidChange(nscoord aX, nscoord aY) {
   UpdatePositions(nsPoint(aX, aY), nullptr);
 }
 
+void StickyScrollContainer::MarkFramesForReflow() {
+  PresShell* ps = mScrollContainerFrame->PresShell();
+  for (nsIFrame* frame : mFrames.IterFromShallowest()) {
+    ps->FrameNeedsReflow(frame, IntrinsicDirty::None, NS_FRAME_IS_DIRTY);
+  }
+}
 }  // namespace mozilla

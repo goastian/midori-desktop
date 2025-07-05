@@ -6,13 +6,18 @@ package mozilla.components.feature.app.links
 
 import android.os.Looper.getMainLooper
 import android.widget.Button
+import android.widget.CheckBox
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import mozilla.components.feature.app.links.SimpleRedirectDialogFragment.Companion.VIEW_ID
+import mozilla.components.support.ktx.util.PromptAbuserDetector
 import mozilla.components.support.test.mock
 import mozilla.components.support.test.robolectric.testContext
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.doNothing
@@ -23,33 +28,64 @@ import androidx.appcompat.R as appcompatR
 
 @RunWith(AndroidJUnit4::class)
 class SimpleRedirectDialogFragmentTest {
-    private val webUrl = "https://example.com"
     private val themeResId = appcompatR.style.Theme_AppCompat_Light
 
+    @Before
+    fun setUp() {
+        PromptAbuserDetector.validationsEnabled = false
+    }
+
+    @After
+    fun tearDown() {
+        PromptAbuserDetector.validationsEnabled = true
+    }
+
     @Test
-    fun `Dialog confirmed callback is called correctly`() {
-        var onConfirmCalled = false
+    fun `GIVEN the checkbox is visible and ticked WHEN clicking on positive button THEN the callback is called correctly`() {
+        var onConfirmAlwaysUncheckCalled = false
+        var onConfirmedAlwaysCheckedCalled = false
         var onCancelCalled = false
 
-        val onConfirm = { onConfirmCalled = true }
         val onCancel = { onCancelCalled = true }
 
-        val fragment = spy(SimpleRedirectDialogFragment.newInstance(themeResId = themeResId))
+        val onConfirm: (Boolean?) -> Unit = { alwaysChecked ->
+            if (alwaysChecked == true) {
+                onConfirmedAlwaysCheckedCalled = true
+            } else {
+                onConfirmAlwaysUncheckCalled = true
+            }
+        }
+
+        val fragment = spy(
+            SimpleRedirectDialogFragment.newInstance(
+                dialogTitleString = "Open in another app",
+                themeResId = themeResId,
+                showCheckbox = true,
+            ),
+        )
         doNothing().`when`(fragment).dismiss()
 
         doReturn(testContext).`when`(fragment).requireContext()
 
-        fragment.onConfirmRedirect = onConfirm
-        fragment.onCancelRedirect = onCancel
-
         val dialog = fragment.onCreateDialog(null)
         dialog.show()
 
-        val confirmButton = dialog.findViewById<Button>(android.R.id.button1)
-        confirmButton?.performClick()
         shadowOf(getMainLooper()).idle()
 
-        assertTrue(onConfirmCalled)
+        val confirmButton = dialog.findViewById<Button>(android.R.id.button1)
+        val checkbox = dialog.findViewById<CheckBox>(VIEW_ID)
+        checkbox.isChecked = true
+
+        fragment.onConfirmRedirect = {
+            onConfirm(checkbox.isChecked)
+        }
+
+        fragment.onCancelRedirect = onCancel
+
+        confirmButton?.performClick()
+
+        assertTrue(onConfirmedAlwaysCheckedCalled)
+        assertFalse(onConfirmAlwaysUncheckCalled)
         assertFalse(onCancelCalled)
     }
 
@@ -61,12 +97,17 @@ class SimpleRedirectDialogFragmentTest {
         val onConfirm = { onConfirmCalled = true }
         val onCancel = { onCancelCalled = true }
 
-        val fragment = spy(SimpleRedirectDialogFragment.newInstance(themeResId = themeResId))
+        val fragment = spy(
+            SimpleRedirectDialogFragment.newInstance(
+                dialogTitleString = "Open in another app",
+                themeResId = themeResId,
+            ),
+        )
         doNothing().`when`(fragment).dismiss()
 
         doReturn(testContext).`when`(fragment).requireContext()
 
-        fragment.onConfirmRedirect = onConfirm
+        fragment.onConfirmRedirect = { onConfirm() }
         fragment.onCancelRedirect = onCancel
 
         val dialog = fragment.onCreateDialog(null)
@@ -88,12 +129,17 @@ class SimpleRedirectDialogFragmentTest {
         val onConfirm = { onConfirmCalled = true }
         val onCancel = { onCancelCalled = true }
 
-        val fragment = spy(SimpleRedirectDialogFragment.newInstance(themeResId = themeResId))
+        val fragment = spy(
+            SimpleRedirectDialogFragment.newInstance(
+                dialogTitleString = "Open in another app",
+                themeResId = themeResId,
+            ),
+        )
         doNothing().`when`(fragment).dismiss()
 
         doReturn(testContext).`when`(fragment).requireContext()
 
-        fragment.onConfirmRedirect = onConfirm
+        fragment.onConfirmRedirect = { onConfirm() }
         fragment.onCancelRedirect = onCancel
 
         val dialog = fragment.onCreateDialog(null)
@@ -104,6 +150,7 @@ class SimpleRedirectDialogFragmentTest {
         assertFalse(onCancelCalled)
     }
 
+    @Suppress("unused")
     private fun mockFragmentManager(): FragmentManager {
         val fragmentManager: FragmentManager = mock()
         val transaction: FragmentTransaction = mock()

@@ -7,19 +7,19 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.feature.webauthn'
+    namespace = 'mozilla.components.feature.webauthn'
 }
 
 dependencies {
@@ -27,10 +27,10 @@ dependencies {
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

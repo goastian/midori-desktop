@@ -197,7 +197,7 @@ class AsyncScriptCompileTask final : public Task {
 };
 
 /* static */ mozilla::StaticMutex AsyncScriptCompileTask::sOngoingTasksMutex;
-/* static */ Vector<AsyncScriptCompileTask*>
+MOZ_RUNINIT /* static */ Vector<AsyncScriptCompileTask*>
     AsyncScriptCompileTask::sOngoingTasks;
 /* static */ bool AsyncScriptCompileTask::sIsShutdownRegistered = false;
 
@@ -437,6 +437,9 @@ void AsyncScriptCompiler::Reject(JSContext* aCx, const char* aMsg) {
 }
 
 NS_IMETHODIMP
+AsyncScriptCompiler::OnStartRequest(nsIRequest* aRequest) { return NS_OK; }
+
+NS_IMETHODIMP
 AsyncScriptCompiler::OnIncrementalData(nsIIncrementalStreamLoader* aLoader,
                                        nsISupports* aContext,
                                        uint32_t aDataLength,
@@ -514,8 +517,10 @@ PrecompiledScript::PrecompiledScript(nsISupports* aParent,
   MOZ_ASSERT(aParent);
   MOZ_ASSERT(aStencil);
 #ifdef DEBUG
+  // AsyncScriptCompiler::Start can call JS::CompileOptions::setForceFullParse,
+  // but it should be compatible with the default JS::InstantiateOptions.
   JS::InstantiateOptions options(aOptions);
-  options.assertDefault();
+  options.assertCompatibleWithDefault();
 #endif
 };
 

@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-float16array)
 // Copyright (C) 2016 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -15,8 +14,10 @@ features: [TypedArray]
 
 var TypedArrayPrototype = TypedArray.prototype;
 
-verifyNotEnumerable(TypedArrayPrototype, 'set');
-verifyWritable(TypedArrayPrototype, 'set');
-verifyConfigurable(TypedArrayPrototype, 'set');
+verifyProperty(TypedArrayPrototype, 'set', {
+  writable: true,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

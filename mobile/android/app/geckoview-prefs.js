@@ -57,9 +57,6 @@ pref("apz.fling_stopped_threshold", "0.0");
 // feel a lot better (bug 1095727)
 pref("apz.max_velocity_inches_per_ms", "0.07");
 
-// Enable overscroll on Android (bug 1230674)
-pref("apz.overscroll.enabled", true);
-
 // Don't allow a faraway second tap to start a one-touch pinch gesture (bug 1391770)
 pref("apz.second_tap_tolerance", "0.3");
 
@@ -147,6 +144,9 @@ pref("browser.translations.enable", true);
 // Used for mocking data for GeckoView Translations tests, should use in addition with an automation check.
 pref("browser.translations.geckoview.enableAllTestMocks", false);
 
+// Used for mocking data for GeckoView WebCompat tests, should use in addition with an automation check.
+pref("browser.webcompat.geckoview.enableAllTestMocks", false);
+
 // SSL error page behaviour (bug 437372)
 pref("browser.xul.error_pages.expert_bad_cert", false);
 
@@ -200,10 +200,6 @@ pref("dom.meta-viewport.enabled", true);
 // The maximum number of recent message IDs to store for each push
 // subscription, to avoid duplicates for unacknowledged messages (bug 1207743)
 pref("dom.push.maxRecentMessageIDsPerSubscription", 0);
-
-// Allow service workers to open windows for a longer period after a notification
-// click on mobile. This is to account for some devices being quite slow (bug 1409761)
-pref("dom.serviceWorkers.disable_open_click_delay", 5000);
 
 // Enable WebShare support (bug 1402369)
 pref("dom.webshare.enabled", true);
@@ -347,9 +343,6 @@ pref("media.video-queue.send-to-compositor-size", 1);
 // Increase necko buffer sizes for Android (bug 560591)
 pref("network.buffer.cache.size",  16384);
 
-// CookieBehavior setting for private browsing (bug 1695050)
-pref("network.cookie.cookieBehavior.pbmode", 4);
-
 // Set HPACK receive buffer size appropriately for Android (bug 1296280)
 pref("network.http.http2.default-hpack-buffer", 4096);
 
@@ -377,11 +370,22 @@ pref("network.protocol-handler.warn-external.vnd.youtube", false);
 // (bug 888268)
 pref("network.tickle-wifi.enabled", true);
 
-// Editing PDFs is not supported on mobile
-pref("pdfjs.annotationEditorMode", -1);
+// Controls OHTTP config URL
+pref("network.ohttp.configURL", "https://prod.ohttp-gateway.prod.webservices.mozgcp.net/ohttp-configs");
 
-// Enable the floating PDF.js toolbar on GeckoView (bug 1829366)
-pref("pdfjs.enableFloatingToolbar", true);
+// Controls OHTTP relay URL
+pref("network.ohttp.relayURL", "https://mozilla-ohttp.fastly-edge.com/");
+
+// Complete the page load progress bar at different places according to this pref.
+// See the possible values below:
+// 0 no change
+// 1 complete progressbar at DOMContentLoaded
+// 2 complete progressbar at first MozAfterPaint after DOMContentLoaded
+#ifdef NIGHTLY_BUILD
+  pref("page_load.progressbar_completion", 2);
+#else
+  pref("page_load.progressbar_completion", 0);
+#endif
 
 // Try to convert PDFs sent as octet-stream (bug 1754499)
 pref("pdfjs.handleOctetStream", true);
@@ -389,15 +393,10 @@ pref("pdfjs.handleOctetStream", true);
 // Disable tracking protection in PBM for GeckoView (bug 1436887)
 pref("privacy.trackingprotection.pbmode.enabled", false);
 
-pref("privacy.fingerprintingProtection.pbmode", true);
-
 // Relay integration is not supported on mobile
 pref("signon.firefoxRelay.feature", "not available");
 
 pref("signon.showAutoCompleteFooter", true);
-
-// Delegate autocomplete to GeckoView (bug 1618058)
-pref("toolkit.autocomplete.delegate", true);
 
 // Locked because any other value would break GeckoView
 pref("toolkit.defaultChromeURI", "chrome://geckoview/content/geckoview.xhtml", locked);

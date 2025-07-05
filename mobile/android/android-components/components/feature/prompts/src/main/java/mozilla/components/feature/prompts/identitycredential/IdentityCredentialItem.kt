@@ -20,10 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import mozilla.components.feature.prompts.identitycredential.previews.DialogPreviewMaterialTheme
-import mozilla.components.feature.prompts.identitycredential.previews.LightDarkPreview
 
 /**
  * List item used to display an IdentityCredential item that supports clicks
@@ -80,7 +80,7 @@ internal fun IdentityCredentialItem(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun ProviderItemPreview() {
     DialogPreviewMaterialTheme {
         IdentityCredentialItem(

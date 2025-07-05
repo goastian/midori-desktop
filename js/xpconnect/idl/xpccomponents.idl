@@ -185,6 +185,13 @@ interface nsIXPCComponents_Utils : nsISupports
      *            Content scripts should pass the window they're running in as this
      *          parameter, in order to ensure that the script is cleaned up at the
      *          same time as the content itself.
+     *        - sandboxContentSecurityPolicy: {String} The Content Security Policy
+     *          to apply in this sandbox. This can be used to restrict eval
+     *          (e.g. "script-src 'self'"). It does not apply to DOM methods
+     *          that were retrieved from objects outside the sandbox.
+     *          This is only implemented for Expanded Principals; if desired for
+     *          other principals, bug 1548468 must be resolved first.
+     *          When not specified, the default CSP is used (usually no CSP).
      *        - sandboxName: {String} Identifies the sandbox in about:memory. This
      *          property is optional, but very useful for tracking memory usage. A
      *          recommended value for this property is an absolute path to the script
@@ -297,80 +304,11 @@ interface nsIXPCComponents_Utils : nsISupports
     [implicit_jscontext]
     void setSandboxMetadata(in jsval sandbox, in jsval metadata);
 
-    /*
-     * import is designed to be called from JavaScript only.
-     *
-     * Synchronously loads and evaluates the js file located at
-     * 'registryLocation' with a new, fully privileged global object.
-     *
-     * If 'targetObj' is specified and equal to null, returns the
-     * module's global object. Otherwise (if 'targetObj' is not
-     * specified, or 'targetObj' is != null) looks for a property
-     * 'EXPORTED_SYMBOLS' on the new global object. 'EXPORTED_SYMBOLS'
-     * is expected to be an array of strings identifying properties on
-     * the global object.  These properties will be installed as
-     * properties on 'targetObj', or, if 'targetObj' is not specified,
-     * on the caller's global object. If 'EXPORTED_SYMBOLS' is not
-     * found, an error is thrown.
-     *
-     * @param resourceURI A resource:// URI string to load the module from.
-     * @param targetObj  the object to install the exported properties on.
-     *        If this parameter is a primitive value, this method throws
-     *        an exception.
-     * @returns the module code's global object.
-     *
-     * The implementation maintains a hash of registryLocation->global obj.
-     * Subsequent invocations of importModule with 'registryLocation'
-     * pointing to the same file will not cause the module to be re-evaluated,
-     * but the symbols in EXPORTED_SYMBOLS will be exported into the
-     * specified target object and the global object returned as above.
-     *
-     * TODO: Remove this once m-c, c-c, and out-of-tree code migrations finish
-     *       (bug 1776175, bug 1881888).
-     */
-    [implicit_jscontext,optional_argc]
-    jsval import(in AUTF8String aResourceURI, [optional] in jsval targetObj);
-
-    /**
-     * Returns true if the JSM is loaded into the system global previously via
-     * the import method above, or corresponding ESM is loaded. Returns false
-     * otherwise.
-     *
-     * @param resourceURI A resource:// URI string representing the location of
-     *        the js file to be checked if it is already loaded or not.
-     * @returns boolean, true if the js file has been loaded via import. false
-     *          otherwise
-     */
-    boolean isModuleLoaded(in AUTF8String aResourceURI);
-
-
-    /**
-     * Returns true if the JSM is loaded into the system global previously via
-     * the import method above. Returns false otherwise.
-     *
-     * TODO: Remove this once m-c, c-c, and out-of-tree code migrations finish
-     *       (bug 1776175, bug 1881888).
-     */
-    boolean isJSModuleLoaded(in AUTF8String aResourceURI);
-
     /**
      * Returns true if the ESM is loaded into the system global previously via
      * the ChromeUtils.importESModule method etc. Returns false otherwise.
      */
     boolean isESModuleLoaded(in AUTF8String aResourceURI);
-
-    /*
-     * Unloads the JS module at 'registryLocation'. Existing references to the
-     * module will continue to work but any subsequent import of the module will
-     * reload it and give new reference. If the JS module hasn't yet been
-     * imported then this method will do nothing.
-     *
-     * @param resourceURI A resource:// URI string to unload the module from.
-     *
-     * TODO: Remove this once m-c, c-c, and out-of-tree code migrations finish
-     *       (bug 1776175, bug 1881888).
-     */
-    void unload(in AUTF8String registryLocation);
 
     /*
      * Imports global properties (like DOM constructors) into the scope, defining
@@ -829,18 +767,9 @@ interface nsIXPCComponents_Utils : nsISupports
     /* Create an HTML copy encoder object. */
     nsIDocumentEncoder createHTMLCopyEncoder();
 
-    // These attributes are for startup testing purposes. They are not expected
-    // to be used for production code.
-
-    // Array of the URI of JSM and ESM loaded, converting ESM URI into JSM URI.
-    readonly attribute Array<ACString> loadedModules;
-
-    // Array of the URI of JSM loaded.
-    readonly attribute Array<ACString> loadedJSModules;
-
-    // Array of the URI of ESM loaded.
+    // Array of the URI of ESM loaded. This attribute is for startup testing
+    // purposes. This is not expected to be used for production code.
     readonly attribute Array<ACString> loadedESModules;
-
 
     // This function will only return useful values if the
     // "browser.startup.record" preference was true at the time the JS file

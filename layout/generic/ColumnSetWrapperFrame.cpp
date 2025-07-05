@@ -149,7 +149,15 @@ void ColumnSetWrapperFrame::MarkIntrinsicISizesDirty() {
   }
 }
 
-nscoord ColumnSetWrapperFrame::GetMinISize(gfxContext* aRenderingContext) {
+nscoord ColumnSetWrapperFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                              IntrinsicISizeType aType) {
+  return mCachedIntrinsics.GetOrSet(*this, aType, aInput, [&] {
+    return aType == IntrinsicISizeType::MinISize ? MinISize(aInput)
+                                                 : PrefISize(aInput);
+  });
+}
+
+nscoord ColumnSetWrapperFrame::MinISize(const IntrinsicSizeInput& aInput) {
   nscoord iSize = 0;
 
   if (Maybe<nscoord> containISize =
@@ -162,7 +170,7 @@ nscoord ColumnSetWrapperFrame::GetMinISize(gfxContext* aRenderingContext) {
 
     // In the 'none' case, we determine our minimum intrinsic size purely from
     // our column styling, as if we had no descendants. This should match what
-    // happens in nsColumnSetFrame::GetMinISize in an actual no-descendants
+    // happens in nsColumnSetFrame::MinISize in an actual no-descendants
     // scenario.
     const nsStyleColumn* colStyle = StyleColumn();
     if (colStyle->mColumnWidth.IsLength()) {
@@ -184,14 +192,16 @@ nscoord ColumnSetWrapperFrame::GetMinISize(gfxContext* aRenderingContext) {
     }
   } else {
     for (nsIFrame* f : PrincipalChildList()) {
-      iSize = std::max(iSize, f->GetMinISize(aRenderingContext));
+      const IntrinsicSizeInput childInput(aInput, f->GetWritingMode(),
+                                          GetWritingMode());
+      iSize = std::max(iSize, f->GetMinISize(childInput));
     }
   }
 
   return iSize;
 }
 
-nscoord ColumnSetWrapperFrame::GetPrefISize(gfxContext* aRenderingContext) {
+nscoord ColumnSetWrapperFrame::PrefISize(const IntrinsicSizeInput& aInput) {
   nscoord iSize = 0;
 
   if (Maybe<nscoord> containISize =
@@ -220,7 +230,9 @@ nscoord ColumnSetWrapperFrame::GetPrefISize(gfxContext* aRenderingContext) {
     iSize = ColumnUtils::IntrinsicISize(numColumns, colGap, colISize);
   } else {
     for (nsIFrame* f : PrincipalChildList()) {
-      iSize = std::max(iSize, f->GetPrefISize(aRenderingContext));
+      const IntrinsicSizeInput childInput(aInput, f->GetWritingMode(),
+                                          GetWritingMode());
+      iSize = std::max(iSize, f->GetPrefISize(childInput));
     }
   }
 

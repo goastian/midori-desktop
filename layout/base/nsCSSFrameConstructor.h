@@ -252,8 +252,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
    * at some ancestor of aChild's frame was destroyed and will be reconstructed
    * async.
    */
-  bool ContentRemoved(nsIContent* aChild, nsIContent* aOldNextSibling,
-                      RemoveFlags aFlags);
+  bool ContentWillBeRemoved(nsIContent* aChild, RemoveFlags aFlags);
 
   void CharacterDataChanged(nsIContent* aContent,
                             const CharacterDataChangeInfo& aInfo);
@@ -1447,9 +1446,13 @@ class nsCSSFrameConstructor final : public nsFrameManager {
                                                      ComputedStyle&);
   static const FrameConstructionData* FindCanvasData(const Element&,
                                                      ComputedStyle&);
-  // <details> always creates a block per spec.
+  // <details> always creates a block per spec *if* the about:config pref
+  // 'layout.details.force-block-layout' is set to 'true'.  This is a legacy
+  // restriction (based on old spec-text) and we're planning to remove it.
   static const FrameConstructionData* FindDetailsData(const Element&,
                                                       ComputedStyle&);
+  static const FrameConstructionData* FindH1Data(const Element&,
+                                                 ComputedStyle&);
 
   /* Construct a frame from the given FrameConstructionItem.  This function
      will handle adding the frame to frame lists, processing children, setting
@@ -2125,10 +2128,9 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   void QuotesDirty();
   void CountersDirty();
 
-  void ConstructAnonymousContentForCanvas(nsFrameConstructorState& aState,
-                                          nsContainerFrame* aFrame,
-                                          nsIContent* aDocElement,
-                                          nsFrameList&);
+  void ConstructAnonymousContentForRoot(nsFrameConstructorState& aState,
+                                        nsContainerFrame* aCanvasFrame,
+                                        nsIContent* aDocElement, nsFrameList&);
 
  public:
   friend class nsFrameConstructorState;
@@ -2178,6 +2180,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   bool mQuotesDirty : 1;
   bool mCountersDirty : 1;
   bool mAlwaysCreateFramesForIgnorableWhitespace : 1;
+  bool mRemovingContent : 1;
 
   // The layout state from our history entry (to restore scroll positions and
   // such from history), or a new one if there was none (so we can store scroll

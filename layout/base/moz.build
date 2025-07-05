@@ -23,6 +23,7 @@ XPIDL_SOURCES += [
     "nsILayoutHistoryState.idl",
     "nsIPreloadedStyleSheet.idl",
     "nsIStyleSheetService.idl",
+    "nsISVGPaintContext.idl",
 ]
 
 if CONFIG["MOZ_DEBUG"]:
@@ -61,6 +62,7 @@ EXPORTS += [
     "nsStyleSheetService.h",
     "StackArena.h",
     "TouchManager.h",
+    "UniqueOrNonOwningPtr.h",
     "Units.h",
     "UnitTransforms.h",
     "WordMovementType.h",
@@ -77,6 +79,7 @@ EXPORTS.mozilla += [
     "DisplayPortUtils.h",
     "GeckoMVMContext.h",
     "GeometryUtils.h",
+    "LayoutStructs.h",
     "MediaEmulationData.h",
     "MotionPathUtils.h",
     "MVMContext.h",
@@ -86,6 +89,7 @@ EXPORTS.mozilla += [
     "PresShellForwards.h",
     "PresShellInlines.h",
     "RelativeTo.h",
+    "RenderingPhase.h",
     "RestyleManager.h",
     "ScrollStyles.h",
     "ScrollTypes.h",
@@ -95,22 +99,18 @@ EXPORTS.mozilla += [
     "ViewportUtils.h",
 ]
 
-EXPORTS.mozilla.layout += [
-    "LayoutTelemetryTools.h",
-]
-
 UNIFIED_SOURCES += [
     "AccessibleCaret.cpp",
     "AccessibleCaretEventHub.cpp",
     "AccessibleCaretManager.cpp",
     "Baseline.cpp",
+    "CaretAssociationHint.cpp",
     "ContainStyleScopeManager.cpp",
     "DepthOrderedFrameList.cpp",
     "DisplayPortUtils.cpp",
     "GeckoMVMContext.cpp",
     "GeometryUtils.cpp",
     "LayoutLogging.cpp",
-    "LayoutTelemetryTools.cpp",
     "MobileViewportManager.cpp",
     "MotionPathUtils.cpp",
     "nsBidiPresUtils.cpp",

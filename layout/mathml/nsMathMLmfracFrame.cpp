@@ -77,9 +77,7 @@ nsMathMLmfracFrame::TransmitAutomaticData() {
   return NS_OK;
 }
 
-nscoord nsMathMLmfracFrame::CalcLineThickness(nsPresContext* aPresContext,
-                                              ComputedStyle* aComputedStyle,
-                                              nsString& aThicknessAttribute,
+nscoord nsMathMLmfracFrame::CalcLineThickness(nsString& aThicknessAttribute,
                                               nscoord onePixel,
                                               nscoord aDefaultRuleThickness,
                                               float aFontSizeInflation) {
@@ -91,17 +89,18 @@ nscoord nsMathMLmfracFrame::CalcLineThickness(nsPresContext* aPresContext,
   // https://w3c.github.io/mathml-core/#dfn-linethickness
   if (!aThicknessAttribute.IsEmpty()) {
     lineThickness = defaultThickness;
-    ParseNumericValue(aThicknessAttribute, &lineThickness,
-                      dom::MathMLElement::PARSE_ALLOW_NEGATIVE, aPresContext,
-                      aComputedStyle, aFontSizeInflation);
+    ParseAndCalcNumericValue(aThicknessAttribute, &lineThickness,
+                             dom::MathMLElement::PARSE_ALLOW_NEGATIVE,
+                             aFontSizeInflation, this);
     // MathML Core says a negative value is interpreted as 0.
     if (lineThickness < 0) {
       lineThickness = 0;
     }
   }
   // use minimum if the lineThickness is a non-zero value less than minimun
-  if (lineThickness && lineThickness < minimumThickness)
+  if (lineThickness && lineThickness < minimumThickness) {
     lineThickness = minimumThickness;
+  }
 
   return lineThickness;
 }
@@ -120,37 +119,33 @@ void nsMathMLmfracFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 nsresult nsMathMLmfracFrame::AttributeChanged(int32_t aNameSpaceID,
                                               nsAtom* aAttribute,
                                               int32_t aModType) {
-  if (nsGkAtoms::linethickness_ == aAttribute) {
+  if (aNameSpaceID == kNameSpaceID_None &&
+      nsGkAtoms::linethickness == aAttribute) {
+    // The thickness changes, so a repaint of the bar is needed.
     InvalidateFrame();
+    // The thickness affects vertical offsets.
+    PresShell()->FrameNeedsReflow(this, IntrinsicDirty::None,
+                                  NS_FRAME_IS_DIRTY);
+    return NS_OK;
   }
   return nsMathMLContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
                                                   aModType);
 }
 
-/* virtual */
-nsresult nsMathMLmfracFrame::MeasureForWidth(DrawTarget* aDrawTarget,
-                                             ReflowOutput& aDesiredSize) {
-  return PlaceInternal(aDrawTarget, false, aDesiredSize, true);
-}
-
 nscoord nsMathMLmfracFrame::FixInterFrameSpacing(ReflowOutput& aDesiredSize) {
   nscoord gap = nsMathMLContainerFrame::FixInterFrameSpacing(aDesiredSize);
-  if (!gap) return 0;
+  if (!gap) {
+    return 0;
+  }
 
   mLineRect.MoveBy(gap, 0);
   return gap;
 }
 
 /* virtual */
-nsresult nsMathMLmfracFrame::Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
+nsresult nsMathMLmfracFrame::Place(DrawTarget* aDrawTarget,
+                                   const PlaceFlags& aFlags,
                                    ReflowOutput& aDesiredSize) {
-  return PlaceInternal(aDrawTarget, aPlaceOrigin, aDesiredSize, false);
-}
-
-nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
-                                           bool aPlaceOrigin,
-                                           ReflowOutput& aDesiredSize,
-                                           bool aWidthOnly) {
   ////////////////////////////////////
   // Get the children's desired sizes
   nsBoundingMetrics bmNum, bmDen;
@@ -158,16 +153,21 @@ nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
   ReflowOutput sizeDen(aDesiredSize.GetWritingMode());
   nsIFrame* frameDen = nullptr;
   nsIFrame* frameNum = mFrames.FirstChild();
-  if (frameNum) frameDen = frameNum->GetNextSibling();
+  if (frameNum) {
+    frameDen = frameNum->GetNextSibling();
+  }
   if (!frameNum || !frameDen || frameDen->GetNextSibling()) {
     // report an error, encourage people to get their markups in order
-    if (aPlaceOrigin) {
+    if (!aFlags.contains(PlaceFlag::MeasureOnly)) {
       ReportChildCountError();
     }
-    return PlaceAsMrow(aDrawTarget, aPlaceOrigin, aDesiredSize);
+    return PlaceAsMrow(aDrawTarget, aFlags, aDesiredSize);
   }
   GetReflowAndBoundingMetricsFor(frameNum, sizeNum, bmNum);
   GetReflowAndBoundingMetricsFor(frameDen, sizeDen, bmDen);
+
+  nsMargin numMargin = GetMarginForPlace(aFlags, frameNum),
+           denMargin = GetMarginForPlace(aFlags, frameDen);
 
   nsPresContext* presContext = PresContext();
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
@@ -196,22 +196,20 @@ nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
 
   // see if the linethickness attribute is there
   nsAutoString value;
-  mContent->AsElement()->GetAttr(nsGkAtoms::linethickness_, value);
-  mLineThickness =
-      CalcLineThickness(presContext, mComputedStyle, value, onePixel,
-                        defaultRuleThickness, fontSizeInflation);
+  mContent->AsElement()->GetAttr(nsGkAtoms::linethickness, value);
+  mLineThickness = CalcLineThickness(value, onePixel, defaultRuleThickness,
+                                     fontSizeInflation);
 
   bool displayStyle = StyleFont()->mMathStyle == StyleMathStyle::Normal;
 
   mLineRect.height = mLineThickness;
 
-  // by default, leave at least one-pixel padding at either end, and add
-  // lspace & rspace that may come from <mo> if we are an outermost
+  // Add lspace & rspace that may come from <mo> if we are an outermost
   // embellished container (we fetch values from the core since they may use
   // units that depend on style data, and style changes could have occurred
   // in the core since our last visit there)
-  nscoord leftSpace = onePixel;
-  nscoord rightSpace = onePixel;
+  nscoord leftSpace = 0;
+  nscoord rightSpace = 0;
   if (outermostEmbellished) {
     const bool isRTL = StyleVisibility()->mDirection == StyleDirection::Rtl;
     nsEmbellishData coreData;
@@ -275,8 +273,8 @@ nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
           oneDevPixel);
     }
 
-    nscoord actualClearance =
-        (numShift - bmNum.descent) - (bmDen.ascent - denShift);
+    nscoord actualClearance = (numShift - bmNum.descent - numMargin.bottom) -
+                              (bmDen.ascent + denMargin.top - denShift);
     // actualClearance should be >= minClearance
     if (actualClearance < minClearance) {
       nscoord halfGap = (minClearance - actualClearance) / 2;
@@ -312,14 +310,14 @@ nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
     }
 
     // adjust numShift to maintain minClearanceNum if needed
-    nscoord actualClearanceNum =
-        (numShift - bmNum.descent) - (axisHeight + actualRuleThickness / 2);
+    nscoord actualClearanceNum = (numShift - bmNum.descent - numMargin.bottom) -
+                                 (axisHeight + actualRuleThickness / 2);
     if (actualClearanceNum < minClearanceNum) {
       numShift += (minClearanceNum - actualClearanceNum);
     }
     // adjust denShift to maintain minClearanceDen if needed
-    nscoord actualClearanceDen =
-        (axisHeight - actualRuleThickness / 2) - (bmDen.ascent - denShift);
+    nscoord actualClearanceDen = (axisHeight - actualRuleThickness / 2) -
+                                 (bmDen.ascent + denMargin.top - denShift);
     if (actualClearanceDen < minClearanceDen) {
       denShift += (minClearanceDen - actualClearanceDen);
     }
@@ -330,40 +328,73 @@ nsresult nsMathMLmfracFrame::PlaceInternal(DrawTarget* aDrawTarget,
 
   // XXX Need revisiting the width. TeX uses the exact width
   // e.g. in $$\huge\frac{\displaystyle\int}{i}$$
-  nscoord width = std::max(bmNum.width, bmDen.width);
-  nscoord dxNum = leftSpace + (width - sizeNum.Width()) / 2;
-  nscoord dxDen = leftSpace + (width - sizeDen.Width()) / 2;
+  nscoord width = std::max(bmNum.width + numMargin.LeftRight(),
+                           bmDen.width + denMargin.LeftRight());
+  nscoord dxNum =
+      leftSpace + (width - sizeNum.Width() - numMargin.LeftRight()) / 2;
+  nscoord dxDen =
+      leftSpace + (width - sizeDen.Width() - denMargin.LeftRight()) / 2;
   width += leftSpace + rightSpace;
 
   mBoundingMetrics.rightBearing =
-      std::max(dxNum + bmNum.rightBearing, dxDen + bmDen.rightBearing);
-  if (mBoundingMetrics.rightBearing < width - rightSpace)
+      std::max(dxNum + bmNum.rightBearing + numMargin.LeftRight(),
+               dxDen + bmDen.rightBearing + denMargin.LeftRight());
+  if (mBoundingMetrics.rightBearing < width - rightSpace) {
     mBoundingMetrics.rightBearing = width - rightSpace;
+  }
   mBoundingMetrics.leftBearing =
       std::min(dxNum + bmNum.leftBearing, dxDen + bmDen.leftBearing);
-  if (mBoundingMetrics.leftBearing > leftSpace)
+  if (mBoundingMetrics.leftBearing > leftSpace) {
     mBoundingMetrics.leftBearing = leftSpace;
-  mBoundingMetrics.ascent = bmNum.ascent + numShift;
-  mBoundingMetrics.descent = bmDen.descent + denShift;
+  }
+  mBoundingMetrics.ascent = bmNum.ascent + numShift + numMargin.top;
+  mBoundingMetrics.descent = bmDen.descent + denShift + denMargin.bottom;
   mBoundingMetrics.width = width;
 
-  aDesiredSize.SetBlockStartAscent(sizeNum.BlockStartAscent() + numShift);
-  aDesiredSize.Height() = aDesiredSize.BlockStartAscent() + sizeDen.Height() -
-                          sizeDen.BlockStartAscent() + denShift;
+  aDesiredSize.SetBlockStartAscent(numMargin.top + sizeNum.BlockStartAscent() +
+                                   numShift);
+  aDesiredSize.Height() = aDesiredSize.BlockStartAscent() + sizeDen.Height() +
+                          denMargin.bottom - sizeDen.BlockStartAscent() +
+                          denShift;
   aDesiredSize.Width() = mBoundingMetrics.width;
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
+
+  // Apply width/height to math content box.
+  auto sizes = GetWidthAndHeightForPlaceAdjustment(aFlags);
+  auto shiftX = ApplyAdjustmentForWidthAndHeight(aFlags, sizes, aDesiredSize,
+                                                 mBoundingMetrics);
+  if (sizes.width) {
+    // MathML Core says the math content box is horizontally centered
+    // but the fraction bar still takes the full width of the content box.
+    dxNum += shiftX;
+    dxDen += shiftX;
+    width = *sizes.width;
+  }
+
+  // Add padding+border.
+  auto borderPadding = GetBorderPaddingForPlace(aFlags);
+  InflateReflowAndBoundingMetrics(borderPadding, aDesiredSize,
+                                  mBoundingMetrics);
+  leftSpace += borderPadding.left;
+  rightSpace += borderPadding.right;
+  width += borderPadding.LeftRight();
+  dxNum += borderPadding.left;
+  dxDen += borderPadding.left;
 
   mReference.x = 0;
   mReference.y = aDesiredSize.BlockStartAscent();
 
-  if (aPlaceOrigin) {
+  if (!aFlags.contains(PlaceFlag::MeasureOnly)) {
     nscoord dy;
     // place numerator
-    dy = 0;
+    dxNum += numMargin.left;
+    dy = borderPadding.top + numMargin.top;
     FinishReflowChild(frameNum, presContext, sizeNum, nullptr, dxNum, dy,
                       ReflowChildFlags::Default);
     // place denominator
-    dy = aDesiredSize.Height() - sizeDen.Height();
+    dxDen += denMargin.left;
+    dy =
+        aDesiredSize.BlockStartAscent() + denShift - sizeDen.BlockStartAscent();
     FinishReflowChild(frameDen, presContext, sizeDen, nullptr, dxDen, dy,
                       ReflowChildFlags::Default);
     // place the fraction bar - dy is top of bar

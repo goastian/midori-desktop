@@ -629,9 +629,9 @@ public class CodeGenerator {
       }
 
       if (val != null && type.isPrimitive()) {
-        // For static final primitive fields, we can use a "static const" declaration.
+        // For static final primitive fields, we can use a "static constexpr" declaration.
         header.append(
-            "    static const "
+            "    static constexpr "
                 + Utils.getNativeReturnType(type, info)
                 + ' '
                 + info.wrapperName
@@ -826,7 +826,7 @@ public class CodeGenerator {
             + "};\n"
             + "\n"
             + "template<class Impl>\n"
-            + "const JNINativeMethod "
+            + "MOZ_GLOBINIT const JNINativeMethod "
             + clsName
             + "::Natives<Impl>::methods[] = {"
             + nativesInits

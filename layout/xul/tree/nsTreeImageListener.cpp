@@ -75,18 +75,19 @@ void nsTreeImageListener::AddCell(int32_t aIndex, nsTreeColumn* aCol) {
 }
 
 void nsTreeImageListener::Invalidate() {
-  if (!mInvalidationSuppressed) {
-    for (InvalidationArea* currArea = mInvalidationArea; currArea;
-         currArea = currArea->GetNext()) {
-      // Loop from min to max, invalidating each cell that was listening for
-      // this image.
-      for (int32_t i = currArea->GetMin(); i <= currArea->GetMax(); ++i) {
-        if (mTreeFrame) {
-          RefPtr<XULTreeElement> tree =
-              XULTreeElement::FromNodeOrNull(mTreeFrame->GetBaseElement());
-          if (tree) {
-            tree->InvalidateCell(i, currArea->GetCol());
-          }
+  if (mInvalidationSuppressed) {
+    return;
+  }
+  for (InvalidationArea* currArea = mInvalidationArea; currArea;
+       currArea = currArea->GetNext()) {
+    // Loop from min to max, invalidating each cell that was listening for
+    // this image.
+    for (int32_t i = currArea->GetMin(); i <= currArea->GetMax(); ++i) {
+      if (mTreeFrame) {
+        RefPtr<XULTreeElement> tree =
+            XULTreeElement::FromNodeOrNull(mTreeFrame->GetBaseElement());
+        if (tree) {
+          tree->InvalidateCell(i, currArea->GetCol());
         }
       }
     }
@@ -100,16 +101,11 @@ nsTreeImageListener::InvalidationArea::InvalidationArea(nsTreeColumn* aCol)
       mNext(nullptr) {}
 
 void nsTreeImageListener::InvalidationArea::AddRow(int32_t aIndex) {
-  if (mMin == -1)
+  if (mMin == -1) {
     mMin = mMax = aIndex;
-  else if (aIndex < mMin)
+  } else if (aIndex < mMin) {
     mMin = aIndex;
-  else if (aIndex > mMax)
+  } else if (aIndex > mMax) {
     mMax = aIndex;
-}
-
-NS_IMETHODIMP
-nsTreeImageListener::ClearFrame() {
-  mTreeFrame = nullptr;
-  return NS_OK;
+  }
 }

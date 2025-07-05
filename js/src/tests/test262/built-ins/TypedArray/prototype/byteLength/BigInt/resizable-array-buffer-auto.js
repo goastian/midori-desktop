@@ -1,4 +1,3 @@
-// |reftest| shell-option(--enable-arraybuffer-resizable) skip-if(!ArrayBuffer.prototype.resize||!xulRuntime.shell) -- resizable-arraybuffer is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 the V8 project authors. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 /*---
@@ -37,6 +36,13 @@ testWithBigIntTypedArrayConstructors(function(TA) {
   } catch (_) {}
 
   assert.sameValue(array.byteLength, expected, "following shrink (within bounds)");
+
+  try {
+    ab.resize(BPE * 3 - 1);
+    expected = BPE;
+  } catch (_) {}
+
+  assert.sameValue(array.byteLength, expected, "following shrink (partial element)");
 
   try {
     ab.resize(BPE);

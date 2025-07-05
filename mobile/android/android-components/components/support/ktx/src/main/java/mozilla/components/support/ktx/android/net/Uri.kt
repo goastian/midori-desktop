@@ -11,6 +11,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.ktx.kotlin.sanitizeFileName
 import java.io.File
@@ -153,7 +154,7 @@ fun Uri.toFileUri(context: Context, dirToCopy: String = "/temps"): Uri {
     } catch (e: IOException) {
         Logger("Uri.kt").warn("Could not convert uri to file uri", e)
     }
-    return Uri.parse("file:///${Uri.encode(temporalFile.absolutePath)}")
+    return "file:///${Uri.encode(temporalFile.absolutePath)}".toUri()
 }
 
 @VisibleForTesting
@@ -190,5 +191,24 @@ internal fun generateFileName(fileExtension: String = ""): String {
         "$randomId$timeStamp.$fileExtension"
     } else {
         "$randomId$timeStamp"
+    }
+}
+
+/**
+ * Checks that the given URI is readable
+ * @param contentResolver the contentResolver that will be used to check the permission
+ * @return true is the URI is readable
+ */
+fun Uri.isReadable(contentResolver: ContentResolver): Boolean {
+    try {
+        val projection = arrayOf("_id") // Minimal projection
+        val isReadable = contentResolver.query(this, projection, null, null, null)?.use {
+            true
+        } ?: false
+        Logger.debug("Read permission was ${if (!isReadable) "not" else ""}granted on this URI")
+        return isReadable
+    } catch (e: SecurityException) {
+        Logger.debug("Read permission was not granted on this URI", e)
+        return false
     }
 }

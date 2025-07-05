@@ -6,28 +6,19 @@
 <script>
 const SHEET = document.querySelector('style');
 
-SimpleTest.waitForExplicitFinish();
+let lazy = {};
 
-async function testWithPref() {
-  await new Promise(r => {
-    SpecialPowers.pushPrefEnv(
-      {
-        set: [
-          ["layout.css.forced-colors.enabled", false],
-        ],
-      },
-      r
-    );
-  });
-  expectKnown("(forced-colors: none)");
-  expectKnown("(forced-colors: active)");
-  expectKnown("(forced-colors)");
-  SimpleTest.finish();
-}
+ChromeUtils.defineESModuleGetters(lazy, {
+  WindowsVersionInfo:
+    "resource://gre/modules/components-utils/WindowsVersionInfo.sys.mjs",
+});
+
+
+SimpleTest.waitForExplicitFinish();
 
 function expect(q, shouldBeKnown) {
   is(matchMedia(q).media, q, "Serialization should roundtrip");
-  is(matchMedia(`${q} or (not ${q})`).matches, shouldBeKnown, `Query should${shouldBeKnown ? "" : " not"} be known`);
+  is(matchMedia(`${q} or (not ${q})`).matches, shouldBeKnown, `${q} should${shouldBeKnown ? "" : " not"} be known`);
 }
 
 function expectKnown(q) {
@@ -36,6 +27,28 @@ function expectKnown(q) {
 
 function expectUnkown(q) {
   expect(q, false);
+}
+
+function testMatches(q, shouldMatch = true) {
+  is(matchMedia(q).matches, shouldMatch, `${q} should match`);
+}
+
+async function testMozPref(q, prefName, value, otherValue) {
+  expectKnown(q);
+  await SpecialPowers.pushPrefEnv({
+    set:[[prefName, value]],
+  });
+  testMatches(q, true);
+  let mediaList = matchMedia(q);
+  let change = new Promise(r => {
+    mediaList.addEventListener("change", r, { once: true });
+  });
+  await SpecialPowers.pushPrefEnv({
+    set:[[prefName, otherValue]],
+  });
+  testMatches(q, false);
+  // Should change dynamically successfully.
+  await change;
 }
 
 // Test a toggle that should always match for `1` or `0`.
@@ -80,5 +93,36 @@ expectKnown("(forced-colors)");
 
 expectUnkown("(-moz-platform: )");
 
-testWithPref();
+(async function() {
+  await testMozPref('-moz-pref("foo.bar.bool", true)', "foo.bar.bool", true, false);
+  await testMozPref('-moz-pref("foo.bar.bool")', "foo.bar.bool", true, false);
+  await testMozPref('-moz-pref("foo.bar.str", "foo")', "foo.bar.str", "foo", "bar");
+  await testMozPref('-moz-pref("foo.bar.str")', "foo.bar.str", "foo", "");
+  await testMozPref('-moz-pref("foo.bar.int", 1)', "foo.bar.int", 1, 2);
+  await testMozPref('-moz-pref("foo.bar.int")', "foo.bar.int", 1, 0);
+
+  let supportsMica = matchMedia('(-moz-platform: windows)').matches && lazy.WindowsVersionInfo.get().buildNumber >= 22621;
+  info(`Mica supported: ${supportsMica}`);
+  for (let [query, pref] of [['(-moz-windows-mica)', 'widget.windows.mica'], ['(-moz-windows-mica-popups)', 'widget.windows.mica.popups']]) {
+    let prefIsBool = pref == 'widget.windows.mica';
+    let prefValue = prefIsBool ? SpecialPowers.getBoolPref(pref, false) : SpecialPowers.getIntPref(pref, 0);
+    // Assuming we don't hit the "auto but disabled" case for popups.
+    let prefEnabled = !!prefValue;
+    let mediaList = matchMedia(query);
+    is(mediaList.matches, supportsMica && prefEnabled, `Mica support is as expected ${query}`);
+    let change = new Promise(r => {
+      mediaList.addEventListener("change", r, { once: true });
+    });
+    await SpecialPowers.pushPrefEnv({
+      set: [[pref, prefIsBool ? !prefValue : (prefValue ? 0 : 1)]],
+    });
+    if (supportsMica) {
+      await change;
+    }
+    is(mediaList.matches, supportsMica && !prefEnabled, `Mica query works dynamically if appropriate ${query}`);
+    await SpecialPowers.popPrefEnv();
+  }
+
+  SimpleTest.finish();
+}());
 </script>

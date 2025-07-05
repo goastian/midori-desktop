@@ -41,6 +41,7 @@ class ServiceWorkerSupportTest {
             parentId = eq(null), // default
             flags = eq(LoadUrlFlags.external()),
             contextId = eq(null), // default
+            title = eq(""), // default
             engineSession = any<EngineSession>(),
             source = eq(SessionState.Source.Internal.None),
             searchTerms = eq(""), // default
@@ -49,6 +50,8 @@ class ServiceWorkerSupportTest {
             isSearch = eq(false), // default
             searchEngineName = eq(null), // default
             additionalHeaders = eq(null), // default
+            originalInput = eq(null), // default
+            textDirectiveUserActivation = eq(false), // default
         )
     }
 }

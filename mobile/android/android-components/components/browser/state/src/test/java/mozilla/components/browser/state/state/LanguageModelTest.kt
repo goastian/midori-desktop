@@ -6,6 +6,10 @@ package mozilla.components.browser.state.state
 
 import mozilla.components.concept.engine.translate.Language
 import mozilla.components.concept.engine.translate.LanguageModel
+import mozilla.components.concept.engine.translate.LanguageModel.Companion.PIVOT_LANGUAGE_CODE
+import mozilla.components.concept.engine.translate.LanguageModel.Companion.areModelsProcessing
+import mozilla.components.concept.engine.translate.LanguageModel.Companion.isPivotDownloaded
+import mozilla.components.concept.engine.translate.LanguageModel.Companion.shouldPivotSync
 import mozilla.components.concept.engine.translate.ModelManagementOptions
 import mozilla.components.concept.engine.translate.ModelOperation
 import mozilla.components.concept.engine.translate.ModelState
@@ -22,6 +26,8 @@ class LanguageModelTest {
         LanguageModel(language = Language(code = "de"), status = ModelState.NOT_DOWNLOADED, size = 122),
         LanguageModel(language = Language(code = "fr"), status = ModelState.DOWNLOADED, size = 133),
         LanguageModel(language = Language(code = "en"), status = ModelState.DOWNLOADED, size = 144),
+        LanguageModel(language = Language(code = "nn"), status = ModelState.ERROR_DELETION, size = 155),
+        LanguageModel(language = Language(code = "it"), status = ModelState.ERROR_DOWNLOAD, size = 166),
     )
 
     @Test
@@ -36,6 +42,7 @@ class LanguageModelTest {
         val processState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.DOWNLOAD_IN_PROGRESS else ModelState.DELETION_IN_PROGRESS
 
         val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
             currentLanguageModels = mockLanguageModels,
             options = options,
             newStatus = processState,
@@ -46,6 +53,8 @@ class LanguageModelTest {
             mockLanguageModels[1],
             mockLanguageModels[2],
             mockLanguageModels[3],
+            mockLanguageModels[4],
+            mockLanguageModels[5],
         )
 
         assertEquals(expectedModelState, newModelState)
@@ -63,6 +72,7 @@ class LanguageModelTest {
         val processState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.DOWNLOAD_IN_PROGRESS else ModelState.DELETION_IN_PROGRESS
 
         val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
             currentLanguageModels = mockLanguageModels,
             options = options,
             newStatus = processState,
@@ -70,6 +80,37 @@ class LanguageModelTest {
 
         // Expect no state change, since downloading a downloaded model does not make sense.
         assertEquals(mockLanguageModels, newModelState)
+    }
+
+    @Test
+    fun `GIVEN a language level model operation that fails THEN set a failure condition`() {
+        val options = ModelManagementOptions(
+            languageToManage = "es",
+            operation = ModelOperation.DOWNLOAD,
+            operationLevel = OperationLevel.LANGUAGE,
+        )
+
+        // Simulated error state
+        val errorState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.ERROR_DOWNLOAD else ModelState.ERROR_DELETION
+
+        val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
+            currentLanguageModels = mockLanguageModels,
+            options = options,
+            newStatus = errorState,
+        )
+
+        val expectedModelState = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.ERROR_DOWNLOAD, size = 111),
+            mockLanguageModels[1],
+            mockLanguageModels[2],
+            mockLanguageModels[3],
+            mockLanguageModels[4],
+            mockLanguageModels[5],
+        )
+
+        // Expect the failure state occurs
+        assertEquals(expectedModelState, newModelState)
     }
 
     @Test
@@ -84,6 +125,7 @@ class LanguageModelTest {
         val processState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.DOWNLOAD_IN_PROGRESS else ModelState.DELETION_IN_PROGRESS
 
         val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
             currentLanguageModels = mockLanguageModels,
             options = options,
             newStatus = processState,
@@ -94,6 +136,8 @@ class LanguageModelTest {
             LanguageModel(language = Language(code = "de"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 122),
             LanguageModel(language = Language(code = "fr"), status = ModelState.DOWNLOADED, size = 133),
             LanguageModel(language = Language(code = "en"), status = ModelState.DOWNLOADED, size = 144),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 166),
         )
         assertEquals(expectedModelState, newModelState)
     }
@@ -110,12 +154,166 @@ class LanguageModelTest {
         val processState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.DOWNLOAD_IN_PROGRESS else ModelState.DELETION_IN_PROGRESS
 
         val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
             currentLanguageModels = mockLanguageModels,
             options = options,
             newStatus = processState,
         )
 
         assertEquals(mockLanguageModels, newModelState)
+    }
+
+    @Test
+    fun `GIVEN an operation without a pivot THEN the state of operation and pivot language should change`() {
+        val options = ModelManagementOptions(
+            languageToManage = "de",
+            operation = ModelOperation.DOWNLOAD,
+            operationLevel = OperationLevel.LANGUAGE,
+        )
+
+        // Simulated process state before syncing with the engine
+        val processState = if (options.operation == ModelOperation.DOWNLOAD) ModelState.DOWNLOAD_IN_PROGRESS else ModelState.DELETION_IN_PROGRESS
+
+        val mockNonDownloadedPivot = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.NOT_DOWNLOADED, size = 111),
+            LanguageModel(language = Language(code = "de"), status = ModelState.NOT_DOWNLOADED, size = 122),
+            LanguageModel(language = Language(code = "fr"), status = ModelState.NOT_DOWNLOADED, size = 133),
+            LanguageModel(language = Language(code = PIVOT_LANGUAGE_CODE), status = ModelState.NOT_DOWNLOADED, size = 144),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.NOT_DOWNLOADED, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.NOT_DOWNLOADED, size = 166),
+        )
+
+        val newModelState = LanguageModel.determineNewLanguageModelState(
+            appLanguage = "any-code",
+            currentLanguageModels = mockNonDownloadedPivot,
+            options = options,
+            newStatus = processState,
+        )
+
+        val expectedState = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.NOT_DOWNLOADED, size = 111),
+            LanguageModel(language = Language(code = "de"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 122),
+            LanguageModel(language = Language(code = "fr"), status = ModelState.NOT_DOWNLOADED, size = 133),
+            LanguageModel(language = Language(code = PIVOT_LANGUAGE_CODE), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 144),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.NOT_DOWNLOADED, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.NOT_DOWNLOADED, size = 166),
+        )
+
+        assertEquals(expectedState, newModelState)
+    }
+
+    @Test
+    fun `GIVEN a specified state THEN check if a pivot sync should occur`() {
+        val options = ModelManagementOptions(
+            languageToManage = "de",
+            operation = ModelOperation.DOWNLOAD,
+            operationLevel = OperationLevel.LANGUAGE,
+        )
+
+        // Pivot is downloaded
+        assertFalse(shouldPivotSync(appLanguage = "any-code", languageModels = mockLanguageModels, options))
+
+        val mockNonDownloadedPivot = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.NOT_DOWNLOADED, size = 111),
+            LanguageModel(language = Language(code = "de"), status = ModelState.NOT_DOWNLOADED, size = 122),
+            LanguageModel(language = Language(code = "fr"), status = ModelState.NOT_DOWNLOADED, size = 133),
+            LanguageModel(language = Language(code = PIVOT_LANGUAGE_CODE), status = ModelState.NOT_DOWNLOADED, size = 144),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.NOT_DOWNLOADED, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.NOT_DOWNLOADED, size = 166),
+        )
+
+        // Pivot is downloaded and attempting to download de
+        assertTrue(isPivotDownloaded(appLanguage = "any-code", languageModels = mockLanguageModels))
+        assertFalse(
+            shouldPivotSync(
+                appLanguage = "any-code",
+                languageModels = mockLanguageModels,
+                options = options,
+            ),
+        )
+
+        // Pivot is not downloaded and attempting to download de
+        assertFalse(isPivotDownloaded(appLanguage = "any-code", languageModels = mockNonDownloadedPivot))
+        assertTrue(
+            shouldPivotSync(
+                appLanguage = "any-code",
+                languageModels = mockNonDownloadedPivot,
+                options = options,
+            ),
+        )
+
+        // English is the app language and pivot language, so no pivot sync
+        assertFalse(
+            shouldPivotSync(
+                appLanguage = "en",
+                languageModels = mockNonDownloadedPivot,
+                options = options,
+            ),
+        )
+
+        // When English is the language being operated on, then it shouldn't sync
+        assertFalse(
+            shouldPivotSync(
+                appLanguage = "any-code",
+                languageModels = mockNonDownloadedPivot,
+                options =
+                ModelManagementOptions(
+                    languageToManage = "en",
+                    operation = ModelOperation.DOWNLOAD,
+                    operationLevel = OperationLevel.LANGUAGE,
+                ),
+            ),
+        )
+
+        val mockPivotNotMentioned = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.NOT_DOWNLOADED, size = 111),
+            LanguageModel(language = Language(code = "de"), status = ModelState.NOT_DOWNLOADED, size = 122),
+            LanguageModel(language = Language(code = "fr"), status = ModelState.NOT_DOWNLOADED, size = 133),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.NOT_DOWNLOADED, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.NOT_DOWNLOADED, size = 166),
+        )
+
+        // Pivot is not mentioned and attempting to download de
+        // (Implicitly do not need pivot.)
+        assertTrue(
+            isPivotDownloaded(
+                appLanguage = "any-code",
+                languageModels = mockPivotNotMentioned,
+            ),
+        )
+        assertFalse(
+            shouldPivotSync(
+                appLanguage = "any-code",
+                languageModels = mockPivotNotMentioned,
+                options = options,
+            ),
+        )
+    }
+
+    @Test
+    fun `GIVEN a specified state THEN check if the language models are processing`() {
+        // None are processing because there are no "_IN_PROGRESS" states.
+        assertFalse(
+            areModelsProcessing(
+                languageModels = mockLanguageModels,
+            ),
+        )
+
+        val mockLanguagesProcessing = listOf(
+            LanguageModel(language = Language(code = "es"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 111),
+            LanguageModel(language = Language(code = "de"), status = ModelState.DOWNLOAD_IN_PROGRESS, size = 122),
+            LanguageModel(language = Language(code = "fr"), status = ModelState.NOT_DOWNLOADED, size = 133),
+            LanguageModel(language = Language(code = PIVOT_LANGUAGE_CODE), status = ModelState.NOT_DOWNLOADED, size = 144),
+            LanguageModel(language = Language(code = "nn"), status = ModelState.NOT_DOWNLOADED, size = 155),
+            LanguageModel(language = Language(code = "it"), status = ModelState.NOT_DOWNLOADED, size = 166),
+        )
+
+        // Some are processing with "_IN_PROGRESS" states.
+        assertTrue(
+            areModelsProcessing(
+                languageModels = mockLanguagesProcessing,
+            ),
+        )
     }
 
     @Test
@@ -136,9 +334,20 @@ class LanguageModelTest {
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DOWNLOAD_IN_PROGRESS, newStatus = ModelState.DELETION_IN_PROGRESS))
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DOWNLOAD_IN_PROGRESS, newStatus = ModelState.DOWNLOADED))
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DOWNLOAD_IN_PROGRESS, newStatus = ModelState.NOT_DOWNLOADED))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DOWNLOAD_IN_PROGRESS, newStatus = ModelState.ERROR_DOWNLOAD))
 
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DELETION_IN_PROGRESS, newStatus = ModelState.DOWNLOAD_IN_PROGRESS))
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DELETION_IN_PROGRESS, newStatus = ModelState.DOWNLOADED))
         assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DELETION_IN_PROGRESS, newStatus = ModelState.NOT_DOWNLOADED))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.DELETION_IN_PROGRESS, newStatus = ModelState.ERROR_DELETION))
+
+        // Error states should always be operable
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DOWNLOAD, newStatus = ModelState.DOWNLOAD_IN_PROGRESS))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DOWNLOAD, newStatus = ModelState.DOWNLOADED))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DOWNLOAD, newStatus = ModelState.NOT_DOWNLOADED))
+
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DELETION, newStatus = ModelState.DELETION_IN_PROGRESS))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DELETION, newStatus = ModelState.DOWNLOADED))
+        assertTrue(LanguageModel.checkIfOperable(currentStatus = ModelState.ERROR_DELETION, newStatus = ModelState.NOT_DOWNLOADED))
     }
 }

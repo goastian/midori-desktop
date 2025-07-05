@@ -8,8 +8,8 @@ import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import mozilla.components.concept.fetch.Client
 import mozilla.components.concept.fetch.Request
-import mozilla.components.service.pocket.ext.fetchBodyOrNull
 import mozilla.components.service.pocket.stories.api.PocketEndpointRaw.Companion.newInstance
+import mozilla.components.support.base.ext.fetchBodyOrNull
 
 /**
  * Makes requests to the Pocket endpoint and returns the raw JSON data.
@@ -33,12 +33,12 @@ internal class PocketEndpointRaw internal constructor(
      */
     @WorkerThread // synchronous request.
     private fun makeRequest(): String? {
-        val request = Request(pocketEndpointUrl, conservative = true)
+        val request = Request(POCKET_ENDPOINT_URL, conservative = true)
         return client.fetchBodyOrNull(request)
     }
 
     companion object {
-        private const val pocketEndpointUrl = "https://firefox-android-home-recommendations.getpocket.com/"
+        private const val POCKET_ENDPOINT_URL = "https://firefox-android-home-recommendations.getpocket.com/"
 
         /**
          * Returns a new instance of [PocketEndpointRaw].

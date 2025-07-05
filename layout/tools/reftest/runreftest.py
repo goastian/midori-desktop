@@ -6,7 +6,6 @@
 Runs the reftest test harness.
 """
 import json
-import multiprocessing
 import os
 import platform
 import posixpath
@@ -37,8 +36,6 @@ from manifestparser import TestManifest
 from manifestparser import filters as mpf
 from mozrunner.utils import get_stack_fixer_function, test_environment
 from mozscreenshot import dump_screen, printstatus
-from six import reraise, string_types
-from six.moves import range
 
 try:
     from marionette_driver.addons import Addons
@@ -61,10 +58,12 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 try:
     from mozbuild.base import MozbuildObject
+    from mozbuild.util import cpu_count
 
     build_obj = MozbuildObject.from_environment(cwd=here)
 except ImportError:
     build_obj = None
+    from multiprocessing import cpu_count
 
 
 def categoriesToRegex(categoryList):
@@ -97,17 +96,12 @@ summaryLines = [
 ]
 
 
-if sys.version_info[0] == 3:
-
-    def reraise_(tp_, value_, tb_=None):
-        if value_ is None:
-            value_ = tp_()
-        if value_.__traceback__ is not tb_:
-            raise value_.with_traceback(tb_)
-        raise value_
-
-else:
-    exec("def reraise_(tp_, value_, tb_=None):\n    raise tp_, value_, tb_\n")
+def reraise_(tp_, value_, tb_=None):
+    if value_ is None:
+        value_ = tp_()
+    if value_.__traceback__ is not tb_:
+        raise value_.with_traceback(tb_)
+    raise value_
 
 
 def update_mozinfo():
@@ -193,7 +187,7 @@ class ReftestThread(threading.Thread):
                 yield line
 
 
-class ReftestResolver(object):
+class ReftestResolver:
     def defaultManifest(self, suite):
         return {
             "reftest": "reftest.list",
@@ -287,7 +281,7 @@ class ReftestResolver(object):
         return manifests_by_url
 
 
-class RefTest(object):
+class RefTest:
     oldcwd = os.getcwd()
     resolver_cls = ReftestResolver
     use_marionette = True
@@ -333,12 +327,17 @@ class RefTest(object):
         if not platform.system() == "Linux":
             return ""
 
-        theme_cmd = "gsettings get org.gnome.desktop.interface gtk-theme"
-        theme = subprocess.check_output(theme_cmd, shell=True, universal_newlines=True)
-        if theme:
-            theme = theme.strip("\n")
-            theme = theme.strip("'")
-        return theme.strip()
+        try:
+            theme_cmd = "gsettings get org.gnome.desktop.interface gtk-theme"
+            theme = subprocess.check_output(
+                theme_cmd, shell=True, universal_newlines=True
+            )
+            if theme:
+                theme = theme.strip("\n")
+                theme = theme.strip("'")
+            return theme.strip()
+        except subprocess.CalledProcessError:
+            return ""
 
     def getFullPath(self, path):
         "Get an absolute path relative to self.oldcwd."
@@ -429,7 +428,7 @@ class RefTest(object):
             if os.path.isdir(path):
                 profile_data_dir = path
 
-        with open(os.path.join(profile_data_dir, "profiles.json"), "r") as fh:
+        with open(os.path.join(profile_data_dir, "profiles.json")) as fh:
             base_profiles = json.load(fh)["reftest"]
 
         for name in base_profiles:
@@ -469,13 +468,8 @@ class RefTest(object):
         prefs["gfx.bundled-fonts.activate"] = 1
         # Disable dark scrollbars because it's semi-transparent.
         prefs["widget.disable-dark-scrollbar"] = True
-        prefs["reftest.isCoverageBuild"] = mozinfo.info.get("ccov", False)
-
-        # config specific flags
-        prefs["sandbox.apple_silicon"] = mozinfo.info.get("apple_silicon", False)
 
         prefs["sandbox.mozinfo"] = json.dumps(mozinfo.info)
-        prefs["sandbox.os_version"] = mozinfo.info.get("os_version", "")
 
         # Set tests to run or manifests to parse.
         if tests:
@@ -485,6 +479,11 @@ class RefTest(object):
             prefs["reftest.tests"] = testlist
         elif manifests:
             prefs["reftest.manifests"] = json.dumps(manifests)
+
+        # Avoid unncessary recursion when MOZHARNESS_TEST_PATHS is set
+        prefs["reftest.mozharness_test_paths"] = (
+            len(os.environ.get("MOZHARNESS_TEST_PATHS", "")) > 0
+        )
 
         # default fission to True
         prefs["fission.autostart"] = True
@@ -523,7 +522,7 @@ class RefTest(object):
 
         self.copyExtraFilesToProfile(options, profile)
 
-        self.log.info("Running with e10s: {}".format(options.e10s))
+        self.log.info(f"Running with e10s: {options.e10s}")
         self.log.info("Running with fission: {}".format(prefs["fission.autostart"]))
 
         return profile
@@ -703,7 +702,7 @@ class RefTest(object):
         if not getattr(options, "runTestsInParallel", False):
             return self.runSerialTests(manifests, options, cmdargs)
 
-        cpuCount = multiprocessing.cpu_count()
+        cpuCount = cpu_count()
 
         # We have the directive, technology, and machine to run multiple test instances.
         # Experimentation says that reftests are not overly CPU-intensive, so we can run
@@ -858,7 +857,7 @@ class RefTest(object):
         valgrindPath=None,
         valgrindArgs=None,
         valgrindSuppFiles=None,
-        **profileArgs
+        **profileArgs,
     ):
         if cmdargs is None:
             cmdargs = []
@@ -933,7 +932,7 @@ class RefTest(object):
             debug_args=debug_args, interactive=interactive, outputTimeout=timeout
         )
         proc = runner.process_handler
-        self.outputHandler.proc_name = "GECKO({})".format(proc.pid)
+        self.outputHandler.proc_name = f"GECKO({proc.pid})"
 
         # Used to defer a possible IOError exception from Marionette
         marionette_exception = None
@@ -960,13 +959,13 @@ class RefTest(object):
                 addons.install(options.reftestExtensionPath, temp=True)
 
                 marionette.delete_session()
-            except IOError:
+            except OSError as e:
                 # Any IOError as thrown by Marionette means that something is
                 # wrong with the process, like a crash or the socket is no
                 # longer open. We defer raising this specific error so that
                 # post-test checks for leaks and crashes are performed and
                 # reported first.
-                marionette_exception = sys.exc_info()
+                marionette_exception = e
 
         status = runner.wait()
         runner.process_handler = None
@@ -1011,8 +1010,7 @@ class RefTest(object):
         self.cleanup(profile.profile)
 
         if marionette_exception is not None:
-            exc, value, tb = marionette_exception
-            raise reraise(exc, value, tb)
+            raise marionette_exception
 
         self.log.info("Process mode: {}".format("e10s" if options.e10s else "non-e10s"))
         return status
@@ -1031,7 +1029,7 @@ class RefTest(object):
             print("Error: parsing manifests failed!")
             sys.exit(1)
 
-        with open(self.testDumpFile, "r") as fh:
+        with open(self.testDumpFile) as fh:
             tests = json.load(fh)
 
         if os.path.isfile(self.testDumpFile):
@@ -1063,7 +1061,7 @@ class RefTest(object):
         def run(**kwargs):
             if kwargs.get("tests"):
                 self.lastTest = kwargs["tests"][-1]["identifier"]
-                if not isinstance(self.lastTest, string_types):
+                if not isinstance(self.lastTest, str):
                     self.lastTest = " ".join(self.lastTest)
 
             status = self.runApp(
@@ -1083,7 +1081,7 @@ class RefTest(object):
                 timeout=options.timeout + 70.0,
                 debuggerInfo=debuggerInfo,
                 symbolsPath=options.symbolsPath,
-                **kwargs
+                **kwargs,
             )
 
             # do not process leak log when we crash/assert
@@ -1106,7 +1104,7 @@ class RefTest(object):
         for t in tests:
             tests_by_manifest[t["manifest"]].append(t)
             test_id = t["identifier"]
-            if not isinstance(test_id, string_types):
+            if not isinstance(test_id, str):
                 test_id = " ".join(test_id)
             ids_by_manifest[t["manifestID"]].append(test_id)
 
@@ -1122,7 +1120,7 @@ class RefTest(object):
                 )
                 return 1
 
-            self.log.info("Running tests in {}".format(manifest))
+            self.log.info(f"Running tests in {manifest}")
             self.currentManifest = manifest
             status = run(tests=tests)
             overall = overall or status

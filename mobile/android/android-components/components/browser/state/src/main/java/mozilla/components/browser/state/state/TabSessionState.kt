@@ -32,6 +32,8 @@ import java.util.UUID
  * @property lastMediaAccessState - [LastMediaAccessState] detailing the tab state when media started playing.
  * Requires [LastMediaAccessMiddleware] to update the value when playback starts.
  * @property restored Indicates if this page was restored from a persisted state.
+ * @property originalInput If the user entered a URL, this is the original user
+ * input before any fixups were applied to it.
  */
 data class TabSessionState(
     override val id: String = UUID.randomUUID().toString(),
@@ -45,6 +47,7 @@ data class TabSessionState(
     override val contextId: String? = null,
     override val source: SessionState.Source = SessionState.Source.Internal.None,
     override val restored: Boolean = false,
+    override val originalInput: String? = null,
     val parentId: String? = null,
     val lastAccess: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
@@ -104,8 +107,11 @@ fun createTab(
     searchTerms: String = "",
     initialLoadFlags: EngineSession.LoadUrlFlags = EngineSession.LoadUrlFlags.none(),
     initialAdditionalHeaders: Map<String, String>? = null,
+    desktopMode: Boolean = false,
     previewImageUrl: String? = null,
     hasFormData: Boolean = false,
+    originalInput: String? = null,
+    initialTextDirectiveUserActivation: Boolean = false,
 ): TabSessionState {
     return TabSessionState(
         id = id,
@@ -115,6 +121,7 @@ fun createTab(
             title = title,
             webAppManifest = webAppManifest,
             searchTerms = searchTerms,
+            desktopMode = desktopMode,
             previewImageUrl = previewImageUrl,
             hasFormData = hasFormData,
             isProductUrl = isProductUrl,
@@ -134,9 +141,11 @@ fun createTab(
             crashed = crashed,
             initialLoadFlags = initialLoadFlags,
             initialAdditionalHeaders = initialAdditionalHeaders,
+            initialTextDirectiveUserActivation = initialTextDirectiveUserActivation,
         ),
         mediaSessionState = mediaSessionState,
         historyMetadata = historyMetadata,
+        originalInput = originalInput,
     )
 }
 

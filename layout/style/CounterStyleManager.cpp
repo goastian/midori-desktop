@@ -420,12 +420,17 @@ static bool HebrewToText(CounterValue aOrdinal, nsAString& aResult) {
     }  // if
 
     // Process digit for 1 - 9
-    if (n3 > 0) thousandsGroup.Append(gHebrewDigit[n3 - 1]);
-    if (outputSep) thousandsGroup.Append((char16_t)HEBREW_GERESH);
-    if (allText.IsEmpty())
+    if (n3 > 0) {
+      thousandsGroup.Append(gHebrewDigit[n3 - 1]);
+    }
+    if (outputSep) {
+      thousandsGroup.Append((char16_t)HEBREW_GERESH);
+    }
+    if (allText.IsEmpty()) {
       allText = thousandsGroup;
-    else
+    } else {
       allText = thousandsGroup + allText;
+    }
     aOrdinal /= 1000;
     outputSep = true;
   } while (aOrdinal >= 1);
@@ -613,6 +618,7 @@ static const char16_t kSquareCharacter = 0x25aa;
 static const char16_t kRightPointingCharacter = 0x25b8;
 static const char16_t kLeftPointingCharacter = 0x25c2;
 static const char16_t kDownPointingCharacter = 0x25be;
+static const char16_t kUpPointingCharacter = 0x25b4;
 
 /* virtual */
 void BuiltinCounterStyle::GetSpokenCounterText(CounterValue aOrdinal,
@@ -828,7 +834,11 @@ bool BuiltinCounterStyle::GetInitialCounterText(CounterValue aOrdinal,
       return true;
     case ListStyle::DisclosureClosed:
       if (aWritingMode.IsVertical()) {
-        aResult.Assign(kDownPointingCharacter);
+        if (aWritingMode.IsBidiLTR()) {
+          aResult.Assign(kDownPointingCharacter);
+        } else {
+          aResult.Assign(kUpPointingCharacter);
+        }
       } else if (aWritingMode.IsBidiLTR()) {
         aResult.Assign(kRightPointingCharacter);
       } else {
@@ -1816,7 +1826,7 @@ CounterStyle* CounterStyleManager::ResolveCounterStyle(nsAtom* aName) {
 
 /* static */
 CounterStyle* CounterStyleManager::GetBuiltinStyle(ListStyle aStyle) {
-  MOZ_ASSERT(size_t(aStyle) < ArrayLength(gBuiltinStyleTable),
+  MOZ_ASSERT(size_t(aStyle) < std::size(gBuiltinStyleTable),
              "Require a valid builtin style constant");
   MOZ_ASSERT(!gBuiltinStyleTable[size_t(aStyle)].IsDependentStyle(),
              "Cannot get dependent builtin style");

@@ -9,14 +9,10 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import mozilla.appservices.Megazord
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.storage.sync.GlobalPlacesDependencyProvider
 import mozilla.components.feature.addons.update.GlobalAddonDependencyProvider
 import mozilla.components.lib.fetch.httpurlconnection.HttpURLConnectionClient
-import mozilla.components.service.glean.BuildInfo
-import mozilla.components.service.glean.Glean
-import mozilla.components.service.glean.config.Configuration
 import mozilla.components.service.glean.net.ConceptFetchHttpUploader
 import mozilla.components.support.base.facts.Facts
 import mozilla.components.support.base.facts.processor.LogFactProcessor
@@ -27,6 +23,9 @@ import mozilla.components.support.ktx.android.content.isMainProcess
 import mozilla.components.support.ktx.android.content.runOnlyInMainProcess
 import mozilla.components.support.rustlog.RustLog
 import mozilla.components.support.webextensions.WebExtensionSupport
+import mozilla.telemetry.glean.BuildInfo
+import mozilla.telemetry.glean.Glean
+import mozilla.telemetry.glean.config.Configuration
 import java.util.Calendar
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
@@ -53,7 +52,6 @@ class SampleApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        Megazord.init()
         RustLog.enable()
 
         Log.addSink(AndroidLogSink())
@@ -94,16 +92,13 @@ class SampleApplication : Application() {
             WebExtensionSupport.initialize(
                 components.engine,
                 components.store,
-                onNewTabOverride = {
-                        _, engineSession, url ->
+                onNewTabOverride = { _, engineSession, url ->
                     components.tabsUseCases.addTab(url, selectTab = true, engineSession = engineSession)
                 },
-                onCloseTabOverride = {
-                        _, sessionId ->
+                onCloseTabOverride = { _, sessionId ->
                     components.tabsUseCases.removeTab(sessionId)
                 },
-                onSelectTabOverride = {
-                        _, sessionId ->
+                onSelectTabOverride = { _, sessionId ->
                     components.tabsUseCases.selectTab(sessionId)
                 },
                 onUpdatePermissionRequest = components.addonUpdater::onUpdatePermissionRequest,

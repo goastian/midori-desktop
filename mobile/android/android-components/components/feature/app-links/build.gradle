@@ -10,30 +10,20 @@ apply plugin: 'com.google.devtools.ksp'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    packagingOptions {
-        resources {
-            excludes += ['META-INF/proguard/androidx-annotations.pro']
-        }
-    }
-
-    namespace 'mozilla.components.feature.app.links'
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+    namespace = 'mozilla.components.feature.app.links'
 }
 
 dependencies {
@@ -45,16 +35,16 @@ dependencies {
     implementation project(':feature-session')
     implementation project(':ui-widgets')
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
     testImplementation project(':support-test')
     testImplementation project(':support-test-libstate')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

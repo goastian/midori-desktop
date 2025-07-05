@@ -58,6 +58,61 @@ void nsScrollbarFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   AddStateBits(NS_FRAME_REFLOW_ROOT);
 }
 
+nsScrollbarFrame* nsScrollbarFrame::GetOppositeScrollbar() const {
+  ScrollContainerFrame* sc = do_QueryFrame(GetParent());
+  if (!sc) {
+    return nullptr;
+  }
+  auto* vScrollbar = sc->GetScrollbarBox(/* aVertical= */ true);
+  if (vScrollbar == this) {
+    return sc->GetScrollbarBox(/* aVertical= */ false);
+  }
+  MOZ_ASSERT(sc->GetScrollbarBox(/* aVertical= */ false) == this,
+             "Which scrollbar are we?");
+  return vScrollbar;
+}
+
+void nsScrollbarFrame::InvalidateForHoverChange(bool aIsNowHovered) {
+  // Hover state on the scrollbar changes both the scrollbar and potentially
+  // descendants too, so invalidate when it changes.
+  InvalidateFrameSubtree();
+  if (!aIsNowHovered) {
+    return;
+  }
+  mHasBeenHovered = true;
+  // When hovering over one scrollbar, remove the sticky hover effect from the
+  // opposite scrollbar, if needed.
+  if (auto* opposite = GetOppositeScrollbar();
+      opposite && opposite->mHasBeenHovered) {
+    opposite->mHasBeenHovered = false;
+    opposite->InvalidateFrameSubtree();
+  }
+}
+
+void nsScrollbarFrame::ActivityChanged(bool aIsNowActive) {
+  if (ScrollContainerFrame* sc = do_QueryFrame(GetParent())) {
+    if (aIsNowActive) {
+      sc->ScrollbarActivityStarted();
+    } else {
+      sc->ScrollbarActivityStopped();
+    }
+  }
+}
+
+void nsScrollbarFrame::ElementStateChanged(dom::ElementState aStates) {
+  if (aStates.HasState(dom::ElementState::HOVER)) {
+    const bool hovered =
+        mContent->AsElement()->State().HasState(dom::ElementState::HOVER);
+    InvalidateForHoverChange(hovered);
+    ActivityChanged(hovered);
+  }
+}
+
+void nsScrollbarFrame::WillBecomeActive() {
+  // Reset our sticky hover state before becoming active.
+  mHasBeenHovered = false;
+}
+
 void nsScrollbarFrame::Destroy(DestroyContext& aContext) {
   aContext.AddAnonymousContent(mUpTopButton.forget());
   aContext.AddAnonymousContent(mDownTopButton.forget());
@@ -293,11 +348,12 @@ void nsScrollbarFrame::SetIncrementToWhole(int32_t aDirection) {
 
   // get the scrollbar's content node
   nsIContent* content = GetContent();
-  if (aDirection == -1)
+  if (aDirection == -1) {
     mIncrement = -nsSliderFrame::GetCurrentPosition(content);
-  else
+  } else {
     mIncrement = nsSliderFrame::GetMaxPosition(content) -
                  nsSliderFrame::GetCurrentPosition(content);
+  }
 }
 
 int32_t nsScrollbarFrame::MoveToNewPosition(

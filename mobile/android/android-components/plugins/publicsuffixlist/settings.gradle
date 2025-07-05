@@ -5,12 +5,16 @@
 // Prevents gradle builds from looking for a root settings.gradle
 
 pluginManagement {
-    apply from: file('../../../gradle/mozconfig.gradle')
+    if (!gradle.root.hasProperty("mozconfig")){
+        apply from: file('../../../gradle/mozconfig.gradle')
+    } else {
+        gradle.ext.mozconfig = gradle.root.mozconfig
+    }
 
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -23,4 +27,12 @@ pluginManagement {
 
 plugins {
     id "mozac.DependenciesPlugin"
+}
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            from(files("../../../../../gradle/libs.versions.toml"))
+        }
+    }
 }

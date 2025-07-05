@@ -9,9 +9,11 @@ import android.os.Parcelable
 import android.util.AttributeSet
 import android.util.JsonReader
 import androidx.annotation.VisibleForTesting
+import mozilla.components.browser.engine.fission.GeckoWebContentIsolationMapper.intoWebContentIsolationStrategy
 import mozilla.components.browser.engine.gecko.activity.GeckoActivityDelegate
 import mozilla.components.browser.engine.gecko.activity.GeckoScreenOrientationDelegate
 import mozilla.components.browser.engine.gecko.ext.getAntiTrackingPolicy
+import mozilla.components.browser.engine.gecko.ext.getEtpCategory
 import mozilla.components.browser.engine.gecko.ext.getEtpLevel
 import mozilla.components.browser.engine.gecko.ext.getStrictSocialTrackingProtection
 import mozilla.components.browser.engine.gecko.integration.LocaleSettingUpdater
@@ -40,6 +42,7 @@ import mozilla.components.concept.engine.activity.ActivityDelegate
 import mozilla.components.concept.engine.activity.OrientationDelegate
 import mozilla.components.concept.engine.content.blocking.TrackerLog
 import mozilla.components.concept.engine.content.blocking.TrackingProtectionExceptionStorage
+import mozilla.components.concept.engine.fission.WebContentIsolationStrategy
 import mozilla.components.concept.engine.history.HistoryTrackingDelegate
 import mozilla.components.concept.engine.mediaquery.PreferredColorScheme
 import mozilla.components.concept.engine.serviceworker.ServiceWorkerDelegate
@@ -80,6 +83,8 @@ import org.mozilla.geckoview.TranslationsController
 import org.mozilla.geckoview.WebExtensionController
 import org.mozilla.geckoview.WebNotification
 import java.lang.ref.WeakReference
+
+typealias NativePermissionPromptResponse = org.mozilla.geckoview.WebExtension.PermissionPromptResponse
 
 /**
  * Gecko-based implementation of Engine interface.
@@ -342,20 +347,25 @@ class GeckoEngine(
         this.webExtensionDelegate = webExtensionDelegate
 
         val promptDelegate = object : WebExtensionController.PromptDelegate {
-            override fun onInstallPrompt(
+
+            override fun onInstallPromptRequest(
                 ext: org.mozilla.geckoview.WebExtension,
                 permissions: Array<out String>,
                 origins: Array<out String>,
-            ): GeckoResult<AllowOrDeny>? {
-                val result = GeckoResult<AllowOrDeny>()
+            ): GeckoResult<NativePermissionPromptResponse>? {
+                val result = GeckoResult<NativePermissionPromptResponse>()
 
                 webExtensionDelegate.onInstallPermissionRequest(
                     GeckoWebExtension(ext, runtime),
-                    // We pass both permissions and origins as a single list of
-                    // permissions to be shown to the user.
-                    permissions.toList() + origins.toList(),
-                ) { allow ->
-                    if (allow) result.complete(AllowOrDeny.ALLOW) else result.complete(AllowOrDeny.DENY)
+                    permissions.toList(),
+                    origins.toList(),
+                ) { data ->
+                    result.complete(
+                        NativePermissionPromptResponse(
+                            data.isPermissionsGranted,
+                            data.isPrivateModeGranted,
+                        ),
+                    )
                 }
 
                 return result
@@ -388,7 +398,8 @@ class GeckoEngine(
                 val result = GeckoResult<AllowOrDeny>()
                 webExtensionDelegate.onOptionalPermissionsRequest(
                     GeckoWebExtension(extension, runtime),
-                    permissions.toList() + origins.toList(),
+                    permissions.toList(),
+                    origins.toList(),
                 ) { allow ->
                     if (allow) result.complete(AllowOrDeny.ALLOW) else result.complete(AllowOrDeny.DENY)
                 }
@@ -461,8 +472,7 @@ class GeckoEngine(
     override fun listInstalledWebExtensions(onSuccess: (List<WebExtension>) -> Unit, onError: (Throwable) -> Unit) {
         runtime.webExtensionController.list().then(
             {
-                val extensions = it?.map {
-                        extension ->
+                val extensions = it?.map { extension ->
                     GeckoWebExtension(extension, runtime)
                 } ?: emptyList()
 
@@ -741,8 +751,7 @@ class GeckoEngine(
                 onSuccess()
                 GeckoResult<Void>()
             },
-            {
-                    throwable ->
+            { throwable ->
                 onError(throwable)
                 GeckoResult<Void>()
             },
@@ -809,8 +818,7 @@ class GeckoEngine(
                 if (it != null) {
                     val listOfModels = mutableListOf<LanguageModel>()
                     for (each in it) {
-                        val language = each.language?.let {
-                                language ->
+                        val language = each.language?.let { language ->
                             Language(language.code, each.language?.localizedDisplayName)
                         }
                         val status = if (each.isDownloaded) ModelState.DOWNLOADED else ModelState.NOT_DOWNLOADED
@@ -1113,6 +1121,10 @@ class GeckoEngine(
                             enhancedTrackingProtectionLevel = value.getEtpLevel()
                         }
 
+                        if (getEnhancedTrackingProtectionCategory() != policy.getEtpCategory()) {
+                            setEnhancedTrackingProtectionCategory(policy.getEtpCategory())
+                        }
+
                         if (strictSocialTrackingProtection != value.getStrictSocialTrackingProtection()) {
                             strictSocialTrackingProtection = policy.getStrictSocialTrackingProtection()
                         }
@@ -1328,9 +1340,149 @@ class GeckoEngine(
                     Engine.HttpsOnlyMode.ENABLED -> GeckoRuntimeSettings.HTTPS_ONLY
                 }
             }
+
+        @Suppress("TooGenericExceptionCaught")
+        override var dohSettingsMode: Engine.DohSettingsMode
+            get() {
+                try {
+                    runtime.settings.trustedRecusiveResolverMode
+                } catch (npe: NullPointerException) {
+                    runtime.settings.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_OFF)
+                }
+                return when (runtime.settings.trustedRecusiveResolverMode) {
+                    GeckoRuntimeSettings.TRR_MODE_OFF -> Engine.DohSettingsMode.DEFAULT
+                    GeckoRuntimeSettings.TRR_MODE_FIRST -> Engine.DohSettingsMode.INCREASED
+                    GeckoRuntimeSettings.TRR_MODE_ONLY -> Engine.DohSettingsMode.MAX
+                    GeckoRuntimeSettings.TRR_MODE_DISABLED -> Engine.DohSettingsMode.OFF
+                    else -> Engine.DohSettingsMode.DEFAULT
+                }
+            }
+            set(value) {
+                when (value) {
+                    Engine.DohSettingsMode.DEFAULT ->
+                        runtime.settings.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_OFF)
+
+                    Engine.DohSettingsMode.INCREASED ->
+                        runtime.settings.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_FIRST)
+
+                    Engine.DohSettingsMode.MAX ->
+                        runtime.settings.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_ONLY)
+
+                    Engine.DohSettingsMode.OFF ->
+                        runtime.settings.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
+                }
+            }
+
+        @Suppress("TooGenericExceptionCaught")
+        override var dohProviderUrl: String
+            get() {
+                return try {
+                    runtime.settings.trustedRecursiveResolverUri
+                } catch (npe: NullPointerException) {
+                    // network.trr.uri pref has not been set
+                    runtime.settings.setTrustedRecursiveResolverUri("")
+                    runtime.settings.trustedRecursiveResolverUri
+                }
+            }
+            set(value) { runtime.settings.setTrustedRecursiveResolverUri(value) }
+
+        @Suppress("TooGenericExceptionCaught")
+        override var dohDefaultProviderUrl: String?
+            get() {
+                return try {
+                    runtime.settings.defaultRecursiveResolverUri
+                } catch (npe: NullPointerException) {
+                    // network.trr.default_provider_uri pref has not been set
+                    runtime.settings.setDefaultRecursiveResolverUri("")
+                    runtime.settings.defaultRecursiveResolverUri
+                }
+            }
+            set(value) {
+                if (value != null) {
+                    runtime.settings.setDefaultRecursiveResolverUri(value)
+                }
+            }
+
+        @Suppress("TooGenericExceptionCaught")
+        override var dohExceptionsList: List<String>
+            get() {
+                return try {
+                    runtime.settings.trustedRecursiveResolverExcludedDomains
+                } catch (npe: NullPointerException) {
+                    // network.trr.excluded-domains pref has not been set
+                    runtime.settings.setTrustedRecursiveResolverExcludedDomains(emptyList())
+                    runtime.settings.trustedRecursiveResolverExcludedDomains
+                }
+            }
+            set(value) { runtime.settings.setTrustedRecursiveResolverExcludedDomains(value) }
+
         override var globalPrivacyControlEnabled: Boolean
             get() = runtime.settings.globalPrivacyControl
             set(value) { runtime.settings.setGlobalPrivacyControl(value) }
+
+        override var fingerprintingProtection: Boolean?
+            get() = runtime.settings.fingerprintingProtection
+            set(value) {
+                value?.let { runtime.settings.setFingerprintingProtection(it) }
+            }
+
+        override var fingerprintingProtectionPrivateBrowsing: Boolean?
+            get() = runtime.settings.fingerprintingProtectionPrivateBrowsing
+            set(value) {
+                value?.let { runtime.settings.setFingerprintingProtectionPrivateBrowsing(it) }
+            }
+
+        override var fingerprintingProtectionOverrides: String?
+            get() = runtime.settings.fingerprintingProtectionOverrides
+            set(value) {
+                value?.let { runtime.settings.setFingerprintingProtectionOverrides(it) }
+            }
+
+        override var fdlibmMathEnabled: Boolean
+            get() = runtime.settings.fdlibmMathEnabled
+            set(value) { runtime.settings.setFdlibmMathEnabled(value) }
+
+        override var userCharacteristicPingCurrentVersion: Int
+            get() = runtime.settings.userCharacteristicPingCurrentVersion
+            set(value) { runtime.settings.setUserCharacteristicPingCurrentVersion(value) }
+
+        override var webContentIsolationStrategy: WebContentIsolationStrategy?
+            get() = runtime.settings.webContentIsolationStrategy?.intoWebContentIsolationStrategy()
+            set(value) {
+                value?.let { runtime.settings.setWebContentIsolationStrategy(it.intoWebContentIsolationStrategy()) }
+            }
+
+        override var fetchPriorityEnabled: Boolean
+            get() = runtime.settings.fetchPriorityEnabled
+            set(value) { runtime.settings.setFetchPriorityEnabled(value) }
+
+        override var parallelMarkingEnabled: Boolean
+            get() = runtime.settings.parallelMarkingEnabled
+            set(value) { runtime.settings.setParallelMarkingEnabled(value) }
+
+        override var cookieBehaviorOptInPartitioning: Boolean
+            get() = runtime.settings.cookieBehaviorOptInPartitioning
+            set(value) { runtime.settings.setCookieBehaviorOptInPartitioning(value) }
+
+        override var cookieBehaviorOptInPartitioningPBM: Boolean
+            get() = runtime.settings.cookieBehaviorOptInPartitioningPBM
+            set(value) { runtime.settings.setCookieBehaviorOptInPartitioningPBM(value) }
+
+        override var certificateTransparencyMode: Int
+            get() = runtime.settings.certificateTransparencyMode
+            set(value) { runtime.settings.setCertificateTransparencyMode(value) }
+
+        override var postQuantumKeyExchangeEnabled: Boolean?
+            get() = runtime.settings.postQuantumKeyExchangeEnabled.or(false)
+            set(value) { value?.let { runtime.settings.setPostQuantumKeyExchangeEnabled(value) } }
+
+        override var dohAutoselectEnabled: Boolean
+            get() = runtime.settings.dohAutoselectEnabled
+            set(value) { runtime.settings.setDohAutoselectEnabled(value) }
+
+        override var bannedPorts: String
+            get() = runtime.settings.bannedPorts
+            set(value) { runtime.settings.setBannedPorts(value) }
     }.apply {
         defaultSettings?.let {
             this.javascriptEnabled = it.javascriptEnabled
@@ -1350,13 +1502,31 @@ class GeckoEngine(
             this.loginAutofillEnabled = it.loginAutofillEnabled
             this.enterpriseRootsEnabled = it.enterpriseRootsEnabled
             this.httpsOnlyMode = it.httpsOnlyMode
+            this.dohSettingsMode = it.dohSettingsMode
+            this.dohProviderUrl = it.dohProviderUrl
+            this.dohDefaultProviderUrl = it.dohDefaultProviderUrl
+            this.dohExceptionsList = it.dohExceptionsList
             this.cookieBannerHandlingMode = it.cookieBannerHandlingMode
             this.cookieBannerHandlingModePrivateBrowsing = it.cookieBannerHandlingModePrivateBrowsing
             this.cookieBannerHandlingDetectOnlyMode = it.cookieBannerHandlingDetectOnlyMode
             this.cookieBannerHandlingGlobalRules = it.cookieBannerHandlingGlobalRules
             this.cookieBannerHandlingGlobalRulesSubFrames = it.cookieBannerHandlingGlobalRulesSubFrames
             this.globalPrivacyControlEnabled = it.globalPrivacyControlEnabled
+            this.fingerprintingProtection = it.fingerprintingProtection
+            this.fingerprintingProtectionPrivateBrowsing = it.fingerprintingProtectionPrivateBrowsing
+            this.fingerprintingProtectionOverrides = it.fingerprintingProtectionOverrides
+            this.fdlibmMathEnabled = it.fdlibmMathEnabled
             this.emailTrackerBlockingPrivateBrowsing = it.emailTrackerBlockingPrivateBrowsing
+            this.userCharacteristicPingCurrentVersion = it.userCharacteristicPingCurrentVersion
+            this.webContentIsolationStrategy = it.webContentIsolationStrategy
+            this.fetchPriorityEnabled = it.fetchPriorityEnabled
+            this.parallelMarkingEnabled = it.parallelMarkingEnabled
+            this.cookieBehaviorOptInPartitioning = it.cookieBehaviorOptInPartitioning
+            this.cookieBehaviorOptInPartitioningPBM = it.cookieBehaviorOptInPartitioningPBM
+            this.certificateTransparencyMode = it.certificateTransparencyMode
+            this.postQuantumKeyExchangeEnabled = it.postQuantumKeyExchangeEnabled
+            this.dohAutoselectEnabled = it.dohAutoselectEnabled
+            this.bannedPorts = it.bannedPorts
         }
     }
 
@@ -1502,6 +1672,7 @@ internal fun ContentBlockingController.LogEntry.BlockingData.unBlockedBySmartBlo
 internal fun ContentBlockingController.LogEntry.BlockingData.getBlockedCategory(): TrackingCategory {
     return when (category) {
         Event.BLOCKED_FINGERPRINTING_CONTENT -> TrackingCategory.FINGERPRINTING
+        Event.BLOCKED_SUSPICIOUS_FINGERPRINTING -> TrackingCategory.FINGERPRINTING
         Event.BLOCKED_CRYPTOMINING_CONTENT -> TrackingCategory.CRYPTOMINING
         Event.BLOCKED_SOCIALTRACKING_CONTENT, Event.COOKIES_BLOCKED_SOCIALTRACKER -> TrackingCategory.MOZILLA_SOCIAL
         Event.BLOCKED_TRACKING_CONTENT -> TrackingCategory.SCRIPTS_AND_SUB_RESOURCES
@@ -1513,6 +1684,6 @@ internal fun InstallationMethod.toGeckoInstallationMethod(): String? {
     return when (this) {
         InstallationMethod.MANAGER -> WebExtensionController.INSTALLATION_METHOD_MANAGER
         InstallationMethod.FROM_FILE -> WebExtensionController.INSTALLATION_METHOD_FROM_FILE
-        else -> null
+        InstallationMethod.ONBOARDING -> WebExtensionController.INSTALLATION_METHOD_ONBOARDING
     }
 }

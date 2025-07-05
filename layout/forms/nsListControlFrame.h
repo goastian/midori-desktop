@@ -9,7 +9,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPtr.h"
-#include "nsIFormControlFrame.h"
 #include "nsISelectControlFrame.h"
 #include "nsSelectsAreaFrame.h"
 
@@ -33,10 +32,9 @@ class HTMLOptionsCollection;
  */
 
 class nsListControlFrame final : public mozilla::ScrollContainerFrame,
-                                 public nsIFormControlFrame,
                                  public nsISelectControlFrame {
  public:
-  typedef mozilla::dom::HTMLOptionElement HTMLOptionElement;
+  using HTMLOptionElement = mozilla::dom::HTMLOptionElement;
 
   friend nsListControlFrame* NS_NewListControlFrame(
       mozilla::PresShell* aPresShell, ComputedStyle* aStyle);
@@ -55,8 +53,8 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
 
   void SetInitialChildList(ChildListID aListID, nsFrameList&& aChildList) final;
 
-  nscoord GetPrefISize(gfxContext* aRenderingContext) final;
-  nscoord GetMinISize(gfxContext* aRenderingContext) final;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) final;
 
   void Reflow(nsPresContext* aCX, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput, nsReflowStatus& aStatus) final;
@@ -64,8 +62,7 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) final;
 
-  void DidReflow(nsPresContext* aPresContext,
-                 const ReflowInput* aReflowInput) final;
+  bool ReflowFinished() final;
   void Destroy(DestroyContext&) override;
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -81,11 +78,7 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
   nsresult GetFrameName(nsAString& aResult) const final;
 #endif
 
-  // nsIFormControlFrame
-  nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) final;
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  void SetFocus(bool aOn = true, bool aRepaint = false) final;
-
+  void ElementStateChanged(mozilla::dom::ElementState aStates) final;
   bool ShouldPropagateComputedBSizeToScrolledContent() const final;
 
   // for accessibility purposes
@@ -153,7 +146,7 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
   HTMLOptionElement* GetOption(uint32_t aIndex) const;
 
   // Helper
-  bool IsFocused() { return this == mFocused; }
+  bool IsFocused() const;
 
   /**
    * Function to paint the focus rect when our nsSelectsAreaFrame is painting.
@@ -297,10 +290,10 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
   uint32_t GetNumberOfRows();
 
   // Data Members
-  int32_t mStartSelectionIndex;
-  int32_t mEndSelectionIndex;
+  int32_t mStartSelectionIndex = 0;
+  int32_t mEndSelectionIndex = 0;
 
-  uint32_t mNumDisplayRows;
+  uint32_t mNumDisplayRows = 0;
   bool mChangesSinceDragStart : 1;
 
   // Has the user selected a visible item since we showed the dropdown?
@@ -316,18 +309,12 @@ class nsListControlFrame final : public mozilla::ScrollContainerFrame,
   // pass.  This only happens for auto heights.
   bool mMightNeedSecondPass : 1;
 
-  /**
-   * Set to aPresContext->HasPendingInterrupt() at the start of Reflow.
-   * Set to false at the end of DidReflow.
-   */
-  bool mHasPendingInterruptAtStartOfReflow : 1;
-
-  // True if the selection can be set to nothing or disabled options.
-  bool mForceSelection : 1;
+  // True if our reflow got interrupted.
+  bool mReflowWasInterrupted : 1;
 
   RefPtr<mozilla::HTMLSelectEventListener> mEventListener;
 
-  static nsListControlFrame* mFocused;
+  static nsListControlFrame* sFocused;
 };
 
 #endif /* nsListControlFrame_h___ */

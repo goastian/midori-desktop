@@ -2,11 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import io
 import os
 import re
-
-import six
 
 RE_COMMENT = re.compile(r"\s+#")
 RE_HTTP = re.compile(r"HTTP\((\.\.(\/\.\.)*)\)")
@@ -35,9 +32,32 @@ PREF_ITEMS = (
     "ref-pref",
 )
 RE_ANNOTATION = re.compile(r"(.*)\((.*)\)")
+# NOTE: CONDITIONS_JS_TO_MP should cover the known conditions as found by
+# https://searchfox.org/mozilla-central/search?q=skip-if.*+include&path=&case=false&regexp=true
+# AND must be kept in sync with the parsers
+# https://searchfox.org/mozilla-central/source/layout/tools/reftest/manifest.sys.mjs#47
+CONDITIONS_JS_TO_MP = {  # Manifestparser expression grammar
+    "Android": "(os == 'android')",
+    "geckoview": "(os == 'android')",
+    "useDrawSnapshot": "snapshot",
+    "winWidget": "(os == 'win')",
+    "win11_2009": "(os == 'win')",
+    "cocoaWidget": "(os == 'mac')",
+    "appleSilicon": "(os == 'mac' && processor == 'aarch64')",
+    "gtkWidget": "(os == 'linux')",
+    "isDebugBuild": "debug",
+    "ThreadSanitizer": "tsan",
+    "AddressSanitizer": "asan",
+    "is64Bit": "(bits == 64)",
+    "wayland": "(display == 'wayland')",
+    "isCoverageBuild": "ccov",
+    "incOriginInit": "inc_origin_init",
+    "&&": " && ",
+    "||": " || ",
+}
 
 
-class ReftestManifest(object):
+class ReftestManifest:
     """Represents a parsed reftest manifest."""
 
     def __init__(self, finder=None):
@@ -48,13 +68,35 @@ class ReftestManifest(object):
         self.tests = []
         self.finder = finder
 
-    def load(self, path):
+    def translate_condition_for_mozinfo(self, annotation):
+        m = RE_ANNOTATION.match(annotation)
+        if not m and annotation != "skip":
+            return annotation, ""
+
+        if annotation == "skip":
+            key = "skip-if"
+            condition = "true"
+        else:
+            key = m.group(1)
+            condition = m.group(2)
+            for js in CONDITIONS_JS_TO_MP:
+                mp = CONDITIONS_JS_TO_MP[js]
+                condition = condition.replace(js, mp)
+
+        return key, condition
+
+    def get_skip_if_for_mozinfo(self, parent_skip_if, annotations):
+        skip_if = parent_skip_if
+        for annotation in annotations:
+            key, condition = self.translate_condition_for_mozinfo(annotation)
+            if key == "skip-if" and condition:
+                skip_if = "\n".join([t for t in [skip_if, condition] if t])
+        return skip_if
+
+    def load(self, path, parent_skip_if=""):
         """Parse a reftest manifest file."""
 
-        def add_test(file, annotations, referenced_test=None):
-            # We can't package about:, data:, or chrome: URIs.
-            # Discarding data isn't correct for a parser. But retaining
-            # all data isn't currently a requirement.
+        def add_test(file, annotations, referenced_test=None, skip_if=""):
             if RE_PROTOCOL.match(file):
                 return
             test = os.path.normpath(os.path.join(mdir, urlprefix + file))
@@ -75,15 +117,18 @@ class ReftestManifest(object):
             }
             if referenced_test:
                 test_dict["referenced-test"] = referenced_test
+
+            if skip_if:
+                # when we pass in a skip_if but there isn't one inside the manifest
+                # (i.e. no annotations), it is important to add the inherited skip-if
+                test_dict["skip-if"] = skip_if
+
             for annotation in annotations:
-                m = RE_ANNOTATION.match(annotation)
-                if m:
-                    if m.group(1) not in test_dict:
-                        test_dict[m.group(1)] = m.group(2)
-                    else:
-                        test_dict[m.group(1)] += ";" + m.group(2)
-                else:
-                    test_dict[annotation] = None
+                key, condition = self.translate_condition_for_mozinfo(annotation)
+                test_dict[key] = "\n".join(
+                    [t for t in [test_dict.get(key, ""), condition] if t]
+                )
+
             self.tests.append(test_dict)
 
         normalized_path = os.path.normpath(os.path.abspath(path))
@@ -97,14 +142,15 @@ class ReftestManifest(object):
         if self.finder:
             lines = self.finder.get(path).read().splitlines()
         else:
-            with io.open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 lines = fh.read().splitlines()
 
         urlprefix = ""
         defaults = []
         for i, line in enumerate(lines):
             lineno = i + 1
-            line = six.ensure_text(line)
+            if isinstance(line, bytes):
+                line = line.decode()
 
             # Entire line is a comment.
             if line.startswith("#"):
@@ -125,8 +171,8 @@ class ReftestManifest(object):
 
             items = defaults + items
             annotations = []
-            for i in range(len(items)):
-                item = items[i]
+            for j in range(len(items)):
+                item = items[j]
 
                 if item.startswith(FAILURE_TYPES) or item.startswith(PREF_ITEMS):
                     annotations += [item]
@@ -140,25 +186,26 @@ class ReftestManifest(object):
                     self.dirs.add(os.path.normpath(os.path.join(mdir, m.group(1))))
                     continue
 
-                if i < len(defaults):
+                if j < len(defaults):
                     raise ValueError(
-                        "Error parsing manifest {}, line {}: "
-                        "Invalid defaults token '{}'".format(path, lineno, item)
+                        f"Error parsing manifest {path}, line {lineno}: "
+                        f"Invalid defaults token '{item}'"
                     )
 
                 if item == "url-prefix":
-                    urlprefix = items[i + 1]
+                    urlprefix = items[j + 1]
                     break
 
                 if item == "include":
-                    self.load(os.path.join(mdir, items[i + 1]))
+                    skip_if = self.get_skip_if_for_mozinfo(parent_skip_if, annotations)
+                    self.load(os.path.join(mdir, items[j + 1]), skip_if)
                     break
 
                 if item == "load" or item == "script":
-                    add_test(items[i + 1], annotations)
+                    add_test(items[j + 1], annotations, None, parent_skip_if)
                     break
 
                 if item == "==" or item == "!=" or item == "print":
-                    add_test(items[i + 1], annotations)
-                    add_test(items[i + 2], annotations, items[i + 1])
+                    add_test(items[j + 1], annotations, None, parent_skip_if)
+                    add_test(items[j + 2], annotations, items[j + 1], parent_skip_if)
                     break

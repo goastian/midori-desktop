@@ -232,8 +232,8 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
             VPXMIN(lrc->bits_off_target, lrc->maximum_buffer_size);
         lrc->buffer_level = VPXMIN(lrc->buffer_level, lrc->maximum_buffer_size);
         lc->framerate = cpi->framerate / oxcf->ts_rate_decimator[tl];
-        lrc->avg_frame_bandwidth =
-            (int)VPXMIN(lc->target_bandwidth / lc->framerate, INT_MAX);
+        lrc->avg_frame_bandwidth = saturate_cast_double_to_int(
+            round(lc->target_bandwidth / lc->framerate));
         lrc->max_frame_bandwidth = rc->max_frame_bandwidth;
         lrc->worst_quality = rc->worst_quality;
         lrc->best_quality = rc->best_quality;
@@ -273,8 +273,8 @@ void vp9_update_layer_context_change_config(VP9_COMP *const cpi,
       } else {
         lc->framerate = cpi->framerate;
       }
-      lrc->avg_frame_bandwidth =
-          (int)VPXMIN(lc->target_bandwidth / lc->framerate, INT_MAX);
+      lrc->avg_frame_bandwidth = saturate_cast_double_to_int(
+          round(lc->target_bandwidth / lc->framerate));
       lrc->max_frame_bandwidth = rc->max_frame_bandwidth;
       // Update qp-related quantities.
       lrc->worst_quality = rc->worst_quality;
@@ -317,7 +317,7 @@ void vp9_update_temporal_layer_framerate(VP9_COMP *const cpi) {
 
   lc->framerate = cpi->framerate / oxcf->ts_rate_decimator[tl];
   lrc->avg_frame_bandwidth =
-      (int)VPXMIN(lc->target_bandwidth / lc->framerate, INT_MAX);
+      saturate_cast_double_to_int(round(lc->target_bandwidth / lc->framerate));
   lrc->max_frame_bandwidth = cpi->rc.max_frame_bandwidth;
   // Update the average layer frame size (non-cumulative per-frame-bw).
   if (tl == 0) {
@@ -340,12 +340,13 @@ void vp9_update_spatial_layer_framerate(VP9_COMP *const cpi, double framerate) {
 
   lc->framerate = framerate;
   lrc->avg_frame_bandwidth =
-      (int)VPXMIN(lc->target_bandwidth / lc->framerate, INT_MAX);
-  lrc->min_frame_bandwidth =
-      (int)(lrc->avg_frame_bandwidth * oxcf->two_pass_vbrmin_section / 100);
-  lrc->max_frame_bandwidth = (int)(((int64_t)lrc->avg_frame_bandwidth *
-                                    oxcf->two_pass_vbrmax_section) /
-                                   100);
+      saturate_cast_double_to_int(round(lc->target_bandwidth / lc->framerate));
+  const int64_t vbr_min_bits =
+      (int64_t)lrc->avg_frame_bandwidth * oxcf->two_pass_vbrmin_section / 100;
+  lrc->min_frame_bandwidth = (int)VPXMIN(vbr_min_bits, INT_MAX);
+  const int64_t vbr_max_bits =
+      (int64_t)lrc->avg_frame_bandwidth * oxcf->two_pass_vbrmax_section / 100;
+  lrc->max_frame_bandwidth = (int)VPXMIN(vbr_max_bits, INT_MAX);
   vp9_rc_set_gf_interval_range(cpi, lrc);
 }
 
@@ -456,7 +457,13 @@ void get_layer_resolution(const int width_org, const int height_org,
                           int *height_out) {
   int w, h;
 
-  if (width_out == NULL || height_out == NULL || den == 0) return;
+  if (width_out == NULL || height_out == NULL) return;
+
+  if (den == 0 || num == 0) {
+    *width_out = width_org;
+    *height_out = height_org;
+    return;
+  }
 
   w = width_org * num / den;
   h = height_org * num / den;
@@ -786,9 +793,6 @@ int vp9_one_pass_svc_start_layer(VP9_COMP *const cpi) {
     svc->use_partition_reuse = 1;
   }
   svc->force_zero_mode_spatial_ref = 1;
-  svc->mi_stride[svc->spatial_layer_id] = cpi->common.mi_stride;
-  svc->mi_rows[svc->spatial_layer_id] = cpi->common.mi_rows;
-  svc->mi_cols[svc->spatial_layer_id] = cpi->common.mi_cols;
 
   // For constrained_from_above drop mode: before encoding superframe (i.e.,
   // at SL0 frame) check all spatial layers (starting from top) for possible
@@ -990,6 +994,9 @@ int vp9_one_pass_svc_start_layer(VP9_COMP *const cpi) {
   if (vp9_set_size_literal(cpi, width, height) != 0)
     return VPX_CODEC_INVALID_PARAM;
 
+  svc->mi_stride[svc->spatial_layer_id] = cpi->common.mi_stride;
+  svc->mi_rows[svc->spatial_layer_id] = cpi->common.mi_rows;
+  svc->mi_cols[svc->spatial_layer_id] = cpi->common.mi_cols;
   return 0;
 }
 
@@ -1057,7 +1064,7 @@ void vp9_svc_check_reset_layer_rc_flag(VP9_COMP *const cpi) {
         sl, svc->number_temporal_layers - 1, svc->number_temporal_layers);
     LAYER_CONTEXT *lc = &svc->layer_context[spatial_layer_idx];
     RATE_CONTROL *lrc = &lc->rc;
-    if (lrc->avg_frame_bandwidth > (3 * lrc->last_avg_frame_bandwidth >> 1) ||
+    if (lrc->avg_frame_bandwidth / 3 > (lrc->last_avg_frame_bandwidth >> 1) ||
         lrc->avg_frame_bandwidth < (lrc->last_avg_frame_bandwidth >> 1)) {
       // Reset for all temporal layers with spatial layer sl.
       for (tl = 0; tl < svc->number_temporal_layers; ++tl) {
@@ -1332,12 +1339,12 @@ void vp9_svc_adjust_avg_frame_qindex(VP9_COMP *const cpi) {
   VP9_COMMON *const cm = &cpi->common;
   SVC *const svc = &cpi->svc;
   RATE_CONTROL *const rc = &cpi->rc;
-  // On key frames in CBR mode: reset the avg_frame_index for base layer
+  // On key frames in CBR mode: reset the avg_frame_qindex for base layer
   // (to level closer to worst_quality) if the overshoot is significant.
   // Reset it for all temporal layers on base spatial layer.
   if (cm->frame_type == KEY_FRAME && cpi->oxcf.rc_mode == VPX_CBR &&
       !svc->simulcast_mode &&
-      rc->projected_frame_size > 3 * rc->avg_frame_bandwidth) {
+      rc->projected_frame_size / 3 > rc->avg_frame_bandwidth) {
     int tl;
     rc->avg_frame_qindex[INTER_FRAME] =
         VPXMAX(rc->avg_frame_qindex[INTER_FRAME],

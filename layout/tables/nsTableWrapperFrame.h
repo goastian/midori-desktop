@@ -39,11 +39,6 @@ class nsTableWrapperFrame : public nsContainerFrame {
 
   void Destroy(DestroyContext&) override;
 
-  const nsFrameList& GetChildList(ChildListID aListID) const override;
-  void GetChildLists(nsTArray<ChildList>* aLists) const override;
-
-  void SetInitialChildList(ChildListID aListID,
-                           nsFrameList&& aChildList) override;
   void AppendFrames(ChildListID aListID, nsFrameList&& aFrameList) override;
   void InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
                     const nsLineList::iterator* aPrevFrameLine,
@@ -61,9 +56,6 @@ class nsTableWrapperFrame : public nsContainerFrame {
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  void BuildDisplayListForInnerTable(nsDisplayListBuilder* aBuilder,
-                                     const nsDisplayListSet& aLists);
-
   nscoord SynthesizeFallbackBaseline(
       mozilla::WritingMode aWM,
       BaselineSharingGroup aBaselineGroup) const override;
@@ -71,8 +63,8 @@ class nsTableWrapperFrame : public nsContainerFrame {
       mozilla::WritingMode aWM, BaselineSharingGroup aBaselineGroup,
       BaselineExportContext aExportContext) const override;
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
   SizeComputationResult ComputeSize(
       gfxContext* aRenderingContext, mozilla::WritingMode aWM,
@@ -124,7 +116,9 @@ class nsTableWrapperFrame : public nsContainerFrame {
    */
   int32_t GetIndexByRowAndColumn(int32_t aRowIdx, int32_t aColIdx) const {
     nsTableCellMap* cellMap = InnerTableFrame()->GetCellMap();
-    if (!cellMap) return -1;
+    if (!cellMap) {
+      return -1;
+    }
 
     return cellMap->GetIndexByRowAndColumn(aRowIdx, aColIdx);
   }
@@ -169,10 +163,14 @@ class nsTableWrapperFrame : public nsContainerFrame {
     return map->GetEffectiveRowSpan(aRowIdx, aColIdx);
   }
 
+  bool HasCaption() const { return !mFrames.OnlyChild(); }
+  nsIFrame* GetCaption() const {
+    return HasCaption() ? mFrames.FirstChild()->GetNextSibling() : nullptr;
+  }
+
  protected:
-  explicit nsTableWrapperFrame(ComputedStyle* aStyle,
-                               nsPresContext* aPresContext,
-                               ClassID aID = kClassID);
+  nsTableWrapperFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
+                      ClassID aID = kClassID);
   virtual ~nsTableWrapperFrame();
 
   using MaybeCaptionSide = Maybe<mozilla::StyleCaptionSide>;
@@ -274,9 +272,6 @@ class nsTableWrapperFrame : public nsContainerFrame {
       const mozilla::StyleSizeOverrides& aWrapperSizeOverrides,
       const mozilla::LogicalSize& aBorderPadding,
       nscoord aBSizeOccupiedByCaption) const;
-
- private:
-  nsFrameList mCaptionFrames;
 };
 
 #endif

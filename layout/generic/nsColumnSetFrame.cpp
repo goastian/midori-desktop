@@ -26,13 +26,14 @@ static LazyLogModule sColumnSetLog("ColumnSet");
 #define COLUMN_SET_LOG(msg, ...) \
   MOZ_LOG(sColumnSetLog, LogLevel::Debug, (msg, ##__VA_ARGS__))
 
-class nsDisplayColumnRule : public nsPaintedDisplayItem {
+class nsDisplayColumnRule final : public nsPaintedDisplayItem {
  public:
   nsDisplayColumnRule(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayColumnRule);
   }
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayColumnRule)
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayColumnRule)
 
   nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) const override {
     *aSnap = false;
@@ -127,14 +128,20 @@ void nsColumnSetFrame::ForEachColumnRule(
     const std::function<void(const nsRect& lineRect)>& aSetLineRect,
     const nsPoint& aPt) const {
   nsIFrame* child = mFrames.FirstChild();
-  if (!child) return;  // no columns
+  if (!child) {
+    return;  // no columns
+  }
 
   nsIFrame* nextSibling = child->GetNextSibling();
-  if (!nextSibling) return;  // 1 column only - this means no gap to draw on
+  if (!nextSibling) {
+    return;  // 1 column only - this means no gap to draw on
+  }
 
   const nsStyleColumn* colStyle = StyleColumn();
   nscoord ruleWidth = colStyle->GetColumnRuleWidth();
-  if (!ruleWidth) return;
+  if (!ruleWidth) {
+    return;
+  }
 
   WritingMode wm = GetWritingMode();
   bool isVertical = wm.IsVertical();
@@ -291,6 +298,7 @@ nsColumnSetFrame::ReflowConfig nsColumnSetFrame::ChooseColumnStrategy(
     if (balancingDepth == kMaxNestedColumnBalancingDepth) {
       isBalancing = false;
       numColumns = 1;
+      aForceAuto = true;
     }
   }
 
@@ -411,14 +419,17 @@ static void MoveChildTo(nsIFrame* aChild, LogicalPoint aOrigin, WritingMode aWM,
   nsContainerFrame::PlaceFrameView(aChild);
 }
 
-nscoord nsColumnSetFrame::GetMinISize(gfxContext* aRenderingContext) {
+nscoord nsColumnSetFrame::IntrinsicISize(const IntrinsicSizeInput& input,
+                                         IntrinsicISizeType aType) {
+  return aType == IntrinsicISizeType::MinISize ? MinISize(input)
+                                               : PrefISize(input);
+}
+
+nscoord nsColumnSetFrame::MinISize(const IntrinsicSizeInput& aInput) {
   nscoord iSize = 0;
 
   if (mFrames.FirstChild()) {
-    // We want to ignore this in the case that we're size contained
-    // because our children should not contribute to our
-    // intrinsic size.
-    iSize = mFrames.FirstChild()->GetMinISize(aRenderingContext);
+    iSize = mFrames.FirstChild()->GetMinISize(aInput);
   }
   const nsStyleColumn* colStyle = StyleColumn();
   if (colStyle->mColumnWidth.IsLength()) {
@@ -443,7 +454,7 @@ nscoord nsColumnSetFrame::GetMinISize(gfxContext* aRenderingContext) {
   return iSize;
 }
 
-nscoord nsColumnSetFrame::GetPrefISize(gfxContext* aRenderingContext) {
+nscoord nsColumnSetFrame::PrefISize(const IntrinsicSizeInput& aInput) {
   // Our preferred width is our desired column width, if specified, otherwise
   // the child's preferred width, times the number of columns, plus the width
   // of any required column gaps
@@ -455,10 +466,7 @@ nscoord nsColumnSetFrame::GetPrefISize(gfxContext* aRenderingContext) {
     colISize =
         ColumnUtils::ClampUsedColumnWidth(colStyle->mColumnWidth.AsLength());
   } else if (mFrames.FirstChild()) {
-    // We want to ignore this in the case that we're size contained
-    // because our children should not contribute to our
-    // intrinsic size.
-    colISize = mFrames.FirstChild()->GetPrefISize(aRenderingContext);
+    colISize = mFrames.FirstChild()->GetPrefISize(aInput);
   } else {
     colISize = 0;
   }
@@ -747,7 +755,7 @@ nsColumnSetFrame::ColumnBalanceData nsColumnSetFrame::ReflowColumns(
           "childContentBEnd=%d, CarriedOutBEndMargin=%d (ignored)",
           __func__, colData.mColCount, child, ToString(aStatus).c_str(),
           kidDesiredSize.ISize(wm), kidDesiredSize.BSize(wm), childContentBEnd,
-          kidDesiredSize.mCarriedOutBEndMargin.get());
+          kidDesiredSize.mCarriedOutBEndMargin.Get());
     }
 
     contentRect.UnionRect(contentRect, child->GetRect());
@@ -1103,8 +1111,8 @@ void nsColumnSetFrame::FindBestBalanceBSize(const ReflowInput& aReflowInput,
       // extraBlockSize to try to make it on the feasible side.
       nextGuess = aColData.mSumBSize / aConfig.mUsedColCount + extraBlockSize;
       // Sanitize it
-      nextGuess = clamped(nextGuess, aConfig.mKnownInfeasibleBSize + 1,
-                          aConfig.mKnownFeasibleBSize - 1);
+      nextGuess = std::clamp(nextGuess, aConfig.mKnownInfeasibleBSize + 1,
+                             aConfig.mKnownFeasibleBSize - 1);
       // We keep doubling extraBlockSize in every iteration until we find a
       // feasible guess.
       extraBlockSize *= 2;

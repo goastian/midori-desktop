@@ -33,8 +33,10 @@ import mozilla.components.concept.engine.translate.ModelManagementOptions
 import mozilla.components.concept.engine.translate.ModelOperation
 import mozilla.components.concept.engine.translate.ModelState
 import mozilla.components.concept.engine.translate.OperationLevel
+import mozilla.components.concept.engine.utils.EngineReleaseChannel
 import mozilla.components.concept.engine.webextension.Action
 import mozilla.components.concept.engine.webextension.InstallationMethod
+import mozilla.components.concept.engine.webextension.PermissionPromptResponse
 import mozilla.components.concept.engine.webextension.WebExtension
 import mozilla.components.concept.engine.webextension.WebExtensionDelegate
 import mozilla.components.concept.engine.webextension.WebExtensionException
@@ -352,12 +354,16 @@ class GeckoEngineTest {
         try {
             engine.settings.domStorageEnabled
             fail("Expected UnsupportedOperationException")
-        } catch (e: UnsupportedSettingException) { }
+        } catch (e: UnsupportedSettingException) {
+            // Expected
+        }
 
         try {
             engine.settings.domStorageEnabled = false
             fail("Expected UnsupportedOperationException")
-        } catch (e: UnsupportedSettingException) { }
+        } catch (e: UnsupportedSettingException) {
+            // Ignore exception
+        }
     }
 
     @Test
@@ -1383,20 +1389,80 @@ class GeckoEngineTest {
         val geckoDelegateCaptor = argumentCaptor<WebExtensionController.PromptDelegate>()
         verify(webExtensionController).promptDelegate = geckoDelegateCaptor.capture()
 
-        val result = geckoDelegateCaptor.value.onInstallPrompt(extension, permissions, origins)
+        val result =
+            geckoDelegateCaptor.value.onInstallPromptRequest(extension, permissions, origins)
 
         val extensionCaptor = argumentCaptor<WebExtension>()
-        val onConfirmCaptor = argumentCaptor<((Boolean) -> Unit)>()
+        val onConfirmCaptor = argumentCaptor<((PermissionPromptResponse) -> Unit)>()
 
         verify(webExtensionsDelegate).onInstallPermissionRequest(
             extensionCaptor.capture(),
-            eq(permissions.asList() + origins.asList()),
+            eq(permissions.asList()),
+            eq(origins.asList()),
             onConfirmCaptor.capture(),
         )
 
-        onConfirmCaptor.value(true)
+        onConfirmCaptor.value(
+            PermissionPromptResponse(
+                isPermissionsGranted = true,
+                isPrivateModeGranted = false,
+            ),
+        )
 
-        assertEquals(GeckoResult.allow(), result)
+        var nativePermissionPromptResponse: NativePermissionPromptResponse? = null
+        result!!.accept {
+            nativePermissionPromptResponse = it
+        }
+
+        shadowOf(getMainLooper()).idle()
+        assertTrue(nativePermissionPromptResponse!!.isPermissionsGranted!!)
+        assertFalse(nativePermissionPromptResponse!!.isPrivateModeGranted!!)
+    }
+
+    @Test
+    fun `GIVEN permissions granted AND private mode granted WHEN onInstallPermissionRequest THEN delegate is called with all modes allowed`() {
+        val runtime: GeckoRuntime = mock()
+        val webExtensionController: WebExtensionController = mock()
+        whenever(runtime.webExtensionController).thenReturn(webExtensionController)
+
+        val extension = mockNativeWebExtension("test", "uri")
+        val permissions = arrayOf("some", "permissions")
+        val origins = arrayOf("and some", "origins")
+        val webExtensionsDelegate: WebExtensionDelegate = mock()
+        val engine = GeckoEngine(context, runtime = runtime)
+
+        engine.registerWebExtensionDelegate(webExtensionsDelegate)
+
+        val geckoDelegateCaptor = argumentCaptor<WebExtensionController.PromptDelegate>()
+        verify(webExtensionController).promptDelegate = geckoDelegateCaptor.capture()
+
+        val result = geckoDelegateCaptor.value.onInstallPromptRequest(extension, permissions, origins)
+
+        val extensionCaptor = argumentCaptor<WebExtension>()
+        val onConfirmCaptor = argumentCaptor<((PermissionPromptResponse) -> Unit)>()
+
+        verify(webExtensionsDelegate).onInstallPermissionRequest(
+            extensionCaptor.capture(),
+            eq(permissions.asList()),
+            eq(origins.asList()),
+            onConfirmCaptor.capture(),
+        )
+
+        onConfirmCaptor.value(
+            PermissionPromptResponse(
+                isPermissionsGranted = true,
+                isPrivateModeGranted = true,
+            ),
+        )
+
+        var nativePermissionPromptResponse: NativePermissionPromptResponse? = null
+        result!!.accept {
+            nativePermissionPromptResponse = it
+        }
+
+        shadowOf(getMainLooper()).idle()
+        assertTrue(nativePermissionPromptResponse!!.isPermissionsGranted!!)
+        assertTrue(nativePermissionPromptResponse!!.isPrivateModeGranted!!)
     }
 
     @Test
@@ -1416,20 +1482,34 @@ class GeckoEngineTest {
         val geckoDelegateCaptor = argumentCaptor<WebExtensionController.PromptDelegate>()
         verify(webExtensionController).promptDelegate = geckoDelegateCaptor.capture()
 
-        val result = geckoDelegateCaptor.value.onInstallPrompt(extension, permissions, origins)
+        val result =
+            geckoDelegateCaptor.value.onInstallPromptRequest(extension, permissions, origins)
 
         val extensionCaptor = argumentCaptor<WebExtension>()
-        val onConfirmCaptor = argumentCaptor<((Boolean) -> Unit)>()
+        val onConfirmCaptor = argumentCaptor<((PermissionPromptResponse) -> Unit)>()
 
         verify(webExtensionsDelegate).onInstallPermissionRequest(
             extensionCaptor.capture(),
-            eq(permissions.asList() + origins.asList()),
+            eq(permissions.asList()),
+            eq(origins.asList()),
             onConfirmCaptor.capture(),
         )
 
-        onConfirmCaptor.value(false)
+        onConfirmCaptor.value(
+            PermissionPromptResponse(
+                isPermissionsGranted = false,
+                isPrivateModeGranted = false,
+            ),
+        )
 
-        assertEquals(GeckoResult.deny(), result)
+        var nativePermissionPromptResponse: NativePermissionPromptResponse? = null
+        result!!.accept {
+            nativePermissionPromptResponse = it
+        }
+
+        shadowOf(getMainLooper()).idle()
+        assertFalse(nativePermissionPromptResponse!!.isPermissionsGranted!!)
+        assertFalse(nativePermissionPromptResponse!!.isPrivateModeGranted!!)
     }
 
     @Test
@@ -1544,7 +1624,8 @@ class GeckoEngineTest {
         val onPermissionsGrantedCaptor = argumentCaptor<((Boolean) -> Unit)>()
         verify(webExtensionsDelegate).onOptionalPermissionsRequest(
             extensionCaptor.capture(),
-            eq(permissions.toList() + origins.toList()),
+            eq(permissions.toList()),
+            eq(origins.toList()),
             onPermissionsGrantedCaptor.capture(),
         )
         val current = extensionCaptor.value as mozilla.components.browser.engine.gecko.webextension.GeckoWebExtension
@@ -1577,7 +1658,8 @@ class GeckoEngineTest {
         val onPermissionsGrantedCaptor = argumentCaptor<((Boolean) -> Unit)>()
         verify(webExtensionsDelegate).onOptionalPermissionsRequest(
             extensionCaptor.capture(),
-            eq(permissions.toList() + origins.toList()),
+            eq(permissions.toList()),
+            eq(origins.toList()),
             onPermissionsGrantedCaptor.capture(),
         )
         val current = extensionCaptor.value as mozilla.components.browser.engine.gecko.webextension.GeckoWebExtension
@@ -2408,6 +2490,7 @@ class GeckoEngineTest {
 
         assertTrue(version.major >= 69)
         assertTrue(version.isAtLeast(69, 0, 0))
+        assertTrue(version.releaseChannel != EngineReleaseChannel.UNKNOWN)
     }
 
     @Test
@@ -2888,8 +2971,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Boolean>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Boolean>> { isTranslationsEngineSupported() }
                 .thenReturn(geckoResult)
 
@@ -2916,8 +2998,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Boolean>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Boolean>> { isTranslationsEngineSupported() }
                 .thenReturn(geckoResult)
 
@@ -2944,8 +3025,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Long>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Long>> { checkPairDownloadSize(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -2974,8 +3054,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Long>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Long>> { checkPairDownloadSize(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -3011,8 +3090,7 @@ class GeckoEngineTest {
         val geckoResultValue: List<LanguageModel> = mutableListOf(geckoLanguageModel)
         val geckoResult = GeckoResult<List<LanguageModel>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<LanguageModel>>> { listModelDownloadStates() }
                 .thenReturn(geckoResult)
 
@@ -3045,8 +3123,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<List<LanguageModel>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<LanguageModel>>> { listModelDownloadStates() }
                 .thenReturn(geckoResult)
 
@@ -3075,8 +3152,7 @@ class GeckoEngineTest {
         val toLanguage = Language("de", "German")
         val fromLanguage = Language("es", "Spanish")
         val geckoResultValue = TranslationsController.RuntimeTranslation.TranslationSupport(listOf<Language>(fromLanguage), listOf<Language>(toLanguage))
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<TranslationsController.RuntimeTranslation.TranslationSupport>> { listSupportedLanguages() }
                 .thenReturn(geckoResult)
 
@@ -3107,8 +3183,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<TranslationsController.RuntimeTranslation.TranslationSupport>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<TranslationsController.RuntimeTranslation.TranslationSupport>> { listSupportedLanguages() }
                 .thenReturn(geckoResult)
 
@@ -3136,8 +3211,7 @@ class GeckoEngineTest {
         var options = ModelManagementOptions(null, ModelOperation.DOWNLOAD, OperationLevel.ALL)
         val geckoResult = GeckoResult<Void>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Void>> { manageLanguageModel(any()) }
                 .thenReturn(geckoResult)
 
@@ -3166,8 +3240,7 @@ class GeckoEngineTest {
         var options = ModelManagementOptions(null, ModelOperation.DOWNLOAD, OperationLevel.ALL)
         val geckoResult = GeckoResult<Void>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Void>> { manageLanguageModel(any()) }
                 .thenReturn(geckoResult)
 
@@ -3196,8 +3269,7 @@ class GeckoEngineTest {
         val geckoResult = GeckoResult<List<String>>()
         val geckoResultValue = listOf<String>("en", "es", "de")
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<String>>> { preferredLanguages() }
                 .thenReturn(geckoResult)
 
@@ -3227,8 +3299,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<List<String>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<String>>> { preferredLanguages() }
                 .thenReturn(geckoResult)
 
@@ -3269,8 +3340,7 @@ class GeckoEngineTest {
         val geckoResult = GeckoResult<String>()
         val geckoResultValue = "always"
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<String>> { getLanguageSetting(any()) }
                 .thenReturn(geckoResult)
 
@@ -3301,8 +3371,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<String>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<String>> { getLanguageSetting(any()) }
                 .thenReturn(geckoResult)
 
@@ -3330,8 +3399,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Void>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Void>> { setLanguageSettings(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -3360,8 +3428,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Void>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Void>> { setLanguageSettings(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -3391,8 +3458,7 @@ class GeckoEngineTest {
         val geckoResult = GeckoResult<String>()
         val geckoResultValue = "NotAnExpectedResponse"
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<String>> { getLanguageSetting(any()) }
                 .thenReturn(geckoResult)
 
@@ -3421,8 +3487,7 @@ class GeckoEngineTest {
         val geckoResult = GeckoResult<Map<String, String>>()
         val geckoResultValue = mapOf("es" to "offer", "de" to "always", "fr" to "never")
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Map<String, String>>> { getLanguageSettings() }
                 .thenReturn(geckoResult)
 
@@ -3454,8 +3519,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Map<String, String>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Map<String, String>>> { getLanguageSettings() }
                 .thenReturn(geckoResult)
 
@@ -3483,8 +3547,7 @@ class GeckoEngineTest {
         val geckoResult = GeckoResult<List<String>>()
         val geckoResultValue = listOf("www.mozilla.org")
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<String>>> { getNeverTranslateSiteList() }
                 .thenReturn(geckoResult)
 
@@ -3514,8 +3577,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<List<String>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<String>>> { getNeverTranslateSiteList() }
                 .thenReturn(geckoResult)
 
@@ -3542,8 +3604,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<Void>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<Void>> { setNeverTranslateSpecifiedSite(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -3572,8 +3633,7 @@ class GeckoEngineTest {
 
         val geckoResult = GeckoResult<List<String>>()
 
-        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use {
-                mocked ->
+        Mockito.mockStatic(TranslationsController.RuntimeTranslation::class.java, Mockito.CALLS_REAL_METHODS).use { mocked ->
             mocked.`when`<GeckoResult<List<String>>> { setNeverTranslateSpecifiedSite(any(), any()) }
                 .thenReturn(geckoResult)
 
@@ -3608,6 +3668,68 @@ class GeckoEngineTest {
         verify(mockRuntime.settings).setGlobalPrivacyControl(false)
     }
 
+    @Test
+    fun `WHEN Suspected Fingerprinting Protection value is set THEN setFingerprintingProtection is getting called on GeckoRuntime`() {
+        val mockRuntime = mock<GeckoRuntime>()
+        whenever(mockRuntime.settings).thenReturn(mock())
+
+        val engine = GeckoEngine(testContext, runtime = mockRuntime)
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtection = true
+        verify(mockRuntime.settings).setFingerprintingProtection(true)
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtection = false
+        verify(mockRuntime.settings).setFingerprintingProtection(false)
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtectionPrivateBrowsing = true
+        verify(mockRuntime.settings).setFingerprintingProtectionPrivateBrowsing(true)
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtectionPrivateBrowsing = false
+        verify(mockRuntime.settings).setFingerprintingProtectionPrivateBrowsing(false)
+    }
+
+    @Test
+    fun `WHEN Fingerprinting Protection Overrides is set THEN setFingerprintingProtectionOverrides is getting called on GeckoRuntime`() {
+        val mockRuntime = mock<GeckoRuntime>()
+        whenever(mockRuntime.settings).thenReturn(mock())
+
+        val engine = GeckoEngine(testContext, runtime = mockRuntime)
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtectionOverrides = "+AllTargets"
+        verify(mockRuntime.settings).setFingerprintingProtectionOverrides("+AllTargets")
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtectionOverrides = "-AllTargets"
+        verify(mockRuntime.settings).setFingerprintingProtectionOverrides("-AllTargets")
+
+        reset(mockRuntime.settings)
+        engine.settings.fingerprintingProtectionOverrides = ""
+        verify(mockRuntime.settings).setFingerprintingProtectionOverrides("")
+    }
+
+    @Test
+    fun `GIVEN an InstallationMethod WHEN calling toGeckoInstallationMethod THEN translate to counterpart WebExtensionController#INSTALLATION_METHOD`() {
+        assertEquals(
+            WebExtensionController.INSTALLATION_METHOD_MANAGER,
+            InstallationMethod.MANAGER.toGeckoInstallationMethod(),
+        )
+
+        assertEquals(
+            WebExtensionController.INSTALLATION_METHOD_FROM_FILE,
+            InstallationMethod.FROM_FILE.toGeckoInstallationMethod(),
+        )
+
+        assertEquals(
+            WebExtensionController.INSTALLATION_METHOD_ONBOARDING,
+            InstallationMethod.ONBOARDING.toGeckoInstallationMethod(),
+        )
+    }
+
     private fun createSocialTrackersLogEntryList(): List<ContentBlockingController.LogEntry> {
         val blockedLogEntry = object : ContentBlockingController.LogEntry() {}
 
@@ -3638,8 +3760,10 @@ class GeckoEngineTest {
 
         val blockedTrackingContent = createBlockingData(Event.BLOCKED_TRACKING_CONTENT)
         val blockedFingerprintingContent = createBlockingData(Event.BLOCKED_FINGERPRINTING_CONTENT)
+        val blockedSuspiciousFingerprinting = createBlockingData(Event.BLOCKED_SUSPICIOUS_FINGERPRINTING)
         val blockedCyptominingContent = createBlockingData(Event.BLOCKED_CRYPTOMINING_CONTENT)
         val blockedSocialContent = createBlockingData(Event.BLOCKED_SOCIALTRACKING_CONTENT)
+        val purgedBounceTracker = createBlockingData(Event.PURGED_BOUNCETRACKER)
 
         val loadedTrackingLevel1Content = createBlockingData(Event.LOADED_LEVEL_1_TRACKING_CONTENT)
         val loadedTrackingLevel2Content = createBlockingData(Event.LOADED_LEVEL_2_TRACKING_CONTENT)
@@ -3654,11 +3778,13 @@ class GeckoEngineTest {
             loadedTrackingLevel2Content,
             blockedFingerprintingContent,
             loadedFingerprintingContent,
+            blockedSuspiciousFingerprinting,
             blockedCyptominingContent,
             loadedCyptominingContent,
             blockedCookiePermission,
             blockedSocialContent,
             loadedSocialContent,
+            purgedBounceTracker,
             loadedCookieSocialTracker,
             blockedCookieSocialTracker,
             unBlockedBySmartBlock,

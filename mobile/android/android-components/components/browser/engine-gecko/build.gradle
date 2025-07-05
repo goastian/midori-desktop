@@ -6,7 +6,7 @@ buildscript {
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -16,12 +16,12 @@ buildscript {
 
     dependencies {
         classpath "${ApplicationServicesConfig.groupId}:tooling-nimbus-gradle:${ApplicationServicesConfig.version}"
-        classpath "org.mozilla.telemetry:glean-gradle-plugin:${Versions.mozilla_glean}"
+        classpath libs.glean.gradle.plugin
     }
 }
 
 plugins {
-    id "com.jetbrains.python.envs" version "$python_envs_plugin"
+    alias(libs.plugins.python.envs.plugin)
 }
 
 apply plugin: 'com.android.library'
@@ -29,30 +29,30 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    packagingOptions {
+    packaging {
         resources {
-            excludes += ['META-INF/proguard/androidx-annotations.pro']
+            excludes += ['META-INF/LICENSE.md', 'META-INF/LICENSE-notice.md']
         }
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
-    namespace  'mozilla.components.browser.engine.gecko'
+    namespace = 'mozilla.components.browser.engine.gecko'
 }
 
 // Set configuration for the Glean parser to extract metrics.yaml
@@ -68,7 +68,7 @@ dependencies {
     implementation(project(':service-nimbus')) {
         exclude group: 'org.mozilla.telemetry', module: 'glean-native'
     }
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
     if (findProject(":geckoview") != null) {
         api project(':geckoview')
@@ -76,31 +76,35 @@ dependencies {
         api getGeckoViewDependency()
     }
 
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_paging
-    implementation ComponentsDependencies.androidx_datastore_preferences
-    implementation ComponentsDependencies.androidx_lifecycle_livedata
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.paging
+    implementation libs.androidx.datastore.preferences
+    implementation libs.androidx.lifecycle.livedata
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_mockwebserver
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.mockwebserver
     testImplementation project(':support-test')
     testImplementation project(':tooling-fetch-tests')
 
     // We only compile against Glean. It's up to the app to add those dependencies
     // if it wants to collect GeckoView telemetry through the Glean SDK.
-    compileOnly project(":service-glean")
-    testImplementation project(":service-glean")
-    testImplementation ComponentsDependencies.androidx_work_testing
+    compileOnly libs.mozilla.glean
+    testImplementation libs.mozilla.glean
+    testImplementation libs.androidx.work.testing
 
-    androidTestImplementation ComponentsDependencies.androidx_test_core
-    androidTestImplementation ComponentsDependencies.androidx_test_runner
-    androidTestImplementation ComponentsDependencies.androidx_test_rules
+    androidTestImplementation libs.androidx.test.core
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.androidx.test.rules
     androidTestImplementation project(':tooling-fetch-tests')
 }
 
+ext {
+    gleanNamespace = "mozilla.telemetry.glean"
+    gleanPythonEnvDir = gradle.mozconfig.substs.GRADLE_GLEAN_PARSER_VENV
+}
 apply plugin: "org.mozilla.telemetry.glean-gradle-plugin"
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
@@ -120,7 +124,7 @@ nimbus {
     applicationServicesDir = gradle.hasProperty('localProperties.autoPublish.application-services.dir')
             ? gradle.getProperty('localProperties.autoPublish.application-services.dir') : null
 }
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)
 
 // Non-official versions are like "61.0a1", where "a1" is the milestone.
 // This simply strips that off, leaving "61.0" in this example.

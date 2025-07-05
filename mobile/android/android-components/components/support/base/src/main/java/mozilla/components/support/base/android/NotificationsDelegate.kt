@@ -12,17 +12,13 @@ import android.os.RemoteException
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 
 typealias OnPermissionGranted = () -> Unit
 typealias OnPermissionRejected = () -> Unit
-
-/**
- * Exception thrown when a [NotificationsDelegate] is not bound to any [AppCompatActivity]
- */
-class UnboundHandlerException(message: String) : Exception(message)
 
 /**
  * Handles showing notifications and asking permission, if needed.
@@ -37,9 +33,14 @@ class NotificationsDelegate(
     var isRequestingPermission: Boolean = false
         private set
 
+    @VisibleForTesting
+    internal var permissionRequestsCount: Int = 0
+
     private var onPermissionGranted: OnPermissionGranted = { }
     private var onPermissionRejected: OnPermissionRejected = { }
-    private val notificationPermissionHandler: MutableMap<AppCompatActivity, ActivityResultLauncher<String>> =
+
+    @VisibleForTesting
+    internal val notificationPermissionHandler: MutableMap<AppCompatActivity, ActivityResultLauncher<String>> =
         mutableMapOf()
 
     /**
@@ -71,7 +72,8 @@ class NotificationsDelegate(
     /**
      * Checks if the post permission notification was previously granted.
      */
-    private fun hasPostNotificationsPermission(): Boolean {
+    @VisibleForTesting
+    internal fun hasPostNotificationsPermission(): Boolean {
         return try {
             notificationManagerCompat.areNotificationsEnabled()
         } catch (e: RemoteException) {
@@ -143,12 +145,13 @@ class NotificationsDelegate(
             return
         }
 
+        // do not request permission more than twice per session
+        if (permissionRequestsCount >= 2) {
+            return
+        }
+
         this.onPermissionGranted = onPermissionGranted
         this.onPermissionRejected = onPermissionRejected
-
-        if (notificationPermissionHandler.isEmpty()) {
-            throw UnboundHandlerException("You must bind the NotificationPermissionHandler to an activity")
-        }
 
         if (showPermissionRationale) {
             showPermissionRationale(onPermissionGranted, onPermissionRejected)
@@ -158,6 +161,7 @@ class NotificationsDelegate(
                 it.key.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
             }?.value?.also {
                 isRequestingPermission = true
+                permissionRequestsCount++
             }?.launch(POST_NOTIFICATIONS)
         }
     }

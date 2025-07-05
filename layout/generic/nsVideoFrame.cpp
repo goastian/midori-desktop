@@ -373,15 +373,10 @@ nsIFrame::SizeComputationResult nsVideoFrame::ComputeSize(
           AspectRatioUsage::None};
 }
 
-nscoord nsVideoFrame::GetMinISize(gfxContext* aRenderingContext) {
-  // This call handles size-containment
-  nsSize size = GetIntrinsicSize().ToSize().valueOr(nsSize());
-  return GetWritingMode().IsVertical() ? size.height : size.width;
-}
-
-nscoord nsVideoFrame::GetPrefISize(gfxContext* aRenderingContext) {
+nscoord nsVideoFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                     IntrinsicISizeType aType) {
   // <audio> / <video> has the same min / pref ISize.
-  return GetMinISize(aRenderingContext);
+  return GetIntrinsicSize().ISize(GetWritingMode()).valueOr(0);
 }
 
 Maybe<nsSize> nsVideoFrame::PosterImageSize() const {
@@ -544,14 +539,14 @@ void nsVideoFrame::UpdateTextTrack() {
 
 namespace mozilla {
 
-class nsDisplayVideo : public nsPaintedDisplayItem {
+class nsDisplayVideo final : public nsPaintedDisplayItem {
  public:
   nsDisplayVideo(nsDisplayListBuilder* aBuilder, nsVideoFrame* aFrame)
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayVideo);
   }
 
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayVideo)
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayVideo)
 
   NS_DISPLAY_DECL_NAME("Video", TYPE_VIDEO)
 
@@ -689,7 +684,9 @@ class nsDisplayVideo : public nsPaintedDisplayItem {
 
 void nsVideoFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                     const nsDisplayListSet& aLists) {
-  if (!IsVisibleForPainting()) return;
+  if (!IsVisibleForPainting()) {
+    return;
+  }
 
   DO_GLOBAL_REFLOW_COUNT_DSP("nsVideoFrame");
 

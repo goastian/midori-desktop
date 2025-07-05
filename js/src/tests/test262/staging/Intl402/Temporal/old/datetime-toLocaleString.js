@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -37,12 +37,6 @@ assert.sameValue(
 assert.sameValue(`${datetime.toLocaleString("de-AT", { timeZone: "Europe/Vienna" })}`, "18.11.1976, 15:23:30");
 var fmt = maybeGetWeekdayOnlyFormat();
 if (fmt) assert.sameValue(fmt.format(datetime), "Thursday");
-
-// should ignore units not in the data type
-assert.sameValue(
-  datetime.toLocaleString("en-US", { timeZoneName: "long" }),
-  `11/18/1976, 3:23:30${usDayPeriodSpace}PM`
-);
 
 // should use compatible disambiguation option
 var dstStart = new Temporal.PlainDateTime(2020, 3, 8, 2, 30);

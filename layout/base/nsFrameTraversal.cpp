@@ -23,7 +23,7 @@ using namespace mozilla::dom;
 nsFrameIterator::nsFrameIterator(nsPresContext* aPresContext, nsIFrame* aStart,
                                  Type aType, bool aVisual,
                                  bool aLockInScrollView, bool aFollowOOFs,
-                                 bool aSkipPopupChecks, nsIFrame* aLimiter)
+                                 bool aSkipPopupChecks, const Element* aLimiter)
     : mPresContext(aPresContext),
       mLockScroll(aLockInScrollView),
       mFollowOOFs(aFollowOOFs),
@@ -38,7 +38,9 @@ nsFrameIterator::nsFrameIterator(nsPresContext* aPresContext, nsIFrame* aStart,
       mOffEdge(0) {}
 
 nsIFrame* nsFrameIterator::CurrentItem() {
-  if (mOffEdge) return nullptr;
+  if (mOffEdge) {
+    return nullptr;
+  }
 
   return mCurrent;
 }
@@ -55,8 +57,9 @@ void nsFrameIterator::Last() {
   // If the current frame is a popup, don't move farther up the tree.
   // Otherwise, get the nearest root frame or popup.
   if (mSkipPopupChecks || !parent->IsMenuPopupFrame()) {
-    while (!IsRootFrame(parent) && (result = GetParentFrameNotPopup(parent)))
+    while (!IsRootFrame(parent) && (result = GetParentFrameNotPopup(parent))) {
       parent = result;
+    }
   }
 
   while ((result = GetLastChild(parent))) {
@@ -64,14 +67,18 @@ void nsFrameIterator::Last() {
   }
 
   SetCurrent(parent);
-  if (!parent) SetOffEdge(1);
+  if (!parent) {
+    SetOffEdge(1);
+  }
 }
 
 void nsFrameIterator::Next() {
   // recursive-oid method to get next frame
   nsIFrame* result = nullptr;
   nsIFrame* parent = GetCurrent();
-  if (!parent) parent = GetLast();
+  if (!parent) {
+    parent = GetLast();
+  }
 
   if (mType == Type::Leaf) {
     // Drill down to first leaf
@@ -80,7 +87,9 @@ void nsFrameIterator::Next() {
     }
   } else if (mType == Type::PreOrder) {
     result = GetFirstChild(parent);
-    if (result) parent = result;
+    if (result) {
+      parent = result;
+    }
   }
 
   if (parent != GetCurrent()) {
@@ -122,7 +131,9 @@ void nsFrameIterator::Prev() {
   // recursive-oid method to get prev frame
   nsIFrame* result = nullptr;
   nsIFrame* parent = GetCurrent();
-  if (!parent) parent = GetLast();
+  if (!parent) {
+    parent = GetLast();
+  }
 
   if (mType == Type::Leaf) {
     // Drill down to last leaf
@@ -131,7 +142,9 @@ void nsFrameIterator::Prev() {
     }
   } else if (mType == Type::PostOrder) {
     result = GetLastChild(parent);
-    if (result) parent = result;
+    if (result) {
+      parent = result;
+    }
   }
 
   if (parent != GetCurrent()) {
@@ -169,23 +182,33 @@ void nsFrameIterator::Prev() {
   }
 }
 
-nsIFrame* nsFrameIterator::GetParentFrame(nsIFrame* aFrame) {
-  if (mFollowOOFs) aFrame = GetPlaceholderFrame(aFrame);
-  if (aFrame == mLimiter) return nullptr;
-  if (aFrame) return aFrame->GetParent();
-
-  return nullptr;
+nsIFrame* nsFrameIterator::GetParentFrame(nsIFrame* aFrame,
+                                          const Element* aAncestorLimiter) {
+  if (mFollowOOFs) {
+    aFrame = GetPlaceholderFrame(aFrame);
+  }
+  if (!aFrame) {
+    return nullptr;
+  }
+  if (aAncestorLimiter && aFrame->GetContent() == aAncestorLimiter) {
+    return nullptr;
+  }
+  return aFrame->GetParent();
 }
 
 nsIFrame* nsFrameIterator::GetParentFrameNotPopup(nsIFrame* aFrame) {
-  if (mFollowOOFs) aFrame = GetPlaceholderFrame(aFrame);
-  if (aFrame == mLimiter) return nullptr;
-  if (aFrame) {
-    nsIFrame* parent = aFrame->GetParent();
-    if (!IsPopupFrame(parent)) return parent;
+  if (mFollowOOFs) {
+    aFrame = GetPlaceholderFrame(aFrame);
+  }
+  if (!aFrame) {
+    return nullptr;
   }
 
-  return nullptr;
+  if (mLimiter && aFrame->GetContent() == mLimiter) {
+    return nullptr;
+  }
+  nsIFrame* const parent = aFrame->GetParent();
+  return IsPopupFrame(parent) ? nullptr : parent;
 }
 
 nsIFrame* nsFrameIterator::GetFirstChild(nsIFrame* aFrame) {
@@ -222,8 +245,9 @@ nsIFrame* nsFrameIterator::GetLastChild(nsIFrame* aFrame) {
 
 nsIFrame* nsFrameIterator::GetNextSibling(nsIFrame* aFrame) {
   nsIFrame* result = nullptr;
-  if (mFollowOOFs) aFrame = GetPlaceholderFrame(aFrame);
-  if (aFrame == mLimiter) return nullptr;
+  if (mFollowOOFs) {
+    aFrame = GetPlaceholderFrame(aFrame);
+  }
   if (aFrame) {
     result = GetNextSiblingInner(aFrame);
     if (result && mFollowOOFs) {
@@ -239,8 +263,9 @@ nsIFrame* nsFrameIterator::GetNextSibling(nsIFrame* aFrame) {
 
 nsIFrame* nsFrameIterator::GetPrevSibling(nsIFrame* aFrame) {
   nsIFrame* result = nullptr;
-  if (mFollowOOFs) aFrame = GetPlaceholderFrame(aFrame);
-  if (aFrame == mLimiter) return nullptr;
+  if (mFollowOOFs) {
+    aFrame = GetPlaceholderFrame(aFrame);
+  }
   if (aFrame) {
     result = GetPrevSiblingInner(aFrame);
     if (result && mFollowOOFs) {
@@ -264,22 +289,63 @@ nsIFrame* nsFrameIterator::GetLastChildInner(nsIFrame* aFrame) {
                  : aFrame->PrincipalChildList().LastChild();
 }
 
+/**
+ * Check whether aDestFrame is still in aLimiter if aLimiter is not nullptr.
+ * aDestFrame should be next or previous frame of aOriginFrame.
+ */
+static bool DidCrossLimiterBoundary(nsIFrame* aOriginFrame,
+                                    nsIFrame* aDestFrame,
+                                    const Element* aLimiter) {
+  MOZ_ASSERT(aOriginFrame);
+  MOZ_ASSERT(aDestFrame);
+  MOZ_ASSERT(aOriginFrame->GetContent());
+  MOZ_ASSERT_IF(
+      aLimiter,
+      aOriginFrame->GetContent()->IsInclusiveFlatTreeDescendantOf(aLimiter));
+  if (!aLimiter || aOriginFrame->GetContent() == aDestFrame->GetContent() ||
+      aOriginFrame->GetContent() != aLimiter) {
+    return false;
+  }
+  return !aDestFrame->GetContent() ||
+         !aDestFrame->GetContent()->IsInclusiveFlatTreeDescendantOf(aLimiter);
+}
+
 nsIFrame* nsFrameIterator::GetNextSiblingInner(nsIFrame* aFrame) {
   if (!mVisual) {
-    return aFrame->GetNextSibling();
+    nsIFrame* const next = aFrame->GetNextSibling();
+    if (!next || DidCrossLimiterBoundary(aFrame, next, mLimiter)) {
+      return nullptr;
+    }
+    return next;
   }
-  nsIFrame* parent = GetParentFrame(aFrame);
-  return parent ? parent->PrincipalChildList().GetNextVisualFor(aFrame)
-                : nullptr;
+  nsIFrame* const parent = GetParentFrame(aFrame, nullptr);
+  if (!parent) {
+    return nullptr;
+  }
+  nsIFrame* const next = parent->PrincipalChildList().GetNextVisualFor(aFrame);
+  if (!next || DidCrossLimiterBoundary(aFrame, next, mLimiter)) {
+    return nullptr;
+  }
+  return next;
 }
 
 nsIFrame* nsFrameIterator::GetPrevSiblingInner(nsIFrame* aFrame) {
   if (!mVisual) {
-    return aFrame->GetPrevSibling();
+    nsIFrame* const prev = aFrame->GetPrevSibling();
+    if (!prev || DidCrossLimiterBoundary(aFrame, prev, mLimiter)) {
+      return nullptr;
+    }
+    return prev;
   }
-  nsIFrame* parent = GetParentFrame(aFrame);
-  return parent ? parent->PrincipalChildList().GetPrevVisualFor(aFrame)
-                : nullptr;
+  nsIFrame* const parent = GetParentFrame(aFrame, nullptr);
+  if (!parent) {
+    return nullptr;
+  }
+  nsIFrame* const prev = parent->PrincipalChildList().GetPrevVisualFor(aFrame);
+  if (!prev || DidCrossLimiterBoundary(aFrame, prev, mLimiter)) {
+    return nullptr;
+  }
+  return prev;
 }
 
 nsIFrame* nsFrameIterator::GetPlaceholderFrame(nsIFrame* aFrame) {

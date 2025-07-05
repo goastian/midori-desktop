@@ -30,6 +30,57 @@
 
 namespace mozilla {
 using namespace dom;
+template Result<RangeBoundary, nsresult>
+SelectionMovementUtils::MoveRangeBoundaryToSomewhere(
+    const RangeBoundary& aRangeBoundary, nsDirection aDirection,
+    CaretAssociationHint aHint, intl::BidiEmbeddingLevel aCaretBidiLevel,
+    nsSelectionAmount aAmount, PeekOffsetOptions aOptions,
+    const dom::Element* aAncestorLimiter);
+
+template Result<RawRangeBoundary, nsresult>
+SelectionMovementUtils::MoveRangeBoundaryToSomewhere(
+    const RawRangeBoundary& aRangeBoundary, nsDirection aDirection,
+    CaretAssociationHint aHint, intl::BidiEmbeddingLevel aCaretBidiLevel,
+    nsSelectionAmount aAmount, PeekOffsetOptions aOptions,
+    const dom::Element* aAncestorLimiter);
+
+template <typename ParentType, typename RefType>
+Result<RangeBoundaryBase<ParentType, RefType>, nsresult>
+SelectionMovementUtils::MoveRangeBoundaryToSomewhere(
+    const RangeBoundaryBase<ParentType, RefType>& aRangeBoundary,
+    nsDirection aDirection, CaretAssociationHint aHint,
+    intl::BidiEmbeddingLevel aCaretBidiLevel, nsSelectionAmount aAmount,
+    PeekOffsetOptions aOptions, const dom::Element* aAncestorLimiter) {
+  MOZ_ASSERT(aDirection == eDirNext || aDirection == eDirPrevious);
+  MOZ_ASSERT(aAmount == eSelectCharacter || aAmount == eSelectCluster ||
+             aAmount == eSelectWord || aAmount == eSelectBeginLine ||
+             aAmount == eSelectEndLine || aAmount == eSelectParagraph);
+
+  if (!aRangeBoundary.IsSetAndValid()) {
+    return Err(NS_ERROR_FAILURE);
+  }
+  if (!aRangeBoundary.GetContainer()->IsContent()) {
+    return Err(NS_ERROR_FAILURE);
+  }
+  Result<PeekOffsetStruct, nsresult> result = PeekOffsetForCaretMove(
+      aRangeBoundary.GetContainer()->AsContent(),
+      *aRangeBoundary.Offset(
+          RangeBoundaryBase<ParentType,
+                            RefType>::OffsetFilter::kValidOrInvalidOffsets),
+      aDirection, aHint, aCaretBidiLevel, aAmount, nsPoint{0, 0}, aOptions,
+      aAncestorLimiter);
+  if (result.isErr()) {
+    return Err(NS_ERROR_FAILURE);
+  }
+  const PeekOffsetStruct& pos = result.unwrap();
+  if (NS_WARN_IF(!pos.mResultContent)) {
+    return RangeBoundaryBase<ParentType, RefType>{};
+  }
+
+  return RangeBoundaryBase<ParentType, RefType>{
+      pos.mResultContent, static_cast<uint32_t>(pos.mContentOffset)};
+}
+
 // FYI: This was done during a call of GetPrimaryFrameForCaretAtFocusNode.
 // Therefore, this may not be intended by the original author.
 
@@ -63,7 +114,7 @@ SelectionMovementUtils::PeekOffsetForCaretMove(
 // static
 nsPrevNextBidiLevels SelectionMovementUtils::GetPrevNextBidiLevels(
     nsIContent* aNode, uint32_t aContentOffset, CaretAssociationHint aHint,
-    bool aJumpLines) {
+    bool aJumpLines, const Element* aAncestorLimiter) {
   // Get the level of the frames on each side
   nsIFrame* currentFrame;
   uint32_t currentOffset;
@@ -99,8 +150,10 @@ nsPrevNextBidiLevels SelectionMovementUtils::GetPrevNextBidiLevels(
   if (aJumpLines) {
     peekOffsetOptions += PeekOffsetOption::JumpLines;
   }
-  nsIFrame* newFrame =
-      currentFrame->GetFrameFromDirection(direction, peekOffsetOptions).mFrame;
+  nsIFrame* newFrame = currentFrame
+                           ->GetFrameFromDirection(direction, peekOffsetOptions,
+                                                   aAncestorLimiter)
+                           .mFrame;
 
   FrameBidiData currentBidi = currentFrame->GetBidiData();
   intl::BidiEmbeddingLevel currentLevel = currentBidi.embeddingLevel;
@@ -206,11 +259,15 @@ nsIFrame* SelectionMovementUtils::GetFrameForNodeOffset(
     return nullptr;
   }
 
-  nsIFrame* returnFrame = nullptr;
+  nsIFrame *returnFrame = nullptr, *lastFrame = aNode->GetPrimaryFrame();
   nsCOMPtr<nsIContent> theNode;
-  uint32_t offsetInFrameContent;
+  uint32_t offsetInFrameContent, offsetInLastFrameContent = 0;
 
   while (true) {
+    if (returnFrame) {
+      lastFrame = returnFrame;
+      offsetInLastFrameContent = offsetInFrameContent;
+    }
     offsetInFrameContent = aOffset;
 
     theNode = aNode;
@@ -322,7 +379,11 @@ nsIFrame* SelectionMovementUtils::GetFrameForNodeOffset(
   }  // end while
 
   if (!returnFrame) {
-    return nullptr;
+    if (!lastFrame) {
+      return nullptr;
+    }
+    returnFrame = lastFrame;
+    offsetInFrameContent = offsetInLastFrameContent;
   }
 
   // If we ended up here and were asked to position the caret after a visible
@@ -409,8 +470,7 @@ static void AdjustCaretFrameForLineEnd(nsIFrame** aFrame, uint32_t* aOffset,
     if (aEditableOnly && !r->GetContent()->IsEditable()) {
       return;
     }
-    // We found our frame, but we may not be able to properly paint the caret
-    // if -moz-user-modify differs from our actual frame.
+    // We found our frame.
     MOZ_ASSERT(r->IsTextFrame(), "Expected text frame");
     *aFrame = r;
     *aOffset = (static_cast<nsTextFrame*>(r))->GetContentEnd();
@@ -495,7 +555,11 @@ CaretFrameData SelectionMovementUtils::GetCaretFrameForNodeOffset(
       static_cast<uint32_t>(start) == result.mOffsetInFrameContent ||
       static_cast<uint32_t>(end) == result.mOffsetInFrameContent) {
     nsPrevNextBidiLevels levels = SelectionMovementUtils::GetPrevNextBidiLevels(
-        aContentNode, aOffset, result.mHint, false);
+        aContentNode, aOffset, result.mHint, false,
+        aFrameSelection
+            ? aFrameSelection
+                  ->GetAncestorLimiterOrIndependentSelectionRootElement()
+            : nullptr);
 
     /* Boundary condition, we need to know the Bidi levels of the characters
      * before and after the caret */

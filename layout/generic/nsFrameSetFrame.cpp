@@ -108,8 +108,6 @@ class nsHTMLFramesetBorderFrame final : public nsLeafFrame {
   nsHTMLFramesetBorderFrame(ComputedStyle*, nsPresContext*, int32_t aWidth,
                             bool aVertical, bool aVisible);
   virtual ~nsHTMLFramesetBorderFrame();
-  virtual nscoord GetIntrinsicISize() override;
-  virtual nscoord GetIntrinsicBSize() override;
 
   // the prev and next neighbors are indexes into the row (for a horizontal
   // border) or col (for a vertical border) of nsHTMLFramesetFrames or
@@ -150,8 +148,6 @@ class nsHTMLFramesetBlankFrame final : public nsLeafFrame {
       : nsLeafFrame(aStyle, aPresContext, kClassID) {}
 
   virtual ~nsHTMLFramesetBlankFrame();
-  virtual nscoord GetIntrinsicISize() override;
-  virtual nscoord GetIntrinsicBSize() override;
 
   friend class nsHTMLFramesetFrame;
   friend class nsHTMLFrameset;
@@ -238,12 +234,16 @@ void nsHTMLFramesetFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   mVerBorders = MakeUnique<nsHTMLFramesetBorderFrame*[]>(
       mNumCols);  // 1 more than number of ver borders
 
-  for (int verX = 0; verX < mNumCols; verX++) mVerBorders[verX] = nullptr;
+  for (int verX = 0; verX < mNumCols; verX++) {
+    mVerBorders[verX] = nullptr;
+  }
 
   mHorBorders = MakeUnique<nsHTMLFramesetBorderFrame*[]>(
       mNumRows);  // 1 more than number of hor borders
 
-  for (int horX = 0; horX < mNumRows; horX++) mHorBorders[horX] = nullptr;
+  for (int horX = 0; horX < mNumRows; horX++) {
+    mHorBorders[horX] = nullptr;
+  }
 
   static_assert(NS_MAX_FRAMESET_SPEC_COUNT <
                     UINT_MAX / sizeof(int32_t) / NS_MAX_FRAMESET_SPEC_COUNT,
@@ -498,7 +498,9 @@ void nsHTMLFramesetFrame::GenerateRowCol(nsPresContext* aPresContext,
   int32_t i;
 
   for (i = 0; i < aNumSpecs; i++) {
-    if (!aNewAttr.IsEmpty()) aNewAttr.Append(char16_t(','));
+    if (!aNewAttr.IsEmpty()) {
+      aNewAttr.Append(char16_t(','));
+    }
 
     switch (aSpecs[i].mUnit) {
       case eFramesetUnit_Fixed:
@@ -793,10 +795,14 @@ void nsHTMLFramesetFrame::Reflow(nsPresContext* aPresContext,
   int32_t borderWidth = GetBorderWidth(aPresContext, true);
 
   width -= (mNumCols - 1) * borderWidth;
-  if (width < 0) width = 0;
+  if (width < 0) {
+    width = 0;
+  }
 
   height -= (mNumRows - 1) * borderWidth;
-  if (height < 0) height = 0;
+  if (height < 0) {
+    height = 0;
+  }
 
   HTMLFrameSetElement* ourContent = HTMLFrameSetElement::FromNode(mContent);
   NS_ASSERTION(ourContent, "Someone gave us a broken frameset element!");
@@ -1290,16 +1296,6 @@ nsHTMLFramesetBorderFrame::~nsHTMLFramesetBorderFrame() {
 
 NS_IMPL_FRAMEARENA_HELPERS(nsHTMLFramesetBorderFrame)
 
-nscoord nsHTMLFramesetBorderFrame::GetIntrinsicISize() {
-  // No intrinsic width
-  return 0;
-}
-
-nscoord nsHTMLFramesetBorderFrame::GetIntrinsicBSize() {
-  // No intrinsic height
-  return 0;
-}
-
 void nsHTMLFramesetBorderFrame::SetVisibility(bool aVisibility) {
   mVisibility = aVisibility;
 }
@@ -1314,20 +1310,22 @@ void nsHTMLFramesetBorderFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Override Reflow(), since we don't want to deal with what our
-  // computed values are.
-  SizeToAvailSize(aReflowInput, aDesiredSize);
-
+  // computed values are. We just size to our available size.
+  aDesiredSize.SetSize(aReflowInput.GetWritingMode(),
+                       aReflowInput.AvailableSize());
   aDesiredSize.SetOverflowAreasToDesiredBounds();
+  FinishAndStoreOverflow(&aDesiredSize, aReflowInput.mStyleDisplay);
 }
 
-class nsDisplayFramesetBorder : public nsPaintedDisplayItem {
+class nsDisplayFramesetBorder final : public nsPaintedDisplayItem {
  public:
   nsDisplayFramesetBorder(nsDisplayListBuilder* aBuilder,
                           nsHTMLFramesetBorderFrame* aFrame)
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayFramesetBorder);
   }
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayFramesetBorder)
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayFramesetBorder)
 
   // REVIEW: see old GetFrameForPoint
   // Receives events in its bounds
@@ -1356,7 +1354,9 @@ void nsHTMLFramesetBorderFrame::PaintBorder(DrawTarget* aDrawTarget,
   nscoord widthInPixels = nsPresContext::AppUnitsToIntCSSPixels(mWidth);
   nscoord pixelWidth = nsPresContext::CSSPixelsToAppUnits(1);
 
-  if (widthInPixels <= 0) return;
+  if (widthInPixels <= 0) {
+    return;
+  }
 
   ColorPattern bgColor(ToDeviceColor(LookAndFeel::Color(
       LookAndFeel::ColorID::Window, this, NS_RGB(200, 200, 200))));
@@ -1400,7 +1400,9 @@ void nsHTMLFramesetBorderFrame::PaintBorder(DrawTarget* aDrawTarget,
     }
   }
 
-  if (!mVisibility) return;
+  if (!mVisibility) {
+    return;
+  }
 
   if (widthInPixels >= 5) {
     start.x = (mVertical) ? pixelWidth : 0;
@@ -1480,16 +1482,6 @@ nsHTMLFramesetBlankFrame::~nsHTMLFramesetBlankFrame() {
   // printf("nsHTMLFramesetBlankFrame destructor %p \n", this);
 }
 
-nscoord nsHTMLFramesetBlankFrame::GetIntrinsicISize() {
-  // No intrinsic width
-  return 0;
-}
-
-nscoord nsHTMLFramesetBlankFrame::GetIntrinsicBSize() {
-  // No intrinsic height
-  return 0;
-}
-
 void nsHTMLFramesetBlankFrame::Reflow(nsPresContext* aPresContext,
                                       ReflowOutput& aDesiredSize,
                                       const ReflowInput& aReflowInput,
@@ -1498,19 +1490,21 @@ void nsHTMLFramesetBlankFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Override Reflow(), since we don't want to deal with what our
-  // computed values are.
-  SizeToAvailSize(aReflowInput, aDesiredSize);
-
+  // computed values are. We just size to our available size.
+  aDesiredSize.SetSize(aReflowInput.GetWritingMode(),
+                       aReflowInput.AvailableSize());
   aDesiredSize.SetOverflowAreasToDesiredBounds();
+  FinishAndStoreOverflow(&aDesiredSize, aReflowInput.mStyleDisplay);
 }
 
-class nsDisplayFramesetBlank : public nsPaintedDisplayItem {
+class nsDisplayFramesetBlank final : public nsPaintedDisplayItem {
  public:
   nsDisplayFramesetBlank(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayFramesetBlank);
   }
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayFramesetBlank)
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayFramesetBlank)
 
   virtual void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
   NS_DISPLAY_DECL_NAME("FramesetBlank", TYPE_FRAMESET_BLANK)

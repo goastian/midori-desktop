@@ -142,7 +142,7 @@ class NestedGeckoViewTest {
         assertEquals(6, nestedWebView.lastY)
 
         // onTouchEventForResult should be also called for ACTION_MOVE
-        verify(nestedWebView, times(3)).updateInputResult(any())
+        verify(nestedWebView, times(1)).updateInputResult(any())
     }
 
     @Test
@@ -336,9 +336,6 @@ class NestedGeckoViewTest {
         // Move action to scroll down further that onInterceptTouchEvent calls continue to be ignored.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 3f))
 
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
         assertEquals(1, viewParentInterceptCounter)
 
         // Complete the gesture by finishing with an up action.
@@ -349,10 +346,9 @@ class NestedGeckoViewTest {
 
     @Suppress("UNUSED_CHANGED_VALUE")
     @Test
-    fun `verify parent don't intercept touch when gesture started with an downward scroll on a page`() {
+    fun `verify parent don't intercept touch if the delayed result is INPUT_RESULT_HANDLED_CONTENT`() {
         var viewParentInterceptCounter = 0
-        val geckoResults = mutableListOf<GeckoResult<InputResultDetail>>()
-        var resultCurrentIndex = 0
+        val result: GeckoResult<InputResultDetail> = GeckoResult()
         var disallowInterceptTouchEventValue = false
         val nestedWebView = object : NestedGeckoView(context) {
             init {
@@ -363,9 +359,7 @@ class NestedGeckoViewTest {
                 bottom = 5
             }
 
-            override fun superOnTouchEventForDetailResult(event: MotionEvent): GeckoResult<InputResultDetail> {
-                return GeckoResult<InputResultDetail>().also(geckoResults::add)
-            }
+            override fun superOnTouchEventForDetailResult(event: MotionEvent): GeckoResult<InputResultDetail> = result
         }
 
         val viewParent = object : FrameLayout(context) {
@@ -382,14 +376,8 @@ class NestedGeckoViewTest {
             addView(nestedWebView)
         }
 
-        // Simulate a `handled` response from the APZ GeckoEngineView API.
-        val inputResultMock = generateOverscrollInputResultMock(INPUT_RESULT_HANDLED)
-
         // Down action enables requestDisallowInterceptTouchEvent (and starts a gesture).
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_DOWN, y = 2f))
-
-        inputResultMock.hashCode()
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
 
         // `onInterceptTouchEvent` will be triggered the first time because it's the first pass.
         assertEquals(1, viewParentInterceptCounter)
@@ -398,68 +386,52 @@ class NestedGeckoViewTest {
         // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 2f))
 
-        // Make sure the size of results hasn't increased, meaning we don't pass the event to GeckoView to process
-        assertEquals(1, geckoResults.size)
-
         // Make sure the parent couldn't intercept the touch event
         assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
         // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 3f))
-
-        // Make sure the size of results hasn't increased, meaning we don't pass the event to GeckoView to process
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
-        // Parent should now be allowed to intercept the next event, this one was not intercepted
         assertEquals(1, viewParentInterceptCounter)
-        assertFalse(disallowInterceptTouchEventValue)
+        assertTrue(disallowInterceptTouchEventValue)
 
-        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are now reaching the parent.
+        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 4f))
 
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
+        assertEquals(1, viewParentInterceptCounter)
+        assertTrue(disallowInterceptTouchEventValue)
 
-        assertEquals(2, viewParentInterceptCounter)
-        assertFalse(disallowInterceptTouchEventValue)
-
-        // Move action to scroll upwards, assert that onInterceptTouchEvent calls still reaching the parent.
+        // Move action to scroll upwards, assert that onInterceptTouchEvent calls keep being ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 4f))
 
-        geckoResults[resultCurrentIndex++].complete(generateOverscrollInputResultMock(INPUT_RESULT_HANDLED_CONTENT))
+        // Now `INPUT_RESULT_HANDLED_CONTENT` got received.
+        result.complete(generateOverscrollInputResultMock(INPUT_RESULT_HANDLED_CONTENT))
         shadowOf(getMainLooper()).idle()
 
-        assertEquals(3, viewParentInterceptCounter)
-        assertFalse(disallowInterceptTouchEventValue)
+        assertEquals(1, viewParentInterceptCounter)
+        assertTrue(disallowInterceptTouchEventValue)
 
-        // Move action to scroll downwards, assert that onInterceptTouchEvent calls don't reach the parent any more.
+        // Move action to scroll downwards, assert that onInterceptTouchEvent calls keep being ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 1f))
 
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
-        assertEquals(4, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
-        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
+        // Move action to scroll upwards, assert that onInterceptTouchEvent calls keep being ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 4f))
 
-        assertEquals(5, resultCurrentIndex)
-        assertEquals(4, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
-        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
+        // Move action to scroll downwards, assert that onInterceptTouchEvent calls keep being ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 5f))
 
-        assertEquals(5, resultCurrentIndex)
-        assertEquals(4, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
         // Complete the gesture by finishing with an up action.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_UP))
-        assertEquals(4, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
     }
 
     @Suppress("UNUSED_CHANGED_VALUE")
@@ -526,50 +498,83 @@ class NestedGeckoViewTest {
 
         // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 3f))
-
-        // Make sure the size of results hasn't increased, meaning we don't pass the event to GeckoView to process
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
-        // Parent should now be allowed to intercept the next event, this one was not intercepted
         assertEquals(1, viewParentInterceptCounter)
-        assertFalse(disallowInterceptTouchEventValue)
+        assertTrue(disallowInterceptTouchEventValue)
 
-        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are now reaching the parent.
+        // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 4f))
+        assertEquals(1, viewParentInterceptCounter)
+        assertTrue(disallowInterceptTouchEventValue)
 
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
-        assertEquals(2, viewParentInterceptCounter)
-        assertFalse(disallowInterceptTouchEventValue)
-
-        // Move action to scroll downwards, assert that onInterceptTouchEvent calls don't reach the parent any more.
+        // Move action to scroll downwards, assert that onInterceptTouchEvent calls don't reach the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 1f))
-
-        geckoResults[resultCurrentIndex++].complete(inputResultMock)
-        shadowOf(getMainLooper()).idle()
-
-        assertEquals(3, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
         // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 4f))
 
-        assertEquals(4, resultCurrentIndex)
-        assertEquals(3, viewParentInterceptCounter)
+        assertEquals(1, resultCurrentIndex)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
         // Move action to scroll upwards, assert that onInterceptTouchEvent calls are still ignored by the parent.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_MOVE, y = 5f))
 
-        assertEquals(4, resultCurrentIndex)
-        assertEquals(3, viewParentInterceptCounter)
+        assertEquals(1, resultCurrentIndex)
+        assertEquals(1, viewParentInterceptCounter)
         assertTrue(disallowInterceptTouchEventValue)
 
         // Complete the gesture by finishing with an up action.
         viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_UP))
-        assertEquals(3, viewParentInterceptCounter)
+        assertEquals(1, viewParentInterceptCounter)
+    }
+
+    @Suppress("UNUSED_CHANGED_VALUE")
+    @Test
+    fun `verify parent does intercept touch if the result for ACTION_DOWN is INPUT_RESULT_HANDLED`() {
+        var viewParentInterceptCounter = 0
+        val result: GeckoResult<InputResultDetail> = GeckoResult()
+        var disallowInterceptTouchEventValue = false
+        val nestedWebView = object : NestedGeckoView(context) {
+            init {
+                // We need to make the view a non-zero size so that the touch events hit it.
+                left = 0
+                top = 0
+                right = 5
+                bottom = 5
+            }
+
+            override fun superOnTouchEventForDetailResult(event: MotionEvent): GeckoResult<InputResultDetail> = result
+        }
+
+        val viewParent = object : FrameLayout(context) {
+            override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+                viewParentInterceptCounter++
+                return super.onInterceptTouchEvent(ev)
+            }
+
+            override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+                disallowInterceptTouchEventValue = disallowIntercept
+                super.requestDisallowInterceptTouchEvent(disallowIntercept)
+            }
+        }.apply {
+            addView(nestedWebView)
+        }
+
+        // Down action enables requestDisallowInterceptTouchEvent.
+        viewParent.dispatchTouchEvent(mockMotionEvent(ACTION_DOWN, y = 0f))
+
+        // `onInterceptTouchEvent` will be triggered the first time because it's the first pass.
+        assertEquals(1, viewParentInterceptCounter)
+        assertTrue(disallowInterceptTouchEventValue)
+
+        // Now `INPUT_RESULT_HANDLED_CONTENT` got received.
+        result.complete(generateOverscrollInputResultMock(INPUT_RESULT_HANDLED))
+        shadowOf(getMainLooper()).idle()
+
+        assertEquals(1, viewParentInterceptCounter)
+        assertFalse(disallowInterceptTouchEventValue)
     }
 
     private fun generateOverscrollInputResultMock(inputResult: Int) = mock<InputResultDetail>().apply {

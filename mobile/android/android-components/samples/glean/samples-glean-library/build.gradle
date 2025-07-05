@@ -6,7 +6,7 @@ buildscript {
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -14,13 +14,13 @@ buildscript {
         }
 
         dependencies {
-            classpath "org.mozilla.telemetry:glean-gradle-plugin:${Versions.mozilla_glean}"
+            classpath libs.glean.gradle.plugin
         }
     }
 }
 
 plugins {
-    id "com.jetbrains.python.envs" version "$python_envs_plugin"
+    alias(libs.plugins.python.envs.plugin)
 }
 
 apply plugin: 'com.android.library'
@@ -28,28 +28,32 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
-    namespace 'mozilla.samples.glean.library'
+    namespace = 'mozilla.samples.glean.library'
 }
 
 dependencies {
-    implementation project(':service-glean')
+    implementation libs.mozilla.glean
 }
 
+ext {
+    gleanNamespace = "mozilla.telemetry.glean"
+    gleanPythonEnvDir = gradle.mozconfig.substs.GRADLE_GLEAN_PARSER_VENV
+}
 apply plugin: "org.mozilla.telemetry.glean-gradle-plugin"
 

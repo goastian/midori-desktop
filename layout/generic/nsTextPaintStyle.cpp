@@ -227,10 +227,15 @@ void nsTextPaintStyle::GetTargetTextColors(nscolor* aForeColor,
         &nsStyleBackground::mBackgroundColor);
     return;
   }
-  *aBackColor =
-      LookAndFeel::Color(LookAndFeel::ColorID::TargetTextBackground, mFrame);
-  *aForeColor =
-      LookAndFeel::Color(LookAndFeel::ColorID::TargetTextForeground, mFrame);
+  if (PresContext()->ForcingColors()) {
+    *aBackColor = LookAndFeel::Color(LookAndFeel::ColorID::Mark, mFrame);
+    *aForeColor = LookAndFeel::Color(LookAndFeel::ColorID::Marktext, mFrame);
+  } else {
+    *aBackColor =
+        LookAndFeel::Color(LookAndFeel::ColorID::TargetTextBackground, mFrame);
+    *aForeColor =
+        LookAndFeel::Color(LookAndFeel::ColorID::TargetTextForeground, mFrame);
+  }
 }
 
 bool nsTextPaintStyle::GetCustomHighlightTextColor(nsAtom* aHighlightName,
@@ -305,8 +310,9 @@ bool nsTextPaintStyle::GetSelectionUnderlineForPaint(
   nsSelectionStyle* selectionStyle = SelectionStyle(aIndex);
   if (selectionStyle->mUnderlineStyle == StyleTextDecorationStyle::None ||
       selectionStyle->mUnderlineColor == NS_TRANSPARENT ||
-      selectionStyle->mUnderlineRelativeSize <= 0.0f)
+      selectionStyle->mUnderlineRelativeSize <= 0.0f) {
     return false;
+  }
 
   *aLineColor = selectionStyle->mUnderlineColor;
   *aRelativeSize = selectionStyle->mUnderlineRelativeSize;

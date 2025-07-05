@@ -5,18 +5,23 @@
 package mozilla.components.feature.search.middleware
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import mozilla.appservices.remotesettings.RemoteSettingsClient
 import mozilla.components.browser.state.action.BrowserAction
 import mozilla.components.browser.state.action.SearchAction
 import mozilla.components.browser.state.search.RegionState
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.SearchState
+import mozilla.components.feature.search.R
 import mozilla.components.feature.search.storage.BundledSearchEnginesStorage
 import mozilla.components.feature.search.storage.CustomSearchEngineStorage
+import mozilla.components.feature.search.storage.SearchEngineSelectorConfig
+import mozilla.components.feature.search.storage.SearchEngineSelectorRepository
 import mozilla.components.feature.search.storage.SearchMetadataStorage
 import mozilla.components.lib.state.Middleware
 import mozilla.components.lib.state.MiddlewareContext
@@ -35,6 +40,8 @@ data class SearchExtraParams(
     val channelIdName: String,
     val channelIdParam: String,
 )
+
+internal const val SEARCH_CONFIG_ICONS_COLLECTION_NAME = "search-config-icons"
 
 /**
  * [Middleware] implementation for loading and saving [SearchEngine]s whenever the state changes.
@@ -60,11 +67,22 @@ class SearchMiddleware(
         context,
         additionalBundledSearchEngineIds.toSet(),
     ),
+    private val searchEngineSelectorConfig: SearchEngineSelectorConfig? = null,
     private val searchExtraParams: SearchExtraParams? = null,
     private val ioDispatcher: CoroutineContext = Dispatchers.IO,
 ) : Middleware<BrowserState, BrowserAction> {
     private val logger = Logger("SearchMiddleware")
     private val scope = CoroutineScope(ioDispatcher)
+    private val defaultSearchEngineIcon = BitmapFactory.decodeResource(
+        context.resources,
+        R.drawable.search_engine_placeholder,
+    )
+    private val client: RemoteSettingsClient? =
+        searchEngineSelectorConfig?.service?.remoteSettingsService?.makeClient(SEARCH_CONFIG_ICONS_COLLECTION_NAME)
+    private val searchEngineSelectorRepository: SearchEngineRepository? =
+        searchEngineSelectorConfig?.let {
+                SearchEngineSelectorRepository(it, defaultSearchEngineIcon, client)
+        }
 
     override fun invoke(
         context: MiddlewareContext<BrowserState, BrowserAction>,
@@ -99,6 +117,8 @@ class SearchMiddleware(
         }
     }
 
+    // SuppressWarnings will be removed when [BundleStorage] is entirely removed.
+    @SuppressWarnings("LongMethod")
     private fun loadSearchEngines(
         store: Store<BrowserState, BrowserAction>,
         region: RegionState,
@@ -107,24 +127,44 @@ class SearchMiddleware(
         val migrationValues = migration?.getValuesToMigrate()
         performCustomSearchEnginesMigration(migrationValues)
 
-        val regionBundle = async(ioDispatcher) {
-            bundleStorage.load(
-                region = region,
-                distribution = distribution,
-                searchExtraParams = searchExtraParams,
-                coroutineContext = ioDispatcher,
-            )
+        val regionBundle = if (searchEngineSelectorRepository != null) {
+            async(ioDispatcher) {
+                searchEngineSelectorRepository.load(
+                    region = region,
+                    distribution = distribution,
+                    searchExtraParams = searchExtraParams,
+                    coroutineContext = ioDispatcher,
+                )
+            }
+        } else {
+            async(ioDispatcher) {
+                bundleStorage.load(
+                    region = region,
+                    distribution = distribution,
+                    searchExtraParams = searchExtraParams,
+                    coroutineContext = ioDispatcher,
+                )
+            }
         }
+
         val customSearchEngines = async(ioDispatcher) { customStorage.loadSearchEngineList() }
         val hiddenSearchEngineIds = async(ioDispatcher) { metadataStorage.getHiddenSearchEngines() }
         val disabledSearchEngineIds = async(ioDispatcher) { metadataStorage.getDisabledSearchEngineIds() }
         val additionalSearchEngineIds = async(ioDispatcher) { metadataStorage.getAdditionalSearchEngines() }
-        val allAdditionalSearchEngines = async(ioDispatcher) {
-            bundleStorage.load(
-                ids = additionalBundledSearchEngineIds,
-                searchExtraParams = searchExtraParams,
-                coroutineContext = ioDispatcher,
-            )
+        val allAdditionalSearchEngines = if (searchEngineSelectorRepository != null) {
+            async(ioDispatcher) {
+                regionBundle.await().list.filter { searchEngine ->
+                    !searchEngine.isGeneral
+                }
+            }
+        } else {
+            async(ioDispatcher) {
+                bundleStorage.load(
+                    ids = additionalBundledSearchEngineIds,
+                    searchExtraParams = searchExtraParams,
+                    coroutineContext = ioDispatcher,
+                )
+            }
         }
 
         val hiddenSearchEngines = mutableListOf<SearchEngine>()
@@ -315,6 +355,25 @@ class SearchMiddleware(
             val list: List<SearchEngine>,
             val defaultSearchEngineId: String,
         )
+    }
+
+    /**
+     * A repository for search engines from Application Services.
+     */
+    interface SearchEngineRepository {
+        /**
+         * Loads the search engines for the given [locale] and [region] from Application Services.
+         *
+         * If [distribution] is not null then attempt to load the bundled search engine for the
+         * [distribution] in the specified [locale] and [region] if available.
+         */
+        suspend fun load(
+            region: RegionState,
+            locale: Locale = Locale.getDefault(),
+            distribution: String? = null,
+            searchExtraParams: SearchExtraParams? = null,
+            coroutineContext: CoroutineContext = Dispatchers.IO,
+        ): BundleStorage.Bundle
     }
 
     /**

@@ -61,7 +61,10 @@ skip == blend-difference-stacking.html blend-difference-stacking-ref.html # bug 
 == active-transform-blend-mode.html active-transform-blend-mode-ref.html
 == active-clip-and-mask.html active-clip-and-mask-ref.html
 
-fuzzy(0-11,0-7155) == blur-inside-clipPath.svg blur-inside-clipPath-ref.svg
+# this test exists to detect if clip paths are erroneously cropped by the
+# unfiltered size of the primitive, which was bug 1459890, so the blur fuzz
+# doesn't matter, as if the error occurs it causes a much more drastic change
+fuzzy(0-20,0-9840) == blur-inside-clipPath.svg blur-inside-clipPath-ref.svg
 
 == border-radius-01.html pass.svg
 == mask-image-filter-transform.html mask-image-filter-transform-ref.html
@@ -132,16 +135,6 @@ fuzzy-if(Android,0-4,0-87) == dynamic-clipPath-01.svg pass.svg
 == dynamic-conditions-01.svg pass.svg
 == dynamic-conditions-02.svg about:blank
 == dynamic-conditions-03.svg pass.svg
-== dynamic-conditions-04.svg about:blank
-== dynamic-conditions-05.svg pass.svg
-== dynamic-conditions-06.svg about:blank
-== dynamic-conditions-07.svg pass.svg
-== dynamic-conditions-08.svg pass.svg
-== dynamic-conditions-09.svg about:blank
-== dynamic-conditions-10.svg about:blank
-== dynamic-conditions-11.svg pass.svg
-== dynamic-conditions-12.svg pass.svg
-== dynamic-conditions-13.svg about:blank
 == dynamic-feFlood-01.svg pass.svg
 asserts(0-1) == dynamic-feImage-01.svg pass.svg # intermittent assertions (bug 886080)
 == dynamic-fill-01.svg dynamic-fill-01-ref.svg
@@ -177,7 +170,7 @@ fuzzy-if(winWidget,0-3,0-1200) == dynamic-rect-02.svg dynamic-rect-02-ref.svg # 
 == dynamic-stroke-width-01.svg pass.svg
 == dynamic-switch-01.svg pass.svg
 == dynamic-text-01.svg dynamic-text-01-ref.svg
-fuzzy-if(winWidget,0-3,0-12739) == dynamic-text-02.svg dynamic-text-02-ref.svg # bug 776038 for Win7, Win8
+fuzzy-if(winWidget,0-4,0-12739) fuzzy-if(gfxSVGFEGaussianBlur,0-7,0-1000000) == dynamic-text-02.svg dynamic-text-02-ref.svg # bug 776038 for Win7, Win8
 fuzzy-if(winWidget,0-2,0-10539) == dynamic-text-03.svg dynamic-text-03-ref.svg # bug 776038 for Win7
 == dynamic-text-04.svg dynamic-text-04-ref.svg
 == dynamic-text-05.svg pass.svg
@@ -227,7 +220,7 @@ skip pref(security.fileuri.strict_origin_policy,true) == filter-extref-different
 == filter-foreignObject-01.svg pass.svg
 == filter-in-mask-01.svg pass.svg
 == filter-invalidation-01.svg pass.svg
-fuzzy(0-71,0-821) fails-if(winWidget) fuzzy-if(cocoaWidget&&!swgl,1-1,216-458) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
+fuzzy(0-71,0-821) fails-if(winWidget) fuzzy-if(cocoaWidget&&!swgl,1-1,117-458) == filter-on-continuation-box-01.html filter-on-continuation-box-ref.html
 == filter-result-01.svg filter-result-01-ref.svg
 == filter-scaled-01.svg pass.svg
 fuzzy(0-1,0-500) == filter-scaled-02.html filter-scaled-02-ref.html
@@ -335,7 +328,7 @@ fuzzy(0-1,0-6400) == mask-type-04.svg mask-type-01-ref.svg
 fuzzy(0-3,0-448000) == nesting-invalid-01.svg nesting-invalid-01-ref.svg
 
 fuzzy(0-2,0-1000) == non-scaling-stroke-01.svg non-scaling-stroke-01-ref.svg
-fuzzy(0-51,0-900) fuzzy-if(Android,0-52,0-4090) fails-if(useDrawSnapshot) == non-scaling-stroke-02.svg non-scaling-stroke-02-ref.svg
+fuzzy(0-51,0-900) fuzzy-if(Android,0-52,0-4104) fails-if(useDrawSnapshot) == non-scaling-stroke-02.svg non-scaling-stroke-02-ref.svg
 == non-scaling-stroke-03.svg non-scaling-stroke-03-ref.svg
 
 == objectBoundingBox-and-clipPath.svg pass.svg
@@ -357,7 +350,7 @@ fuzzy(0-1,0-10000) == opacity-and-transform-01.svg opacity-and-transform-01-ref.
 
 fuzzy-if(Android,0-8,0-200) == outer-svg-border-and-padding-01.svg outer-svg-border-and-padding-01-ref.svg
 
-fuzzy(0-7,0-214) == outline.html outline-ref.html # Bug 1503525
+fuzzy(0-255,0-214) fuzzy-if(Android,0-255,0-1439) == outline.html outline-ref.html # Bug 1503525
 
 == overflow-on-outer-svg-01.svg overflow-on-outer-svg-01-ref.svg
 == overflow-on-outer-svg-02a.xhtml overflow-on-outer-svg-02-ref.xhtml
@@ -374,7 +367,7 @@ fuzzy-if(winWidget,0-16,0-5) == paint-order-01.svg paint-order-01-ref.svg
 == paint-order-02.svg paint-order-02-ref.svg
 == paint-order-03.svg paint-order-03-ref.svg
 
-#fuzzy(0-23,0-60) fails-if(winWidget) == path-01.svg path-01-ref.svg
+fuzzy(0-54,0-77) == path-01.svg path-01-ref.svg
 == path-02.svg pass.svg
 == path-04.svg pass.svg
 == path-05.svg pass.svg
@@ -401,7 +394,7 @@ fuzzy(0-128,0-100) == pattern-big-image.html pattern-big-image-ref.html
 == pattern-scale-01c.svg pattern-scale-01-ref.svg
 == pattern-transform-presence-01.svg pattern-transform-presence-01-ref.svg
 == pattern-transformed-01.svg pattern-transformed-01-ref.svg
-fuzzy(0-27,0-9058) fuzzy-if(Android,0-28,0-11159) == pattern-transformed-02.svg pattern-transformed-02-ref.svg
+fuzzy(0-40,0-13015) == pattern-transformed-02.svg pattern-transformed-02-ref.svg
 
 == polygon-01.svg polygon-01-ref.svg
 == polygon-marker-01.svg pass.svg
@@ -471,7 +464,7 @@ fuzzy(0-1,0-2600) == svg-in-foreignObject-02.xhtml svg-in-foreignObject-01-ref.x
 == suspend-08.svg pass.svg
 
 == svg-effects-area-unzoomed.xhtml svg-effects-area-unzoomed-ref.xhtml
-== svg-effects-area-zoomed-in.xhtml svg-effects-area-zoomed-in-ref.xhtml
+fuzzy-if(geckoview&&!emulator&&gfxSVGFEComponentTransfer,0-4,0-305) == svg-effects-area-zoomed-in.xhtml svg-effects-area-zoomed-in-ref.xhtml
 == svg-effects-area-zoomed-out.xhtml svg-effects-area-zoomed-out-ref.xhtml
 == svg-transform-01.svg pass.svg
 == svg-transform-02.svg pass.svg
@@ -640,4 +633,4 @@ pref(svg.use-element.recursive-clone-limit.enabled,1) != about:blank explosive-u
 fuzzy(0-1,0-230400) == 1630900-1.html 1630900-1-ref.html
 # do not increase fuzz significantly, test was designed to be within 1 color unit
 
-== rect-no-backgrounds-print.html rect-no-backgrounds-print-ref.html
+fuzzy-if(winWidget||cocoaWidget,0-1,0-6050) == rect-no-backgrounds-print.html rect-no-backgrounds-print-ref.html

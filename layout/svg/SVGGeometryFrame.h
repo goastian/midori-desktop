@@ -70,8 +70,7 @@ class SVGGeometryFrame final : public nsIFrame, public ISVGDisplayableFrame {
 
   void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
-  bool IsSVGTransformed(Matrix* aOwnTransforms = nullptr,
-                        Matrix* aFromParentTransforms = nullptr) const override;
+  bool DoGetParentSVGTransforms(Matrix*) const override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -133,7 +132,7 @@ class DisplaySVGGeometry final : public DisplaySVGItem {
     MOZ_COUNT_CTOR(DisplaySVGGeometry);
   }
 
-  MOZ_COUNTED_DTOR_OVERRIDE(DisplaySVGGeometry)
+  MOZ_COUNTED_DTOR_FINAL(DisplaySVGGeometry)
 
   NS_DISPLAY_DECL_NAME("DisplaySVGGeometry", TYPE_SVG_GEOMETRY)
 

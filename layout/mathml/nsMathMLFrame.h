@@ -28,7 +28,7 @@ class nsMathMLFrame : public nsIMathMLFrame {
  public:
   // nsIMathMLFrame ---
 
-  virtual bool IsSpaceLike() override {
+  bool IsSpaceLike() override {
     return NS_MATHML_IS_SPACE_LIKE(mPresentationData.flags);
   }
 
@@ -50,7 +50,7 @@ class nsMathMLFrame : public nsIMathMLFrame {
     return NS_OK;
   }
 
-  virtual eMathMLFrameType GetMathMLFrameType() override;
+  eMathMLFrameType GetMathMLFrameType() override;
 
   NS_IMETHOD
   Stretch(mozilla::gfx::DrawTarget* aDrawTarget,
@@ -121,15 +121,13 @@ class nsMathMLFrame : public nsIMathMLFrame {
   // All values are stored in twips.
   // @pre  aLengthValue is the default length value of the attribute.
   // @post aLengthValue is the length value computed from the attribute.
-  static void ParseNumericValue(const nsString& aString, nscoord* aLengthValue,
-                                uint32_t aFlags, nsPresContext* aPresContext,
-                                mozilla::ComputedStyle* aComputedStyle,
-                                float aFontSizeInflation);
+  static void ParseAndCalcNumericValue(const nsString& aString,
+                                       nscoord* aLengthValue, uint32_t aFlags,
+                                       float aFontSizeInflation,
+                                       nsIFrame* aFrame);
 
-  static nscoord CalcLength(nsPresContext* aPresContext,
-                            mozilla::ComputedStyle* aComputedStyle,
-                            const nsCSSValue& aCSSValue,
-                            float aFontSizeInflation);
+  static nscoord CalcLength(const nsCSSValue& aCSSValue,
+                            float aFontSizeInflation, nsIFrame* aFrame);
 
   static eMathMLFrameType GetMathMLFrameTypeFor(nsIFrame* aFrame) {
     if (aFrame->IsMathMLFrame()) {
@@ -268,13 +266,6 @@ class nsMathMLFrame : public nsIMathMLFrame {
                                    nscoord& aRadicalVerticalGap);
 
  protected:
-#if defined(DEBUG) && defined(SHOW_BOUNDING_BOX)
-  void DisplayBoundingMetrics(mozilla::nsDisplayListBuilder* aBuilder,
-                              nsIFrame* aFrame, const nsPoint& aPt,
-                              const nsBoundingMetrics& aMetrics,
-                              const nsDisplayListSet& aLists);
-#endif
-
   /**
    * Display a solid rectangle in the frame's text color. Used for drawing
    * fraction separators and root/sqrt overbars.

@@ -9,27 +9,23 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.feature.readerview'
+    namespace = 'mozilla.components.feature.readerview'
 }
 
 tasks.register("updateBuiltInExtensionVersion", Copy) { task ->
     updateExtensionVersion(task, 'src/main/assets/extensions/readerview')
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
 }
 
 dependencies {
@@ -42,20 +38,20 @@ dependencies {
     implementation project(':support-webextensions')
     implementation project(':ui-icons')
 
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.androidx.core.ktx
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_constraintlayout
+    implementation libs.androidx.constraintlayout
 
     testImplementation project(':support-test')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)
 
 preBuild.dependsOn updateBuiltInExtensionVersion

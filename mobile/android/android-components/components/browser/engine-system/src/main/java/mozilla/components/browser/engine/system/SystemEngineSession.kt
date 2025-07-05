@@ -24,10 +24,8 @@ import mozilla.components.concept.engine.EngineSessionState
 import mozilla.components.concept.engine.Settings
 import mozilla.components.concept.engine.history.HistoryTrackingDelegate
 import mozilla.components.concept.engine.request.RequestInterceptor
-import mozilla.components.concept.engine.shopping.ProductAnalysis
-import mozilla.components.concept.engine.shopping.ProductAnalysisStatus
-import mozilla.components.concept.engine.shopping.ProductRecommendation
 import mozilla.components.concept.engine.translate.TranslationOptions
+import org.json.JSONObject
 import kotlin.reflect.KProperty
 
 internal val xRequestHeader = mapOf(
@@ -83,6 +81,8 @@ class SystemEngineSession(
         parent: EngineSession?,
         flags: LoadUrlFlags,
         additionalHeaders: Map<String, String>?,
+        originalInput: String?,
+        textDirectiveUserActivation: Boolean,
     ) {
         notifyObservers { onLoadUrl() }
 
@@ -163,8 +163,8 @@ class SystemEngineSession(
      * See [EngineSession.restoreState]
      */
     override fun restoreState(state: EngineSessionState): Boolean {
-        if (state !is SystemEngineSessionState) {
-            throw IllegalArgumentException("Can only restore from SystemEngineSessionState")
+        require(state is SystemEngineSessionState) {
+            "Can only restore from SystemEngineSessionState"
         }
 
         return state.bundle?.let { webView.restoreState(it) } != null
@@ -282,7 +282,6 @@ class SystemEngineSession(
             // Explicitly set global defaults.
 
             cacheMode = LOAD_NO_CACHE
-            databaseEnabled = false
 
             setDeprecatedWebSettings(this)
 
@@ -305,6 +304,8 @@ class SystemEngineSession(
         webSettings.saveFormData = false
         // Deprecated in API18.
         webSettings.savePassword = false
+        // Deprecated in API35; default value is false.
+        webSettings.databaseEnabled = false
     }
 
     private fun setUseWideViewPort(settings: WebSettings, useWideViewPort: Boolean?) {
@@ -425,93 +426,24 @@ class SystemEngineSession(
     }
 
     /**
-     * /**
-     * See [EngineSession.requestProductRecommendations]
+     * See [EngineSession.getWebCompatInfo]
      */
-     */
-    override fun requestProductRecommendations(
-        url: String,
-        onResult: (List<ProductRecommendation>) -> Unit,
+    override fun getWebCompatInfo(
+        onResult: (JSONObject) -> Unit,
         onException: (Throwable) -> Unit,
     ) {
-        throw UnsupportedOperationException("Analysis of product reviews for shopping is not available in this engine")
+        throw UnsupportedOperationException("Getting web compat info is not available in this engine")
     }
 
     /**
-     * See [EngineSession.requestProductAnalysis]
+     * See [EngineSession.sendMoreWebCompatInfo]
      */
-    override fun requestProductAnalysis(
-        url: String,
-        onResult: (ProductAnalysis) -> Unit,
+    override fun sendMoreWebCompatInfo(
+        info: JSONObject,
+        onResult: () -> Unit,
         onException: (Throwable) -> Unit,
     ) {
-        throw UnsupportedOperationException("Analysis of product reviews for shopping is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.reanalyzeProduct]
-     */
-    override fun reanalyzeProduct(
-        url: String,
-        onResult: (String) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Reanalyzing product reviews for shopping is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.requestAnalysisStatus]
-     */
-    override fun requestAnalysisStatus(
-        url: String,
-        onResult: (ProductAnalysisStatus) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Requesting product analysis status is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.sendClickAttributionEvent]
-     */
-    override fun sendClickAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Sending click attribution event is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.sendImpressionAttributionEvent]
-     */
-    override fun sendImpressionAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Sending impression attribution event is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.sendPlacementAttributionEvent]
-     */
-    override fun sendPlacementAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Sending placement attribution event is not available in this engine")
-    }
-
-    /**
-     * See [EngineSession.reportBackInStock]
-     */
-    override fun reportBackInStock(
-        url: String,
-        onResult: (String) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {
-        throw UnsupportedOperationException("Reporting back in stock is not available in this engine")
+        throw UnsupportedOperationException("Sending more web compat info is not available in this engine")
     }
 
     /**

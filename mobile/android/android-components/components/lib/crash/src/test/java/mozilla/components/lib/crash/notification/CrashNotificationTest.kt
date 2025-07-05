@@ -11,8 +11,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import mozilla.components.lib.crash.Crash
 import mozilla.components.lib.crash.CrashReporter
-import mozilla.components.support.base.android.NotificationsDelegate
-import mozilla.components.support.test.any
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.test.whenever
 import org.junit.Assert.assertEquals
@@ -20,8 +18,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mockito.anyBoolean
-import org.mockito.Mockito.doNothing
 import org.mockito.Mockito.spy
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -33,9 +29,9 @@ class CrashNotificationTest {
         val foregroundChildNativeCrash = Crash.NativeCodeCrash(
             timestamp = 0,
             minidumpPath = "",
-            minidumpSuccess = true,
             extrasPath = "",
-            processType = Crash.NativeCodeCrash.PROCESS_TYPE_FOREGROUND_CHILD,
+            processVisibility = Crash.NativeCodeCrash.PROCESS_VISIBILITY_FOREGROUND_CHILD,
+            processType = "content",
             breadcrumbs = arrayListOf(),
             remoteType = null,
         )
@@ -55,9 +51,9 @@ class CrashNotificationTest {
         val mainProcessNativeCrash = Crash.NativeCodeCrash(
             timestamp = 0,
             minidumpPath = "",
-            minidumpSuccess = true,
             extrasPath = "",
-            processType = Crash.NativeCodeCrash.PROCESS_TYPE_MAIN,
+            processVisibility = Crash.NativeCodeCrash.PROCESS_VISIBILITY_MAIN,
+            processType = "main",
             breadcrumbs = arrayListOf(),
             remoteType = null,
         )
@@ -77,9 +73,9 @@ class CrashNotificationTest {
         val backgroundChildNativeCrash = Crash.NativeCodeCrash(
             timestamp = 0,
             minidumpPath = "",
-            minidumpSuccess = true,
             extrasPath = "",
-            processType = Crash.NativeCodeCrash.PROCESS_TYPE_BACKGROUND_CHILD,
+            processVisibility = Crash.NativeCodeCrash.PROCESS_VISIBILITY_BACKGROUND_CHILD,
+            processType = "utility",
             breadcrumbs = arrayListOf(),
             remoteType = null,
         )
@@ -121,7 +117,6 @@ class CrashNotificationTest {
 
         val crash = Crash.UncaughtExceptionCrash(0, RuntimeException("Boom"), arrayListOf())
         val notificationManagerCompat = spy(NotificationManagerCompat.from(testContext))
-        val notificationsDelegate = NotificationsDelegate(notificationManagerCompat)
 
         whenever(notificationManagerCompat.areNotificationsEnabled()).thenReturn(true)
 
@@ -131,7 +126,6 @@ class CrashNotificationTest {
             CrashReporter.PromptConfiguration(
                 appName = "TestApp",
             ),
-            notificationsDelegate = notificationsDelegate,
         )
         crashNotification.show()
 
@@ -155,11 +149,8 @@ class CrashNotificationTest {
 
         val crash = Crash.UncaughtExceptionCrash(0, RuntimeException("Boom"), arrayListOf())
         val notificationManagerCompat = spy(NotificationManagerCompat.from(testContext))
-        val notificationsDelegate = spy(NotificationsDelegate(notificationManagerCompat))
 
         whenever(notificationManagerCompat.areNotificationsEnabled()).thenReturn(false)
-        doNothing().`when`(notificationsDelegate)
-            .requestNotificationPermission(any(), any(), anyBoolean())
 
         val crashNotification = CrashNotification(
             testContext,
@@ -167,7 +158,7 @@ class CrashNotificationTest {
             CrashReporter.PromptConfiguration(
                 appName = "TestApp",
             ),
-            notificationsDelegate = notificationsDelegate,
+            notificationManagerCompat,
         )
         crashNotification.show()
 
@@ -190,11 +181,8 @@ class CrashNotificationTest {
 
         val crash = Crash.UncaughtExceptionCrash(0, RuntimeException("Boom"), arrayListOf())
         val notificationManagerCompat = spy(NotificationManagerCompat.from(testContext))
-        val notificationsDelegate = spy(NotificationsDelegate(notificationManagerCompat))
 
         whenever(notificationManagerCompat.areNotificationsEnabled()).thenReturn(false)
-        doNothing().`when`(notificationsDelegate)
-            .requestNotificationPermission(any(), any(), anyBoolean())
 
         val crashNotification = CrashNotification(
             testContext,
@@ -202,7 +190,7 @@ class CrashNotificationTest {
             CrashReporter.PromptConfiguration(
                 appName = "TestApp",
             ),
-            notificationsDelegate = notificationsDelegate,
+            notificationManagerCompat,
         )
         crashNotification.show()
 

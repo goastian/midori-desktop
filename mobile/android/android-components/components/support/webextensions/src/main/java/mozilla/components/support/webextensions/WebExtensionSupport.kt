@@ -28,6 +28,7 @@ import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.webextension.Action
 import mozilla.components.concept.engine.webextension.ActionHandler
+import mozilla.components.concept.engine.webextension.PermissionPromptResponse
 import mozilla.components.concept.engine.webextension.TabHandler
 import mozilla.components.concept.engine.webextension.WebExtension
 import mozilla.components.concept.engine.webextension.WebExtensionDelegate
@@ -37,6 +38,7 @@ import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.ktx.kotlin.isExtensionUrl
 import mozilla.components.support.ktx.kotlinx.coroutines.flow.filterChanged
+import mozilla.components.support.webextensions.WebExtensionSupport.initialize
 import mozilla.components.support.webextensions.facts.emitWebExtensionsInitializedFact
 import java.util.concurrent.ConcurrentHashMap
 
@@ -189,7 +191,12 @@ object WebExtensionSupport {
 
         runtime.registerWebExtensionDelegate(
             object : WebExtensionDelegate {
-                override fun onNewTab(extension: WebExtension, engineSession: EngineSession, active: Boolean, url: String) {
+                override fun onNewTab(
+                    extension: WebExtension,
+                    engineSession: EngineSession,
+                    active: Boolean,
+                    url: String,
+                ) {
                     openTab(store, onNewTabOverride, onSelectTabOverride, extension, engineSession, url, active)
                 }
 
@@ -220,7 +227,13 @@ object WebExtensionSupport {
                             }
                             null
                         } else {
-                            val sessionId = openTab(store, onNewTabOverride, onSelectTabOverride, extension, engineSession)
+                            val sessionId = openTab(
+                                store,
+                                onNewTabOverride,
+                                onSelectTabOverride,
+                                extension,
+                                engineSession,
+                            )
                             store.dispatch(WebExtensionAction.UpdatePopupSessionAction(extension.id, sessionId))
                             engineSession
                         }
@@ -295,14 +308,16 @@ object WebExtensionSupport {
                 override fun onInstallPermissionRequest(
                     extension: WebExtension,
                     permissions: List<String>,
-                    onPermissionsGranted: (Boolean) -> Unit,
+                    origins: List<String>,
+                    onConfirm: (PermissionPromptResponse) -> Unit,
                 ) {
                     store.dispatch(
                         WebExtensionAction.UpdatePromptRequestWebExtensionAction(
                             WebExtensionPromptRequest.AfterInstallation.Permissions.Required(
                                 extension,
                                 permissions,
-                                onPermissionsGranted,
+                                origins,
+                                onConfirm,
                             ),
                         ),
                     )
@@ -325,6 +340,7 @@ object WebExtensionSupport {
                 override fun onOptionalPermissionsRequest(
                     extension: WebExtension,
                     permissions: List<String>,
+                    origins: List<String>,
                     onPermissionsGranted: ((Boolean) -> Unit),
                 ) {
                     store.dispatch(
@@ -332,6 +348,7 @@ object WebExtensionSupport {
                             WebExtensionPromptRequest.AfterInstallation.Permissions.Optional(
                                 extension,
                                 permissions,
+                                origins,
                                 onPermissionsGranted,
                             ),
                         ),
@@ -362,16 +379,14 @@ object WebExtensionSupport {
      */
     private fun registerInstalledExtensions(store: BrowserStore, runtime: WebExtensionRuntime) {
         runtime.listInstalledWebExtensions(
-            onSuccess = {
-                    extensions ->
+            onSuccess = { extensions ->
                 extensions.forEach { registerInstalledExtension(store, it) }
                 emitWebExtensionsInitializedFact(extensions)
                 closeUnsupportedTabs(store, extensions)
                 initializationResult.complete(Unit)
                 onExtensionsLoaded?.invoke(extensions.filter { !it.isBuiltIn() })
             },
-            onError = {
-                    throwable ->
+            onError = { throwable ->
                 logger.error("Failed to query installed extension", throwable)
                 initializationResult.completeExceptionally(throwable)
             },
@@ -535,6 +550,7 @@ object WebExtensionSupport {
             getMetadata()?.name,
             isEnabled(),
             isAllowedInPrivateBrowsing(),
+            isBuiltIn(),
         )
 
     private fun SessionState.isCustomTab() = this is CustomTabSessionState

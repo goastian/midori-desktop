@@ -325,8 +325,8 @@ load 476241-1.html
 load 477731-1.html
 load 477928.html
 load 478131-1.html
-asserts(4) load 478170-1.html # Big sizes
-asserts(1591-3980) load 478185-1.html
+load 478170-1.html # Big sizes
+pref(layout.css.letter-spacing.model,2) load 478185-1.html
 load 478504.html
 asserts-if(!Android,0-1) load 479938-1.html # Bug 575011
 load 480345-1.html
@@ -631,7 +631,7 @@ load text-overflow-form-elements.html
 load text-overflow-iframe.html
 asserts(1-4) load 1225005.html # bug 682647 and bug 448083
 load 1230378.xhtml
-asserts(7) load 1231692-1.html
+asserts(3) load 1231692-1.html
 load 1233191.html
 load 1233607.html
 load 1234701-1.html
@@ -670,6 +670,7 @@ load 1373586.html
 load 1375858.html
 load 1381134.html
 load 1381134-2.html
+load 1397449.html
 load 1401420-1.html
 load 1401709.html
 load 1401807.html
@@ -699,7 +700,7 @@ load 1474768.html
 load 1478178.html
 load 1483972.html
 load 1486457.html
-asserts(1-4) load 1488762-1.html # asserts from integer overflow & bogus sizes
+load 1488762-1.html
 load 1488910-1.html
 load 1488910-2.html
 load 1489287.html
@@ -802,16 +803,21 @@ load 1682032.html
 load 1699263.html
 load 1699468.html
 load 1728319.html
-asserts(2-8) load 1730506.html # asserts from integer overflow & bogus sizes
+asserts(0-4) load 1730506.html # asserts from integer overflow & bogus sizes with font inflation
 asserts(1-4) load 1730570.html # asserts from integer overflow & bogus sizes
 load 1734015.html
 skip-if(Android) load 1741488-1.html # printPreview doesn't work on android
+skip-if(Android) asserts(2-2) load 1764205.html # printPreview doesn't work on android
 load 1776079.html
 asserts(0-2) load 1791606.html
 load 1799749.html
-pref(layout.css.content-visibility.enabled,true) asserts(0-1) load 1807958.html # asserts from integer overflow & bogus sizes
-load 1816574.html
+asserts(0-1) load 1807958.html # asserts from integer overflow & bogus sizes
+asserts(0-14) load 1816574.html # Bug 1913247
 load 1821603.html
 load 1822118.html
 load 1825434.html
+load 1858798.html
+load 1870219.html
+load 1915006.html
 asserts(0-85) load 1881375-1.html # bug 1890687 - assertions about fragmentation invariants, failing many times because the test runs in a loop
+asserts(0-5) load 1965081.html # Bug 457400 - ASSERTION: can't mark frame dirty during reflow

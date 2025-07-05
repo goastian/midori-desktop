@@ -10,28 +10,20 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    packagingOptions {
-        exclude 'META-INF/proguard/androidx-annotations.pro'
-    }
-
-    namespace 'mozilla.components.feature.sendtab'
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+    namespace = 'mozilla.components.feature.sendtab'
 }
 
 dependencies {
@@ -47,19 +39,20 @@ dependencies {
     implementation project(':support-ktx')
     implementation project(':support-base')
 
-    implementation ComponentsDependencies.androidx_work_runtime
-    implementation ComponentsDependencies.androidx_lifecycle_runtime
+    implementation libs.androidx.work.runtime
+    implementation libs.androidx.lifecycle.runtime
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.androidx_work_testing
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.concurrent
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.androidx.work.testing
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

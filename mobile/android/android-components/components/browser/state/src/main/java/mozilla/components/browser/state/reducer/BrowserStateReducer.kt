@@ -14,6 +14,7 @@ import mozilla.components.browser.state.action.CopyInternetResourceAction
 import mozilla.components.browser.state.action.CrashAction
 import mozilla.components.browser.state.action.CustomTabListAction
 import mozilla.components.browser.state.action.DebugAction
+import mozilla.components.browser.state.action.DefaultDesktopModeAction
 import mozilla.components.browser.state.action.DownloadAction
 import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.ExtensionsProcessAction
@@ -26,13 +27,14 @@ import mozilla.components.browser.state.action.ReaderAction
 import mozilla.components.browser.state.action.RecentlyClosedAction
 import mozilla.components.browser.state.action.RestoreCompleteAction
 import mozilla.components.browser.state.action.SearchAction
-import mozilla.components.browser.state.action.ShareInternetResourceAction
+import mozilla.components.browser.state.action.ShareResourceAction
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.state.action.TabGroupAction
 import mozilla.components.browser.state.action.TabListAction
 import mozilla.components.browser.state.action.TrackingProtectionAction
 import mozilla.components.browser.state.action.TranslationsAction
 import mozilla.components.browser.state.action.UndoAction
+import mozilla.components.browser.state.action.UpdateDistribution
 import mozilla.components.browser.state.action.WebExtensionAction
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.CustomTabSessionState
@@ -72,13 +74,15 @@ internal object BrowserStateReducer {
             is CrashAction -> CrashReducer.reduce(state, action)
             is LastAccessAction -> LastAccessReducer.reduce(state, action)
             is UndoAction -> UndoReducer.reduce(state, action)
-            is ShareInternetResourceAction -> ShareInternetResourceStateReducer.reduce(state, action)
+            is ShareResourceAction -> ShareResourceStateReducer.reduce(state, action)
             is CopyInternetResourceAction -> CopyInternetResourceStateReducer.reduce(state, action)
             is LocaleAction -> LocaleStateReducer.reduce(state, action)
             is HistoryMetadataAction -> HistoryMetadataReducer.reduce(state, action)
             is DebugAction -> DebugReducer.reduce(state, action)
             is ExtensionsProcessAction -> ExtensionsProcessStateReducer.reduce(state, action)
             is AwesomeBarAction -> AwesomeBarStateReducer.reduce(state, action)
+            is UpdateDistribution -> state.copy(distributionId = action.distributionId)
+            is DefaultDesktopModeAction -> DesktopModeReducer.reduce(state = state, action = action)
         }
     }
 }

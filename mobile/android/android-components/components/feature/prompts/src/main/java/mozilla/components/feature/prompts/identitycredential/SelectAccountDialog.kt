@@ -24,13 +24,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import mozilla.components.concept.identitycredential.Account
 import mozilla.components.concept.identitycredential.Provider
 import mozilla.components.feature.prompts.R
 import mozilla.components.feature.prompts.identitycredential.previews.DialogPreviewMaterialTheme
-import mozilla.components.feature.prompts.identitycredential.previews.LightDarkPreview
 import mozilla.components.support.ktx.kotlin.base64ToBitmap
 
 /**
@@ -138,7 +138,7 @@ private fun AccountItemPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun SelectAccountDialogPreview() {
     DialogPreviewMaterialTheme {
         SelectAccountDialog(

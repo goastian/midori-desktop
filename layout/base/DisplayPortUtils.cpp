@@ -464,30 +464,29 @@ void DisplayPortUtils::MarkDisplayPortAsPainted(nsIContent* aContent) {
 }
 
 bool DisplayPortUtils::HasNonMinimalDisplayPort(nsIContent* aContent) {
-  return HasDisplayPort(aContent) &&
-         !aContent->GetProperty(nsGkAtoms::MinimalDisplayPort);
+  return !aContent->GetProperty(nsGkAtoms::MinimalDisplayPort) &&
+         HasDisplayPort(aContent);
 }
 
 bool DisplayPortUtils::HasNonMinimalNonZeroDisplayPort(nsIContent* aContent) {
-  if (!HasDisplayPort(aContent)) {
-    return false;
-  }
   if (aContent->GetProperty(nsGkAtoms::MinimalDisplayPort)) {
     return false;
   }
 
-  DisplayPortMarginsPropertyData* currentData =
-      static_cast<DisplayPortMarginsPropertyData*>(
-          aContent->GetProperty(nsGkAtoms::DisplayPortMargins));
+  DisplayPortPropertyData* rectData = nullptr;
+  DisplayPortMarginsPropertyData* marginsData = nullptr;
+  if (!GetDisplayPortData(aContent, &rectData, &marginsData)) {
+    return false;
+  }
 
-  if (!currentData) {
+  if (!marginsData) {
     // We have a display port, so if we don't have margin data we must have rect
     // data. We consider such as non zero and non minimal, it's probably not too
     // important as display port rects are only used in tests.
     return true;
   }
 
-  if (currentData->mMargins.mMargins != ScreenMargin()) {
+  if (marginsData->mMargins.mMargins != ScreenMargin()) {
     return true;
   }
 
@@ -881,7 +880,12 @@ bool DisplayPortUtils::MaybeCreateDisplayPortInFirstScrollFrameEncountered(
       }
     }
   }
-  if (aFrame->StyleUIReset()->mMozSubtreeHiddenOnlyVisually) {
+  // Checking mMozSubtreeHiddenOnlyVisually is relatively slow because it
+  // involves loading more memory. It's only allowed in chrome sheets so let's
+  // only support it in the parent process so we can mostly optimize this out in
+  // content processes.
+  if (XRE_IsParentProcess() &&
+      aFrame->StyleUIReset()->mMozSubtreeHiddenOnlyVisually) {
     // Only descend the visible card of deck / tabpanels
     return false;
   }
@@ -946,14 +950,20 @@ Maybe<nsRect> DisplayPortUtils::GetRootDisplayportBase(PresShell* aPresShell) {
 
   nsRect baseRect;
   if (frame) {
-    baseRect = nsRect(nsPoint(0, 0),
-                      nsLayoutUtils::CalculateCompositionSizeForFrame(frame));
+    baseRect = GetDisplayportBase(frame);
   } else {
     baseRect = nsRect(nsPoint(0, 0),
                       aPresShell->GetPresContext()->GetVisibleArea().Size());
   }
 
   return Some(baseRect);
+}
+
+nsRect DisplayPortUtils::GetDisplayportBase(nsIFrame* aFrame) {
+  MOZ_ASSERT(aFrame);
+
+  return nsRect(nsPoint(),
+                nsLayoutUtils::CalculateCompositionSizeForFrame(aFrame));
 }
 
 bool DisplayPortUtils::WillUseEmptyDisplayPortMargins(nsIContent* aContent) {

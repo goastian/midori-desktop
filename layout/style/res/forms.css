@@ -169,7 +169,7 @@ input, textarea, select, button, ::file-selector-button {
 
 ::placeholder {
   -webkit-text-security: none;
-  opacity: 0.54;
+  color: color-mix(in srgb, currentColor 54%, transparent);
 }
 
 :not(:-moz-autofill-preview)::-moz-text-control-editing-root,
@@ -209,11 +209,6 @@ textarea::-moz-text-control-editing-root {
   overscroll-behavior: inherit;
   /* StyleAdjuster makes sure that the overflow value ends up being scrollable */
   overflow: inherit;
-}
-
-input:read-write,
-textarea:read-write {
-  -moz-user-modify: read-write !important;
 }
 
 select {
@@ -317,11 +312,15 @@ option {
   word-wrap: normal !important;
 }
 
+option:read-write {
+  user-select: text;
+}
+
 select > option {
   padding-inline: 4px;
 }
 
-option:checked {
+select:-moz-select-list-box option:checked {
   background-color: -moz-cellhighlight;
   color: -moz-cellhighlighttext;
 }
@@ -490,8 +489,7 @@ input:is([type=color], [type=reset], [type=button], [type=submit]) {
   appearance: auto;
   -moz-default-appearance: button;
   /* The sum of border and padding on block-start and block-end
-     must be the same here, for text inputs, and for <select>.
-     Note -moz-focus-inner padding does not affect button size. */
+     must be the same here, for text inputs, and for <select>. */
   padding-block: 1px;
   padding-inline: 8px;
   border: 2px outset ButtonBorder;
@@ -523,7 +521,7 @@ input[type=color] {
 /* https://github.com/whatwg/html/issues/9976 */
 input:not([type=image i], [type=range i], [type=checkbox i], [type=radio i]) {
   overflow: clip !important;
-  overflow-clip-margin: 0px !important;
+  overflow-clip-margin: 0 !important;
 }
 
 button,
@@ -582,17 +580,6 @@ input:is([type=reset], [type=button], [type=submit], [type=color]):active:hover 
   border-style: inset;
   color: -moz-buttonactivetext;
   background-color: -moz-buttonactiveface;
-}
-
-::-moz-focus-inner {
-  /* Note this padding only affects the -moz-focus-inner ring, not the button itself */
-  padding-block: 0;
-  padding-inline: 2px;
-  border: 1px dotted transparent;
-}
-
-:focus-visible::-moz-focus-inner {
-  border-color: currentColor;
 }
 
 :is(:disabled, :disabled:active)::file-selector-button,
@@ -874,25 +861,63 @@ input::-moz-search-clear-button,
 input::-moz-reveal {
   display: block;
   cursor: default;
+  -moz-user-focus: none;
   width: 1em;
   height: 1em;
-  max-height: 100%;
-  max-width: 100%;
-  margin-inline-start: 1px;
-  background-image: url("resource://content-accessible/searchfield-cancel.svg");
+  margin-inline: 1px;
+  background-image: url(resource://content-accessible/close-12.svg);
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
-}
-
-input::-moz-reveal {
-  background-image: url("resource://gre-resources/password.svg");
   -moz-context-properties: fill;
   fill: currentColor;
 }
 
+input::-moz-search-clear-button {
+  background-size: 1em;
+  padding: 0.35em;
+  border-radius: 4px;
+  margin-inline: 1px;
+}
+
+input::-moz-search-clear-button:hover {
+  background-color: color-mix(in srgb, currentColor 17%, transparent);
+}
+
+input::-moz-search-clear-button:active {
+  background-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+@media (forced-colors) {
+  input::-moz-search-clear-button {
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+    color: ButtonText;
+    background-color: ButtonFace;
+  }
+
+  input::-moz-search-clear-button:hover {
+    color: SelectedItem;
+    background-color: SelectedItemText;
+    outline-color: SelectedItem;
+  }
+
+  input::-moz-search-clear-button:active {
+    color: SelectedItem;
+    background-color: SelectedItemText;
+    outline-color: ButtonText;
+  }
+}
+
+input::-moz-reveal {
+  /* Needed to prevent regression of Bug 502258 */
+  max-height: 100%;
+  max-width: 100%;
+  background-image: url("chrome://global/skin/icons/eye.svg");
+}
+
 input:-moz-revealed::-moz-reveal {
-  background-image: url("resource://gre-resources/password-hide.svg");
+  background-image: url("chrome://global/skin/icons/eye-slash.svg");
 }
 
 input:-moz-value-empty::-moz-reveal,
@@ -909,7 +934,7 @@ input:is([type=date], [type=time], [type=datetime-local]):is(:disabled, :read-on
   color: GrayText;
 }
 
-input:autofill, select:autofill {
+input:autofill, select:autofill, textarea:autofill {
   background-color: -moz-autofill-background !important;
   background-image: none !important;
   color: FieldText !important;

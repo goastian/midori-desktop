@@ -11,7 +11,7 @@ origin:
   url: "http://www.libpng.org/pub/png/libpng.html"
   license: libpng
 
-  release: v1.6.43 (2024-02-23T11:51:40+02:00).
+  release: v1.6.47 (2025-02-18T11:18:30+02:00).
 
   revision: "v1.6.43"
 
@@ -37,6 +37,7 @@ vendoring:
     - arm
     - contrib/arm-neon/linux.c
     - intel
+    - loongarch
     - mips
     - powerpc
     - ANNOUNCE

@@ -72,22 +72,17 @@ math[display="inline" i] {
 
 */
 
+/* Fractions */
+mfrac {
+  padding-inline: 1px;
+}
 
 /**************************************************************************/
 /* merror                                                                 */
 /**************************************************************************/
 
 merror {
-  display: block;
-  font-family: sans-serif;
-  font-weight: bold;
-  white-space: pre;
-  margin: 1em;
-  padding: 1em;
-  border-width: thin;
-  border-style: inset;
-  border-color: red;
-  font-size: 14pt;
+  border: 1px solid red;
   background-color: lightyellow;
 }
 
@@ -149,16 +144,16 @@ mtd {
 }
 /* turn off the spacing at the periphery of boundary cells */
 mtr:first-child > mtd {
-  padding-top: 0ex;
+  padding-top: 0;
 }
 mtr:last-child > mtd {
-  padding-bottom: 0ex;
+  padding-bottom: 0;
 }
 mtd:first-child {
-  padding-inline-start: 0em;
+  padding-inline-start: 0;
 }
 mtd:last-child {
-  padding-inline-end: 0em;
+  padding-inline-end: 0;
 }
 /* re-instate the spacing if the table has a surrounding frame */
 mtable[frame="solid"] > mtr:first-child > mtd,
@@ -182,7 +177,7 @@ mtable[rowspacing] > mtr > mtd,
 mtable[columnspacing] > mtr > mtd,
 mtable[framespacing] > mtr > mtd {
   /* Spacing handled outside of CSS */
-  padding: 0px;
+  padding: 0;
 }
 
 /**********************************************************************/
@@ -309,7 +304,7 @@ semantics > :not(:first-child) {
 }
 
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "mathml.legacy_mathvariant_attribute.disabled") {
+@media -moz-pref("mathml.legacy_mathvariant_attribute.disabled") {
   /* Implement MathML Core's automatic italic on mi.
      https://w3c.github.io/mathml-core/#the-mathvariant-attribute */
   mi {

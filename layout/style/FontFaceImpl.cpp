@@ -9,17 +9,11 @@
 #include <algorithm>
 #include "gfxFontUtils.h"
 #include "gfxPlatformFontList.h"
-#include "mozilla/dom/CSSFontFaceRule.h"
 #include "mozilla/dom/FontFaceBinding.h"
 #include "mozilla/dom/FontFaceSetImpl.h"
-#include "mozilla/dom/TypedArray.h"
-#include "mozilla/dom/UnionTypes.h"
-#include "mozilla/ServoBindings.h"
 #include "mozilla/ServoCSSParser.h"
-#include "mozilla/ServoUtils.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/dom/Document.h"
-#include "nsStyleUtil.h"
 
 namespace mozilla {
 namespace dom {
@@ -62,9 +56,7 @@ FontFaceImpl::FontFaceImpl(FontFace* aOwner, FontFaceSetImpl* aFontFaceSet)
     : mOwner(aOwner),
       mStatus(FontFaceLoadStatus::Unloaded),
       mSourceType(SourceType(0)),
-      mFontFaceSet(aFontFaceSet),
-      mUnicodeRangeDirty(true),
-      mInFontFaceSet(false) {}
+      mFontFaceSet(aFontFaceSet) {}
 
 FontFaceImpl::~FontFaceImpl() {
   // Assert that we don't drop any FontFace objects during a Servo traversal,
@@ -80,9 +72,18 @@ void FontFaceImpl::AssertIsOnOwningThread() const {
 }
 #endif
 
+void FontFaceImpl::StopKeepingOwnerAlive() {
+  if (mKeepingOwnerAlive) {
+    mKeepingOwnerAlive = false;
+    MOZ_ASSERT(mOwner);
+    mOwner->Release();
+  }
+}
+
 void FontFaceImpl::Destroy() {
   mInFontFaceSet = false;
   SetUserFontEntry(nullptr);
+  StopKeepingOwnerAlive();
   mOwner = nullptr;
 }
 
@@ -392,6 +393,7 @@ void FontFaceImpl::UpdateOwnerPromise() {
   }
 
   if (NS_WARN_IF(!mOwner)) {
+    MOZ_DIAGNOSTIC_ASSERT(!mKeepingOwnerAlive);
     return;
   }
 
@@ -402,6 +404,16 @@ void FontFaceImpl::UpdateOwnerPromise() {
       mOwner->MaybeReject(NS_ERROR_DOM_SYNTAX_ERR);
     } else {
       mOwner->MaybeReject(NS_ERROR_DOM_NETWORK_ERR);
+    }
+  }
+
+  const bool shouldKeepOwnerAlive = mStatus == FontFaceLoadStatus::Loading;
+  if (shouldKeepOwnerAlive != mKeepingOwnerAlive) {
+    mKeepingOwnerAlive = shouldKeepOwnerAlive;
+    if (shouldKeepOwnerAlive) {
+      mOwner->AddRef();
+    } else {
+      mOwner->Release();
     }
   }
 }
@@ -558,8 +570,35 @@ bool FontFaceImpl::GetAttributes(gfxUserFontAttributes& aAttr) {
   if (!data) {
     return false;
   }
+  return GetAttributesFromRule(data, aAttr,
+                               Some(GetUnicodeRangeAsCharacterMap()));
+}
 
-  nsAtom* fontFamily = Servo_FontFaceRule_GetFamilyName(data);
+static already_AddRefed<gfxCharacterMap> ComputeCharacterMap(
+    StyleLockedFontFaceRule* aData) {
+  size_t len;
+  const StyleUnicodeRange* rangesPtr =
+      Servo_FontFaceRule_GetUnicodeRanges(aData, &len);
+
+  Span<const StyleUnicodeRange> ranges(rangesPtr, len);
+  if (ranges.IsEmpty()) {
+    return nullptr;
+  }
+  auto charMap = MakeRefPtr<gfxCharacterMap>();
+  for (auto& range : ranges) {
+    charMap->SetRange(range.start, range.end);
+  }
+  charMap->Compact();
+  // As it's common for multiple font resources to have the same
+  // unicode-range list, look for an existing copy of this map to share,
+  // or add this one to the sharing cache if not already present.
+  return gfxPlatformFontList::PlatformFontList()->FindCharMap(charMap);
+}
+
+bool FontFaceImpl::GetAttributesFromRule(
+    StyleLockedFontFaceRule* aData, gfxUserFontAttributes& aAttr,
+    const Maybe<gfxCharacterMap*>& aKnownCharMap) {
+  nsAtom* fontFamily = Servo_FontFaceRule_GetFamilyName(aData);
   if (!fontFamily) {
     return false;
   }
@@ -567,25 +606,22 @@ bool FontFaceImpl::GetAttributes(gfxUserFontAttributes& aAttr) {
   aAttr.mFamilyName = nsAtomCString(fontFamily);
 
   StyleComputedFontWeightRange weightRange;
-  if (Servo_FontFaceRule_GetFontWeight(data, &weightRange)) {
+  if (Servo_FontFaceRule_GetFontWeight(aData, &weightRange)) {
     aAttr.mRangeFlags &= ~gfxFontEntry::RangeFlags::eAutoWeight;
     aAttr.mWeight = WeightRange(FontWeight::FromFloat(weightRange._0),
                                 FontWeight::FromFloat(weightRange._1));
   }
 
   StyleComputedFontStretchRange stretchRange;
-  if (Servo_FontFaceRule_GetFontStretch(data, &stretchRange)) {
+  if (Servo_FontFaceRule_GetFontStretch(aData, &stretchRange)) {
     aAttr.mRangeFlags &= ~gfxFontEntry::RangeFlags::eAutoStretch;
     aAttr.mStretch = StretchRange(stretchRange._0, stretchRange._1);
   }
 
   auto styleDesc = StyleComputedFontStyleDescriptor::Normal();
-  if (Servo_FontFaceRule_GetFontStyle(data, &styleDesc)) {
+  if (Servo_FontFaceRule_GetFontStyle(aData, &styleDesc)) {
     aAttr.mRangeFlags &= ~gfxFontEntry::RangeFlags::eAutoSlantStyle;
     switch (styleDesc.tag) {
-      case StyleComputedFontStyleDescriptor::Tag::Normal:
-        aAttr.mStyle = SlantStyleRange(FontSlantStyle::NORMAL);
-        break;
       case StyleComputedFontStyleDescriptor::Tag::Italic:
         aAttr.mStyle = SlantStyleRange(FontSlantStyle::ITALIC);
         break;
@@ -600,47 +636,40 @@ bool FontFaceImpl::GetAttributes(gfxUserFontAttributes& aAttr) {
   }
 
   StylePercentage ascent{0};
-  if (Servo_FontFaceRule_GetAscentOverride(data, &ascent)) {
+  if (Servo_FontFaceRule_GetAscentOverride(aData, &ascent)) {
     aAttr.mAscentOverride = ascent._0;
   }
 
   StylePercentage descent{0};
-  if (Servo_FontFaceRule_GetDescentOverride(data, &descent)) {
+  if (Servo_FontFaceRule_GetDescentOverride(aData, &descent)) {
     aAttr.mDescentOverride = descent._0;
   }
 
   StylePercentage lineGap{0};
-  if (Servo_FontFaceRule_GetLineGapOverride(data, &lineGap)) {
+  if (Servo_FontFaceRule_GetLineGapOverride(aData, &lineGap)) {
     aAttr.mLineGapOverride = lineGap._0;
   }
 
   StylePercentage sizeAdjust;
-  if (Servo_FontFaceRule_GetSizeAdjust(data, &sizeAdjust)) {
+  if (Servo_FontFaceRule_GetSizeAdjust(aData, &sizeAdjust)) {
     aAttr.mSizeAdjust = sizeAdjust._0;
   }
 
   StyleFontLanguageOverride langOverride;
-  if (Servo_FontFaceRule_GetFontLanguageOverride(data, &langOverride)) {
+  if (Servo_FontFaceRule_GetFontLanguageOverride(aData, &langOverride)) {
     aAttr.mLanguageOverride = langOverride._0;
   }
 
-  Servo_FontFaceRule_GetFontDisplay(data, &aAttr.mFontDisplay);
-  Servo_FontFaceRule_GetFeatureSettings(data, &aAttr.mFeatureSettings);
-  Servo_FontFaceRule_GetVariationSettings(data, &aAttr.mVariationSettings);
-  Servo_FontFaceRule_GetSources(data, &aAttr.mSources);
-  aAttr.mUnicodeRanges = GetUnicodeRangeAsCharacterMap();
-  return true;
-}
-
-bool FontFaceImpl::HasLocalSrc() const {
-  AutoTArray<StyleFontFaceSourceListComponent, 8> components;
-  Servo_FontFaceRule_GetSources(GetData(), &components);
-  for (auto& component : components) {
-    if (component.tag == StyleFontFaceSourceListComponent::Tag::Local) {
-      return true;
-    }
+  Servo_FontFaceRule_GetFontDisplay(aData, &aAttr.mFontDisplay);
+  Servo_FontFaceRule_GetFeatureSettings(aData, &aAttr.mFeatureSettings);
+  Servo_FontFaceRule_GetVariationSettings(aData, &aAttr.mVariationSettings);
+  Servo_FontFaceRule_GetSources(aData, &aAttr.mSources);
+  if (aKnownCharMap) {
+    aAttr.mUnicodeRanges = aKnownCharMap.value();
+  } else {
+    aAttr.mUnicodeRanges = ComputeCharacterMap(aData);
   }
-  return false;
+  return true;
 }
 
 nsAtom* FontFaceImpl::GetFamilyName() const {
@@ -716,27 +745,7 @@ gfxCharacterMap* FontFaceImpl::GetUnicodeRangeAsCharacterMap() {
   if (!mUnicodeRangeDirty) {
     return mUnicodeRange;
   }
-
-  size_t len;
-  const StyleUnicodeRange* rangesPtr =
-      Servo_FontFaceRule_GetUnicodeRanges(GetData(), &len);
-
-  Span<const StyleUnicodeRange> ranges(rangesPtr, len);
-  if (!ranges.IsEmpty()) {
-    auto charMap = MakeRefPtr<gfxCharacterMap>();
-    for (auto& range : ranges) {
-      charMap->SetRange(range.start, range.end);
-    }
-    charMap->Compact();
-    // As it's common for multiple font resources to have the same
-    // unicode-range list, look for an existing copy of this map to share,
-    // or add this one to the sharing cache if not already present.
-    mUnicodeRange =
-        gfxPlatformFontList::PlatformFontList()->FindCharMap(charMap);
-  } else {
-    mUnicodeRange = nullptr;
-  }
-
+  mUnicodeRange = ComputeCharacterMap(GetData());
   mUnicodeRangeDirty = false;
   return mUnicodeRange;
 }

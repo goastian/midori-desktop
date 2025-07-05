@@ -7,19 +7,19 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.feature.awesomebar'
+    namespace = 'mozilla.components.feature.awesomebar'
 }
 
 dependencies {
@@ -33,6 +33,7 @@ dependencies {
     implementation project(':browser-storage-sync')
     implementation project(':browser-icons')
 
+    implementation project(':feature-top-sites')
     implementation project(':feature-tabs')
     implementation project(':feature-session')
     implementation project(':feature-search')
@@ -42,18 +43,18 @@ dependencies {
 
     implementation project(':ui-icons')
 
-    implementation ComponentsDependencies.androidx_core_ktx
+    implementation libs.androidx.core.ktx
 
     testImplementation project(':support-test')
     testImplementation project(':lib-fetch-httpurlconnection')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_mockwebserver
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.mockwebserver
+    testImplementation libs.testing.coroutines
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

@@ -8,7 +8,6 @@
 #define nsComboboxControlFrame_h___
 
 #include "mozilla/Attributes.h"
-#include "nsIFormControlFrame.h"
 #include "nsIAnonymousContentCreator.h"
 #include "nsISelectControlFrame.h"
 #include "nsIRollupListener.h"
@@ -47,8 +46,8 @@ class nsComboboxControlFrame final : public nsHTMLButtonControlFrame,
   mozilla::a11y::AccType AccessibleType() final;
 #endif
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) final;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) final;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) final;
 
   // We're a leaf, so we need to report ourselves as the content insertion
   // frame.
@@ -71,11 +70,6 @@ class nsComboboxControlFrame final : public nsHTMLButtonControlFrame,
     return MakeFrameName(u"ComboboxControl"_ns, aResult);
   }
 #endif
-
-  // nsIFormControlFrame
-  nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) final {
-    return NS_OK;
-  }
 
   /**
    * @note This method might destroy |this|.
@@ -115,10 +109,6 @@ class nsComboboxControlFrame final : public nsHTMLButtonControlFrame,
   DropDownPositionState AbsolutelyPositionDropDown();
 
   nscoord GetLongestOptionISize(gfxContext*) const;
-
-  // Helper for GetMinISize/GetPrefISize
-  nscoord GetIntrinsicISize(gfxContext* aRenderingContext,
-                            mozilla::IntrinsicISizeType aType);
 
   class RedisplayTextEvent : public mozilla::Runnable {
    public:

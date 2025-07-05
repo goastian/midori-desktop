@@ -7,41 +7,41 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
 
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.feature.qr'
+    namespace = 'mozilla.components.feature.qr'
 }
 
 dependencies {
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_appcompat
-    implementation ComponentsDependencies.androidx_core_ktx
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.core.ktx
 
     implementation project(':support-ktx')
     implementation project(':support-base')
 
-    implementation ComponentsDependencies.thirdparty_zxing
-    testImplementation ComponentsDependencies.thirdparty_zxing
+    implementation libs.thirdparty.zxing
+    testImplementation libs.thirdparty.zxing
 
     testImplementation project(':support-test')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

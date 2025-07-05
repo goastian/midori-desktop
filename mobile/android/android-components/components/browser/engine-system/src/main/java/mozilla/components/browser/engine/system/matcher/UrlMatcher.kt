@@ -9,6 +9,7 @@ import android.content.res.Resources
 import android.net.Uri
 import android.util.JsonReader
 import androidx.annotation.RawRes
+import androidx.core.net.toUri
 import java.io.InputStreamReader
 import java.io.Reader
 import java.nio.charset.StandardCharsets.UTF_8
@@ -46,8 +47,8 @@ class UrlMatcher {
         this.categories = categoryMap
 
         for ((key) in categoryMap) {
-            if (!supportedCategories.contains(key)) {
-                throw IllegalArgumentException("$key categoryMap contains undeclared category")
+            require(supportedCategories.contains(key)) {
+                "$key categoryMap contains undeclared category"
             }
         }
 
@@ -95,7 +96,7 @@ class UrlMatcher {
      * indicates the category of the match if available otherwise null.
      */
     fun matches(resourceURI: String, pageURI: String): Pair<Boolean, String?> {
-        return matches(Uri.parse(resourceURI), Uri.parse(pageURI))
+        return matches(resourceURI.toUri(), pageURI.toUri())
     }
 
     /**
@@ -211,8 +212,7 @@ class UrlMatcher {
         ): UrlMatcher {
             val categoryMap = HashMap<String, Trie>()
 
-            JsonReader(block).use {
-                    jsonReader ->
+            JsonReader(block).use { jsonReader ->
                 loadCategories(jsonReader, categoryMap)
             }
 

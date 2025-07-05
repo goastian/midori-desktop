@@ -4,9 +4,9 @@
 
 package mozilla.components.support.ktx.util
 
-import android.net.Uri
 import android.text.TextUtils
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import androidx.core.text.TextDirectionHeuristicCompat
 import androidx.core.text.TextDirectionHeuristicsCompat
 import java.util.regex.Pattern
@@ -33,9 +33,9 @@ object URLStringUtils {
      */
     fun toNormalizedURL(string: String): String {
         val trimmedInput = string.trim()
-        var uri = Uri.parse(trimmedInput)
+        var uri = trimmedInput.toUri()
         if (TextUtils.isEmpty(uri.scheme)) {
-            uri = Uri.parse("http://$trimmedInput")
+            uri = "http://$trimmedInput".toUri()
         } else {
             uri = uri.normalizeScheme()
         }
@@ -123,22 +123,15 @@ object URLStringUtils {
     }
 
     private fun maybeStripUrlProtocol(url: CharSequence): CharSequence {
-        var noPrefixUrl = url
-        if (url.toString().startsWith(HTTPS)) {
-            noPrefixUrl = maybeStripUrlSubDomain(url.toString().replaceFirst(HTTPS, ""))
-        } else if (url.toString().startsWith(HTTP)) {
-            noPrefixUrl = maybeStripUrlSubDomain(url.toString().replaceFirst(HTTP, ""))
+        if (url.startsWith(HTTPS)) {
+            return maybeStripUrlSubDomain(url.removePrefix(HTTPS))
+        } else if (url.startsWith(HTTP)) {
+            return maybeStripUrlSubDomain(url.removePrefix(HTTP))
         }
-        return noPrefixUrl
+        return url
     }
 
-    private fun maybeStripUrlSubDomain(url: CharSequence): CharSequence {
-        return if (url.toString().startsWith(WWW)) {
-            url.toString().replaceFirst(WWW, "")
-        } else {
-            url
-        }
-    }
+    private fun maybeStripUrlSubDomain(url: CharSequence): CharSequence = url.removePrefix(WWW)
 
     private fun maybeStripTrailingSlash(url: CharSequence): CharSequence {
         return url.trimEnd('/')
@@ -155,7 +148,7 @@ object URLStringUtils {
      * Determine whether a string is a valid search query URL.
      */
     fun isValidSearchQueryUrl(url: String): Boolean {
-        var trimmedUrl = url.trim { it <= ' ' }
+        var trimmedUrl = url.trim()
         if (!trimmedUrl.matches("^.+?://.+?".toRegex())) {
             // UI hint url doesn't have http scheme, so add it if necessary
             trimmedUrl = "http://$trimmedUrl"

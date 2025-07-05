@@ -18,7 +18,7 @@ class ToolbarInteractorTest {
     class TestToolbar : Toolbar {
         override var highlight: Toolbar.Highlight = Toolbar.Highlight.NONE
         override var url: CharSequence = ""
-        override var siteSecure: Toolbar.SiteSecurity = Toolbar.SiteSecurity.INSECURE
+        override var siteInfo: Toolbar.SiteInfo = Toolbar.SiteInfo.INSECURE
         override var private: Boolean = false
         override var title: String = ""
 
@@ -139,10 +139,11 @@ class ToolbarInteractorTest {
     fun `provide custom use case for loading url`() {
         var useCaseInvokedWithUrl = ""
         val loadUrlUseCase = object : SessionUseCases.LoadUrlUseCase {
-            override fun invoke(
+            override operator fun invoke(
                 url: String,
                 flags: EngineSession.LoadUrlFlags,
                 additionalHeaders: Map<String, String>?,
+                originalInput: String?,
             ) {
                 useCaseInvokedWithUrl = url
             }

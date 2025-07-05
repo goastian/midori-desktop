@@ -119,7 +119,6 @@ random-if(!(cocoaWidget||winWidget)) == arial-arabic.html arial-arabic-ref.html
 skip-if(!cocoaWidget) != apple-symbols-1.html apple-symbols-1-notref.html
 
 # distinguish between italic and oblique
-== simple-oblique.html simple-oblique-ref.html
 == italic-oblique-1.html italic-oblique-ref.html
 == italic-oblique-2.html italic-oblique-ref.html
 == italic-oblique-3.html italic-oblique-ref.html
@@ -136,7 +135,8 @@ skip-if(!cocoaWidget) != apple-symbols-1.html apple-symbols-1-notref.html
 == emoji-fallback-1.html emoji-fallback-1-ref.html
 skip-if(gtkWidget) == emoji-fallback-2.html emoji-fallback-2-ref.html
 == emoji-fallback-3.html emoji-fallback-3-ref.html
-!= emoji-keycap.html emoji-keycap-notref.html
+# May fail on Win11 if Noto Color Emoji font is present but not yet loaded/ready.
+random-if(winWidget) != emoji-keycap.html emoji-keycap-notref.html
 # Dependent on Windows emoji font names, so not expected to be meaningful on other platforms:
 skip-if(!winWidget) != emoji-keycap-2.html emoji-keycap-2-notref.html
 == emoji-skintone.html emoji-skintone-ref.html
@@ -200,8 +200,16 @@ skip-if(!winWidget) pref(layout.css.font-visibility,1) == 1850672-1.html 1850672
 # Check that "ja-JP" in accept_languages uses the same font prefs as "ja".
 test-pref(intl.accept_languages,"ja-JP,zh-CN,en") ref-pref(intl.accept_languages,"ja,zh-CN,en") == 1892363-lang-prefs.html 1892363-lang-prefs.html
 
+== 1923698-font-variant-emoji.html 1923698-font-variant-emoji-ref.html
+
+# Bug 1932814 - GetCommonFallbackFonts for Arabic on Windows:
+skip-if(!winWidget) == windows-arabic-fallback.html windows-arabic-fallback-ref.html
+
 # Reset default prefs.
 defaults
 
 # Bug 1787790 - Normalize system fonts when using RFP
 test-pref(privacy.resistFingerprinting,true) == system-font-rfp.html system-font-rfp-ref.html
+
+# Bug 1970980 - Test for regional-indicator emoji handling with Windows-specific fonts
+skip-if(!winWidget) pref(layout.css.font-variant-emoji.enabled,true) == 1970980-regional-indicators.html 1970980-regional-indicators-ref.html

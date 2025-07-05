@@ -4,7 +4,6 @@
 
 package org.mozilla.samples.sync
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -21,10 +20,7 @@ import mozilla.components.concept.sync.Device
  * [DeviceFragment.OnDeviceListInteractionListener] interface.
  */
 class DeviceFragment : Fragment() {
-
-    private var listenerDevice: OnDeviceListInteractionListener? = null
-
-    private val adapter = DeviceRecyclerViewAdapter(listenerDevice)
+    private val adapter = DeviceRecyclerViewAdapter()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -45,27 +41,17 @@ class DeviceFragment : Fragment() {
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        if (context is OnDeviceListInteractionListener) {
-            listenerDevice = context
-            adapter.mListenerDevice = context
-        } else {
-            throw IllegalArgumentException("$context must implement OnDeviceListInteractionListener")
+        require(context is OnDeviceListInteractionListener) {
+            "$context must implement OnDeviceListInteractionListener"
         }
-    }
-
-    override fun onDetach() {
-        super.onDetach()
-        listenerDevice = null
+        adapter.onDeviceClickedListener = context
     }
 
     /**
      * Updates the list of devices.
      */
-    @SuppressLint("NotifyDataSetChanged")
     fun updateDevices(devices: List<Device>) {
-        adapter.devices.clear()
-        adapter.devices.addAll(devices)
-        adapter.notifyDataSetChanged()
+        adapter.submitList(devices)
     }
 
     /**

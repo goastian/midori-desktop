@@ -110,9 +110,14 @@ void SharedStyleSheetCache::LoadCompletedInternal(
 
   // Go through and deal with the whole linked list.
   auto* data = &aData;
+  auto* networkMetadata = aData.GetNetworkMetadata();
   do {
     MOZ_RELEASE_ASSERT(!data->mSheetCompleteCalled);
     data->mSheetCompleteCalled = true;
+
+    if (!data->mNetworkMetadata) {
+      data->mNetworkMetadata = networkMetadata;
+    }
 
     if (!data->mSheetAlreadyComplete) {
       // If mSheetAlreadyComplete, then the sheet could well be modified between
@@ -187,6 +192,20 @@ void SharedStyleSheetCache::LoadCompletedInternal(
   }
 }
 
+size_t SharedStyleSheetCache::SizeOfIncludingThis(
+    MallocSizeOf aMallocSizeOf) const {
+  size_t n = aMallocSizeOf(this);
+  n += Base::SizeOfExcludingThis(aMallocSizeOf);
+  n += mInlineSheets.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  for (const auto& sheetMap : mInlineSheets) {
+    for (const auto& entry : sheetMap.GetData()) {
+      n += entry.GetKey().SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+      n += entry.GetData()->SizeOfIncludingThis(aMallocSizeOf);
+    }
+  }
+  return n;
+}
+
 NS_IMETHODIMP
 SharedStyleSheetCache::CollectReports(nsIHandleReportCallback* aHandleReport,
                                       nsISupports* aData, bool aAnonymize) {
@@ -199,21 +218,46 @@ SharedStyleSheetCache::CollectReports(nsIHandleReportCallback* aHandleReport,
   return NS_OK;
 }
 
-void SharedStyleSheetCache::Clear(nsIPrincipal* aForPrincipal,
-                                  const nsACString* aBaseDomain) {
+void SharedStyleSheetCache::ClearInProcess(
+    const Maybe<bool>& aChrome, const Maybe<nsCOMPtr<nsIPrincipal>>& aPrincipal,
+    const Maybe<nsCString>& aSchemelessSite,
+    const Maybe<OriginAttributesPattern>& aPattern,
+    const Maybe<nsCString>& aURL) {
+  Base::ClearInProcess(aChrome, aPrincipal, aSchemelessSite, aPattern, aURL);
+  if (!aChrome && !aPrincipal && !aSchemelessSite && !aURL) {
+    mInlineSheets.Clear();
+  }
+  if (aURL) {
+    // Inline sheets don't have a URL.
+    return;
+  }
+
+  for (auto iter = mInlineSheets.Iter(); !iter.Done(); iter.Next()) {
+    if (SharedSubResourceCacheUtils::ShouldClearEntry(
+            nullptr, iter.Key(), iter.Key(), aChrome, aPrincipal,
+            aSchemelessSite, aPattern, aURL)) {
+      iter.Remove();
+    }
+  }
+}
+
+void SharedStyleSheetCache::Clear(
+    const Maybe<bool>& aChrome, const Maybe<nsCOMPtr<nsIPrincipal>>& aPrincipal,
+    const Maybe<nsCString>& aSchemelessSite,
+    const Maybe<OriginAttributesPattern>& aPattern,
+    const Maybe<nsCString>& aURL) {
   using ContentParent = dom::ContentParent;
 
   if (XRE_IsParentProcess()) {
-    auto forPrincipal = aForPrincipal ? Some(RefPtr(aForPrincipal)) : Nothing();
-    auto baseDomain = aBaseDomain ? Some(nsCString(*aBaseDomain)) : Nothing();
-
     for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-      Unused << cp->SendClearStyleSheetCache(forPrincipal, baseDomain);
+      Unused << cp->SendClearStyleSheetCache(aChrome, aPrincipal,
+                                             aSchemelessSite, aPattern, aURL);
     }
   }
 
-  if (sInstance) {
-    sInstance->ClearInProcess(aForPrincipal, aBaseDomain);
+  if (sSingleton) {
+    sSingleton->ClearInProcess(aChrome, aPrincipal, aSchemelessSite, aPattern,
+                               aURL);
   }
 }
 

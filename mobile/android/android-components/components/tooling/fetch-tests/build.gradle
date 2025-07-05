@@ -7,32 +7,33 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
     }
 
-    lint {
-        lintConfig file("lint.xml")
+    packaging {
+        resources {
+            excludes += ['META-INF/LICENSE.md', 'META-INF/LICENSE-notice.md']
+        }
     }
 
-    namespace 'mozilla.components.tooling.fetch.tests'
-
+    namespace = 'mozilla.components.tooling.fetch.tests'
 }
 
 dependencies {
     implementation project(':concept-fetch')
 
-    implementation ComponentsDependencies.testing_mockwebserver
-    implementation ComponentsDependencies.testing_junit
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.testing.mockwebserver
+    implementation libs.junit.vintage
+    implementation libs.kotlin.coroutines
 }

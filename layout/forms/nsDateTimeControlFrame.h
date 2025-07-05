@@ -47,10 +47,8 @@ class nsDateTimeControlFrame final : public nsContainerFrame {
   }
 #endif
 
-  // Reflow
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput,

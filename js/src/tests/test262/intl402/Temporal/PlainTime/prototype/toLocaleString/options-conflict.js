@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Kate Miháliková. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -31,10 +31,18 @@ const time = new Temporal.PlainTime(12, 34, 56, 987, 654, 321);
 
 assert.sameValue(typeof time.toLocaleString("en", { timeStyle: "short" }), "string");
 
+assert.throws(TypeError, function () {
+  time.toLocaleString("en", { dateStyle: "short" });
+}, "dateStyle conflicts with PlainTime");
+
 for (const [ option, value ] of conflictingOptions) {
   assert.throws(TypeError, function() {
     time.toLocaleString("en", { [option]: value, timeStyle: "short" });
   }, `time.toLocaleString("en", { ${option}: "${value}",  timeStyle: "short" }) throws TypeError`);
+
+  // dateStyle or timeStyle present but undefined does not conflict
+  time.toLocaleString("en", { [option]: value, dateStyle: undefined });
+  time.toLocaleString("en", { [option]: value, timeStyle: undefined });
 }
 
 reportCompare(0, 0);

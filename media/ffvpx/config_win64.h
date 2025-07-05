@@ -10,7 +10,7 @@
 #define OS_NAME win32
 #define av_restrict restrict
 #define EXTERN_PREFIX ""
-#define EXTERN_ASM 
+#define EXTERN_ASM
 #define BUILDSUF ""
 #define SLIBSUF ".dll"
 #define HAVE_MMX2 HAVE_MMXEXT
@@ -474,7 +474,7 @@
 #define CONFIG_LIBCACA 0
 #define CONFIG_LIBCELT 0
 #define CONFIG_LIBCODEC2 0
-#define CONFIG_LIBDAV1D 0
+#define CONFIG_LIBDAV1D 1
 #define CONFIG_LIBDC1394 0
 #define CONFIG_LIBDRM 0
 #define CONFIG_LIBFLITE 0
@@ -647,7 +647,7 @@
 #define CONFIG_BSWAPDSP 0
 #define CONFIG_CABAC 0
 #define CONFIG_CBS 0
-#define CONFIG_CBS_AV1 0
+#define CONFIG_CBS_AV1 1
 #define CONFIG_CBS_H264 0
 #define CONFIG_CBS_H265 0
 #define CONFIG_CBS_JPEG 0

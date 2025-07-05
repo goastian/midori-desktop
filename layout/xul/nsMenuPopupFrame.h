@@ -46,21 +46,21 @@ enum ConsumeOutsideClicksResult {
   ConsumeOutsideClicks_Never = 2  // Never consume clicks
 };
 
-// How a popup may be flipped. Flipping to the outside edge is like how
-// a submenu would work. The entire popup is flipped to the opposite side
-// of the anchor.
-enum FlipStyle {
-  FlipStyle_None = 0,
-  FlipStyle_Outside = 1,
-  FlipStyle_Inside = 2
+// How a popup may be flipped. Flipping to the outside edge is like how a
+// submenu would work. The entire popup is flipped to the opposite side of the
+// anchor.
+enum class FlipStyle {
+  None = 0,
+  Outside = 1,
+  Inside = 2,
 };
 
 // Values for the flip attribute
-enum FlipType {
-  FlipType_Default = 0,
-  FlipType_None = 1,  // don't try to flip or translate to stay onscreen
-  FlipType_Both = 2,  // flip in both directions
-  FlipType_Slide = 3  // allow the arrow to "slide" instead of resizing
+enum class FlipType {
+  Default = 0,
+  None = 1,   // don't try to flip or translate to stay onscreen
+  Both = 2,   // flip in both directions
+  Slide = 3,  // allow the arrow to "slide" instead of resizing
 };
 
 enum class MenuPopupAnchorType : uint8_t {
@@ -165,13 +165,15 @@ class nsMenuPopupFrame final : public nsBlockFrame {
 
   mozilla::dom::XULPopupElement& PopupElement() const;
 
-  nscoord GetPrefISize(gfxContext*) final;
-  nscoord GetMinISize(gfxContext*) final;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
+
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
   nsIWidget* GetWidget() const;
+  already_AddRefed<nsIWidget> ComputeParentWidget() const;
 
   enum class WidgetStyle : uint8_t {
     ColorScheme,
@@ -179,11 +181,13 @@ class nsMenuPopupFrame final : public nsBlockFrame {
     Opacity,
     Shadow,
     Transform,
+    MicaBackdrop,
   };
   using WidgetStyleFlags = mozilla::EnumSet<WidgetStyle>;
   static constexpr WidgetStyleFlags AllWidgetStyleFlags() {
     return {WidgetStyle::ColorScheme, WidgetStyle::InputRegion,
-            WidgetStyle::Opacity, WidgetStyle::Shadow, WidgetStyle::Transform};
+            WidgetStyle::Opacity,     WidgetStyle::Shadow,
+            WidgetStyle::Transform,   WidgetStyle::MicaBackdrop};
   }
   void PropagateStyleToWidget(WidgetStyleFlags = AllWidgetStyleFlags()) const;
 
@@ -212,9 +216,10 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   PopupLevel GetPopupLevel() const { return GetPopupLevel(IsNoAutoHide()); }
 
   // Ensure that a widget has already been created for this view, and create
-  // one if it hasn't. If aRecreate is true, destroys any existing widget and
-  // creates a new one, regardless of whether one has already been created.
-  void PrepareWidget(bool aRecreate = false);
+  // one if it hasn't. If aForceRecreate is true, destroys any existing widget
+  // and creates a new one, regardless of whether one has already been created.
+  // Otherwise does so only if needed.
+  void PrepareWidget(bool aForceRecreate = false);
 
   MOZ_CAN_RUN_SCRIPT void EnsureActiveMenuListItemIsVisible();
 
@@ -429,7 +434,6 @@ class nsMenuPopupFrame final : public nsBlockFrame {
  protected:
   // returns the popup's level.
   PopupLevel GetPopupLevel(bool aIsNoAutoHide) const;
-  void TweakMinPrefISize(nscoord&);
 
   void InitPositionFromAnchorAlign(const nsAString& aAnchor,
                                    const nsAString& aAlign);
@@ -535,11 +539,22 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   const nsRect& GetUntransformedAnchorRect() const {
     return mUntransformedAnchorRect;
   }
-  int GetPopupAlignment() const { return mPopupAlignment; }
-  int GetPopupAnchor() const { return mPopupAnchor; }
+  int8_t GetUntransformedPopupAlignment() const {
+    return mUntransformedPopupAlignment;
+  }
+  int8_t GetUntransformedPopupAnchor() const {
+    return mUntransformedPopupAnchor;
+  }
+
+  int8_t GetPopupAlignment() const { return mPopupAlignment; }
+  int8_t GetPopupAnchor() const { return mPopupAnchor; }
   FlipType GetFlipType() const { return mFlip; }
 
-  void WidgetPositionOrSizeDidChange();
+  uint64_t GetAPZFocusSequenceNumber() const { return mAPZFocusSequenceNumber; }
+
+  void UpdateAPZFocusSequenceNumber(uint64_t aNewNumber) {
+    mAPZFocusSequenceNumber = aNewNumber;
+  }
 
  protected:
   nsString mIncrementalString;  // for incremental typing navigation
@@ -587,15 +602,21 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   // position of our widget didn't change.
   mozilla::LayoutDeviceIntPoint mLastClientOffset;
 
+  // The focus sequence number of the last processed input event
+  uint64_t mAPZFocusSequenceNumber = 0;
+
   PopupType mPopupType = PopupType::Panel;  // type of popup
   nsPopupState mPopupState = ePopupClosed;  // open state of the popup
 
   // popup alignment relative to the anchor node
+  // The untransformed variants are needed for Wayland
+  int8_t mUntransformedPopupAlignment = POPUPALIGNMENT_NONE;
+  int8_t mUntransformedPopupAnchor = POPUPALIGNMENT_NONE;
   int8_t mPopupAlignment = POPUPALIGNMENT_NONE;
   int8_t mPopupAnchor = POPUPALIGNMENT_NONE;
   int8_t mPosition = POPUPPOSITION_UNKNOWN;
 
-  FlipType mFlip = FlipType_Default;  // Whether to flip
+  FlipType mFlip = FlipType::Default;  // Whether to flip
 
   // Whether we were moved by the move-to-rect Wayland callback. In that case,
   // we stop updating the anchor so that we can end up with a stable position.
@@ -637,8 +658,6 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   MenuPopupAnchorType mAnchorType = MenuPopupAnchorType::Node;
 
   nsRect mOverrideConstraintRect;
-
-  static int8_t sDefaultLevelIsTop;
 
   static mozilla::TimeStamp sLastKeyTime;
 

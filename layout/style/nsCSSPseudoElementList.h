@@ -37,24 +37,30 @@ CSS_PSEUDO_ELEMENT(marker, ":marker", 0)
 
 CSS_PSEUDO_ELEMENT(backdrop, ":backdrop", 0)
 
-CSS_PSEUDO_ELEMENT(cue, ":cue", CSS_PSEUDO_ELEMENT_IS_JS_CREATED_NAC |
-                                CSS_PSEUDO_ELEMENT_SUPPORTS_STYLE_ATTRIBUTE)
+CSS_PSEUDO_ELEMENT(cue, ":cue", CSS_PSEUDO_ELEMENT_IS_JS_CREATED_NAC)
 
-CSS_PSEUDO_ELEMENT(firstLetter, ":first-letter",
-                   CSS_PSEUDO_ELEMENT_IS_CSS2 |
-                   CSS_PSEUDO_ELEMENT_CONTAINS_ELEMENTS)
-CSS_PSEUDO_ELEMENT(firstLine, ":first-line",
-                   CSS_PSEUDO_ELEMENT_IS_CSS2 |
-                   CSS_PSEUDO_ELEMENT_CONTAINS_ELEMENTS)
+CSS_PSEUDO_ELEMENT(firstLetter, ":first-letter", CSS_PSEUDO_ELEMENT_IS_CSS2)
+CSS_PSEUDO_ELEMENT(firstLine, ":first-line", CSS_PSEUDO_ELEMENT_IS_CSS2)
+
 CSS_PSEUDO_ELEMENT(highlight, ":highlight", 0)
-
-CSS_PSEUDO_ELEMENT(selection, ":selection",
-                   CSS_PSEUDO_ELEMENT_CONTAINS_ELEMENTS)
-
+CSS_PSEUDO_ELEMENT(selection, ":selection", 0)
 CSS_PSEUDO_ELEMENT(targetText, ":target-text", 0)
-// XXXbz should we really allow random content to style these?  Maybe
-// use our flags to prevent that?
-CSS_PSEUDO_ELEMENT(mozFocusInner, ":-moz-focus-inner", 0)
+
+CSS_PSEUDO_ELEMENT(viewTransition, ":view-transition",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
+CSS_PSEUDO_ELEMENT(viewTransitionGroup, ":view-transition-group",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
+CSS_PSEUDO_ELEMENT(viewTransitionImagePair, ":view-transition-image-pair",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
+CSS_PSEUDO_ELEMENT(viewTransitionOld, ":view-transition-old",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
+CSS_PSEUDO_ELEMENT(viewTransitionNew, ":view-transition-new",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
+// The internal implementation usage for View transition to create the snapshot
+// containing block concept.
+CSS_PSEUDO_ELEMENT(mozSnapshotContainingBlock,
+                   ":-moz-snapshot-containing-block",
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS)
 
 // HTML5 Forms pseudo elements
 CSS_PSEUDO_ELEMENT(mozNumberSpinBox, ":-moz-number-spin-box",
@@ -82,7 +88,6 @@ CSS_PSEUDO_ELEMENT(mozMeterBar, ":-moz-meter-bar",
 CSS_PSEUDO_ELEMENT(placeholder, ":placeholder",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE)
 CSS_PSEUDO_ELEMENT(mozColorSwatch, ":-moz-color-swatch",
-                   CSS_PSEUDO_ELEMENT_SUPPORTS_STYLE_ATTRIBUTE |
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE)
 // The root of the text value anonymous content inside an <input> or <textarea>.
 CSS_PSEUDO_ELEMENT(mozTextControlEditingRoot, ":-moz-text-control-editing-root",
@@ -106,5 +111,10 @@ CSS_PSEUDO_ELEMENT(sliderThumb, ":slider-thumb",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
                    CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
 CSS_PSEUDO_ELEMENT(sliderFill, ":slider-fill",
+                   CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
+                   CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)
+
+// The content in a <details> element that is shown when the element is open.
+CSS_PSEUDO_ELEMENT(detailsContent, ":details-content",
                    CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE |
                    CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME)

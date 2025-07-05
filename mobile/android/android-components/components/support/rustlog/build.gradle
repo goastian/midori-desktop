@@ -7,44 +7,39 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
-    }
-
-    lint {
-        warningsAsErrors true
-        abortOnError true
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             consumerProguardFiles 'proguard-rules-consumer.pro'
         }
     }
 
-    namespace 'mozilla.components.support.rustlog'
+    namespace = 'mozilla.components.support.rustlog'
 }
 
 dependencies {
     implementation ComponentsDependencies.mozilla_appservices_rust_log_forwarder
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
     // Log.Priority is in the public api.
     api project(':support-base')
 
     testImplementation ComponentsDependencies.mozilla_appservices_rust_log_forwarder
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_forUnitTests
+    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_libsForTests
 
-    testImplementation ComponentsDependencies.testing_junit
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.junit.vintage
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

@@ -108,15 +108,11 @@ uint16_t SVGGradientFrame::GetSpreadMethod() {
   return GetEnumValue(dom::SVGGradientElement::SPREADMETHOD);
 }
 
-const SVGAnimatedTransformList* SVGGradientFrame::GetGradientTransformList(
-    nsIContent* aDefault) {
-  SVGAnimatedTransformList* thisTransformList =
-      static_cast<dom::SVGGradientElement*>(GetContent())
-          ->GetAnimatedTransformList();
-
-  if (thisTransformList && thisTransformList->IsExplicitlySet())
-    return thisTransformList;
-
+SVGGradientFrame* SVGGradientFrame::GetGradientTransformFrame(
+    SVGGradientFrame* aDefault) {
+  if (!StyleDisplay()->mTransform.IsNone()) {
+    return this;
+  }
   // Before we recurse, make sure we'll break reference loops and over long
   // reference chains:
   static int16_t sRefChainLengthCounter = AutoReferenceChainGuard::noChain;
@@ -124,21 +120,18 @@ const SVGAnimatedTransformList* SVGGradientFrame::GetGradientTransformList(
                                         &sRefChainLengthCounter);
   if (MOZ_UNLIKELY(!refChainGuard.Reference())) {
     // Break reference chain
-    return static_cast<const dom::SVGGradientElement*>(aDefault)
-        ->mGradientTransform.get();
+    return aDefault;
   }
 
-  SVGGradientFrame* next = GetReferencedGradient();
-
-  return next ? next->GetGradientTransformList(aDefault)
-              : static_cast<const dom::SVGGradientElement*>(aDefault)
-                    ->mGradientTransform.get();
+  if (SVGGradientFrame* next = GetReferencedGradient()) {
+    return next->GetGradientTransformFrame(aDefault);
+  }
+  return aDefault;
 }
 
 gfxMatrix SVGGradientFrame::GetGradientTransform(
     nsIFrame* aSource, const gfxRect* aOverrideBounds) {
   gfxMatrix bboxMatrix;
-
   uint16_t gradientUnits = GetGradientUnits();
   if (gradientUnits != SVG_UNIT_TYPE_USERSPACEONUSE) {
     NS_ASSERTION(gradientUnits == SVG_UNIT_TYPE_OBJECTBOUNDINGBOX,
@@ -154,16 +147,8 @@ gfxMatrix SVGGradientFrame::GetGradientTransform(
         gfxMatrix(bbox.Width(), 0, 0, bbox.Height(), bbox.X(), bbox.Y());
   }
 
-  const SVGAnimatedTransformList* animTransformList =
-      GetGradientTransformList(GetContent());
-  if (!animTransformList) {
-    return bboxMatrix.PreMultiply(
-        SVGUtils::GetTransformMatrixInUserSpace(this));
-  }
-
-  gfxMatrix gradientTransform =
-      animTransformList->GetAnimValue().GetConsolidationMatrix();
-  return bboxMatrix.PreMultiply(gradientTransform);
+  return bboxMatrix.PreMultiply(
+      SVGUtils::GetTransformMatrixInUserSpace(GetGradientTransformFrame(this)));
 }
 
 dom::SVGLinearGradientElement* SVGGradientFrame::GetLinearGradientWithLength(
@@ -221,7 +206,7 @@ static ColorStop GetStopInformation(const nsIFrame* aStopFrame,
   static_cast<SVGStopElement*>(stopContent)
       ->GetAnimatedNumberValues(&position, nullptr);
 
-  position = clamped(position, 0.0f, 1.0f);
+  position = std::clamp(position, 0.0f, 1.0f);
 
   if (position < aLastPosition) {
     position = aLastPosition;
@@ -245,9 +230,8 @@ class MOZ_STACK_CLASS SVGColorStopInterpolator
   SVGColorStopInterpolator(
       gfxPattern* aGradient, const nsTArray<ColorStop>& aStops,
       const StyleColorInterpolationMethod& aStyleColorInterpolationMethod,
-      bool aExtendLastStop)
-      : ColorStopInterpolator(aStops, aStyleColorInterpolationMethod,
-                              aExtendLastStop),
+      bool aExtend)
+      : ColorStopInterpolator(aStops, aStyleColorInterpolationMethod, aExtend),
         mGradient(aGradient) {}
 
   void CreateStop(float aPosition, DeviceColor aColor) {
@@ -260,7 +244,7 @@ class MOZ_STACK_CLASS SVGColorStopInterpolator
 
 already_AddRefed<gfxPattern> SVGGradientFrame::GetPaintServerPattern(
     nsIFrame* aSource, const DrawTarget* aDrawTarget,
-    const gfxMatrix& aContextMatrix, StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+    const gfxMatrix& aContextMatrix, StyleSVGPaint nsStyleSVG::* aFillOrStroke,
     float aGraphicOpacity, imgDrawingParams& aImgParams,
     const gfxRect* aOverrideBounds) {
   uint16_t gradientUnits = GetGradientUnits();
@@ -294,7 +278,6 @@ already_AddRefed<gfxPattern> SVGGradientFrame::GetPaintServerPattern(
   // above since this call can be expensive when "gradientUnits" is set to
   // "objectBoundingBox" (since that requiring a GetBBox() call).
   gfxMatrix patternMatrix = GetGradientTransform(aSource, aOverrideBounds);
-
   if (patternMatrix.IsSingular()) {
     return nullptr;
   }
@@ -317,12 +300,13 @@ already_AddRefed<gfxPattern> SVGGradientFrame::GetPaintServerPattern(
   }
 
   uint16_t aSpread = GetSpreadMethod();
-  if (aSpread == SVG_SPREADMETHOD_PAD)
+  if (aSpread == SVG_SPREADMETHOD_PAD) {
     gradient->SetExtend(ExtendMode::CLAMP);
-  else if (aSpread == SVG_SPREADMETHOD_REFLECT)
+  } else if (aSpread == SVG_SPREADMETHOD_REFLECT) {
     gradient->SetExtend(ExtendMode::REFLECT);
-  else if (aSpread == SVG_SPREADMETHOD_REPEAT)
+  } else if (aSpread == SVG_SPREADMETHOD_REPEAT) {
     gradient->SetExtend(ExtendMode::REPEAT);
+  }
 
   gradient->SetMatrix(patternMatrix);
 

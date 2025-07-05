@@ -428,10 +428,12 @@ BorderColorStyle nsCSSBorderRenderer::BorderColorStyleForSolidCorner(
 Rect nsCSSBorderRenderer::GetCornerRect(Corner aCorner) {
   Point offset(0.f, 0.f);
 
-  if (aCorner == C_TR || aCorner == C_BR)
+  if (aCorner == C_TR || aCorner == C_BR) {
     offset.x = mOuterRect.Width() - mBorderCornerDimensions[aCorner].width;
-  if (aCorner == C_BR || aCorner == C_BL)
+  }
+  if (aCorner == C_BR || aCorner == C_BL) {
     offset.y = mOuterRect.Height() - mBorderCornerDimensions[aCorner].height;
+  }
 
   return Rect(mOuterRect.TopLeft() + offset, mBorderCornerDimensions[aCorner]);
 }
@@ -464,10 +466,11 @@ Rect nsCSSBorderRenderer::GetSideClipWithoutCornersRect(mozilla::Side aSide) {
                        mBorderCornerDimensions[GetCWCorner(aSide)];
   Rect rect(mOuterRect.TopLeft() + offset, mOuterRect.Size() - sideCornerSum);
 
-  if (IsHorizontalSide(aSide))
+  if (IsHorizontalSide(aSide)) {
     rect.height = mBorderWidths[aSide];
-  else
+  } else {
     rect.width = mBorderWidths[aSide];
+  }
 
   return rect;
 }
@@ -3480,7 +3483,7 @@ ImgDrawResult nsCSSBorderImageRenderer::DrawBorderImage(
 
   for (int i = LEFT; i <= RIGHT; i++) {
     for (int j = TOP; j <= BOTTOM; j++) {
-      StyleBorderImageRepeat fillStyleH, fillStyleV;
+      StyleBorderImageRepeatKeyword fillStyleH, fillStyleV;
       nsSize unitSize;
 
       if (i == MIDDLE && j == MIDDLE) {
@@ -3534,7 +3537,7 @@ ImgDrawResult nsCSSBorderImageRenderer::DrawBorderImage(
         unitSize.width = sliceWidth[i] * factor;
         unitSize.height = borderHeight[j];
         fillStyleH = mRepeatModeHorizontal;
-        fillStyleV = StyleBorderImageRepeat::Stretch;
+        fillStyleV = StyleBorderImageRepeatKeyword::Stretch;
 
       } else if (j == MIDDLE) {  // left, right
         gfxFloat factor;
@@ -3546,20 +3549,22 @@ ImgDrawResult nsCSSBorderImageRenderer::DrawBorderImage(
 
         unitSize.width = borderWidth[i];
         unitSize.height = sliceHeight[j] * factor;
-        fillStyleH = StyleBorderImageRepeat::Stretch;
+        fillStyleH = StyleBorderImageRepeatKeyword::Stretch;
         fillStyleV = mRepeatModeVertical;
 
       } else {
         // Corners are always stretched to fit the corner.
         unitSize.width = borderWidth[i];
         unitSize.height = borderHeight[j];
-        fillStyleH = StyleBorderImageRepeat::Stretch;
-        fillStyleV = StyleBorderImageRepeat::Stretch;
+        fillStyleH = StyleBorderImageRepeatKeyword::Stretch;
+        fillStyleV = StyleBorderImageRepeatKeyword::Stretch;
       }
 
       nsRect destArea(borderX[i], borderY[j], borderWidth[i], borderHeight[j]);
       nsRect subArea(sliceX[i], sliceY[j], sliceWidth[i], sliceHeight[j]);
-      if (subArea.IsEmpty()) continue;
+      if (subArea.IsEmpty()) {
+        continue;
+      }
 
       nsIntRect intSubArea = subArea.ToOutsidePixels(AppUnitsPerCSSPixel());
       result &= mImageRenderer.DrawBorderImageComponent(
@@ -3814,8 +3819,6 @@ nsCSSBorderImageRenderer::nsCSSBorderImageRenderer(
 
   // Compute the used values of 'border-image-slice' and 'border-image-width';
   // we do them together because the latter can depend on the former.
-  nsMargin slice;
-  nsMargin border;
   for (const auto s : mozilla::AllPhysicalSides()) {
     const auto& slice = aStyleBorder.mBorderImageSlice.offsets.Get(s);
     int32_t imgDimension =
@@ -3884,7 +3887,7 @@ nsCSSBorderImageRenderer::nsCSSBorderImageRenderer(
                  "rounding error in width reduction???");
   }
 
-  mRepeatModeHorizontal = aStyleBorder.mBorderImageRepeatH;
-  mRepeatModeVertical = aStyleBorder.mBorderImageRepeatV;
+  mRepeatModeHorizontal = aStyleBorder.mBorderImageRepeat._0;
+  mRepeatModeVertical = aStyleBorder.mBorderImageRepeat._1;
   mFill = aStyleBorder.mBorderImageSlice.fill;
 }

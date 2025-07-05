@@ -7,7 +7,6 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
@@ -21,6 +20,7 @@ import androidx.annotation.StringRes
 import androidx.annotation.StyleRes
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.marginBottom
 import androidx.core.view.marginStart
 import androidx.core.view.marginTop
@@ -69,7 +69,7 @@ class SimpleDownloadDialogFragment : DownloadDialogFragment() {
             }
 
             if (dialogShouldWidthMatchParent) {
-                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
                 // This must be called after addContentView, or it won't fully fill to the edge.
                 setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
@@ -91,8 +91,9 @@ class SimpleDownloadDialogFragment : DownloadDialogFragment() {
             binding.title.text = if (getLong(KEY_CONTENT_LENGTH) <= 0L) {
                 getString(R.string.mozac_feature_downloads_dialog_download)
             } else {
-                val contentSize = getLong(KEY_CONTENT_LENGTH).toMegabyteOrKilobyteString()
-                getString(getInt(KEY_TITLE_TEXT, R.string.mozac_feature_downloads_dialog_title2), contentSize)
+                val sizeFormatter = DefaultFileSizeFormatter(requireContext().applicationContext)
+                val contentSize = sizeFormatter.formatSizeInBytes(getLong(KEY_CONTENT_LENGTH))
+                getString(getInt(KEY_TITLE_TEXT, R.string.mozac_feature_downloads_dialog_title_3), contentSize)
             }
 
             if (positiveButtonBackgroundColor != DEFAULT_VALUE) {
@@ -176,7 +177,7 @@ class SimpleDownloadDialogFragment : DownloadDialogFragment() {
          * A builder method for creating a [SimpleDownloadDialogFragment]
          */
         fun newInstance(
-            @StringRes dialogTitleText: Int = R.string.mozac_feature_downloads_dialog_title2,
+            @StringRes dialogTitleText: Int = R.string.mozac_feature_downloads_dialog_title_3,
             @StringRes downloadButtonText: Int = R.string.mozac_feature_downloads_dialog_download,
             @StyleRes themeResId: Int = 0,
             promptsStyling: DownloadsFeature.PromptsStyling? = null,

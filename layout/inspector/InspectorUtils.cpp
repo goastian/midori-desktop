@@ -58,33 +58,55 @@ using namespace mozilla;
 using namespace mozilla::css;
 using namespace mozilla::dom;
 
-namespace mozilla {
-namespace dom {
+namespace mozilla::dom {
 
-static already_AddRefed<const ComputedStyle> GetCleanComputedStyleForElement(
-    dom::Element* aElement, PseudoStyleType aPseudo,
-    nsAtom* aFunctionalPseudoParameter) {
-  MOZ_ASSERT(aElement);
-
-  Document* doc = aElement->GetComposedDoc();
+static nsPresContext* EnsureSafeToHandOutRules(Element& aElement) {
+  Document* doc = aElement.GetComposedDoc();
   if (!doc) {
     return nullptr;
   }
-
-  PresShell* presShell = doc->GetPresShell();
+  const PresShell* presShell = doc->GetPresShell();
   if (!presShell) {
     return nullptr;
   }
-
   nsPresContext* presContext = presShell->GetPresContext();
   if (!presContext) {
     return nullptr;
   }
-
   presContext->EnsureSafeToHandOutCSSRules();
+  return presContext;
+}
 
-  return nsComputedDOMStyle::GetComputedStyle(aElement, aPseudo,
-                                              aFunctionalPseudoParameter);
+static already_AddRefed<const ComputedStyle> GetStartingStyle(
+    Element& aElement) {
+  // If this element is unstyled, or it doesn't have matched rules in
+  // @starting-style, we return.
+  if (!Servo_Element_MayHaveStartingStyle(&aElement)) {
+    return nullptr;
+  }
+  if (!EnsureSafeToHandOutRules(aElement)) {
+    return nullptr;
+  }
+  RefPtr<Document> doc = aElement.GetComposedDoc();
+  if (!doc) {
+    return nullptr;
+  }
+  doc->FlushPendingNotifications(FlushType::Style);
+  RefPtr<PresShell> ps = doc->GetPresShell();
+  if (!ps) {
+    return nullptr;
+  }
+  return ps->StyleSet()->ResolveStartingStyle(aElement);
+}
+
+static already_AddRefed<const ComputedStyle> GetCleanComputedStyleForElement(
+    dom::Element* aElement, const PseudoStyleRequest& aPseudo) {
+  MOZ_ASSERT(aElement);
+  nsPresContext* pc = EnsureSafeToHandOutRules(*aElement);
+  if (!pc) {
+    return nullptr;
+  }
+  return nsComputedDOMStyle::GetComputedStyle(aElement, aPseudo);
 }
 
 /* static */
@@ -229,37 +251,16 @@ void InspectorUtils::GetChildrenForNode(nsINode& aNode,
   }
 }
 
-static already_AddRefed<const ComputedStyle> GetStartingStyle(
-    Element& aElement) {
-  // If this element is unstyled, or it doesn't have matched rules in
-  // @starting-style, we return.
-  if (!Servo_Element_MayHaveStartingStyle(&aElement)) {
-    return nullptr;
-  }
-
-  const PresShell* presShell = aElement.OwnerDoc()->GetPresShell();
-  if (!presShell) {
-    return nullptr;
-  }
-
-  ServoStyleSet* styleSet = presShell->StyleSet();
-  if (!styleSet) {
-    return nullptr;
-  }
-
-  return styleSet->ResolveStartingStyle(aElement);
-}
-
-static void GetCSSStyleRulesFromComputedValue(
+static void GetCSSRulesFromComputedValues(
     Element& aElement, const ComputedStyle* aComputedStyle,
-    nsTArray<RefPtr<CSSStyleRule>>& aResult) {
+    nsTArray<RefPtr<css::Rule>>& aResult) {
   const PresShell* presShell = aElement.OwnerDoc()->GetPresShell();
   if (!presShell) {
     return;
   }
 
-  AutoTArray<const StyleLockedStyleRule*, 8> rawRuleList;
-  Servo_ComputedValues_GetStyleRuleList(aComputedStyle, &rawRuleList);
+  AutoTArray<const StyleLockedDeclarationBlock*, 8> rawDecls;
+  Servo_ComputedValues_GetMatchingDeclarations(aComputedStyle, &rawDecls);
 
   AutoTArray<ServoStyleRuleMap*, 8> maps;
   {
@@ -295,45 +296,26 @@ static void GetCSSStyleRulesFromComputedValue(
   }
 
   // Find matching rules in the table.
-  for (const StyleLockedStyleRule* rawRule : Reversed(rawRuleList)) {
-    CSSStyleRule* rule = nullptr;
+  for (const StyleLockedDeclarationBlock* rawDecl : Reversed(rawDecls)) {
     for (ServoStyleRuleMap* map : maps) {
-      rule = map->Lookup(rawRule);
-      if (rule) {
+      if (css::Rule* rule = map->Lookup(rawDecl)) {
+        aResult.AppendElement(rule);
         break;
       }
-    }
-    if (rule) {
-      aResult.AppendElement(rule);
-    } else {
-#ifdef DEBUG
-      aElement.Dump();
-      printf_stderr("\n\n----\n\n");
-      aComputedStyle->DumpMatchedRules();
-      nsAutoCString str;
-      Servo_StyleRule_Debug(rawRule, &str);
-      printf_stderr("\n\n----\n\n");
-      printf_stderr("%s\n", str.get());
-      MOZ_CRASH_UNSAFE_PRINTF(
-          "We should be able to map raw rule %p to a rule in one of the %zu "
-          "maps: %s\n",
-          rawRule, maps.Length(), str.get());
-#endif
     }
   }
 }
 
 /* static */
-void InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
-                                      Element& aElement,
-                                      const nsAString& aPseudo,
-                                      bool aIncludeVisitedStyle,
-                                      bool aWithStartingStyle,
-                                      nsTArray<RefPtr<CSSStyleRule>>& aResult) {
-  auto [type, functionalPseudoParameter] =
-      nsCSSPseudoElements::ParsePseudoElement(aPseudo,
-                                              CSSEnabledState::ForAllContent);
-  if (!type) {
+void InspectorUtils::GetMatchingCSSRules(GlobalObject& aGlobalObject,
+                                         Element& aElement,
+                                         const nsAString& aPseudo,
+                                         bool aIncludeVisitedStyle,
+                                         bool aWithStartingStyle,
+                                         nsTArray<RefPtr<css::Rule>>& aResult) {
+  auto pseudo = nsCSSPseudoElements::ParsePseudoElement(
+      aPseudo, CSSEnabledState::ForAllContent);
+  if (!pseudo) {
     return;
   }
 
@@ -346,8 +328,7 @@ void InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
   // inside @starting-style. For this case, we would like to return the primay
   // rules of this element.
   if (!computedStyle) {
-    computedStyle = GetCleanComputedStyleForElement(&aElement, *type,
-                                                    functionalPseudoParameter);
+    computedStyle = GetCleanComputedStyleForElement(&aElement, *pseudo);
   }
 
   if (!computedStyle) {
@@ -362,7 +343,7 @@ void InspectorUtils::GetCSSStyleRules(GlobalObject& aGlobalObject,
     }
   }
 
-  GetCSSStyleRulesFromComputedValue(aElement, computedStyle, aResult);
+  GetCSSRulesFromComputedValues(aElement, computedStyle, aResult);
 }
 
 /* static */
@@ -473,6 +454,8 @@ static uint32_t CollectAtRules(ServoCSSRuleList& aRuleList,
       case StyleCssRuleType::FontPaletteValues:
       case StyleCssRuleType::Scope:
       case StyleCssRuleType::StartingStyle:
+      case StyleCssRuleType::PositionTry:
+      case StyleCssRuleType::NestedDeclarations:
         break;
     }
 
@@ -920,9 +903,10 @@ static bool FrameHasSpecifiedSize(const nsIFrame* aFrame) {
   auto wm = aFrame->GetWritingMode();
 
   const nsStylePosition* stylePos = aFrame->StylePosition();
+  const auto positionProperty = aFrame->StyleDisplay()->mPosition;
 
-  return stylePos->ISize(wm).IsLengthPercentage() ||
-         stylePos->BSize(wm).IsLengthPercentage();
+  return stylePos->ISize(wm, positionProperty)->IsLengthPercentage() ||
+         stylePos->BSize(wm, positionProperty)->IsLengthPercentage();
 }
 
 static bool IsFrameOutsideOfAncestor(const nsIFrame* aFrame,
@@ -1045,6 +1029,37 @@ void InspectorUtils::GetCSSRegisteredProperties(
 }
 
 /* static */
+void InspectorUtils::GetCSSRegisteredProperty(
+    GlobalObject& aGlobalObject, Document& aDocument, const nsACString& aName,
+    Nullable<InspectorCSSPropertyDefinition>& aResult) {
+  StylePropDef result{StyleAtom(NS_Atomize(aName))};
+
+  // Update the rules before looking up @property rules.
+  ServoStyleSet& styleSet = aDocument.EnsureStyleSet();
+  styleSet.UpdateStylistIfNeeded();
+
+  if (!Servo_GetRegisteredCustomProperty(styleSet.RawData(), &aName, &result)) {
+    aResult.SetNull();
+    return;
+  }
+
+  InspectorCSSPropertyDefinition& propDef = aResult.SetValue();
+
+  // Servo does not include the "--" prefix in the property definition name.
+  // Add it back as it's easier for DevTools to handle them _with_ "--".
+  propDef.mName.AssignLiteral("--");
+  propDef.mName.Append(nsAtomCString(result.name.AsAtom()));
+  propDef.mSyntax.Append(result.syntax);
+  propDef.mInherits = result.inherits;
+  if (result.has_initial_value) {
+    propDef.mInitialValue.Append(result.initial_value);
+  } else {
+    propDef.mInitialValue.SetIsVoid(true);
+  }
+  propDef.mFromJS = result.from_js;
+}
+
+/* static */
 bool InspectorUtils::ValueMatchesSyntax(GlobalObject&, Document& aDocument,
                                         const nsACString& aValue,
                                         const nsACString& aSyntax) {
@@ -1067,5 +1082,4 @@ void InspectorUtils::ReplaceBlockRuleBodyTextInStylesheet(
   Servo_ReplaceBlockRuleBodyTextInStylesheetText(
       &aStyleSheetText, aLine, aColumn, &aNewBodyText, &aNewStyleSheetText);
 }
-}  // namespace dom
-}  // namespace mozilla
+}  // namespace mozilla::dom

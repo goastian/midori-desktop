@@ -432,7 +432,7 @@ static bool PaintMaskSurface(const PaintFramesParams& aParams,
                              const ComputedStyle* aSC,
                              const nsTArray<SVGMaskFrame*>& aMaskFrames,
                              const nsPoint& aOffsetToUserSpace) {
-  MOZ_ASSERT(aMaskFrames.Length() > 0);
+  MOZ_ASSERT(!aMaskFrames.IsEmpty());
   MOZ_ASSERT(aMaskDT->GetFormat() == SurfaceFormat::A8);
   MOZ_ASSERT(aOpacity == 1.0 || aMaskFrames.Length() == 1);
 
@@ -508,13 +508,13 @@ static MaskPaintResult CreateAndPaintMaskSurface(
     const nsTArray<SVGMaskFrame*>& aMaskFrames,
     const nsPoint& aOffsetToUserSpace) {
   const nsStyleSVGReset* svgReset = aSC->StyleSVGReset();
-  MOZ_ASSERT(aMaskFrames.Length() > 0);
+  MOZ_ASSERT(!aMaskFrames.IsEmpty());
   MaskPaintResult paintResult;
 
   gfxContext& ctx = aParams.ctx;
 
   // Optimization for single SVG mask.
-  if (((aMaskFrames.Length() == 1) && aMaskFrames[0])) {
+  if (aMaskFrames.Length() == 1 && aMaskFrames[0]) {
     gfxMatrix cssPxToDevPxMatrix =
         SVGUtils::GetCSSPxToDevPxMatrix(aParams.frame);
     paintResult.opacityApplied = true;
@@ -949,9 +949,17 @@ void SVGIntegrationUtils::PaintFilter(const PaintFramesParams& aParams,
                                      opacity);
 }
 
-bool SVGIntegrationUtils::CreateWebRenderCSSFilters(
+WrFiltersStatus SVGIntegrationUtils::CreateWebRenderCSSFilters(
     Span<const StyleFilter> aFilters, nsIFrame* aFrame,
     WrFiltersHolder& aWrFilters) {
+  // Check if prefs are set to convert the CSS filters to SVG filters and use
+  // the new WebRender SVG filter rendering, rather than the existing CSS filter
+  // support
+  if (StaticPrefs::gfx_webrender_svg_filter_effects() &&
+      StaticPrefs::
+          gfx_webrender_svg_filter_effects_also_convert_css_filters()) {
+    return WrFiltersStatus::BLOB_FALLBACK;
+  }
   // All CSS filters are supported by WebRender. SVG filters are not fully
   // supported, those use NS_STYLE_FILTER_URL and are handled separately.
 
@@ -959,8 +967,10 @@ bool SVGIntegrationUtils::CreateWebRenderCSSFilters(
   // succeeded, and don't render any of them.
   if (aFilters.Length() >
       StaticPrefs::gfx_webrender_max_filter_ops_per_chain()) {
-    return true;
+    return WrFiltersStatus::DISABLED_FOR_PERFORMANCE;
   }
+  // Track status so we can do cleanup if unsupported filters are found.
+  WrFiltersStatus status = WrFiltersStatus::CHAIN;
   aWrFilters.filters.SetCapacity(aFilters.Length());
   auto& wrFilters = aWrFilters.filters;
   for (const StyleFilter& filter : aFilters) {
@@ -1024,28 +1034,39 @@ bool SVGIntegrationUtils::CreateWebRenderCSSFilters(
         break;
       }
       default:
-        return false;
+        status = WrFiltersStatus::BLOB_FALLBACK;
+        break;
+    }
+    if (status != WrFiltersStatus::CHAIN) {
+      break;
     }
   }
-
-  return true;
+  if (status != WrFiltersStatus::CHAIN) {
+    // Clean up the filters holder if we can't render filters this way.
+    aWrFilters = {};
+  }
+  return status;
 }
 
-bool SVGIntegrationUtils::BuildWebRenderFilters(
+WrFiltersStatus SVGIntegrationUtils::BuildWebRenderFilters(
     nsIFrame* aFilteredFrame, Span<const StyleFilter> aFilters,
     StyleFilterType aStyleFilterType, WrFiltersHolder& aWrFilters,
-    bool& aInitialized) {
-  return FilterInstance::BuildWebRenderFilters(
-      aFilteredFrame, aFilters, aStyleFilterType, aWrFilters, aInitialized);
+    const nsPoint& aOffsetForSVGFilters) {
+  return FilterInstance::BuildWebRenderFilters(aFilteredFrame, aFilters,
+                                               aStyleFilterType, aWrFilters,
+                                               aOffsetForSVGFilters);
 }
 
 bool SVGIntegrationUtils::CanCreateWebRenderFiltersForFrame(nsIFrame* aFrame) {
   WrFiltersHolder wrFilters;
   auto filterChain = aFrame->StyleEffects()->mFilters.AsSpan();
-  bool initialized = true;
-  return CreateWebRenderCSSFilters(filterChain, aFrame, wrFilters) ||
-         BuildWebRenderFilters(aFrame, filterChain, StyleFilterType::Filter,
-                               wrFilters, initialized);
+  WrFiltersStatus status =
+      CreateWebRenderCSSFilters(filterChain, aFrame, wrFilters);
+  if (status == WrFiltersStatus::BLOB_FALLBACK) {
+    status = BuildWebRenderFilters(aFrame, filterChain, StyleFilterType::Filter,
+                                   wrFilters, nsPoint());
+  }
+  return status == WrFiltersStatus::CHAIN || status == WrFiltersStatus::SVGFE;
 }
 
 bool SVGIntegrationUtils::UsesSVGEffectsNotSupportedInCompositor(

@@ -178,11 +178,7 @@ void WindowRenderer::UpdatePartialPrerenderedAnimations(
   }
 }
 
-void FallbackRenderer::SetTarget(gfxContext* aTarget,
-                                 layers::BufferMode aDoubleBuffering) {
-  mTarget = aTarget;
-  mBufferMode = aDoubleBuffering;
-}
+void FallbackRenderer::SetTarget(gfxContext* aTarget) { mTarget = aTarget; }
 
 bool FallbackRenderer::BeginTransaction(const nsCString& aURL) {
   if (!mTarget) {

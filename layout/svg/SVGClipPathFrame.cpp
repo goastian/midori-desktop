@@ -39,7 +39,7 @@ NS_IMPL_FRAMEARENA_HELPERS(SVGClipPathFrame)
 void SVGClipPathFrame::ApplyClipPath(gfxContext& aContext,
                                      nsIFrame* aClippedFrame,
                                      const gfxMatrix& aMatrix) {
-  ISVGDisplayableFrame* singleClipPathChild = nullptr;
+  nsIFrame* singleClipPathChild = nullptr;
   DebugOnly<bool> trivial = IsTrivial(&singleClipPathChild);
   MOZ_ASSERT(trivial, "Caller needs to use GetClipMask");
 
@@ -297,7 +297,7 @@ bool SVGClipPathFrame::PointIsInsideClipPath(nsIFrame* aClippedFrame,
   return false;
 }
 
-bool SVGClipPathFrame::IsTrivial(ISVGDisplayableFrame** aSingleChild) {
+bool SVGClipPathFrame::IsTrivial(nsIFrame** aSingleChild) {
   // If the clip path is clipped then it's non-trivial
   if (SVGObserverUtils::GetAndObserveClipPath(this, nullptr) ==
       SVGObserverUtils::eHasRefsAllValid) {
@@ -308,25 +308,25 @@ bool SVGClipPathFrame::IsTrivial(ISVGDisplayableFrame** aSingleChild) {
     *aSingleChild = nullptr;
   }
 
-  ISVGDisplayableFrame* foundChild = nullptr;
-
+  nsIFrame* foundChild = nullptr;
   for (auto* kid : mFrames) {
     ISVGDisplayableFrame* svgChild = do_QueryFrame(kid);
-    if (svgChild) {
-      // We consider a non-trivial clipPath to be one containing
-      // either more than one svg child and/or a svg container
-      if (foundChild || svgChild->IsDisplayContainer()) {
-        return false;
-      }
-
-      // or where the child is itself clipped
-      if (SVGObserverUtils::GetAndObserveClipPath(kid, nullptr) ==
-          SVGObserverUtils::eHasRefsAllValid) {
-        return false;
-      }
-
-      foundChild = svgChild;
+    if (!svgChild) {
+      continue;
     }
+    // We consider a non-trivial clipPath to be one containing
+    // either more than one svg child and/or a svg container
+    if (foundChild || svgChild->IsDisplayContainer()) {
+      return false;
+    }
+
+    // or where the child is itself clipped
+    if (SVGObserverUtils::GetAndObserveClipPath(kid, nullptr) ==
+        SVGObserverUtils::eHasRefsAllValid) {
+      return false;
+    }
+
+    foundChild = kid;
   }
   if (aSingleChild) {
     *aSingleChild = foundChild;
@@ -367,17 +367,10 @@ bool SVGClipPathFrame::IsValid() {
 nsresult SVGClipPathFrame::AttributeChanged(int32_t aNameSpaceID,
                                             nsAtom* aAttribute,
                                             int32_t aModType) {
-  if (aNameSpaceID == kNameSpaceID_None) {
-    if (aAttribute == nsGkAtoms::transform) {
-      SVGObserverUtils::InvalidateRenderingObservers(this);
-      SVGUtils::NotifyChildrenOfSVGChange(
-          this, ISVGDisplayableFrame::TRANSFORM_CHANGED);
-    }
-    if (aAttribute == nsGkAtoms::clipPathUnits) {
-      SVGObserverUtils::InvalidateRenderingObservers(this);
-    }
+  if (aNameSpaceID == kNameSpaceID_None &&
+      aAttribute == nsGkAtoms::clipPathUnits) {
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
-
   return SVGContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
                                              aModType);
 }
@@ -395,11 +388,9 @@ void SVGClipPathFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 gfxMatrix SVGClipPathFrame::GetCanvasTM() { return mMatrixForChildren; }
 
 gfxMatrix SVGClipPathFrame::GetClipPathTransform(nsIFrame* aClippedFrame) {
-  SVGClipPathElement* content = static_cast<SVGClipPathElement*>(GetContent());
+  gfxMatrix tm = SVGUtils::GetTransformMatrixInUserSpace(this);
 
-  gfxMatrix tm = content->PrependLocalTransformsTo({}, eChildToUserSpace) *
-                 SVGUtils::GetTransformMatrixInUserSpace(this);
-
+  auto* content = static_cast<SVGClipPathElement*>(GetContent());
   SVGAnimatedEnumeration* clipPathUnits =
       &content->mEnumAttributes[SVGClipPathElement::CLIPPATHUNITS];
 
@@ -453,22 +444,6 @@ SVGBBox SVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox& aBBox,
         aBBox, aMatrix, aFlags));
   }
   return unionBBox;
-}
-
-bool SVGClipPathFrame::IsSVGTransformed(Matrix* aOwnTransforms,
-                                        Matrix* aFromParentTransforms) const {
-  const auto* e = static_cast<SVGElement const*>(GetContent());
-  Matrix m = ToMatrix(e->PrependLocalTransformsTo({}, eUserSpaceToParent));
-
-  if (m.IsIdentity()) {
-    return false;
-  }
-
-  if (aOwnTransforms) {
-    *aOwnTransforms = m;
-  }
-
-  return true;
 }
 
 }  // namespace mozilla

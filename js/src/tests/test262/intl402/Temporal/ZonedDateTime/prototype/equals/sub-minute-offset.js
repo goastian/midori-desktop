@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,8 +9,7 @@ features: [Temporal]
 ---*/
 
 const expectedNanoseconds = BigInt((44 * 60 + 30) * 1e9);
-const timeZone = new Temporal.TimeZone("Africa/Monrovia");
-const instance = new Temporal.ZonedDateTime(expectedNanoseconds, timeZone);
+const instance = new Temporal.ZonedDateTime(expectedNanoseconds, "Africa/Monrovia");
 
 let result = instance.equals("1970-01-01T00:00:00-00:45[Africa/Monrovia]");
 assert.sameValue(result, true, "UTC offset rounded to minutes is accepted");
@@ -31,7 +30,7 @@ const properties = {
   day: 1,
   minute: 44,
   second: 30,
-  timeZone
+  timeZone: "Africa/Monrovia"
 };
 assert.throws(RangeError, () => instance.equals(properties), "no fuzzy matching is done on offset in property bag");
 

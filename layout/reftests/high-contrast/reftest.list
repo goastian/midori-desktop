@@ -1,5 +1,5 @@
 # This pref enables high-contrast mode in the testcases here:
-defaults test-pref(browser.display.document_color_use,2) test-pref(browser.display.permit_backplate,true) test-pref(layout.css.prefers-contrast.enabled,true) test-pref(layout.css.forced-colors.enabled,true) test-pref(browser.display.foreground_color,"#000000") test-pref(browser.display.background_color,"#FFFFFF") pref(ui.use_standins_for_native_colors,true) pref(widget.non-native-theme.always-high-contrast,true)
+defaults test-pref(browser.display.document_color_use,2) test-pref(browser.display.permit_backplate,true) test-pref(browser.display.foreground_color,"#000000") test-pref(browser.display.background_color,"#FFFFFF") pref(ui.use_standins_for_native_colors,true) pref(widget.non-native-theme.always-high-contrast,true)
 
 # There are several platform-specific fuzzy-if notations below due to
 # anti-aliasing, extra ink overflow, and slightly inacurate reftest
@@ -34,6 +34,9 @@ test-pref(browser.display.suppress_canvas_background_image_on_forced_colors,fals
 needs-focus == selection-001.html selection-001-ref.html
 pref(browser.display.document_color_use,0) needs-focus != selection-001.html selection-001-ref.html
 
+pref(dom.text_fragments.enabled,true) == target-text-001.html target-text-001-ref.html
+pref(dom.text_fragments.enabled,true) == target-text-002.html target-text-001-ref.html
+
 == color-transparent-001.html about:blank
 != color-transparent-002.html about:blank
 != semi-transparent-overlay.html about:blank
@@ -62,9 +65,6 @@ test-pref(ui.windowForeground,"black") test-pref(ui.windowBackground,"white") te
 test-pref(privacy.resistFingerprinting,true) != prefers-contrast-001.html prefers-contrast-black-ref.html
 # high should not match when RFP is enabled.
 test-pref(ui.windowForeground,"black") test-pref(ui.windowBackground,"white") test-pref(privacy.resistFingerprinting,true) test-pref(ui.useAccessibilityTheme,1) != prefers-contrast-002.html prefers-contrast-black-ref.html
-
-# Should only be enabled behind preference.
-test-pref(layout.css.prefers-contrast.enabled,false) != prefers-contrast-001.html prefers-contrast-black-ref.html
 
 # a prefers-contrast value of no-preference should evaluate to false
 # in the boolean context
@@ -98,9 +98,11 @@ pref(browser.display.use_system_colors,true) pref(browser.display.document_color
 != color-mix.html color-mix-notref.html
 
 test-pref(browser.display.background_color,"black") test-pref(browser.display.foreground_color,"white") test-pref(ui.-moz-fieldtext,"black") test-pref(ui.-moz-fieldtext.dark,"white") pref(ui.use_standins_for_native_colors,false) pref(browser.display.use_system_colors,false) == no-system-colors-color-scheme.html no-system-colors-color-scheme-ref.html
-pref(ui.use_standins_for_native_colors,false) pref(browser.display.use_system_colors,false) pref(browser.display.background_color,"black") pref(browser.display.foreground_color,"white") == prefers-color-scheme.html prefers-color-scheme-dark.html
+pref(browser.display.document_color_use,2) pref(ui.use_standins_for_native_colors,false) pref(browser.display.use_system_colors,false) pref(browser.display.background_color,"black") pref(browser.display.foreground_color,"white") == prefers-color-scheme.html prefers-color-scheme-dark.html
 pref(ui.use_standins_for_native_colors,false) pref(browser.display.use_system_colors,false) pref(browser.display.background_color,"white") pref(browser.display.foreground_color,"black") == prefers-color-scheme.html prefers-color-scheme-light.html
 
 # Forced color adjust
-pref(layout.css.forced-color-adjust.enabled,true) == backplate-force-color-adjust.html backplate-force-color-adjust-ref.html
+== backplate-force-color-adjust.html backplate-force-color-adjust-ref.html
 == transparent-textarea.html transparent-textarea-ref.html
+
+== color-scheme.html color-scheme-ref.html

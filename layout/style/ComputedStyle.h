@@ -130,6 +130,11 @@ class ComputedStyle {
     return bool(Flags() & Flag::HAS_AUTHOR_SPECIFIED_TEXT_COLOR);
   }
 
+  // Whether any margin _and_ font-size are set.
+  bool HasAuthorSpecifiedMarginAndFontSize() const {
+    return bool(Flags() & Flag::HAS_AUTHOR_SPECIFIED_MARGIN_AND_FONT_SIZE);
+  }
+
   // Does this ComputedStyle or any of its ancestors have text
   // decoration lines?
   // Differs from nsStyleTextReset::HasTextDecorationLines, which tests
@@ -164,12 +169,9 @@ class ComputedStyle {
     return bool(Flags() & Flag::DEPENDS_ON_INHERITED_FONT_METRICS);
   }
 
-  // Does this ComputedStyle represent the style for a pseudo-element or
-  // inherit data from such a ComputedStyle?  Whether this returns true
-  // is equivalent to whether it or any of its ancestors returns
-  // non-null for IsPseudoElement().
-  bool HasPseudoElementData() const {
-    return bool(Flags() & Flag::IS_IN_PSEUDO_ELEMENT_SUBTREE);
+  // Whether this style is inside a ::first-line.
+  bool IsInFirstLineSubtree() const {
+    return bool(Flags() & Flag::IS_IN_FIRST_LINE_SUBTREE);
   }
 
   bool SelfOrAncestorHasContainStyle() const {
@@ -299,7 +301,7 @@ class ComputedStyle {
    *               been listed in nsCSSVisitedDependentPropList.h.
    */
   template <typename T, typename S>
-  nscolor GetVisitedDependentColor(T S::*aField) const;
+  nscolor GetVisitedDependentColor(T S::* aField) const;
 
   /**
    * aColors should be a two element array of nscolor in which the first

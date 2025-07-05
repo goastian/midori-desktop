@@ -21,18 +21,6 @@
 //
 // Note: We also rely on this for IsEagerlyCascadedInServo.
 #define CSS_PSEUDO_ELEMENT_IS_CSS2 (1 << 0)
-// Is this pseudo-element a pseudo-element that can contain other
-// elements?
-// (Currently pseudo-elements are either leaves of the tree (relative to
-// real elements) or they contain other elements in a non-tree-like
-// manner (i.e., like incorrectly-nested start and end tags).  It's
-// possible that in the future there might be container pseudo-elements
-// that form a properly nested tree structure.  If that happens, we
-// should probably split this flag into two.)
-#define CSS_PSEUDO_ELEMENT_CONTAINS_ELEMENTS (1 << 1)
-// Flag to add the ability to take into account style attribute set for the
-// pseudo element (by default it's ignored).
-#define CSS_PSEUDO_ELEMENT_SUPPORTS_STYLE_ATTRIBUTE (1 << 2)
 // Flag that indicate the pseudo-element supports a user action pseudo-class
 // following it, such as :active or :hover.  This would normally correspond
 // to whether the pseudo-element is tree-like, but we don't support these
@@ -58,8 +46,9 @@
 #define CSS_PSEUDO_ELEMENT_IS_FLEX_OR_GRID_ITEM (1 << 7)
 
 class nsCSSPseudoElements {
-  typedef mozilla::PseudoStyleType Type;
-  typedef mozilla::CSSEnabledState EnabledState;
+  using EnabledState = mozilla::CSSEnabledState;
+  using Request = mozilla::PseudoStyleRequest;
+  using Type = mozilla::PseudoStyleType;
 
  public:
   static bool IsEagerlyCascadedInServo(const Type aType) {
@@ -81,17 +70,9 @@ class nsCSSPseudoElements {
 #include "nsCSSPseudoElementList.h"
 #undef CSS_PSEUDO_ELEMENT
 
-  // Returns an empty tuple for a syntactically invalid pseudo-element, and
+  // Returns an empty Request for a syntactically invalid pseudo-element, and
   // NotPseudo for the empty / null string.
-  // The second element of the tuple (functional pseudo parameter) is currently
-  // only used for `::highlight()` pseudos and is `nullptr` otherwise.
-  static std::tuple<mozilla::Maybe<Type>, RefPtr<nsAtom>> ParsePseudoElement(
-      const nsAString& aPseudoElement,
-      EnabledState = EnabledState::ForAllContent);
-
-  // Returns Nothing() for a syntactically invalid pseudo-element, and NotPseudo
-  // for the empty / null string.
-  static mozilla::Maybe<Type> GetPseudoType(
+  static mozilla::Maybe<Request> ParsePseudoElement(
       const nsAString& aPseudoElement,
       EnabledState = EnabledState::ForAllContent);
 
@@ -99,21 +80,6 @@ class nsCSSPseudoElements {
   // PseudoType::CSSPseudoElementsEnd.
   // This only ever returns static atoms, so it's fine to return a raw pointer.
   static nsAtom* GetPseudoAtom(Type aType);
-
-  // Get the atom for a given pseudo-element string (e.g. "::before").  This can
-  // return dynamic atoms, for unrecognized pseudo-elements.
-  static already_AddRefed<nsAtom> GetPseudoAtom(
-      const nsAString& aPseudoElement);
-
-  static bool PseudoElementContainsElements(const Type aType) {
-    return PseudoElementHasFlags(aType, CSS_PSEUDO_ELEMENT_CONTAINS_ELEMENTS);
-  }
-
-  static bool PseudoElementSupportsStyleAttribute(const Type aType) {
-    MOZ_ASSERT(aType < Type::CSSPseudoElementsEnd);
-    return PseudoElementHasFlags(aType,
-                                 CSS_PSEUDO_ELEMENT_SUPPORTS_STYLE_ATTRIBUTE);
-  }
 
   static bool PseudoElementSupportsUserActionState(const Type aType);
 
@@ -136,6 +102,14 @@ class nsCSSPseudoElements {
       case Type::sliderThumb:
       case Type::sliderFill:
         return mozilla::StaticPrefs::layout_css_modern_range_pseudos_enabled();
+      case Type::detailsContent:
+        return mozilla::StaticPrefs::layout_css_details_content_enabled();
+      case Type::viewTransition:
+      case Type::viewTransitionGroup:
+      case Type::viewTransitionImagePair:
+      case Type::viewTransitionOld:
+      case Type::viewTransitionNew:
+        return mozilla::StaticPrefs::dom_viewTransitions_enabled();
       default:
         return !PseudoElementHasAnyFlag(
             aType, CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME);
@@ -160,7 +134,7 @@ class nsCSSPseudoElements {
     return false;
   }
 
-  static nsString PseudoTypeAsString(Type aPseudoType);
+  static nsString PseudoRequestAsString(const Request& aPseudoRequest);
 
  private:
   // Does the given pseudo-element have all of the flags given?

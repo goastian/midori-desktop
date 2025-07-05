@@ -2,15 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+plugins {
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
         applicationId "org.mozilla.samples.toolbar"
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         versionCode 1
         versionName "1.0"
 
@@ -19,26 +23,32 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     buildFeatures {
-        viewBinding true
+        viewBinding = true
+        compose = true
     }
 
-    namespace 'org.mozilla.samples.toolbar'
+    namespace = 'org.mozilla.samples.toolbar'
 }
 
 
 dependencies {
+    implementation platform(libs.androidx.compose.bom)
+
     implementation project(':concept-engine')
     implementation project(':concept-menu')
     implementation project(':browser-toolbar')
     implementation project(':browser-menu')
     implementation project(':browser-menu2')
     implementation project(':browser-domains')
+    implementation project(':browser-state')
+    implementation project(':compose-base')
+    implementation project(':compose-browser-toolbar')
 
     implementation project(':ui-colors')
     implementation project(':ui-tabcounter')
@@ -50,9 +60,10 @@ dependencies {
 
     implementation project(':support-utils')
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_appcompat
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_recyclerview
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.recyclerview
 }

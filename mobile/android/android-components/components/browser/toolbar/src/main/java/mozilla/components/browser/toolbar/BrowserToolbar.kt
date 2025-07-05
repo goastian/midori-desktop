@@ -112,17 +112,17 @@ class BrowserToolbar @JvmOverloads constructor(
         set(value) { display.title = value }
 
     override var url: CharSequence
-        get() = display.url.toString()
+        get() = display.url
         set(value) {
             // We update the display toolbar immediately. We do not do that for the edit toolbar to not
             // mess with what the user is entering. Instead we will remember the value and update the
             // edit toolbar whenever we switch to it.
-            display.url = (value as String).trimmed()
+            display.url = value.trimmed()
         }
 
-    override var siteSecure: Toolbar.SiteSecurity
-        get() = display.siteSecurity
-        set(value) { display.siteSecurity = value }
+    override var siteInfo: Toolbar.SiteInfo
+        get() = display.siteInfo
+        set(value) { display.siteInfo = value }
 
     override var highlight: Highlight = Highlight.NONE
         set(value) {

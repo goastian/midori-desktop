@@ -313,7 +313,7 @@ Result<Ok, nsresult> URLPreloader::ReadCache(
       mCachedURLs.Clear();
     });
 
-    Range<uint8_t> header(data, data + headerSize);
+    Range<const uint8_t> header(data, data + headerSize);
     data += headerSize;
 
     InputBuffer buf(header);
@@ -338,7 +338,7 @@ Result<Ok, nsresult> URLPreloader::ReadCache(
                               "Entry should be in pendingURLs");
         MOZ_DIAGNOSTIC_ASSERT(key.mPath.Length() > 0,
                               "Path should be non-empty");
-        MOZ_DIAGNOSTIC_ASSERT(false, "Entry should be new and not in any list");
+        MOZ_DIAGNOSTIC_CRASH("Entry should be new and not in any list");
 #endif
         return Err(NS_ERROR_UNEXPECTED);
       }
@@ -630,8 +630,8 @@ size_t URLPreloader::ShallowSizeOfIncludingThis(
 Result<FileLocation, nsresult> URLPreloader::CacheKey::ToFileLocation() {
   if (mType == TypeFile) {
     nsCOMPtr<nsIFile> file;
-    MOZ_TRY(NS_NewLocalFile(NS_ConvertUTF8toUTF16(mPath), false,
-                            getter_AddRefs(file)));
+    MOZ_TRY(
+        NS_NewLocalFile(NS_ConvertUTF8toUTF16(mPath), getter_AddRefs(file)));
     return FileLocation(file);
   }
 

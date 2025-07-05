@@ -17,6 +17,7 @@
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ScrollContainerFrame.h"
 #include "nsGkAtoms.h"
+#include "mozilla/dom/ViewTransition.h"
 #include "nsAbsoluteContainingBlock.h"
 #include "nsCanvasFrame.h"
 #include "nsLayoutUtils.h"
@@ -80,12 +81,11 @@ void ViewportFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 }
 
 #ifdef DEBUG
-/**
- * Returns whether we are going to put an element in the top layer for
- * fullscreen. This function should matches the CSS rule in ua.css.
- */
+// Returns whether we are going to put an element in the top layer for
+// fullscreen. This function should matches the CSS rules in ua.css and xul.css.
 static bool ShouldInTopLayerForFullscreen(dom::Element* aElement) {
-  return !!aElement->GetParent();
+  return !aElement->IsRootElement() &&
+         !aElement->IsXULElement(nsGkAtoms::browser);
 }
 #endif  // DEBUG
 
@@ -163,7 +163,9 @@ nsDisplayWrapList* ViewportFrame::BuildDisplayListForTopLayer(
     nsDisplayListBuilder* aBuilder, bool* aIsOpaque) {
   nsDisplayList topLayerList(aBuilder);
 
-  nsTArray<dom::Element*> topLayer = PresContext()->Document()->GetTopLayer();
+  auto* doc = PresContext()->Document();
+
+  nsTArray<dom::Element*> topLayer = doc->GetTopLayer();
   for (dom::Element* elem : topLayer) {
     nsIFrame* frame = elem->GetPrimaryFrame();
     if (!frame) {
@@ -215,14 +217,23 @@ nsDisplayWrapList* ViewportFrame::BuildDisplayListForTopLayer(
     BuildDisplayListForTopLayerFrame(aBuilder, frame, &topLayerList);
   }
 
-  if (nsCanvasFrame* canvasFrame = PresShell()->GetCanvasFrame()) {
-    if (dom::Element* container = canvasFrame->GetCustomContentContainer()) {
-      if (nsIFrame* frame = container->GetPrimaryFrame()) {
+  if (dom::ViewTransition* vt = doc->GetActiveViewTransition()) {
+    if (dom::Element* root = vt->GetSnapshotContainingBlock()) {
+      if (nsIFrame* frame = root->GetPrimaryFrame()) {
         MOZ_ASSERT(frame->StyleDisplay()->mTopLayer != StyleTopLayer::None,
-                   "ua.css should ensure this");
+                   "the snapshot containing block should ensure this");
         MOZ_ASSERT(frame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW));
         BuildDisplayListForTopLayerFrame(aBuilder, frame, &topLayerList);
       }
+    }
+  }
+
+  if (dom::Element* container = doc->GetCustomContentContainer()) {
+    if (nsIFrame* frame = container->GetPrimaryFrame()) {
+      MOZ_ASSERT(frame->StyleDisplay()->mTopLayer != StyleTopLayer::None,
+                 "ua.css should ensure this");
+      MOZ_ASSERT(frame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW));
+      BuildDisplayListForTopLayerFrame(aBuilder, frame, &topLayerList);
     }
   }
   if (topLayerList.IsEmpty()) {
@@ -269,18 +280,11 @@ void ViewportFrame::RemoveFrame(DestroyContext& aContext, ChildListID aListID,
 }
 #endif
 
-/* virtual */
-nscoord ViewportFrame::GetMinISize(gfxContext* aRenderingContext) {
+nscoord ViewportFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                      IntrinsicISizeType aType) {
   return mFrames.IsEmpty()
              ? 0
-             : mFrames.FirstChild()->GetMinISize(aRenderingContext);
-}
-
-/* virtual */
-nscoord ViewportFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  return mFrames.IsEmpty()
-             ? 0
-             : mFrames.FirstChild()->GetPrefISize(aRenderingContext);
+             : mFrames.FirstChild()->IntrinsicISize(aInput, aType);
 }
 
 nsPoint ViewportFrame::AdjustReflowInputForScrollbars(
@@ -289,6 +293,9 @@ nsPoint ViewportFrame::AdjustReflowInputForScrollbars(
   nsIFrame* kidFrame = mFrames.FirstChild();
 
   if (ScrollContainerFrame* scrollContainerFrame = do_QueryFrame(kidFrame)) {
+    // Note: In ReflowInput::CalculateHypotheticalPosition(), we exclude the
+    // scrollbar or scrollbar-gutter area when computing the offset to
+    // ViewportFrame. Ensure the code there remains in sync with the logic here.
     WritingMode wm = aReflowInput->GetWritingMode();
     LogicalMargin scrollbars(wm,
                              scrollContainerFrame->GetActualScrollbarSizes());
@@ -357,7 +364,7 @@ void ViewportFrame::Reflow(nsPresContext* aPresContext,
         kidReflowInput.SetBResize(true);
       }
       if (aReflowInput.IsBResizeForPercentagesForWM(kidWM)) {
-        kidReflowInput.mFlags.mIsBResizeForPercentages = true;
+        kidReflowInput.SetBResizeForPercentages(true);
       }
       ReflowChild(kidFrame, aPresContext, kidDesiredSize, kidReflowInput, 0, 0,
                   ReflowChildFlags::Default, aStatus);

@@ -11,6 +11,8 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/InteractiveWidget.h"
+#include "gfxPlatform.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsViewManager.h"
@@ -38,7 +40,8 @@ MobileViewportManager::MobileViewportManager(MVMContext* aContext,
     : mContext(aContext),
       mManagerType(aType),
       mIsFirstPaint(false),
-      mPainted(false) {
+      mPainted(false),
+      mInvalidViewport(false) {
   MOZ_ASSERT(mContext);
 
   MVM_LOG("%p: creating with context %p\n", this, mContext.get());
@@ -88,10 +91,14 @@ float MobileViewportManager::ComputeIntrinsicResolution() const {
     return 1.f;
   }
 
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
-  CSSToScreenScale intrinsicScale = ComputeIntrinsicScale(
-      mContext->GetViewportInfo(displaySize), displaySize, mMobileViewportSize);
+  ScreenIntSize displaySize = GetLayoutDisplaySize();
+  nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
+  // Use the up-to-date CSS viewport size from viewportInfo rather than
+  // mMobileViewportSize, which may not have been updated yet.
+  CSSToScreenScale intrinsicScale =
+      ComputeIntrinsicScale(viewportInfo, displaySize, viewportInfo.GetSize());
+  MVM_LOG("%p: intrinsic scale based on CSS viewport size is %f", this,
+          intrinsicScale.scale);
   CSSToLayoutDeviceScale cssToDev = mContext->CSSToDevPixelScale();
   return (intrinsicScale / cssToDev).scale;
 }
@@ -104,7 +111,6 @@ mozilla::CSSToScreenScale MobileViewportManager::ComputeIntrinsicScale(
       aViewportOrContentSize.IsEmpty()
           ? CSSToScreenScale(1.0)
           : MaxScaleRatio(ScreenSize(aDisplaySize), aViewportOrContentSize);
-  MVM_LOG("%p: Intrinsic computed zoom is %f\n", this, intrinsicScale.scale);
   return ClampZoom(intrinsicScale, aViewportInfo);
 }
 
@@ -258,8 +264,7 @@ LayoutDeviceToLayerScale MobileViewportManager::ZoomToResolution(
 
 void MobileViewportManager::UpdateResolutionForFirstPaint(
     const CSSSize& aViewportSize) {
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  ScreenIntSize displaySize = GetLayoutDisplaySize();
   nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
   ScreenIntSize compositionSize = GetCompositionSize(displaySize);
 
@@ -281,7 +286,7 @@ void MobileViewportManager::UpdateResolutionForFirstPaint(
     MVM_LOG("%p: restored zoom is %f\n", this, restoreZoom.scale);
     restoreZoom = ClampZoom(restoreZoom, viewportInfo);
 
-    ApplyNewZoom(displaySize, restoreZoom);
+    ApplyNewZoom(restoreZoom);
     return;
   }
 
@@ -295,21 +300,25 @@ void MobileViewportManager::UpdateResolutionForFirstPaint(
     }
     defaultZoom =
         ComputeIntrinsicScale(viewportInfo, compositionSize, contentSize);
+    MVM_LOG(
+        "%p: overriding default zoom with intrinsic scale of %f based on "
+        "content size",
+        this, defaultZoom.scale);
   }
   MOZ_ASSERT(viewportInfo.GetMinZoom() <= defaultZoom &&
              defaultZoom <= viewportInfo.GetMaxZoom());
 
-  ApplyNewZoom(displaySize, defaultZoom);
+  ApplyNewZoom(defaultZoom);
 }
 
 void MobileViewportManager::UpdateResolutionForViewportSizeChange(
     const CSSSize& aViewportSize,
     const Maybe<float>& aDisplayWidthChangeRatio) {
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  ScreenIntSize displaySize = GetLayoutDisplaySize();
   nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
 
   CSSToScreenScale zoom = GetZoom();
+  MVM_LOG("%p: current zoom level: %f", this, zoom.scale);
   // Non-positive zoom factors can produce NaN or negative viewport sizes,
   // so we better be sure we've got a positive zoom factor.
   MOZ_ASSERT(zoom > CSSToScreenScale(0.0f), "zoom factor must be positive");
@@ -344,8 +353,8 @@ void MobileViewportManager::UpdateResolutionForViewportSizeChange(
   //    viewport tag is added or removed)
   // 4. neither screen size nor CSS viewport changes
 
-  if (!aDisplayWidthChangeRatio) {
-    UpdateVisualViewportSize(displaySize, zoom);
+  if (!aDisplayWidthChangeRatio || mContext->IsDocumentFullscreen()) {
+    UpdateVisualViewportSize(zoom);
     return;
   }
 
@@ -405,20 +414,20 @@ void MobileViewportManager::UpdateResolutionForViewportSizeChange(
   //     +---+
 
   // Conveniently, the denominator is c clamped to a..b.
-  float denominator = clamped(c, a, b);
+  float denominator = std::clamp(c, a, b);
 
   float adjustedRatio = d / denominator;
   CSSToScreenScale adjustedZoom = ScaleZoomWithDisplayWidth(
       zoom, adjustedRatio, aViewportSize, mMobileViewportSize);
   CSSToScreenScale newZoom = ClampZoom(adjustedZoom, viewportInfo);
+  MVM_LOG("%p: applying new zoom level: %f", this, newZoom.scale);
 
-  ApplyNewZoom(displaySize, newZoom);
+  ApplyNewZoom(newZoom);
 }
 
 void MobileViewportManager::UpdateResolutionForContentSizeChange(
     const CSSSize& aContentSize) {
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  ScreenIntSize displaySize = GetLayoutDisplaySize();
   nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
 
   CSSToScreenScale zoom = GetZoom();
@@ -429,6 +438,8 @@ void MobileViewportManager::UpdateResolutionForContentSizeChange(
   ScreenIntSize compositionSize = GetCompositionSize(displaySize);
   CSSToScreenScale intrinsicScale =
       ComputeIntrinsicScale(viewportInfo, compositionSize, aContentSize);
+  MVM_LOG("%p: intrinsic scale based on content size is %f", this,
+          intrinsicScale.scale);
 
   // We try to scale down the contents only IF the document has no
   // initial-scale AND IF it's not restored documents AND IF the resolution
@@ -441,7 +452,7 @@ void MobileViewportManager::UpdateResolutionForContentSizeChange(
   if (!mRestoreResolution && !mContext->IsResolutionUpdatedByApz() &&
       !viewportInfo.IsDefaultZoomValid()) {
     if (zoom != intrinsicScale) {
-      ApplyNewZoom(displaySize, intrinsicScale);
+      ApplyNewZoom(intrinsicScale);
     }
     return;
   }
@@ -459,12 +470,11 @@ void MobileViewportManager::UpdateResolutionForContentSizeChange(
   clampedZoom = ClampZoom(clampedZoom, viewportInfo);
 
   if (clampedZoom != zoom) {
-    ApplyNewZoom(displaySize, clampedZoom);
+    ApplyNewZoom(clampedZoom);
   }
 }
 
-void MobileViewportManager::ApplyNewZoom(const ScreenIntSize& aDisplaySize,
-                                         const CSSToScreenScale& aNewZoom) {
+void MobileViewportManager::ApplyNewZoom(const CSSToScreenScale& aNewZoom) {
   // If the zoom has changed, update the pres shell resolution accordingly.
   // We characterize this as MainThreadAdjustment, because we don't want our
   // change here to be remembered as a restore resolution.
@@ -480,7 +490,7 @@ void MobileViewportManager::ApplyNewZoom(const ScreenIntSize& aDisplaySize,
 
   MVM_LOG("%p: New zoom is %f\n", this, aNewZoom.scale);
 
-  UpdateVisualViewportSize(aDisplaySize, aNewZoom);
+  UpdateVisualViewportSize(aNewZoom);
 }
 
 ScreenIntSize MobileViewportManager::GetCompositionSize(
@@ -508,13 +518,17 @@ ScreenIntSize MobileViewportManager::GetCompositionSize(
 }
 
 void MobileViewportManager::UpdateVisualViewportSize(
-    const ScreenIntSize& aDisplaySize, const CSSToScreenScale& aZoom) {
+    const CSSToScreenScale& aZoom) {
   if (!mContext) {
     return;
   }
 
-  ScreenSize compositionSize = ScreenSize(GetCompositionSize(aDisplaySize));
+  ScreenIntSize displaySize = GetDisplaySizeForVisualViewport();
+  if (displaySize.width == 0 || displaySize.height == 0) {
+    return;
+  }
 
+  ScreenSize compositionSize = ScreenSize(GetCompositionSize(displaySize));
   CSSSize compSize = compositionSize / aZoom;
   MVM_LOG("%p: Setting VVPS %s\n", this, ToString(compSize).c_str());
   mContext->SetVisualViewportSize(compSize);
@@ -533,8 +547,7 @@ void MobileViewportManager::UpdateVisualViewportSizeByDynamicToolbar(
     return;
   }
 
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  ScreenIntSize displaySize = GetDisplaySizeForVisualViewport();
   displaySize.height += aToolbarHeight;
   nsSize compSize = CSSSize::ToAppUnits(
       ScreenSize(GetCompositionSize(displaySize)) / GetZoom());
@@ -563,19 +576,11 @@ void MobileViewportManager::UpdateDisplayPortMargins() {
 void MobileViewportManager::RefreshVisualViewportSize() {
   // This function is a subset of RefreshViewportSize, and only updates the
   // visual viewport size.
-
   if (!mContext) {
     return;
   }
 
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
-
-  if (displaySize.width == 0 || displaySize.height == 0) {
-    return;
-  }
-
-  UpdateVisualViewportSize(displaySize, GetZoom());
+  UpdateVisualViewportSize(GetZoom());
 }
 
 void MobileViewportManager::UpdateSizesBeforeReflow() {
@@ -589,9 +594,8 @@ void MobileViewportManager::UpdateSizesBeforeReflow() {
       return;
     }
 
-    ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-        mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
-    nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
+    nsViewportInfo viewportInfo =
+        mContext->GetViewportInfo(GetLayoutDisplaySize());
     mMobileViewportSize = viewportInfo.GetSize();
     MVM_LOG("%p: MVSize updated to %s\n", this,
             ToString(mMobileViewportSize).c_str());
@@ -645,9 +649,14 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
     return;
   }
 
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
-  nsViewportInfo viewportInfo = mContext->GetViewportInfo(displaySize);
+  // Now it's time to update the keyboard height
+  if (mPendingKeyboardHeight) {
+    mKeyboardHeight = *mPendingKeyboardHeight;
+    mPendingKeyboardHeight.reset();
+  }
+
+  nsViewportInfo viewportInfo =
+      mContext->GetViewportInfo(GetLayoutDisplaySize());
   MVM_LOG("%p: viewport info has zooms min=%f max=%f default=%f,valid=%d\n",
           this, viewportInfo.GetMinZoom().scale,
           viewportInfo.GetMaxZoom().scale, viewportInfo.GetDefaultZoom().scale,
@@ -656,7 +665,7 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
   CSSSize viewport = viewportInfo.GetSize();
   MVM_LOG("%p: Computed CSS viewport %s\n", this, ToString(viewport).c_str());
 
-  if (!mIsFirstPaint && mMobileViewportSize == viewport) {
+  if (!mInvalidViewport && !mIsFirstPaint && mMobileViewportSize == viewport) {
     // Nothing changed, so no need to do a reflow
     return;
   }
@@ -706,6 +715,7 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
   ShrinkToDisplaySizeIfNeeded();
 
   mIsFirstPaint = false;
+  mInvalidViewport = false;
 }
 
 void MobileViewportManager::ShrinkToDisplaySizeIfNeeded() {
@@ -737,8 +747,9 @@ void MobileViewportManager::ShrinkToDisplaySizeIfNeeded() {
 }
 
 CSSSize MobileViewportManager::GetIntrinsicCompositionSize() const {
-  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
-      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  // TODO: Should we use GetDisplaySizeForVisualViewport() for computing the
+  // intrinsic composition size?
+  ScreenIntSize displaySize = GetLayoutDisplaySize();
   ScreenIntSize compositionSize = GetCompositionSize(displaySize);
   CSSToScreenScale intrinsicScale =
       ComputeIntrinsicScale(mContext->GetViewportInfo(displaySize),
@@ -749,9 +760,55 @@ CSSSize MobileViewportManager::GetIntrinsicCompositionSize() const {
 
 ParentLayerSize MobileViewportManager::GetCompositionSizeWithoutDynamicToolbar()
     const {
+  return ViewAs<ParentLayerPixel>(
+      ScreenSize(GetCompositionSize(GetDisplaySizeForVisualViewport())),
+      PixelCastJustification::ScreenIsParentLayerForRoot);
+}
+
+void MobileViewportManager::UpdateKeyboardHeight(
+    ScreenIntCoord aKeyboardHeight) {
+  if (mPendingKeyboardHeight == Some(aKeyboardHeight)) {
+    return;
+  }
+
+  mPendingKeyboardHeight = Some(aKeyboardHeight);
+  mInvalidViewport = true;
+}
+
+ScreenIntSize MobileViewportManager::GetLayoutDisplaySize() const {
   ScreenIntSize displaySize = ViewAs<ScreenPixel>(
       mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
-  return ViewAs<ParentLayerPixel>(
-      ScreenSize(GetCompositionSize(displaySize)),
-      PixelCastJustification::ScreenIsParentLayerForRoot);
+  switch (mContext->GetInteractiveWidgetMode()) {
+    case InteractiveWidget::ResizesContent:
+      break;
+    case InteractiveWidget::OverlaysContent:
+    case InteractiveWidget::ResizesVisual:
+      displaySize.height += mKeyboardHeight;
+      break;
+  }
+  return displaySize;
+}
+
+ScreenIntSize MobileViewportManager::GetDisplaySizeForVisualViewport() const {
+  ScreenIntSize displaySize = ViewAs<ScreenPixel>(
+      mDisplaySize, PixelCastJustification::LayoutDeviceIsScreenForBounds);
+  switch (mContext->GetInteractiveWidgetMode()) {
+    case InteractiveWidget::ResizesContent:
+    case InteractiveWidget::ResizesVisual:
+      break;
+    case InteractiveWidget::OverlaysContent:
+      displaySize.height += mKeyboardHeight;
+      break;
+  }
+  return displaySize;
+}
+
+nsRect MobileViewportManager::InitialVisibleArea() {
+  UpdateSizesBeforeReflow();
+
+  // Basically mMobileViewportSize should not be empty, but we somehow create
+  // a MobileViewportManager for the transient about blank document of each
+  // window actor, in such cases the document viewer size is empty, thus we
+  // return an empty rectangle here.
+  return nsRect(nsPoint(), CSSSize::ToAppUnits(mMobileViewportSize));
 }

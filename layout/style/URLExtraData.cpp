@@ -34,7 +34,7 @@ bool URLExtraData::ChromeRulesEnabled(nsIURI* aURI) {
   if (!aURI) {
     return false;
   }
-  return aURI->SchemeIs("chrome") || aURI->SchemeIs("resource") || (Preferences::GetBool("floorp.enable.dualtheme", false) && aURI->SchemeIs("moz-extension"));
+  return aURI->SchemeIs("chrome") || aURI->SchemeIs("resource") ||
          (aURI->SchemeIs("about") && !NS_IsContentAccessibleAboutURI(aURI));
 }
 
@@ -47,6 +47,6 @@ void URLExtraData::Shutdown() {
 URLExtraData::~URLExtraData() = default;
 
 StaticRefPtr<URLExtraData>
-    URLExtraData::sShared[size_t(UserAgentStyleSheetID::Count)];
+    URLExtraData::sShared[size_t(BuiltInStyleSheet::Count)];
 
 }  // namespace mozilla

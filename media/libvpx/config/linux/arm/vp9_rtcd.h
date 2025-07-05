@@ -1,3 +1,13 @@
+/*
+ *  Copyright (c) 2025 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 // This file is generated. Do not edit.
 #ifndef VP9_RTCD_H_
 #define VP9_RTCD_H_
@@ -16,6 +26,9 @@
 #include "vp9/common/vp9_common.h"
 #include "vp9/common/vp9_enums.h"
 #include "vp9/common/vp9_filter.h"
+#if !CONFIG_REALTIME_ONLY && CONFIG_VP9_ENCODER
+#include "vp9/encoder/vp9_temporal_filter.h"
+#endif
 
 struct macroblockd;
 
@@ -127,4 +140,4 @@ static void setup_rtcd_internal(void)
 }  // extern "C"
 #endif
 
-#endif
+#endif  // VP9_RTCD_H_

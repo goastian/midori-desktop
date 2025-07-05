@@ -32,7 +32,6 @@ class PresShell;
 
 enum nsMencloseNotation {
   NOTATION_LONGDIV,
-  NOTATION_RADICAL,
   NOTATION_ROUNDEDBOX,
   NOTATION_CIRCLE,
   NOTATION_LEFT,
@@ -54,27 +53,21 @@ class nsMathMLmencloseFrame : public nsMathMLContainerFrame {
   friend nsIFrame* NS_NewMathMLmencloseFrame(mozilla::PresShell* aPresShell,
                                              ComputedStyle* aStyle);
 
-  virtual nsresult Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize) override;
+  nsresult Place(DrawTarget* aDrawTarget, const PlaceFlags& aFlags,
+                 ReflowOutput& aDesiredSize) override;
 
-  virtual nsresult MeasureForWidth(DrawTarget* aDrawTarget,
-                                   ReflowOutput& aDesiredSize) override;
-
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   void DidSetComputedStyle(ComputedStyle* aOldStyle) override;
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   NS_IMETHOD
   InheritAutomaticData(nsIFrame* aParent) override;
 
-  NS_IMETHOD
-  TransmitAutomaticData() override;
-
-  virtual nscoord FixInterFrameSpacing(ReflowOutput& aDesiredSize) override;
+  nscoord FixInterFrameSpacing(ReflowOutput& aDesiredSize) override;
 
   bool IsMrowLike() override {
     return mFrames.FirstChild() != mFrames.LastChild() || !mFrames.FirstChild();
@@ -82,12 +75,8 @@ class nsMathMLmencloseFrame : public nsMathMLContainerFrame {
 
  protected:
   explicit nsMathMLmencloseFrame(ComputedStyle* aStyle,
-                                 nsPresContext* aPresContext,
-                                 ClassID aID = kClassID);
+                                 nsPresContext* aPresContext);
   virtual ~nsMathMLmencloseFrame();
-
-  nsresult PlaceInternal(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize, bool aWidthOnly);
 
   // functions to parse the "notation" attribute.
   nsresult AddNotation(const nsAString& aNotation);
@@ -100,9 +89,8 @@ class nsMathMLmencloseFrame : public nsMathMLContainerFrame {
   }
 
   nscoord mRuleThickness;
-  nscoord mRadicalRuleThickness;
   nsTArray<nsMathMLChar> mMathMLChar;
-  int8_t mLongDivCharIndex, mRadicalCharIndex;
+  int8_t mLongDivCharIndex;
   nscoord mContentWidth;
   nsresult AllocateMathMLChar(nsMencloseNotation mask);
 

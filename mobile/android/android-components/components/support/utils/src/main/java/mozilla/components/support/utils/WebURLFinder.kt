@@ -22,24 +22,24 @@ class WebURLFinder {
     private val candidates: List<String>
 
     constructor(string: String?) {
-        if (string == null) {
-            throw IllegalArgumentException("string must not be null")
+        requireNotNull(string) {
+            "string must not be null"
         }
         this.candidates = candidateWebURLs(string)
     }
 
     // package-private
     internal constructor(string: String?, explicitUnicode: Boolean) {
-        if (string == null) {
-            throw IllegalArgumentException("strings must not be null")
+        requireNotNull(string) {
+            "string must not be null"
         }
         this.candidates = candidateWebURLs(string, explicitUnicode)
     }
 
     // package-private
     internal constructor(strings: List<String>?, explicitUnicode: Boolean) {
-        if (strings == null) {
-            throw IllegalArgumentException("strings must not be null")
+        requireNotNull(strings) {
+            "strings must not be null"
         }
         this.candidates = candidateWebURLs(strings, explicitUnicode)
     }
@@ -75,11 +75,11 @@ class WebURLFinder {
     companion object {
         // Taken from mozilla.components.support.ktx.util.URLStringUtils. See documentation
         // there for a complete description.
-        private const val autolinkWebUrlPattern =
+        private const val AUTOLINK_WEB_URL_PATTERN =
             "(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?"
 
         private val autolinkWebUrl by lazy {
-            Pattern.compile(autolinkWebUrlPattern, 0)
+            Pattern.compile(AUTOLINK_WEB_URL_PATTERN, 0)
         }
 
         private val autolinkWebUrlExplicitUnicode by lazy {
@@ -91,9 +91,9 @@ class WebURLFinder {
             // NB: The value has to go through an intermediate variable; otherwise, the linter will
             // complain that this value is not one of the predefined enums that are allowed.
             @Suppress("MagicNumber")
-            val UNICODE_CHARACTER_CLASS: Int = 0x100
-            var regexFlags = UNICODE_CHARACTER_CLASS
-            Pattern.compile(autolinkWebUrlPattern, regexFlags)
+            val unicodeCharacterClassFlag: Int = 0x100
+            var regexFlags = unicodeCharacterClassFlag
+            Pattern.compile(AUTOLINK_WEB_URL_PATTERN, regexFlags)
         }
 
         /**

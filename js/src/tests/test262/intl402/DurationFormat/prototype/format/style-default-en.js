@@ -1,4 +1,4 @@
-// |reftest| skip -- Intl.DurationFormat is not supported
+// |reftest| skip-if(!Intl.hasOwnProperty('DurationFormat')) -- Intl.DurationFormat is not enabled unconditionally
 // Copyright 2022 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -23,9 +23,10 @@ const duration = {
   nanoseconds: 9,
 };
 
-const expected = formatDurationFormatPattern(duration);
-
 const df = new Intl.DurationFormat("en");
+
+const expected = formatDurationFormatPattern(df, duration);
+
 assert.sameValue(df.format(duration), expected, `Assert DurationFormat format output using default style option`);
 
 reportCompare(0, 0);

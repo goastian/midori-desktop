@@ -95,9 +95,6 @@ class nsDisplayTableBackgroundSet {
   }
 
   const ActiveScrolledRoot* GetTableASR() { return mTableASR; }
-  layers::ScrollableLayerGuid::ViewID GetScrollParentId() {
-    return mCurrentScrollParentId;
-  }
 
  private:
   // This class is only used on stack, so we don't have to worry about leaking
@@ -114,7 +111,6 @@ class nsDisplayTableBackgroundSet {
   nsTArray<nsTableColFrame*> mColumns;
   nsPoint mToReferenceFrame;
   nsRect mDirtyRect;
-  layers::ScrollableLayerGuid::ViewID mCurrentScrollParentId;
 
   const DisplayItemClipChain* mCombinedTableClipChain;
   const ActiveScrolledRoot* mTableASR;
@@ -249,17 +245,6 @@ class nsTableFrame : public nsContainerFrame {
    */
   LogicalMargin GetOuterBCBorder(const WritingMode aWM) const;
 
-  /** Same as above, but only if it's included from the border-box width
-   *  of the table.
-   */
-  LogicalMargin GetIncludedOuterBCBorder(const WritingMode aWM) const;
-
-  /** Same as above, but only if it's excluded from the border-box width
-   *  of the table.  This is the area that leaks out into the margin
-   *  (or potentially past it, if there is no margin).
-   */
-  LogicalMargin GetExcludedOuterBCBorder(const WritingMode aWM) const;
-
   /**
    * Emplace our border and padding in aBorder and aPadding if we are
    * border-collapsed. Otherwise, do nothing.
@@ -282,8 +267,8 @@ class nsTableFrame : public nsContainerFrame {
   void MarkIntrinsicISizesDirty() override;
   // For border-collapse tables, the caller must not add padding and
   // border to the results of these functions.
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
   IntrinsicSizeOffsetData IntrinsicISizeOffsets(
       nscoord aPercentageBasis = NS_UNCONSTRAINEDSIZE) override;
 

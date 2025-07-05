@@ -7,6 +7,7 @@ package mozilla.components.feature.search.ext
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import mozilla.components.browser.state.search.OS_SEARCH_ENGINE_TERMS_PARAM
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.state.SearchState
@@ -15,7 +16,6 @@ import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
 import mozilla.components.feature.search.internal.SearchUrlBuilder
 import mozilla.components.feature.search.storage.SearchEngineReader
 import java.io.InputStream
-import java.lang.IllegalArgumentException
 import java.util.UUID
 
 /**
@@ -27,10 +27,11 @@ fun createSearchEngine(
     icon: Bitmap,
     inputEncoding: String? = null,
     suggestUrl: String? = null,
+    trendingUrl: String? = null,
     isGeneral: Boolean = false,
 ): SearchEngine {
-    if (!url.contains(OS_SEARCH_ENGINE_TERMS_PARAM)) {
-        throw IllegalArgumentException("URL does not contain search terms placeholder")
+    require(url.contains(OS_SEARCH_ENGINE_TERMS_PARAM)) {
+        "URL does not contain search terms placeholder"
     }
 
     return SearchEngine(
@@ -41,6 +42,7 @@ fun createSearchEngine(
         type = SearchEngine.Type.CUSTOM,
         resultUrls = listOf(url),
         suggestUrl = suggestUrl,
+        trendingUrl = trendingUrl,
         isGeneral = isGeneral,
     )
 }
@@ -55,6 +57,7 @@ fun createApplicationSearchEngine(
     inputEncoding: String? = null,
     icon: Bitmap,
     suggestUrl: String? = null,
+    trendingUrl: String? = null,
 ): SearchEngine {
     return SearchEngine(
         id = id ?: UUID.randomUUID().toString(),
@@ -64,6 +67,7 @@ fun createApplicationSearchEngine(
         type = SearchEngine.Type.APPLICATION,
         resultUrls = listOf(url),
         suggestUrl = suggestUrl,
+        trendingUrl = trendingUrl,
     )
 }
 
@@ -75,11 +79,26 @@ val SearchEngine.canProvideSearchSuggestions: Boolean
     get() = suggestUrl != null
 
 /**
+ * Whether this [SearchEngine] has a [SearchEngine.trendingUrl] set and can provide trending
+ * searches.
+ */
+val SearchEngine.canProvideTrendingSearches: Boolean
+    get() = trendingUrl != null
+
+/**
  * Creates an URL to retrieve search suggestions for the provided [query].
  */
 fun SearchEngine.buildSuggestionsURL(query: String): String? {
     val builder = SearchUrlBuilder(this)
     return builder.buildSuggestionUrl(query)
+}
+
+/**
+ * Creates an URL to retrieve trending searches with this search engine.
+ */
+fun SearchEngine.buildTrendingURL(): String? {
+    val builder = SearchUrlBuilder(this)
+    return builder.buildTrendingUrl()
 }
 
 /**
@@ -105,7 +124,7 @@ fun parseLegacySearchEngine(id: String, stream: InputStream): SearchEngine {
  * @return Search terms if [url] is a known search results page, `null` otherwise.
  */
 fun SearchState.parseSearchTerms(url: String): String? {
-    val parsedUrl = Uri.parse(url)
+    val parsedUrl = url.toUri()
     // Default/selected engine is the most likely to match, check it first.
     val currentEngine = this.selectedOrDefaultSearchEngine
     // Or go through the rest of known engines.

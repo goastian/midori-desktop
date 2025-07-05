@@ -49,12 +49,8 @@
 
 #include "mozilla/dom/PushNotifier.h"
 using mozilla::dom::PushNotifier;
-#define PUSHNOTIFIER_CID                             \
-  {                                                  \
-    0x2fc2d3e3, 0x020f, 0x404e, {                    \
-      0xb0, 0x6a, 0x6e, 0xcf, 0x3e, 0xa2, 0x33, 0x4a \
-    }                                                \
-  }
+#define PUSHNOTIFIER_CID \
+  {0x2fc2d3e3, 0x020f, 0x404e, {0xb0, 0x6a, 0x6e, 0xcf, 0x3e, 0xa2, 0x33, 0x4a}}
 
 #include "nsScriptSecurityManager.h"
 #include "nsNetCID.h"
@@ -109,7 +105,9 @@ void nsLayoutModuleInitialize() {
 // static
 void Shutdown() {
   MOZ_ASSERT(gInitialized, "module not initialized");
-  if (!gInitialized) return;
+  if (!gInitialized) {
+    return;
+  }
 
   gInitialized = false;
 
@@ -196,12 +194,18 @@ MAKE_GENERIC_CTOR(nsIAccessibilityService, NS_GetAccessibilityService)
 #endif
 
 nsresult Construct_nsIScriptSecurityManager(REFNSIID aIID, void** aResult) {
-  if (!aResult) return NS_ERROR_NULL_POINTER;
+  if (!aResult) {
+    return NS_ERROR_NULL_POINTER;
+  }
   *aResult = nullptr;
   nsScriptSecurityManager* obj =
       nsScriptSecurityManager::GetScriptSecurityManager();
-  if (!obj) return NS_ERROR_OUT_OF_MEMORY;
-  if (NS_FAILED(obj->QueryInterface(aIID, aResult))) return NS_ERROR_FAILURE;
+  if (!obj) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  if (NS_FAILED(obj->QueryInterface(aIID, aResult))) {
+    return NS_ERROR_FAILURE;
+  }
   return NS_OK;
 }
 

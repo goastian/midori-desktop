@@ -85,6 +85,7 @@ class TimelineManager;
 struct MediaFeatureChange;
 enum class MediaFeatureChangePropagation : uint8_t;
 enum class ColorScheme : uint8_t;
+enum class StyleForcedColors : uint8_t;
 namespace layers {
 class ContainerLayer;
 class LayerManager;
@@ -377,10 +378,8 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
     return mozilla::PreferenceSheet::PrefsFor(*mDocument);
   }
 
-  bool ForcingColors() const {
-    return mozilla::PreferenceSheet::MayForceColors() &&
-           !PrefSheetPrefs().mUseDocumentColors;
-  }
+  mozilla::StyleForcedColors ForcedColors() const { return mForcedColors; }
+  bool ForcingColors() const;
 
   mozilla::ColorScheme DefaultBackgroundColorScheme() const;
   nscolor DefaultBackgroundColor() const;
@@ -401,7 +400,14 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    * Set the currently visible area. The units for r are standard
    * nscoord units (as scaled by the device context).
    */
-  void SetVisibleArea(const nsRect& r);
+  void SetVisibleArea(const nsRect& aRect);
+
+  /**
+   * Set the initial visible area. This should be called only from
+   * nsDocumentViewer when initializing this pres context visible area with
+   * the document viewer bounds.
+   */
+  void SetInitialVisibleArea(const nsRect& aRect);
 
   nsSize GetSizeForViewportUnits() const { return mSizeForViewportUnits; }
 
@@ -411,27 +417,45 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   MOZ_CAN_RUN_SCRIPT
   void SetDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight);
 
-  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const {
-    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
-    return mDynamicToolbarMaxHeight;
-  }
-
   /**
    * Returns true if we are using the dynamic toolbar.
    */
-  bool HasDynamicToolbar() const {
-    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
-    return mDynamicToolbarMaxHeight > 0;
-  }
+  bool HasDynamicToolbar() const { return GetDynamicToolbarMaxHeight() > 0; }
 
   /*
    * |aOffset| must be offset from the bottom edge of the ICB and it's negative.
    */
   void UpdateDynamicToolbarOffset(mozilla::ScreenIntCoord aOffset);
+
+  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const {
+    MOZ_ASSERT_IF(mDynamicToolbarMaxHeight > 0,
+                  IsRootContentDocumentCrossProcess());
+    return mDynamicToolbarMaxHeight;
+  }
+
+  nscoord GetDynamicToolbarMaxHeightInAppUnits() const;
+
   mozilla::ScreenIntCoord GetDynamicToolbarHeight() const {
-    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
+    MOZ_ASSERT_IF(mDynamicToolbarHeight > 0,
+                  IsRootContentDocumentCrossProcess());
     return mDynamicToolbarHeight;
   }
+
+  void UpdateKeyboardHeight(mozilla::ScreenIntCoord aHeight);
+
+  mozilla::ScreenIntCoord GetKeyboardHeight() const;
+
+  /**
+   * Returns true if the software keyboard is hidden or
+   * the document is `interactive-widget=resizes-content` mode.
+   */
+  bool IsKeyboardHiddenOrResizesContentMode() const;
+
+  /**
+   * Returns the maximum height of the dynamic toolbar if the toolbar state is
+   * `DynamicToolbarState::Collapsed`, otherwise returns zero.
+   */
+  nscoord GetBimodalDynamicToolbarHeightInAppUnits() const;
 
   /**
    * Returns the state of the dynamic toolbar.
@@ -521,9 +545,11 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   /**
    * Notify the pres context that the safe area insets have changed.
    */
-  void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aInsets);
+  void SetSafeAreaInsets(const mozilla::LayoutDeviceIntMargin& aInsets);
 
-  mozilla::ScreenIntMargin GetSafeAreaInsets() const { return mSafeAreaInsets; }
+  const mozilla::LayoutDeviceIntMargin& GetSafeAreaInsets() const {
+    return mSafeAreaInsets;
+  }
 
   void RegisterManagedPostRefreshObserver(mozilla::ManagedPostRefreshObserver*);
   void UnregisterManagedPostRefreshObserver(
@@ -541,6 +567,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   void SetOverrideDPPX(float);
   void SetInRDMPane(bool aInRDMPane);
   void UpdateTopInnerSizeForRFP();
+  void UpdateForcedColors(bool aNotify = true);
 
  public:
   float GetFullZoom() { return mFullZoom; }
@@ -714,10 +741,13 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    * treated as "overflow: visible"), and we store the overflow style here.
    * If the document is in fullscreen, and the fullscreen element is not the
    * root, the scrollbar of viewport will be suppressed.
+   * @param aRemovedChild the element we're about to remove from the DOM, which
+   *                      we can't make the new override element.
    * @return if scroll was propagated from some content node, the content node
    *         it was propagated from.
    */
-  mozilla::dom::Element* UpdateViewportScrollStylesOverride();
+  mozilla::dom::Element* UpdateViewportScrollStylesOverride(
+      const mozilla::dom::Element* aRemovedChild = nullptr);
 
   /**
    * Returns the cached result from the last call to
@@ -867,8 +897,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
     // to actual nscoord values.
     static const nscoord kBorderWidths[] = {
         CSSPixelsToAppUnits(1), CSSPixelsToAppUnits(3), CSSPixelsToAppUnits(5)};
-    MOZ_ASSERT(size_t(aBorderWidthKeyword) <
-               mozilla::ArrayLength(kBorderWidths));
+    MOZ_ASSERT(size_t(aBorderWidthKeyword) < std::size(kBorderWidths));
 
     return kBorderWidths[aBorderWidthKeyword];
   }
@@ -923,8 +952,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   // be dispatched to MozAfterPaint events when NotifyDidPaintForSubtree is
   // called for the transaction id (or any higher id).
   void NotifyInvalidation(TransactionId aTransactionId, const nsRect& aRect);
-  // aRect is in device pixels
-  void NotifyInvalidation(TransactionId aTransactionId, const nsIntRect& aRect);
   void NotifyDidPaintForSubtree(
       TransactionId aTransactionId = TransactionId{0},
       const mozilla::TimeStamp& aTimeStamp = mozilla::TimeStamp());
@@ -991,7 +1018,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    * Returns true if CheckForInterrupt has returned true since the last
    * ReflowStarted call. Cannot itself trigger an interrupt check.
    */
-  bool HasPendingInterrupt() { return mHasPendingInterrupt; }
+  bool HasPendingInterrupt() const { return mHasPendingInterrupt; }
   /**
    * Sets a flag that will trip a reflow interrupt. This only bypasses the
    * interrupt timeout and the pending event check; other checks such as whether
@@ -1033,7 +1060,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   void NotifyNonBlankPaint();
   void NotifyContentfulPaint();
   void NotifyPaintStatusReset();
-  void NotifyDOMContentFlushed();
 
   bool HasEverBuiltInvisibleText() const { return mHasEverBuiltInvisibleText; }
   void SetBuiltInvisibleText() { mHasEverBuiltInvisibleText = true; }
@@ -1105,11 +1131,6 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   // has been updated, potentially affecting font selection and layout.
   void ForceReflowForFontInfoUpdate(bool aNeedsReframe);
   void ForceReflowForFontInfoUpdateFromStyle();
-
-  /**
-   * Checks for MozAfterPaint listeners on the document
-   */
-  bool MayHavePaintEventListener();
 
   void InvalidatePaintedLayers();
 
@@ -1221,7 +1242,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   mozilla::ScreenIntCoord mDynamicToolbarMaxHeight;
   mozilla::ScreenIntCoord mDynamicToolbarHeight;
   // Safe area insets support
-  mozilla::ScreenIntMargin mSafeAreaInsets;
+  mozilla::LayoutDeviceIntMargin mSafeAreaInsets;
   nsSize mPageSize;
 
   // The computed page margins from the print settings.
@@ -1382,6 +1403,7 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
   // that breaks bindgen in win32.
   FontVisibility mFontVisibility = FontVisibility::Unknown;
   mozilla::dom::PrefersColorSchemeOverride mOverriddenOrEmbedderColorScheme;
+  mozilla::StyleForcedColors mForcedColors;
 
  protected:
   virtual ~nsPresContext();

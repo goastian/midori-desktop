@@ -98,8 +98,9 @@ void nsTableRowGroupFrame::AdjustRowIndices(int32_t aRowIndex,
   for (nsIFrame* rowFrame : mFrames) {
     if (mozilla::StyleDisplay::TableRow == rowFrame->StyleDisplay()->mDisplay) {
       int32_t index = ((nsTableRowFrame*)rowFrame)->GetRowIndex();
-      if (index >= aRowIndex)
+      if (index >= aRowIndex) {
         ((nsTableRowFrame*)rowFrame)->SetRowIndex(index + anAdjustment);
+      }
     }
   }
 }
@@ -400,7 +401,8 @@ void nsTableRowGroupFrame::ReflowChildren(
           // the overflow area may have changed inflate the overflow area
           const nsStylePosition* stylePos = StylePosition();
           if (tableFrame->IsAutoBSize(wm) &&
-              !stylePos->BSize(wm).ConvertsToLength()) {
+              !stylePos->BSize(wm, StyleDisplay()->mPosition)
+                   ->ConvertsToLength()) {
             // Because other cells in the row may need to be aligned
             // differently, repaint the entire row
             InvalidateFrame();
@@ -547,7 +549,9 @@ void nsTableRowGroupFrame::CalculateRowBSizes(nsPresContext* aPresContext,
   int32_t numRows =
       GetRowCount() - (startRowFrame->GetRowIndex() - GetStartRowIndex());
   // Collect the current bsize of each row.
-  if (numRows <= 0) return;
+  if (numRows <= 0) {
+    return;
+  }
 
   AutoTArray<RowInfo, 32> rowInfo;
   // XXX(Bug 1631371) Check if this should use a fallible operation as it
@@ -655,14 +659,6 @@ void nsTableRowGroupFrame::CalculateRowBSizes(nsPresContext* aPresContext,
             cellDesSize.BSize(wm) = rowFrame->CalcCellActualBSize(
                 cellFrame, cellDesSize.BSize(wm), wm);
             cellFrameSize.BSize(wm) = cellDesSize.BSize(wm);
-            if (cellFrame->HasVerticalAlignBaseline()) {
-              // to ensure that a spanning cell with a long descender doesn't
-              // collide with the next row, we need to take into account the
-              // shift that will be done to align the cell on the baseline of
-              // the row.
-              cellFrameSize.BSize(wm) +=
-                  rowFrame->GetMaxCellAscent() - cellFrame->GetCellBaseline();
-            }
 
             if (bsizeOfAreaSpanned < cellFrameSize.BSize(wm)) {
               // the cell's bsize is larger than the available space of the rows
@@ -740,8 +736,8 @@ void nsTableRowGroupFrame::CalculateRowBSizes(nsPresContext* aPresContext,
           }  // if (rowSpan > 1)
           cellFrame = cellFrame->GetNextCell();
         }  // while (cellFrame)
-      }    // if (tableFrame->RowHasSpanningCells(startRowIndex + rowIndex) {
-    }      // while (rowFrame)
+      }  // if (tableFrame->RowHasSpanningCells(startRowIndex + rowIndex) {
+    }  // while (rowFrame)
   }
 
   // pct bsize rows have already got their content bsizes.
@@ -1013,7 +1009,9 @@ void nsTableRowGroupFrame::SplitSpanningCells(
 // a continuation which doesn't have the same number of cells that now exist.
 void nsTableRowGroupFrame::UndoContinuedRow(nsPresContext* aPresContext,
                                             nsTableRowFrame* aRow) {
-  if (!aRow) return;  // allow null aRow to avoid callers doing null checks
+  if (!aRow) {
+    return;  // allow null aRow to avoid callers doing null checks
+  }
 
   // rowBefore was the prev-sibling of aRow's next-sibling before aRow was
   // created
@@ -1589,14 +1587,18 @@ bool nsTableRowGroupFrame::IsSimpleRowFrame(nsTableFrame* aTableFrame,
 /** find page break before the first row **/
 bool nsTableRowGroupFrame::HasInternalBreakBefore() const {
   nsIFrame* firstChild = mFrames.FirstChild();
-  if (!firstChild) return false;
+  if (!firstChild) {
+    return false;
+  }
   return firstChild->StyleDisplay()->BreakBefore();
 }
 
 /** find page break after the last row **/
 bool nsTableRowGroupFrame::HasInternalBreakAfter() const {
   nsIFrame* lastChild = mFrames.LastChild();
-  if (!lastChild) return false;
+  if (!lastChild) {
+    return false;
+  }
   return lastChild->StyleDisplay()->BreakAfter();
 }
 /* ----- global methods ----- */
@@ -1787,7 +1789,9 @@ nsIFrame* nsTableRowGroupFrame::GetFirstRowContaining(nscoord aY,
   FrameCursorData* property = GetProperty(RowCursorProperty());
   uint32_t cursorIndex = property->mCursorIndex;
   uint32_t frameCount = property->mFrames.Length();
-  if (cursorIndex >= frameCount) return nullptr;
+  if (cursorIndex >= frameCount) {
+    return nullptr;
+  }
   nsIFrame* cursorFrame = property->mFrames[cursorIndex];
 
   // The cursor's frame list excludes frames with empty overflow-area, so
@@ -1827,7 +1831,9 @@ bool nsTableRowGroupFrame::FrameCursorData::AppendFrame(nsIFrame* aFrame) {
   nsRect normalOverflowRect = positionedOverflowRect + positionedToNormal;
 
   nsRect overflowRect = positionedOverflowRect.Union(normalOverflowRect);
-  if (overflowRect.IsEmpty()) return true;
+  if (overflowRect.IsEmpty()) {
+    return true;
+  }
   nscoord overflowAbove = -overflowRect.y;
   nscoord overflowBelow = overflowRect.YMost() - aFrame->GetSize().height;
   mOverflowAbove = std::max(mOverflowAbove, overflowAbove);

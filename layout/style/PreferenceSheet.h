@@ -45,26 +45,14 @@ struct PreferenceSheet {
 
     ColorScheme mColorScheme = ColorScheme::Light;
 
-    // Whether the non-native theme should use real system colors for widgets.
-    bool NonNativeThemeShouldBeHighContrast() const;
-
     void Load(bool aIsChrome);
     void LoadColors(bool aIsLight);
   };
-
-  static void EnsureInitialized() {
-    if (sInitialized) {
-      return;
-    }
-    Initialize();
-  }
 
   static void Refresh() {
     sInitialized = false;
     Initialize();
   }
-
-  static bool AffectedByPref(const nsACString&);
 
   enum class ChromeColorSchemeSetting { Light, Dark, System };
   static ChromeColorSchemeSetting ColorSchemeSettingForChrome();

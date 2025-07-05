@@ -338,8 +338,8 @@ void HTMLSelectEventListener::CharacterDataChanged(
   }
 }
 
-void HTMLSelectEventListener::ContentRemoved(nsIContent* aChild,
-                                             nsIContent* aPreviousSibling) {
+void HTMLSelectEventListener::ContentWillBeRemoved(nsIContent* aChild,
+                                                   const BatchRemovalState*) {
   if (nsContentUtils::IsInSameAnonymousTree(mElement, aChild)) {
     OptionValueMightHaveChanged(aChild);
     ComboboxMightHaveChanged();
@@ -732,19 +732,38 @@ nsresult HTMLSelectEventListener::KeyDown(dom::Event* aKeyEvent) {
     mControlSelectMode = false;
   }
 
+  auto isVerticalRL = [=]() -> bool {
+    if (nsIFrame* f = mElement->GetPrimaryFrame()) {
+      return f->GetWritingMode().IsVerticalRL();
+    }
+    return false;
+  };
+
   switch (keyEvent->mKeyCode) {
     case NS_VK_UP:
-    case NS_VK_LEFT:
       if (shouldSelect) {
         AdjustIndexForDisabledOpt(GetEndSelectionIndex(), newIndex,
                                   int32_t(numOptions), -1, -1);
       }
       break;
+    case NS_VK_LEFT:
+      if (shouldSelect) {
+        int dir = isVerticalRL() ? 1 : -1;
+        AdjustIndexForDisabledOpt(GetEndSelectionIndex(), newIndex,
+                                  int32_t(numOptions), dir, dir);
+      }
+      break;
     case NS_VK_DOWN:
-    case NS_VK_RIGHT:
       if (shouldSelect) {
         AdjustIndexForDisabledOpt(GetEndSelectionIndex(), newIndex,
                                   int32_t(numOptions), 1, 1);
+      }
+      break;
+    case NS_VK_RIGHT:
+      if (shouldSelect) {
+        int dir = isVerticalRL() ? -1 : 1;
+        AdjustIndexForDisabledOpt(GetEndSelectionIndex(), newIndex,
+                                  int32_t(numOptions), dir, dir);
       }
       break;
     case NS_VK_RETURN:

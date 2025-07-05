@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* The slot:not([name]) don't match once ::details-content is enabled, and should be removed */
 slot:not([name]) {
-  display: none;
+  display: block;
+  content-visibility: hidden;
 }
 :host([open]) slot:not([name]) {
   display: revert;
+  content-visibility: visible;
 }
 
 /* See the comment around the summary styles in html.css, these rules should

@@ -9,13 +9,11 @@
 
 #include "nsContainerFrame.h"
 #include "nsCSSRenderingBorders.h"
-#include "nsIFormControlFrame.h"
 
 class gfxContext;
 class nsPresContext;
 
-class nsHTMLButtonControlFrame : public nsContainerFrame,
-                                 public nsIFormControlFrame {
+class nsHTMLButtonControlFrame : public nsContainerFrame {
  public:
   explicit nsHTMLButtonControlFrame(ComputedStyle* aStyle,
                                     nsPresContext* aPresContext)
@@ -29,9 +27,8 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput,
@@ -44,13 +41,6 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
   nsresult HandleEvent(nsPresContext* aPresContext,
                        mozilla::WidgetGUIEvent* aEvent,
                        nsEventStatus* aEventStatus) override;
-
-  void Init(nsIContent* aContent, nsContainerFrame* aParent,
-            nsIFrame* aPrevInFlow) override;
-
-  ComputedStyle* GetAdditionalComputedStyle(int32_t aIndex) const override;
-  void SetAdditionalComputedStyle(int32_t aIndex,
-                                  ComputedStyle* aComputedStyle) override;
 
 #ifdef DEBUG
   void AppendFrames(ChildListID aListID, nsFrameList&& aFrameList) override;
@@ -70,10 +60,6 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
   }
 #endif
 
-  // nsIFormControlFrame
-  void SetFocus(bool aOn, bool aRepaint) override;
-  nsresult SetFormProperty(nsAtom* aName, const nsAString& aValue) override;
-
   // Inserted child content gets its frames parented by our child block
   nsContainerFrame* GetContentInsertionFrame() override {
     return PrincipalChildList().FirstChild()->GetContentInsertionFrame();
@@ -81,14 +67,6 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
 
   // Return the ::-moz-button-content anonymous box.
   void AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) override;
-
-  mozilla::Maybe<nsCSSBorderRenderer> CreateInnerFocusBorderRenderer(
-      nsDisplayListBuilder* aBuilder, gfxContext* aRenderingContext,
-      const nsRect& aDirtyRect, const nsRect& aRect, bool* aBorderIsEmpty);
-
-  void PaintInnerFocusBorder(nsDisplayListBuilder* aBuilder,
-                             gfxContext& aRenderingContext,
-                             const nsRect& aDirtyRect, const nsRect& aRect);
 
  protected:
   nsHTMLButtonControlFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
@@ -110,8 +88,6 @@ class nsHTMLButtonControlFrame : public nsContainerFrame,
   nscoord SynthesizeFallbackBaseline(
       mozilla::WritingMode aWM,
       BaselineSharingGroup aBaselineGroup) const override;
-
-  RefPtr<mozilla::ComputedStyle> mInnerFocusStyle;
 };
 
 #endif

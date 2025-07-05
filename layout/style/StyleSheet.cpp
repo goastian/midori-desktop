@@ -408,8 +408,7 @@ StyleSheetInfo::StyleSheetInfo(StyleSheetInfo& aCopy, StyleSheet* aPrimarySheet)
       // We don't rebuild the child because we're making a copy without
       // children.
       mSourceMapURL(aCopy.mSourceMapURL),
-      mContents(Servo_StyleSheet_Clone(aCopy.mContents.get(), aPrimarySheet)
-                    .Consume()),
+      mContents(Servo_StyleSheet_Clone(aCopy.mContents.get()).Consume()),
       mURLData(aCopy.mURLData)
 #ifdef DEBUG
       ,
@@ -733,7 +732,7 @@ already_AddRefed<dom::Promise> StyleSheet::Replace(const nsACString& aText,
       css::Loader::UseSystemPrincipal::No, css::StylePreloadKind::None,
       /* aPreloadEncoding */ nullptr, /* aObserver */ nullptr,
       mConstructorDocument->NodePrincipal(), GetReferrerInfo(),
-      /* aNonce */ u""_ns, FetchPriority::Auto);
+      /* aNonce */ u""_ns, FetchPriority::Auto, nullptr);
 
   // In parallel
   // 5.1 Parse aText into rules.
@@ -827,11 +826,11 @@ void StyleSheet::RuleRemoved(css::Rule& aRule) {
   NOTIFY(RuleRemoved, (*this, aRule));
 }
 
-void StyleSheet::RuleChanged(css::Rule* aRule, StyleRuleChangeKind aKind) {
+void StyleSheet::RuleChanged(css::Rule* aRule, const StyleRuleChange& aChange) {
   MOZ_ASSERT(!aRule || HasUniqueInner(),
              "Shouldn't have mutated a shared sheet");
   SetModifiedRules();
-  NOTIFY(RuleChanged, (*this, aRule, aKind));
+  NOTIFY(RuleChanged, (*this, aRule, aChange));
 }
 
 // nsICSSLoaderObserver implementation
@@ -954,6 +953,29 @@ void StyleSheet::SubjectSubsumesInnerPrincipal(nsIPrincipal& aSubjectPrincipal,
   WillDirty();
 
   info.mPrincipal = &aSubjectPrincipal;
+}
+
+bool StyleSheet::IsDirectlyAssociatedTo(
+    dom::DocumentOrShadowRoot& aTree) const {
+  if (mParentSheet) {
+    // @import is never directly associated to a tree.
+    MOZ_ASSERT(aTree.StyleOrderIndexOfSheet(*this) ==
+               nsTArray<RefPtr<StyleSheet>>::NoIndex);
+    return false;
+  }
+  bool associated = false;
+  if (IsConstructed()) {
+    // Idea is that the adopted stylesheet list is likely to be smaller than
+    // list of adopters of a single sheet, but we could reverse the check if
+    // needed.
+    associated = aTree.AdoptedStyleSheets().Contains(this);
+    MOZ_ASSERT(associated == mAdopters.Contains(&aTree));
+  } else {
+    associated = GetAssociatedDocumentOrShadowRoot() == &aTree;
+  }
+  MOZ_ASSERT(associated == (aTree.StyleOrderIndexOfSheet(*this) !=
+                            nsTArray<RefPtr<StyleSheet>>::NoIndex));
+  return associated;
 }
 
 bool StyleSheet::AreRulesAvailable(nsIPrincipal& aSubjectPrincipal,
@@ -1139,21 +1161,38 @@ void StyleSheet::FixUpAfterInnerClone() {
 
   RefPtr<StyleLockedCssRules> rules =
       Servo_StyleSheet_GetRules(Inner().mContents.get()).Consume();
-  uint32_t index = 0;
-  while (true) {
-    uint32_t line, column;  // Actually unused.
-    RefPtr<StyleLockedImportRule> import =
-        Servo_CssRules_GetImportRuleAt(rules, index, &line, &column).Consume();
-    if (!import) {
-      // Note that only @charset rules come before @import rules, and @charset
-      // rules are parsed but skipped, so we can stop iterating as soon as we
-      // find something that isn't an @import rule.
+  size_t len = Servo_CssRules_GetRuleCount(rules.get());
+  bool reachedBody = false;
+  for (size_t i = 0; i < len; ++i) {
+    switch (Servo_CssRules_GetRuleTypeAt(rules, i)) {
+      case StyleCssRuleType::Import: {
+        MOZ_ASSERT(!reachedBody);
+        uint32_t line, column;  // Actually unused.
+        RefPtr<StyleLockedImportRule> import =
+            Servo_CssRules_GetImportRuleAt(rules, i, &line, &column).Consume();
+        MOZ_ASSERT(import);
+        if (auto* sheet =
+                const_cast<StyleSheet*>(Servo_ImportRule_GetSheet(import))) {
+          AppendStyleSheetSilently(*sheet);
+        }
+        break;
+      }
+      case StyleCssRuleType::LayerStatement:
+        break;
+      default:
+        // Note that only @charset and @layer statements can come before
+        // @import. @charset rules are parsed but skipped, so we can stop
+        // iterating as soon as we find the stylesheet body.
+        reachedBody = true;
+        break;
+    }
+#ifndef DEBUG
+    // Keep iterating in debug builds so that we can assert that we really have
+    // no more @import rules.
+    if (reachedBody) {
       break;
     }
-    auto* sheet = const_cast<StyleSheet*>(Servo_ImportRule_GetSheet(import));
-    MOZ_ASSERT(sheet);
-    AppendStyleSheetSilently(*sheet);
-    index++;
+#endif
   }
 }
 

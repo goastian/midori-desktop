@@ -14,7 +14,7 @@ schema: 1
 
 bugzilla:
   # Bugzilla product and component for this directory and subdirectories
-  product: Fenix
+  product: "Firefox for Android"
   component: "General"
 
 # Document the source of externally hosted code
@@ -31,11 +31,11 @@ origin:
 
   # Human-readable identifier for this version/release
   # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: 84be5af4171974dbe409fc82ab57fe131e17af29 (2024-06-10T08:21:03).
+  release: acb87bfc59ced0a6fcb23c8d231bd5f690fc76ed (2025-05-23T14:04:05).
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: 84be5af4171974dbe409fc82ab57fe131e17af29
+  revision: acb87bfc59ced0a6fcb23c8d231bd5f690fc76ed
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/

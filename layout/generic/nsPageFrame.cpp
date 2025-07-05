@@ -124,10 +124,11 @@ nsReflowStatus nsPageFrame::ReflowPageContent(
   // that we will respect a margin of zero if specified, assuming this means
   // the document is intended to fit the paper size exactly, and the client is
   // taking full responsibility for what happens around the edges.
+  const auto positionProperty = kidReflowInput.mStyleDisplay->mPosition;
   if (mPD->mPrintSettings->GetHonorPageRuleMargins()) {
-    const auto& margin = kidReflowInput.mStyleMargin->mMargin;
     for (const auto side : mozilla::AllPhysicalSides()) {
-      if (!margin.Get(side).IsAuto()) {
+      if (!kidReflowInput.mStyleMargin->GetMargin(side, positionProperty)
+               ->IsAuto()) {
         // Computed margins are already in the coordinate space of the content,
         // do not scale.
         const nscoord computed =
@@ -336,11 +337,19 @@ void nsPageFrame::DrawHeaderFooter(
     const nsString& aStrCenter, const nsString& aStrRight, const nsRect& aRect,
     nscoord aAscent, nscoord aHeight) {
   int32_t numStrs = 0;
-  if (!aStrLeft.IsEmpty()) numStrs++;
-  if (!aStrCenter.IsEmpty()) numStrs++;
-  if (!aStrRight.IsEmpty()) numStrs++;
+  if (!aStrLeft.IsEmpty()) {
+    numStrs++;
+  }
+  if (!aStrCenter.IsEmpty()) {
+    numStrs++;
+  }
+  if (!aStrRight.IsEmpty()) {
+    numStrs++;
+  }
 
-  if (numStrs == 0) return;
+  if (numStrs == 0) {
+    return;
+  }
   const nscoord contentWidth =
       aRect.width - (mPD->mEdgePaperMargin.left + mPD->mEdgePaperMargin.right);
   const nscoord strSpace = contentWidth / numStrs;
@@ -463,7 +472,8 @@ class nsDisplayHeaderFooter final : public nsPaintedDisplayItem {
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayHeaderFooter);
   }
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayHeaderFooter)
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayHeaderFooter)
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      gfxContext* aCtx) override {
@@ -499,7 +509,7 @@ static void PaintMarginGuides(nsIFrame* aFrame, DrawTarget* aDrawTarget,
                        JoinStyle::MITER_OR_BEVEL, CapStyle::BUTT,
                        /* mitre limit (default, not used) */ 10.0f,
                        /* set dash pattern of 2px stroke, 2px gap */
-                       ArrayLength(dashes), dashes,
+                       std::size(dashes), dashes,
                        /* dash offset */ 0.0f);
   DrawOptions options;
 
@@ -766,11 +776,7 @@ nsPageContentFrame* nsPageFrame::PageContentFrame() const {
 
 nsSize nsPageFrame::ComputePageSize() const {
   // Compute the expected page-size.
-  const nsPageFrame* const frame =
-      StaticPrefs::layout_css_allow_mixed_page_sizes()
-          ? this
-          : static_cast<nsPageFrame*>(FirstContinuation());
-  const StylePageSize& pageSize = frame->PageContentFrame()->StylePage()->mSize;
+  const StylePageSize& pageSize = PageContentFrame()->StylePage()->mSize;
   nsSize size = PresContext()->GetPageSize();
   if (pageSize.IsSize()) {
     // Use the specified size,
@@ -812,18 +818,8 @@ float nsPageFrame::ComputeSinglePPSPageSizeScale(
   MOZ_ASSERT(aContentPageSize == ComputePageSize(),
              "Incorrect content page size");
 
-  // Check for the simplest case first, an auto page-size which requires no
-  // scaling at all.
-  {
-    const nsPageFrame* const frame =
-        StaticPrefs::layout_css_allow_mixed_page_sizes()
-            ? this
-            : static_cast<nsPageFrame*>(FirstContinuation());
-    const StylePageSize& pageSize =
-        frame->PageContentFrame()->StylePage()->mSize;
-    if (pageSize.IsAuto()) {
-      return 1.0f;
-    }
+  if (PageContentFrame()->StylePage()->mSize.IsAuto()) {
+    return 1.0f;
   }
 
   const nsContainerFrame* const parent = GetParent();
@@ -854,10 +850,6 @@ float nsPageFrame::ComputeSinglePPSPageSizeScale(
 }
 
 double nsPageFrame::GetPageOrientationRotation(nsSharedPageData* aPD) const {
-  if (!StaticPrefs::layout_css_page_orientation_enabled()) {
-    return 0.0;
-  }
-
   if (aPD->PagesPerSheetInfo()->mNumPages == 1 && !PresContext()->IsScreen() &&
       aPD->mPrintSettings->GetOutputFormat() !=
           nsIPrintSettings::kOutputFormatPDF) {
@@ -1003,11 +995,12 @@ nsPageBreakFrame::nsPageBreakFrame(ComputedStyle* aStyle,
 
 nsPageBreakFrame::~nsPageBreakFrame() = default;
 
-nscoord nsPageBreakFrame::GetIntrinsicISize() {
-  return nsPresContext::CSSPixelsToAppUnits(1);
+IntrinsicSize nsPageBreakFrame::GetIntrinsicSize() {
+  IntrinsicSize intrinsicSize;
+  intrinsicSize.ISize(GetWritingMode())
+      .emplace(nsPresContext::CSSPixelsToAppUnits(1));
+  return intrinsicSize;
 }
-
-nscoord nsPageBreakFrame::GetIntrinsicBSize() { return 0; }
 
 void nsPageBreakFrame::Reflow(nsPresContext* aPresContext,
                               ReflowOutput& aReflowOutput,
@@ -1041,7 +1034,7 @@ void nsPageBreakFrame::Reflow(nsPresContext* aPresContext,
       }
     }
   }
-  LogicalSize finalSize(wm, GetIntrinsicISize(), bSize);
+  LogicalSize finalSize(wm, *GetIntrinsicSize().ISize(wm), bSize);
   // round the height down to the nearest pixel
   // XXX(mats) why???
   finalSize.BSize(wm) -=

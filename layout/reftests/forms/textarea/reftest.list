@@ -3,7 +3,7 @@
 == resize-rtl.html resize-rtl-ref.html
 == resize-rtl-vertical.html resize-rtl-ref.html
 # an offset seems to apply to the native resizer on windows so skip this test for now
-skip-if(Android) skip-if(winWidget) fuzzy-if(cocoaWidget,0-1,0-33) fuzzy-if(!winWidget&&!Android,0-5,0-10) == resize-background.html resize-background-ref.html
+skip-if(Android) skip-if(winWidget) fuzzy-if(!winWidget&&!Android,0-5,0-10) fuzzy-if(cocoaWidget,0-1,0-33) fuzzy-if(cocoaWidget&&isDebugBuild&&!swgl,0-121,0-249) == resize-background.html resize-background-ref.html # Bug 1934904
 skip-if(Android) != ltr.html rtl.html
 skip-if(Android) != ltr-scrollbar.html rtl-scrollbar.html
 skip-if(Android) != in-ltr-doc-scrollbar.html in-rtl-doc-scrollbar.html
@@ -16,3 +16,12 @@ fuzzy(0-1,0-1) == rtl.html rtl-dynamic-style.html
 == various-cols.html various-cols-ref.html
 == appearance-background-change.html appearance-background-change-ref.html
 != padding-text-overflow.html padding-text-overflow-notref.html
+
+# Autofill tests
+== autofill-blank.html autofill-preview-blank.html
+!= autofill.html autofill-blank.html
+!= autofill-preview.html autofill-preview-blank.html
+== autofill.html autofill-preview.html
+== autofill-prefilled-value.html autofill-preview.html
+== autofill-preview-line-height.html autofill-line-height.html
+== autofill-author-background.html autofill.html

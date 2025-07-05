@@ -150,7 +150,7 @@ static bool IncludeBBoxScale(const SVGAnimatedViewBox& aViewBox,
 // Given the matrix for the pattern element's own transform, this returns a
 // combined matrix including the transforms applicable to its target.
 static Matrix GetPatternMatrix(nsIFrame* aSource,
-                               const StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+                               const StyleSVGPaint nsStyleSVG::* aFillOrStroke,
                                uint16_t aPatternUnits,
                                const gfxMatrix& patternTransform,
                                const gfxRect& bbox, const gfxRect& callerBBox,
@@ -253,7 +253,7 @@ void SVGPatternFrame::PaintChildren(DrawTarget* aDrawTarget,
 already_AddRefed<SourceSurface> SVGPatternFrame::PaintPattern(
     const DrawTarget* aDrawTarget, Matrix* patternMatrix,
     const Matrix& aContextMatrix, nsIFrame* aSource,
-    StyleSVGPaint nsStyleSVG::*aFillOrStroke, float aGraphicOpacity,
+    StyleSVGPaint nsStyleSVG::* aFillOrStroke, float aGraphicOpacity,
     const gfxRect* aOverrideBounds, imgDrawingParams& aImgParams) {
   /*
    * General approach:
@@ -439,13 +439,11 @@ uint16_t SVGPatternFrame::GetEnumValue(uint32_t aIndex, nsIContent* aDefault) {
                     .GetAnimValue();
 }
 
-SVGAnimatedTransformList* SVGPatternFrame::GetPatternTransformList(
-    nsIContent* aDefault) {
-  SVGAnimatedTransformList* thisTransformList =
-      static_cast<SVGPatternElement*>(GetContent())->GetAnimatedTransformList();
-
-  if (thisTransformList && thisTransformList->IsExplicitlySet())
-    return thisTransformList;
+SVGPatternFrame* SVGPatternFrame::GetPatternTransformFrame(
+    SVGPatternFrame* aDefault) {
+  if (!StyleDisplay()->mTransform.IsNone()) {
+    return this;
+  }
 
   // Before we recurse, make sure we'll break reference loops and over long
   // reference chains:
@@ -454,23 +452,18 @@ SVGAnimatedTransformList* SVGPatternFrame::GetPatternTransformList(
                                         &sRefChainLengthCounter);
   if (MOZ_UNLIKELY(!refChainGuard.Reference())) {
     // Break reference chain
-    return static_cast<SVGPatternElement*>(aDefault)->mPatternTransform.get();
+    return aDefault;
   }
 
-  SVGPatternFrame* next = GetReferencedPattern();
-  return next ? next->GetPatternTransformList(aDefault)
-              : static_cast<SVGPatternElement*>(aDefault)
-                    ->mPatternTransform.get();
+  if (SVGPatternFrame* next = GetReferencedPattern()) {
+    return next->GetPatternTransformFrame(aDefault);
+  }
+  return aDefault;
 }
 
 gfxMatrix SVGPatternFrame::GetPatternTransform() {
-  SVGAnimatedTransformList* animTransformList =
-      GetPatternTransformList(GetContent());
-  if (!animTransformList) {
-    return SVGUtils::GetTransformMatrixInUserSpace(this);
-  }
-
-  return animTransformList->GetAnimValue().GetConsolidationMatrix();
+  return SVGUtils::GetTransformMatrixInUserSpace(
+      GetPatternTransformFrame(this));
 }
 
 const SVGAnimatedViewBox& SVGPatternFrame::GetViewBox(nsIContent* aDefault) {
@@ -633,7 +626,8 @@ gfxMatrix SVGPatternFrame::ConstructCTM(const SVGAnimatedViewBox& aViewBox,
   if (!aViewBox.IsExplicitlySet()) {
     return gfxMatrix(scaleX, 0.0, 0.0, scaleY, 0.0, 0.0);
   }
-  const SVGViewBox& viewBox = aViewBox.GetAnimValue();
+  const SVGViewBox& viewBox =
+      aViewBox.GetAnimValue() * Style()->EffectiveZoom().ToFloat();
 
   if (viewBox.height <= 0.0f || viewBox.width <= 0.0f) {
     return gfxMatrix(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);  // singular
@@ -671,7 +665,7 @@ gfxMatrix SVGPatternFrame::ConstructCTM(const SVGAnimatedViewBox& aViewBox,
 // SVGPaintServerFrame methods:
 already_AddRefed<gfxPattern> SVGPatternFrame::GetPaintServerPattern(
     nsIFrame* aSource, const DrawTarget* aDrawTarget,
-    const gfxMatrix& aContextMatrix, StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+    const gfxMatrix& aContextMatrix, StyleSVGPaint nsStyleSVG::* aFillOrStroke,
     float aGraphicOpacity, imgDrawingParams& aImgParams,
     const gfxRect* aOverrideBounds) {
   if (aGraphicOpacity == 0.0f) {

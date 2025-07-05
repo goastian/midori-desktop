@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.annotation.VisibleForTesting
 import androidx.annotation.VisibleForTesting.Companion.NONE
+import androidx.core.content.edit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mozilla.components.Build
@@ -27,7 +28,7 @@ import java.util.concurrent.TimeUnit
 private const val GEOIP_SERVICE_URL = "https://location.services.mozilla.com/v1/"
 private const val CONNECT_TIMEOUT_SECONDS = 10L
 private const val READ_TIMEOUT_SECONDS = 10L
-private const val USER_AGENT = "MozAC/" + Build.version
+private const val USER_AGENT = "MozAC/" + Build.VERSION
 private const val EMPTY_REQUEST_BODY = "{}"
 private const val CACHE_FILE = "mozac.service.location.region"
 private const val KEY_COUNTRY_CODE = "country_code"
@@ -97,12 +98,11 @@ class MozillaLocationService(
     }
 
     private fun Context.cacheRegion(region: LocationService.Region) {
-        regionCache()
-            .edit()
-            .putString(KEY_COUNTRY_CODE, region.countryCode)
-            .putString(KEY_COUNTRY_NAME, region.countryName)
-            .putLong(KEY_CACHED_AT, currentTime())
-            .apply()
+        regionCache().edit {
+            putString(KEY_COUNTRY_CODE, region.countryCode)
+            putString(KEY_COUNTRY_NAME, region.countryName)
+            putLong(KEY_CACHED_AT, currentTime())
+        }
     }
 }
 
@@ -131,10 +131,7 @@ private fun Context.hasCachedRegion(): Boolean {
 
 @VisibleForTesting(otherwise = NONE)
 internal fun Context.clearRegionCache() {
-    regionCache()
-        .edit()
-        .clear()
-        .apply()
+    regionCache().edit { clear() }
 }
 
 private fun Context.regionCache(): SharedPreferences {

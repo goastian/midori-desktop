@@ -6,7 +6,17 @@ package mozilla.components.support.utils
 
 import android.graphics.Color
 import androidx.annotation.ColorInt
+import androidx.annotation.FloatRange
+import androidx.compose.ui.graphics.lerp
 import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.toColorInt
+import androidx.compose.ui.graphics.Color as ComposeColor
+
+/**
+ * Default color for disabled views in normal mode for light and dark theme.
+ */
+private const val LIGHT_GRAY_HEX = "#66FBFBFE"
+private const val DARK_GRAY_HEX = "#6615141A"
 
 object ColorUtils {
 
@@ -16,6 +26,18 @@ object ColorUtils {
     @JvmStatic
     fun getReadableTextColor(@ColorInt backgroundColor: Int): Int {
         return if (isDark(backgroundColor)) Color.WHITE else Color.BLACK
+    }
+
+    /**
+     * Get disabled text color (light gray or dark gray) that is readable on top of the provided background color.
+     */
+    @JvmStatic
+    fun getDisabledReadableTextColor(@ColorInt backgroundColor: Int): Int {
+        return if (isDark(backgroundColor)) {
+            LIGHT_GRAY_HEX.toColorInt()
+        } else {
+            DARK_GRAY_HEX.toColorInt()
+        }
     }
 
     /**
@@ -42,4 +64,34 @@ object ColorUtils {
         // humans perceive color.
         return (0.299 * red + 0.587 * green + 0.114 * blue).toInt()
     }
+
+    /**
+     * Calculates the alpha value corresponding to the given opacity percentage.
+     *
+     * @param opacity The desired opacity percentage (0 to 100).
+     * @return The alpha value (0 to 255) to be used in a color with the specified opacity.
+     */
+    @JvmStatic
+    @SuppressWarnings("MagicNumber")
+    fun calculateAlphaFromPercentage(opacity: Int): Int {
+        return (opacity * 255 / 100).coerceIn(0, 255)
+    }
+
+    /**
+     * Produce a lighter color than this using the given factor.
+     *
+     * @param factor How much lighter the new color should be.
+     * A higher value will produce a lighter color.
+     */
+    fun ComposeColor.lighten(@FloatRange(from = 0.0, to = 1.0) factor: Float) =
+        lerp(this, ComposeColor.White, factor)
+
+    /**
+     * Produce a darker color than this using the given factor.
+     *
+     * @param factor How much darken the new color should be.
+     * A higher value will produce a darker color.
+     */
+    fun ComposeColor.darken(@FloatRange(from = 0.0, to = 1.0) factor: Float) =
+        lerp(this, ComposeColor.Black, factor)
 }

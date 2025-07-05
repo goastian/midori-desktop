@@ -109,29 +109,23 @@ nsresult nsFirstLetterFrame::GetChildFrameContainingOffset(
 // Needed for non-floating first-letter frames and for the continuations
 // following the first-letter that we also use nsFirstLetterFrame for.
 /* virtual */
-void nsFirstLetterFrame::AddInlineMinISize(
-    gfxContext* aRenderingContext, nsIFrame::InlineMinISizeData* aData) {
-  DoInlineMinISize(aRenderingContext, aData);
+void nsFirstLetterFrame::AddInlineMinISize(const IntrinsicSizeInput& aInput,
+                                           InlineMinISizeData* aData) {
+  DoInlineMinISize(aInput, aData);
 }
 
 // Needed for non-floating first-letter frames and for the continuations
 // following the first-letter that we also use nsFirstLetterFrame for.
 /* virtual */
-void nsFirstLetterFrame::AddInlinePrefISize(
-    gfxContext* aRenderingContext, nsIFrame::InlinePrefISizeData* aData) {
-  DoInlinePrefISize(aRenderingContext, aData);
+void nsFirstLetterFrame::AddInlinePrefISize(const IntrinsicSizeInput& aInput,
+                                            InlinePrefISizeData* aData) {
+  DoInlinePrefISize(aInput, aData);
 }
 
 // Needed for floating first-letter frames.
-/* virtual */
-nscoord nsFirstLetterFrame::GetMinISize(gfxContext* aRenderingContext) {
-  return nsLayoutUtils::MinISizeFromInline(this, aRenderingContext);
-}
-
-// Needed for floating first-letter frames.
-/* virtual */
-nscoord nsFirstLetterFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  return nsLayoutUtils::PrefISizeFromInline(this, aRenderingContext);
+nscoord nsFirstLetterFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                           IntrinsicISizeType aType) {
+  return IntrinsicISizeFromInline(aInput, aType);
 }
 
 /* virtual */
@@ -176,19 +170,18 @@ bool nsFirstLetterFrame::UseTightBounds() const {
   }
 
   const auto wm = GetWritingMode();
-  const auto& margin = StyleMargin()->mMargin;
-  const auto& bStart = margin.GetBStart(wm);
+  const auto* styleMargin = StyleMargin();
+  const auto positionProperty = StyleDisplay()->mPosition;
+  const auto bStart =
+      styleMargin->GetMargin(LogicalSide::BStart, wm, positionProperty);
   // Currently, we only check for margins with negative *length* values;
   // negative percentages seem unlikely to be used/useful in this context.
-  if (bStart.ConvertsToLength() && bStart.ToLength() < 0) {
+  if (bStart->ConvertsToLength() && bStart->ToLength() < 0) {
     return false;
   }
-  const auto& bEnd = margin.GetBEnd(wm);
-  if (bEnd.ConvertsToLength() && bEnd.ToLength() < 0) {
-    return false;
-  }
-
-  return true;
+  const auto bEnd =
+      styleMargin->GetMargin(LogicalSide::BEnd, wm, positionProperty);
+  return !(bEnd->ConvertsToLength() && bEnd->ToLength() < 0);
 }
 
 void nsFirstLetterFrame::Reflow(nsPresContext* aPresContext,
@@ -229,6 +222,8 @@ void nsFirstLetterFrame::Reflow(nsPresContext* aPresContext,
     ReflowInput rs(aPresContext, aReflowInput, kid, kidAvailSize);
     nsLineLayout ll(aPresContext, nullptr, aReflowInput, nullptr, nullptr);
 
+    // This frame does not get constructed for an empty inline frame, so
+    // `CollapseEmptyInlineFramesInLine` should not matter.
     ll.BeginLineReflow(
         bp.IStart(wm), bp.BStart(wm), availSize.ISize(wm), NS_UNCONSTRAINEDSIZE,
         false, true, kidWritingMode,
@@ -368,13 +363,10 @@ void nsFirstLetterFrame::CreateContinuationForFloatingParent(
   // this frame's ComputedStyle's parent in the presence of ::first-line,
   // which we do want the continuation to inherit from.
   ComputedStyle* parentSC = parent->Style();
-  if (parentSC) {
-    RefPtr<ComputedStyle> newSC;
-    newSC =
-        presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
-    continuation->SetComputedStyle(newSC);
-    nsLayoutUtils::MarkDescendantsDirty(continuation);
-  }
+  RefPtr<ComputedStyle> newSC =
+      presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
+  continuation->SetComputedStyle(newSC);
+  nsLayoutUtils::MarkDescendantsDirty(continuation);
 
   // XXX Bidi may not be involved but we have to use the list name
   // FrameChildListID::NoReflowPrincipal because this is just like creating a
@@ -384,6 +376,56 @@ void nsFirstLetterFrame::CreateContinuationForFloatingParent(
                        nullptr, nsFrameList(continuation, continuation));
 
   *aContinuation = continuation;
+}
+
+nsTextFrame* nsFirstLetterFrame::CreateContinuationForFramesAfter(
+    nsTextFrame* aFrame) {
+  auto* presShell = PresShell();
+  auto* parent = GetParent();
+  auto* letterContinuation = static_cast<nsFirstLetterFrame*>(
+      presShell->FrameConstructor()->CreateContinuingFrame(this, parent, true));
+
+  parent->InsertFrames(FrameChildListID::NoReflowPrincipal, this, nullptr,
+                       nsFrameList(letterContinuation, letterContinuation));
+
+  nsTextFrame* next;
+  auto list = mFrames.TakeFramesAfter(aFrame);
+  if (list.NotEmpty()) {
+    // If we already have additional frames, just move them to the continuation.
+    next = static_cast<nsTextFrame*>(list.FirstChild());
+    for (auto* frame : list) {
+      frame->SetParent(letterContinuation);
+    }
+    // If the first frame of the list was not a fluid continuation, we need to
+    // insert one there to accept the overflowing text without disrupting the
+    // existing fixed continuation.
+    if (!next->HasAnyStateBits(NS_FRAME_IS_FLUID_CONTINUATION)) {
+      next = static_cast<nsTextFrame*>(
+          presShell->FrameConstructor()->CreateContinuingFrame(
+              aFrame, letterContinuation));
+      list.InsertFrame(letterContinuation, nullptr, next);
+    }
+    letterContinuation->SetInitialChildList(FrameChildListID::Principal,
+                                            std::move(list));
+  } else {
+    // We don't have extra frames already, so create a new text continuation.
+    next = static_cast<nsTextFrame*>(
+        presShell->FrameConstructor()->CreateContinuingFrame(
+            aFrame, letterContinuation));
+    letterContinuation->SetInitialChildList(FrameChildListID::Principal,
+                                            nsFrameList(next, next));
+  }
+
+  // Update the computed style of the continuation text frame(s) that are
+  // no longer supposed to be first-letter style.
+  ComputedStyle* parentSC = letterContinuation->Style();
+  RefPtr<ComputedStyle> newSC =
+      presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
+  for (auto* frame : letterContinuation->PrincipalChildList()) {
+    frame->SetComputedStyle(newSC);
+  }
+
+  return next;
 }
 
 void nsFirstLetterFrame::DrainOverflowFrames(nsPresContext* aPresContext) {

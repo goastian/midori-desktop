@@ -14,10 +14,7 @@
 #include "nsDisplayList.h"
 
 /**
- * Abstract class that provides simple fixed-size layout for leaf objects
- * (e.g. images, form elements, etc.). Deriviations provide the implementation
- * of the GetDesiredSize method. The rendering method knows how to render
- * borders and backgrounds.
+ * Abstract class that provides simple fixed-size layout for leaf objects.
  */
 class nsLeafFrame : public nsIFrame {
  public:
@@ -27,15 +24,11 @@ class nsLeafFrame : public nsIFrame {
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  /**
-   * Both GetMinISize and GetPrefISize will return whatever GetIntrinsicISize
-   * returns.
-   */
-  virtual nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  virtual nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
   /**
-   * Our auto size is just intrinsic width and intrinsic height.
+   * Our auto size is just the intrinsic size.
    */
   mozilla::LogicalSize ComputeAutoSize(
       gfxContext* aRenderingContext, mozilla::WritingMode aWM,
@@ -48,37 +41,15 @@ class nsLeafFrame : public nsIFrame {
   /**
    * Each of our subclasses should provide its own Reflow impl:
    */
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override = 0;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override = 0;
 
  protected:
   nsLeafFrame(ComputedStyle* aStyle, nsPresContext* aPresContext, ClassID aID)
       : nsIFrame(aStyle, aPresContext, aID) {}
 
   virtual ~nsLeafFrame();
-
-  /**
-   * Return the intrinsic isize of the frame's content area. Note that this
-   * should not include borders or padding and should not depend on the applied
-   * styles.
-   */
-  virtual nscoord GetIntrinsicISize() = 0;
-
-  /**
-   * Return the intrinsic bsize of the frame's content area.  This should not
-   * include border or padding.  This will only matter if the specified bsize
-   * is auto.  Note that subclasses must either implement this or override
-   * Reflow and ComputeAutoSize; the default Reflow and ComputeAutoSize impls
-   * call this method.
-   */
-  virtual nscoord GetIntrinsicBSize();
-
-  /**
-   * Set aDesiredSize to be the available size
-   */
-  void SizeToAvailSize(const ReflowInput& aReflowInput,
-                       ReflowOutput& aDesiredSize);
 };
 
 #endif /* nsLeafFrame_h___ */

@@ -19,6 +19,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/StaticPrefs_svg.h"
 #include "mozilla/SVGContextPaint.h"
 #include "mozilla/SVGContentUtils.h"
 #include "mozilla/SVGObserverUtils.h"
@@ -83,6 +84,11 @@ nsresult SVGGeometryFrame::AttributeChanged(int32_t aNameSpaceID,
 /* virtual */
 void SVGGeometryFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
   nsIFrame::DidSetComputedStyle(aOldComputedStyle);
+  if (StyleSVGReset()->HasNonScalingStroke() &&
+      (!aOldComputedStyle ||
+       !aOldComputedStyle->StyleSVGReset()->HasNonScalingStroke())) {
+    SVGUtils::UpdateNonScalingStrokeStateBit(this);
+  }
   auto* element = static_cast<SVGGeometryElement*>(GetContent());
   if (!aOldComputedStyle) {
     element->ClearAnyCachedPath();
@@ -104,23 +110,27 @@ void SVGGeometryFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
         // For clipPath we use clip-rule as the path's fill-rule.
         element->ClearAnyCachedPath();
       }
-    } else {
-      if (StyleSVG()->mFillRule != oldStyleSVG->mFillRule) {
-        // Moz2D Path objects are fill-rule specific.
-        element->ClearAnyCachedPath();
-      }
+    } else if (StyleSVG()->mFillRule != oldStyleSVG->mFillRule) {
+      // Moz2D Path objects are fill-rule specific.
+      element->ClearAnyCachedPath();
     }
   }
 
-  if (element->IsGeometryChangedViaCSS(*Style(), *aOldComputedStyle)) {
+  if (StyleDisplay()->CalcTransformPropertyDifference(
+          *aOldComputedStyle->StyleDisplay())) {
+    NotifySVGChanged(TRANSFORM_CHANGED);
+  }
+
+  if (element->IsGeometryChangedViaCSS(*Style(), *aOldComputedStyle) ||
+      aOldComputedStyle->EffectiveZoom() != Style()->EffectiveZoom()) {
     element->ClearAnyCachedPath();
     SVGObserverUtils::InvalidateRenderingObservers(this);
   }
 }
 
-bool SVGGeometryFrame::IsSVGTransformed(
-    gfx::Matrix* aOwnTransform, gfx::Matrix* aFromParentTransform) const {
-  return SVGUtils::IsSVGTransformed(this, aOwnTransform, aFromParentTransform);
+bool SVGGeometryFrame::DoGetParentSVGTransforms(
+    gfx::Matrix* aFromParentTransform) const {
+  return SVGUtils::GetParentSVGTransforms(this, aFromParentTransform);
 }
 
 void SVGGeometryFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -236,9 +246,7 @@ nsIFrame* SVGGeometryFrame::GetFrameForPoint(const gfxPoint& aPoint) {
       // Naturally we also need to transform the point into the same
       // coordinate system in order to hit-test against the path.
       point = ToMatrix(userToOuterSVG).TransformPoint(point);
-      RefPtr<PathBuilder> builder =
-          path->TransformedCopyToBuilder(ToMatrix(userToOuterSVG), fillRule);
-      path = builder->Finish();
+      Path::TransformAndSetFillRule(path, ToMatrix(userToOuterSVG), fillRule);
     }
     isHit = path->StrokeContainsPoint(stroke, point, {});
   }
@@ -437,77 +445,64 @@ SVGBBox SVGGeometryFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
       }
     }
 
-    // Be careful when replacing the following logic to get the fill and stroke
-    // extents independently (instead of computing the stroke extents from the
-    // path extents). You may think that you can just use the stroke extents if
-    // there is both a fill and a stroke. In reality it's necessary to
-    // calculate both the fill and stroke extents, and take the union of the
-    // two. There are two reasons for this:
-    //
-    // # Due to stroke dashing, in certain cases the fill extents could
-    //   actually extend outside the stroke extents.
-    // # If the stroke is very thin, cairo won't paint any stroke, and so the
-    //   stroke bounds that it will return will be empty.
-
-    Rect pathBBoxExtents = pathInBBoxSpace->GetBounds();
-    if (!pathBBoxExtents.IsFinite()) {
-      // This can happen in the case that we only have a move-to command in the
-      // path commands, in which case we know nothing gets rendered.
-      return bbox;
-    }
-
     // Account for fill:
-    if (getFill) {
+    if (getFill && !getStroke) {
+      Rect pathBBoxExtents = pathInBBoxSpace->GetBounds();
+      if (!pathBBoxExtents.IsFinite()) {
+        // This can happen in the case that we only have a move-to command in
+        // the path commands, in which case we know nothing gets rendered.
+        return bbox;
+      }
       bbox = pathBBoxExtents;
     }
 
     // Account for stroke:
     if (getStroke) {
-#if 0
-      // This disabled code is how we would calculate the stroke bounds using
-      // Moz2D Path::GetStrokedBounds(). Unfortunately at the time of writing
-      // it there are two problems that prevent us from using it.
+      // Be careful when replacing the following logic to get the fill and
+      // stroke extents independently.
+      // You may think that you can just use the stroke extents if
+      // there is both a fill and a stroke. In reality it may be necessary to
+      // calculate both the fill and stroke extents.
+      // There are two reasons for this:
       //
-      // First, it seems that some of the Moz2D backends are really dumb. Not
-      // only do some GetStrokeOptions() implementations sometimes
-      // significantly overestimate the stroke bounds, but if an argument is
-      // passed for the aTransform parameter then they just return bounds-of-
-      // transformed-bounds.  These two things combined can lead the bounds to
-      // be unacceptably oversized, leading to massive over-invalidation.
-      //
-      // Second, the way we account for non-scaling-stroke by transforming the
-      // path using the transform to the outer-<svg> element is not compatible
-      // with the way that SVGGeometryFrame::Reflow() inserts a scale
-      // into aToBBoxUserspace and then scales the bounds that we return.
-      SVGContentUtils::AutoStrokeOptions strokeOptions;
-      SVGContentUtils::GetStrokeOptions(&strokeOptions, element,
-                                        Style(), nullptr,
-                                        SVGContentUtils::eIgnoreStrokeDashing);
+      // # Due to stroke dashing, in certain cases the fill extents could
+      //   actually extend outside the stroke extents.
+      // # If the stroke is very thin, cairo won't paint any stroke, and so the
+      //   stroke bounds that it will return will be empty.
+
       Rect strokeBBoxExtents;
-      gfxMatrix userToOuterSVG;
-      if (SVGUtils::GetNonScalingStrokeTransform(this, &userToOuterSVG)) {
-        Matrix outerSVGToUser = ToMatrix(userToOuterSVG);
-        outerSVGToUser.Invert();
-        Matrix outerSVGToBBox = aToBBoxUserspace * outerSVGToUser;
-        RefPtr<PathBuilder> builder =
-          pathInUserSpace->TransformedCopyToBuilder(ToMatrix(userToOuterSVG));
-        RefPtr<Path> pathInOuterSVGSpace = builder->Finish();
-        strokeBBoxExtents =
-          pathInOuterSVGSpace->GetStrokedBounds(strokeOptions, outerSVGToBBox);
+      if (StaticPrefs::svg_Moz2D_strokeBounds_enabled()) {
+        gfxMatrix userToOuterSVG;
+        if (SVGUtils::GetNonScalingStrokeTransform(this, &userToOuterSVG)) {
+          Matrix outerSVGToUser = ToMatrix(userToOuterSVG);
+          outerSVGToUser.Invert();
+          Matrix outerSVGToBBox = aToBBoxUserspace * outerSVGToUser;
+          RefPtr<PathBuilder> builder =
+              pathInUserSpace->TransformedCopyToBuilder(
+                  ToMatrix(userToOuterSVG));
+          RefPtr<Path> pathInOuterSVGSpace = builder->Finish();
+          strokeBBoxExtents = pathInOuterSVGSpace->GetStrokedBounds(
+              strokeOptions, outerSVGToBBox);
+        } else {
+          strokeBBoxExtents = pathInUserSpace->GetStrokedBounds(
+              strokeOptions, aToBBoxUserspace);
+        }
+        if (strokeBBoxExtents.IsEmpty() && getFill) {
+          strokeBBoxExtents = pathInBBoxSpace->GetBounds();
+          if (!strokeBBoxExtents.IsFinite()) {
+            return bbox;
+          }
+        }
       } else {
-        strokeBBoxExtents =
-          pathInUserSpace->GetStrokedBounds(strokeOptions, aToBBoxUserspace);
+        Rect pathBBoxExtents = pathInBBoxSpace->GetBounds();
+        if (!pathBBoxExtents.IsFinite()) {
+          return bbox;
+        }
+        strokeBBoxExtents = ToRect(SVGUtils::PathExtentsToMaxStrokeExtents(
+            ThebesRect(pathBBoxExtents), this, ThebesMatrix(aToBBoxUserspace)));
       }
       MOZ_ASSERT(strokeBBoxExtents.IsFinite(), "bbox is about to go bad");
       bbox.UnionEdges(strokeBBoxExtents);
-#else
-      // For now we just use SVGUtils::PathExtentsToMaxStrokeExtents:
-      gfxRect strokeBBoxExtents = SVGUtils::PathExtentsToMaxStrokeExtents(
-          ThebesRect(pathBBoxExtents), this, ThebesMatrix(aToBBoxUserspace));
-      MOZ_ASSERT(ToRect(strokeBBoxExtents).IsFinite(),
-                 "bbox is about to go bad");
-      bbox.UnionEdges(strokeBBoxExtents);
-#endif
     }
   }
 
@@ -544,8 +539,7 @@ gfxMatrix SVGGeometryFrame::GetCanvasTM() {
 
   auto* parent = static_cast<SVGContainerFrame*>(GetParent());
   auto* content = static_cast<SVGGraphicsElement*>(GetContent());
-
-  return content->PrependLocalTransformsTo(parent->GetCanvasTM());
+  return content->ChildToUserSpaceTransform() * parent->GetCanvasTM();
 }
 
 void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
@@ -566,11 +560,7 @@ void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
 
   SVGGeometryElement* element = static_cast<SVGGeometryElement*>(GetContent());
 
-  AntialiasMode aaMode =
-      (StyleSVG()->mShapeRendering == StyleShapeRendering::Optimizespeed ||
-       StyleSVG()->mShapeRendering == StyleShapeRendering::Crispedges)
-          ? AntialiasMode::NONE
-          : AntialiasMode::SUBPIXEL;
+  AntialiasMode aaMode = SVGUtils::ToAntialiasMode(StyleSVG()->mShapeRendering);
 
   // We wait as late as possible before setting the transform so that we don't
   // set it unnecessarily if we return early (it's an expensive operation for
@@ -639,9 +629,7 @@ void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
       gfxMatrix outerSVGToUser = userToOuterSVG;
       outerSVGToUser.Invert();
       aContext->Multiply(outerSVGToUser);
-      RefPtr<PathBuilder> builder =
-          path->TransformedCopyToBuilder(ToMatrix(userToOuterSVG), fillRule);
-      path = builder->Finish();
+      Path::TransformAndSetFillRule(path, ToMatrix(userToOuterSVG), fillRule);
     }
     GeneralPattern strokePattern;
     SVGUtils::MakeStrokePatternFor(this, aContext, &strokePattern, aImgParams,
@@ -715,9 +703,7 @@ bool SVGGeometryFrame::CreateWebRenderCommands(
     mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder, DisplaySVGGeometry* aItem,
     bool aDryRun) {
-  if (!StyleVisibility()->IsVisible()) {
-    return true;
-  }
+  MOZ_ASSERT(StyleVisibility()->IsVisible());
 
   SVGGeometryElement* element = static_cast<SVGGeometryElement*>(GetContent());
 

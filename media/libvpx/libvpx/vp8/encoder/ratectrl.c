@@ -259,9 +259,9 @@ void vp8_setup_key_frame(VP8_COMP *cpi) {
   /* Make sure we initialize separate contexts for altref,gold, and normal.
    * TODO shouldn't need 3 different copies of structure to do this!
    */
-  memcpy(&cpi->lfc_a, &cpi->common.fc, sizeof(cpi->common.fc));
-  memcpy(&cpi->lfc_g, &cpi->common.fc, sizeof(cpi->common.fc));
-  memcpy(&cpi->lfc_n, &cpi->common.fc, sizeof(cpi->common.fc));
+  cpi->lfc_a = cpi->common.fc;
+  cpi->lfc_g = cpi->common.fc;
+  cpi->lfc_n = cpi->common.fc;
 
   cpi->common.filter_level = cpi->common.base_qindex * 3 / 8;
 
@@ -329,6 +329,11 @@ static void calc_iframe_target_size(VP8_COMP *cpi) {
     if (cpi->oxcf.number_of_layers == 1) {
       kf_boost =
           VPXMAX(initial_boost, (int)round(2 * cpi->output_framerate - 16));
+      // cpi->output_framerate may be as large as 10M. Keep kf_boost small
+      // enough to allow for integer math when multiplying by values in
+      // kf_boost_qadjustment[].
+      const int kMaxKfBoost = 2000;
+      if (kf_boost > kMaxKfBoost) kf_boost = kMaxKfBoost;
     } else {
       /* Initial factor: set target size to: |3.0 * per_frame_bandwidth|. */
       kf_boost = initial_boost;

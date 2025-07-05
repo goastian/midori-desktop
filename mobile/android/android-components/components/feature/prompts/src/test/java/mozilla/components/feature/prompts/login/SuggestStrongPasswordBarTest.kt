@@ -5,57 +5,67 @@
 package mozilla.components.feature.prompts.login
 
 import android.view.View
-import androidx.appcompat.widget.AppCompatTextView
-import androidx.core.view.isVisible
-import androidx.recyclerview.widget.RecyclerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import mozilla.components.feature.prompts.R
 import mozilla.components.feature.prompts.concept.PasswordPromptView
+import mozilla.components.feature.prompts.concept.ToggleablePrompt
 import mozilla.components.support.test.ext.appCompatContext
 import mozilla.components.support.test.mock
-import org.junit.Assert
+import mozilla.components.support.test.robolectric.testContext
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mockito
+import org.mockito.Mockito.spy
+import org.mockito.Mockito.verify
 
 @RunWith(AndroidJUnit4::class)
 class SuggestStrongPasswordBarTest {
 
     @Test
     fun `hide prompt updates visibility`() {
-        val bar = Mockito.spy(SuggestStrongPasswordBar(appCompatContext))
+        val bar = spy(SuggestStrongPasswordBar(appCompatContext))
+
         bar.hidePrompt()
-        Mockito.verify(bar).visibility = View.GONE
+
+        verify(bar).visibility = View.GONE
     }
 
     @Test
-    fun `listener is invoked when clicking use strong password option`() {
+    fun `show prompt updates visibility`() {
         val bar = SuggestStrongPasswordBar(appCompatContext)
         val listener: PasswordPromptView.Listener = mock()
-        val suggestedPassword = "generatedPassword123#"
-        val url = "https://wwww.abc.com"
-        val onSaveLoginWithGeneratedPass: (String, String) -> Unit = mock()
-        Assert.assertNull(bar.listener)
-        bar.listener = listener
-        bar.showPrompt(suggestedPassword, url, onSaveLoginWithGeneratedPass)
-        bar.findViewById<AppCompatTextView>(R.id.use_strong_password).performClick()
-        Mockito.verify(listener)
-            .onUseGeneratedPassword(suggestedPassword, url, onSaveLoginWithGeneratedPass)
+        assertNull(bar.passwordPromptListener)
+        bar.passwordPromptListener = listener
+        assertNotNull(bar.passwordPromptListener)
+
+        bar.showPrompt()
+
+        assertTrue(bar.isPromptDisplayed)
     }
 
     @Test
-    fun `view is expanded when clicking header`() {
-        val bar = SuggestStrongPasswordBar(appCompatContext)
-        val suggestedPassword = "generatedPassword123#"
+    fun `WHEN the prompt is shown THEN update state to reflect that and inform listeners about it`() {
+        val bar = SuggestStrongPasswordBar(testContext)
+        val listener: ToggleablePrompt.Listener = mock()
+        bar.toggleablePromptListener = listener
 
-        bar.showPrompt(suggestedPassword, "") { _, _ -> }
+        bar.showPrompt()
 
-        bar.findViewById<AppCompatTextView>(R.id.suggest_strong_password_header).performClick()
-        // Expanded
-        Assert.assertTrue(bar.findViewById<RecyclerView>(R.id.use_strong_password).isVisible)
+        assertTrue(bar.isPromptDisplayed)
+        verify(listener).onShown()
+    }
 
-        bar.findViewById<AppCompatTextView>(R.id.suggest_strong_password_header).performClick()
-        // Hidden
-        Assert.assertFalse(bar.findViewById<RecyclerView>(R.id.use_strong_password).isVisible)
+    @Test
+    fun `WHEN the prompt is hidden THEN update state to reflect that and inform listeners about it`() {
+        val bar = SuggestStrongPasswordBar(testContext)
+        val listener: ToggleablePrompt.Listener = mock()
+        bar.toggleablePromptListener = listener
+
+        bar.hidePrompt()
+
+        assertFalse(bar.isPromptDisplayed)
+        verify(listener).onHidden()
     }
 }

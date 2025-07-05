@@ -29,6 +29,7 @@ import mozilla.components.concept.engine.webextension.WebExtensionRuntime
 import mozilla.components.concept.engine.webextension.isBlockListed
 import mozilla.components.concept.engine.webextension.isDisabledIncompatible
 import mozilla.components.concept.engine.webextension.isDisabledUnsigned
+import mozilla.components.concept.engine.webextension.isSoftBlocked
 import mozilla.components.concept.engine.webextension.isUnsupported
 import mozilla.components.feature.addons.update.AddonUpdater
 import mozilla.components.feature.addons.update.AddonUpdater.Status
@@ -38,6 +39,8 @@ import java.util.Collections.newSetFromMap
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
+internal const val SHORT_READ_TIMEOUT_IN_SECONDS = 3L
+
 /**
  * Provides access to installed and recommended [Addon]s and manages their states.
  *
@@ -46,6 +49,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @property addonsProvider The [AddonsProvider] to query available [Addon]s.
  * @property addonUpdater The [AddonUpdater] instance to use when checking / triggering
  * updates.
+ * @param ioDispatcher Coroutine dispatcher for IO operations.
  */
 @Suppress("LargeClass")
 class AddonManager(
@@ -53,6 +57,7 @@ class AddonManager(
     private val runtime: WebExtensionRuntime,
     private val addonsProvider: AddonsProvider,
     private val addonUpdater: AddonUpdater,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     @VisibleForTesting
@@ -79,7 +84,10 @@ class AddonManager(
      */
     @Throws(AddonManagerException::class)
     @Suppress("TooGenericExceptionCaught")
-    suspend fun getAddons(waitForPendingActions: Boolean = true, allowCache: Boolean = true): List<Addon> {
+    suspend fun getAddons(
+        waitForPendingActions: Boolean = true,
+        allowCache: Boolean = true,
+    ): List<Addon> = withContext(ioDispatcher) {
         try {
             // Make sure extension support is initialized, i.e. the state of all installed extensions is known.
             WebExtensionSupport.awaitInitialization()
@@ -89,6 +97,19 @@ class AddonManager(
                 pendingAddonActions.awaitAll()
             }
 
+            val readTimeoutInSeconds = if (installedExtensions.any { !it.value.isBuiltIn() }) {
+                // When the user has already installed any extension, they most likely want to
+                // manage an existing extension. To avoid excessive delays when the network is
+                // slow, choose a very conservative deadline.
+                SHORT_READ_TIMEOUT_IN_SECONDS
+            } else {
+                // When the set of installed extensions is empty, there is no criticial information
+                // that needs to be displayed sooner. Thus we can patiently wait until the featured
+                // extensions have been fetched (until the default DEFAULT_READ_TIMEOUT_IN_SECONDS
+                // timeout is reached).
+                null
+            }
+
             // Get all the featured add-ons not installed from provider.
             // NB: We're keeping translations only for the default locale.
             var featuredAddons = emptyList<Addon>()
@@ -96,7 +117,7 @@ class AddonManager(
                 val userLanguage = Locale.getDefault().language
                 val locales = listOf(userLanguage)
                 featuredAddons =
-                    addonsProvider.getFeaturedAddons(allowCache, language = userLanguage)
+                    addonsProvider.getFeaturedAddons(allowCache, readTimeoutInSeconds, language = userLanguage)
                         .filter { addon -> !installedExtensions.containsKey(addon.id) }
                         .map { addon -> addon.filterTranslations(locales) }
             } catch (throwable: Throwable) {
@@ -113,7 +134,34 @@ class AddonManager(
                     Addon.newFromWebExtension(extension, installedState)
                 }
 
-            return featuredAddons + installedAddons
+            return@withContext featuredAddons + installedAddons
+        } catch (throwable: Throwable) {
+            throw AddonManagerException(throwable)
+        }
+    }
+
+    /**
+     * Returns the [Addon] for an installed extension with the given ID.
+     *
+     * @param addonId The id of the installed add-on.
+     * @throws AddonManagerException in case of a problem reading from
+     * the [addonsProvider] or querying web extension state from the engine / store.
+     */
+    @Throws(AddonManagerException::class)
+    @Suppress("TooGenericExceptionCaught")
+    suspend fun getAddonByID(addonId: String): Addon? = withContext(ioDispatcher) {
+        try {
+            WebExtensionSupport.awaitInitialization()
+
+            // If there was a way to wait for a specific add-on, we would, but for now just await
+            // all pending add-on actions.
+            pendingAddonActions.awaitAll()
+
+            val addon = installedExtensions[addonId]?.let { extension ->
+                val installedState = toInstalledState(extension)
+                Addon.newFromWebExtension(extension, installedState)
+            }
+            return@withContext addon
         } catch (throwable: Throwable) {
             throw AddonManagerException(throwable)
         }
@@ -511,9 +559,23 @@ class AddonManager(
  */
 class AddonManagerException(throwable: Throwable) : Exception(throwable)
 
+/**
+ * This method returns a single [Addon.DisabledReason] from a [WebExtension] instance, which
+ * can have more that 1 disabled flag. This is fine as long as we use this method in UI and
+ * we don't need to know that an [Addon] is disabled for multiple reasons.
+ *
+ * A concrete example is when an [Addon] is soft-blocked and the user has enabled/disabled
+ * this [Addon] manually (which is possible for soft-blocked add-ons). When that happens,
+ * the [Addon] is soft-blocked per the `BlocklistState` as well as user-disabled. This
+ * method would only return `Addon.DisabledReason.SOFT_BLOCKED` in this case. That's fine
+ * for now because we want to always show the error message to the users, but it might not
+ * always be desirable.
+ */
 internal fun WebExtension.getDisabledReason(): Addon.DisabledReason? {
     return if (isBlockListed()) {
         Addon.DisabledReason.BLOCKLISTED
+    } else if (isSoftBlocked()) {
+        Addon.DisabledReason.SOFT_BLOCKED
     } else if (isDisabledUnsigned()) {
         Addon.DisabledReason.NOT_CORRECTLY_SIGNED
     } else if (isDisabledIncompatible()) {

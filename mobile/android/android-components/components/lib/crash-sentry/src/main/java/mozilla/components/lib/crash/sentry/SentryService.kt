@@ -15,6 +15,7 @@ import io.sentry.protocol.SentryId
 import mozilla.components.Build
 import mozilla.components.lib.crash.Crash
 import mozilla.components.lib.crash.sentry.eventprocessors.AddMechanismEventProcessor
+import mozilla.components.lib.crash.sentry.eventprocessors.CrashMetadataEventProcessor
 import mozilla.components.lib.crash.sentry.eventprocessors.RustCrashEventProcessor
 import mozilla.components.lib.crash.service.CrashReporterService
 import java.util.Locale
@@ -53,6 +54,8 @@ class SentryService(
     @GuardedBy("this")
     internal var isInitialized: Boolean = false
 
+    private val crashMetadataEventProcessor = CrashMetadataEventProcessor()
+
     override fun createCrashReportUrl(identifier: String): String? {
         return sentryProjectUrl?.let {
             val id = identifier.replace("-", "")
@@ -61,7 +64,7 @@ class SentryService(
     }
 
     override fun report(crash: Crash.UncaughtExceptionCrash): String {
-        prepareReport(crash.breadcrumbs, SentryLevel.FATAL)
+        prepareReport(crash.breadcrumbs, SentryLevel.FATAL, crash)
         return reportToSentry(crash.throwable)
     }
 
@@ -72,7 +75,7 @@ class SentryService(
                 else -> SentryLevel.ERROR
             }
 
-            prepareReport(crash.breadcrumbs, level)
+            prepareReport(crash.breadcrumbs, level, crash)
 
             return reportToSentry(crash)
         } else {
@@ -84,7 +87,7 @@ class SentryService(
         if (!sendCaughtExceptions) {
             return null
         }
-        prepareReport(breadcrumbs, SentryLevel.INFO)
+        prepareReport(breadcrumbs, SentryLevel.INFO, null)
         return reportToSentry(throwable)
     }
 
@@ -99,10 +102,10 @@ class SentryService(
     }
 
     private fun addDefaultTags() {
-        Sentry.setTag("ac.version", Build.version)
-        Sentry.setTag("ac.git", Build.gitHash)
-        Sentry.setTag("ac.as.build_version", Build.applicationServicesVersion)
-        Sentry.setTag("ac.glean.build_version", Build.gleanSdkVersion)
+        Sentry.setTag("ac.version", Build.VERSION)
+        Sentry.setTag("ac.git", Build.GIT_HASH)
+        Sentry.setTag("ac.as.build_version", Build.APPLICATION_SERVICES_VERSION)
+        Sentry.setTag("ac.glean.build_version", Build.GLEAN_SDK_VERSION)
         Sentry.setTag("user.locale", Locale.getDefault().toString())
         tags.forEach { entry ->
             Sentry.setTag(entry.key, entry.value)
@@ -142,6 +145,7 @@ class SentryService(
             options.environment = environment
             options.addEventProcessor(RustCrashEventProcessor())
             options.addEventProcessor(AddMechanismEventProcessor())
+            options.addEventProcessor(crashMetadataEventProcessor)
         }
     }
 
@@ -149,6 +153,7 @@ class SentryService(
     internal fun prepareReport(
         breadcrumbs: ArrayList<MozillaBreadcrumb>,
         level: SentryLevel? = null,
+        crash: Crash?,
     ) {
         initIfNeeded()
 
@@ -158,6 +163,10 @@ class SentryService(
 
         level?.apply {
             Sentry.setLevel(level)
+        }
+
+        crash?.let {
+            crashMetadataEventProcessor.crashToProcess = it
         }
     }
 
@@ -169,10 +178,9 @@ class SentryService(
     @VisibleForTesting
     internal fun createMessage(crash: Crash.NativeCodeCrash): String {
         val fatal = crash.isFatal.toString()
-        val processType = crash.processType
-        val minidumpSuccess = crash.minidumpSuccess
+        val processVisibility = crash.processVisibility
 
-        return "NativeCodeCrash(fatal=$fatal, processType=$processType, minidumpSuccess=$minidumpSuccess)"
+        return "NativeCodeCrash(fatal=$fatal, processVisibility=$processVisibility)"
     }
 }
 

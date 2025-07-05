@@ -45,9 +45,8 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS(SVGOuterSVGFrame)
 
-  // nsIFrame:
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const IntrinsicSizeInput& aInput,
+                         IntrinsicISizeType aType) override;
 
   IntrinsicSize GetIntrinsicSize() override;
   AspectRatio GetIntrinsicRatio() const override;
@@ -63,10 +62,8 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
-  void DidReflow(nsPresContext* aPresContext,
-                 const ReflowInput* aReflowInput) override;
-
-  void UnionChildOverflow(mozilla::OverflowAreas& aOverflowAreas) override;
+  void UnionChildOverflow(mozilla::OverflowAreas& aOverflowAreas,
+                          bool aAsIfScrolled) override;
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
@@ -96,8 +93,7 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
     return PrincipalChildList().FirstChild()->GetContentInsertionFrame();
   }
 
-  bool IsSVGTransformed(Matrix* aOwnTransform,
-                        Matrix* aFromParentTransform) const override;
+  bool DoGetParentSVGTransforms(Matrix*) const override { return false; };
 
   // Return our anonymous box child.
   void AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult) override;
@@ -114,13 +110,7 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
   // SVGContainerFrame methods:
   gfxMatrix GetCanvasTM() override;
 
-  bool HasChildrenOnlyTransform(Matrix* aTransform) const override {
-    // Our anonymous wrapper child must claim our children-only transforms as
-    // its own so that our real children (the frames it wraps) are transformed
-    // by them, and we must pretend we don't have any children-only transforms
-    // so that our anonymous child is _not_ transformed by them.
-    return false;
-  }
+  bool HasChildrenOnlyTransform(Matrix* aTransform) const override;
 
   /**
    * Return true only if the height is unspecified (defaulting to 100%) or else
@@ -200,8 +190,7 @@ class SVGOuterSVGAnonChildFrame final : public SVGDisplayContainerFrame {
   }
 #endif
 
-  bool IsSVGTransformed(Matrix* aOwnTransform,
-                        Matrix* aFromParentTransform) const override;
+  bool DoGetParentSVGTransforms(Matrix*) const override;
 
   // SVGContainerFrame methods:
   gfxMatrix GetCanvasTM() override {

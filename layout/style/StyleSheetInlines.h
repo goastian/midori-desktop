@@ -17,8 +17,7 @@ namespace mozilla {
 void StyleSheet::SetURIs(nsIURI* aSheetURI, nsIURI* aOriginalSheetURI,
                          nsIURI* aBaseURI) {
   MOZ_ASSERT(aSheetURI && aBaseURI, "null ptr");
-  MOZ_ASSERT(!HasRules() && !IsComplete(),
-             "Can't call SetURIs on sheets that are complete or have rules");
+  MOZ_ASSERT(!HasRules() && !IsComplete());
   StyleSheetInfo& info = Inner();
   info.mSheetURI = aSheetURI;
   info.mOriginalSheetURI = aOriginalSheetURI;

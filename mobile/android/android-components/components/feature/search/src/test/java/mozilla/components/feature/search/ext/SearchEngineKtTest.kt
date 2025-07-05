@@ -5,7 +5,7 @@
 package mozilla.components.feature.search.ext
 
 import android.graphics.Bitmap
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.state.SearchState
@@ -77,6 +77,38 @@ class SearchEngineKtTest {
     }
 
     @Test
+    fun `GIVEN a search engine with a trending URL WHEN building a trending URL THEN return the trending URL`() {
+        val searchEngine = SearchEngine(
+            id = UUID.randomUUID().toString(),
+            name = "Google",
+            icon = mock(),
+            type = SearchEngine.Type.CUSTOM,
+            resultUrls = listOf(),
+            trendingUrl = "https://www.google.com/complete/search?client=firefox&channel=ftr&q={searchTerms}",
+        )
+
+        assertEquals(
+            "https://www.google.com/complete/search?client=firefox&channel=ftr&q=",
+            searchEngine.buildTrendingURL(),
+        )
+    }
+
+    @Test
+    fun `GIVEN a search engine without a trending URL WHEN building a trending URL THEN return null`() {
+        val searchEngine = SearchEngine(
+            id = UUID.randomUUID().toString(),
+            name = "Google",
+            icon = mock(),
+            type = SearchEngine.Type.CUSTOM,
+            resultUrls = listOf(),
+        )
+
+        assertNull(
+            searchEngine.buildTrendingURL(),
+        )
+    }
+
+    @Test
     fun `GIVEN ecosia search engine and a set of urls THEN search terms are determined when present`() {
         val searchEngine = createSearchEngine(
             name = "Ecosia",
@@ -84,17 +116,17 @@ class SearchEngineKtTest {
             url = "https://www.ecosia.org/search?q={searchTerms}",
         )
 
-        assertNull(searchEngine.parseSearchTerms(Uri.parse("https://www.ecosia.org/search?q=")))
-        assertNull(searchEngine.parseSearchTerms(Uri.parse("https://www.ecosia.org/search?attr=moz-test")))
+        assertNull(searchEngine.parseSearchTerms("https://www.ecosia.org/search?q=".toUri()))
+        assertNull(searchEngine.parseSearchTerms("https://www.ecosia.org/search?attr=moz-test".toUri()))
 
         assertEquals(
             "second test search",
-            searchEngine.parseSearchTerms(Uri.parse("https://www.ecosia.org/search?q=second%20test%20search")),
+            searchEngine.parseSearchTerms("https://www.ecosia.org/search?q=second%20test%20search".toUri()),
         )
 
         assertEquals(
             "Another test",
-            searchEngine.parseSearchTerms(Uri.parse("https://www.ecosia.org/search?r=134s7&attr=moz-test&q=Another%20test&d=136697676793")),
+            searchEngine.parseSearchTerms("https://www.ecosia.org/search?r=134s7&attr=moz-test&q=Another%20test&d=136697676793".toUri()),
         )
     }
 

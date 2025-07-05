@@ -23,9 +23,9 @@ import mozilla.components.browser.toolbar.display.MenuButton
 import mozilla.components.browser.toolbar.edit.EditToolbar
 import mozilla.components.concept.toolbar.AutocompleteDelegate
 import mozilla.components.concept.toolbar.Toolbar
-import mozilla.components.concept.toolbar.Toolbar.SiteSecurity
+import mozilla.components.concept.toolbar.Toolbar.SiteInfo
 import mozilla.components.concept.toolbar.Toolbar.SiteTrackingProtection
-import mozilla.components.support.ktx.kotlin.MAX_URI_LENGTH
+import mozilla.components.support.base.utils.MAX_URI_LENGTH
 import mozilla.components.support.test.argumentCaptor
 import mozilla.components.support.test.mock
 import mozilla.components.support.test.robolectric.testContext
@@ -220,6 +220,7 @@ class BrowserToolbarTest {
 
         verify(root, times(5)).requestSendAccessibilityEvent(any(), captor.capture())
 
+        @Suppress("DEPRECATION")
         assertEquals(AccessibilityEvent.TYPE_ANNOUNCEMENT, captor.allValues[0].eventType)
         assertEquals(testContext.getString(R.string.mozac_browser_toolbar_progress_loading), captor.allValues[0].text[0])
 
@@ -262,6 +263,7 @@ class BrowserToolbarTest {
 
         verify(root, times(1)).requestSendAccessibilityEvent(any(), captor.capture())
 
+        @Suppress("DEPRECATION")
         assertEquals(AccessibilityEvent.TYPE_ANNOUNCEMENT, captor.allValues[0].eventType)
         assertEquals(testContext.getString(R.string.mozac_browser_toolbar_progress_loading), captor.allValues[0].text[0])
     }
@@ -820,11 +822,11 @@ class BrowserToolbarTest {
     fun `siteSecure updates the display`() {
         val toolbar = BrowserToolbar(testContext)
         toolbar.display = spy(toolbar.display)
-        assertEquals(SiteSecurity.INSECURE, toolbar.siteSecure)
+        assertEquals(SiteInfo.INSECURE, toolbar.siteInfo)
 
-        toolbar.siteSecure = SiteSecurity.SECURE
+        toolbar.siteInfo = SiteInfo.SECURE
 
-        verify(toolbar.display).siteSecurity = SiteSecurity.SECURE
+        verify(toolbar.display).siteInfo = SiteInfo.SECURE
     }
 
     @Test

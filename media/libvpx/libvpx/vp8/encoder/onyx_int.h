@@ -232,7 +232,7 @@ typedef struct {
   int64_t bits_off_target;
 
   int64_t total_actual_bits;
-  int total_target_vs_actual;
+  int64_t total_target_vs_actual;
 
   int worst_quality;
   int active_worst_quality;
@@ -413,7 +413,7 @@ typedef struct VP8_COMP {
   int long_rolling_actual_bits;
 
   int64_t total_actual_bits;
-  int total_target_vs_actual; /* debug stats */
+  int64_t total_target_vs_actual; /* debug stats */
 
   int worst_quality;
   int active_worst_quality;
@@ -556,10 +556,12 @@ typedef struct VP8_COMP {
   vp8_refining_search_fn_t refining_search_sad;
   vp8_diamond_search_fn_t diamond_search_sad;
   vp8_variance_fn_ptr_t fn_ptr[BLOCK_MAX_SEGMENTS];
+#if CONFIG_INTERNAL_STATS
   uint64_t time_receive_data;
   uint64_t time_compress_data;
   uint64_t time_pick_lpf;
   uint64_t time_encode_mb_row;
+#endif
 
   int base_skip_false_prob[128];
 
@@ -623,7 +625,7 @@ typedef struct VP8_COMP {
   double totalp_v;
   double totalp;
   double total_sq_error2;
-  int bytes;
+  uint64_t bytes;
   double summed_quality;
   double summed_weights;
   unsigned int tot_recode_hits;

@@ -8,6 +8,7 @@ import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.CustomTabSessionState
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.state.TabSessionState
+import mozilla.components.concept.engine.EngineSession
 import mozilla.components.support.base.log.logger.Logger
 import java.net.URI
 import java.net.URISyntaxException
@@ -40,6 +41,17 @@ fun BrowserState.findTab(tabId: String): TabSessionState? {
 }
 
 /**
+ * Finds and returns the tab with the given [EngineSession]. Returns null if no matching tab could be
+ * found.
+ *
+ * @param engineSession The engineSession of the tab to search for.
+ * @return The [TabSessionState] with the provided [EngineSession] or null if it could not be found.
+ */
+fun BrowserState.findTab(engineSession: EngineSession): TabSessionState? {
+    return tabs.firstOrNull { it.engineState.engineSession == engineSession }
+}
+
+/**
  * Finds and returns the Custom Tab with the given id. Returns null if no matching tab could be
  * found.
  *
@@ -48,6 +60,17 @@ fun BrowserState.findTab(tabId: String): TabSessionState? {
  */
 fun BrowserState.findCustomTab(tabId: String): CustomTabSessionState? {
     return customTabs.firstOrNull { it.id == tabId }
+}
+
+/**
+ * Finds and returns the custom tab with the given [EngineSession]. Returns null if no matching tab could be
+ * found.
+ *
+ * @param engineSession The engineSession of the custom tab to search for.
+ * @return The [CustomTabSessionState] with the provided [EngineSession] or null if it could not be found.
+ */
+fun BrowserState.findCustomTab(engineSession: EngineSession): CustomTabSessionState? {
+    return customTabs.firstOrNull { it.engineState.engineSession == engineSession }
 }
 
 /**
@@ -66,6 +89,17 @@ fun BrowserState.findNormalTab(tabId: String): TabSessionState? {
  */
 fun BrowserState.findTabOrCustomTab(tabId: String): SessionState? {
     return findTab(tabId) ?: findCustomTab(tabId)
+}
+
+/**
+ * Finds and returns the [TabSessionState] or [CustomTabSessionState] given [EngineSession].
+ * Returns null if no matching tab could be found.
+ *
+ * @param engineSession The engineSession of the custom tab to search for.
+ * @return The [SessionState] with the provided [EngineSession] or null if it could not be found.
+ */
+fun BrowserState.findTabOrCustomTab(engineSession: EngineSession): SessionState? {
+    return findTab(engineSession) ?: findCustomTab(engineSession)
 }
 
 /**

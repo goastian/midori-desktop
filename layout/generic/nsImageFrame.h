@@ -76,8 +76,10 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
   void BuildDisplayList(nsDisplayListBuilder*, const nsDisplayListSet&) final;
-  nscoord GetMinISize(gfxContext* aRenderingContext) final;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) final;
+
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) final;
+
   mozilla::IntrinsicSize GetIntrinsicSize() final { return mIntrinsicSize; }
   mozilla::AspectRatio GetIntrinsicRatio() const final {
     return mIntrinsicRatio;
@@ -86,8 +88,8 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
               nsReflowStatus&) override;
   bool IsLeafDynamic() const override;
 
-  nsresult GetContentForEvent(const mozilla::WidgetEvent*,
-                              nsIContent** aContent) final;
+  nsIContent* GetContentForEvent(const mozilla::WidgetEvent*) const final;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult HandleEvent(nsPresContext*, mozilla::WidgetGUIEvent*,
                        nsEventStatus*) override;
   Cursor GetCursor(const nsPoint&) override;
@@ -97,6 +99,8 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   void OnVisibilityChange(
       Visibility aNewVisibility,
       const Maybe<OnNonvisible>& aNonvisibleAction = Nothing()) final;
+
+  void MarkIntrinsicISizesDirty() override;
 
   void ResponsiveContentDensityChanged();
   void ElementStateChanged(mozilla::dom::ElementState) override;
@@ -172,7 +176,7 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   nsImageMap* GetImageMap();
   nsImageMap* GetExistingImageMap() const { return mImageMap; }
 
-  void AddInlineMinISize(gfxContext* aRenderingContext,
+  void AddInlineMinISize(const mozilla::IntrinsicSizeInput& aInput,
                          InlineMinISizeData* aData) final;
 
   void DisconnectMap();
@@ -194,6 +198,9 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
     ContentPropertyAtIndex,
     // For a list-style-image ::marker.
     ListStyleImage,
+    // For a ::view-transition-old or ::view-transition-new pseudo-element.
+    // Which one of the two is determined by the PseudoStyleType applying to us.
+    ViewTransition,
   };
 
   // Creates a suitable continuing frame for this frame.
@@ -212,6 +219,8 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
                                                             ComputedStyle*);
   friend nsIFrame* NS_NewImageFrameForListStyleImage(mozilla::PresShell*,
                                                      ComputedStyle*);
+  friend nsIFrame* NS_NewImageFrameForViewTransition(mozilla::PresShell*,
+                                                     ComputedStyle*);
 
   nsImageFrame(ComputedStyle* aStyle, nsPresContext* aPresContext, Kind aKind)
       : nsImageFrame(aStyle, aPresContext, kClassID, aKind) {}
@@ -229,7 +238,16 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
 
   ~nsImageFrame() override;
 
-  void EnsureIntrinsicSizeAndRatio();
+  /**
+   * Populate/update mIntrinsicSize and mIntrinsicSize if necessary.
+   *
+   * @param aConsiderIntrinsicsDirty if true, then this function will update
+   *   mIntrinsicSize and mIntrinsicRatio *regardless* of what their current
+   *   value is. (We'll still reason about whether the value changed or not
+   *   when deciding whether additional notifications are needed.)  This param
+   *   defaults to false, but it's used in MarkIntrinsicISizesDirty.
+   */
+  void EnsureIntrinsicSizeAndRatio(bool aConsiderIntrinsicsDirty = false);
 
   bool GotInitialReflow() const {
     return !HasAnyStateBits(NS_FRAME_FIRST_REFLOW);
@@ -248,7 +266,7 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   // Translate a point that is relative to our frame into a localized CSS pixel
   // coordinate that is relative to the content area of this frame (inside the
   // border+padding).
-  mozilla::CSSIntPoint TranslateEventCoords(const nsPoint& aPoint);
+  mozilla::CSSIntPoint TranslateEventCoords(const nsPoint&) const;
 
   bool GetAnchorHREFTargetAndNode(nsIURI** aHref, nsString& aTarget,
                                   nsIContent** aNode);
@@ -281,11 +299,6 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
    */
   void MaybeDecodeForPredictedSize();
 
-  /**
-   * Is this frame part of a ::marker pseudo?
-   */
-  bool IsForMarkerPseudo() const;
-
  protected:
   friend class nsImageListener;
   friend class nsImageLoadingContent;
@@ -293,17 +306,23 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
 
   void OnSizeAvailable(imgIRequest* aRequest, imgIContainer* aImage);
   void OnFrameUpdate(imgIRequest* aRequest, const nsIntRect* aRect);
-  void OnLoadComplete(imgIRequest* aRequest, nsresult aStatus);
+  void OnLoadComplete(imgIRequest* aRequest);
   mozilla::IntrinsicSize ComputeIntrinsicSize(
       bool aIgnoreContainment = false) const;
   // Whether the image frame should use the mapped aspect ratio from width=""
   // and height="".
   bool ShouldUseMappedAspectRatio() const;
 
+  nsAtom* GetViewTransitionName() const;
+  Maybe<nsSize> GetViewTransitionSnapshotSize() const;
+  mozilla::wr::ImageKey GetViewTransitionImageKey(
+      mozilla::layers::RenderRootStateManager*,
+      mozilla::wr::IpcResourceUpdateQueue&) const;
+
   /**
    * Notification that aRequest will now be the current request.
    */
-  void NotifyNewCurrentRequest(imgIRequest* aRequest, nsresult aStatus);
+  void NotifyNewCurrentRequest(imgIRequest* aRequest);
 
   /// Always sync decode our image when painting if @aForce is true.
   void SetForceSyncDecoding(bool aForce) { mForceSyncDecoding = aForce; }
@@ -424,14 +443,12 @@ class nsDisplayImage final : public nsPaintedDisplayItem {
  public:
   typedef mozilla::layers::LayerManager LayerManager;
 
-  nsDisplayImage(nsDisplayListBuilder* aBuilder, nsImageFrame* aFrame,
-                 imgIContainer* aImage, imgIContainer* aPrevImage)
-      : nsPaintedDisplayItem(aBuilder, aFrame),
-        mImage(aImage),
-        mPrevImage(aPrevImage) {
+  nsDisplayImage(nsDisplayListBuilder* aBuilder, nsImageFrame* aFrame)
+      : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayImage);
   }
-  ~nsDisplayImage() final { MOZ_COUNT_DTOR(nsDisplayImage); }
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayImage)
 
   void Paint(nsDisplayListBuilder*, gfxContext* aCtx) final;
 
@@ -458,10 +475,17 @@ class nsDisplayImage final : public nsPaintedDisplayItem {
                                mozilla::layers::RenderRootStateManager*,
                                nsDisplayListBuilder*) final;
 
+  void MaybeCreateWebRenderCommandsForViewTransition(
+      mozilla::wr::DisplayListBuilder&, mozilla::wr::IpcResourceUpdateQueue&,
+      const StackingContextHelper&, mozilla::layers::RenderRootStateManager*,
+      nsDisplayListBuilder*);
+
+  nsImageFrame* Frame() const {
+    MOZ_ASSERT(mFrame->IsImageFrame() || mFrame->IsImageControlFrame());
+    return static_cast<nsImageFrame*>(mFrame);
+  }
+
   NS_DISPLAY_DECL_NAME("Image", TYPE_IMAGE)
- private:
-  nsCOMPtr<imgIContainer> mImage;
-  nsCOMPtr<imgIContainer> mPrevImage;
 };
 
 }  // namespace mozilla

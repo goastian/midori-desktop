@@ -7,12 +7,13 @@ package mozilla.components.lib.crash.service
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.net.toUri
 import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.lib.crash.Crash
+import mozilla.components.lib.crash.CrashReporter
 import mozilla.components.support.base.ext.getStacktraceAsJsonString
 import mozilla.components.support.base.ext.getStacktraceAsString
 import mozilla.components.support.base.log.logger.Logger
@@ -37,7 +38,7 @@ import java.util.zip.GZIPOutputStream
 import kotlin.random.Random
 import mozilla.components.Build as AcBuild
 
-/* This ID is used for all Mozilla products.  Setting as default if no ID is passed in */
+// This ID is used for all Mozilla products.  Setting as default if no ID is passed in
 private const val MOZILLA_PRODUCT_ID = "{eeb82917-e434-4870-8148-5c03d4caa81b}"
 
 @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
@@ -87,7 +88,7 @@ class MozillaSocorroService(
     private val buildId: String = DEFAULT_BUILD_ID,
     private val vendor: String = DEFAULT_VENDOR,
     @get:VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal var serverUrl: String? = null,
+    internal val serverUrl: String? = null,
     private var versionName: String = DEFAULT_VERSION_NAME,
     private var versionCode: String = DEFAULT_VERSION_CODE,
     private val releaseChannel: String = DEFAULT_RELEASE_CHANNEL,
@@ -130,62 +131,51 @@ class MozillaSocorroService(
                 }
             }
         }
-
-        if (serverUrl == null) {
-            serverUrl = Uri.parse("https://crash-reports.mozilla.com/submit")
-                .buildUpon()
-                .appendQueryParameter("id", appId)
-                .appendQueryParameter("version", versionName)
-                .appendQueryParameter("android_component_version", AcBuild.version)
-                .build().toString()
-        }
     }
 
     override fun report(crash: Crash.UncaughtExceptionCrash): String? {
         return sendReport(
-            crash.timestamp,
+            crash = crash,
             crash.throwable,
             miniDumpFilePath = null,
             extrasFilePath = null,
             isNativeCodeCrash = false,
             isFatalCrash = true,
-            breadcrumbs = crash.breadcrumbs,
         )
     }
 
     override fun report(crash: Crash.NativeCodeCrash): String? {
         return sendReport(
-            crash.timestamp,
+            crash = crash,
             throwable = null,
             miniDumpFilePath = crash.minidumpPath,
             extrasFilePath = crash.extrasPath,
             isNativeCodeCrash = true,
             isFatalCrash = crash.isFatal,
-            breadcrumbs = crash.breadcrumbs,
         )
     }
 
     override fun report(throwable: Throwable, breadcrumbs: ArrayList<Breadcrumb>): String? {
-        /* Not sending caught exceptions to Socorro */
+        // Not sending caught exceptions to Socorro
         return null
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal fun sendReport(
-        timestamp: Long,
+        crash: Crash,
         throwable: Throwable?,
         miniDumpFilePath: String?,
         extrasFilePath: String?,
         isNativeCodeCrash: Boolean,
         isFatalCrash: Boolean,
-        breadcrumbs: ArrayList<Breadcrumb>,
     ): String? {
-        val url = URL(serverUrl)
+        val crashVersionName = crash.runtimeTags[CrashReporter.RELEASE_RUNTIME_TAG] ?: versionName
+        val url = URL(serverUrl ?: buildServerUrl(crashVersionName))
         val boundary = generateBoundary()
         var conn: HttpURLConnection? = null
 
         val breadcrumbsJson = JSONArray()
-        for (breadcrumb in breadcrumbs) {
+        for (breadcrumb in crash.breadcrumbs) {
             breadcrumbsJson.put(breadcrumb.toJson())
         }
 
@@ -197,8 +187,8 @@ class MozillaSocorroService(
             conn.setRequestProperty("Content-Encoding", "gzip")
 
             sendCrashData(
-                conn.outputStream, boundary, timestamp, throwable, miniDumpFilePath, extrasFilePath,
-                isNativeCodeCrash, isFatalCrash, breadcrumbsJson.toString(),
+                conn.outputStream, boundary, crash.timestamp, throwable, miniDumpFilePath, extrasFilePath,
+                isNativeCodeCrash, isFatalCrash, breadcrumbsJson.toString(), crashVersionName,
             )
 
             BufferedReader(InputStreamReader(conn.inputStream)).use { reader ->
@@ -253,6 +243,7 @@ class MozillaSocorroService(
         isNativeCodeCrash: Boolean,
         isFatalCrash: Boolean,
         breadcrumbs: String,
+        versionName: String,
     ) {
         val nameSet = mutableSetOf<String>()
         val gzipOs = GZIPOutputStream(os)
@@ -260,9 +251,9 @@ class MozillaSocorroService(
         sendPart(gzipOs, boundary, "ProductID", appId, nameSet)
         sendPart(gzipOs, boundary, "Version", versionName, nameSet)
         sendPart(gzipOs, boundary, "ApplicationBuildID", versionCode, nameSet)
-        sendPart(gzipOs, boundary, "AndroidComponentVersion", AcBuild.version, nameSet)
-        sendPart(gzipOs, boundary, "GleanVersion", AcBuild.gleanSdkVersion, nameSet)
-        sendPart(gzipOs, boundary, "ApplicationServicesVersion", AcBuild.applicationServicesVersion, nameSet)
+        sendPart(gzipOs, boundary, "AndroidComponentVersion", AcBuild.VERSION, nameSet)
+        sendPart(gzipOs, boundary, "GleanVersion", AcBuild.GLEAN_SDK_VERSION, nameSet)
+        sendPart(gzipOs, boundary, "ApplicationServicesVersion", AcBuild.APPLICATION_SERVICES_VERSION, nameSet)
         sendPart(gzipOs, boundary, "GeckoViewVersion", version, nameSet)
         sendPart(gzipOs, boundary, "BuildID", buildId, nameSet)
         sendPart(gzipOs, boundary, "Vendor", vendor, nameSet)
@@ -563,4 +554,12 @@ class MozillaSocorroService(
             null
         }
     }
+
+    internal fun buildServerUrl(versionName: String): String =
+        "https://crash-reports.mozilla.com/submit".toUri()
+            .buildUpon()
+            .appendQueryParameter("id", appId)
+            .appendQueryParameter("version", versionName)
+            .appendQueryParameter("android_component_version", AcBuild.VERSION)
+            .build().toString()
 }

@@ -10,6 +10,7 @@
 #include "mozilla/intl/BidiEmbeddingLevel.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EnumSet.h"
+#include "mozilla/RangeBoundary.h"
 #include "mozilla/Result.h"
 #include "nsIFrame.h"
 
@@ -49,6 +50,34 @@ class SelectionMovementUtils final {
   using PeekOffsetOptions = EnumSet<PeekOffsetOption>;
 
   /**
+   * @brief Creates a new `RangeBoundary` which moves `aAmount` into
+   * `aDirection` from the input range boundary.
+   *
+   * @param aRangeBoundary   The input range boundary.
+   * @param aDirection       The direction into which the new boundary should be
+   *                         moved.
+   * @param aHint            The `CaretAssociationHint` (is the caret before or
+   *                         after the boundary point)
+   * @param aCaretBidiLevel  The `BidiEmbeddingLevel`.
+   * @param aAmount          The amount which the range boundary should be
+   *                         moved.
+   * @param aOptions         Additional options, see `PeekOffsetOption`.
+   * @param aAncestorLimiter The content node that limits where Selection may be
+   *                         expanded to.
+   *
+   * @return Returns a new `RangeBoundary` which is moved from `aRangeBoundary`
+   *         by `aAmount` into `aDirection`.
+   */
+  template <typename ParentType, typename RefType>
+  static Result<RangeBoundaryBase<ParentType, RefType>, nsresult>
+  MoveRangeBoundaryToSomewhere(
+      const RangeBoundaryBase<ParentType, RefType>& aRangeBoundary,
+      nsDirection aDirection, CaretAssociationHint aHint,
+      intl::BidiEmbeddingLevel aCaretBidiLevel, nsSelectionAmount aAmount,
+      PeekOffsetOptions aOptions,
+      const dom::Element* aAncestorLimiter = nullptr);
+
+  /**
    * Given a node and its child offset, return the nsIFrame and the offset into
    * that frame.
    *
@@ -70,6 +99,7 @@ class SelectionMovementUtils final {
    * @param aJumpLines
    *   If true, look across line boundaries.
    *   If false, behave as if there were base-level frames at line edges.
+   * @param aAncestorLimiter  If set, this refers only the descendants.
    *
    * @return A struct holding the before/after frame and the before/after
    * level.
@@ -80,10 +110,9 @@ class SelectionMovementUtils final {
    * In these cases the before frame and after frame respectively will be
    * nullptr.
    */
-  static nsPrevNextBidiLevels GetPrevNextBidiLevels(nsIContent* aNode,
-                                                    uint32_t aContentOffset,
-                                                    CaretAssociationHint aHint,
-                                                    bool aJumpLines);
+  static nsPrevNextBidiLevels GetPrevNextBidiLevels(
+      nsIContent* aNode, uint32_t aContentOffset, CaretAssociationHint aHint,
+      bool aJumpLines, const dom::Element* aAncestorLimiter);
 
   /**
    * PeekOffsetForCaretMove() only peek offset for caret move from the specified

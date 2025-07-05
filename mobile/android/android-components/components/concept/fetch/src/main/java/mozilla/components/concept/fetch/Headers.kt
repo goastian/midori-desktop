@@ -58,6 +58,8 @@ interface Headers : Iterable<Header> {
         const val COOKIE = "Cookie"
         const val REFERRER = "Referer"
         const val USER_AGENT = "User-Agent"
+        const val E_TAG = "ETag"
+        const val IF_NONE_MATCH = "If-None-Match"
     }
 
     /**
@@ -79,8 +81,8 @@ data class Header(
     val value: String,
 ) {
     init {
-        if (name.isEmpty()) {
-            throw IllegalArgumentException("Header name cannot be empty")
+        require(name.isNotEmpty()) {
+            "Header name cannot be empty"
         }
     }
 }

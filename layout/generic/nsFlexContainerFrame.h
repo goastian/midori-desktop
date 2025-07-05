@@ -12,6 +12,7 @@
 #include <tuple>
 
 #include "mozilla/dom/FlexBinding.h"
+#include "mozilla/IntrinsicISizesCache.h"
 #include "nsContainerFrame.h"
 #include "nsILineIterator.h"
 
@@ -89,7 +90,7 @@ class MOZ_STACK_CLASS FlexboxAxisInfo final {
   // Helpers for constructor which determine the orientation of our axes, based
   // on legacy box properties (-webkit-box-orient, -webkit-box-direction) or
   // modern flexbox properties (flex-direction, flex-wrap) depending on whether
-  // the flex container is a "legacy box" (as determined by IsLegacyBox).
+  // the flex container is a "legacy webkit box".
   void InitAxesFromLegacyProps(const nsIFrame* aFlexContainer);
   void InitAxesFromModernProps(const nsIFrame* aFlexContainer);
 };
@@ -99,8 +100,7 @@ class MOZ_STACK_CLASS FlexboxAxisInfo final {
  * "display: flex" or "display: inline-flex".
  *
  * We also use this class for elements with "display: -webkit-box" or
- * "display: -webkit-inline-box" (but not "-moz-box" / "-moz-inline-box" --
- * those are rendered with old-school XUL frame classes).
+ * "display: -webkit-inline-box".
  *
  * Note: we represent the -webkit-box family of properties (-webkit-box-orient,
  * -webkit-box-flex, etc.) as aliases for their -moz equivalents.  And for
@@ -147,8 +147,8 @@ class nsFlexContainerFrame final : public nsContainerFrame,
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override;
@@ -159,10 +159,11 @@ class nsFlexContainerFrame final : public nsContainerFrame,
       BaselineExportContext) const override;
 
   // Unions the child overflow from our in-flow children.
-  void UnionInFlowChildOverflow(mozilla::OverflowAreas&);
+  void UnionInFlowChildOverflow(mozilla::OverflowAreas&,
+                                bool aAsIfScrolled = false);
 
   // Unions the child overflow from all our children, including out of flows.
-  void UnionChildOverflow(mozilla::OverflowAreas&) final;
+  void UnionChildOverflow(mozilla::OverflowAreas&, bool aAsIfScrolled) final;
 
   // nsContainerFrame overrides
   bool DrainSelfOverflowList() override;
@@ -174,6 +175,14 @@ class nsFlexContainerFrame final : public nsContainerFrame,
   mozilla::StyleAlignFlags CSSAlignmentForAbsPosChild(
       const ReflowInput& aChildRI,
       mozilla::LogicalAxis aLogicalAxis) const override;
+
+  // Return aFlexItem's used 'align-self' value and the associated flags
+  // (safe/unsafe).
+  //
+  // Note: This method guarantees not to return StyleAlignFlags::NORMAL because
+  // it converts NORMAL to STRETCH.
+  std::pair<mozilla::StyleAlignFlags, mozilla::StyleAlignFlags>
+  UsedAlignSelfAndFlagsForItem(const nsIFrame* aFlexItem) const;
 
   /**
    * Helper function to calculate packing space and initial offset of alignment
@@ -426,6 +435,25 @@ class nsFlexContainerFrame final : public nsContainerFrame,
                                       const FlexboxAxisTracker& aAxisTracker);
 
   /**
+   * Partially resolves "min-[width|height]:auto" and returns the resulting
+   * value. By "partially", I mean we don't consider the min-content size (but
+   * we do consider the main-size and main max-size properties, and the
+   * preferred aspect ratio). The caller is responsible for computing &
+   * considering the min-content size in combination with the partially-resolved
+   * value that this function returns.
+   *
+   * Basically, this function gets the specified size suggestion; if not, the
+   * transferred size suggestion; if both sizes do not exist, return
+   * nscoord_MAX.
+   *
+   * Spec reference: https://drafts.csswg.org/css-flexbox-1/#min-size-auto
+   * (Helper for ResolveAutoFlexBasisAndMinSize().)
+   */
+  nscoord PartiallyResolveAutoMinSize(
+      const FlexItem& aFlexItem, const ReflowInput& aItemReflowInput,
+      const FlexboxAxisTracker& aAxisTracker) const;
+
+  /**
    * This method:
    *  - Creates FlexItems for all of our child frames (except placeholders).
    *  - Groups those FlexItems into FlexLines.
@@ -647,16 +675,15 @@ class nsFlexContainerFrame final : public nsContainerFrame,
                           const nsSize& aContainerSize);
 
   /**
-   * Helper for GetMinISize / GetPrefISize.
+   * Helper to implement IntrinsicISize().
    */
-  nscoord IntrinsicISize(gfxContext* aRenderingContext,
-                         mozilla::IntrinsicISizeType aType);
+  nscoord ComputeIntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                                mozilla::IntrinsicISizeType aType);
 
   /**
-   * Cached values to optimize GetMinISize/GetPrefISize.
+   * Cached values to optimize IntrinsicISize().
    */
-  nscoord mCachedMinISize = NS_INTRINSIC_ISIZE_UNKNOWN;
-  nscoord mCachedPrefISize = NS_INTRINSIC_ISIZE_UNKNOWN;
+  mozilla::IntrinsicISizesCache mCachedIntrinsicSizes;
 
   /**
    * Cached baselines computed in our last reflow to optimize

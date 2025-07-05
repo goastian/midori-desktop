@@ -70,7 +70,8 @@ class nsContainerFrame : public nsSplittableFrame {
                             const char* aPrefix = "") const override;
   void ListChildLists(FILE* aOut, const char* aPrefix, ListFlags aFlags,
                       ChildListIDs aSkippedListIDs) const;
-  virtual void ExtraContainerFrameInfo(nsACString& aTo) const;
+  virtual void ExtraContainerFrameInfo(nsACString& aTo,
+                                       bool aListOnlyDeterministic) const;
 #endif
 
   // nsContainerFrame methods
@@ -210,9 +211,9 @@ class nsContainerFrame : public nsSplittableFrame {
   template <typename ISizeData, typename F>
   void DoInlineIntrinsicISize(ISizeData* aData, F& aHandleChildren);
 
-  void DoInlineMinISize(gfxContext* aRenderingContext,
+  void DoInlineMinISize(const mozilla::IntrinsicSizeInput& aInput,
                         InlineMinISizeData* aData);
-  void DoInlinePrefISize(gfxContext* aRenderingContext,
+  void DoInlinePrefISize(const mozilla::IntrinsicSizeInput& aInput,
                          InlinePrefISizeData* aData);
 
   /**
@@ -447,26 +448,22 @@ class nsContainerFrame : public nsSplittableFrame {
                                 const nsDisplayListSet& aLists) override;
 
   static void PlaceFrameView(nsIFrame* aFrame) {
-    if (aFrame->HasView())
+    if (aFrame->HasView()) {
       nsContainerFrame::PositionFrameView(aFrame);
-    else
+    } else {
       nsContainerFrame::PositionChildViews(aFrame);
+    }
   }
 
   /**
    * Returns a CSS Box Alignment constant which the caller can use to align
    * the absolutely-positioned child (whose ReflowInput is aChildRI) within
-   * a CSS Box Alignment area associated with this container.
+   * a CSS Box Alignment area associated with this container. Used for
+   * computing the static position of an absolutely positioned box.
    *
    * The lower 8 bits of the returned value are guaranteed to form a valid
    * argument for CSSAlignUtils::AlignJustifySelf(). (The upper 8 bits may
    * encode an <overflow-position>.)
-   *
-   * NOTE: This default nsContainerFrame implementation is a stub, and isn't
-   * meant to be called.  Subclasses must provide their own implementations, if
-   * they use CSS Box Alignment to determine the static position of their
-   * absolutely-positioned children. (Though: if subclasses share enough code,
-   * maybe this nsContainerFrame impl should include some shared code.)
    *
    * @param aChildRI A ReflowInput for the positioned child frame that's being
    *                 aligned.
@@ -474,6 +471,14 @@ class nsContainerFrame : public nsSplittableFrame {
    *                     would like to align the child frame.
    */
   virtual mozilla::StyleAlignFlags CSSAlignmentForAbsPosChild(
+      const ReflowInput& aChildRI, mozilla::LogicalAxis aLogicalAxis) const;
+
+  /**
+   * Default implementation of `CSSAlignmentForAbsPosChild`, where we treat
+   * this frame as a plain absolute containing block instead of depending
+   * on its type (By overriding `CSSAlignmentForAbsPosChild`).
+   */
+  mozilla::StyleAlignFlags CSSAlignmentForAbsPosChildWithinContainingBlock(
       const ReflowInput& aChildRI, mozilla::LogicalAxis aLogicalAxis) const;
 
 #define NS_DECLARE_FRAME_PROPERTY_FRAMELIST(prop) \
@@ -506,7 +511,7 @@ class nsContainerFrame : public nsSplittableFrame {
   // Incorporate the child overflow areas into aOverflowAreas.
   // If the child does not have a overflow, use the child area.
   void ConsiderChildOverflow(mozilla::OverflowAreas& aOverflowAreas,
-                             nsIFrame* aChildFrame);
+                             nsIFrame* aChildFrame, bool aAsIfScrolled = false);
 
  protected:
   nsContainerFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
@@ -1009,10 +1014,14 @@ class nsOverflowContinuationTracker {
    public:
     AutoFinish(nsOverflowContinuationTracker* aTracker, nsIFrame* aChild)
         : mTracker(aTracker), mChild(aChild) {
-      if (mTracker) mTracker->BeginFinish(mChild);
+      if (mTracker) {
+        mTracker->BeginFinish(mChild);
+      }
     }
     ~AutoFinish() {
-      if (mTracker) mTracker->EndFinish(mChild);
+      if (mTracker) {
+        mTracker->EndFinish(mChild);
+      }
     }
 
    private:

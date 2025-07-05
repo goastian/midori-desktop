@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -50,7 +50,7 @@ function generateTest(dateTimeString, zoneString) {
 ]));
 [
   "1976-11-18T15:23:30,1234",
-  "\u2212009999-11-18",
+  "-009999-11-18",
   "19761118",
   "+199999-11-18",
   "+1999991118",

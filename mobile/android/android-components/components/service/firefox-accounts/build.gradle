@@ -7,25 +7,20 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
-    }
-
-    lint {
-        warningsAsErrors true
-        abortOnError true
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             consumerProguardFiles 'proguard-rules-consumer.pro'
         }
     }
 
-    namespace 'mozilla.components.service.firefox.accounts'
+    namespace = 'mozilla.components.service.firefox.accounts'
 }
 
 dependencies {
@@ -44,23 +39,23 @@ dependencies {
     implementation project(':lib-dataprotect')
     implementation project(':lib-state')
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
-    implementation ComponentsDependencies.androidx_work_runtime
-    implementation ComponentsDependencies.androidx_lifecycle_process
+    implementation libs.androidx.work.runtime
+    implementation libs.androidx.lifecycle.process
 
     testImplementation project(':support-test')
     testImplementation project(':support-test-libstate')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.androidx_work_testing
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.androidx.work.testing
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
 
-    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_forUnitTests
-    testImplementation ComponentsDependencies.kotlin_reflect
+    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_libsForTests
+    testImplementation libs.kotlin.reflect
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

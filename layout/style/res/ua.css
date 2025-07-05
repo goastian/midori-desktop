@@ -157,16 +157,20 @@
   color: LinkText;
 }
 
-:any-link:active {
-  color: ActiveText;
-}
-
 :visited {
   color: VisitedText;
 }
 
+:any-link:active {
+  color: ActiveText;
+}
+
+:any-link:read-write {
+  cursor: text;
+}
+
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "layout.css.always_underline_links") {
+@media -moz-pref("layout.css.always_underline_links") {
   :any-link {
     text-decoration: underline !important;
   }
@@ -357,7 +361,7 @@
 }
 
 :fullscreen:not(:root) {
-  -moz-top-layer: top !important;
+  -moz-top-layer: auto !important;
   position: fixed !important;
   inset: 0 !important;
   width: 100% !important;
@@ -383,23 +387,25 @@
   user-select: text;
 }
 
-/**
- * Ensure we recompute the default color for the root based on its
- * computed color-scheme. This matches other browsers.
- *
- * For the default background, we look at the root
- * element style frame in
- * PresShell::GetDefaultBackgroundColorToDraw, however we
- * can't make the initial style (the style the root element
- * inherits from) depend on the root element's style, as that
- * is trivially cyclic.
- */
 :root {
+  /**
+   * Ensure we recompute the default color for the root based on its
+   * computed color-scheme. This matches other browsers.
+   *
+   * For the default background, we look at the root
+   * element style frame in
+   * PresShell::GetDefaultBackgroundColorToDraw, however we
+   * can't make the initial style (the style the root element
+   * inherits from) depend on the root element's style, as that
+   * is trivially cyclic.
+   */
   color: CanvasText;
+  /* https://drafts.csswg.org/css-view-transitions-1/#ua-styles */
+  view-transition-name: root;
 }
 
 ::backdrop {
-  -moz-top-layer: top !important;
+  -moz-top-layer: auto !important;
   display: block;
   position: fixed;
   inset: 0;
@@ -444,7 +450,7 @@ parsererror|sourcetext {
 .moz-custom-content-container:-moz-native-anonymous {
   pointer-events: none;
   user-select: none;
-  -moz-top-layer: top;
+  -moz-top-layer: auto;
   position: absolute;
   top: 0;
   left: 0;
@@ -452,4 +458,98 @@ parsererror|sourcetext {
   height: 100%;
   /* Initial direction depends on the document, make sure to reset it */
   direction: ltr;
+}
+
+/* contenteditable support */
+
+:read-write:focus,
+:root:read-write {
+  /* Scroll-anchoring shouldn't work in any editable and scrollable elements
+   * when user inserts something. */
+  overflow-anchor: none;
+}
+
+/* https://drafts.csswg.org/css-view-transitions-1/#ua-styles */
+
+/* :root section moved to the other root selectors for performance */
+
+/* ::-moz-snapshot-containing-block is a wrapper of ::view-transition, so we set
+ * some necessary properties here, instead of in ::view-transition. */
+:root::-moz-snapshot-containing-block {
+  /* The snapshot containing block is considered to be an absolute positioning
+   * containing block and a fixed positioning containing block for
+   * ::view-transition and its descendants.
+   * Note that we use will-change property to make sure this pseudo-element
+   * establish a fixed positioning containing block. */
+  will-change: -moz-fixed-pos-containing-block;
+  /* The snapshot containing block itself should be fixed positioned. It doesn't
+   * move when scrolling. */
+  position: fixed;
+  /* The snapshot containing block origin refers to the top-left corner of the
+   * snapshot containing block.
+   * The snapshot containing block size refers to the width and height of the
+   * snapshot containing block as a tuple of two numbers. */
+  inset: 0;
+  /* Avoid hit-testing on this pseudo-element.
+   * Note that this doesn't affect `::view-transition` because that inherits
+   * directly from the root. */
+  pointer-events: none;
+  /* Gecko implementation detail to make sure view transitions render in the
+   * top layer */
+  -moz-top-layer: auto;
+}
+
+:root::view-transition {
+  /* This is confusing and we probably should use "position: absolute".
+   * https://github.com/w3c/csswg-drafts/issues/12116 */
+  position: fixed;
+  inset: 0;
+}
+
+:root::view-transition-group(*) {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  animation-duration: 0.25s;
+  animation-fill-mode: both;
+}
+
+:root::view-transition-image-pair(*) {
+  position: absolute;
+  inset: 0;
+
+  animation-duration: inherit;
+  animation-fill-mode: inherit;
+  animation-delay: inherit;
+}
+
+:root::view-transition-old(*),
+:root::view-transition-new(*) {
+  position: absolute;
+  inset-block-start: 0;
+  inline-size: 100%;
+  block-size: auto;
+
+  animation-duration: inherit;
+  animation-fill-mode: inherit;
+  animation-delay: inherit;
+}
+
+/* Avoid exposing these keyframe names when view transitions are disabled */
+/* stylelint-disable-next-line media-query-no-invalid */
+@media -moz-pref("dom.viewTransitions.enabled") {
+  /* Default cross-fade transition */
+  @keyframes -ua-view-transition-fade-out {
+    to { opacity: 0; }
+  }
+  @keyframes -ua-view-transition-fade-in {
+    from { opacity: 0; }
+  }
+
+  /* Keyframes for blending when there are 2 images */
+  @keyframes -ua-mix-blend-mode-plus-lighter {
+    from { mix-blend-mode: plus-lighter }
+    to { mix-blend-mode: plus-lighter }
+  }
 }

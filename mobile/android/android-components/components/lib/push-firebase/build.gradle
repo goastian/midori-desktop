@@ -7,37 +7,43 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.lib.push.firebase'
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+    }
+
+    namespace = 'mozilla.components.lib.push.firebase'
 }
 
 dependencies {
-    implementation ComponentsDependencies.kotlin_coroutines
-    implementation ComponentsDependencies.play_services_base
+    coreLibraryDesugaring libs.desugar.jdk.libs
+
+    implementation libs.kotlin.coroutines
+    implementation libs.play.services.base
 
     implementation project(':concept-push')
     implementation project(':support-base')
 
-    api ComponentsDependencies.firebase_messaging
+    api libs.firebase.messaging
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.testing_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.test.core
+    testImplementation libs.junit.vintage
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

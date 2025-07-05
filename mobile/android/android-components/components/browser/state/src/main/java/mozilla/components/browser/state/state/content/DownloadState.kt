@@ -53,9 +53,18 @@ data class DownloadState(
     val createdTime: Long = System.currentTimeMillis(),
     val response: Response? = null,
     val notificationId: Int? = null,
+    val etag: String? = null,
 ) {
     val filePath: String
         get() = directoryPath + File.separatorChar + fileName
+
+    val isPdf: Boolean
+        get() =
+            if (contentType == null) {
+                fileName?.let { File(it).extension } == "pdf"
+            } else {
+                contentType == "application/pdf"
+            }
 
     /**
      * Status that represents every state that a download can be in.

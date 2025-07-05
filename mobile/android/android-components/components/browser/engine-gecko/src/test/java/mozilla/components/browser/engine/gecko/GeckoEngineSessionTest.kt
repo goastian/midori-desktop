@@ -112,8 +112,6 @@ typealias GeckoAntiTracking = ContentBlocking.AntiTracking
 typealias GeckoSafeBrowsing = ContentBlocking.SafeBrowsing
 typealias GeckoCookieBehavior = ContentBlocking.CookieBehavior
 
-private const val AID = "AID"
-
 @ExperimentalCoroutinesApi
 @RunWith(AndroidJUnit4::class)
 class GeckoEngineSessionTest {
@@ -303,6 +301,7 @@ class GeckoEngineSessionTest {
         var observedCanGoForward = false
         var cookieBanner = CookieBannerHandlingStatus.HANDLED
         var displaysProduct = false
+        var translationsProcessing = true
         engineSession.register(
             object : EngineSession.Observer {
                 override fun onLocationChange(url: String, hasUserGesture: Boolean) {
@@ -319,6 +318,10 @@ class GeckoEngineSessionTest {
                 override fun onProductUrlChange(isProductUrl: Boolean) {
                     displaysProduct = isProductUrl
                 }
+
+                override fun onTranslatePageChange() {
+                    translationsProcessing = false
+                }
             },
         )
 
@@ -330,6 +333,7 @@ class GeckoEngineSessionTest {
         assertEquals(CookieBannerHandlingStatus.NO_DETECTED, cookieBanner)
         // TO DO: add a positive test case after a test endpoint is implemented in desktop (Bug 1846341)
         assertEquals(false, displaysProduct)
+        assertEquals(false, translationsProcessing)
 
         navigationDelegate.value.onCanGoBack(mock(), true)
         assertEquals(true, observedCanGoBack)
@@ -616,6 +620,11 @@ class GeckoEngineSessionTest {
             GeckoSession.Loader().uri("http://www.mozilla.org").additionalHeaders(extraHeaders)
                 .headerFilter(GeckoSession.HEADER_FILTER_CORS_SAFELISTED),
         )
+
+        engineSession.loadUrl("http://mozilla.org", textDirectiveUserActivation = true)
+        verify(geckoSession).load(
+            GeckoSession.Loader().uri("http://mozilla.org").textDirectiveUserActivation(true),
+        )
     }
 
     @Test
@@ -631,6 +640,11 @@ class GeckoEngineSessionTest {
         engineSession.loadUrl("RESOURCE://package/test.text")
         verify(geckoSession, never()).load(GeckoSession.Loader().uri("resource://package/test.text"))
         verify(geckoSession, never()).load(GeckoSession.Loader().uri("RESOURCE://package/test.text"))
+
+        engineSession.loadUrl("fido:/12345678")
+        engineSession.loadUrl("FIDO:/12345678")
+        verify(geckoSession, never()).load(GeckoSession.Loader().uri("fido:/12345678"))
+        verify(geckoSession, never()).load(GeckoSession.Loader().uri("FIDO:/12345678"))
     }
 
     @Test
@@ -1049,6 +1063,7 @@ class GeckoEngineSessionTest {
         )
         engineSession.settings.historyTrackingDelegate = historyTrackingDelegate
         engineSession.appRedirectUrl = emptyPageUrl
+        engineSession.initialLoad = false
 
         class MockHistoryList(
             items: List<GeckoSession.HistoryDelegate.HistoryItem>,
@@ -1090,6 +1105,33 @@ class GeckoEngineSessionTest {
         verify(historyTrackingDelegate, never()).onVisited(eq(emptyPageUrl), any())
         assertEquals("https://www.google.com", observedUrl)
         assertEquals("Google Search", observedTitle)
+    }
+
+    @Test
+    fun `GIVEN an app initiated request AND initial load WHEN user swipe back THEN the tab should display the loaded page`() = runTestOnMain {
+        val engineSession = GeckoEngineSession(
+            mock(),
+            geckoSessionProvider = geckoSessionProvider,
+            context = coroutineContext,
+        )
+
+        captureDelegates()
+
+        var observedUrl = "https://www.google.com"
+        val emptyPageUrl = "https://example.com"
+
+        engineSession.register(
+            object : EngineSession.Observer {
+                override fun onLocationChange(url: String, hasUserGesture: Boolean) { observedUrl = url }
+            },
+        )
+        engineSession.appRedirectUrl = emptyPageUrl
+        engineSession.initialLoad = true
+
+        navigationDelegate.value.onLocationChange(geckoSession, emptyPageUrl, emptyList(), false)
+        contentDelegate.value.onTitleChange(geckoSession, emptyPageUrl)
+
+        assertEquals("https://example.com", observedUrl)
     }
 
     @Test
@@ -1845,21 +1887,34 @@ class GeckoEngineSessionTest {
     }
 
     @Test
+    fun `onPipModeChanged sets same enabled value`() {
+        whenever(geckoSession.compositorController).thenReturn(mock())
+        val engineSession = GeckoEngineSession(
+            mock(),
+            geckoSessionProvider = geckoSessionProvider,
+        )
+        engineSession.onPipModeChanged(true)
+        verify(geckoSession.compositorController).onPipModeChanged(true)
+        engineSession.onPipModeChanged(false)
+        verify(geckoSession.compositorController).onPipModeChanged(false)
+    }
+
+    @Test
     fun unsupportedSettings() {
         val settings = GeckoEngineSession(
             runtime,
             geckoSessionProvider = geckoSessionProvider,
         ).settings
 
-        expectException(UnsupportedSettingException::class) {
+        expectException<UnsupportedSettingException> {
             settings.javascriptEnabled = true
         }
 
-        expectException(UnsupportedSettingException::class) {
+        expectException<UnsupportedSettingException> {
             settings.domStorageEnabled = false
         }
 
-        expectException(UnsupportedSettingException::class) {
+        expectException<UnsupportedSettingException> {
             settings.trackingProtectionPolicy = TrackingProtectionPolicy.strict()
         }
     }
@@ -2446,9 +2501,23 @@ class GeckoEngineSessionTest {
         val nonMobileUrl = "https://example.com"
         val engineSession = spy(GeckoEngineSession(runtime, geckoSessionProvider = geckoSessionProvider))
         engineSession.currentUrl = mobileUrl
+        engineSession.pageLoadingUrl = "https://before-redirection.com"
 
         engineSession.toggleDesktopMode(true, reload = true)
         verify(engineSession, atLeastOnce()).loadUrl(nonMobileUrl, null, LoadUrlFlags.select(LoadUrlFlags.LOAD_FLAGS_REPLACE_HISTORY), null)
+
+        engineSession.toggleDesktopMode(false, reload = true)
+        verify(engineSession, atLeastOnce()).reload()
+    }
+
+    @Test
+    fun `toggleDesktopMode should reload a pageLoadingUrl when set to desktop mode if it is different from currentUrl`() {
+        val engineSession = spy(GeckoEngineSession(runtime, geckoSessionProvider = geckoSessionProvider))
+        engineSession.currentUrl = "https://redirected.com"
+        engineSession.pageLoadingUrl = "https://example.com"
+
+        engineSession.toggleDesktopMode(true, reload = true)
+        verify(engineSession, atLeastOnce()).loadUrl("https://example.com", null, LoadUrlFlags.select(LoadUrlFlags.LOAD_FLAGS_REPLACE_HISTORY), null)
 
         engineSession.toggleDesktopMode(false, reload = true)
         verify(engineSession, atLeastOnce()).reload()
@@ -2553,39 +2622,32 @@ class GeckoEngineSessionTest {
     }
 
     @Test
-    fun `WHEN session requestProductAnalysis is successful with analysis object THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
+    fun `getWebCompatInfo should correctly process a GV response`() {
+        val engineSession = GeckoEngineSession(
+            mock(),
+            geckoSessionProvider = geckoSessionProvider,
+        )
         var onResultCalled = false
         var onExceptionCalled = false
 
-        val ruleResult = GeckoResult<GeckoSession.ReviewAnalysis>()
-        whenever(geckoSession.requestAnalysis("mozilla.com")).thenReturn(ruleResult)
+        val ruleResult = GeckoResult<JSONObject>()
+        whenever(geckoSession.webCompatInfo).thenReturn(ruleResult)
 
-        engineSession.requestProductAnalysis(
-            "mozilla.com",
+        engineSession.getWebCompatInfo(
             onResult = { onResultCalled = true },
             onException = { onExceptionCalled = true },
         )
 
-        val productId = "banana"
-        val grade = "A"
-        val adjustedRating = 4.5
-        val lastAnalysisTime = 12345.toLong()
-        val analysisURL = "https://analysis.com"
-        val analysisObject = GeckoSession.ReviewAnalysis.Builder(productId)
-            .grade(grade)
-            .adjustedRating(adjustedRating)
-            .analysisUrl(analysisURL)
-            .needsAnalysis(true)
-            .pageNotSupported(false)
-            .notEnoughReviews(false)
-            .highlights(null)
-            .lastAnalysisTime(lastAnalysisTime)
-            .deletedProductReported(true)
-            .deletedProduct(true)
-            .build()
-
-        ruleResult.complete(analysisObject)
+        val json = JSONObject().apply {
+            put("devicePixelRatio", 2.5)
+            put(
+                "antitracking",
+                JSONObject().apply {
+                    put("hasTrackingContentBlocked", false)
+                },
+            )
+        }
+        ruleResult.complete(json)
         shadowOf(getMainLooper()).idle()
 
         assertTrue(onResultCalled)
@@ -2593,299 +2655,36 @@ class GeckoEngineSessionTest {
     }
 
     @Test
-    fun `WHEN requestProductAnalysis is not successful THEN onException callback for error is called`() {
+    fun `sendMoreWebCompatInfo should correctly process a GV response`() {
         val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
         var onResultCalled = false
         var onExceptionCalled = false
 
-        val ruleResult = GeckoResult<GeckoSession.ReviewAnalysis>()
-        whenever(geckoSession.requestAnalysis("mozilla.com")).thenReturn(ruleResult)
+        val testInfo = JSONObject().apply {
+            put("reason", "test-reason")
+            put("description", "test-description")
+            put("endpointUrl", "https://webcompat.com/issues/new")
+            put("reportUrl", "https://example.com")
+        }
 
-        engineSession.requestProductAnalysis(
-            "mozilla.com",
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
+        val ruleResult = GeckoResult<Void>()
+        whenever(geckoSession.sendMoreWebCompatInfo(any())).thenReturn(ruleResult)
+
+        engineSession.sendMoreWebCompatInfo(
+            info = testInfo,
+            onResult = {
+                onResultCalled = true
+            },
+            onException = {
+                onExceptionCalled = true
+            },
         )
 
-        ruleResult.completeExceptionally(IOException())
-        shadowOf(getMainLooper()).idle()
-
-        assertFalse(onResultCalled)
-        assertTrue(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session requestProductRecommendations is successful with empty list THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val ruleResult = GeckoResult<List<GeckoSession.Recommendation>>()
-        whenever(geckoSession.requestRecommendations("mozilla.com")).thenReturn(ruleResult)
-
-        engineSession.requestProductRecommendations(
-            "mozilla.com",
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        ruleResult.complete(emptyList())
+        ruleResult.complete(null)
         shadowOf(getMainLooper()).idle()
 
         assertTrue(onResultCalled)
         assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session requestProductRecommendations is successful with Recommendation THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val ruleResult = GeckoResult<List<GeckoSession.Recommendation>>()
-        whenever(geckoSession.requestRecommendations("mozilla.com")).thenReturn(ruleResult)
-
-        engineSession.requestProductRecommendations(
-            "mozilla.com",
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        val recommendationUrl = "https://recommendation.com"
-        val adjustedRating = 3.5
-        val imageUrl = "http://image.com"
-        val aid = "banana"
-        val name = "apple"
-        val grade = "C"
-        val price = "450"
-        val currency = "USD"
-
-        val recommendationObject = GeckoSession.Recommendation.Builder(recommendationUrl)
-            .adjustedRating(adjustedRating)
-            .sponsored(true)
-            .imageUrl(imageUrl)
-            .aid(aid)
-            .name(name)
-            .grade(grade)
-            .price(price)
-            .currency(currency)
-            .build()
-
-        ruleResult.complete(listOf(recommendationObject))
-        shadowOf(getMainLooper()).idle()
-
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN requestProductRecommendations is not successful THEN onException callback for error is called`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val ruleResult = GeckoResult<List<GeckoSession.Recommendation>>()
-        whenever(geckoSession.requestRecommendations("mozilla.com")).thenReturn(ruleResult)
-
-        engineSession.requestProductRecommendations(
-            "mozilla.com",
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        ruleResult.completeExceptionally(IOException())
-        shadowOf(getMainLooper()).idle()
-
-        assertFalse(onResultCalled)
-        assertTrue(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session reanalyzeProduct is successful THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val mUrl = "https://m.example.com"
-        val geckoResult = GeckoResult<String?>()
-        geckoResult.complete("COMPLETED")
-        whenever(geckoSession.requestCreateAnalysis(mUrl))
-            .thenReturn(geckoResult)
-
-        engineSession.reanalyzeProduct(
-            mUrl,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        shadowOf(getMainLooper()).idle()
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session requestAnalysisStatus is successful THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val mUrl = "https://m.example.com"
-        val geckoResult = GeckoResult<GeckoSession.AnalysisStatusResponse>()
-
-        val status = "in_progress"
-        val progress = 90.9
-        val analysisObject = GeckoSession.AnalysisStatusResponse.Builder(status)
-            .progress(progress)
-            .build()
-
-        geckoResult.complete(analysisObject)
-        whenever(geckoSession.requestAnalysisStatus(mUrl))
-            .thenReturn(geckoResult)
-
-        engineSession.requestAnalysisStatus(
-            mUrl,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        shadowOf(getMainLooper()).idle()
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendClickAttributionEvent is successful THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        geckoResult.complete(true)
-        whenever(geckoSession.sendClickAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendClickAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        shadowOf(getMainLooper()).idle()
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendClickAttributionEvent is not successful THEN onException callback for error is called`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        whenever(geckoSession.sendClickAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendClickAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        geckoResult.completeExceptionally(IOException())
-        shadowOf(getMainLooper()).idle()
-
-        assertFalse(onResultCalled)
-        assertTrue(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendImpressionAttributionEvent is successful THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        geckoResult.complete(true)
-        whenever(geckoSession.sendImpressionAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendImpressionAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        shadowOf(getMainLooper()).idle()
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendImpressionAttributionEvent is not successful THEN onException callback for error is called`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        whenever(geckoSession.sendImpressionAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendImpressionAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        geckoResult.completeExceptionally(IOException())
-        shadowOf(getMainLooper()).idle()
-
-        assertFalse(onResultCalled)
-        assertTrue(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendPlacementAttributionEvent is successful THEN notify of completion`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        geckoResult.complete(true)
-        whenever(geckoSession.sendPlacementAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendPlacementAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        shadowOf(getMainLooper()).idle()
-        assertTrue(onResultCalled)
-        assertFalse(onExceptionCalled)
-    }
-
-    @Test
-    fun `WHEN session sendPlacementAttributionEvent is not successful THEN onException callback for error is called`() {
-        val engineSession = GeckoEngineSession(mock(), geckoSessionProvider = geckoSessionProvider)
-        var onResultCalled = false
-        var onExceptionCalled = false
-
-        val geckoResult = GeckoResult<Boolean?>()
-        whenever(geckoSession.sendPlacementAttributionEvent(AID))
-            .thenReturn(geckoResult)
-
-        engineSession.sendPlacementAttributionEvent(
-            aid = AID,
-            onResult = { onResultCalled = true },
-            onException = { onExceptionCalled = true },
-        )
-
-        geckoResult.completeExceptionally(IOException())
-        shadowOf(getMainLooper()).idle()
-
-        assertFalse(onResultCalled)
-        assertTrue(onExceptionCalled)
     }
 
     @Test
@@ -3579,6 +3378,8 @@ class GeckoEngineSessionTest {
 
         var observedUrl: String? = null
         var observedIntent: Intent? = null
+        var observedFallbackUrl: String? = null
+        var observedAppName: String? = null
 
         var observedLoadUrl: String? = null
         var observedTriggeredByRedirect: Boolean? = null
@@ -3598,7 +3399,7 @@ class GeckoEngineSessionTest {
                 isSubframeRequest: Boolean,
             ): RequestInterceptor.InterceptionResponse? {
                 return when (uri) {
-                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result")
+                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result", "fallback", "app")
                     else -> null
                 }
             }
@@ -3609,9 +3410,13 @@ class GeckoEngineSessionTest {
                 override fun onLaunchIntentRequest(
                     url: String,
                     appIntent: Intent?,
+                    fallbackUrl: String?,
+                    appName: String?,
                 ) {
                     observedUrl = url
                     observedIntent = appIntent
+                    observedFallbackUrl = fallbackUrl
+                    observedAppName = appName
                 }
 
                 override fun onLoadRequest(url: String, triggeredByRedirect: Boolean, triggeredByWebContent: Boolean) {
@@ -3635,6 +3440,8 @@ class GeckoEngineSessionTest {
         assertEquals(result!!.poll(0), AllowOrDeny.DENY)
         assertNotNull(observedIntent)
         assertEquals("result", observedUrl)
+        assertNotNull(observedFallbackUrl)
+        assertNotNull(observedAppName)
         assertNull(observedLoadUrl)
         assertNull(observedTriggeredByRedirect)
         assertNull(observedTriggeredByWebContent)
@@ -3668,6 +3475,8 @@ class GeckoEngineSessionTest {
 
         var observedUrl: String? = null
         var observedIntent: Intent? = null
+        var observedFallbackUrl: String? = null
+        var observedAppName: String? = null
 
         var observedLoadUrl: String? = null
         var observedTriggeredByRedirect: Boolean? = null
@@ -3687,7 +3496,7 @@ class GeckoEngineSessionTest {
                 isSubframeRequest: Boolean,
             ): RequestInterceptor.InterceptionResponse? {
                 return when (uri) {
-                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result")
+                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result", "fallback", "app")
                     else -> null
                 }
             }
@@ -3698,9 +3507,13 @@ class GeckoEngineSessionTest {
                 override fun onLaunchIntentRequest(
                     url: String,
                     appIntent: Intent?,
+                    fallbackUrl: String?,
+                    appName: String?,
                 ) {
                     observedUrl = url
                     observedIntent = appIntent
+                    observedFallbackUrl = fallbackUrl
+                    observedAppName = appName
                 }
 
                 override fun onLoadRequest(url: String, triggeredByRedirect: Boolean, triggeredByWebContent: Boolean) {
@@ -3725,6 +3538,8 @@ class GeckoEngineSessionTest {
         assertNull(observedIntent)
         assertNull(observedUrl)
         assertNull(observedLoadUrl)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNull(observedTriggeredByRedirect)
         assertNull(observedTriggeredByWebContent)
 
@@ -3742,6 +3557,8 @@ class GeckoEngineSessionTest {
         assertNull(observedIntent)
         assertNull(observedUrl)
         assertNull(observedLoadUrl)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNull(observedTriggeredByRedirect)
         assertNull(observedTriggeredByWebContent)
     }
@@ -3773,7 +3590,7 @@ class GeckoEngineSessionTest {
                 isSubframeRequest: Boolean,
             ): RequestInterceptor.InterceptionResponse? {
                 return when (uri) {
-                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result")
+                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result", null, null)
                     else -> null
                 }
             }
@@ -3901,16 +3718,13 @@ class GeckoEngineSessionTest {
     }
 
     @Test
-    fun `onLoadRequest will notify onLaunchIntent observers if request was intercepted with app intent`() {
+    fun `onLoadRequest will notify onLaunchIntent observers if request on non-direct navigation was intercepted with app intent`() {
         val engineSession = GeckoEngineSession(
             mock(),
             geckoSessionProvider = geckoSessionProvider,
         )
 
         captureDelegates()
-
-        var observedUrl: String? = null
-        var observedIntent: Intent? = null
 
         engineSession.settings.requestInterceptor = object : RequestInterceptor {
             override fun interceptsAppInitiatedRequests() = true
@@ -3926,39 +3740,73 @@ class GeckoEngineSessionTest {
                 isSubframeRequest: Boolean,
             ): RequestInterceptor.InterceptionResponse? {
                 return when (uri) {
-                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result")
+                    "sample:triggeredByRedirect" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result1", "fallback1", "app1")
+                    "sample:NotTriggeredByRedirect" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result2", "fallback2", "app2")
+                    "sample:isDirectNavigation" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result3", "fallback3", "app3")
                     else -> null
                 }
             }
         }
 
-        engineSession.register(
-            object : EngineSession.Observer {
-                override fun onLaunchIntentRequest(
-                    url: String,
-                    appIntent: Intent?,
-                ) {
-                    observedUrl = url
-                    observedIntent = appIntent
-                }
-            },
-        )
+        val observer = object : EngineSession.Observer {
+            var observedUrl: String? = null
+            var observedIntent: Intent? = null
+            var observedFallbackUrl: String? = null
+            var observedAppName: String? = null
+
+            override fun onLaunchIntentRequest(
+                url: String,
+                appIntent: Intent?,
+                fallbackUrl: String?,
+                appName: String?,
+            ) {
+                observedUrl = url
+                observedIntent = appIntent
+                observedFallbackUrl = fallbackUrl
+                observedAppName = appName
+            }
+
+            fun reset() {
+                observedUrl = null
+                observedIntent = null
+                observedFallbackUrl = null
+                observedAppName = null
+            }
+        }
+
+        engineSession.register(observer)
 
         navigationDelegate.value.onLoadRequest(
             mock(),
-            mockLoadRequest("sample:about", triggeredByRedirect = true),
+            mockLoadRequest("sample:triggeredByRedirect", triggeredByRedirect = true, isDirectNavigation = false),
         )
 
-        assertNotNull(observedIntent)
-        assertEquals("result", observedUrl)
+        assertNotNull(observer.observedIntent)
+        assertEquals("result1", observer.observedUrl)
+        assertEquals("fallback1", observer.observedFallbackUrl)
+        assertEquals("app1", observer.observedAppName)
 
+        observer.reset()
         navigationDelegate.value.onLoadRequest(
             mock(),
-            mockLoadRequest("sample:about", triggeredByRedirect = false),
+            mockLoadRequest("sample:NotTriggeredByRedirect", triggeredByRedirect = false, isDirectNavigation = false),
         )
 
-        assertNotNull(observedIntent)
-        assertEquals("result", observedUrl)
+        assertNotNull(observer.observedIntent)
+        assertEquals("result2", observer.observedUrl)
+        assertEquals("fallback2", observer.observedFallbackUrl)
+        assertEquals("app2", observer.observedAppName)
+
+        observer.reset()
+        navigationDelegate.value.onLoadRequest(
+            mock(),
+            mockLoadRequest("sample:isDirectNavigation", triggeredByRedirect = false, isDirectNavigation = true),
+        )
+
+        assertNull(observer.observedIntent)
+        assertNull(observer.observedUrl)
+        assertNull(observer.observedFallbackUrl)
+        assertNull(observer.observedAppName)
     }
 
     @Test
@@ -4011,6 +3859,8 @@ class GeckoEngineSessionTest {
 
         var observedUrl: String? = null
         var observedIntent: Intent? = null
+        var observedFallbackUrl: String? = null
+        var observedAppName: String? = null
         var observedIsSubframe = false
 
         engineSession.settings.requestInterceptor = object : RequestInterceptor {
@@ -4028,7 +3878,7 @@ class GeckoEngineSessionTest {
             ): RequestInterceptor.InterceptionResponse? {
                 observedIsSubframe = isSubframeRequest
                 return when (uri) {
-                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result")
+                    "sample:about" -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), "result", "fallback", "app")
                     else -> null
                 }
             }
@@ -4039,9 +3889,13 @@ class GeckoEngineSessionTest {
                 override fun onLaunchIntentRequest(
                     url: String,
                     appIntent: Intent?,
+                    fallbackUrl: String?,
+                    appName: String?,
                 ) {
                     observedUrl = url
                     observedIntent = appIntent
+                    observedFallbackUrl = fallbackUrl
+                    observedAppName = appName
                 }
             },
         )
@@ -4053,8 +3907,14 @@ class GeckoEngineSessionTest {
 
         assertNotNull(observedIntent)
         assertEquals("result", observedUrl)
+        assertEquals("fallback", observedFallbackUrl)
+        assertEquals("app", observedAppName)
         assertEquals(true, observedIsSubframe)
 
+        observedUrl = null
+        observedIntent = null
+        observedFallbackUrl = null
+        observedAppName = null
         navigationDelegate.value.onSubframeLoadRequest(
             mock(),
             mockLoadRequest("sample:about", triggeredByRedirect = false),
@@ -4062,6 +3922,8 @@ class GeckoEngineSessionTest {
 
         assertNotNull(observedIntent)
         assertEquals("result", observedUrl)
+        assertEquals("fallback", observedFallbackUrl)
+        assertEquals("app", observedAppName)
         assertEquals(true, observedIsSubframe)
     }
 
@@ -4074,8 +3936,10 @@ class GeckoEngineSessionTest {
 
         captureDelegates()
 
-        var observedLaunchIntentUrl: String? = null
-        var observedLaunchIntent: Intent? = null
+        var observedUrl: String? = null
+        var observedIntent: Intent? = null
+        var observedFallbackUrl: String? = null
+        var observedAppName: String? = null
         var observedOnLoadRequestUrl: String? = null
         var observedTriggeredByRedirect: Boolean? = null
         var observedTriggeredByWebContent: Boolean? = null
@@ -4105,9 +3969,13 @@ class GeckoEngineSessionTest {
                 override fun onLaunchIntentRequest(
                     url: String,
                     appIntent: Intent?,
+                    fallbackUrl: String?,
+                    appName: String?,
                 ) {
-                    observedLaunchIntentUrl = url
-                    observedLaunchIntent = appIntent
+                    observedUrl = url
+                    observedIntent = appIntent
+                    observedFallbackUrl = fallbackUrl
+                    observedAppName = appName
                 }
 
                 override fun onLoadRequest(
@@ -4127,8 +3995,10 @@ class GeckoEngineSessionTest {
             mockLoadRequest("sample:about", triggeredByRedirect = true),
         )
 
-        assertNull(observedLaunchIntentUrl)
-        assertNull(observedLaunchIntent)
+        assertNull(observedUrl)
+        assertNull(observedIntent)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNull(observedTriggeredByRedirect)
         assertNull(observedTriggeredByWebContent)
         assertNull(observedOnLoadRequestUrl)
@@ -4138,8 +4008,10 @@ class GeckoEngineSessionTest {
             mockLoadRequest("sample:about", triggeredByRedirect = false),
         )
 
-        assertNull(observedLaunchIntentUrl)
-        assertNull(observedLaunchIntent)
+        assertNull(observedUrl)
+        assertNull(observedIntent)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNull(observedTriggeredByRedirect)
         assertNull(observedTriggeredByWebContent)
         assertNull(observedOnLoadRequestUrl)
@@ -4154,8 +4026,10 @@ class GeckoEngineSessionTest {
 
         captureDelegates()
 
-        var observedLaunchIntentUrl: String? = null
-        var observedLaunchIntent: Intent? = null
+        var observedUrl: String? = null
+        var observedIntent: Intent? = null
+        var observedFallbackUrl: String? = null
+        var observedAppName: String? = null
         var observedOnLoadRequestUrl: String? = null
         var observedTriggeredByRedirect: Boolean? = null
         var observedTriggeredByWebContent: Boolean? = null
@@ -4166,9 +4040,13 @@ class GeckoEngineSessionTest {
                 override fun onLaunchIntentRequest(
                     url: String,
                     appIntent: Intent?,
+                    fallbackUrl: String?,
+                    appName: String?,
                 ) {
-                    observedLaunchIntentUrl = url
-                    observedLaunchIntent = appIntent
+                    observedUrl = url
+                    observedIntent = appIntent
+                    observedFallbackUrl = fallbackUrl
+                    observedAppName = appName
                 }
 
                 override fun onLoadRequest(
@@ -4188,8 +4066,10 @@ class GeckoEngineSessionTest {
             mockLoadRequest("sample:about", triggeredByRedirect = true),
         )
 
-        assertNull(observedLaunchIntentUrl)
-        assertNull(observedLaunchIntent)
+        assertNull(observedUrl)
+        assertNull(observedIntent)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNotNull(observedTriggeredByRedirect)
         assertTrue(observedTriggeredByRedirect!!)
         assertNotNull(observedTriggeredByWebContent)
@@ -4201,8 +4081,10 @@ class GeckoEngineSessionTest {
             mockLoadRequest("sample:about", triggeredByRedirect = false),
         )
 
-        assertNull(observedLaunchIntentUrl)
-        assertNull(observedLaunchIntent)
+        assertNull(observedUrl)
+        assertNull(observedIntent)
+        assertNull(observedFallbackUrl)
+        assertNull(observedAppName)
         assertNotNull(observedTriggeredByRedirect)
         assertFalse(observedTriggeredByRedirect!!)
         assertNotNull(observedTriggeredByWebContent)
@@ -4236,7 +4118,7 @@ class GeckoEngineSessionTest {
             ): RequestInterceptor.InterceptionResponse? {
                 return when (uri) {
                     fakeUrl -> null
-                    else -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), fakeUrl)
+                    else -> RequestInterceptor.InterceptionResponse.AppIntent(mock(), fakeUrl, null, null)
                 }
             }
         }
@@ -4790,7 +4672,8 @@ class GeckoEngineSessionTest {
             }
 
             override fun onPrintException(isPrint: Boolean, throwable: Throwable) {
-                assert(false) { "We should not notify of an exception." } }
+                assert(false) { "We should not notify of an exception." }
+            }
         })
         engineSession.requestPrintContent()
         shadowOf(getMainLooper()).idle()

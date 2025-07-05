@@ -39,8 +39,9 @@ nsMathMLmunderoverFrame::~nsMathMLmunderoverFrame() = default;
 nsresult nsMathMLmunderoverFrame::AttributeChanged(int32_t aNameSpaceID,
                                                    nsAtom* aAttribute,
                                                    int32_t aModType) {
-  if (nsGkAtoms::accent_ == aAttribute ||
-      nsGkAtoms::accentunder_ == aAttribute) {
+  if (aNameSpaceID == kNameSpaceID_None &&
+      (nsGkAtoms::accent == aAttribute ||
+       nsGkAtoms::accentunder == aAttribute)) {
     // When we have automatic data to update within ourselves, we ask our
     // parent to re-layout its children
     return ReLayoutChildren(GetParent());
@@ -89,7 +90,7 @@ uint8_t nsMathMLmunderoverFrame::ScriptIncrement(nsIFrame* aFrame) {
   }
   child = child->GetNextSibling();
   if (aFrame == child) {
-    if (mContent->IsMathMLElement(nsGkAtoms::mover_)) {
+    if (mContent->IsMathMLElement(nsGkAtoms::mover)) {
       return mIncrementOver ? 1 : 0;
     }
     return mIncrementUnder ? 1 : 0;
@@ -187,16 +188,16 @@ XXX The winner is the outermost setting in conflicting settings like these:
   nsIFrame* baseFrame = mFrames.FirstChild();
 
   if (baseFrame) {
-    if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder_,
-                                        nsGkAtoms::munderover_)) {
+    if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder,
+                                        nsGkAtoms::munderover)) {
       underscriptFrame = baseFrame->GetNextSibling();
     } else {
-      NS_ASSERTION(mContent->IsMathMLElement(nsGkAtoms::mover_),
+      NS_ASSERTION(mContent->IsMathMLElement(nsGkAtoms::mover),
                    "mContent->NodeInfo()->NameAtom() not recognized");
       overscriptFrame = baseFrame->GetNextSibling();
     }
   }
-  if (underscriptFrame && mContent->IsMathMLElement(nsGkAtoms::munderover_)) {
+  if (underscriptFrame && mContent->IsMathMLElement(nsGkAtoms::munderover)) {
     overscriptFrame = underscriptFrame->GetNextSibling();
   }
 
@@ -211,8 +212,8 @@ XXX The winner is the outermost setting in conflicting settings like these:
   // embellished and its core <mo> is an accent
   nsEmbellishData embellishData;
   nsAutoString value;
-  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder_,
-                                      nsGkAtoms::munderover_)) {
+  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder,
+                                      nsGkAtoms::munderover)) {
     GetEmbellishDataFrom(underscriptFrame, embellishData);
     if (NS_MATHML_EMBELLISH_IS_ACCENT(embellishData.flags)) {
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTUNDER;
@@ -222,10 +223,10 @@ XXX The winner is the outermost setting in conflicting settings like these:
 
     // if we have an accentunder attribute, it overrides what the underscript
     // said
-    if (mContent->AsElement()->GetAttr(nsGkAtoms::accentunder_, value)) {
-      if (value.EqualsLiteral("true")) {
+    if (mContent->AsElement()->GetAttr(nsGkAtoms::accentunder, value)) {
+      if (value.LowerCaseEqualsLiteral("true")) {
         mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTUNDER;
-      } else if (value.EqualsLiteral("false")) {
+      } else if (value.LowerCaseEqualsLiteral("false")) {
         mEmbellishData.flags &= ~NS_MATHML_EMBELLISH_ACCENTUNDER;
       }
     }
@@ -233,8 +234,8 @@ XXX The winner is the outermost setting in conflicting settings like these:
 
   // The default value of accent is false, unless the overscript is embellished
   // and its core <mo> is an accent
-  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::mover_,
-                                      nsGkAtoms::munderover_)) {
+  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::mover,
+                                      nsGkAtoms::munderover)) {
     GetEmbellishDataFrom(overscriptFrame, embellishData);
     if (NS_MATHML_EMBELLISH_IS_ACCENT(embellishData.flags)) {
       mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTOVER;
@@ -243,10 +244,10 @@ XXX The winner is the outermost setting in conflicting settings like these:
     }
 
     // if we have an accent attribute, it overrides what the overscript said
-    if (mContent->AsElement()->GetAttr(nsGkAtoms::accent_, value)) {
-      if (value.EqualsLiteral("true")) {
+    if (mContent->AsElement()->GetAttr(nsGkAtoms::accent, value)) {
+      if (value.LowerCaseEqualsLiteral("true")) {
         mEmbellishData.flags |= NS_MATHML_EMBELLISH_ACCENTOVER;
-      } else if (value.EqualsLiteral("false")) {
+      } else if (value.LowerCaseEqualsLiteral("false")) {
         mEmbellishData.flags &= ~NS_MATHML_EMBELLISH_ACCENTOVER;
       }
     }
@@ -281,15 +282,15 @@ XXX The winner is the outermost setting in conflicting settings like these:
      that math accents and \overline change uncramped styles to their
      cramped counterparts.
   */
-  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::mover_,
-                                      nsGkAtoms::munderover_)) {
+  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::mover,
+                                      nsGkAtoms::munderover)) {
     uint32_t compress = NS_MATHML_EMBELLISH_IS_ACCENTOVER(mEmbellishData.flags)
                             ? NS_MATHML_COMPRESSED
                             : 0;
     mIncrementOver = !NS_MATHML_EMBELLISH_IS_ACCENTOVER(mEmbellishData.flags) ||
                      subsupDisplay;
-    SetIncrementScriptLevel(
-        mContent->IsMathMLElement(nsGkAtoms::mover_) ? 1 : 2, mIncrementOver);
+    SetIncrementScriptLevel(mContent->IsMathMLElement(nsGkAtoms::mover) ? 1 : 2,
+                            mIncrementOver);
     if (mIncrementOver) {
       PropagateFrameFlagFor(overscriptFrame, NS_FRAME_MATHML_SCRIPT_DESCENDANT);
     }
@@ -299,8 +300,8 @@ XXX The winner is the outermost setting in conflicting settings like these:
      The TeXBook treats 'under' like a subscript, so p.141 or Rule 13a
      say it should be compressed
   */
-  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder_,
-                                      nsGkAtoms::munderover_)) {
+  if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder,
+                                      nsGkAtoms::munderover)) {
     mIncrementUnder =
         !NS_MATHML_EMBELLISH_IS_ACCENTUNDER(mEmbellishData.flags) ||
         subsupDisplay;
@@ -358,25 +359,25 @@ i.e.,:
 
 /* virtual */
 nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
-                                        bool aPlaceOrigin,
+                                        const PlaceFlags& aFlags,
                                         ReflowOutput& aDesiredSize) {
   float fontSizeInflation = nsLayoutUtils::FontSizeInflationFor(this);
   if (NS_MATHML_EMBELLISH_IS_MOVABLELIMITS(mEmbellishData.flags) &&
       StyleFont()->mMathStyle == StyleMathStyle::Compact) {
     // place like sub sup or subsup
-    if (mContent->IsMathMLElement(nsGkAtoms::munderover_)) {
+    if (mContent->IsMathMLElement(nsGkAtoms::munderover)) {
       return nsMathMLmmultiscriptsFrame::PlaceMultiScript(
-          PresContext(), aDrawTarget, aPlaceOrigin, aDesiredSize, this, 0, 0,
+          PresContext(), aDrawTarget, aFlags, aDesiredSize, this, 0, 0,
           fontSizeInflation);
-    } else if (mContent->IsMathMLElement(nsGkAtoms::munder_)) {
+    } else if (mContent->IsMathMLElement(nsGkAtoms::munder)) {
       return nsMathMLmmultiscriptsFrame::PlaceMultiScript(
-          PresContext(), aDrawTarget, aPlaceOrigin, aDesiredSize, this, 0, 0,
+          PresContext(), aDrawTarget, aFlags, aDesiredSize, this, 0, 0,
           fontSizeInflation);
     } else {
-      NS_ASSERTION(mContent->IsMathMLElement(nsGkAtoms::mover_),
+      NS_ASSERTION(mContent->IsMathMLElement(nsGkAtoms::mover),
                    "mContent->NodeInfo()->NameAtom() not recognized");
       return nsMathMLmmultiscriptsFrame::PlaceMultiScript(
-          PresContext(), aDrawTarget, aPlaceOrigin, aDesiredSize, this, 0, 0,
+          PresContext(), aDrawTarget, aFlags, aDesiredSize, this, 0, 0,
           fontSizeInflation);
     }
   }
@@ -395,30 +396,30 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
   overSize.SetBlockStartAscent(0);
   bool haveError = false;
   if (baseFrame) {
-    if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder_,
-                                        nsGkAtoms::munderover_)) {
+    if (mContent->IsAnyOfMathMLElements(nsGkAtoms::munder,
+                                        nsGkAtoms::munderover)) {
       underFrame = baseFrame->GetNextSibling();
-    } else if (mContent->IsMathMLElement(nsGkAtoms::mover_)) {
+    } else if (mContent->IsMathMLElement(nsGkAtoms::mover)) {
       overFrame = baseFrame->GetNextSibling();
     }
   }
-  if (underFrame && mContent->IsMathMLElement(nsGkAtoms::munderover_)) {
+  if (underFrame && mContent->IsMathMLElement(nsGkAtoms::munderover)) {
     overFrame = underFrame->GetNextSibling();
   }
 
-  if (mContent->IsMathMLElement(nsGkAtoms::munder_)) {
+  if (mContent->IsMathMLElement(nsGkAtoms::munder)) {
     if (!baseFrame || !underFrame || underFrame->GetNextSibling()) {
       // report an error, encourage people to get their markups in order
       haveError = true;
     }
   }
-  if (mContent->IsMathMLElement(nsGkAtoms::mover_)) {
+  if (mContent->IsMathMLElement(nsGkAtoms::mover)) {
     if (!baseFrame || !overFrame || overFrame->GetNextSibling()) {
       // report an error, encourage people to get their markups in order
       haveError = true;
     }
   }
-  if (mContent->IsMathMLElement(nsGkAtoms::munderover_)) {
+  if (mContent->IsMathMLElement(nsGkAtoms::munderover)) {
     if (!baseFrame || !underFrame || !overFrame ||
         overFrame->GetNextSibling()) {
       // report an error, encourage people to get their markups in order
@@ -426,17 +427,21 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
     }
   }
   if (haveError) {
-    if (aPlaceOrigin) {
+    if (!aFlags.contains(PlaceFlag::MeasureOnly)) {
       ReportChildCountError();
     }
-    return PlaceAsMrow(aDrawTarget, aPlaceOrigin, aDesiredSize);
+    return PlaceAsMrow(aDrawTarget, aFlags, aDesiredSize);
   }
   GetReflowAndBoundingMetricsFor(baseFrame, baseSize, bmBase);
+  nsMargin baseMargin = GetMarginForPlace(aFlags, baseFrame);
+  nsMargin underMargin, overMargin;
   if (underFrame) {
     GetReflowAndBoundingMetricsFor(underFrame, underSize, bmUnder);
+    underMargin = GetMarginForPlace(aFlags, underFrame);
   }
   if (overFrame) {
     GetReflowAndBoundingMetricsFor(overFrame, overSize, bmOver);
+    overMargin = GetMarginForPlace(aFlags, overFrame);
   }
 
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
@@ -478,7 +483,8 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
           gfxMathTable::LowerLimitBaselineDropMin, oneDevPixel);
       bigOpSpacing5 = 0;
     }
-    underDelta1 = std::max(bigOpSpacing2, (bigOpSpacing4 - bmUnder.ascent));
+    underDelta1 = std::max(
+        bigOpSpacing2, (bigOpSpacing4 - bmUnder.ascent - underMargin.bottom));
     underDelta2 = bigOpSpacing5;
   } else {
     // No corresponding rule in TeXbook - we are on our own here
@@ -490,7 +496,7 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
     underDelta2 = ruleThickness;
   }
   // empty under?
-  if (!(bmUnder.ascent + bmUnder.descent)) {
+  if (bmUnder.ascent + bmUnder.descent + underMargin.TopBottom() <= 0) {
     underDelta1 = 0;
     underDelta2 = 0;
   }
@@ -516,16 +522,19 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
           gfxMathTable::UpperLimitBaselineRiseMin, oneDevPixel);
       bigOpSpacing5 = 0;
     }
-    overDelta1 = std::max(bigOpSpacing1, (bigOpSpacing3 - bmOver.descent));
+    overDelta1 = std::max(bigOpSpacing1,
+                          (bigOpSpacing3 - bmOver.descent - overMargin.bottom));
     overDelta2 = bigOpSpacing5;
 
     // XXX This is not a TeX rule...
     // delta1 (as computed abvove) can become really big when bmOver.descent is
     // negative,  e.g., if the content is &OverBar. In such case, we use the
     // height
-    if (bmOver.descent < 0)
+    if (bmOver.descent + overMargin.bottom < 0) {
       overDelta1 = std::max(bigOpSpacing1,
-                            (bigOpSpacing3 - (bmOver.ascent + bmOver.descent)));
+                            (bigOpSpacing3 - (bmOver.ascent + bmOver.descent +
+                                              overMargin.TopBottom())));
+    }
   } else {
     // Rule 12, App. G, TeXbook
     // We are going to modify this rule to make it more general.
@@ -562,14 +571,14 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
       accentBaseHeight = mathFont->MathTable()->Constant(
           gfxMathTable::AccentBaseHeight, oneDevPixel);
     }
-    if (bmBase.ascent < accentBaseHeight) {
+    if (bmBase.ascent + baseMargin.top < accentBaseHeight) {
       // also ensure at least accentBaseHeight above the baseline of the base
-      overDelta1 += accentBaseHeight - bmBase.ascent;
+      overDelta1 += accentBaseHeight - bmBase.ascent - baseMargin.top;
     }
     overDelta2 = ruleThickness;
   }
   // empty over?
-  if (!(bmOver.ascent + bmOver.descent)) {
+  if (bmOver.ascent + bmOver.descent + overMargin.TopBottom() <= 0) {
     overDelta1 = 0;
     overDelta2 = 0;
   }
@@ -583,30 +592,33 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
   // Ad-hoc - This is to override fonts which have ready-made _accent_
   // glyphs with negative lbearing and rbearing. We want to position
   // the overscript ourselves
-  nscoord overWidth = bmOver.width;
-  if (!overWidth && (bmOver.rightBearing - bmOver.leftBearing > 0)) {
+  nscoord overWidth = bmOver.width + overMargin.LeftRight();
+  if (overWidth <= 0 && (bmOver.rightBearing - bmOver.leftBearing > 0)) {
     overWidth = bmOver.rightBearing - bmOver.leftBearing;
     dxOver = -bmOver.leftBearing;
   }
 
   if (NS_MATHML_EMBELLISH_IS_ACCENTOVER(mEmbellishData.flags)) {
-    mBoundingMetrics.width = bmBase.width;
+    mBoundingMetrics.width = bmBase.width + baseMargin.LeftRight();
     dxOver += correction;
   } else {
-    mBoundingMetrics.width = std::max(bmBase.width, overWidth);
+    mBoundingMetrics.width =
+        std::max(bmBase.width + baseMargin.LeftRight(), overWidth);
     dxOver += correction / 2;
   }
 
   dxOver += (mBoundingMetrics.width - overWidth) / 2;
-  dxBase = (mBoundingMetrics.width - bmBase.width) / 2;
+  dxBase = (mBoundingMetrics.width - bmBase.width - baseMargin.LeftRight()) / 2;
 
-  mBoundingMetrics.ascent =
-      bmBase.ascent + overDelta1 + bmOver.ascent + bmOver.descent;
-  mBoundingMetrics.descent = bmBase.descent;
+  mBoundingMetrics.ascent = baseMargin.top + bmBase.ascent + overDelta1 +
+                            bmOver.ascent + bmOver.descent +
+                            overMargin.TopBottom();
+  mBoundingMetrics.descent = bmBase.descent + baseMargin.bottom;
   mBoundingMetrics.leftBearing =
       std::min(dxBase + bmBase.leftBearing, dxOver + bmOver.leftBearing);
   mBoundingMetrics.rightBearing =
-      std::max(dxBase + bmBase.rightBearing, dxOver + bmOver.rightBearing);
+      std::max(dxBase + bmBase.rightBearing + baseMargin.LeftRight(),
+               dxOver + bmOver.rightBearing + overMargin.LeftRight());
 
   //////////
   // pass 2, do what <munder> does: attach the underscript on the previous
@@ -616,17 +628,18 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
   // end up like <munder>.
 
   nsBoundingMetrics bmAnonymousBase = mBoundingMetrics;
-  nscoord ascentAnonymousBase =
-      std::max(mBoundingMetrics.ascent + overDelta2,
-               overSize.BlockStartAscent() + bmOver.descent + overDelta1 +
-                   bmBase.ascent);
-  ascentAnonymousBase =
-      std::max(ascentAnonymousBase, baseSize.BlockStartAscent());
+  nscoord ascentAnonymousBase = std::max(
+      mBoundingMetrics.ascent + overDelta2,
+      overMargin.TopBottom() + overSize.BlockStartAscent() + bmOver.descent +
+          overDelta1 + baseMargin.top + bmBase.ascent);
+  ascentAnonymousBase = std::max(ascentAnonymousBase,
+                                 baseSize.BlockStartAscent() + baseMargin.top);
 
   // Width of non-spacing marks is zero so use left and right bearing.
-  nscoord underWidth = bmUnder.width;
-  if (!underWidth) {
-    underWidth = bmUnder.rightBearing - bmUnder.leftBearing;
+  nscoord underWidth = bmUnder.width + underMargin.LeftRight();
+  if (underWidth <= 0) {
+    underWidth =
+        bmUnder.rightBearing + underMargin.LeftRight() - bmUnder.leftBearing;
     dxUnder = -bmUnder.leftBearing;
   }
 
@@ -644,40 +657,59 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
   dxOver += dxAnonymousBase;
   dxBase += dxAnonymousBase;
 
-  mBoundingMetrics.width = std::max(dxAnonymousBase + bmAnonymousBase.width,
-                                    dxUnder + bmUnder.width);
+  mBoundingMetrics.width =
+      std::max(dxAnonymousBase + bmAnonymousBase.width,
+               dxUnder + bmUnder.width + underMargin.LeftRight());
   // At this point, mBoundingMetrics.ascent = bmAnonymousBase.ascent
-  mBoundingMetrics.descent =
-      bmAnonymousBase.descent + underDelta1 + bmUnder.ascent + bmUnder.descent;
+  mBoundingMetrics.descent = bmAnonymousBase.descent + underDelta1 +
+                             bmUnder.ascent + bmUnder.descent +
+                             underMargin.TopBottom();
   mBoundingMetrics.leftBearing =
       std::min(dxAnonymousBase + bmAnonymousBase.leftBearing,
                dxUnder + bmUnder.leftBearing);
   mBoundingMetrics.rightBearing =
       std::max(dxAnonymousBase + bmAnonymousBase.rightBearing,
-               dxUnder + bmUnder.rightBearing);
+               dxUnder + bmUnder.rightBearing + underMargin.LeftRight());
 
   aDesiredSize.SetBlockStartAscent(ascentAnonymousBase);
   aDesiredSize.Height() =
       aDesiredSize.BlockStartAscent() +
       std::max(mBoundingMetrics.descent + underDelta2,
-               bmAnonymousBase.descent + underDelta1 + bmUnder.ascent +
-                   underSize.Height() - underSize.BlockStartAscent());
+               bmAnonymousBase.descent + underDelta1 + underMargin.top +
+                   bmUnder.ascent + underSize.Height() -
+                   underSize.BlockStartAscent() + underMargin.bottom);
   aDesiredSize.Height() =
-      std::max(aDesiredSize.Height(), aDesiredSize.BlockStartAscent() +
-                                          baseSize.Height() -
-                                          baseSize.BlockStartAscent());
+      std::max(aDesiredSize.Height(),
+               aDesiredSize.BlockStartAscent() + baseSize.Height() -
+                   baseSize.BlockStartAscent() + baseMargin.bottom);
   aDesiredSize.Width() = mBoundingMetrics.width;
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
+
+  // Apply width/height to math content box.
+  auto sizes = GetWidthAndHeightForPlaceAdjustment(aFlags);
+  auto shiftX = ApplyAdjustmentForWidthAndHeight(aFlags, sizes, aDesiredSize,
+                                                 mBoundingMetrics);
+  dxOver += shiftX;
+  dxBase += shiftX;
+  dxUnder += shiftX;
+
+  // Add padding+border.
+  auto borderPadding = GetBorderPaddingForPlace(aFlags);
+  InflateReflowAndBoundingMetrics(borderPadding, aDesiredSize,
+                                  mBoundingMetrics);
+  dxOver += borderPadding.left + overMargin.left;
+  dxBase += borderPadding.left + baseMargin.left;
+  dxUnder += borderPadding.left + underMargin.left;
 
   mReference.x = 0;
   mReference.y = aDesiredSize.BlockStartAscent();
 
-  if (aPlaceOrigin) {
+  if (!aFlags.contains(PlaceFlag::MeasureOnly)) {
     nscoord dy;
     // place overscript
     if (overFrame) {
       dy = aDesiredSize.BlockStartAscent() - mBoundingMetrics.ascent +
-           bmOver.ascent - overSize.BlockStartAscent();
+           overMargin.top + bmOver.ascent - overSize.BlockStartAscent();
       FinishReflowChild(overFrame, PresContext(), overSize, nullptr, dxOver, dy,
                         ReflowChildFlags::Default);
     }
@@ -688,10 +720,17 @@ nsresult nsMathMLmunderoverFrame::Place(DrawTarget* aDrawTarget,
     // place underscript
     if (underFrame) {
       dy = aDesiredSize.BlockStartAscent() + mBoundingMetrics.descent -
-           bmUnder.descent - underSize.BlockStartAscent();
+           bmUnder.descent - underMargin.bottom - underSize.BlockStartAscent();
       FinishReflowChild(underFrame, PresContext(), underSize, nullptr, dxUnder,
                         dy, ReflowChildFlags::Default);
     }
   }
   return NS_OK;
+}
+
+bool nsMathMLmunderoverFrame::IsMathContentBoxHorizontallyCentered() const {
+  bool subsupDisplay =
+      NS_MATHML_EMBELLISH_IS_MOVABLELIMITS(mEmbellishData.flags) &&
+      StyleFont()->mMathStyle == StyleMathStyle::Compact;
+  return !subsupDisplay;
 }

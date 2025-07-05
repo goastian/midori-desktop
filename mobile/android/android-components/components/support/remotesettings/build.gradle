@@ -5,7 +5,7 @@ buildscript {
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -13,7 +13,7 @@ buildscript {
         }
     }
     dependencies {
-        classpath  ComponentsDependencies.plugin_serialization
+        classpath  libs.plugin.serialization
     }
 }
 
@@ -23,37 +23,43 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlinx-serialization'
 
 android {
-    compileSdkVersion config.compileSdkVersion
+    compileSdkVersion = config.compileSdkVersion
 
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.support.remotesettings'
+    namespace = 'mozilla.components.support.remotesettings'
 }
 
 dependencies {
-    implementation project(':support-ktx')
     implementation project(':support-base')
+    implementation project(':support-ktx')
+    implementation project(':support-utils')
     implementation ComponentsDependencies.mozilla_remote_settings
-    implementation ComponentsDependencies.kotlin_json
+    implementation libs.kotlin.json
+    implementation libs.androidx.work.runtime
 
-    testImplementation ComponentsDependencies.testing_mockito
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation project(':support-test')
+
+    testImplementation libs.testing.mockito
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.robolectric
+    testImplementation libs.androidx.work.testing
     testImplementation ComponentsDependencies.mozilla_remote_settings
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

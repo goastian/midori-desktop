@@ -12,6 +12,7 @@ import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.RestoreCompleteAction
 import mozilla.components.browser.state.action.TabListAction
+import mozilla.components.browser.state.action.TabListAction.RestoreAction.RestoreLocation
 import mozilla.components.browser.state.action.UndoAction
 import mozilla.components.browser.state.selector.findNormalOrPrivateTabByUrl
 import mozilla.components.browser.state.selector.findNormalOrPrivateTabByUrlIgnoringFragment
@@ -122,13 +123,23 @@ class TabsUseCases(
          *
          * @param url The URL to be loaded in the new tab.
          * @param flags the [LoadUrlFlags] to use when loading the provided URL.
+         * @param originalInput If the user entered a URL, this is the
+         * original user input before any fixups were applied to it.
          */
-        override fun invoke(
+        override operator fun invoke(
             url: String,
             flags: LoadUrlFlags,
             additionalHeaders: Map<String, String>?,
+            originalInput: String?,
         ) {
-            this.invoke(url, selectTab = true, startLoading = true, parentId = null, flags = flags)
+            this.invoke(
+                url,
+                selectTab = true,
+                startLoading = true,
+                parentId = null,
+                flags = flags,
+                originalInput = originalInput,
+            )
         }
 
         /**
@@ -140,6 +151,7 @@ class TabsUseCases(
          * @param parentId the id of the parent tab to use for the newly created tab.
          * @param flags the [LoadUrlFlags] to use when loading the provided URL.
          * @param contextId the session context id to use for this tab.
+         * @param title The title of the new page.
          * @param engineSession (optional) engine session to use for this tab.
          * @param source The [SessionState.Source] of the new tab.
          * @param searchTerms The search terms of this new tab if it represents an active
@@ -150,6 +162,9 @@ class TabsUseCases(
          * @param isSearch whether or not the provided URL is the result of a search.
          * @param searchEngineName The search engine name.
          * @param additionalHeaders The extra headers to use when loading the provided URL.
+         * @param originalInput If the user entered a URL, this is the
+         * original user input before any fixups were applied to it.
+         * @param textDirectiveUserActivation whether loading allows the scroll by text fragmentation.
          * @return The ID of the created tab.
          */
         operator fun invoke(
@@ -159,6 +174,7 @@ class TabsUseCases(
             parentId: String? = null,
             flags: LoadUrlFlags = LoadUrlFlags.none(),
             contextId: String? = null,
+            title: String = "",
             engineSession: EngineSession? = null,
             source: SessionState.Source = SessionState.Source.Internal.NewTab,
             searchTerms: String = "",
@@ -167,6 +183,8 @@ class TabsUseCases(
             isSearch: Boolean = false,
             searchEngineName: String? = null,
             additionalHeaders: Map<String, String>? = null,
+            originalInput: String? = null,
+            textDirectiveUserActivation: Boolean = false,
         ): String {
             val tab = createTab(
                 url = url,
@@ -174,11 +192,15 @@ class TabsUseCases(
                 source = source,
                 contextId = contextId,
                 parent = parentId?.let { store.state.findTab(it) },
+                title = title,
                 engineSession = engineSession,
                 searchTerms = searchTerms,
                 initialLoadFlags = flags,
                 initialAdditionalHeaders = additionalHeaders,
                 historyMetadata = historyMetadata,
+                desktopMode = store.state.desktopMode,
+                originalInput = originalInput,
+                initialTextDirectiveUserActivation = textDirectiveUserActivation,
             )
 
             store.dispatch(TabListAction.AddTabAction(tab, select = selectTab))
@@ -195,6 +217,7 @@ class TabsUseCases(
                         flags = flags,
                         additionalHeaders = additionalHeaders,
                         includeParent = true,
+                        textDirectiveUserActivation = textDirectiveUserActivation,
                     ),
                 )
             }
@@ -280,22 +303,40 @@ class TabsUseCases(
     ) {
         /**
          * Restores the given list of [RecoverableTab]s.
+         *
+         * @param tabs The list of tabs to restore.
+         * @param selectTabId The ID of the selected tab in [tabs]. Or `null` if no selection was restored.
+         * @param restoreLocation [RestoreLocation] indicating where to restore [tabs].
          */
-        operator fun invoke(tabs: List<RecoverableTab>, selectTabId: String? = null) {
+        operator fun invoke(
+            tabs: List<RecoverableTab>,
+            selectTabId: String? = null,
+            restoreLocation: RestoreLocation = RestoreLocation.END,
+        ) {
             store.dispatch(
                 TabListAction.RestoreAction(
-                    tabs,
-                    selectTabId,
-                    TabListAction.RestoreAction.RestoreLocation.BEGINNING,
+                    tabs = tabs,
+                    selectedTabId = selectTabId,
+                    restoreLocation = restoreLocation,
                 ),
             )
         }
 
         /**
          * Restores the given [RecoverableBrowserState].
+         *
+         * @param state The [RecoverableBrowserState] to be restored.
+         * @param restoreLocation [RestoreLocation] indicating where to restore [state].
          */
-        operator fun invoke(state: RecoverableBrowserState) {
-            invoke(state.tabs, state.selectedTabId)
+        operator fun invoke(
+            state: RecoverableBrowserState,
+            restoreLocation: RestoreLocation = RestoreLocation.END,
+        ) {
+            invoke(
+                tabs = state.tabs,
+                selectTabId = state.selectedTabId,
+                restoreLocation = restoreLocation,
+            )
         }
 
         /**
@@ -318,7 +359,10 @@ class TabsUseCases(
             }
             if (state != null) {
                 withContext(Dispatchers.Main) {
-                    invoke(state)
+                    invoke(
+                        state = state,
+                        restoreLocation = RestoreLocation.BEGINNING,
+                    )
                 }
             }
             store.dispatch(RestoreCompleteAction)

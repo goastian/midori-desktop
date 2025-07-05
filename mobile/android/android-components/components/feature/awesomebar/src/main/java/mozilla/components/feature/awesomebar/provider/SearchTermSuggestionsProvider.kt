@@ -75,12 +75,11 @@ class SearchTermSuggestionsProvider(
     }
 
     override suspend fun onInputChanged(text: String): List<AwesomeBar.Suggestion> = coroutineScope {
-        historyStorage.cancelReads(text)
-
         if (text.isBlank()) {
             return@coroutineScope emptyList()
         }
 
+        historyStorage.cancelReads(text)
         val suggestions = withContext(this.coroutineContext) {
             historyStorage.getHistoryMetadataSince(Long.MIN_VALUE)
                 .asSequence()

@@ -18,7 +18,6 @@ import mozilla.components.concept.engine.EngineSession
 import mozilla.components.lib.state.Middleware
 import mozilla.components.lib.state.MiddlewareContext
 import mozilla.components.support.ktx.kotlin.isExtensionUrl
-import java.lang.IllegalArgumentException
 
 /**
  * [Middleware] that handles side-effects of linking a session to an engine session.
@@ -47,8 +46,8 @@ internal class LinkingMiddleware(
                 }
             }
             is TabListAction.AddMultipleTabsAction -> {
-                if (action.tabs.any { it.engineState.engineSession != null }) {
-                    throw IllegalArgumentException("AddMultipleTabsAction does not support tabs with engine sessions")
+                require(action.tabs.none { it.engineState.engineSession != null }) {
+                    "AddMultipleTabsAction does not support tabs with engine sessions"
                 }
             }
             is EngineAction.UnlinkEngineSessionAction -> {
@@ -110,6 +109,8 @@ internal class LinkingMiddleware(
                 parent = parentEngineSession,
                 loadFlags = tab.engineState.initialLoadFlags,
                 additionalHeaders = tab.engineState.initialAdditionalHeaders,
+                originalInput = tab.originalInput,
+                textDirectiveUserActivation = tab.engineState.initialTextDirectiveUserActivation,
             )
         }
 
@@ -122,12 +123,16 @@ internal class LinkingMiddleware(
         parent: EngineSession? = null,
         loadFlags: EngineSession.LoadUrlFlags,
         additionalHeaders: Map<String, String>? = null,
+        originalInput: String? = null,
+        textDirectiveUserActivation: Boolean = false,
     ) = scope.launch {
         engineSession.loadUrl(
             url = url,
             parent = parent,
             flags = loadFlags,
             additionalHeaders = additionalHeaders,
+            originalInput = originalInput,
+            textDirectiveUserActivation = textDirectiveUserActivation,
         )
     }
 

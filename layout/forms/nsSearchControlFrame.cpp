@@ -6,22 +6,11 @@
 
 #include "nsSearchControlFrame.h"
 
-#include "HTMLInputElement.h"
 #include "mozilla/PresShell.h"
 #include "nsGkAtoms.h"
-#include "nsNameSpaceManager.h"
-#include "nsStyleConsts.h"
 #include "nsContentUtils.h"
-#include "nsContentCreatorFunctions.h"
-#include "nsCSSPseudoElements.h"
-#include "nsICSSDeclaration.h"
-
-#ifdef ACCESSIBILITY
-#  include "mozilla/a11y/AccTypes.h"
-#endif
 
 using namespace mozilla;
-using namespace mozilla::dom;
 
 nsIFrame* NS_NewSearchControlFrame(PresShell* aPresShell,
                                    ComputedStyle* aStyle) {
@@ -58,7 +47,9 @@ nsresult nsSearchControlFrame::CreateAnonymousContent(
   // Create the ::-moz-search-clear-button pseudo-element:
   mButton = MakeAnonElement(PseudoStyleType::mozSearchClearButton, nullptr,
                             nsGkAtoms::button);
-
+  mButton->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex, u"-1"_ns, false);
+  mButton->SetAttr(kNameSpaceID_None, nsGkAtoms::aria_hidden, u"true"_ns,
+                   false);
   aElements.AppendElement(mButton);
 
   return NS_OK;

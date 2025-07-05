@@ -62,7 +62,7 @@ load 385840-1.svg
 load 385852-1.svg
 load 386475-1.xhtml
 load 386690-1.svg
-load 387290-1.svg
+skip-if(Android||(winWidget&&(!is64Bit))) load 387290-1.svg # bug 1914259
 load 402408-1.svg
 load 404677-1.xhtml
 load 409565-1.xhtml
@@ -123,6 +123,7 @@ load 682411-1.svg
 load 692203-1.svg
 load 692203-2.svg
 load 693424-1.svg
+load 696326-1.svg
 load 709920-1.svg
 load 709920-2.svg
 load 713413-1.svg
@@ -266,3 +267,5 @@ load 1836831.html
 load 1840195-1.html
 load 1848851.html
 load 1882921-1.html
+asserts(5-20) load 1941838.html
+load 1953296.html

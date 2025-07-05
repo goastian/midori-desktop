@@ -86,8 +86,9 @@ class DisplayToolbar internal constructor(
     /**
      * Data class holding the customizable colors in "display mode".
      *
-     * @property securityIconSecure Color tint for the "secure connection" icon (lock).
-     * @property securityIconInsecure Color tint for the "insecure connection" icon (broken lock).
+     * @property siteInfoIconSecure Color tint for the "secure connection" icon (lock).
+     * @property siteInfoIconInsecure Color tint for the "insecure connection" icon (broken lock).
+     * @property siteInfoIconLocalPdf Color tint for the "local pdf" icon (vertical page).
      * @property emptyIcon Color tint for the icon shown when the URL is empty.
      * @property menu Color tint for the menu icon.
      * @property hint Text color of the hint shown when the URL is empty.
@@ -101,8 +102,9 @@ class DisplayToolbar internal constructor(
      * insecure and secure colours respectively.
      */
     data class Colors(
-        @ColorInt val securityIconSecure: Int,
-        @ColorInt val securityIconInsecure: Int,
+        @ColorInt val siteInfoIconSecure: Int,
+        @ColorInt val siteInfoIconInsecure: Int,
+        @ColorInt val siteInfoIconLocalPdf: Int,
         @ColorInt val emptyIcon: Int,
         @ColorInt val menu: Int,
         @ColorInt val hint: Int,
@@ -142,6 +144,17 @@ class DisplayToolbar internal constructor(
         BOTTOM,
     }
 
+    /**
+     * Data class holding the customizable margins for views in "display mode".
+     *
+     * @property goneStartMargin The start margin to be applied when the constraint target is gone.
+     * @property goneEndMargin The end margin to be applied when the constraint target is gone.
+     */
+    data class DisplayMargins(
+        val goneStartMargin: Int?,
+        val goneEndMargin: Int?,
+    )
+
     internal val views = DisplayToolbarViews(
         browserActions = rootView.findViewById(R.id.mozac_browser_toolbar_browser_actions),
         pageActions = rootView.findViewById(R.id.mozac_browser_toolbar_page_actions),
@@ -150,7 +163,7 @@ class DisplayToolbar internal constructor(
         separator = rootView.findViewById(R.id.mozac_browser_toolbar_separator),
         emptyIndicator = rootView.findViewById(R.id.mozac_browser_toolbar_empty_indicator),
         menu = MenuButton(rootView.findViewById(R.id.mozac_browser_toolbar_menu)),
-        securityIndicator = rootView.findViewById(R.id.mozac_browser_toolbar_security_indicator),
+        siteInfoIndicator = rootView.findViewById(R.id.mozac_browser_toolbar_site_info_indicator),
         trackingProtectionIndicator = rootView.findViewById(
             R.id.mozac_browser_toolbar_tracking_protection_indicator,
         ),
@@ -165,8 +178,9 @@ class DisplayToolbar internal constructor(
      * Customizable colors in "display mode".
      */
     var colors: Colors = Colors(
-        securityIconSecure = ContextCompat.getColor(context, photonColors.photonWhite),
-        securityIconInsecure = ContextCompat.getColor(context, photonColors.photonWhite),
+        siteInfoIconSecure = ContextCompat.getColor(context, photonColors.photonWhite),
+        siteInfoIconInsecure = ContextCompat.getColor(context, photonColors.photonWhite),
+        siteInfoIconLocalPdf = ContextCompat.getColor(context, photonColors.photonWhite),
         emptyIcon = ContextCompat.getColor(context, photonColors.photonWhite),
         menu = ContextCompat.getColor(context, photonColors.photonWhite),
         hint = views.origin.hintColor,
@@ -179,7 +193,7 @@ class DisplayToolbar internal constructor(
         set(value) {
             field = value
 
-            updateSiteSecurityIcon()
+            updateSiteInfoIcon()
             views.emptyIndicator.setColorFilter(value.emptyIcon)
             views.menu.setColorFilter(value.menu)
             views.origin.hintColor = value.hint
@@ -234,14 +248,14 @@ class DisplayToolbar internal constructor(
     var urlFormatter: ((CharSequence) -> CharSequence)? = null
 
     /**
-     * Sets a listener to be invoked when the site security indicator icon is clicked.
+     * Sets a listener to be invoked when the site info indicator icon is clicked.
      */
-    fun setOnSiteSecurityClickedListener(listener: (() -> Unit)?) {
+    fun setOnSiteInfoClickedListener(listener: (() -> Unit)?) {
         if (listener == null) {
-            views.securityIndicator.setOnClickListener(null)
-            views.securityIndicator.background = null
+            views.siteInfoIndicator.setOnClickListener(null)
+            views.siteInfoIndicator.background = null
         } else {
-            views.securityIndicator.setOnClickListener {
+            views.siteInfoIndicator.setOnClickListener {
                 listener.invoke()
             }
 
@@ -252,7 +266,7 @@ class DisplayToolbar internal constructor(
                 true,
             )
 
-            views.securityIndicator.setBackgroundResource(outValue.resourceId)
+            views.siteInfoIndicator.setBackgroundResource(outValue.resourceId)
         }
     }
 
@@ -303,10 +317,46 @@ class DisplayToolbar internal constructor(
         }
 
     /**
+     * Adds the security indicator if the list does not contain it.
+     */
+    fun addSecurityIndicator() {
+        if (!indicators.contains(Indicators.SECURITY)) {
+            indicators += Indicators.SECURITY
+        }
+    }
+
+    /**
+     * Removes the security indicator if the list contains it.
+     */
+    fun removeSecurityIndicator() {
+        if (indicators.contains(Indicators.SECURITY)) {
+            indicators -= Indicators.SECURITY
+        }
+    }
+
+    /**
      * Sets the background that should be drawn behind the URL, page actions an indicators.
      */
     fun setUrlBackground(background: Drawable?) {
         views.background.setImageDrawable(background)
+    }
+
+    /**
+     * Sets the margins for the background view using the provided DisplayMargins.
+     *
+     * @param margins The DisplayMargins containing the start and end margins to be applied.
+     */
+    fun setUrlBackgroundMargins(margins: DisplayMargins) {
+        val layoutParams = views.background.layoutParams as? ConstraintLayout.LayoutParams
+        layoutParams?.let {
+            margins.goneStartMargin?.let { goneStartMargin ->
+                it.goneStartMargin = goneStartMargin
+            }
+
+            margins.goneEndMargin?.let { goneEndMargin ->
+                it.goneEndMargin = goneEndMargin
+            }
+        }
     }
 
     /**
@@ -408,7 +458,7 @@ class DisplayToolbar internal constructor(
     private fun updateIndicatorVisibility() {
         val urlEmpty = url.isEmpty()
 
-        views.securityIndicator.visibility = if (!urlEmpty && indicators.contains(Indicators.SECURITY)) {
+        views.siteInfoIndicator.visibility = if (!urlEmpty && indicators.contains(Indicators.SECURITY)) {
             View.VISIBLE
         } else {
             View.GONE
@@ -441,7 +491,7 @@ class DisplayToolbar internal constructor(
         views.separator.visibility = if (
             displayIndicatorSeparator &&
             views.trackingProtectionIndicator.isVisible &&
-            views.securityIndicator.isVisible
+            views.siteInfoIndicator.isVisible
         ) {
             View.VISIBLE
         } else {
@@ -476,26 +526,28 @@ class DisplayToolbar internal constructor(
         }
 
     /**
-     * Sets the site's security icon as secure if true, else the regular globe.
+     * Sets the site's info icon as a local PDF if true. If web content is being displayed,
+     * sets the site's info as secure if true, or insecure otherwise.
      */
-    internal var siteSecurity: Toolbar.SiteSecurity = Toolbar.SiteSecurity.INSECURE
+    internal var siteInfo: Toolbar.SiteInfo = Toolbar.SiteInfo.INSECURE
         set(value) {
             field = value
-            updateSiteSecurityIcon()
+            updateSiteInfoIcon()
         }
 
-    private fun updateSiteSecurityIcon() {
-        @ColorInt val color = when (siteSecurity) {
-            Toolbar.SiteSecurity.INSECURE -> colors.securityIconInsecure
-            Toolbar.SiteSecurity.SECURE -> colors.securityIconSecure
+    private fun updateSiteInfoIcon() {
+        @ColorInt val color = when (siteInfo) {
+            Toolbar.SiteInfo.INSECURE -> colors.siteInfoIconInsecure
+            Toolbar.SiteInfo.SECURE -> colors.siteInfoIconSecure
+            Toolbar.SiteInfo.LOCAL_PDF -> colors.siteInfoIconLocalPdf
         }
         if (color == Color.TRANSPARENT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            views.securityIndicator.clearColorFilter()
+            views.siteInfoIndicator.clearColorFilter()
         } else {
-            views.securityIndicator.setColorFilter(color)
+            views.siteInfoIndicator.setColorFilter(color)
         }
 
-        views.securityIndicator.siteSecurity = siteSecurity
+        views.siteInfoIndicator.siteInfo = siteInfo
     }
 
     internal fun setTrackingProtectionState(state: Toolbar.SiteTrackingProtection) {
@@ -548,6 +600,7 @@ class DisplayToolbar internal constructor(
 
             // Announce "loading" for accessibility if it has not been completed
             if (progress < views.progress.max) {
+                @Suppress("DEPRECATION")
                 views.progress.announceForAccessibility(
                     context.getString(R.string.mozac_browser_toolbar_progress_loading),
                 )
@@ -669,8 +722,8 @@ class DisplayToolbar internal constructor(
     fun setHorizontalPadding(horizontalPadding: Int) {
         val background = views.background
         (background.layoutParams as? ConstraintLayout.LayoutParams)?.apply {
-            marginStart = horizontalPadding
-            marginEnd = horizontalPadding
+            goneStartMargin = horizontalPadding
+            goneEndMargin = horizontalPadding
             background.layoutParams = this
         }
     }
@@ -688,7 +741,7 @@ internal class DisplayToolbarViews(
     val separator: ImageView,
     val emptyIndicator: ImageView,
     val menu: MenuButton,
-    val securityIndicator: SiteSecurityIconView,
+    val siteInfoIndicator: SiteInfoIconView,
     val trackingProtectionIndicator: TrackingProtectionIconView,
     val origin: OriginView,
     val progress: ProgressBar,

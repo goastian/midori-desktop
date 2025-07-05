@@ -24,10 +24,10 @@
 #  undef DrawText
 #endif
 
-class nsTextPaintStyle;
-class nsLineList_iterator;
 struct SelectionDetails;
+class nsBlockFrame;
 class nsTextFragment;
+class nsTextPaintStyle;
 
 namespace mozilla {
 class SVGContextPaint;
@@ -76,7 +76,8 @@ class nsTextFrame : public nsIFrame {
                      const gfxSkipCharsIterator& aStart, int32_t aLength,
                      nsIFrame* aLineContainer,
                      nscoord aOffsetFromBlockOriginForTabs,
-                     nsTextFrame::TextRunType aWhichTextRun);
+                     nsTextFrame::TextRunType aWhichTextRun,
+                     bool aAtStartOfLine);
 
     /**
      * Use this constructor after the frame has been reflowed and we don't
@@ -158,6 +159,12 @@ class nsTextFrame : public nsIFrame {
 
     const gfxSkipCharsIterator& GetEndHint() const { return mTempIterator; }
 
+    // Set a position that should be treated as start-of-line (for trimming
+    // potential letter-spacing).
+    void SetStartOfLine(const gfxSkipCharsIterator& aPosition) {
+      mStartOfLineOffset = aPosition.GetSkippedOffset();
+    }
+
    protected:
     void SetupJustificationSpacing(bool aPostReflow);
 
@@ -194,6 +201,7 @@ class nsTextFrame : public nsIFrame {
 
     const bool mReflowing;
     const nsTextFrame::TextRunType mWhichTextRun;
+    uint32_t mStartOfLineOffset = UINT32_MAX;
   };
 
   explicit nsTextFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
@@ -235,8 +243,9 @@ class nsTextFrame : public nsIFrame {
         !nsSplittableFrame::IsInNextContinuationChain(aNextContinuation, this),
         "creating a loop in continuation chain!");
     mNextContinuation = static_cast<nsTextFrame*>(aNextContinuation);
-    if (aNextContinuation)
+    if (aNextContinuation) {
       aNextContinuation->RemoveStateBits(NS_FRAME_IS_FLUID_CONTINUATION);
+    }
     // Setting a non-fluid continuation might affect our flow length (they're
     // quite rare so we assume it always does) so we delete our cached value:
     if (GetContent()->HasFlag(NS_HAS_FLOWLENGTH_PROPERTY)) {
@@ -356,6 +365,7 @@ class nsTextFrame : public nsIFrame {
   Maybe<nscoord> GetNaturalBaselineBOffset(
       mozilla::WritingMode aWM, BaselineSharingGroup aBaselineGroup,
       BaselineExportContext) const override;
+  nscoord GetCaretBaseline() const override;
 
   bool HasSignificantTerminalNewline() const final;
 
@@ -385,11 +395,13 @@ class nsTextFrame : public nsIFrame {
   void SetFontSizeInflation(float aInflation);
 
   void MarkIntrinsicISizesDirty() final;
-  nscoord GetMinISize(gfxContext* aRenderingContext) final;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) final;
-  void AddInlineMinISize(gfxContext* aRenderingContext,
+
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) final;
+
+  void AddInlineMinISize(const mozilla::IntrinsicSizeInput& aInput,
                          InlineMinISizeData* aData) override;
-  void AddInlinePrefISize(gfxContext* aRenderingContext,
+  void AddInlinePrefISize(const mozilla::IntrinsicSizeInput& aInput,
                           InlinePrefISizeData* aData) override;
   SizeComputationResult ComputeSize(
       gfxContext* aRenderingContext, mozilla::WritingMode aWM,
@@ -435,7 +447,7 @@ class nsTextFrame : public nsIFrame {
   };
 
   void AddInlineMinISizeForFlow(gfxContext* aRenderingContext,
-                                nsIFrame::InlineMinISizeData* aData,
+                                InlineMinISizeData* aData,
                                 TextRunType aTextRunType);
   void AddInlinePrefISizeForFlow(gfxContext* aRenderingContext,
                                  InlinePrefISizeData* aData,
@@ -661,11 +673,13 @@ class nsTextFrame : public nsIFrame {
   gfxSkipCharsIterator EnsureTextRun(TextRunType aWhichTextRun,
                                      DrawTarget* aRefDrawTarget = nullptr,
                                      nsIFrame* aLineContainer = nullptr,
-                                     const nsLineList_iterator* aLine = nullptr,
+                                     const LineListIterator* aLine = nullptr,
                                      uint32_t* aFlowEndInTextRun = nullptr);
 
   gfxTextRun* GetTextRun(TextRunType aWhichTextRun) const {
-    if (aWhichTextRun == eInflated || !HasFontSizeInflation()) return mTextRun;
+    if (aWhichTextRun == eInflated || !HasFontSizeInflation()) {
+      return mTextRun;
+    }
     return GetUninflatedTextRun();
   }
   gfxTextRun* GetUninflatedTextRun() const;
@@ -846,11 +860,11 @@ class nsTextFrame : public nsIFrame {
                     const PaintShadowParams& aParams);
 
   struct LineDecoration {
-    nsIFrame* mFrame;
+    nsIFrame* const mFrame;
 
     // This is represents the offset from our baseline to mFrame's baseline;
     // positive offsets are *above* the baseline and negative offsets below
-    nscoord mBaselineOffset;
+    const nscoord mBaselineOffset;
 
     // This represents the offset from the initial position of the underline
     const mozilla::LengthPercentageOrAuto mTextUnderlineOffset;
@@ -858,26 +872,30 @@ class nsTextFrame : public nsIFrame {
     // for CSS property text-decoration-thickness, the width refers to the
     // thickness of the decoration line
     const mozilla::StyleTextDecorationLength mTextDecorationThickness;
-    nscolor mColor;
-    mozilla::StyleTextDecorationStyle mStyle;
+    const nscolor mColor;
+    const mozilla::StyleTextDecorationStyle mStyle;
 
     // The text-underline-position property; affects the underline offset only
     // if mTextUnderlineOffset is auto.
     const mozilla::StyleTextUnderlinePosition mTextUnderlinePosition;
 
+    const bool mAllowInkSkipping;
+
     LineDecoration(nsIFrame* const aFrame, const nscoord aOff,
-                   mozilla::StyleTextUnderlinePosition aUnderlinePosition,
+                   const mozilla::StyleTextUnderlinePosition aUnderlinePosition,
                    const mozilla::LengthPercentageOrAuto& aUnderlineOffset,
                    const mozilla::StyleTextDecorationLength& aDecThickness,
                    const nscolor aColor,
-                   const mozilla::StyleTextDecorationStyle aStyle)
+                   const mozilla::StyleTextDecorationStyle aStyle,
+                   const bool aAllowInkSkipping)
         : mFrame(aFrame),
           mBaselineOffset(aOff),
           mTextUnderlineOffset(aUnderlineOffset),
           mTextDecorationThickness(aDecThickness),
           mColor(aColor),
           mStyle(aStyle),
-          mTextUnderlinePosition(aUnderlinePosition) {}
+          mTextUnderlinePosition(aUnderlinePosition),
+          mAllowInkSkipping(aAllowInkSkipping) {}
 
     LineDecoration(const LineDecoration& aOther) = default;
 
@@ -887,7 +905,8 @@ class nsTextFrame : public nsIFrame {
              mBaselineOffset == aOther.mBaselineOffset &&
              mTextUnderlinePosition == aOther.mTextUnderlinePosition &&
              mTextUnderlineOffset == aOther.mTextUnderlineOffset &&
-             mTextDecorationThickness == aOther.mTextDecorationThickness;
+             mTextDecorationThickness == aOther.mTextDecorationThickness &&
+             mAllowInkSkipping == aOther.mAllowInkSkipping;
     }
 
     bool operator!=(const LineDecoration& aOther) const {
@@ -1061,6 +1080,35 @@ class nsTextFrame : public nsIFrame {
 
   nsPoint GetPointFromIterator(const gfxSkipCharsIterator& aIter,
                                PropertyProvider& aProperties);
+
+  /**
+   * Return the content offset of the first preserved newline in this frame,
+   * or return -1 if no preserved NL.
+   */
+  struct NewlineProperty;
+  int32_t GetContentNewLineOffset(int32_t aOffset,
+                                  NewlineProperty*& aCachedNewlineOffset);
+
+  void MaybeSplitFramesForFirstLetter();
+  void SetFirstLetterLength(int32_t aLength);
+
+  struct AppendRenderedTextState {
+    // Inputs, constant across all calls in the loop.
+    const uint32_t mStartOffset;
+    const uint32_t mEndOffset;
+    const TextOffsetType mOffsetType;
+    const TrailingWhitespace mTrimTrailingWhitespace;
+    const nsTextFragment* const mTextFrag;
+    // Mutable state, updated as we loop over the continuations.
+    nsBlockFrame* mLineContainer = nullptr;
+    uint32_t mOffsetInRenderedString = 0;
+    bool mHaveOffsets = false;
+  };
+  // Helper for GetRenderedText, to process one frame in the continuation
+  // chain. Returns true if the caller should continue to loop over the
+  // following frames, or false to stop.
+  bool AppendRenderedText(AppendRenderedTextState& aState,
+                          RenderedText& aResult);
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(nsTextFrame::TrimmedOffsetFlags)

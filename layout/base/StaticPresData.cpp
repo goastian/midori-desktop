@@ -117,7 +117,7 @@ void LangGroupFontPrefs::Initialize(nsStaticAtom* aLangGroupAtom) {
     &mDefaultSystemUiFont,
   };
   // clang-format on
-  static_assert(MOZ_ARRAY_LENGTH(fontTypes) == size_t(DefaultFont::COUNT),
+  static_assert(std::size(fontTypes) == size_t(DefaultFont::COUNT),
                 "FontTypes array count is not correct");
 
   // Get attributes specific to each generic font. We do not get the user's
@@ -199,17 +199,9 @@ void LangGroupFontPrefs::Initialize(nsStaticAtom* aLangGroupAtom) {
   }
 }
 
-nsStaticAtom* StaticPresData::GetLangGroup(nsAtom* aLanguage,
-                                           bool* aNeedsToCache) const {
-  nsStaticAtom* langGroupAtom =
-      mLangService->GetLanguageGroup(aLanguage, aNeedsToCache);
+nsStaticAtom* StaticPresData::GetLangGroup(nsAtom* aLanguage) const {
+  nsStaticAtom* langGroupAtom = mLangService->GetLanguageGroup(aLanguage);
   // Assume x-western is safe...
-  return langGroupAtom ? langGroupAtom : nsGkAtoms::x_western;
-}
-
-nsStaticAtom* StaticPresData::GetUncachedLangGroup(nsAtom* aLanguage) const {
-  nsStaticAtom* langGroupAtom =
-      mLangService->GetUncachedLanguageGroup(aLanguage);
   return langGroupAtom ? langGroupAtom : nsGkAtoms::x_western;
 }
 
@@ -219,10 +211,7 @@ const LangGroupFontPrefs* StaticPresData::GetFontPrefsForLang(
   MOZ_ASSERT(aLanguage);
   MOZ_ASSERT(mLangService);
 
-  nsStaticAtom* langGroupAtom = GetLangGroup(aLanguage, aNeedsToCache);
-  if (aNeedsToCache && *aNeedsToCache) {
-    return nullptr;
-  }
+  nsStaticAtom* langGroupAtom = GetLangGroup(aLanguage);
 
   if (!aNeedsToCache) {
     AssertIsMainThreadOrServoFontMetricsLocked();

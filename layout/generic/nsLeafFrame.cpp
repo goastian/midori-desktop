@@ -22,14 +22,9 @@ void nsLeafFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 }
 
-/* virtual */
-nscoord nsLeafFrame::GetMinISize(gfxContext* aRenderingContext) {
-  return GetIntrinsicISize();
-}
-
-/* virtual */
-nscoord nsLeafFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  return GetIntrinsicISize();
+nscoord nsLeafFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                    IntrinsicISizeType aType) {
+  return GetIntrinsicSize().ISize(GetWritingMode()).valueOr(0);
 }
 
 /* virtual */
@@ -39,19 +34,8 @@ LogicalSize nsLeafFrame::ComputeAutoSize(
     const LogicalSize& aBorderPadding, const StyleSizeOverrides& aSizeOverrides,
     ComputeSizeFlags aFlags) {
   const WritingMode wm = GetWritingMode();
-  LogicalSize result(wm, GetIntrinsicISize(), GetIntrinsicBSize());
+  IntrinsicSize intrinsicSize = GetIntrinsicSize();
+  LogicalSize result(wm, intrinsicSize.ISize(wm).valueOr(0),
+                     intrinsicSize.BSize(wm).valueOr(0));
   return result.ConvertTo(aWM, wm);
-}
-
-nscoord nsLeafFrame::GetIntrinsicBSize() {
-  MOZ_ASSERT_UNREACHABLE("Someone didn't override Reflow or ComputeAutoSize");
-  return 0;
-}
-
-void nsLeafFrame::SizeToAvailSize(const ReflowInput& aReflowInput,
-                                  ReflowOutput& aDesiredSize) {
-  aDesiredSize.SetSize(aReflowInput.GetWritingMode(),
-                       aReflowInput.AvailableSize());
-  aDesiredSize.SetOverflowAreasToDesiredBounds();
-  FinishAndStoreOverflow(&aDesiredSize, aReflowInput.mStyleDisplay);
 }

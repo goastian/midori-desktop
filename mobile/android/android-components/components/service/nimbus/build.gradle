@@ -6,7 +6,7 @@ buildscript {
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -16,12 +16,12 @@ buildscript {
 
     dependencies {
         classpath "${ApplicationServicesConfig.groupId}:tooling-nimbus-gradle:${ApplicationServicesConfig.version}"
-        classpath "org.mozilla.telemetry:glean-gradle-plugin:${Versions.mozilla_glean}"
+        classpath libs.glean.gradle.plugin
     }
 }
 
 plugins {
-    id "com.jetbrains.python.envs" version "$python_envs_plugin"
+    alias(libs.plugins.python.envs.plugin)
 }
 
 apply plugin: 'com.android.library'
@@ -29,9 +29,9 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
@@ -41,17 +41,17 @@ android {
             consumerProguardFiles 'proguard-rules-consumer.pro'
         }
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             consumerProguardFiles 'proguard-rules-consumer.pro'
         }
     }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
-    namespace 'mozilla.components.service.nimbus'
+    namespace = 'mozilla.components.service.nimbus'
 }
 
 dependencies {
@@ -59,16 +59,16 @@ dependencies {
     api (ComponentsDependencies.mozilla_appservices_nimbus) {
         // Use our own version of the Glean dependency,
         // which might be different from the version declared by A-S.
-        exclude group: 'org.mozilla.components', module: 'service-glean'
+        exclude group: 'org.mozilla.telemetry', module: 'glean'
     }
 
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_constraintlayout
-    implementation ComponentsDependencies.androidx_coordinatorlayout
-    implementation ComponentsDependencies.androidx_recyclerview
-    implementation ComponentsDependencies.androidx_work_runtime
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.coordinatorlayout
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.work.runtime
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 
     implementation ComponentsDependencies.mozilla_appservices_nimbus
 
@@ -79,23 +79,23 @@ dependencies {
 
     // We only compile against GeckoView and Glean. It's up to the app to add those dependencies if it wants to
     // send crash reports to Socorro (GV).
-    compileOnly project(":service-glean")
+    compileOnly libs.mozilla.glean
 
-    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_forUnitTests
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_mockwebserver
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.mozilla_glean_forUnitTests
-    testImplementation ComponentsDependencies.androidx_work_testing
+    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_libsForTests
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.mockwebserver
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
+    testImplementation libs.mozilla.glean.forUnitTests
+    testImplementation libs.androidx.work.testing
     testImplementation project(':support-test')
-    testImplementation project(":service-glean")
+    testImplementation libs.mozilla.glean
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)
 
 
 apply plugin: "org.mozilla.appservices.nimbus-gradle-plugin"
@@ -119,4 +119,8 @@ nimbus {
             ? gradle.getProperty('localProperties.autoPublish.application-services.dir') : null
 }
 
+ext {
+    gleanNamespace = "mozilla.telemetry.glean"
+    gleanPythonEnvDir = gradle.mozconfig.substs.GRADLE_GLEAN_PARSER_VENV
+}
 apply plugin: "org.mozilla.telemetry.glean-gradle-plugin"

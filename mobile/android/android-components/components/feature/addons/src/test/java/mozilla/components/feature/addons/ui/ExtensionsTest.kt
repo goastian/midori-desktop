@@ -4,7 +4,9 @@
 
 package mozilla.components.feature.addons.ui
 
+import android.content.res.Resources
 import android.graphics.Bitmap
+import android.util.DisplayMetrics
 import android.widget.ImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import mozilla.components.feature.addons.Addon
@@ -22,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.any
+import org.mockito.Mockito.doNothing
 import org.mockito.Mockito.verify
 import java.util.Calendar.MILLISECOND
 import java.util.Date
@@ -45,7 +48,7 @@ class ExtensionsTest {
             translatableName = mapOf(Addon.DEFAULT_LOCALE to "name", "de" to "Name", "es" to "nombre"),
         )
 
-        Locale.setDefault(Locale("es"))
+        Locale.setDefault(Locale.forLanguageTag("es"))
 
         assertEquals("nombre", addon.translateName(testContext))
 
@@ -63,7 +66,7 @@ class ExtensionsTest {
         val addon = Addon("id")
         val map = mapOf(addon.defaultLocale to "Hello", "es" to "Hola", "de" to "Hallo")
 
-        Locale.setDefault(Locale("es"))
+        Locale.setDefault(Locale.forLanguageTag("es"))
 
         assertEquals("Hola", map.translate(addon, testContext))
 
@@ -123,7 +126,7 @@ class ExtensionsTest {
         Locale.setDefault(Locale.GERMAN)
         assertEquals("1.000", getFormattedAmount(amount))
 
-        Locale.setDefault(Locale("es"))
+        Locale.setDefault(Locale.forLanguageTag("es"))
         assertEquals("1.000", getFormattedAmount(amount))
     }
 
@@ -153,7 +156,14 @@ class ExtensionsTest {
         val iconView = mock<ImageView>()
         val icon = mock<Bitmap>()
         val addon = mock<Addon>()
+        val resources = mock<Resources>()
+        val displayMetrics = mock<DisplayMetrics>()
+
         whenever(addon.provideIcon()).thenReturn(icon)
+        whenever(iconView.resources).thenReturn(resources)
+        whenever(resources.displayMetrics).thenReturn(displayMetrics)
+
+        doNothing().`when`(iconView).setImageDrawable(any())
 
         iconView.setIcon(addon)
 

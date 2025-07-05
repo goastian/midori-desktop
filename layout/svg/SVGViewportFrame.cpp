@@ -134,8 +134,12 @@ SVGBBox SVGViewportFrame::GetBBoxContribution(const Matrix& aToBBoxUserspace,
     float x, y, w, h;
     static_cast<SVGViewportElement*>(GetContent())
         ->GetAnimatedLengthValues(&x, &y, &w, &h, nullptr);
-    if (w < 0.0f) w = 0.0f;
-    if (h < 0.0f) h = 0.0f;
+    if (w < 0.0f) {
+      w = 0.0f;
+    }
+    if (h < 0.0f) {
+      h = 0.0f;
+    }
     Rect viewport(x, y, w, h);
     bbox = aToBBoxUserspace.TransformBounds(viewport);
     if (StyleDisplay()->IsScrollableOverflow()) {
@@ -181,8 +185,7 @@ nsresult SVGViewportFrame::AttributeChanged(int32_t aNameSpaceID,
         SVGUtils::NotifyChildrenOfSVGChange(this, flags);
       }
 
-    } else if (aAttribute == nsGkAtoms::transform ||
-               aAttribute == nsGkAtoms::preserveAspectRatio ||
+    } else if (aAttribute == nsGkAtoms::preserveAspectRatio ||
                aAttribute == nsGkAtoms::viewBox || aAttribute == nsGkAtoms::x ||
                aAttribute == nsGkAtoms::y) {
       // make sure our cached transform matrix gets (lazily) updated
@@ -192,11 +195,6 @@ nsresult SVGViewportFrame::AttributeChanged(int32_t aNameSpaceID,
           this, aAttribute == nsGkAtoms::viewBox
                     ? TRANSFORM_CHANGED | COORD_CONTEXT_CHANGED
                     : TRANSFORM_CHANGED);
-
-      // We don't invalidate for transform changes (the layers code does that).
-      // Also note that SVGTransformableElement::GetAttributeChangeHint will
-      // return nsChangeHint_UpdateOverflow for "transform" attribute changes
-      // and cause DoApplyRenderingChangeToTree to make the SchedulePaint call.
 
       if (aAttribute == nsGkAtoms::x || aAttribute == nsGkAtoms::y) {
         nsLayoutUtils::PostRestyleEvent(
@@ -239,16 +237,15 @@ void SVGViewportFrame::NotifyViewportOrTransformChanged(uint32_t aFlags) {
 // SVGContainerFrame methods:
 
 bool SVGViewportFrame::HasChildrenOnlyTransform(gfx::Matrix* aTransform) const {
-  SVGViewportElement* content = static_cast<SVGViewportElement*>(GetContent());
-
-  if (content->HasViewBoxOrSyntheticViewBox()) {
-    // XXX Maybe return false if the transform is the identity transform?
-    if (aTransform) {
-      *aTransform = content->GetViewBoxTransform();
-    }
-    return true;
+  auto* content = static_cast<SVGViewportElement*>(GetContent());
+  if (!content->HasViewBoxOrSyntheticViewBox()) {
+    return false;
   }
-  return false;
+  // XXX Maybe return false if the transform is the identity transform?
+  if (aTransform) {
+    *aTransform = content->GetViewBoxTransform();
+  }
+  return true;
 }
 
 }  // namespace mozilla

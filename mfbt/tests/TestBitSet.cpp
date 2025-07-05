@@ -67,28 +67,28 @@ class BitSetSuite {
 
   void testSetBit() {
     TestBitSet<kBitsPerWord + 2> bitset;
-    MOZ_RELEASE_ASSERT(!bitset.Test(3));
+    MOZ_RELEASE_ASSERT(!bitset.test(3));
     MOZ_RELEASE_ASSERT(!bitset[3]);
-    MOZ_RELEASE_ASSERT(!bitset.Test(kBitsPerWord + 1));
+    MOZ_RELEASE_ASSERT(!bitset.test(kBitsPerWord + 1));
     MOZ_RELEASE_ASSERT(!bitset[kBitsPerWord + 1]);
 
     bitset[3] = true;
-    MOZ_RELEASE_ASSERT(bitset.Test(3));
+    MOZ_RELEASE_ASSERT(bitset.test(3));
     MOZ_RELEASE_ASSERT(bitset[3]);
 
     bitset[kBitsPerWord + 1] = true;
-    MOZ_RELEASE_ASSERT(bitset.Test(3));
+    MOZ_RELEASE_ASSERT(bitset.test(3));
     MOZ_RELEASE_ASSERT(bitset[3]);
-    MOZ_RELEASE_ASSERT(bitset.Test(kBitsPerWord + 1));
+    MOZ_RELEASE_ASSERT(bitset.test(kBitsPerWord + 1));
     MOZ_RELEASE_ASSERT(bitset[kBitsPerWord + 1]);
 
     bitset.ResetAll();
-    for (size_t i = 0; i < decltype(bitset)::Size(); i++) {
+    for (size_t i = 0; i < decltype(bitset)::size(); i++) {
       MOZ_RELEASE_ASSERT(!bitset[i]);
     }
 
     bitset.SetAll();
-    for (size_t i = 0; i < decltype(bitset)::Size(); i++) {
+    for (size_t i = 0; i < decltype(bitset)::size(); i++) {
       MOZ_RELEASE_ASSERT(bitset[i]);
     }
 
@@ -96,8 +96,69 @@ class BitSetSuite {
     MOZ_RELEASE_ASSERT(bitset.Storage()[1] == 3);
 
     bitset.ResetAll();
-    for (size_t i = 0; i < decltype(bitset)::Size(); i++) {
+    for (size_t i = 0; i < decltype(bitset)::size(); i++) {
       MOZ_RELEASE_ASSERT(!bitset[i]);
+    }
+  }
+
+  void testFindBits() {
+    TestBitSet<kBitsPerWord * 5 + 2> bitset;
+    size_t size = bitset.size();
+    MOZ_RELEASE_ASSERT(bitset.IsEmpty());
+    MOZ_RELEASE_ASSERT(bitset.FindFirst() == SIZE_MAX);
+    MOZ_RELEASE_ASSERT(bitset.FindLast() == SIZE_MAX);
+    MOZ_RELEASE_ASSERT(bitset.FindNext(0) == SIZE_MAX);
+    MOZ_RELEASE_ASSERT(bitset.FindNext(size - 1) == SIZE_MAX);
+    MOZ_RELEASE_ASSERT(bitset.FindPrev(0) == SIZE_MAX);
+    MOZ_RELEASE_ASSERT(bitset.FindPrev(size - 1) == SIZE_MAX);
+
+    // Test with single bit set.
+    for (size_t i = 0; i < size; i += 5) {
+      bitset[i] = true;
+      MOZ_RELEASE_ASSERT(bitset.FindFirst() == i);
+      MOZ_RELEASE_ASSERT(bitset.FindLast() == i);
+      MOZ_RELEASE_ASSERT(bitset.FindNext(i) == i);
+      MOZ_RELEASE_ASSERT(bitset.FindPrev(i) == i);
+      MOZ_RELEASE_ASSERT(bitset.FindNext(0) == i);
+      MOZ_RELEASE_ASSERT(bitset.FindPrev(size - 1) == i);
+      if (i != 0) {
+        MOZ_RELEASE_ASSERT(bitset.FindNext(i - 1) == i);
+        MOZ_RELEASE_ASSERT(bitset.FindPrev(i - 1) == SIZE_MAX);
+      }
+      if (i != size - 1) {
+        MOZ_RELEASE_ASSERT(bitset.FindNext(i + 1) == SIZE_MAX);
+        MOZ_RELEASE_ASSERT(bitset.FindPrev(i + 1) == i);
+      }
+      bitset[i] = false;
+    }
+
+    // Test with multiple bits set.
+    //
+    // This creates bits pattern with every |i|th bit set and checks the result
+    // of calling FindNext/FindPrev at and around each set bit.
+    for (size_t i = 3; i < size; i += 5) {
+      bitset.ResetAll();
+      for (size_t j = 0; j < size; j += i) {
+        bitset[j] = true;
+      }
+      for (size_t j = 0; j < size; j += i) {
+        // Test FindNext/FindPrev on the current bit.
+        MOZ_RELEASE_ASSERT(bitset[j]);
+        MOZ_RELEASE_ASSERT(bitset.FindNext(j) == j);
+        MOZ_RELEASE_ASSERT(bitset.FindPrev(j) == j);
+        // Test FindNext/FindPrev on the previous bit.
+        if (j != 0) {
+          MOZ_RELEASE_ASSERT(bitset[j - i]);
+          MOZ_RELEASE_ASSERT(bitset.FindNext(j - 1) == j);
+          MOZ_RELEASE_ASSERT(bitset.FindPrev(j - 1) == j - i);
+        }
+        // Test FindNext/FindPrev on the next bit.
+        if (j + i < size) {
+          MOZ_RELEASE_ASSERT(bitset[j + i]);
+          MOZ_RELEASE_ASSERT(bitset.FindNext(j + 1) == j + i);
+          MOZ_RELEASE_ASSERT(bitset.FindPrev(j + 1) == j);
+        }
+      }
     }
   }
 
@@ -105,6 +166,7 @@ class BitSetSuite {
     testLength();
     testConstruct();
     testSetBit();
+    testFindBits();
   }
 };
 

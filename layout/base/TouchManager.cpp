@@ -10,6 +10,7 @@
 #include "Units.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/StaticPrefs_test.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/Document.h"
@@ -136,8 +137,7 @@ nsIFrame* TouchManager::SetupTarget(WidgetTouchEvent* aEvent,
           aEvent, touch->mRefPoint, relativeTo);
       target = FindFrameTargetedByInputEvent(aEvent, relativeTo, eventPoint);
       if (target) {
-        nsCOMPtr<nsIContent> targetContent;
-        target->GetContentForEvent(aEvent, getter_AddRefs(targetContent));
+        nsIContent* targetContent = target->GetContentForEvent(aEvent);
         touch->SetTouchTarget(targetContent
                                   ? targetContent->GetAsElementOrParentElement()
                                   : nullptr);
@@ -236,9 +236,7 @@ nsIFrame* TouchManager::SuppressInvalidPointsAndGetTargetedFrame(
         touch->mIsTouchEventSuppressed = true;
       } else {
         targetFrame = newTargetFrame;
-        nsCOMPtr<nsIContent> newTargetContent;
-        targetFrame->GetContentForEvent(aEvent,
-                                        getter_AddRefs(newTargetContent));
+        nsIContent* newTargetContent = targetFrame->GetContentForEvent(aEvent);
         touch->SetTouchTarget(
             newTargetContent ? newTargetContent->GetAsElementOrParentElement()
                              : nullptr);
@@ -305,6 +303,9 @@ bool TouchManager::PreHandleEvent(WidgetEvent* aEvent, nsEventStatus* aStatus,
       }
       break;
     }
+    case eTouchRawUpdate:
+      MOZ_ASSERT_UNREACHABLE("eTouchRawUpdate shouldn't be handled as a touch");
+      break;
     case eTouchMove: {
       // Check for touches that changed. Mark them add to queue
       WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent();
@@ -450,6 +451,9 @@ bool TouchManager::PreHandleEvent(WidgetEvent* aEvent, nsEventStatus* aStatus,
 void TouchManager::PostHandleEvent(const WidgetEvent* aEvent,
                                    const nsEventStatus* aStatus) {
   switch (aEvent->mMessage) {
+    case eTouchRawUpdate:
+      MOZ_ASSERT_UNREACHABLE("eTouchRawUpdate shouldn't be handled as a touch");
+      break;
     case eTouchMove: {
       if (sSingleTouchStartTimeStamp.IsNull()) {
         break;
@@ -561,7 +565,8 @@ bool TouchManager::ShouldConvertTouchToPointer(const Touch* aTouch,
       // We don't want to fire duplicated pointerdown.
       return false;
     }
-    case eTouchMove: {
+    case eTouchMove:
+    case eTouchRawUpdate: {
       return !aTouch->Equals(info.mTouch);
     }
     default:

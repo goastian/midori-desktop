@@ -5,6 +5,7 @@
 package mozilla.components.feature.search.telemetry
 
 import android.net.Uri
+import androidx.annotation.VisibleForTesting
 import org.json.JSONObject
 
 private const val SEARCH_TYPE_SAP_FOLLOW_ON = "sap-follow-on"
@@ -24,17 +25,19 @@ internal fun getTrackKey(
     uri: Uri,
     cookies: List<JSONObject>,
 ): String {
+    // See https://bugzilla.mozilla.org/show_bug.cgi?id=1930629 for more context
+    val cleanUri = uri.lowercaseQueryParameterKeys()
     var type = SEARCH_TYPE_ORGANIC
-    val paramSet = uri.queryParameterNames
+    val paramSet = cleanUri.queryParameterNames
     var code: String? = "none"
 
     if (provider.codeParamName.isNotEmpty()) {
-        code = uri.getQueryParameter(provider.codeParamName)
+        code = cleanUri.getQueryParameter(provider.codeParamName.lowercase())
         if (code.isNullOrEmpty() &&
             provider.telemetryId == "baidu" &&
-            uri.toString().contains("from=")
+            cleanUri.toString().contains("from=")
         ) {
-            code = uri.toString().substringAfter("from=", "")
+            code = cleanUri.toString().substringAfter("from=", "")
                 .substringBefore("/", "")
         }
         if (code != null) {
@@ -54,14 +57,14 @@ internal fun getTrackKey(
         } else if (provider.followOnCookies != null) {
             // Try cookies first because Bing has followOnCookies and valid code, but no
             // followOnParams => would track organic instead of sap-follow-on
-            getTrackKeyFromCookies(provider, uri, cookies)?.let {
+            getTrackKeyFromCookies(provider, cleanUri, cookies)?.let {
                 return it.createTrackKey()
             }
         }
 
         // For Bing if it didn't have a valid cookie and for all the other search engines
-        if (hasValidCode(uri.getQueryParameter(provider.codeParamName), provider)) {
-            var channel = uri.getQueryParameter(CHANNEL_KEY)
+        if (hasValidCode(cleanUri.getQueryParameter(provider.codeParamName), provider)) {
+            var channel = cleanUri.getQueryParameter(CHANNEL_KEY)
 
             // For Bug 1751955
             if (!validChannelSet.contains(channel)) {
@@ -80,13 +83,15 @@ private fun getTrackKeyFromCookies(
 ): TrackKeyInfo? {
     // Especially Bing requires lots of extra work related to cookies.
     provider.followOnCookies?.forEach { followOnCookie ->
-        val eCode = uri.getQueryParameter(followOnCookie.extraCodeParamName)
+        if (followOnCookie.extraCodeParamName != "") {
+            val eCode = uri.getQueryParameter(followOnCookie.extraCodeParamName.lowercase())
 
-        if (eCode == null || !followOnCookie.extraCodePrefixes.any { prefix ->
-                eCode.startsWith(prefix)
+            if (eCode == null || !followOnCookie.extraCodePrefixes.any { prefix ->
+                    eCode.startsWith(prefix)
+                }
+            ) {
+                return@forEach
             }
-        ) {
-            return@forEach
         }
 
         // If this cookie is present, it's probably an SAP follow-on.
@@ -96,16 +101,17 @@ private fun getTrackKeyFromCookies(
             if (cookie.getString("name") != followOnCookie.name) {
                 continue
             }
-            val valueList = cookie.getString("value")
-                .split("=")
-                .map { item -> item.trim() }
+            // Cookie values may take the form of "foo=bar&baz=1".
+            // Get the value of the follow-on cookie parameter or continue searching in the next cookie
+            val followOnParamName = cookie.getString("value")
+                .split("&")
+                .map { it.split("=") }
+                .firstOrNull { it[0] == followOnCookie.codeParamName }
+                ?.get(1)
+                ?: continue
 
-            if (valueList.size == 2 && valueList[0] == followOnCookie.codeParamName &&
-                provider.taggedCodes.any { prefix ->
-                    valueList[1] == prefix
-                }
-            ) {
-                return TrackKeyInfo(provider.telemetryId, SEARCH_TYPE_SAP_FOLLOW_ON, valueList[1])
+            provider.taggedCodes.firstOrNull { it == followOnParamName }?.let {
+                return TrackKeyInfo(provider.telemetryId, SEARCH_TYPE_SAP_FOLLOW_ON, it)
             }
         }
     }
@@ -114,3 +120,14 @@ private fun getTrackKeyFromCookies(
 
 private fun hasValidCode(code: String?, provider: SearchProviderModel): Boolean =
     code != null && provider.taggedCodes.any { prefix -> code == prefix }
+
+@VisibleForTesting
+internal fun Uri.lowercaseQueryParameterKeys(): Uri {
+    val newQueryParameters = queryParameterNames.flatMap { key ->
+        getQueryParameters(key).map { value -> "${key.lowercase()}=$value" }
+    }.joinToString("&")
+
+    return this@lowercaseQueryParameterKeys.buildUpon()
+        .encodedQuery(newQueryParameters)
+        .build()
+}

@@ -6,9 +6,10 @@ package mozilla.components.feature.prompts
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import androidx.annotation.VisibleForTesting
 import androidx.annotation.VisibleForTesting.Companion.PRIVATE
-import androidx.core.view.isVisible
+import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +19,7 @@ import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.selector.findTabOrCustomTab
 import mozilla.components.browser.state.selector.findTabOrCustomTabOrSelectedTab
 import mozilla.components.browser.state.selector.selectedTab
+import mozilla.components.browser.state.state.ContentState
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.prompt.Choice
@@ -25,6 +27,7 @@ import mozilla.components.concept.engine.prompt.PromptRequest
 import mozilla.components.concept.engine.prompt.PromptRequest.Alert
 import mozilla.components.concept.engine.prompt.PromptRequest.Authentication
 import mozilla.components.concept.engine.prompt.PromptRequest.BeforeUnload
+import mozilla.components.concept.engine.prompt.PromptRequest.CertificateRequest
 import mozilla.components.concept.engine.prompt.PromptRequest.Color
 import mozilla.components.concept.engine.prompt.PromptRequest.Confirm
 import mozilla.components.concept.engine.prompt.PromptRequest.Dismissible
@@ -46,11 +49,13 @@ import mozilla.components.concept.identitycredential.Account
 import mozilla.components.concept.identitycredential.Provider
 import mozilla.components.concept.storage.CreditCardEntry
 import mozilla.components.concept.storage.CreditCardValidationDelegate
+import mozilla.components.concept.storage.Login
 import mozilla.components.concept.storage.LoginEntry
 import mozilla.components.concept.storage.LoginValidationDelegate
 import mozilla.components.feature.prompts.address.AddressDelegate
 import mozilla.components.feature.prompts.address.AddressPicker
 import mozilla.components.feature.prompts.address.DefaultAddressDelegate
+import mozilla.components.feature.prompts.certificate.CertificatePicker
 import mozilla.components.feature.prompts.creditcard.CreditCardDelegate
 import mozilla.components.feature.prompts.creditcard.CreditCardPicker
 import mozilla.components.feature.prompts.creditcard.CreditCardSaveDialogFragment
@@ -68,6 +73,7 @@ import mozilla.components.feature.prompts.dialog.Prompter
 import mozilla.components.feature.prompts.dialog.SaveLoginDialogFragment
 import mozilla.components.feature.prompts.dialog.TextPromptDialogFragment
 import mozilla.components.feature.prompts.dialog.TimePickerDialogFragment
+import mozilla.components.feature.prompts.dialog.emitGeneratedPasswordShownFact
 import mozilla.components.feature.prompts.ext.executeIfWindowedPrompt
 import mozilla.components.feature.prompts.facts.emitCreditCardSaveShownFact
 import mozilla.components.feature.prompts.facts.emitPromptConfirmedFact
@@ -75,6 +81,7 @@ import mozilla.components.feature.prompts.facts.emitPromptDismissedFact
 import mozilla.components.feature.prompts.facts.emitPromptDisplayedFact
 import mozilla.components.feature.prompts.facts.emitSuccessfulAddressAutofillFormDetectedFact
 import mozilla.components.feature.prompts.facts.emitSuccessfulCreditCardAutofillFormDetectedFact
+import mozilla.components.feature.prompts.file.AndroidPhotoPicker
 import mozilla.components.feature.prompts.file.FilePicker
 import mozilla.components.feature.prompts.file.FileUploadsDirCleaner
 import mozilla.components.feature.prompts.identitycredential.DialogColors
@@ -85,6 +92,9 @@ import mozilla.components.feature.prompts.identitycredential.SelectProviderDialo
 import mozilla.components.feature.prompts.login.LoginDelegate
 import mozilla.components.feature.prompts.login.LoginExceptions
 import mozilla.components.feature.prompts.login.LoginPicker
+import mozilla.components.feature.prompts.login.PasswordGeneratorDialogColors
+import mozilla.components.feature.prompts.login.PasswordGeneratorDialogColorsProvider
+import mozilla.components.feature.prompts.login.PasswordGeneratorDialogFragment
 import mozilla.components.feature.prompts.login.StrongPasswordPromptViewListener
 import mozilla.components.feature.prompts.login.SuggestStrongPasswordDelegate
 import mozilla.components.feature.prompts.share.DefaultShareDelegate
@@ -123,7 +133,8 @@ internal const val FRAGMENT_TAG = "mozac_feature_prompt_dialog"
  * to [onActivityResult].
  *
  * This feature will subscribe to the currently selected session and display
- * a suitable native dialog based on [Session.Observer.onPromptRequested] events.
+ * a suitable native dialog based on the [SessionState.content] state
+ * [ContentState.promptRequests] events.
  * Once the dialog is closed or the user selects an item from the dialog
  * the related [PromptRequest] will be consumed.
  *
@@ -150,10 +161,12 @@ internal const val FRAGMENT_TAG = "mozac_feature_prompt_dialog"
  * the user does not want to see a save login dialog for.
  * @property loginDelegate Delegate for login picker.
  * @property suggestStrongPasswordDelegate Delegate for strong password generator.
- * @property isSuggestStrongPasswordEnabled Feature flag denoting whether the suggest strong password
- * feature is enabled or not. If this resolves to 'false', the feature will be hidden.
  * @property onSaveLoginWithStrongPassword A callback invoked to save a new login that uses the
  * generated strong password
+ * @property shouldAutomaticallyShowSuggestedPassword A callback invoked to check whether the user
+ * is engaging with signup for the first time.
+ * @property onFirstTimeEngagedWithSignup A callback invoked when user is engaged with signup for
+ * the first time.
  * @property creditCardDelegate Delegate for credit card picker.
  * @property addressDelegate Delegate for address picker.
  * @property fileUploadsDirCleaner a [FileUploadsDirCleaner] to clean up temporary file uploads.
@@ -183,12 +196,19 @@ class PromptFeature private constructor(
     private val loginDelegate: LoginDelegate = object : LoginDelegate {},
     private val suggestStrongPasswordDelegate: SuggestStrongPasswordDelegate = object :
         SuggestStrongPasswordDelegate {},
-    private val isSuggestStrongPasswordEnabled: Boolean = false,
+    private var shouldAutomaticallyShowSuggestedPassword: () -> Boolean = { false },
+    private val onFirstTimeEngagedWithSignup: () -> Unit = {},
     private val onSaveLoginWithStrongPassword: (String, String) -> Unit = { _, _ -> },
+    private val onSaveLogin: (Boolean) -> Unit = { _ -> },
+    private val passwordGeneratorColorsProvider: PasswordGeneratorDialogColorsProvider =
+        PasswordGeneratorDialogColorsProvider { PasswordGeneratorDialogColors.default() },
+    private val hideUpdateFragmentAfterSavingGeneratedPassword: (String, String) -> Boolean = { _, _ -> true },
+    private val removeLastSavedGeneratedPassword: () -> Unit = {},
     private val creditCardDelegate: CreditCardDelegate = object : CreditCardDelegate {},
     private val addressDelegate: AddressDelegate = DefaultAddressDelegate(),
     private val fileUploadsDirCleaner: FileUploadsDirCleaner,
     onNeedToRequestPermissions: OnNeedToRequestPermissions,
+    androidPhotoPicker: AndroidPhotoPicker?,
 ) : LifecycleAwareFeature,
     PermissionsFeature,
     Prompter,
@@ -213,6 +233,10 @@ class PromptFeature private constructor(
     internal val activePromptsToDismiss =
         Collections.newSetFromMap(WeakHashMap<PromptDialogFragment, Boolean>())
 
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal var previousPromptRequest: PromptRequest? = null
+    private var lastPromptRequest: PromptRequest? = null
+
     constructor(
         activity: Activity,
         store: BrowserStore,
@@ -232,12 +256,19 @@ class PromptFeature private constructor(
         loginDelegate: LoginDelegate = object : LoginDelegate {},
         suggestStrongPasswordDelegate: SuggestStrongPasswordDelegate = object :
             SuggestStrongPasswordDelegate {},
-        isSuggestStrongPasswordEnabled: Boolean = false,
+        shouldAutomaticallyShowSuggestedPassword: () -> Boolean = { false },
+        onFirstTimeEngagedWithSignup: () -> Unit = {},
         onSaveLoginWithStrongPassword: (String, String) -> Unit = { _, _ -> },
+        onSaveLogin: (Boolean) -> Unit = { _ -> },
+        passwordGeneratorColorsProvider: PasswordGeneratorDialogColorsProvider =
+            PasswordGeneratorDialogColorsProvider { PasswordGeneratorDialogColors.default() },
+        hideUpdateFragmentAfterSavingGeneratedPassword: (String, String) -> Boolean = { _, _ -> true },
+        removeLastSavedGeneratedPassword: () -> Unit = {},
         creditCardDelegate: CreditCardDelegate = object : CreditCardDelegate {},
         addressDelegate: AddressDelegate = DefaultAddressDelegate(),
         fileUploadsDirCleaner: FileUploadsDirCleaner,
         onNeedToRequestPermissions: OnNeedToRequestPermissions,
+        androidPhotoPicker: AndroidPhotoPicker? = null,
     ) : this(
         container = PromptContainer.Activity(activity),
         store = store,
@@ -258,10 +289,16 @@ class PromptFeature private constructor(
         onNeedToRequestPermissions = onNeedToRequestPermissions,
         loginDelegate = loginDelegate,
         suggestStrongPasswordDelegate = suggestStrongPasswordDelegate,
-        isSuggestStrongPasswordEnabled = isSuggestStrongPasswordEnabled,
+        shouldAutomaticallyShowSuggestedPassword = shouldAutomaticallyShowSuggestedPassword,
+        onFirstTimeEngagedWithSignup = onFirstTimeEngagedWithSignup,
         onSaveLoginWithStrongPassword = onSaveLoginWithStrongPassword,
+        onSaveLogin = onSaveLogin,
+        passwordGeneratorColorsProvider = passwordGeneratorColorsProvider,
+        hideUpdateFragmentAfterSavingGeneratedPassword = hideUpdateFragmentAfterSavingGeneratedPassword,
+        removeLastSavedGeneratedPassword = removeLastSavedGeneratedPassword,
         creditCardDelegate = creditCardDelegate,
         addressDelegate = addressDelegate,
+        androidPhotoPicker = androidPhotoPicker,
     )
 
     constructor(
@@ -282,11 +319,16 @@ class PromptFeature private constructor(
         loginDelegate: LoginDelegate = object : LoginDelegate {},
         suggestStrongPasswordDelegate: SuggestStrongPasswordDelegate = object :
             SuggestStrongPasswordDelegate {},
-        isSuggestStrongPasswordEnabled: Boolean = false,
+        shouldAutomaticallyShowSuggestedPassword: () -> Boolean = { false },
+        onFirstTimeEngagedWithSignup: () -> Unit = {},
         onSaveLoginWithStrongPassword: (String, String) -> Unit = { _, _ -> },
+        onSaveLogin: (Boolean) -> Unit = { _ -> },
+        hideUpdateFragmentAfterSavingGeneratedPassword: (String, String) -> Boolean = { _, _ -> true },
+        removeLastSavedGeneratedPassword: () -> Unit = {},
         creditCardDelegate: CreditCardDelegate = object : CreditCardDelegate {},
         addressDelegate: AddressDelegate = DefaultAddressDelegate(),
         fileUploadsDirCleaner: FileUploadsDirCleaner,
+        androidPhotoPicker: AndroidPhotoPicker? = null,
         onNeedToRequestPermissions: OnNeedToRequestPermissions,
     ) : this(
         container = PromptContainer.Fragment(fragment),
@@ -303,18 +345,34 @@ class PromptFeature private constructor(
         isCreditCardAutofillEnabled = isCreditCardAutofillEnabled,
         isAddressAutofillEnabled = isAddressAutofillEnabled,
         loginExceptionStorage = loginExceptionStorage,
-        fileUploadsDirCleaner = fileUploadsDirCleaner,
-        onNeedToRequestPermissions = onNeedToRequestPermissions,
         loginDelegate = loginDelegate,
         suggestStrongPasswordDelegate = suggestStrongPasswordDelegate,
-        isSuggestStrongPasswordEnabled = isSuggestStrongPasswordEnabled,
+        shouldAutomaticallyShowSuggestedPassword = shouldAutomaticallyShowSuggestedPassword,
+        onFirstTimeEngagedWithSignup = onFirstTimeEngagedWithSignup,
         onSaveLoginWithStrongPassword = onSaveLoginWithStrongPassword,
+        onSaveLogin = onSaveLogin,
+        hideUpdateFragmentAfterSavingGeneratedPassword = hideUpdateFragmentAfterSavingGeneratedPassword,
+        removeLastSavedGeneratedPassword = removeLastSavedGeneratedPassword,
         creditCardDelegate = creditCardDelegate,
         addressDelegate = addressDelegate,
+        fileUploadsDirCleaner = fileUploadsDirCleaner,
+        onNeedToRequestPermissions = onNeedToRequestPermissions,
+        androidPhotoPicker = androidPhotoPicker,
     )
 
-    private val filePicker =
-        FilePicker(container, store, customTabId, fileUploadsDirCleaner, onNeedToRequestPermissions)
+    @VisibleForTesting
+    // var for testing purposes
+    internal var filePicker = FilePicker(
+        container,
+        store,
+        customTabId,
+        fileUploadsDirCleaner,
+        androidPhotoPicker,
+        onNeedToRequestPermissions,
+    )
+
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal var certificatePicker = CertificatePicker(container)
 
     @VisibleForTesting(otherwise = PRIVATE)
     internal var loginPicker =
@@ -419,7 +477,7 @@ class PromptFeature private constructor(
                                 is MenuChoice,
                                 -> {
                                     (activePrompt?.get() as? ChoiceDialogFragment)?.let { dialog ->
-                                        if (dialog.isAdded) {
+                                        if (dialog.isStateSaved) {
                                             dialog.dismissAllowingStateLoss()
                                         } else {
                                             activePromptsToDismiss.remove(dialog)
@@ -436,7 +494,7 @@ class PromptFeature private constructor(
                             onPromptRequested(state)
                         } else if (!content.loading) {
                             promptAbuserDetector.resetJSAlertAbuseState()
-                        } else if (content.loading) {
+                        } else {
                             dismissSelectPrompts()
                         }
 
@@ -459,13 +517,21 @@ class PromptFeature private constructor(
 
                 store.consumeAllSessionPrompts(
                     sessionId = prompt?.sessionId,
-                    activePrompt,
+                    activePrompt = activePrompt,
                     predicate = { it.shouldDismissOnLoad && it !is File },
-                    consume = { prompt?.dismiss() },
+                    consume = {
+                        if (prompt?.isStateSaved == true) {
+                            prompt.dismiss()
+                        }
+                    },
                 )
 
-                // Let's make sure we do not leave anything behind..
-                activePromptsToDismiss.forEach { fragment -> fragment.dismiss() }
+                // Let's make sure we do not leave anything behind.
+                activePromptsToDismiss.forEach { fragment ->
+                    if (fragment.isStateSaved) {
+                        fragment.dismiss()
+                    }
+                }
             }
         }
 
@@ -544,58 +610,89 @@ class PromptFeature private constructor(
      *
      * @param session The session which requested the dialog.
      */
-    @Suppress("NestedBlockDepth")
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun onPromptRequested(session: SessionState) {
         // Some requests are handle with intents
         session.content.promptRequests.lastOrNull()?.let { promptRequest ->
-            store.state.findTabOrCustomTabOrSelectedTab(customTabId)?.let {
-                promptRequest.executeIfWindowedPrompt { exitFullscreenUsecase(it.id) }
+            if (session.content.permissionRequestsList.isNotEmpty()) {
+                val value: Any? = if (promptRequest is Popup) false else null
+                onCancel(session.id, promptRequest.uid, value)
+            } else {
+                processPromptRequest(promptRequest, session)
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth")
+    @VisibleForTesting(otherwise = PRIVATE)
+    internal fun processPromptRequest(
+        promptRequest: PromptRequest,
+        session: SessionState,
+    ) {
+        store.state.findTabOrCustomTabOrSelectedTab(customTabId)?.let {
+            promptRequest.executeIfWindowedPrompt { exitFullscreenUsecase(it.id) }
+        }
+
+        previousPromptRequest = lastPromptRequest
+        lastPromptRequest = promptRequest
+
+        when (promptRequest) {
+            is CertificateRequest -> {
+                certificatePicker.handleCertificateRequest(promptRequest)
             }
 
-            when (promptRequest) {
-                is File -> {
-                    emitPromptDisplayedFact(promptName = "FilePrompt")
-                    filePicker.handleFileRequest(promptRequest)
+            is File -> {
+                emitPromptDisplayedFact(promptName = "FilePrompt")
+                filePicker.handleFileRequest(promptRequest)
+            }
+
+            is Share -> handleShareRequest(promptRequest, session)
+            is SelectCreditCard -> {
+                emitSuccessfulCreditCardAutofillFormDetectedFact()
+                if (isCreditCardAutofillEnabled() && promptRequest.creditCards.isNotEmpty()) {
+                    creditCardPicker?.handleSelectCreditCardRequest(promptRequest)
+                }
+            }
+
+            is SelectLoginPrompt -> {
+                if (!isLoginAutofillEnabled()) {
+                    return
                 }
 
-                is Share -> handleShareRequest(promptRequest, session)
-                is SelectCreditCard -> {
-                    emitSuccessfulCreditCardAutofillFormDetectedFact()
-                    if (isCreditCardAutofillEnabled() && promptRequest.creditCards.isNotEmpty()) {
-                        creditCardPicker?.handleSelectCreditCardRequest(promptRequest)
-                    }
+                if (previousPromptRequest is SaveLoginPrompt) {
+                    return
                 }
 
-                is SelectLoginPrompt -> {
-                    if (!isLoginAutofillEnabled()) {
-                        return
-                    }
-                    if (promptRequest.generatedPassword != null && isSuggestStrongPasswordEnabled) {
-                        val currentUrl =
-                            store.state.findTabOrCustomTabOrSelectedTab(customTabId)?.content?.url
-                        if (currentUrl != null) {
-                            strongPasswordPromptViewListener?.handleSuggestStrongPasswordRequest(
+                if (promptRequest.generatedPassword != null) {
+                    if (shouldAutomaticallyShowSuggestedPassword.invoke()) {
+                        onFirstTimeEngagedWithSignup.invoke()
+                        handleDialogsRequest(
+                            promptRequest,
+                            session,
+                        )
+                    } else {
+                        strongPasswordPromptViewListener?.onGeneratedPasswordPromptClick = {
+                            handleDialogsRequest(
                                 promptRequest,
-                                currentUrl,
-                                onSaveLoginWithStrongPassword,
+                                session,
                             )
                         }
-                    } else {
-                        loginPicker?.handleSelectLoginRequest(promptRequest)
+                        strongPasswordPromptViewListener?.handleSuggestStrongPasswordRequest()
                     }
-                    emitPromptDisplayedFact(promptName = "SelectLoginPrompt")
+                } else {
+                    loginPicker?.handleSelectLoginRequest(promptRequest)
                 }
-
-                is SelectAddress -> {
-                    emitSuccessfulAddressAutofillFormDetectedFact()
-                    if (isAddressAutofillEnabled() && promptRequest.addresses.isNotEmpty()) {
-                        addressPicker?.handleSelectAddressRequest(promptRequest)
-                    }
-                }
-
-                else -> handleDialogsRequest(promptRequest, session)
+                emitPromptDisplayedFact(promptName = "SelectLoginPrompt")
             }
+
+            is SelectAddress -> {
+                emitSuccessfulAddressAutofillFormDetectedFact()
+                if (isAddressAutofillEnabled() && promptRequest.addresses.isNotEmpty()) {
+                    addressPicker?.handleSelectAddressRequest(promptRequest)
+                }
+            }
+
+            else -> handleDialogsRequest(promptRequest, session)
         }
     }
 
@@ -694,6 +791,7 @@ class PromptFeature private constructor(
                 is PromptRequest.IdentityCredential.SelectProvider -> it.onConfirm(value as Provider)
                 is PromptRequest.IdentityCredential.SelectAccount -> it.onConfirm(value as Account)
                 is PromptRequest.IdentityCredential.PrivacyPolicy -> it.onConfirm(value as Boolean)
+                is SelectLoginPrompt -> it.onConfirm(value as Login)
                 else -> {
                     // no-op
                 }
@@ -725,7 +823,7 @@ class PromptFeature private constructor(
      */
     private fun reattachFragment(fragment: PromptDialogFragment) {
         val session = store.state.findTabOrCustomTab(fragment.sessionId)
-        if (session?.content?.promptRequests?.isEmpty() != false) {
+        if (session == null || session.content.promptRequests.isEmpty()) {
             fragmentManager.beginTransaction()
                 .remove(fragment)
                 .commitAllowingStateLoss()
@@ -752,7 +850,7 @@ class PromptFeature private constructor(
     /**
      * Called from on [onPromptRequested] to handle requests for showing native dialogs.
      */
-    @Suppress("ComplexMethod", "LongMethod")
+    @Suppress("ComplexMethod", "LongMethod", "ReturnCount")
     @VisibleForTesting(otherwise = PRIVATE)
     internal fun handleDialogsRequest(
         promptRequest: PromptRequest,
@@ -760,6 +858,32 @@ class PromptFeature private constructor(
     ) {
         // Requests that are handled with dialogs
         val dialog = when (promptRequest) {
+            is SelectLoginPrompt -> {
+                val currentUrl =
+                    store.state.findTabOrCustomTabOrSelectedTab(customTabId)?.content?.url
+                val generatedPassword = promptRequest.generatedPassword
+
+                if (generatedPassword == null || currentUrl == null) {
+                    logger.debug(
+                        "Ignoring received SelectLogin.onGeneratedPasswordPromptClick" +
+                            " when either the generated password or the currentUrl is null.",
+                    )
+                    dismissDialogRequest(promptRequest, session)
+                    return
+                }
+
+                emitGeneratedPasswordShownFact()
+
+                PasswordGeneratorDialogFragment.newInstance(
+                    sessionId = session.id,
+                    promptRequestUID = promptRequest.uid,
+                    generatedPassword = generatedPassword,
+                    currentUrl = currentUrl,
+                    onSavedGeneratedPassword = onSaveLogin,
+                    colorsProvider = passwordGeneratorColorsProvider,
+                )
+            }
+
             is SaveCreditCard -> {
                 if (!isCreditCardAutofillEnabled.invoke() || creditCardValidationDelegate == null ||
                     !promptRequest.creditCard.isValid
@@ -800,8 +924,16 @@ class PromptFeature private constructor(
                     }
 
                     return
-                }
+                } else if (hideUpdateFragmentAfterSavingGeneratedPassword(
+                        promptRequest.logins[0].username,
+                        promptRequest.logins[0].password,
+                    )
+                ) {
+                    removeLastSavedGeneratedPassword()
+                    dismissDialogRequest(promptRequest, session)
 
+                    return
+                }
                 SaveLoginDialogFragment.newInstance(
                     sessionId = session.id,
                     promptRequestUID = promptRequest.uid,
@@ -810,6 +942,7 @@ class PromptFeature private constructor(
                     // For v1, we only handle a single login and drop all others on the floor
                     entry = promptRequest.logins[0],
                     icon = session.content.icon,
+                    onShowSnackbarAfterLoginChange = onSaveLogin,
                 )
             }
 
@@ -1042,22 +1175,7 @@ class PromptFeature private constructor(
         dialog.feature = this
 
         if (canShowThisPrompt(promptRequest)) {
-            // If the ChoiceDialogFragment's choices data were updated,
-            // we need to dismiss the previous dialog
-            activePrompt?.get()?.let { promptDialog ->
-                // ChoiceDialogFragment could update their choices data,
-                // and we need to dismiss the previous UI dialog,
-                // without consuming the engine callbacks, and allow to create a new dialog with the
-                // updated data.
-                if (promptDialog is ChoiceDialogFragment &&
-                    !session.content.promptRequests.any { it.uid == promptDialog.promptRequestUID }
-                ) {
-                    // We want to avoid consuming the engine callbacks and allow a new dialog
-                    // to be created with the updated data.
-                    promptDialog.feature = null
-                    promptDialog.dismiss()
-                }
-            }
+            maybeDismissPreviousDialog(session)
 
             emitPromptDisplayedFact(promptName = dialog::class.simpleName.ifNullOrEmpty { "" })
             dialog.show(fragmentManager, FRAGMENT_TAG)
@@ -1073,6 +1191,29 @@ class PromptFeature private constructor(
     }
 
     /**
+     * If the ChoiceDialogFragment's choices data were updated, we need to dismiss the previous
+     * dialog.
+     */
+    private fun maybeDismissPreviousDialog(session: SessionState) {
+        activePrompt?.get()?.let { promptDialog ->
+            // ChoiceDialogFragment could update their choices data,
+            // and we need to dismiss the previous UI dialog,
+            // without consuming the engine callbacks, and allow to create a new dialog with the
+            // updated data.
+            if (promptDialog is ChoiceDialogFragment &&
+                !session.content.promptRequests.any { it.uid == promptDialog.promptRequestUID }
+            ) {
+                // We want to avoid consuming the engine callbacks and allow a new dialog
+                // to be created with the updated data.
+                promptDialog.feature = null
+                if (promptDialog.isStateSaved) {
+                    promptDialog.dismiss()
+                }
+            }
+        }
+    }
+
+    /**
      * Dismiss and consume the given prompt request for the session.
      */
     @VisibleForTesting
@@ -1082,7 +1223,15 @@ class PromptFeature private constructor(
         emitPromptDismissedFact(promptName = promptRequest::class.simpleName.ifNullOrEmpty { "" })
     }
 
+    @VisibleForTesting
+    internal fun redirectDialogFragmentIsActive() =
+        (fragmentManager.findFragmentByTag("SHOULD_OPEN_APP_LINK_PROMPT_DIALOG") as? DialogFragment) != null
+
     private fun canShowThisPrompt(promptRequest: PromptRequest): Boolean {
+        if (redirectDialogFragmentIsActive()) {
+            return false
+        }
+
         return when (promptRequest) {
             is SingleChoice,
             is MultipleChoice,
@@ -1092,6 +1241,7 @@ class PromptFeature private constructor(
             is Color,
             is Authentication,
             is BeforeUnload,
+            is CertificateRequest,
             is SaveLoginPrompt,
             is SelectLoginPrompt,
             is SelectCreditCard,
@@ -1118,8 +1268,17 @@ class PromptFeature private constructor(
 
         (activePromptRequest as? SelectLoginPrompt)?.let { selectLoginPrompt ->
             loginPicker?.let { loginPicker ->
-                if (loginDelegate.loginPickerView?.asView()?.isVisible == true) {
+                if (loginDelegate.loginPickerView?.isPromptDisplayed == true) {
                     loginPicker.dismissCurrentLoginSelect(selectLoginPrompt)
+                    result = true
+                }
+            }
+
+            strongPasswordPromptViewListener?.let { strongPasswordPromptViewListener ->
+                if (suggestStrongPasswordDelegate.strongPasswordPromptViewListenerView?.isPromptDisplayed == true) {
+                    strongPasswordPromptViewListener.dismissCurrentSuggestStrongPassword(
+                        selectLoginPrompt,
+                    )
                     result = true
                 }
             }
@@ -1127,7 +1286,7 @@ class PromptFeature private constructor(
 
         (activePromptRequest as? SelectCreditCard)?.let { selectCreditCardPrompt ->
             creditCardPicker?.let { creditCardPicker ->
-                if (creditCardDelegate.creditCardPickerView?.asView()?.isVisible == true) {
+                if (creditCardDelegate.creditCardPickerView?.isPromptDisplayed == true) {
                     creditCardPicker.dismissSelectCreditCardRequest(selectCreditCardPrompt)
                     result = true
                 }
@@ -1136,7 +1295,7 @@ class PromptFeature private constructor(
 
         (activePromptRequest as? SelectAddress)?.let { selectAddressPrompt ->
             addressPicker?.let { addressPicker ->
-                if (addressDelegate.addressPickerView?.asView()?.isVisible == true) {
+                if (addressDelegate.addressPickerView?.isPromptDisplayed == true) {
                     addressPicker.dismissSelectAddressRequest(selectAddressPrompt)
                     result = true
                 }
@@ -1144,6 +1303,16 @@ class PromptFeature private constructor(
         }
 
         return result
+    }
+
+    /**
+     * Handles the result received from the Android photo picker.
+     *
+     * @param uriList An array of [Uri] objects representing the selected photos.
+     */
+
+    fun onAndroidPhotoPickerResult(uriList: Array<Uri>) {
+        filePicker.onAndroidPhotoPickerResult(uriList)
     }
 
     companion object {
@@ -1156,7 +1325,7 @@ class PromptFeature private constructor(
  * Removes the [PromptRequest] indicated by [promptRequestUID] from the current Session if it it exists
  * and offers a [consume] callback for other optional side effects.
  *
- * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequests].
+ * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequest]s.
  * If the id is not provided or a tab with that id is not found the method will act on the current tab.
  * @param promptRequestUID Id of the [PromptRequest] to be consumed.
  * @param activePrompt The current active Prompt if known. If provided it will always be cleared,
@@ -1182,10 +1351,10 @@ internal fun BrowserStore.consumePromptFrom(
  * Removes the most recent [PromptRequest] of type [P] from the current Session if it it exists
  * and offers a [consume] callback for other optional side effects.
  *
- * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequests].
+ * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequest]s.
  * If the id is not provided or a tab with that id is not found the method will act on the current tab.
  * @param activePrompt The current active Prompt if known. If provided it will always be cleared,
- * irrespective of if [PromptRequest] indicated by [promptRequestUID] is found and removed or not.
+ * irrespective of if [PromptRequest] indicated by [PromptRequest.uid] is found and removed or not.
  * @param consume callback with the [PromptRequest] if found, before being removed from the Session.
  */
 internal inline fun <reified P : PromptRequest> BrowserStore.consumePromptFrom(
@@ -1206,10 +1375,10 @@ internal inline fun <reified P : PromptRequest> BrowserStore.consumePromptFrom(
  * Filters and removes all [PromptRequest]s from the current Session if it it exists
  * and offers a [consume] callback for other optional side effects on each filtered [PromptRequest].
  *
- * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequests].
+ * @param sessionId Session id of the tab or custom tab in which to try consuming [PromptRequest]s.
  * If the id is not provided or a tab with that id is not found the method will act on the current tab.
  * @param activePrompt The current active Prompt if known. If provided it will always be cleared,
- * irrespective of if [PromptRequest] indicated by [promptRequestUID] is found and removed or not.
+ * irrespective of if [PromptRequest] indicated by [PromptRequest.uid] is found and removed or not.
  * @param predicate function allowing matching only specific [PromptRequest]s from all contained in the Session.
  * @param consume callback with the [PromptRequest] if found, before being removed from the Session.
  */

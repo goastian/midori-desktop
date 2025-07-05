@@ -52,10 +52,10 @@ class CommonAnimationManager {
    * ::before, ::after and ::marker.
    */
   void StopAnimationsForElement(dom::Element* aElement,
-                                PseudoStyleType aPseudoType) {
+                                const PseudoStyleRequest& aPseudoRequest) {
     MOZ_ASSERT(aElement);
     auto* collection =
-        AnimationCollection<AnimationType>::Get(aElement, aPseudoType);
+        AnimationCollection<AnimationType>::Get(aElement, aPseudoRequest);
     if (!collection) {
       return;
     }
@@ -104,38 +104,108 @@ class OwningElementRef final {
   explicit OwningElementRef(const NonOwningAnimationTarget& aTarget)
       : mTarget(aTarget) {}
 
-  OwningElementRef(dom::Element& aElement, PseudoStyleType aPseudoType)
-      : mTarget(&aElement, aPseudoType) {}
+  OwningElementRef(dom::Element& aElement,
+                   const PseudoStyleRequest& aPseudoRequest)
+      : mTarget(&aElement, aPseudoRequest) {}
 
   bool Equals(const OwningElementRef& aOther) const {
     return mTarget == aOther.mTarget;
   }
 
-  bool LessThan(Maybe<uint32_t>& aChildIndex, const OwningElementRef& aOther,
-                Maybe<uint32_t>& aOtherChildIndex) const {
+  int32_t Compare(const OwningElementRef& aOther,
+                  nsContentUtils::NodeIndexCache& aCache) const {
     MOZ_ASSERT(mTarget.mElement && aOther.mTarget.mElement,
                "Elements to compare should not be null");
 
     if (mTarget.mElement != aOther.mTarget.mElement) {
-      return nsContentUtils::PositionIsBefore(mTarget.mElement,
-                                              aOther.mTarget.mElement,
-                                              &aChildIndex, &aOtherChildIndex);
+      const bool connected = mTarget.mElement->IsInComposedDoc();
+      if (connected != aOther.mTarget.mElement->IsInComposedDoc()) {
+        // Disconnected elements sort last.
+        return connected ? -1 : 1;
+      }
+      if (!connected) {
+        auto* thisRoot = mTarget.mElement->SubtreeRoot();
+        auto* otherRoot = aOther.mTarget.mElement->SubtreeRoot();
+        if (thisRoot != otherRoot) {
+          // We need some consistent ordering across disconnected subtrees. This
+          // is kind of arbitrary.
+          return uintptr_t(thisRoot) < uintptr_t(otherRoot) ? -1 : 1;
+        }
+      }
+      return nsContentUtils::CompareTreePosition<TreeKind::ShadowIncludingDOM>(
+          mTarget.mElement, aOther.mTarget.mElement, nullptr, &aCache);
     }
 
-    return mTarget.mPseudoType == PseudoStyleType::NotPseudo ||
-           (mTarget.mPseudoType == PseudoStyleType::before &&
-            aOther.mTarget.mPseudoType == PseudoStyleType::after) ||
-           (mTarget.mPseudoType == PseudoStyleType::marker &&
-            aOther.mTarget.mPseudoType == PseudoStyleType::before) ||
-           (mTarget.mPseudoType == PseudoStyleType::marker &&
-            aOther.mTarget.mPseudoType == PseudoStyleType::after);
+    enum SortingIndex : uint8_t {
+      NotPseudo,
+      Marker,
+      Before,
+      After,
+      ViewTransition,
+      ViewTransitionGroup,
+      ViewTransitionImagePair,
+      ViewTransitionOld,
+      ViewTransitionNew,
+      Other
+    };
+    auto sortingIndex =
+        [](const PseudoStyleRequest& aPseudoRequest) -> SortingIndex {
+      switch (aPseudoRequest.mType) {
+        case PseudoStyleType::NotPseudo:
+          return SortingIndex::NotPseudo;
+        case PseudoStyleType::marker:
+          return SortingIndex::Marker;
+        case PseudoStyleType::before:
+          return SortingIndex::Before;
+        case PseudoStyleType::after:
+          return SortingIndex::After;
+        case PseudoStyleType::viewTransition:
+          return SortingIndex::ViewTransition;
+        case PseudoStyleType::viewTransitionGroup:
+          return SortingIndex::ViewTransitionGroup;
+        case PseudoStyleType::viewTransitionImagePair:
+          return SortingIndex::ViewTransitionImagePair;
+        case PseudoStyleType::viewTransitionOld:
+          return SortingIndex::ViewTransitionOld;
+        case PseudoStyleType::viewTransitionNew:
+          return SortingIndex::ViewTransitionNew;
+        default:
+          MOZ_ASSERT_UNREACHABLE("Unexpected pseudo type");
+          return SortingIndex::Other;
+      }
+    };
+    auto cmp = sortingIndex(mTarget.mPseudoRequest) -
+               sortingIndex(aOther.mTarget.mPseudoRequest);
+    if (cmp != 0) {
+      return cmp;
+    }
+    auto* ident = mTarget.mPseudoRequest.mIdentifier.get();
+    auto* otherIdent = aOther.mTarget.mPseudoRequest.mIdentifier.get();
+    MOZ_ASSERT(!!ident == !!otherIdent);
+    if (ident == otherIdent) {
+      return 0;
+    }
+    // FIXME(emilio, bug 1956219): This compares ::view-transition-* pseudos
+    // with string comparison, which is not terrible but probably not quite
+    // intended? It seems we should probably compare the pseudo-element tree
+    // position or something if available, at least...
+    return nsDependentAtomString(ident) < nsDependentAtomString(otherIdent) ? -1
+                                                                            : 1;
   }
 
   bool IsSet() const { return !!mTarget.mElement; }
 
-  void GetElement(dom::Element*& aElement, PseudoStyleType& aPseudoType) const {
+  bool ShouldFireEvents() const {
+    // NOTE(emilio): Pseudo-elements are represented with a non-native animation
+    // target, and a pseudo-element separately, so the check is also correct for
+    // them.
+    return IsSet() && !mTarget.mElement->IsInNativeAnonymousSubtree();
+  }
+
+  void GetElement(dom::Element*& aElement,
+                  PseudoStyleRequest& aPseudoRequest) const {
     aElement = mTarget.mElement;
-    aPseudoType = mTarget.mPseudoType;
+    aPseudoRequest = mTarget.mPseudoRequest;
   }
 
   const NonOwningAnimationTarget& Target() const { return mTarget; }
@@ -211,7 +281,7 @@ inline dom::CompositeOperation StyleToDom(StyleAnimationComposition aStyle) {
 }
 
 inline TimingParams TimingParamsFromCSSParams(
-    float aDuration, float aDelay, float aIterationCount,
+    Maybe<float> aDuration, float aDelay, float aIterationCount,
     StyleAnimationDirection aDirection, StyleAnimationFillMode aFillMode) {
   MOZ_ASSERT(aIterationCount >= 0.0 && !std::isnan(aIterationCount),
              "aIterations should be nonnegative & finite, as ensured by "

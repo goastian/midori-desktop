@@ -26,8 +26,8 @@ import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.test.rule.MainCoroutineRule
 import mozilla.components.support.test.whenever
 import mozilla.components.ui.tabcounter.R
-import mozilla.components.ui.tabcounter.TabCounter
 import mozilla.components.ui.tabcounter.TabCounterMenu
+import mozilla.components.ui.tabcounter.TabCounterView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -68,15 +68,15 @@ class TabCounterToolbarButtonTest {
     fun `WHEN tab counter is created THEN count is 0`() {
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = BrowserStore(),
                 menu = tabCounterMenu,
             ),
         )
 
-        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
         val counterText: TextView = view.findViewById(R.id.counter_text)
         assertEquals("0", counterText.text)
     }
@@ -85,8 +85,8 @@ class TabCounterToolbarButtonTest {
     fun `GIVEN showMaskInPrivateMode is false WHEN tab counter is created THEN badge is not visible`() {
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = BrowserStore(),
                 menu = tabCounterMenu,
@@ -94,7 +94,7 @@ class TabCounterToolbarButtonTest {
             ),
         )
 
-        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
         val counterMask: View = view.findViewById(R.id.counter_mask)
         assertFalse(counterMask.isVisible)
     }
@@ -105,8 +105,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore(BrowserState(tabs = listOf(tab), selectedTabId = "test-id"))
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -114,7 +114,7 @@ class TabCounterToolbarButtonTest {
             ),
         )
 
-        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        val view = button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
         val counterMask: View = view.findViewById(R.id.counter_mask)
         assertTrue(counterMask.isVisible)
     }
@@ -124,8 +124,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore()
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -133,7 +133,7 @@ class TabCounterToolbarButtonTest {
         )
 
         whenever(button.updateCount(anyInt())).then { }
-        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
 
         store.dispatch(
             TabListAction.AddTabAction(createTab("https://www.mozilla.org")),
@@ -147,8 +147,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore()
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -156,7 +156,7 @@ class TabCounterToolbarButtonTest {
         )
 
         whenever(button.updateCount(anyInt())).then { }
-        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
 
         store.dispatch(
             TabListAction.RestoreAction(
@@ -179,8 +179,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore(BrowserState(tabs = listOf(tab)))
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -188,7 +188,7 @@ class TabCounterToolbarButtonTest {
         )
 
         whenever(button.updateCount(anyInt())).then { }
-        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
 
         store.dispatch(TabListAction.RemoveTabAction(tab.id)).joinBlocking()
         verify(button).updateCount(eq(0))
@@ -199,8 +199,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore()
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -210,7 +210,7 @@ class TabCounterToolbarButtonTest {
         whenever(button.updateCount(anyInt())).then { }
         whenever(button.isPrivate(store)).then { true }
 
-        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
 
         store.dispatch(
             TabListAction.AddTabAction(createTab("https://www.mozilla.org", private = true)),
@@ -225,8 +225,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore(BrowserState(tabs = listOf(tab)))
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = showTabs,
                 store = store,
                 menu = tabCounterMenu,
@@ -236,7 +236,7 @@ class TabCounterToolbarButtonTest {
         whenever(button.updateCount(anyInt())).then { }
         whenever(button.isPrivate(store)).then { true }
 
-        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounter
+        button.createView(LinearLayout(testContext) as ViewGroup) as TabCounterView
 
         store.dispatch(TabListAction.RemoveTabAction(tab.id)).joinBlocking()
         verify(button).updateCount(eq(0))
@@ -248,8 +248,8 @@ class TabCounterToolbarButtonTest {
         val store = BrowserStore(BrowserState(tabs = listOf()))
         val button = spy(
             TabCounterToolbarButton(
-                lifecycleOwner,
-                false,
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
                 showTabs = {
                     callbackInvoked = true
                 },
@@ -261,8 +261,23 @@ class TabCounterToolbarButtonTest {
         val parent = spy(LinearLayout(testContext))
         doReturn(true).`when`(parent).isAttachedToWindow
 
-        val view = button.createView(parent) as TabCounter
+        val view = button.createView(parent) as TabCounterView
         view.performClick()
         assertTrue(callbackInvoked)
+    }
+
+    @Test
+    fun `WHEN tabs button is created THEN it is visible by default`() {
+        val button = spy(
+            TabCounterToolbarButton(
+                lifecycleOwner = lifecycleOwner,
+                countBasedOnSelectedTabType = false,
+                showTabs = showTabs,
+                store = BrowserStore(),
+                menu = tabCounterMenu,
+            ),
+        )
+
+        assertEquals(true, button.visible())
     }
 }

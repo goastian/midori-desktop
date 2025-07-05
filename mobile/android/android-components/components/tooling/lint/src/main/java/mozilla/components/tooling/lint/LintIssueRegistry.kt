@@ -5,6 +5,7 @@
 package mozilla.components.tooling.lint
 
 import com.android.tools.lint.client.api.IssueRegistry
+import com.android.tools.lint.client.api.Vendor
 import com.android.tools.lint.detector.api.Issue
 
 /**
@@ -14,6 +15,7 @@ import com.android.tools.lint.detector.api.Issue
 class LintIssueRegistry : IssueRegistry() {
     override val api: Int = com.android.tools.lint.detector.api.CURRENT_API
     override val issues: List<Issue> = listOf(
+        ButtonStyleXmlDetector.ISSUE_XML_STYLE,
         LintLogChecks.ISSUE_LOG_USAGE,
         AndroidSrcXmlDetector.ISSUE_XML_SRC_USAGE,
         TextViewAndroidSrcXmlDetector.ISSUE_XML_SRC_USAGE,
@@ -21,5 +23,16 @@ class LintIssueRegistry : IssueRegistry() {
         FactCollectDetector.ISSUE_FACT_COLLECT_CALLED,
         NotificationManagerChecks.ISSUE_NOTIFICATION_USAGE,
         ConceptFetchDetector.ISSUE_FETCH_RESPONSE_CLOSE,
+        StringLintXmlDetector.ISSUE_BLANK_STRING,
+        StringLintXmlDetector.ISSUE_INCORRECT_ELLIPSIS,
+        StringLintXmlDetector.ISSUE_STRAIGHT_QUOTE_USAGE,
+        StringLintXmlDetector.ISSUE_STRAIGHT_DOUBLE_QUOTE_USAGE,
+        StringLintXmlDetector.ISSUE_BRAND_USAGE,
+        StringLintXmlDetector.ISSUE_PLACEHOLDER_COMMENT,
+        VisibleForTestingDetector.ISSUE_VISIBLE_FOR_TESTING_ANNOTATION,
+    ) + ConstraintLayoutPerfDetector.ISSUES + ContextCompatDetector.ISSUES
+    override val vendor: Vendor = Vendor(
+        vendorName = "Mozilla",
+        identifier = "mozilla-android-components",
     )
 }

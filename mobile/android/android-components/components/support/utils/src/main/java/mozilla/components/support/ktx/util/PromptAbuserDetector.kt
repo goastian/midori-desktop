@@ -9,10 +9,13 @@ import java.util.Date
 
 /**
  * Helper class to identify if a website has shown many dialogs.
- *  @param maxSuccessiveDialogSecondsLimit Maximum time required
- *  between dialogs in seconds before not showing more dialog.
+ *
+ * @param maxSuccessiveDialogMillisLimit Maximum time required
+ * between dialogs in seconds before not showing more dialog.
  */
-class PromptAbuserDetector(private val maxSuccessiveDialogSecondsLimit: Int = MAX_SUCCESSIVE_DIALOG_SECONDS_LIMIT) {
+class PromptAbuserDetector(
+    private val maxSuccessiveDialogMillisLimit: Int = MAX_SUCCESSIVE_DIALOG_MILLIS_LIMIT,
+) {
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     var jsAlertCount = 0
@@ -53,7 +56,7 @@ class PromptAbuserDetector(private val maxSuccessiveDialogSecondsLimit: Int = MA
      * Indicates whether dialogs are being abused or not.
      */
     fun areDialogsBeingAbused(): Boolean {
-        return areDialogsAbusedByTime() || areDialogsAbusedByCount()
+        return validationsEnabled && (areDialogsAbusedByTime() || areDialogsAbusedByCount())
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
@@ -65,23 +68,26 @@ class PromptAbuserDetector(private val maxSuccessiveDialogSecondsLimit: Int = MA
             false
         } else {
             val now = now()
-            val diffInSeconds = (now.time - lastDialogShownAt.time) / SECOND_MS
-            diffInSeconds < maxSuccessiveDialogSecondsLimit
+            val diffInMillis = now.time - lastDialogShownAt.time
+            validationsEnabled && (diffInMillis < maxSuccessiveDialogMillisLimit)
         }
     }
 
     private fun areDialogsAbusedByCount(): Boolean {
-        return jsAlertCount > MAX_SUCCESSIVE_DIALOG_COUNT
+        return validationsEnabled && (jsAlertCount > MAX_SUCCESSIVE_DIALOG_COUNT)
     }
 
     companion object {
         // Maximum number of successive dialogs before we prompt users to disable dialogs.
         internal const val MAX_SUCCESSIVE_DIALOG_COUNT: Int = 2
 
-        // Minimum time required between dialogs in seconds before enabling the stop dialog.
-        internal const val MAX_SUCCESSIVE_DIALOG_SECONDS_LIMIT: Int = 3
+        // Minimum time required between dialogs in milliseconds before enabling the stop dialog.
+        internal const val MAX_SUCCESSIVE_DIALOG_MILLIS_LIMIT: Int = 3000
 
-        // Number of milliseconds in 1 second.
-        internal const val SECOND_MS: Int = 1000
+        /**
+         * Only use for testing purpose.
+         */
+        @VisibleForTesting
+        var validationsEnabled = true
     }
 }

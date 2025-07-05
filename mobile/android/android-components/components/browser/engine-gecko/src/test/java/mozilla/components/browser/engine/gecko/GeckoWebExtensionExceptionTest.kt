@@ -13,11 +13,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_ADMIN_INSTALL_ONLY
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_BLOCKLISTED
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_CORRUPT_FILE
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_INCOMPATIBLE
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_NETWORK_FAILURE
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_SIGNEDSTATE_REQUIRED
+import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_SOFT_BLOCKED
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_UNSUPPORTED_ADDON_TYPE
 import org.mozilla.geckoview.WebExtension.InstallException.ErrorCodes.ERROR_USER_CANCELED
 
@@ -112,5 +114,31 @@ class GeckoWebExtensionExceptionTest {
         val webExtensionException = GeckoWebExtensionException.createWebExtensionException(geckoException)
 
         assertTrue(webExtensionException is WebExtensionInstallException.UnsupportedAddonType)
+    }
+
+    @Test
+    fun `Handles an AdminInstallOnly exception`() {
+        val geckoException = mock<WebExtension.InstallException>()
+        ReflectionUtils.setField(
+            geckoException,
+            "code",
+            ERROR_ADMIN_INSTALL_ONLY,
+        )
+        val webExtensionException = GeckoWebExtensionException.createWebExtensionException(geckoException)
+
+        assertTrue(webExtensionException is WebExtensionInstallException.AdminInstallOnly)
+    }
+
+    @Test
+    fun `Handles a SoftBlocked exception`() {
+        val geckoException = mock<WebExtension.InstallException>()
+        ReflectionUtils.setField(
+            geckoException,
+            "code",
+            ERROR_SOFT_BLOCKED,
+        )
+        val webExtensionException = GeckoWebExtensionException.createWebExtensionException(geckoException)
+
+        assertTrue(webExtensionException is WebExtensionInstallException.SoftBlocked)
     }
 }

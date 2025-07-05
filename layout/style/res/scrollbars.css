@@ -6,7 +6,7 @@
 
 /* Rules required for style caching of anonymous content scrollbar parts */
 /* stylelint-disable-next-line media-query-no-invalid */
-@media (-moz-bool-pref: "layout.css.cached-scrollbar-styles.enabled") {
+@media -moz-pref("layout.css.cached-scrollbar-styles.enabled") {
   :is(scrollcorner, resizer, scrollbar, scrollbarbutton, slider):where(:-moz-native-anonymous) {
     /* All scrollbar parts must not inherit any properties from the scrollable
      * element (except for visibility and pointer-events), for the anonymous
@@ -75,8 +75,6 @@ scrollbar, scrollbarbutton, scrollcorner, slider, thumb, resizer {
   writing-mode: initial;
 
   -moz-user-focus: ignore;
-  /* Prevent -moz-user-modify declaration from designmode.css having an effect. */
-  -moz-user-modify: initial;
   user-select: none;
 }
 
@@ -174,15 +172,6 @@ scrollbar[root] {
   scrollcorner {
     pointer-events: none;
   }
-}
-
-slider {
-  appearance: auto;
-  -moz-default-appearance: scrollbartrack-horizontal;
-}
-
-slider[orient="vertical"] {
-  -moz-default-appearance: scrollbartrack-vertical;
 }
 
 scrollbarbutton {

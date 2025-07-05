@@ -45,24 +45,6 @@ crash_metrics:
     expires: never
 
 crash:
-  uptime:
-    type: timespan
-    description: >
-      The application uptime. This is equivalent to the legacy crash ping's
-      `UptimeTS` field.
-    notification_emails:
-      - crash-reporting-wg@mozilla.org
-      - stability@mozilla.org
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1790569
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1790569#c12
-    data_sensitivity:
-      - technical
-    expires: never
-    send_in_pings:
-      - crash
-
   process_type:
     type: string
     # yamllint disable
@@ -147,6 +129,790 @@ crash:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1839697
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1839697#c5
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  app_channel:
+    type: string
+    description: >
+      The release channel of the application. This may differ from
+      `client_info` because a main process crash may be reported later by a
+      different (e.g. updated) client.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  app_display_version:
+    type: string
+    description: >
+      The version of the application. This may differ from `client_info`
+      because a main process crash may be reported later by a different
+      (e.g. updated) client.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  app_build:
+    type: string
+    description: >
+      The build id of the application. This may differ from `client_info`
+      because a main process crash may be reported later by a different
+      (e.g. updated) client.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  minidump_sha256_hash:
+    type: string
+    description: >
+      The SHA256 hash of the associated minidump file, if any.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  stack_traces:
+    type: object
+    description: >
+      Stack trace and module information of the crashing process.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+    # All addresses are hex strings (with prefix "0x") rather than numbers.
+    structure:
+      type: object
+      properties:
+        # An error from the stack trace analysis, omitted if no errors occurred.
+        error:
+          type: string
+        # The type of crash (SIGSEGV, assertion, etc)
+        crash_type:
+          type: string
+        crash_address:
+          type: string
+        # Index of the crash thread
+        crash_thread:
+          type: number
+        # Index of the main executable module.
+        main_module:
+          type: number
+        # Modules ordered by base memory address.
+        modules:
+          type: array
+          items:
+            type: object
+            properties:
+              base_address:
+                type: string
+              end_address:
+                type: string
+              # Unique ID of the module
+              code_id:
+                type: string
+              debug_file:
+                type: string
+              debug_id:
+                type: string
+              filename:
+                type: string
+              version:
+                type: string
+        # Stack traces for each thread.
+        threads:
+          type: array
+          items:
+            type: object
+            properties:
+              # Frames in the thread stack trace
+              frames:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    # Index of the module that contains the frame
+                    module_index:
+                      type: number
+                    # The instruction pointer (address) of the frame
+                    ip:
+                      type: string
+                    # Trust of the frame, one of "context", "prewalked", "cfi",
+                    # "frame_pointer", "cfi_scan", "scan", or "none"
+                    trust:
+                      type: string
+
+
+  async_shutdown_timeout:
+    type: object
+    description: >
+      Present when a shutdown blocker failed to respond within a reasonable
+      amount of time.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+    structure:
+      type: object
+      properties:
+        phase:
+          type: string
+        conditions:
+          type: string
+        broken_add_blockers:
+          type: array
+          items:
+            type: string
+
+  background_task_name:
+    type: string
+    description: >
+      The name of the background task if launched as one.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  event_loop_nesting_level:
+    type: quantity
+    unit: levels
+    description: >
+      Indicates the nesting level of the event loop.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  font_name:
+    type: string
+    description: >
+      The font family name that is being loaded when the crash occurred.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  gpu_process_launch:
+    type: quantity
+    unit: events
+    description: >
+      The number of times that the GPU process was launched.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  ipc_channel_error:
+    type: string
+    description: >
+      The error reason for an ipc-based content crash.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  is_garbage_collecting:
+    type: boolean
+    description: >
+      Indicates that the crash occurred while the garbage collector was
+      running.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  main_thread_runnable_name:
+    type: string
+    description: >
+      Name of the currently executing `nsIRunnable` on the main thread.
+      Nightly-only.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  moz_crash_reason:
+    type: string
+    description: >
+      Contains the string passed to `MOZ_CRASH()`.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  profiler_child_shutdown_phase:
+    type: string
+    description: >
+      The shutdown phase of the profiler.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  quota_manager_shutdown_timeout:
+    type: object
+    description: >
+      Contains a list of shutdown steps and status of the quota manager
+      clients.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+    structure:
+      type: array
+      items:
+        type: string
+
+  shutdown_progress:
+    type: string
+    description: >
+      The shutdown phase in which the crash occurred.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  java_exception:
+    type: object
+    description: >
+      Error and stack trace information for a java exception.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1904847
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1961011
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1904847
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1961011
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+    # version history (typescript for brevity)
+    # # 0
+    # {
+    #   messages: string[],
+    #   stack: { file: string, line: number, class_name: string, method_name: string, is_native: boolean }[]
+    # }
+    #
+    # # 1
+    # {
+    #   throwables: {
+    #     message: string,
+    #     type_name: string,
+    #     stack: { file: string, line: number, class_name: string, method_name: string, is_native: boolean }[]
+    #   }[]
+    # }
+    version: 1
+    structure:
+      type: object
+      properties:
+        # The Throwable and any cause Throwables.
+        # They are always in cause order (e.g., [`e`, `e.cause`, `e.cause.cause`, ...]).
+        throwables:
+          type: array
+          items:
+            type: object
+            properties:
+              # The message of the Throwable.
+              message:
+                type: string
+              # The java fully qualified type name of the Throwable.
+              type_name:
+                type: string
+              # The stack trace, from nearest to farthest execution point, of the Throwable.
+              # This may be omitted on `cause` Throwables.
+              stack:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    # The source file containing this stack trace element.
+                    file:
+                      type: string
+                    # The line number of the source file containing this stack trace element.
+                    line:
+                      type: number
+                    # The name of the class containing this stack trace element.
+                    class_name:
+                      type: string
+                    # The name of the method containing this stack trace element.
+                    method_name:
+                      type: string
+                    # Whether the method is native.
+                    is_native:
+                      type: boolean
+
+  breadcrumbs:
+    type: object
+    description: >
+      Crash breadcrumb information.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1904847
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1904847
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          timestamp:
+            type: string
+          message:
+            type: string
+          category:
+            type: string
+          level:
+            type: string
+          type:
+            type: string
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                key:
+                  type: string
+                value:
+                  type: string
+
+
+memory:
+  available_commit:
+    type: quantity
+    unit: bytes
+    description: >
+      Available commit space.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  available_physical:
+    type: quantity
+    unit: bytes
+    description: >
+      Available physical memory.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  available_swap:
+    type: quantity
+    unit: bytes
+    description: >
+      Available swap memory.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  available_virtual:
+    type: quantity
+    unit: bytes
+    description: >
+      Available virtual memory.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  js_large_allocation_failure:
+    type: string
+    description: >
+      A large allocation couldn't be satisfied: What was
+      its state when the crash happened.
+    notification_emails:
+      - mgaudet@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  js_out_of_memory:
+    type: string
+    description: >
+      A small allocation couldn't be satisfied: What was
+      its state when the crash happened.
+    notification_emails:
+      - mgaudet@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  low_physical:
+    type: quantity
+    unit: events
+    description: >
+      The number of times the available memory tracker has detected that free
+      physical memory is running low.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  oom_allocation_size:
+    type: quantity
+    unit: bytes
+    description: >
+      The size of the allocation that caused on OOM crash.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  purgeable_physical:
+    type: quantity
+    unit: bytes
+    description: >
+      The amount of memory that can be deallocated by the OS in case of memory
+      pressure.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  system_use_percentage:
+    type: quantity
+    unit: percent
+    description: >
+      The percentage of memory in use.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  texture:
+    type: quantity
+    unit: bytes
+    description: >
+      The amount of memory used in textures.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  total_page_file:
+    type: quantity
+    unit: bytes
+    description: >
+      The total page file size.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  total_physical:
+    type: quantity
+    unit: bytes
+    description: >
+      The total physical memory.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  total_virtual:
+    type: quantity
+    unit: bytes
+    description: >
+      The total virtual memory.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+
+environment:
+  headless_mode:
+    type: boolean
+    description: >
+      Whether the app was invoked in headless mode via `--headless` or
+      `--backgroundtask`.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  uptime:
+    type: timespan
+    time_unit: millisecond
+    description: >
+      The start time of the application.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
     data_sensitivity:
       - technical
     expires: never

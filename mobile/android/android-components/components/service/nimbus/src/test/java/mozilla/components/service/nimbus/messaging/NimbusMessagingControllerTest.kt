@@ -7,11 +7,12 @@ package mozilla.components.service.nimbus.messaging
 import android.content.Intent
 import androidx.core.net.toUri
 import kotlinx.coroutines.test.runTest
-import mozilla.components.service.glean.testing.GleanTestRule
+import mozilla.components.service.nimbus.GleanMetrics.Microsurvey
 import mozilla.components.support.test.any
 import mozilla.components.support.test.eq
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.test.rule.MainCoroutineRule
+import mozilla.telemetry.glean.testing.GleanTestRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -21,6 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mozilla.experiments.nimbus.NullVariables
@@ -117,6 +119,52 @@ class NimbusMessagingControllerTest {
         }
 
     @Test
+    fun `WHEN calling onMicrosurveyDismissed THEN record a messageDismissed event and update metadata`() =
+        coroutineScope.runTest {
+            val message = createMessage("id-1")
+            assertNull(Microsurvey.dismissButtonTapped.testGetValue())
+
+            controller.onMicrosurveyDismissed(message)
+
+            val event = Microsurvey.dismissButtonTapped.testGetValue()!!
+            assertNotNull(event)
+            assertEquals(1, event.size)
+            assertEquals(message.id, event.single().extra!!["survey_id"])
+
+            verify(storage).updateMetadata(message.metadata.copy(dismissed = true))
+        }
+
+    @Test
+    fun `GIVEN microsurvey WHEN calling onMicrosurveyShown THEN report telemetry`() =
+        coroutineScope.runTest {
+            assertNull(Microsurvey.shown.testGetValue())
+
+            controller.onMicrosurveyShown("id-1")
+
+            assertNotNull(Microsurvey.shown.testGetValue())
+        }
+
+    @Test
+    fun `GIVEN microsurvey WHEN calling onMicrosurveySentConfirmationShown THEN report telemetry`() =
+        coroutineScope.runTest {
+            assertNull(Microsurvey.confirmationShown.testGetValue())
+
+            controller.onMicrosurveySentConfirmationShown("id-1")
+
+            assertNotNull(Microsurvey.confirmationShown.testGetValue())
+        }
+
+    @Test
+    fun `GIVEN microsurvey WHEN calling onMicrosurveyPrivacyNoticeTapped THEN report telemetry`() =
+        coroutineScope.runTest {
+            assertNull(Microsurvey.privacyNoticeTapped.testGetValue())
+
+            controller.onMicrosurveyPrivacyNoticeTapped("id-1")
+
+            assertNotNull(Microsurvey.privacyNoticeTapped.testGetValue())
+        }
+
+    @Test
     fun `GIVEN action is URL WHEN calling processMessageActionToUri THEN record a clicked telemetry event`() {
         val message = createMessage("id-1")
 
@@ -206,7 +254,7 @@ class NimbusMessagingControllerTest {
     }
 
     @Test
-    fun `WHEN calling onMessageClicked THEN update stored metadata for message`() =
+    fun `GIVEN message WHEN calling onMessageClicked THEN update stored metadata for message`() =
         coroutineScope.runTest {
             val message = createMessage("id-1")
             assertFalse(message.metadata.pressed)
@@ -215,6 +263,21 @@ class NimbusMessagingControllerTest {
 
             val updatedMetadata = message.metadata.copy(pressed = true)
             verify(storage).updateMetadata(updatedMetadata)
+        }
+
+    @Test
+    fun `GIVEN microsurvey WHEN calling onMicrosurveyStarted THEN report telemetry`() =
+        coroutineScope.runTest {
+            val messageData = MessageData(microsurveyConfig = mock())
+            val message = createMessage("id-1", messageData = messageData)
+            assertFalse(message.metadata.pressed)
+            assertNull(GleanMessaging.messageClicked.testGetValue())
+
+            controller.onMicrosurveyStarted(message.id)
+
+            val updatedMetadata = message.metadata.copy(pressed = true)
+            verify(storage, times(0)).updateMetadata(updatedMetadata)
+            assertNotNull(GleanMessaging.messageClicked.testGetValue())
         }
 
     @Test

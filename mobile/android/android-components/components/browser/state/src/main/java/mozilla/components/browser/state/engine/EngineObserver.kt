@@ -40,6 +40,8 @@ import mozilla.components.concept.engine.window.WindowRequest
 import mozilla.components.concept.fetch.Response
 import mozilla.components.lib.state.Store
 
+private const val PAGE_LOAD_COMPLETION_PROGRESS = 100
+
 /**
  * [EngineSession.Observer] implementation responsible to update the state of a [Session] from the events coming out of
  * an [EngineSession].
@@ -104,8 +106,18 @@ internal class EngineObserver(
         store.dispatch(ContentAction.UpdateLoadRequestAction(tabId, loadRequest))
     }
 
-    override fun onLaunchIntentRequest(url: String, appIntent: Intent?) {
-        store.dispatch(ContentAction.UpdateAppIntentAction(tabId, AppIntentState(url, appIntent)))
+    override fun onLaunchIntentRequest(
+        url: String,
+        appIntent: Intent?,
+        fallbackUrl: String?,
+        appName: String?,
+    ) {
+        store.dispatch(
+            ContentAction.UpdateAppIntentAction(
+                tabId,
+                AppIntentState(url, appIntent, fallbackUrl, appName),
+            ),
+        )
     }
 
     override fun onTitleChange(title: String) {
@@ -117,6 +129,12 @@ internal class EngineObserver(
     }
 
     override fun onProgress(progress: Int) {
+        // page load is completed, start the translation initialization if not initialized yet
+        // referencing to a field in the state is not recommended, this flow should be reconsidered
+        // while the visual completeness logic is revisited in Bug 1966977.
+        if (progress == PAGE_LOAD_COMPLETION_PROGRESS && !store.state.translationsInitialized) {
+            store.dispatch(TranslationsAction.InitTranslationsBrowserState)
+        }
         store.dispatch(ContentAction.UpdateProgressAction(tabId, progress))
     }
 
@@ -170,6 +188,10 @@ internal class EngineObserver(
 
     override fun onProductUrlChange(isProductUrl: Boolean) {
         store.dispatch(ContentAction.UpdateProductUrlStateAction(tabId, isProductUrl))
+    }
+
+    override fun onTranslatePageChange() {
+        store.dispatch(TranslationsAction.SetTranslateProcessingAction(tabId, isProcessing = false))
     }
 
     override fun onLongPress(hitResult: HitResult) {
@@ -235,7 +257,7 @@ internal class EngineObserver(
 
     override fun onDesktopModeChange(enabled: Boolean) {
         store.dispatch(
-            ContentAction.UpdateDesktopModeAction(
+            ContentAction.UpdateTabDesktopMode(
                 tabId,
                 enabled,
             ),

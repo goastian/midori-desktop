@@ -17,6 +17,7 @@
 #include "nsLineBox.h"
 #include "nsCSSPseudoElements.h"
 #include "nsFloatManager.h"
+#include "mozilla/IntrinsicISizesCache.h"
 
 enum class LineReflowStatus {
   // The line was completely reflowed and fit in available width, and we should
@@ -229,38 +230,20 @@ class nsBlockFrame : public nsContainerFrame {
   bool IsEmpty() override;
   bool CachedIsEmpty() override;
   bool IsSelfEmpty() override;
+  bool LinesAreEmpty() const;
 
   // Given that we have a ::marker frame, does it actually draw something, i.e.,
   // do we have either a 'list-style-type' or 'list-style-image' that is
   // not 'none', and no 'content'?
-  bool MarkerIsEmpty() const;
+  // This is expected to be used only for outside markers, and when the caller
+  // already has a pointer to the marker frame.
+  bool MarkerIsEmpty(const nsIFrame* aMarker) const;
 
-  /**
-   * Return true if this frame has a ::marker frame.
-   */
-  bool HasMarker() const { return HasOutsideMarker() || HasInsideMarker(); }
+  // Return true if this frame has a ::marker frame.
+  bool HasMarker() const { return HasAnyStateBits(NS_BLOCK_HAS_MARKER); }
 
-  /**
-   * @return true if this frame has an inside ::marker frame.
-   */
-  bool HasInsideMarker() const {
-    return HasAnyStateBits(NS_BLOCK_FRAME_HAS_INSIDE_MARKER);
-  }
-
-  /**
-   * @return true if this frame has an outside ::marker frame.
-   */
-  bool HasOutsideMarker() const {
-    return HasAnyStateBits(NS_BLOCK_FRAME_HAS_OUTSIDE_MARKER);
-  }
-
-  /**
-   * @return the ::marker frame or nullptr if we don't have one.
-   */
-  nsIFrame* GetMarker() const {
-    nsIFrame* outside = GetOutsideMarker();
-    return outside ? outside : GetInsideMarker();
-  }
+  // Return true if this frame has an outside ::marker frame.
+  bool HasOutsideMarker() const;
 
   /**
    * @return the first-letter frame or nullptr if we don't have one.
@@ -280,6 +263,12 @@ class nsBlockFrame : public nsContainerFrame {
 
   void CheckIntrinsicCacheAgainstShrinkWrapState();
 
+  nsRect ComputePaddingInflatedScrollableOverflow(
+      const nsRect& aInFlowChildBounds) const;
+  Maybe<nsRect> GetLineFrameInFlowBounds(
+      const nsLineBox& aLine, const nsIFrame& aLineChildFrame,
+      bool aConsiderPositiveMargins = true) const;
+
   template <typename LineIteratorType>
   Maybe<nscoord> GetBaselineBOffset(LineIteratorType aStart,
                                     LineIteratorType aEnd,
@@ -287,9 +276,14 @@ class nsBlockFrame : public nsContainerFrame {
                                     BaselineSharingGroup aBaselineGroup,
                                     BaselineExportContext aExportContext) const;
 
+ protected:
+  // MinISize() and PrefISize() are helpers to implement IntrinsicISize().
+  nscoord MinISize(const mozilla::IntrinsicSizeInput& aInput);
+  nscoord PrefISize(const mozilla::IntrinsicSizeInput& aInput);
+
  public:
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
 
   nsRect ComputeTightBounds(DrawTarget* aDrawTarget) const override;
 
@@ -448,6 +442,13 @@ class nsBlockFrame : public nsContainerFrame {
                                 : nullptr;
   }
 
+  void SetLineCursorForDisplay(nsLineBox* aLine) {
+    MOZ_ASSERT(aLine, "must have a line");
+    MOZ_ASSERT(!mLines.empty(), "aLine isn't my line");
+    SetProperty(LineCursorPropertyDisplay(), aLine);
+    AddStateBits(NS_BLOCK_HAS_LINE_CURSOR);
+  }
+
   nsLineBox* NewLineBox(nsIFrame* aFrame, bool aIsBlock) {
     return NS_NewLineBox(PresShell(), aFrame, aIsBlock);
   }
@@ -504,16 +505,7 @@ class nsBlockFrame : public nsContainerFrame {
    * children, and includes them into aOverflowAreas.
    */
   void ComputeOverflowAreas(mozilla::OverflowAreas& aOverflowAreas,
-                            nscoord aBEndEdgeOfChildren,
                             const nsStyleDisplay* aDisplay) const;
-
-  /**
-   * Helper method for ComputeOverflowAreas(). Incorporates aBEndEdgeOfChildren
-   * into the aOverflowAreas.
-   */
-  void ConsiderBlockEndEdgeOfChildren(mozilla::OverflowAreas& aOverflowAreas,
-                                      nscoord aBEndEdgeOfChildren,
-                                      const nsStyleDisplay* aDisplay) const;
 
   /**
    * Add the frames in aFrameList to this block after aPrevSibling.
@@ -640,7 +632,7 @@ class nsBlockFrame : public nsContainerFrame {
 
   bool ComputeCustomOverflow(mozilla::OverflowAreas&) override;
 
-  void UnionChildOverflow(mozilla::OverflowAreas&) override;
+  void UnionChildOverflow(mozilla::OverflowAreas&, bool aAsIfScrolled) override;
 
   /**
    * Load all of aFrame's floats into the float manager iff aFrame is not a
@@ -656,7 +648,7 @@ class nsBlockFrame : public nsContainerFrame {
   /**
    * Determine if we have any pushed floats from a previous continuation.
    *
-   * @returns true, if any of the floats at the beginning of our mFloats list
+   * @returns true, if any of the floats at the beginning of our floats list
    *          have the NS_FRAME_IS_PUSHED_FLOAT bit set; false otherwise.
    */
   bool HasPushedFloatsFromPrevContinuation() const;
@@ -675,28 +667,40 @@ class nsBlockFrame : public nsContainerFrame {
    * whether this block is in a block formatting-context whose root block has
    * -webkit-line-clamp: <n>.
    */
-  bool IsInLineClampContext() const;
+  bool IsInLineClampContext() const { return !!GetLineClampRoot(); }
 
   /**
    * @return false iff this block does not have a float on any child list.
    * This function is O(1).
    */
-  bool MaybeHasFloats() const {
-    if (!mFloats.IsEmpty()) {
-      return true;
-    }
-    // XXX this could be replaced with HasPushedFloats() if we enforced
-    // removing the property when the frame list becomes empty.
-    nsFrameList* list = GetPushedFloats();
-    if (list && !list->IsEmpty()) {
-      return true;
-    }
-    // For the OverflowOutOfFlowsProperty I think we do enforce that, but it's
-    // a mix of out-of-flow frames, so that's why the method name has "Maybe".
-    return HasAnyStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
+  bool MaybeHasFloats() const;
+  /**
+   * This indicates that exactly one line in this block has the
+   * LineClampEllipsis flag set, and that such a line must be found
+   * and have that flag cleared when reflowing this element's nearest legacy box
+   * container.
+   */
+  bool HasLineClampEllipsis() const {
+    return HasAnyStateBits(NS_BLOCK_HAS_LINE_CLAMP_ELLIPSIS);
+  }
+  /**
+   * This indicates that we have a descendant in our block formatting context
+   * that has such a line.
+   */
+  bool HasLineClampEllipsisDescendant() const {
+    return HasAnyStateBits(NS_BLOCK_HAS_LINE_CLAMP_ELLIPSIS_DESCENDANT);
+  }
+  void SetHasLineClampEllipsis(bool aValue) {
+    AddOrRemoveStateBits(NS_BLOCK_HAS_LINE_CLAMP_ELLIPSIS, aValue);
+  }
+  void SetHasLineClampEllipsisDescendant(bool aValue) {
+    AddOrRemoveStateBits(NS_BLOCK_HAS_LINE_CLAMP_ELLIPSIS_DESCENDANT, aValue);
   }
 
  protected:
+  nsBlockFrame* GetLineClampRoot() const;
+  nscoord ApplyLineClamp(nscoord aContentBlockEndEdge);
+
   /** grab overflow lines from this block's prevInFlow, and make them
    * part of this block's mLines list.
    * @return true if any lines were drained.
@@ -729,7 +733,7 @@ class nsBlockFrame : public nsContainerFrame {
    * Find any trailing BR clear from the last line of this block (or from its
    * prev-in-flows).
    */
-  mozilla::StyleClear FindTrailingClear();
+  mozilla::UsedClear FindTrailingClear();
 
   /**
    * Remove a float from our float list.
@@ -977,37 +981,56 @@ class nsBlockFrame : public nsContainerFrame {
   // This takes ownership of the frames in aList.
   void SetOverflowOutOfFlows(nsFrameList&& aList, nsFrameList* aPropValue);
 
-  /**
-   * @return the inside ::marker frame or nullptr if we don't have one.
-   */
-  nsIFrame* GetInsideMarker() const;
-
-  /**
-   * @return the outside ::marker frame or nullptr if we don't have one.
-   */
-  nsIFrame* GetOutsideMarker() const;
-
-  /**
-   * @return the outside ::marker frame list frame property.
-   */
-  nsFrameList* GetOutsideMarkerList() const;
-
-  /**
-   * @return true if this frame has pushed floats.
-   */
-  bool HasPushedFloats() const {
-    return HasAnyStateBits(NS_BLOCK_HAS_PUSHED_FLOATS);
+  // Return the ::marker frame or nullptr if we don't have one.
+  nsIFrame* GetMarker() const {
+    nsIFrame* outside = GetOutsideMarker();
+    return outside ? outside : GetInsideMarker();
   }
 
-  // Get the pushed floats list, which is used for *temporary* storage
-  // of floats during reflow, between when we decide they don't fit in
-  // this block until our next continuation takes them.
+  // Return the inside ::marker frame or nullptr if we don't have one.
+  nsIFrame* GetInsideMarker() const;
+
+  //  Return the outside ::marker frame or nullptr if we don't have one.
+  nsIFrame* GetOutsideMarker() const;
+
+  // Return the outside ::marker frame list frame property.
+  nsFrameList* GetOutsideMarkerList() const;
+
+  // Return true if this frame has floats.
+  bool HasFloats() const;
+
+  // Get the floats list, or nullptr if there isn't one.
+  nsFrameList* GetFloats() const;
+
+  // Get the floats list, or if there is not currently one, make a new empty
+  // one.
+  nsFrameList* EnsureFloats() MOZ_NONNULL_RETURN;
+
+  // Get the float list and remove the property from this frame.
+  //
+  // The caller is responsible for deleting the returned list and managing the
+  // ownership of all frames in the list.
+  [[nodiscard]] nsFrameList* StealFloats();
+
+  // Return true if this frame has pushed floats.
+  bool HasPushedFloats() const;
+
+  // Get the pushed floats list, or nullptr if there isn't one.
+  //
+  // The pushed floats list is used for *temporary* storage of floats during
+  // reflow, between when we decide they don't fit in this block until our next
+  // continuation takes them.
   nsFrameList* GetPushedFloats() const;
+
   // Get the pushed floats list, or if there is not currently one,
   // make a new empty one.
-  nsFrameList* EnsurePushedFloats();
-  // Remove and return the pushed floats list.
-  nsFrameList* RemovePushedFloats();
+  nsFrameList* EnsurePushedFloats() MOZ_NONNULL_RETURN;
+
+  // Get the pushed float list and remove the property from this frame.
+  //
+  // The caller is responsible for deleting the returned list and managing the
+  // ownership of all frames in the list.
+  [[nodiscard]] nsFrameList* StealPushedFloats();
 
 #ifdef DEBUG
   void VerifyLines(bool aFinalCheckOK);
@@ -1015,14 +1038,9 @@ class nsBlockFrame : public nsContainerFrame {
   int32_t GetDepth() const;
 #endif
 
-  nscoord mCachedMinISize = NS_INTRINSIC_ISIZE_UNKNOWN;
-  nscoord mCachedPrefISize = NS_INTRINSIC_ISIZE_UNKNOWN;
+  mozilla::IntrinsicISizesCache mCachedIntrinsics;
 
   nsLineList mLines;
-
-  // List of all floats in this block
-  // XXXmats blocks rarely have floats, make it a frame property
-  nsFrameList mFloats;
 
   friend class mozilla::BlockReflowState;
   friend class nsBlockInFlowLineIterator;

@@ -7,6 +7,7 @@
 package mozilla.components.support.ktx.android.content
 
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
@@ -20,13 +21,22 @@ interface PreferencesHolder {
 private class BooleanPreference(
     private val key: String,
     private val default: Boolean,
+    private val persistDefaultIfNotExists: Boolean = false,
 ) : ReadWriteProperty<PreferencesHolder, Boolean> {
 
     override fun getValue(thisRef: PreferencesHolder, property: KProperty<*>): Boolean =
-        thisRef.preferences.getBoolean(key, default)
+        if (thisRef.preferences.contains(key)) {
+            thisRef.preferences.getBoolean(key, default)
+        } else {
+            if (persistDefaultIfNotExists) {
+                thisRef.preferences.edit { putBoolean(key, default) }
+            }
+
+            default
+        }
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: Boolean) =
-        thisRef.preferences.edit().putBoolean(key, value).apply()
+        thisRef.preferences.edit { putBoolean(key, value) }
 }
 
 private class FloatPreference(
@@ -38,7 +48,7 @@ private class FloatPreference(
         thisRef.preferences.getFloat(key, default)
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: Float) =
-        thisRef.preferences.edit().putFloat(key, value).apply()
+        thisRef.preferences.edit { putFloat(key, value) }
 }
 
 private class IntPreference(
@@ -50,7 +60,7 @@ private class IntPreference(
         thisRef.preferences.getInt(key, default)
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: Int) =
-        thisRef.preferences.edit().putInt(key, value).apply()
+        thisRef.preferences.edit { putInt(key, value) }
 }
 
 private class LongPreference(
@@ -62,7 +72,7 @@ private class LongPreference(
         thisRef.preferences.getLong(key, default)
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: Long) =
-        thisRef.preferences.edit().putLong(key, value).apply()
+        thisRef.preferences.edit { putLong(key, value) }
 }
 
 private class StringPreference(
@@ -75,7 +85,7 @@ private class StringPreference(
         return thisRef.preferences.getString(key, null) ?: run {
             when (persistDefaultIfNotExists) {
                 true -> {
-                    thisRef.preferences.edit().putString(key, default).apply()
+                    thisRef.preferences.edit { putString(key, default) }
                     thisRef.preferences.getString(key, null)!!
                 }
                 false -> default
@@ -84,7 +94,7 @@ private class StringPreference(
     }
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: String) =
-        thisRef.preferences.edit().putString(key, value).apply()
+        thisRef.preferences.edit { putString(key, value) }
 }
 
 private class StringSetPreference(
@@ -96,22 +106,31 @@ private class StringSetPreference(
         thisRef.preferences.getStringSet(key, default) ?: default
 
     override fun setValue(thisRef: PreferencesHolder, property: KProperty<*>, value: Set<String>) =
-        thisRef.preferences.edit().putStringSet(key, value).apply()
+        thisRef.preferences.edit { putStringSet(key, value) }
 }
 
 /**
  * Property delegate for getting and setting a boolean shared preference.
+ * Optionally this will persist the default value if one is not already persisted.
  *
  * Example usage:
  * ```
  * class Settings : PreferenceHolder {
  *     ...
- *     val isTelemetryOn by booleanPreference("telemetry", default = false)
+ *     val isTelemetryOn by booleanPreference(
+ *         "telemetry",
+ *         default = false,
+ *         persistDefaultIfNotExists = true,
+ *     )
  * }
  * ```
  */
-fun booleanPreference(key: String, default: Boolean): ReadWriteProperty<PreferencesHolder, Boolean> =
-    BooleanPreference(key, default)
+fun booleanPreference(
+    key: String,
+    default: Boolean,
+    persistDefaultIfNotExists: Boolean = false,
+): ReadWriteProperty<PreferencesHolder, Boolean> =
+    BooleanPreference(key, default, persistDefaultIfNotExists)
 
 /**
  * Property delegate for getting and setting a float number shared preference.

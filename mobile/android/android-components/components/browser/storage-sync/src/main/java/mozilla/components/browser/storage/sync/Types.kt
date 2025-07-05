@@ -8,6 +8,7 @@ package mozilla.components.browser.storage.sync
 
 import mozilla.appservices.places.SyncAuthInfo
 import mozilla.appservices.places.uniffi.BookmarkItem
+import mozilla.appservices.places.uniffi.HistoryMetadataPageMissingBehavior
 import mozilla.components.concept.storage.BookmarkNode
 import mozilla.components.concept.storage.BookmarkNodeType
 import mozilla.components.concept.storage.DocumentType
@@ -102,6 +103,7 @@ internal fun BookmarkItem.asBookmarkNode(): BookmarkNode {
                 this.b.title,
                 this.b.url,
                 this.b.dateAdded,
+                this.b.lastModified,
                 null,
             )
         }
@@ -114,6 +116,7 @@ internal fun BookmarkItem.asBookmarkNode(): BookmarkNode {
                 this.f.title,
                 null,
                 this.f.dateAdded,
+                this.f.lastModified,
                 this.f.childNodes?.map(BookmarkItem::asBookmarkNode),
             )
         }
@@ -126,6 +129,7 @@ internal fun BookmarkItem.asBookmarkNode(): BookmarkNode {
                 null,
                 null,
                 this.s.dateAdded,
+                this.s.lastModified,
                 null,
             )
         }
@@ -237,5 +241,23 @@ internal fun HistoryMetadataObservation.into(
                 documentType = this.documentType.into(),
             )
         }
+    }
+}
+
+internal fun HistoryMetadataObservation.options() = when (this) {
+    is HistoryMetadataObservation.ViewTimeObservation -> {
+        // Don't record view time observations if the page has been
+        // removed from history (bug 1869369).
+        mozilla.appservices.places.uniffi.NoteHistoryMetadataObservationOptions(
+            ifPageMissing = HistoryMetadataPageMissingBehavior.IGNORE_OBSERVATION,
+        )
+    }
+    is HistoryMetadataObservation.DocumentTypeObservation -> {
+        // ...But record document type observations, because these might be
+        // recorded on first load, before a page has been added to history
+        // (bug 1927543, comment 1).
+        mozilla.appservices.places.uniffi.NoteHistoryMetadataObservationOptions(
+            ifPageMissing = HistoryMetadataPageMissingBehavior.INSERT_PAGE,
+        )
     }
 }

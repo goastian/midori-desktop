@@ -19,7 +19,7 @@ class PresShell;
 // <msqrt> and <mroot> -- form a radical
 //
 
-class nsMathMLmrootFrame final : public nsMathMLContainerFrame {
+class nsMathMLmrootFrame : public nsMathMLContainerFrame {
  public:
   NS_DECL_FRAMEARENA_HELPERS(nsMathMLmrootFrame)
 
@@ -28,25 +28,21 @@ class nsMathMLmrootFrame final : public nsMathMLContainerFrame {
 
   void DidSetComputedStyle(ComputedStyle* aOldStyle) override;
 
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
+
+  NS_IMETHOD
+  InheritAutomaticData(nsIFrame* aParent) final;
 
   NS_IMETHOD
   TransmitAutomaticData() override;
-
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
 
   void GetRadicalXOffsets(nscoord aIndexWidth, nscoord aSqrWidth,
                           nsFontMetrics* aFontMetrics, nscoord* aIndexOffset,
                           nscoord* aSqrOffset);
 
-  virtual void GetIntrinsicISizeMetrics(gfxContext* aRenderingContext,
-                                        ReflowOutput& aDesiredSize) override;
-
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   uint8_t ScriptIncrement(nsIFrame* aFrame) override {
     return (aFrame && aFrame == mFrames.LastChild()) ? 2 : 0;
@@ -62,6 +58,9 @@ class nsMathMLmrootFrame final : public nsMathMLContainerFrame {
 
  private:
   bool ShouldUseRowFallback();
+  bool IsMrowLike() final;
+  nsresult Place(DrawTarget* aDrawTarget, const PlaceFlags& aFlags,
+                 ReflowOutput& aDesiredSize) final;
 };
 
 #endif /* nsMathMLmrootFrame_h___ */

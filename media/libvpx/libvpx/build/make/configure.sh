@@ -442,6 +442,22 @@ check_neon_sve_bridge_compiles() {
 #include <arm_neon_sve_bridge.h>
 EOF
     compile_result=$?
+    if [ ${compile_result} -eq 0 ]; then
+      # Check whether the compiler can compile SVE functions that require
+      # backup/restore of SVE registers according to AAPCS. Clang for Windows
+      # used to fail this, see
+      # https://github.com/llvm/llvm-project/issues/80009.
+      check_cc -march=armv8.2-a+dotprod+i8mm+sve <<EOF
+#include <arm_sve.h>
+void other(void);
+svfloat32_t func(svfloat32_t a) {
+  other();
+  return a;
+}
+EOF
+      compile_result=$?
+    fi
+
     if [ ${compile_result} -ne 0 ]; then
       log_echo "  disabling sve: arm_neon_sve_bridge.h not supported by compiler"
       log_echo "  disabling sve2: arm_neon_sve_bridge.h not supported by compiler"
@@ -532,7 +548,6 @@ AR=${AR}
 LD=${LD}
 AS=${AS}
 STRIP=${STRIP}
-NM=${NM}
 
 CFLAGS  = ${CFLAGS}
 CXXFLAGS  = ${CXXFLAGS}
@@ -733,7 +748,6 @@ setup_gnu_toolchain() {
   LD=${LD:-${CROSS}${link_with_cc:-ld}}
   AS=${AS:-${CROSS}as}
   STRIP=${STRIP:-${CROSS}strip}
-  NM=${NM:-${CROSS}nm}
   AS_SFX=.S
   EXE_SFX=
 }
@@ -818,7 +832,7 @@ process_common_toolchain() {
         tgt_isa=x86_64
         tgt_os=`echo $gcctarget | sed 's/.*\(darwin1[0-9]\).*/\1/'`
         ;;
-      *darwin2[0-3]*)
+      *darwin2[0-4]*)
         tgt_isa=`uname -m`
         tgt_os=`echo $gcctarget | sed 's/.*\(darwin2[0-9]\).*/\1/'`
         ;;
@@ -977,7 +991,7 @@ EOF
       add_cflags  "-mmacosx-version-min=10.15"
       add_ldflags "-mmacosx-version-min=10.15"
       ;;
-    *-darwin2[0-3]-*)
+    *-darwin2[0-4]-*)
       add_cflags  "-arch ${toolchain%%-*}"
       add_ldflags "-arch ${toolchain%%-*}"
       ;;
@@ -1005,7 +1019,15 @@ EOF
   # Process architecture variants
   case ${toolchain} in
     arm*)
-      soft_enable runtime_cpu_detect
+      case ${toolchain} in
+        armv7*-darwin*)
+          # Runtime cpu detection is not defined for these targets.
+          enabled runtime_cpu_detect && disable_feature runtime_cpu_detect
+          ;;
+        *)
+          soft_enable runtime_cpu_detect
+          ;;
+      esac
 
       if [ ${tgt_isa} = "armv7" ] || [ ${tgt_isa} = "armv7s" ]; then
         soft_enable neon
@@ -1113,7 +1135,6 @@ EOF
           AS=armasm
           LD="${source_path}/build/make/armlink_adapter.sh"
           STRIP=arm-none-linux-gnueabi-strip
-          NM=arm-none-linux-gnueabi-nm
           tune_cflags="--cpu="
           tune_asflags="--cpu="
           if [ -z "${tune_cpu}" ]; then
@@ -1150,6 +1171,14 @@ EOF
           echo "See build/make/Android.mk for details."
           check_add_ldflags -static
           soft_enable unit_tests
+          case "$AS" in
+            *clang)
+              # The GNU Assembler was removed in the r24 version of the NDK.
+              # clang's internal assembler works, but `-c` is necessary to
+              # avoid linking.
+              add_asflags -c
+              ;;
+          esac
           ;;
 
         darwin)
@@ -1160,8 +1189,6 @@ EOF
             AR="$(${XCRUN_FIND} ar)"
             AS="$(${XCRUN_FIND} as)"
             STRIP="$(${XCRUN_FIND} strip)"
-            NM="$(${XCRUN_FIND} nm)"
-            RANLIB="$(${XCRUN_FIND} ranlib)"
             AS_SFX=.S
             LD="${CXX:-$(${XCRUN_FIND} ld)}"
 
@@ -1202,7 +1229,8 @@ EOF
                 ;;
             esac
 
-            if [ "$(show_darwin_sdk_major_version iphoneos)" -gt 8 ]; then
+            if [ "$(show_darwin_sdk_major_version iphoneos)" -gt 8 \
+               && [ "$(show_xcode_version)" -lt 16 ]; then
               check_add_cflags -fembed-bitcode
               check_add_asflags -fembed-bitcode
               check_add_ldflags -fembed-bitcode

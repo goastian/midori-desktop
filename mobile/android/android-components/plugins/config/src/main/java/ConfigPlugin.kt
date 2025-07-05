@@ -4,16 +4,17 @@
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.initialization.Settings
-import java.io.File
+import org.gradle.api.provider.ProviderFactory
+import org.gradle.kotlin.dsl.extra
+import org.gradle.process.ExecOutput
+import java.nio.file.Paths
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
-class ConfigPlugin : Plugin<Settings> {
-    override fun apply(settings: Settings) = Unit
+class ConfigPlugin : Plugin<Project> {
+    override fun apply(project: Project) = Unit
 }
 
 object Config {
@@ -45,27 +46,15 @@ object Config {
 
     @JvmStatic
     fun readVersionFromFile(project: Project): String {
-        var versionPath = "../version.txt"
-
-        if (project.findProject(":geckoview") != null) {
-            versionPath = "./mobile/android/version.txt"
-        }
-
-        return File(versionPath).useLines { it.firstOrNull() ?: "" }
-
+        var mozconfig = project.gradle.extensions.extraProperties.get("mozconfig") as Map<*, *>;
+        var topsrcdir = mozconfig.get("topsrcdir") as String;
+        var versionPath = Paths.get(topsrcdir, "mobile/android/version.txt");
+        return project.file(versionPath).useLines { it.firstOrNull() ?: "" }
     }
 
     @JvmStatic
     fun majorVersion(project: Project): String {
         return readVersionFromFile(project).split(".")[0]
-    }
-
-    /**
-     * Generate a build date that follows the ISO-8601 format
-     */
-    @JvmStatic
-    fun generateBuildDate(): String {
-        return LocalDateTime.now().toString()
     }
 
     private val fennecBaseVersionCode by lazy {
@@ -166,59 +155,5 @@ object Config {
         }
 
         return version
-    }
-
-    /**
-     * Returns the git or hg hash of the currently checked out revision. If there are uncommitted changes,
-     * a "+" will be appended to the hash, e.g. "c8ba05ad0+".
-     */
-    @JvmStatic
-    fun getVcsHash(): String {
-        val gitRevision: String
-        try {
-            val revisionCmd = arrayOf("git", "rev-parse", "--short", "HEAD")
-            gitRevision = execReadStandardOutOrThrow(revisionCmd)
-        } catch (e: IllegalStateException) {
-            // hg id already appends "+" if the working directory isn't clean
-            val revisionCmd = arrayOf("hg", "id", "--id")
-            val hgRevision = execReadStandardOutOrThrow(revisionCmd)
-            return "hg-$hgRevision"
-        }
-        // Append "+" if there are uncommitted changes in the working directory.
-        val statusCmd = arrayOf("git", "status", "--porcelain=v2")
-        val status = execReadStandardOutOrThrow(statusCmd)
-        val hasUnstagedChanges = status.isNotBlank()
-        val statusSuffix = if (hasUnstagedChanges) "+" else ""
-
-        return "git-$gitRevision$statusSuffix"
-    }
-
-    /**
-     * Executes the given command with [Runtime.exec], throwing if the command returns a non-zero exit
-     * code or times out. If successful, returns the command's stdout.
-     *
-     * @return stdout of the command
-     * @throws [IllegalStateException] if the command returns a non-zero exit code or times out.
-     */
-    private fun execReadStandardOutOrThrow(cmd: Array<String>, timeoutSeconds: Long = 30): String {
-        val process = Runtime.getRuntime().exec(cmd)
-
-        check(
-            process.waitFor(
-                timeoutSeconds,
-                TimeUnit.SECONDS,
-            ),
-        ) { "command unexpectedly timed out: `$cmd`" }
-        check(process.exitValue() == 0) {
-            val stderr = process.errorStream.bufferedReader().readText().trim()
-
-            """command exited with non-zero exit value: ${process.exitValue()}.
-           |cmd: ${cmd.joinToString(separator = " ")}
-           |stderr:
-           |$stderr"""
-                .trimMargin()
-        }
-
-        return process.inputStream.bufferedReader().readText().trim()
     }
 }

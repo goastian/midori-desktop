@@ -7,31 +7,26 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
     }
 
-    lint {
-        warningsAsErrors true
-        abortOnError true
-    }
-
-    namespace 'mozilla.components.support.test.appservices'
+    namespace = 'mozilla.components.support.test.appservices'
 }
 
 dependencies {
-    api ComponentsDependencies.mozilla_appservices_full_megazord_forUnitTests
+    api ComponentsDependencies.mozilla_appservices_full_megazord_libsForTests
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)
 

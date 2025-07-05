@@ -2,23 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-if (findProject(":geckoview") != null) {
-    buildDir "${topobjdir}/gradle/build/mobile/android/samples-browser"
+plugins {
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
-if (findProject(":geckoview") != null) {
-    apply from: "${topsrcdir}/mobile/android/gradle/product_flavors.gradle"
-}
 
 android {
     defaultConfig {
         applicationId "org.mozilla.samples.browser"
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         versionCode 1
         versionName "1.0"
 
@@ -29,14 +25,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
-    }
-
-    if (findProject(":geckoview") != null) {
-        project.configureProductFlavors.delegate = it
-        project.configureProductFlavors()
     }
 
     flavorDimensions += "engine"
@@ -61,15 +52,11 @@ android {
     }
 
     buildFeatures {
-        viewBinding true
-        compose true
+        viewBinding = true
+        compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = Versions.compose_compiler
-    }
-
-    namespace 'org.mozilla.samples.browser'
+    namespace = 'org.mozilla.samples.browser'
 }
 
 tasks.register("updateBorderifyExtensionVersion", Copy) { task ->
@@ -81,7 +68,7 @@ tasks.register("updateTestExtensionVersion", Copy) { task ->
 }
 
 dependencies {
-    implementation platform(ComponentsDependencies.androidx_compose_bom)
+    implementation platform(libs.androidx.compose.bom)
     implementation project(':concept-awesomebar')
     implementation project(':concept-fetch')
     implementation project(':concept-engine')
@@ -135,10 +122,12 @@ dependencies {
     implementation project(':ui-tabcounter')
     implementation project(':ui-widgets')
 
-    // Add a dependency on service-glean to simplify the testing workflow
+    // Add a dependency on glean to simplify the testing workflow
     // for engineers that want to test Gecko metrics exfiltrated via the Glean
     // SDK. See bug 1592935 for more context.
-    implementation project(':service-glean')
+    implementation project(":service-glean")
+    implementation libs.mozilla.glean
+    
     implementation project(':service-location')
     implementation project(':service-digitalassetlinks')
     implementation project(':service-sync-logins')
@@ -149,37 +138,39 @@ dependencies {
     implementation project(':support-ktx')
     implementation project(':support-webextensions')
     implementation project(':support-rustlog')
+    implementation project(':feature-screendetection')
 
     geckoImplementation project(':browser-engine-gecko')
 
-    implementation ComponentsDependencies.google_material
+    implementation libs.google.material
 
-    implementation ComponentsDependencies.androidx_appcompat
-    implementation ComponentsDependencies.androidx_compose_ui_tooling
-    implementation ComponentsDependencies.androidx_compose_foundation
-    implementation ComponentsDependencies.androidx_compose_material
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_constraintlayout
-    implementation ComponentsDependencies.androidx_swiperefreshlayout
-    implementation ComponentsDependencies.androidx_localbroadcastmanager
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.compose.ui.tooling
+    implementation libs.androidx.compose.foundation
+    implementation libs.androidx.compose.material
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.swiperefreshlayout
+    implementation libs.androidx.localbroadcastmanager
 
-    debugImplementation ComponentsDependencies.leakcanary
+    debugImplementation libs.leakcanary
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_mockito
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.mockito
+    testImplementation libs.testing.coroutines
 
     androidTestImplementation project(':support-android-test')
-    androidTestImplementation ComponentsDependencies.androidx_test_core
-    androidTestImplementation ComponentsDependencies.androidx_test_runner
-    androidTestImplementation ComponentsDependencies.androidx_test_rules
-    androidTestImplementation ComponentsDependencies.androidx_test_junit
-    androidTestImplementation ComponentsDependencies.androidx_test_uiautomator
-    androidTestImplementation ComponentsDependencies.androidx_espresso_core
-    androidTestImplementation ComponentsDependencies.testing_leakcanary
-    androidTestImplementation ComponentsDependencies.testing_mockwebserver
+    androidTestImplementation libs.androidx.test.core
+    androidTestImplementation libs.androidx.test.monitor
+    androidTestImplementation libs.androidx.test.runner
+    androidTestImplementation libs.androidx.test.rules
+    androidTestImplementation libs.androidx.test.junit
+    androidTestImplementation libs.androidx.test.uiautomator
+    androidTestImplementation libs.androidx.espresso.core
+    androidTestImplementation libs.testing.leakcanary
+    androidTestImplementation libs.testing.mockwebserver
 }
 
 preBuild.dependsOn updateBorderifyExtensionVersion

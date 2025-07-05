@@ -34,8 +34,8 @@ br { clear:both; }
 <script>
 var rowtest = [
 "width:50%; max-height:200%", "width:50%; height:200%", "width:4px; height:50%",
-"height:50%", "max-height:200%", "max-height:50%", "max-width:50%", "width:50%; height:20px",
-"min-width:80%; max-height:20px", "min-width:50%", "margin-left: 50px; width:50%"
+"height:50%", "max-height:200%", "max-height:50%", "max-width:50%", "width:50%; height:12px",
+"min-width:80%; max-height:12px", "min-width:50%", "margin-left: 50px; width:50%"
 ];
 
 var h3 = document.createElement('h3');
@@ -48,7 +48,7 @@ for (var i = 0; i < rowtest.length; ++i) {
   img.setAttribute("src","support/lime-2x24.png");
   img.setAttribute("style",rowtest[i]);
   grid.appendChild(img);
-  document.body.appendChild(document.createTextNode("2x24.png -- "+rowtest[i]+'\n'));
+  document.body.appendChild(document.createTextNode(`Test ${i+1}: 2x24.png -- ${rowtest[i]}`));
   document.body.appendChild(document.createElement('br'));
   document.body.appendChild(grid);
   document.body.appendChild(document.createElement('br'));

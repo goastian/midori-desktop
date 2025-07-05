@@ -191,10 +191,11 @@ inline nsCounterChangeNode* nsCounterNode::ChangeNode() {
 }
 
 inline void nsCounterNode::Calc(nsCounterList* aList, bool aNotify) {
-  if (mType == USE)
+  if (mType == USE) {
     UseNode()->Calc(aList, aNotify);
-  else
+  } else {
     ChangeNode()->Calc(aList);
+  }
 }
 
 inline bool nsCounterNode::IsContentBasedReset() {
@@ -217,6 +218,10 @@ class nsCounterList : public nsGenConList {
       : mCounterName(aCounterName), mScope(aScope) {
     MOZ_ASSERT(aScope);
   }
+
+#if defined(DEBUG) || defined(MOZ_LAYOUT_DEBUGGER)
+  void Dump();
+#endif
 
   // Return the first node for aFrame on this list, or nullptr.
   nsCounterNode* GetFirstNodeFor(nsIFrame* aFrame) const {

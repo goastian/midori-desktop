@@ -11,7 +11,7 @@ import mozilla.components.support.test.mock
 import org.junit.Before
 import org.junit.Test
 import org.mockito.Mockito.verify
-import java.util.*
+import java.util.Locale
 
 class LocaleUseCasesTest {
 
@@ -25,7 +25,7 @@ class LocaleUseCasesTest {
     @Test
     fun `WHEN the locale is updated THEN the browser state reflects the change`() {
         val useCases = LocaleUseCases(browserStore)
-        val locale = Locale("MyFavoriteLanguage")
+        val locale = Locale.forLanguageTag("MyFavoriteLanguage")
 
         useCases.notifyLocaleChanged(locale)
 

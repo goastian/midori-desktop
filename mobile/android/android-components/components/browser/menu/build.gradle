@@ -8,23 +8,23 @@ apply plugin: 'kotlin-parcelize'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
     buildFeatures {
-        viewBinding true
+        viewBinding = true
     }
 
-    namespace 'mozilla.components.browser.menu'
+    namespace = 'mozilla.components.browser.menu'
 }
 
 dependencies {
@@ -36,22 +36,22 @@ dependencies {
     implementation project(':ui-colors')
     implementation project(':ui-icons')
 
-    implementation ComponentsDependencies.androidx_appcompat
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_recyclerview
-    implementation ComponentsDependencies.androidx_cardview
-    implementation ComponentsDependencies.androidx_constraintlayout
-    implementation ComponentsDependencies.androidx_coordinatorlayout
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.cardview
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.coordinatorlayout
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
-    testImplementation ComponentsDependencies.testing_coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
+    testImplementation libs.testing.coroutines
 
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

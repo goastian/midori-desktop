@@ -21,9 +21,9 @@ class CrashTest {
         val originalCrash = Crash.NativeCodeCrash(
             123,
             "/data/data/org.mozilla.samples.browser/files/mozilla/Crash Reports/pending/3ba5f665-8422-dc8e-a88e-fc65c081d304.dmp",
-            true,
             "/data/data/org.mozilla.samples.browser/files/mozilla/Crash Reports/pending/3ba5f665-8422-dc8e-a88e-fc65c081d304.extra",
-            Crash.NativeCodeCrash.PROCESS_TYPE_FOREGROUND_CHILD,
+            Crash.NativeCodeCrash.PROCESS_VISIBILITY_FOREGROUND_CHILD,
+            processType = "content",
             breadcrumbs = arrayListOf(),
             remoteType = "web",
         )
@@ -35,9 +35,9 @@ class CrashTest {
             ?: throw AssertionError("Expected NativeCodeCrash instance")
 
         assertEquals(recoveredCrash.timestamp, 123)
-        assertEquals(recoveredCrash.minidumpSuccess, true)
         assertEquals(recoveredCrash.isFatal, false)
-        assertEquals(recoveredCrash.processType, Crash.NativeCodeCrash.PROCESS_TYPE_FOREGROUND_CHILD)
+        assertEquals(recoveredCrash.processVisibility, Crash.NativeCodeCrash.PROCESS_VISIBILITY_FOREGROUND_CHILD)
+        assertEquals(recoveredCrash.processType, "content")
         assertEquals(
             "/data/data/org.mozilla.samples.browser/files/mozilla/Crash Reports/pending/3ba5f665-8422-dc8e-a88e-fc65c081d304.dmp",
             recoveredCrash.minidumpPath,
@@ -52,8 +52,14 @@ class CrashTest {
     @Test
     fun `Serialize and deserialize UncaughtExceptionCrash`() {
         val exception = RuntimeException("Hello World!")
+        val runtimeTags = mapOf("one" to "two", "three" to "four")
 
-        val originalCrash = Crash.UncaughtExceptionCrash(0, exception, arrayListOf())
+        val originalCrash = Crash.UncaughtExceptionCrash(
+            timestamp = 0,
+            throwable = exception,
+            breadcrumbs = arrayListOf(),
+            runtimeTags = runtimeTags,
+        )
 
         val intent = Intent()
         originalCrash.fillIn(intent)
@@ -64,6 +70,7 @@ class CrashTest {
         assertEquals(exception, recoveredCrash.throwable)
         assertEquals("Hello World!", recoveredCrash.throwable.message)
         assertArrayEquals(exception.stackTrace, recoveredCrash.throwable.stackTrace)
+        assert(recoveredCrash.runtimeTags == runtimeTags)
     }
 
     @Test
@@ -91,9 +98,9 @@ class CrashTest {
                     val crash = Crash.NativeCodeCrash(
                         0,
                         "",
-                        true,
                         "",
                         "",
+                        processType = null,
                         breadcrumbs = arrayListOf(),
                         remoteType = null,
                     )

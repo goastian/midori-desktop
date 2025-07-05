@@ -75,6 +75,8 @@ EXPORTS.mozilla += [
     "AnimatedPropertyIDSet.h",
     "AnimationCollection.h",
     "AttributeStyles.h",
+    "BuiltInStyleSheetList.h",
+    "BuiltInStyleSheets.h",
     "CachedInheritingStyles.h",
     "ComputedStyle.h",
     "ComputedStyleInlines.h",
@@ -122,8 +124,6 @@ EXPORTS.mozilla += [
     "TimelineCollection.h",
     "TimelineManager.h",
     "URLExtraData.h",
-    "UserAgentStyleSheetID.h",
-    "UserAgentStyleSheetList.h",
 ]
 
 EXPORTS.mozilla.dom += [
@@ -142,7 +142,9 @@ EXPORTS.mozilla.dom += [
     "CSSMediaRule.h",
     "CSSMozDocumentRule.h",
     "CSSNamespaceRule.h",
+    "CSSNestedDeclarations.h",
     "CSSPageRule.h",
+    "CSSPositionTryRule.h",
     "CSSPropertyRule.h",
     "CSSRuleList.h",
     "CSSScopeRule.h",
@@ -196,7 +198,9 @@ UNIFIED_SOURCES += [
     "CSSMediaRule.cpp",
     "CSSMozDocumentRule.cpp",
     "CSSNamespaceRule.cpp",
+    "CSSNestedDeclarations.cpp",
     "CSSPageRule.cpp",
+    "CSSPositionTryRule.cpp",
     "CSSPropertyRule.cpp",
     "CSSRuleList.cpp",
     "CSSScopeRule.cpp",
@@ -256,6 +260,7 @@ UNIFIED_SOURCES += [
     "ServoStyleSet.cpp",
     "ShadowParts.cpp",
     "SharedStyleSheetCache.cpp",
+    "SharedSubResourceCache.cpp",
     "StreamLoader.cpp",
     "StyleAnimationValue.cpp",
     "StyleColor.cpp",
@@ -277,6 +282,9 @@ LOCAL_INCLUDES += [
     "/dom/html",
     "/dom/xul",
     "/image",
+    # For nsHttpChannel.h
+    "/netwerk/base",
+    "/netwerk/protocol/http",
 ]
 
 JAR_MANIFESTS += ["jar.mn"]
@@ -288,10 +296,8 @@ RESOURCE_FILES += [
 
 CONTENT_ACCESSIBLE_FILES += [
     "ImageDocument.css",
-    "res/accessiblecaret.css",
-    "res/details.css",
+    "res/close-12.svg",
     "res/plaintext.css",
-    "res/searchfield-cancel.svg",
     "res/viewsource.css",
     "TopLevelImageDocument.css",
     "TopLevelVideoDocument.css",
@@ -354,7 +360,3 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
         "ServoStyleConsts.h",
         inputs=["/servo/ports/geckolib", "/servo/components/style"],
     )
-
-    CONFIGURE_SUBST_FILES += [
-        "extra-bindgen-flags",
-    ]

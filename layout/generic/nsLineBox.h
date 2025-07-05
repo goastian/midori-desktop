@@ -42,16 +42,6 @@ nsLineBox* NS_NewLineBox(mozilla::PresShell* aPresShell, nsIFrame* aFrame,
 nsLineBox* NS_NewLineBox(mozilla::PresShell* aPresShell, nsLineBox* aFromLine,
                          nsIFrame* aFrame, int32_t aCount);
 
-class nsLineList;
-
-// don't use the following names outside of this file.  Instead, use
-// nsLineList::iterator, etc.  These are just here to allow them to
-// be specified as parameters to methods of nsLineBox.
-class nsLineList_iterator;
-class nsLineList_const_iterator;
-class nsLineList_reverse_iterator;
-class nsLineList_const_reverse_iterator;
-
 /**
  * Users must have the class that is to be part of the list inherit
  * from nsLineLink.  If they want to be efficient, it should be the
@@ -59,15 +49,13 @@ class nsLineList_const_reverse_iterator;
  * nsCList, but it's still useful separately.)
  */
 
-class nsLineLink {
- public:
-  friend class nsLineList;
-  friend class nsLineList_iterator;
-  friend class nsLineList_reverse_iterator;
-  friend class nsLineList_const_iterator;
-  friend class nsLineList_const_reverse_iterator;
+class nsLineList;
 
- private:
+class nsLineLink {
+  template <typename Link, bool>
+  friend class GenericLineListIterator;
+  friend class nsLineList;
+
   nsLineLink* _mNext;  // or head
   nsLineLink* _mPrev;  // or tail
 };
@@ -241,20 +229,20 @@ class nsLineBox final : public nsLineLink {
   // mHasForcedLineBreakAfter bit & mFloatClearType value
   void ClearForcedLineBreak() {
     mFlags.mHasForcedLineBreakAfter = false;
-    mFlags.mFloatClearType = mozilla::StyleClear::None;
+    mFlags.mFloatClearType = mozilla::UsedClear::None;
   }
 
   bool HasFloatClearTypeBefore() const {
-    return FloatClearTypeBefore() != mozilla::StyleClear::None;
+    return FloatClearTypeBefore() != mozilla::UsedClear::None;
   }
-  void SetFloatClearTypeBefore(mozilla::StyleClear aClearType) {
+  void SetFloatClearTypeBefore(mozilla::UsedClear aClearType) {
     MOZ_ASSERT(IsBlock(), "Only block lines have break-before status!");
-    MOZ_ASSERT(aClearType != mozilla::StyleClear::None,
-               "Only StyleClear:Left/Right/Both are allowed before a line");
+    MOZ_ASSERT(aClearType != mozilla::UsedClear::None,
+               "Only UsedClear:Left/Right/Both are allowed before a line");
     mFlags.mFloatClearType = aClearType;
   }
-  mozilla::StyleClear FloatClearTypeBefore() const {
-    return IsBlock() ? mFlags.mFloatClearType : mozilla::StyleClear::None;
+  mozilla::UsedClear FloatClearTypeBefore() const {
+    return IsBlock() ? mFlags.mFloatClearType : mozilla::UsedClear::None;
   }
 
   bool HasForcedLineBreakAfter() const {
@@ -262,22 +250,22 @@ class nsLineBox final : public nsLineLink {
                "A block line shouldn't set mHasForcedLineBreakAfter bit!");
     return IsInline() && mFlags.mHasForcedLineBreakAfter;
   }
-  void SetForcedLineBreakAfter(mozilla::StyleClear aClearType) {
+  void SetForcedLineBreakAfter(mozilla::UsedClear aClearType) {
     MOZ_ASSERT(IsInline(), "Only inline lines have break-after status!");
     mFlags.mHasForcedLineBreakAfter = true;
     mFlags.mFloatClearType = aClearType;
   }
   bool HasFloatClearTypeAfter() const {
-    return FloatClearTypeAfter() != mozilla::StyleClear::None;
+    return FloatClearTypeAfter() != mozilla::UsedClear::None;
   }
-  mozilla::StyleClear FloatClearTypeAfter() const {
-    return IsInline() ? mFlags.mFloatClearType : mozilla::StyleClear::None;
+  mozilla::UsedClear FloatClearTypeAfter() const {
+    return IsInline() ? mFlags.mFloatClearType : mozilla::UsedClear::None;
   }
 
   // mCarriedOutBEndMargin value
-  nsCollapsingMargin GetCarriedOutBEndMargin() const;
+  mozilla::CollapsingMargin GetCarriedOutBEndMargin() const;
   // Returns true if the margin changed
-  bool SetCarriedOutBEndMargin(nsCollapsingMargin aValue);
+  bool SetCarriedOutBEndMargin(mozilla::CollapsingMargin aValue);
 
   // mFloats
   bool HasFloats() const {
@@ -318,6 +306,10 @@ class nsLineBox final : public nsLineLink {
     return GetOverflowArea(mozilla::OverflowType::Scrollable);
   }
 
+  // See comment on `mInFlowChildBounds`.
+  void SetInFlowChildBounds(const mozilla::Maybe<nsRect>& aInFlowChildBounds);
+  mozilla::Maybe<nsRect> GetInFlowChildBounds() const;
+
   void SlideBy(nscoord aDBCoord, const nsSize& aContainerSize) {
     NS_ASSERTION(
         aContainerSize == mContainerSize || mContainerSize == nsSize(-1, -1),
@@ -332,6 +324,9 @@ class nsLineBox final : public nsLineLink {
               .GetPhysicalPoint(mWritingMode, nullContainerSize);
       for (const auto otype : mozilla::AllOverflowTypes()) {
         mData->mOverflowAreas.Overflow(otype) += physicalDelta;
+      }
+      if (mData->mInFlowChildBounds) {
+        *mData->mInFlowChildBounds += physicalDelta;
       }
     }
   }
@@ -349,6 +344,9 @@ class nsLineBox final : public nsLineLink {
       nsPoint physicalDelta(-delta.width, 0);
       for (const auto otype : mozilla::AllOverflowTypes()) {
         mData->mOverflowAreas.Overflow(otype) += physicalDelta;
+      }
+      if (mData->mInFlowChildBounds) {
+        *mData->mInFlowChildBounds += physicalDelta;
       }
     }
     return delta;
@@ -405,13 +403,13 @@ class nsLineBox final : public nsLineLink {
   // the end of the line list, it's just the last frame in the frame
   // list).
   static bool RFindLineContaining(nsIFrame* aFrame,
-                                  const nsLineList_iterator& aBegin,
-                                  nsLineList_iterator& aEnd,
+                                  const LineListIterator& aBegin,
+                                  LineListIterator& aEnd,
                                   nsIFrame* aLastFrameBeforeEnd,
                                   int32_t* aFrameIndexInLine);
 
 #ifdef DEBUG_FRAME_DUMP
-  static const char* StyleClearToString(mozilla::StyleClear aClearType);
+  static const char* UsedClearToString(mozilla::UsedClear aClearType);
 
   void List(FILE* out, int32_t aIndent,
             nsIFrame::ListFlags aFlags = nsIFrame::ListFlags()) const;
@@ -423,12 +421,14 @@ class nsLineBox final : public nsLineLink {
   void AddSizeOfExcludingThis(nsWindowSizes& aSizes) const;
 
   // Find the index of aFrame within the line, starting search at the start.
-  int32_t IndexOf(nsIFrame* aFrame) const;
+  int32_t IndexOf(const nsIFrame* aFrame) const;
 
-  // Find the index of aFrame within the line, starting search at the end.
+  // Find the index of aFrame within the line, starting search from both ends
+  // of the line and working inwards.
   // (Produces the same result as IndexOf, but with different performance
   // characteristics.)  The caller must provide the last frame in the line.
-  int32_t RIndexOf(nsIFrame* aFrame, nsIFrame* aLastFrameInLine) const;
+  int32_t RLIndexOf(const nsIFrame* aFrame,
+                    const nsIFrame* aLastFrameInLine) const;
 
   bool Contains(nsIFrame* aFrame) const {
     return MOZ_UNLIKELY(mFlags.mHasHashedFrames) ? mFrames->Contains(aFrame)
@@ -527,18 +527,24 @@ class nsLineBox final : public nsLineLink {
     bool mHasForcedLineBreakAfter : 1;
     // mFloatClearType indicates that there's a float clearance before a block
     // line, or after an inline line.
-    mozilla::StyleClear mFloatClearType;
+    mozilla::UsedClear mFloatClearType;
   };
 
   struct ExtraData {
     explicit ExtraData(const nsRect& aBounds)
         : mOverflowAreas(aBounds, aBounds) {}
     mozilla::OverflowAreas mOverflowAreas;
+    // Union of the margin-boxes of our in-flow children (only children,
+    // *not* their descendants). This is part of a special contribution to
+    // the scrollable overflow of a scrolled block; as such, this is only
+    // emplaced if our block is a scrolled frame (and we have in-flow children,
+    // and floats, which are considered in-flow for scrollable overflow).
+    mozilla::Maybe<nsRect> mInFlowChildBounds;
   };
 
   struct ExtraBlockData : public ExtraData {
     explicit ExtraBlockData(const nsRect& aBounds) : ExtraData(aBounds) {}
-    nsCollapsingMargin mCarriedOutBEndMargin;
+    mozilla::CollapsingMargin mCarriedOutBEndMargin;
   };
 
   struct ExtraInlineData : public ExtraData {
@@ -589,29 +595,26 @@ class nsLineBox final : public nsLineLink {
  * API heavily based on the |list| class in the C++ standard.
  */
 
-class nsLineList_iterator {
+template <typename Link, bool IsReverse>
+class GenericLineListIterator {
+  template <typename OtherLink, bool>
+  friend class GenericLineListIterator;
+
  public:
   friend class nsLineList;
-  friend class nsLineList_reverse_iterator;
-  friend class nsLineList_const_iterator;
-  friend class nsLineList_const_reverse_iterator;
 
-  typedef nsLineList_iterator iterator_self_type;
-  typedef nsLineList_reverse_iterator iterator_reverse_type;
+  using self_type = GenericLineListIterator<Link, IsReverse>;
+  static constexpr bool is_const = std::is_const_v<Link>;
 
-  typedef nsLineBox& reference;
-  typedef const nsLineBox& const_reference;
-
-  typedef nsLineBox* pointer;
-  typedef const nsLineBox* const_pointer;
-
-  typedef uint32_t size_type;
-  typedef int32_t difference_type;
-
-  typedef nsLineLink link_type;
+  using const_reference = const nsLineBox&;
+  using const_pointer = const nsLineBox*;
+  using reference = std::conditional_t<is_const, const_reference, nsLineBox&>;
+  using pointer = std::conditional_t<is_const, const_pointer, nsLineBox*>;
+  using size_type = uint32_t;
+  using link_type = Link;
 
 #ifdef DEBUG
-  nsLineList_iterator() : mListLink(nullptr) {
+  GenericLineListIterator() : mListLink(nullptr) {
     memset(&mCurrent, 0xcd, sizeof(mCurrent));
   }
 #else
@@ -619,41 +622,41 @@ class nsLineList_iterator {
 #endif
   // Auto generated copy-constructor OK.
 
-  inline iterator_self_type& operator=(const iterator_self_type& aOther);
-  inline iterator_self_type& operator=(const iterator_reverse_type& aOther);
-
-  iterator_self_type& operator++() {
-    mCurrent = mCurrent->_mNext;
+  template <typename OtherLink, bool OtherIsReverse>
+  self_type& operator=(
+      const GenericLineListIterator<OtherLink, OtherIsReverse>& aOther) {
+    mCurrent = aOther.mCurrent;
+#ifdef DEBUG
+    mListLink = aOther.mListLink;
+#endif
     return *this;
   }
 
-  iterator_self_type operator++(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mNext;
-    return rv;
-  }
-
-  iterator_self_type& operator--() {
-    mCurrent = mCurrent->_mPrev;
+  self_type& SetPosition(pointer p) {
+    mCurrent = p;
     return *this;
   }
 
-  iterator_self_type operator--(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mPrev;
+  self_type& operator++() {
+    mCurrent = IsReverse ? mCurrent->_mPrev : mCurrent->_mNext;
+    return *this;
+  }
+
+  self_type operator++(int) {
+    self_type rv(*this);
+    mCurrent = IsReverse ? mCurrent->_mPrev : mCurrent->_mNext;
     return rv;
   }
 
-  reference operator*() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<pointer>(mCurrent);
+  self_type& operator--() {
+    mCurrent = IsReverse ? mCurrent->_mNext : mCurrent->_mPrev;
+    return *this;
   }
 
-  pointer operator->() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<pointer>(mCurrent);
+  self_type operator--(int) {
+    self_type rv(*this);
+    mCurrent = IsReverse ? mCurrent->_mNext : mCurrent->_mPrev;
+    return rv;
   }
 
   pointer get() {
@@ -662,59 +665,46 @@ class nsLineList_iterator {
     return static_cast<pointer>(mCurrent);
   }
 
-  operator pointer() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<pointer>(mCurrent);
-  }
-
-  const_reference operator*() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer operator->() const {
+  const_pointer get() const {
     MOZ_ASSERT(mListLink);
     MOZ_ASSERT(mCurrent != mListLink, "running past end");
     return static_cast<const_pointer>(mCurrent);
   }
 
-#ifndef __MWERKS__
-  operator const_pointer() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-#endif /* !__MWERKS__ */
+  reference operator*() { return *get(); }
+  pointer operator->() { return get(); }
+  operator pointer() { return get(); }
+  const_reference operator*() const { return *get(); }
+  const_pointer operator->() const { return get(); }
+  operator const_pointer() const { return get(); }
 
-  iterator_self_type next() {
-    iterator_self_type copy(*this);
+  self_type next() {
+    self_type copy(*this);
     return ++copy;
   }
 
-  const iterator_self_type next() const {
-    iterator_self_type copy(*this);
+  self_type next() const {
+    self_type copy(*this);
     return ++copy;
   }
 
-  iterator_self_type prev() {
-    iterator_self_type copy(*this);
+  self_type prev() {
+    self_type copy(*this);
     return --copy;
   }
 
-  const iterator_self_type prev() const {
-    iterator_self_type copy(*this);
+  self_type prev() const {
+    self_type copy(*this);
     return --copy;
   }
 
-  bool operator==(const iterator_self_type& aOther) const {
+  bool operator==(const self_type& aOther) const {
     MOZ_ASSERT(mListLink);
     MOZ_ASSERT(mListLink == aOther.mListLink,
                "comparing iterators over different lists");
     return mCurrent == aOther.mCurrent;
   }
-  bool operator!=(const iterator_self_type& aOther) const {
+  bool operator!=(const self_type& aOther) const {
     MOZ_ASSERT(mListLink);
     MOZ_ASSERT(mListLink == aOther.mListLink,
                "comparing iterators over different lists");
@@ -722,7 +712,7 @@ class nsLineList_iterator {
   }
 
 #ifdef DEBUG
-  bool IsInSameList(const iterator_self_type& aOther) const {
+  bool IsInSameList(const self_type& aOther) const {
     return mListLink == aOther.mListLink;
   }
 #endif
@@ -731,396 +721,27 @@ class nsLineList_iterator {
   link_type* mCurrent;
 #ifdef DEBUG
   link_type* mListLink;  // the list's link, i.e., the end
-#endif
-};
-
-class nsLineList_reverse_iterator {
- public:
-  friend class nsLineList;
-  friend class nsLineList_iterator;
-  friend class nsLineList_const_iterator;
-  friend class nsLineList_const_reverse_iterator;
-
-  typedef nsLineList_reverse_iterator iterator_self_type;
-  typedef nsLineList_iterator iterator_reverse_type;
-
-  typedef nsLineBox& reference;
-  typedef const nsLineBox& const_reference;
-
-  typedef nsLineBox* pointer;
-  typedef const nsLineBox* const_pointer;
-
-  typedef uint32_t size_type;
-  typedef int32_t difference_type;
-
-  typedef nsLineLink link_type;
-
-#ifdef DEBUG
-  nsLineList_reverse_iterator() : mListLink(nullptr) {
-    memset(&mCurrent, 0xcd, sizeof(mCurrent));
-  }
-#else
-  // Auto generated default constructor OK.
-#endif
-  // Auto generated copy-constructor OK.
-
-  inline iterator_self_type& operator=(const iterator_reverse_type& aOther);
-  inline iterator_self_type& operator=(const iterator_self_type& aOther);
-
-  iterator_self_type& operator++() {
-    mCurrent = mCurrent->_mPrev;
-    return *this;
-  }
-
-  iterator_self_type operator++(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mPrev;
-    return rv;
-  }
-
-  iterator_self_type& operator--() {
-    mCurrent = mCurrent->_mNext;
-    return *this;
-  }
-
-  iterator_self_type operator--(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mNext;
-    return rv;
-  }
-
-  reference operator*() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<pointer>(mCurrent);
-  }
-
-  pointer operator->() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<pointer>(mCurrent);
-  }
-
-  pointer get() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<pointer>(mCurrent);
-  }
-
-  operator pointer() {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<pointer>(mCurrent);
-  }
-
-  const_reference operator*() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer operator->() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-
-#ifndef __MWERKS__
-  operator const_pointer() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-#endif /* !__MWERKS__ */
-
-  bool operator==(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent == aOther.mCurrent;
-  }
-  bool operator!=(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent != aOther.mCurrent;
-  }
-
-#ifdef DEBUG
-  bool IsInSameList(const iterator_self_type& aOther) const {
-    return mListLink == aOther.mListLink;
-  }
-#endif
-
- private:
-  link_type* mCurrent;
-#ifdef DEBUG
-  link_type* mListLink;  // the list's link, i.e., the end
-#endif
-};
-
-class nsLineList_const_iterator {
- public:
-  friend class nsLineList;
-  friend class nsLineList_iterator;
-  friend class nsLineList_reverse_iterator;
-  friend class nsLineList_const_reverse_iterator;
-
-  typedef nsLineList_const_iterator iterator_self_type;
-  typedef nsLineList_const_reverse_iterator iterator_reverse_type;
-  typedef nsLineList_iterator iterator_nonconst_type;
-  typedef nsLineList_reverse_iterator iterator_nonconst_reverse_type;
-
-  typedef nsLineBox& reference;
-  typedef const nsLineBox& const_reference;
-
-  typedef nsLineBox* pointer;
-  typedef const nsLineBox* const_pointer;
-
-  typedef uint32_t size_type;
-  typedef int32_t difference_type;
-
-  typedef nsLineLink link_type;
-
-#ifdef DEBUG
-  nsLineList_const_iterator() : mListLink(nullptr) {
-    memset(&mCurrent, 0xcd, sizeof(mCurrent));
-  }
-#else
-  // Auto generated default constructor OK.
-#endif
-  // Auto generated copy-constructor OK.
-
-  inline iterator_self_type& operator=(const iterator_nonconst_type& aOther);
-  inline iterator_self_type& operator=(
-      const iterator_nonconst_reverse_type& aOther);
-  inline iterator_self_type& operator=(const iterator_self_type& aOther);
-  inline iterator_self_type& operator=(const iterator_reverse_type& aOther);
-
-  iterator_self_type& operator++() {
-    mCurrent = mCurrent->_mNext;
-    return *this;
-  }
-
-  iterator_self_type operator++(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mNext;
-    return rv;
-  }
-
-  iterator_self_type& operator--() {
-    mCurrent = mCurrent->_mPrev;
-    return *this;
-  }
-
-  iterator_self_type operator--(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mPrev;
-    return rv;
-  }
-
-  const_reference operator*() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer operator->() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer get() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-
-#ifndef __MWERKS__
-  operator const_pointer() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-#endif /* !__MWERKS__ */
-
-  const iterator_self_type next() const {
-    iterator_self_type copy(*this);
-    return ++copy;
-  }
-
-  const iterator_self_type prev() const {
-    iterator_self_type copy(*this);
-    return --copy;
-  }
-
-  bool operator==(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent == aOther.mCurrent;
-  }
-  bool operator!=(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent != aOther.mCurrent;
-  }
-
-#ifdef DEBUG
-  bool IsInSameList(const iterator_self_type& aOther) const {
-    return mListLink == aOther.mListLink;
-  }
-#endif
-
- private:
-  const link_type* mCurrent;
-#ifdef DEBUG
-  const link_type* mListLink;  // the list's link, i.e., the end
-#endif
-};
-
-class nsLineList_const_reverse_iterator {
- public:
-  friend class nsLineList;
-  friend class nsLineList_iterator;
-  friend class nsLineList_reverse_iterator;
-  friend class nsLineList_const_iterator;
-
-  typedef nsLineList_const_reverse_iterator iterator_self_type;
-  typedef nsLineList_const_iterator iterator_reverse_type;
-  typedef nsLineList_iterator iterator_nonconst_reverse_type;
-  typedef nsLineList_reverse_iterator iterator_nonconst_type;
-
-  typedef nsLineBox& reference;
-  typedef const nsLineBox& const_reference;
-
-  typedef nsLineBox* pointer;
-  typedef const nsLineBox* const_pointer;
-
-  typedef uint32_t size_type;
-  typedef int32_t difference_type;
-
-  typedef nsLineLink link_type;
-
-#ifdef DEBUG
-  nsLineList_const_reverse_iterator() : mListLink(nullptr) {
-    memset(&mCurrent, 0xcd, sizeof(mCurrent));
-  }
-#else
-  // Auto generated default constructor OK.
-#endif
-  // Auto generated copy-constructor OK.
-
-  inline iterator_self_type& operator=(const iterator_nonconst_type& aOther);
-  inline iterator_self_type& operator=(
-      const iterator_nonconst_reverse_type& aOther);
-  inline iterator_self_type& operator=(const iterator_self_type& aOther);
-  inline iterator_self_type& operator=(const iterator_reverse_type& aOther);
-
-  iterator_self_type& operator++() {
-    mCurrent = mCurrent->_mPrev;
-    return *this;
-  }
-
-  iterator_self_type operator++(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mPrev;
-    return rv;
-  }
-
-  iterator_self_type& operator--() {
-    mCurrent = mCurrent->_mNext;
-    return *this;
-  }
-
-  iterator_self_type operator--(int) {
-    iterator_self_type rv(*this);
-    mCurrent = mCurrent->_mNext;
-    return rv;
-  }
-
-  const_reference operator*() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return *static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer operator->() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-
-  const_pointer get() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-
-#ifndef __MWERKS__
-  operator const_pointer() const {
-    MOZ_ASSERT(mListLink);
-    MOZ_ASSERT(mCurrent != mListLink, "running past end");
-    return static_cast<const_pointer>(mCurrent);
-  }
-#endif /* !__MWERKS__ */
-
-  bool operator==(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent == aOther.mCurrent;
-  }
-  bool operator!=(const iterator_self_type& aOther) const {
-    MOZ_ASSERT(mListLink);
-    NS_ASSERTION(mListLink == aOther.mListLink,
-                 "comparing iterators over different lists");
-    return mCurrent != aOther.mCurrent;
-  }
-
-#ifdef DEBUG
-  bool IsInSameList(const iterator_self_type& aOther) const {
-    return mListLink == aOther.mListLink;
-  }
-#endif
-
-  // private:
-  const link_type* mCurrent;
-#ifdef DEBUG
-  const link_type* mListLink;  // the list's link, i.e., the end
 #endif
 };
 
 class nsLineList {
  public:
-  friend class nsLineList_iterator;
-  friend class nsLineList_reverse_iterator;
-  friend class nsLineList_const_iterator;
-  friend class nsLineList_const_reverse_iterator;
-
-  typedef uint32_t size_type;
-  typedef int32_t difference_type;
-
-  typedef nsLineLink link_type;
+  using self_type = nsLineList;
+  using const_reference = const nsLineBox&;
+  using pointer = nsLineBox*;
+  using const_pointer = const nsLineBox*;
+  using size_type = uint32_t;
+  using link_type = nsLineLink;
 
  private:
   link_type mLink;
 
  public:
-  typedef nsLineList self_type;
-
-  typedef nsLineBox& reference;
-  typedef const nsLineBox& const_reference;
-
-  typedef nsLineBox* pointer;
-  typedef const nsLineBox* const_pointer;
-
-  typedef nsLineList_iterator iterator;
-  typedef nsLineList_reverse_iterator reverse_iterator;
-  typedef nsLineList_const_iterator const_iterator;
-  typedef nsLineList_const_reverse_iterator const_reverse_iterator;
+  using iterator = GenericLineListIterator<nsLineLink, false>;
+  using reverse_iterator = GenericLineListIterator<nsLineLink, true>;
+  using const_iterator = GenericLineListIterator<const nsLineLink, false>;
+  using const_reverse_iterator =
+      GenericLineListIterator<const nsLineLink, true>;
 
   nsLineList() {
     MOZ_COUNT_CTOR(nsLineList);
@@ -1309,11 +930,18 @@ class nsLineList {
 
   // returns iterator pointing to after the element
   iterator erase(iterator position)
-  // NOTE: leaves dangling next/prev pointers
+  // NOTE: leaves dangling next/prev pointers (except in DEBUG build)
   {
     position->_mPrev->_mNext = position->_mNext;
     position->_mNext->_mPrev = position->_mPrev;
+#ifdef DEBUG
+    nsLineLink* dead = position;
+    iterator next = ++position;
+    memset(dead, 0, sizeof(*dead));
+    return next;
+#else
     return ++position;
+#endif
   }
 
   void swap(self_type& y) {
@@ -1375,7 +1003,9 @@ class nsLineList {
   void splice(iterator position, self_type& x, iterator first, iterator last) {
     NS_ASSERTION(!x.empty(), "Can't insert from empty list.");
 
-    if (first == last) return;
+    if (first == last) {
+      return;
+    }
 
     --last;  // so we now want to move [first, last]
     // remove from |x|
@@ -1392,82 +1022,6 @@ class nsLineList {
     position.mCurrent->_mPrev = last.get();
   }
 };
-
-// Many of these implementations of operator= don't work yet.  I don't
-// know why.
-
-#ifdef DEBUG
-
-// NOTE: ASSIGN_FROM is meant to be used *only* as the entire body
-// of a function and therefore lacks PR_{BEGIN,END}_MACRO
-#  define ASSIGN_FROM(other_)     \
-    mCurrent = other_.mCurrent;   \
-    mListLink = other_.mListLink; \
-    return *this;
-
-#else /* !NS_LINELIST_DEBUG_PASS_END */
-
-#  define ASSIGN_FROM(other_)   \
-    mCurrent = other_.mCurrent; \
-    return *this;
-
-#endif /* !NS_LINELIST_DEBUG_PASS_END */
-
-inline nsLineList_iterator& nsLineList_iterator::operator=(
-    const nsLineList_iterator& aOther) = default;
-
-inline nsLineList_iterator& nsLineList_iterator::operator=(
-    const nsLineList_reverse_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_reverse_iterator& nsLineList_reverse_iterator::operator=(
-    const nsLineList_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_reverse_iterator& nsLineList_reverse_iterator::operator=(
-    const nsLineList_reverse_iterator& aOther) = default;
-
-inline nsLineList_const_iterator& nsLineList_const_iterator::operator=(
-    const nsLineList_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_iterator& nsLineList_const_iterator::operator=(
-    const nsLineList_reverse_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_iterator& nsLineList_const_iterator::operator=(
-    const nsLineList_const_iterator& aOther) = default;
-
-inline nsLineList_const_iterator& nsLineList_const_iterator::operator=(
-    const nsLineList_const_reverse_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_reverse_iterator&
-nsLineList_const_reverse_iterator::operator=(
-    const nsLineList_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_reverse_iterator&
-nsLineList_const_reverse_iterator::operator=(
-    const nsLineList_reverse_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_reverse_iterator&
-nsLineList_const_reverse_iterator::operator=(
-    const nsLineList_const_iterator& aOther) {
-  ASSIGN_FROM(aOther)
-}
-
-inline nsLineList_const_reverse_iterator&
-nsLineList_const_reverse_iterator::operator=(
-    const nsLineList_const_reverse_iterator& aOther) = default;
 
 //----------------------------------------------------------------------
 
@@ -1560,7 +1114,7 @@ class nsLineIterator final : public nsILineIterator {
   }
 
   const nsLineList& mLines;
-  nsLineList_const_iterator mIter;
+  nsLineList::const_iterator mIter;
   int32_t mIndex = -1;
   mutable int32_t mNumLines = -1;
   const bool mRightToLeft;

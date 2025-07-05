@@ -28,78 +28,81 @@ NS_IMPL_FRAMEARENA_HELPERS(nsMathMLmspaceFrame)
 
 nsMathMLmspaceFrame::~nsMathMLmspaceFrame() = default;
 
-void nsMathMLmspaceFrame::ProcessAttributes(nsPresContext* aPresContext) {
-  nsAutoString value;
+nsresult nsMathMLmspaceFrame::AttributeChanged(int32_t aNameSpaceID,
+                                               nsAtom* aAttribute,
+                                               int32_t aModType) {
+  if (aNameSpaceID == kNameSpaceID_None) {
+    bool hasDirtyAttributes = false;
+    IntrinsicDirty intrinsicDirty = IntrinsicDirty::None;
+    if (aAttribute == nsGkAtoms::width) {
+      mWidth.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+      intrinsicDirty = IntrinsicDirty::FrameAndAncestors;
+    } else if (aAttribute == nsGkAtoms::height) {
+      mHeight.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+    } else if (aAttribute == nsGkAtoms::depth) {
+      mDepth.mState = Attribute::ParsingState::Dirty;
+      hasDirtyAttributes = true;
+    }
+    if (hasDirtyAttributes) {
+      PresShell()->FrameNeedsReflow(this, intrinsicDirty, NS_FRAME_IS_DIRTY);
+    }
+    return NS_OK;
+  }
+  return nsMathMLContainerFrame::AttributeChanged(aNameSpaceID, aAttribute,
+                                                  aModType);
+}
+
+nscoord nsMathMLmspaceFrame::CalculateAttributeValue(nsAtom* aAtom,
+                                                     Attribute& aAttribute,
+                                                     uint32_t aFlags,
+                                                     float aFontSizeInflation) {
+  if (aAttribute.mState == Attribute::ParsingState::Dirty) {
+    nsAutoString value;
+    aAttribute.mState = Attribute::ParsingState::Invalid;
+    mContent->AsElement()->GetAttr(aAtom, value);
+    if (!value.IsEmpty()) {
+      if (dom::MathMLElement::ParseNumericValue(
+              value, aAttribute.mValue, aFlags, PresContext()->Document())) {
+        aAttribute.mState = Attribute::ParsingState::Valid;
+      } else {
+        ReportParseError(aAtom->GetUTF16String(), value.get());
+      }
+    }
+  }
+  // Invalid is interpreted as the default which is 0.
+  // Percentages are interpreted as a multiple of the default value.
+  if (aAttribute.mState == Attribute::ParsingState::Invalid ||
+      aAttribute.mValue.GetUnit() == eCSSUnit_Percent) {
+    return 0;
+  }
+  return CalcLength(aAttribute.mValue, aFontSizeInflation, this);
+}
+
+nsresult nsMathMLmspaceFrame::Place(DrawTarget* aDrawTarget,
+                                    const PlaceFlags& aFlags,
+                                    ReflowOutput& aDesiredSize) {
   float fontSizeInflation = nsLayoutUtils::FontSizeInflationFor(this);
 
-  // width
-  //
-  // "Specifies the desired width of the space."
-  //
-  // values: length
-  // default: 0em
-  //
-  // The default value is "0em", so unitless values can be ignored.
   // <mspace/> is listed among MathML elements allowing negative spacing and
   // the MathML test suite contains "Presentation/TokenElements/mspace/mspace2"
   // as an example. Hence we allow negative values.
-  //
-  mWidth = 0;
-  mContent->AsElement()->GetAttr(nsGkAtoms::width, value);
-  if (!value.IsEmpty()) {
-    ParseNumericValue(value, &mWidth, dom::MathMLElement::PARSE_ALLOW_NEGATIVE,
-                      aPresContext, mComputedStyle, fontSizeInflation);
-  }
+  nscoord width = CalculateAttributeValue(
+      nsGkAtoms::width, mWidth, dom::MathMLElement::PARSE_ALLOW_NEGATIVE,
+      fontSizeInflation);
 
-  // height
-  //
-  // "Specifies the desired height (above the baseline) of the space."
-  //
-  // values: length
-  // default: 0ex
-  //
-  // The default value is "0ex", so unitless values can be ignored.
-  // We do not allow negative values. See bug 716349.
-  //
-  mHeight = 0;
-  mContent->AsElement()->GetAttr(nsGkAtoms::height, value);
-  if (!value.IsEmpty()) {
-    ParseNumericValue(value, &mHeight, 0, aPresContext, mComputedStyle,
-                      fontSizeInflation);
-  }
+  // We do not allow negative values for height and depth attributes. See bug
+  // 716349.
+  nscoord height =
+      CalculateAttributeValue(nsGkAtoms::height, mHeight, 0, fontSizeInflation);
+  nscoord depth =
+      CalculateAttributeValue(nsGkAtoms::depth, mDepth, 0, fontSizeInflation);
 
-  // depth
-  //
-  // "Specifies the desired depth (below the baseline) of the space."
-  //
-  // values: length
-  // default: 0ex
-  //
-  // The default value is "0ex", so unitless values can be ignored.
-  // We do not allow negative values. See bug 716349.
-  //
-  mDepth = 0;
-  mContent->AsElement()->GetAttr(nsGkAtoms::depth_, value);
-  if (!value.IsEmpty()) {
-    ParseNumericValue(value, &mDepth, 0, aPresContext, mComputedStyle,
-                      fontSizeInflation);
-  }
-}
-
-void nsMathMLmspaceFrame::Reflow(nsPresContext* aPresContext,
-                                 ReflowOutput& aDesiredSize,
-                                 const ReflowInput& aReflowInput,
-                                 nsReflowStatus& aStatus) {
-  MarkInReflow();
-  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
-
-  ProcessAttributes(aPresContext);
-
-  auto borderPadding = aReflowInput.ComputedPhysicalBorderPadding();
   mBoundingMetrics = nsBoundingMetrics();
-  mBoundingMetrics.width = mWidth + borderPadding.LeftRight();
-  mBoundingMetrics.ascent = mHeight + borderPadding.Side(eSideTop);
-  mBoundingMetrics.descent = mDepth + borderPadding.Side(eSideBottom);
+  mBoundingMetrics.width = width;
+  mBoundingMetrics.ascent = height;
+  mBoundingMetrics.descent = depth;
   mBoundingMetrics.leftBearing = 0;
   mBoundingMetrics.rightBearing = mBoundingMetrics.width;
 
@@ -108,16 +111,16 @@ void nsMathMLmspaceFrame::Reflow(nsPresContext* aPresContext,
   aDesiredSize.Height() = mBoundingMetrics.ascent + mBoundingMetrics.descent;
   // Also return our bounding metrics
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
-}
 
-/* virtual */
-nsresult nsMathMLmspaceFrame::MeasureForWidth(DrawTarget* aDrawTarget,
-                                              ReflowOutput& aDesiredSize) {
-  ProcessAttributes(PresContext());
-  mBoundingMetrics = nsBoundingMetrics();
-  auto offsets = IntrinsicISizeOffsets();
-  mBoundingMetrics.width = mWidth + offsets.padding + offsets.border;
-  aDesiredSize.Width() = std::max(0, mBoundingMetrics.width);
-  aDesiredSize.mBoundingMetrics = mBoundingMetrics;
+  // Apply width/height to math content box.
+  const PlaceFlags flags;
+  auto sizes = GetWidthAndHeightForPlaceAdjustment(flags);
+  ApplyAdjustmentForWidthAndHeight(flags, sizes, aDesiredSize,
+                                   mBoundingMetrics);
+
+  // Add padding+border.
+  auto borderPadding = GetBorderPaddingForPlace(aFlags);
+  InflateReflowAndBoundingMetrics(borderPadding, aDesiredSize,
+                                  mBoundingMetrics);
   return NS_OK;
 }

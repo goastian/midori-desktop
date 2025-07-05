@@ -8,11 +8,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.VisibleForTesting
 import androidx.annotation.VisibleForTesting.Companion.PRIVATE
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
 import mozilla.components.lib.crash.Crash
 import mozilla.components.lib.crash.CrashReporter
 import mozilla.components.lib.crash.R
@@ -53,6 +55,17 @@ class CrashReporterActivity : AppCompatActivity() {
         setTheme(crashReporter.promptConfiguration.theme)
 
         super.onCreate(savedInstanceState)
+
+        onBackPressedDispatcher.addCallback(
+            owner = this,
+            onBackPressedCallback = object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    sendCrashReportIfNeeded {
+                        finish()
+                    }
+                }
+            },
+        )
 
         binding = MozacLibCrashCrashreporterBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -120,7 +133,9 @@ class CrashReporterActivity : AppCompatActivity() {
     }
 
     private fun sendCrashReportIfNeeded(then: () -> Unit) {
-        sharedPreferences.edit().putBoolean(PREFERENCE_KEY_SEND_REPORT, binding.sendCheckbox.isChecked).apply()
+        sharedPreferences.edit {
+            putBoolean(PREFERENCE_KEY_SEND_REPORT, binding.sendCheckbox.isChecked)
+        }
 
         if (!binding.sendCheckbox.isChecked) {
             then()
@@ -132,19 +147,13 @@ class CrashReporterActivity : AppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        sendCrashReportIfNeeded {
-            finish()
-        }
-    }
-
     /*
      * Return true if the crash occurred in the background and is recoverable. (ex: GPU process crash)
      */
     @VisibleForTesting
     internal fun isRecoverableBackgroundCrash(crash: Crash): Boolean {
         return crash is Crash.NativeCodeCrash &&
-            crash.processType == Crash.NativeCodeCrash.PROCESS_TYPE_BACKGROUND_CHILD
+            crash.processVisibility == Crash.NativeCodeCrash.PROCESS_VISIBILITY_BACKGROUND_CHILD
     }
 
     companion object {

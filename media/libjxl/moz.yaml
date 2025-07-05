@@ -10,9 +10,9 @@ origin:
 
   url: https://github.com/libjxl/libjxl
 
-  release: ba1bfac861315803dc53888abddca8f665c8edf3 (2024-06-04T13:15:38Z).
+  release: v0.11.1 (2024-11-26T14:02:35+01:00).
 
-  revision: ba1bfac861315803dc53888abddca8f665c8edf3
+  revision: v0.11.1
 
   license: Apache-2.0
 
@@ -24,11 +24,12 @@ updatebot:
     tasks:
       - type: vendoring
         enabled: True
-        frequency: 3 weeks
+        frequency: release
 
 vendoring:
   url: https://github.com/libjxl/libjxl
   source-hosting: github
+  tracking: tag
   vendor-directory: third_party/jpeg-xl
 
   exclude:

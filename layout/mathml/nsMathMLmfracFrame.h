@@ -61,30 +61,25 @@ class nsMathMLmfracFrame final : public nsMathMLContainerFrame {
   friend nsIFrame* NS_NewMathMLmfracFrame(mozilla::PresShell* aPresShell,
                                           ComputedStyle* aStyle);
 
-  virtual eMathMLFrameType GetMathMLFrameType() override;
+  eMathMLFrameType GetMathMLFrameType() override;
 
-  virtual nsresult MeasureForWidth(DrawTarget* aDrawTarget,
-                                   ReflowOutput& aDesiredSize) override;
+  nsresult Place(DrawTarget* aDrawTarget, const PlaceFlags& aFlags,
+                 ReflowOutput& aDesiredSize) override;
 
-  virtual nsresult Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
-
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   NS_IMETHOD
   TransmitAutomaticData() override;
 
   // override the base method so that we can deal with the fraction line
-  virtual nscoord FixInterFrameSpacing(ReflowOutput& aDesiredSize) override;
+  nscoord FixInterFrameSpacing(ReflowOutput& aDesiredSize) override;
 
   // helper to translate the thickness attribute into a usable form
-  nscoord CalcLineThickness(nsPresContext* aPresContext,
-                            ComputedStyle* aComputedStyle,
-                            nsString& aThicknessAttribute, nscoord onePixel,
+  nscoord CalcLineThickness(nsString& aThicknessAttribute, nscoord onePixel,
                             nscoord aDefaultRuleThickness,
                             float aFontSizeInflation);
 
@@ -98,8 +93,7 @@ class nsMathMLmfracFrame final : public nsMathMLContainerFrame {
         mLineThickness(0) {}
   virtual ~nsMathMLmfracFrame();
 
-  nsresult PlaceInternal(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize, bool aWidthOnly);
+  bool IsMathContentBoxHorizontallyCentered() const final { return true; }
 
   // Display a slash
   void DisplaySlash(nsDisplayListBuilder* aBuilder, const nsRect& aRect,

@@ -15,7 +15,6 @@ import androidx.fragment.app.Fragment
 import kotlinx.coroutines.flow.mapNotNull
 import mozilla.components.browser.state.selector.findCustomTabOrSelectedTab
 import mozilla.components.browser.toolbar.display.DisplayToolbar
-import mozilla.components.feature.app.links.AppLinksFeature
 import mozilla.components.feature.downloads.DownloadsFeature
 import mozilla.components.feature.downloads.manager.FetchDownloadManager
 import mozilla.components.feature.privatemode.feature.SecureWindowFeature
@@ -53,7 +52,6 @@ abstract class BaseBrowserFragment : Fragment(), UserInteractionHandler, Activit
     private val toolbarFeature = ViewBoundFeatureWrapper<ToolbarFeature>()
     private val contextMenuIntegration = ViewBoundFeatureWrapper<ContextMenuIntegration>()
     private val downloadsFeature = ViewBoundFeatureWrapper<DownloadsFeature>()
-    private val appLinksFeature = ViewBoundFeatureWrapper<AppLinksFeature>()
     private val promptFeature = ViewBoundFeatureWrapper<PromptFeature>()
     private val findInPageIntegration = ViewBoundFeatureWrapper<FindInPageIntegration>()
     private val sitePermissionsFeature = ViewBoundFeatureWrapper<SitePermissionsFeature>()
@@ -162,19 +160,6 @@ abstract class BaseBrowserFragment : Fragment(), UserInteractionHandler, Activit
                 contextMenuUseCases = components.contextMenuUseCases,
                 parentView = binding.root,
                 sessionId = sessionId,
-            ),
-            owner = this,
-            view = binding.root,
-        )
-
-        appLinksFeature.set(
-            feature = AppLinksFeature(
-                context = requireContext(),
-                store = components.store,
-                sessionId = sessionId,
-                fragmentManager = parentFragmentManager,
-                launchInApp = { components.preferences.getBoolean(DefaultComponents.PREF_LAUNCH_EXTERNAL_APP, false) },
-                loadUrlUseCase = components.sessionUseCases.loadUrl,
             ),
             owner = this,
             view = binding.root,
@@ -303,6 +288,7 @@ abstract class BaseBrowserFragment : Fragment(), UserInteractionHandler, Activit
     }
     override fun onDestroyView() {
         super.onDestroyView()
+
         binding.engineView.setActivityContext(null)
         _binding = null
     }

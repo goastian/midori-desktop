@@ -106,7 +106,7 @@ fuzzy(0-137,0-1) == 562169-1a.html 562169-1-ref.html
 == 562169-3a.html 562169-3-ref.html
 == 562169-4.html 562169-4-ref.html
 == 588739-1.html 588739-ref.html
-== 588739-2.html 588739-ref.html
+!= 588739-2.html 588739-ref.html
 == 588739-3.html 588739-ref.html
 == 612843-1.html 612843-1-ref.html
 fuzzy-if(Android,0-1,0-1) == 613149-1a.html 613149-1-ref.html # Bug 1392106
@@ -178,6 +178,6 @@ fuzzy-if(cocoaWidget,0-1,0-3) fuzzy-if(Android,0-1,0-6) == brackets-3a-rtl.html 
 == 1366623-1.html 1366623-1-ref.html
 == 1426042-1.html 1426042-1-ref.html # Bug 1392106
 == clone-intrinsic-size-bidi.html clone-intrinsic-size-bidi-ref.html
-fuzzy-if(winWidget,70-112,8-8) == slice-intrinsic-size-bidi.html slice-intrinsic-size-bidi-ref.html
+fuzzy-if(winWidget,0-112,0-8) == slice-intrinsic-size-bidi.html slice-intrinsic-size-bidi-ref.html
 == 1556414-1.html 1556414-1-ref.html
 == 1567036-1.html 1567036-1-ref.html

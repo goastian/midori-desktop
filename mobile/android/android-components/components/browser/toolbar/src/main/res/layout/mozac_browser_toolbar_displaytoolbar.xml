@@ -7,7 +7,8 @@
     xmlns:mozac="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="56dp"
+    android:layout_height="wrap_content"
+    android:minHeight="56dp"
     android:orientation="vertical">
 
     <!-- Navigation -->
@@ -15,12 +16,12 @@
     <mozilla.components.browser.toolbar.internal.ActionContainer
         android:id="@+id/mozac_browser_toolbar_navigation_actions"
         android:layout_width="wrap_content"
-        android:layout_height="48dp"
+        android:layout_height="@dimen/mozac_browser_toolbar_button_height"
         android:layout_marginTop="4dp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        mozac:actionContainerItemSize="48dp"
-        tools:layout_width="48dp" />
+        mozac:actionContainerItemSize="@dimen/mozac_browser_toolbar_button_container_item_size"
+        tools:layout_width="@dimen/mozac_browser_toolbar_button_width" />
 
     <!-- URL container -->
 
@@ -28,9 +29,8 @@
         android:id="@+id/mozac_browser_toolbar_background"
         android:layout_width="0dp"
         android:layout_height="40dp"
-        app:layout_goneMarginStart="8dp"
         android:layout_marginTop="8dp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="@dimen/mozac_browser_toolbar_background_margin_end"
         android:importantForAccessibility="no"
         app:layout_constraintEnd_toStartOf="@+id/mozac_browser_toolbar_browser_actions"
         app:layout_constraintStart_toEndOf="@+id/mozac_browser_toolbar_navigation_actions"
@@ -74,8 +74,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:srcCompat="@drawable/mozac_browser_toolbar_icons_vertical_separator" />
 
-    <mozilla.components.browser.toolbar.display.SiteSecurityIconView
-        android:id="@+id/mozac_browser_toolbar_security_indicator"
+    <mozilla.components.browser.toolbar.display.SiteInfoIconView
+        android:id="@+id/mozac_browser_toolbar_site_info_indicator"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_marginTop="8dp"
@@ -83,15 +83,15 @@
         android:scaleType="center"
         app:layout_constraintStart_toEndOf="@+id/mozac_browser_toolbar_separator"
         app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@drawable/mozac_ic_site_security" />
+        app:srcCompat="@drawable/mozac_ic_site_info" />
 
     <mozilla.components.browser.toolbar.display.HighlightView
         android:id="@+id/mozac_browser_toolbar_permission_indicator"
         android:layout_width="10dp"
         android:layout_height="10dp"
         android:importantForAccessibility="no"
-        app:layout_constraintBottom_toBottomOf="@+id/mozac_browser_toolbar_security_indicator"
-        app:layout_constraintEnd_toEndOf="@+id/mozac_browser_toolbar_security_indicator"
+        app:layout_constraintBottom_toBottomOf="@+id/mozac_browser_toolbar_site_info_indicator"
+        app:layout_constraintEnd_toEndOf="@+id/mozac_browser_toolbar_site_info_indicator"
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"
         android:visibility="gone"
@@ -103,12 +103,13 @@
     <mozilla.components.browser.toolbar.display.OriginView
         android:id="@+id/mozac_browser_toolbar_origin_view"
         android:layout_width="0dp"
-        android:layout_height="40dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="0dp"
+        android:minHeight="40dp"
         android:paddingEnd="@dimen/mozac_browser_toolbar_origin_padding_end"
         app:layout_constraintEnd_toStartOf="@+id/mozac_browser_toolbar_page_actions"
-        app:layout_constraintStart_toEndOf="@+id/mozac_browser_toolbar_security_indicator"
+        app:layout_constraintStart_toEndOf="@+id/mozac_browser_toolbar_site_info_indicator"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_goneMarginStart="8dp"
         app:layout_goneMarginTop="8dp" />
 
@@ -117,32 +118,32 @@
     <mozilla.components.browser.toolbar.internal.ActionContainer
         android:id="@+id/mozac_browser_toolbar_page_actions"
         android:layout_width="wrap_content"
-        android:layout_height="48dp"
+        android:layout_height="@dimen/mozac_browser_toolbar_button_height"
         android:layout_marginTop="4dp"
         android:scaleType="center"
         app:layout_constraintEnd_toEndOf="@+id/mozac_browser_toolbar_background"
         app:layout_constraintTop_toTopOf="parent"
-        mozac:actionContainerItemSize="48dp"
-        tools:layout_width="48dp" />
+        mozac:actionContainerItemSize="@dimen/mozac_browser_toolbar_button_container_item_size"
+        tools:layout_width="@dimen/mozac_browser_toolbar_button_width" />
 
     <!-- Browser Actions -->
 
     <mozilla.components.browser.toolbar.internal.ActionContainer
         android:id="@+id/mozac_browser_toolbar_browser_actions"
         android:layout_width="wrap_content"
-        android:layout_height="48dp"
+        android:layout_height="@dimen/mozac_browser_toolbar_button_height"
         android:layout_marginTop="4dp"
         app:layout_constraintEnd_toStartOf="@id/mozac_browser_toolbar_menu"
         app:layout_constraintTop_toTopOf="parent"
-        mozac:actionContainerItemSize="48dp"
-        tools:layout_width="48dp" />
+        mozac:actionContainerItemSize="@dimen/mozac_browser_toolbar_button_container_item_size"
+        tools:layout_width="@dimen/mozac_browser_toolbar_button_width" />
 
     <!-- Menu -->
 
     <mozilla.components.browser.menu.view.MenuButton
         android:id="@+id/mozac_browser_toolbar_menu"
-        android:layout_width="36dp"
-        android:layout_height="48dp"
+        android:layout_width="@dimen/mozac_browser_toolbar_button_width"
+        android:layout_height="@dimen/mozac_browser_toolbar_button_height"
         android:layout_marginTop="4dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         app:layout_constraintEnd_toEndOf="parent"

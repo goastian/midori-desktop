@@ -6,17 +6,11 @@
 
 #include "nsCheckboxRadioFrame.h"
 
-#include "nsGkAtoms.h"
 #include "nsLayoutUtils.h"
-#include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/PresShell.h"
 #include "nsIContent.h"
-#include "nsStyleConsts.h"
 
 using namespace mozilla;
-using mozilla::dom::HTMLInputElement;
-
-// #define FCF_NOISY
 
 nsCheckboxRadioFrame* NS_NewCheckboxRadioFrame(PresShell* aPresShell,
                                                ComputedStyle* aStyle) {
@@ -33,14 +27,13 @@ nsCheckboxRadioFrame::~nsCheckboxRadioFrame() = default;
 NS_IMPL_FRAMEARENA_HELPERS(nsCheckboxRadioFrame)
 
 NS_QUERYFRAME_HEAD(nsCheckboxRadioFrame)
-  NS_QUERYFRAME_ENTRY(nsIFormControlFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsAtomicContainerFrame)
 
 nscoord nsCheckboxRadioFrame::DefaultSize() {
-  if (StyleDisplay()->HasAppearance()) {
-    return PresContext()->Theme()->GetCheckboxRadioPrefSize();
-  }
-  return CSSPixel::ToAppUnits(9);
+  const CSSCoord size = StyleDisplay()->HasAppearance()
+                            ? PresContext()->Theme()->GetCheckboxRadioPrefSize()
+                            : CSSCoord(13.0f);
+  return CSSPixel::ToAppUnits(Style()->EffectiveZoom().Zoom(size));
 }
 
 /* virtual */
@@ -50,13 +43,8 @@ void nsCheckboxRadioFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 }
 
-/* virtual */
-nscoord nsCheckboxRadioFrame::GetMinISize(gfxContext* aRenderingContext) {
-  return StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
-}
-
-/* virtual */
-nscoord nsCheckboxRadioFrame::GetPrefISize(gfxContext* aRenderingContext) {
+nscoord nsCheckboxRadioFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                             IntrinsicISizeType aType) {
   return StyleDisplay()->HasAppearance() ? DefaultSize() : 0;
 }
 
@@ -95,18 +83,20 @@ Maybe<nscoord> nsCheckboxRadioFrame::GetNaturalBaselineBOffset(
   }
 
   if (aWM.IsCentralBaseline()) {
-    return Some(GetLogicalUsedBorderAndPadding(aWM).BStart(aWM) +
-                ContentBSize(aWM) / 2);
+    return Some(BSize(aWM) / 2);
   }
+
   // This is for compatibility with Chrome, Safari and Edge (Dec 2016).
   // Treat radio buttons and checkboxes as having an intrinsic baseline
   // at the block-end of the control (use the block-end content edge rather
   // than the margin edge).
   // For "inverted" lines (typically in writing-mode:vertical-lr), use the
   // block-start end instead.
-  return Some(aWM.IsLineInverted()
-                  ? GetLogicalUsedBorderAndPadding(aWM).BStart(aWM)
-                  : BSize(aWM) - GetLogicalUsedBorderAndPadding(aWM).BEnd(aWM));
+  // See kCheckboxRadioBorderWidth in Theme.cpp
+  CSSCoord border = PresContext()->Theme()->GetCheckboxRadioBorderWidth();
+  auto bp = CSSPixel::ToAppUnits(Style()->EffectiveZoom().Zoom(border));
+  return Some(aWM.IsLineInverted() ? std::min(bp, BSize(aWM))
+                                   : std::max(0, BSize(aWM) - bp));
 }
 
 void nsCheckboxRadioFrame::Reflow(nsPresContext* aPresContext,
@@ -122,11 +112,11 @@ void nsCheckboxRadioFrame::Reflow(nsPresContext* aPresContext,
        aReflowInput.AvailableWidth(), aReflowInput.AvailableHeight()));
 
   const auto wm = aReflowInput.GetWritingMode();
+  MOZ_ASSERT(aReflowInput.ComputedLogicalBorderPadding(wm).IsAllZero());
+
   const auto contentBoxSize =
       aReflowInput.ComputedSizeWithBSizeFallback([&] { return DefaultSize(); });
-  aDesiredSize.SetSize(
-      wm,
-      contentBoxSize + aReflowInput.ComputedLogicalBorderPadding(wm).Size(wm));
+  aDesiredSize.SetSize(wm, contentBoxSize);
   if (nsLayoutUtils::FontSizeInflationEnabled(aPresContext)) {
     const float inflation = nsLayoutUtils::FontSizeInflationFor(this);
     aDesiredSize.Width() *= inflation;
@@ -141,8 +131,6 @@ void nsCheckboxRadioFrame::Reflow(nsPresContext* aPresContext,
   FinishAndStoreOverflow(&aDesiredSize);
 }
 
-void nsCheckboxRadioFrame::SetFocus(bool aOn, bool aRepaint) {}
-
 nsresult nsCheckboxRadioFrame::HandleEvent(nsPresContext* aPresContext,
                                            WidgetGUIEvent* aEvent,
                                            nsEventStatus* aEventStatus) {
@@ -150,10 +138,5 @@ nsresult nsCheckboxRadioFrame::HandleEvent(nsPresContext* aPresContext,
   if (IsContentDisabled()) {
     return nsIFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
   }
-  return NS_OK;
-}
-
-nsresult nsCheckboxRadioFrame::SetFormProperty(nsAtom* aName,
-                                               const nsAString& aValue) {
   return NS_OK;
 }

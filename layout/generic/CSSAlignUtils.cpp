@@ -54,26 +54,40 @@ nscoord CSSAlignUtils::AlignJustifySelf(const StyleAlignFlags& aAlignment,
 
   // Get the item's margin corresponding to the container's start/end side.
   WritingMode wm = aRI.GetWritingMode();
-  const LogicalMargin margin = aRI.ComputedLogicalMargin(wm);
+  // If we're handling the margin box, it's already included in the incoming
+  // size.
+  const LogicalMargin margin = aFlags & AlignJustifyFlags::AligningMarginBox
+                                   ? LogicalMargin{wm}
+                                   : aRI.ComputedLogicalMargin(wm);
   const auto startSide = MakeLogicalSide(
       aAxis, MOZ_LIKELY(isSameSide) ? LogicalEdge::Start : LogicalEdge::End);
   const nscoord marginStart = margin.Side(startSide, wm);
   const auto endSide = GetOppositeSide(startSide);
   const nscoord marginEnd = margin.Side(endSide, wm);
 
-  const auto& styleMargin = aRI.mStyleMargin->mMargin;
   bool hasAutoMarginStart;
   bool hasAutoMarginEnd;
-  if (aFlags & AlignJustifyFlags::IgnoreAutoMargins) {
+  const auto* styleMargin = aRI.mStyleMargin;
+  const auto positionProperty = aRI.mStyleDisplay->mPosition;
+  if (aFlags & (AlignJustifyFlags::IgnoreAutoMargins |
+                AlignJustifyFlags::AligningMarginBox)) {
     // (Note: ReflowInput will have treated "auto" margins as 0, so we
     // don't need to do anything special to avoid expanding them.)
     hasAutoMarginStart = hasAutoMarginEnd = false;
   } else if (aAxis == LogicalAxis::Block) {
-    hasAutoMarginStart = styleMargin.GetBStart(wm).IsAuto();
-    hasAutoMarginEnd = styleMargin.GetBEnd(wm).IsAuto();
+    hasAutoMarginStart =
+        styleMargin->GetMargin(LogicalSide::BStart, wm, positionProperty)
+            ->IsAuto();
+    hasAutoMarginEnd =
+        styleMargin->GetMargin(LogicalSide::BEnd, wm, positionProperty)
+            ->IsAuto();
   } else { /* aAxis == LogicalAxis::Inline */
-    hasAutoMarginStart = styleMargin.GetIStart(wm).IsAuto();
-    hasAutoMarginEnd = styleMargin.GetIEnd(wm).IsAuto();
+    hasAutoMarginStart =
+        styleMargin->GetMargin(LogicalSide::IStart, wm, positionProperty)
+            ->IsAuto();
+    hasAutoMarginEnd =
+        styleMargin->GetMargin(LogicalSide::IEnd, wm, positionProperty)
+            ->IsAuto();
   }
 
   // https://drafts.csswg.org/css-align-3/#overflow-values
@@ -116,7 +130,9 @@ nscoord CSSAlignUtils::AlignJustifySelf(const StyleAlignFlags& aAlignment,
   } else if (alignment == StyleAlignFlags::END) {
     nscoord size = aChildSize.Size(aAxis, wm);
     offset = aCBSize - (size + marginEnd);
-  } else if (alignment == StyleAlignFlags::CENTER) {
+  } else if (alignment == StyleAlignFlags::CENTER ||
+             alignment == StyleAlignFlags::ANCHOR_CENTER) {
+    // TODO(dshin, Bug 1909339): For now, treat `anchor-center` as `center`.
     nscoord size = aChildSize.Size(aAxis, wm);
     offset = (aCBSize - size + marginStart - marginEnd) / 2;
   } else {

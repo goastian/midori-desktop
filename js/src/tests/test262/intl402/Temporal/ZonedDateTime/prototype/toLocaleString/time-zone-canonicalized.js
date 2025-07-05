@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2023 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -8,19 +8,8 @@ description: Custom time zone names are canonicalized
 features: [Temporal]
 ---*/
 
-const timeZone1 = {
-  id: "Asia/Kolkata",
-  getPossibleInstantsFor() {},
-  getOffsetNanosecondsFor() {},
-};
-const datetime1 = new Temporal.ZonedDateTime(0n, timeZone1);
-
-const timeZone2 = {
-  id: "Asia/Calcutta",
-  getPossibleInstantsFor() {},
-  getOffsetNanosecondsFor() {},
-};
-const datetime2 = new Temporal.ZonedDateTime(0n, timeZone2);
+const datetime1 = new Temporal.ZonedDateTime(0n, "Asia/Kolkata");
+const datetime2 = new Temporal.ZonedDateTime(0n, "Asia/Calcutta");
 
 assert.sameValue(datetime1.toLocaleString(), datetime2.toLocaleString(), "Time zone names are canonicalized before passing to DateTimeFormat");
 

@@ -48,14 +48,22 @@ namespace xpc {
 
 #define Between(x, a, b) (a <= x && x <= b)
 
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+static_assert(JSProto_URIError - JSProto_Error == 9,
+              "New prototype added in error object range");
+#else
 static_assert(JSProto_URIError - JSProto_Error == 8,
               "New prototype added in error object range");
+#endif
 #define AssertErrorObjectKeyInBounds(key)                      \
   static_assert(Between(key, JSProto_Error, JSProto_URIError), \
                 "We depend on js/ProtoKey.h ordering here");
 MOZ_FOR_EACH(AssertErrorObjectKeyInBounds, (),
              (JSProto_Error, JSProto_InternalError, JSProto_AggregateError,
               JSProto_EvalError, JSProto_RangeError, JSProto_ReferenceError,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+              JSProto_SuppressedError,
+#endif
               JSProto_SyntaxError, JSProto_TypeError, JSProto_URIError));
 
 static_assert(JSProto_Uint8ClampedArray - JSProto_Int8Array == 8,
@@ -104,6 +112,11 @@ static bool IsJSXraySupported(JSProtoKey key) {
     case JSProto_Set:
     case JSProto_WeakMap:
     case JSProto_WeakSet:
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+    case JSProto_SuppressedError:
+    case JSProto_DisposableStack:
+    case JSProto_AsyncDisposableStack:
+#endif
       return true;
     default:
       return false;
@@ -220,7 +233,7 @@ bool ReportWrapperDenial(JSContext* cx, HandleId id, WrapperDenialType type,
   AutoFilename filename;
   uint32_t line = 0;
   JS::ColumnNumberOneOrigin column;
-  DescribeScriptedCaller(cx, &filename, &line, &column);
+  DescribeScriptedCaller(&filename, cx, &line, &column);
 
   // Warn to the terminal for the logs.
   NS_WARNING(
@@ -270,9 +283,9 @@ bool ReportWrapperDenial(JSContext* cx, HandleId id, WrapperDenialType type,
         "access from a given global object will be reported.",
         NS_LossyConvertUTF16toASCII(propertyName).get());
   }
-  nsString filenameStr(NS_ConvertASCIItoUTF16(filename.get()));
   nsresult rv = errorObject->InitWithWindowID(
-      NS_ConvertASCIItoUTF16(errorMessage.ref()), filenameStr, u""_ns, line,
+      NS_ConvertASCIItoUTF16(errorMessage.ref()),
+      nsDependentCString(filename.get() ? filename.get() : ""), line,
       column.oneOriginValue(), nsIScriptError::warningFlag, "XPConnect",
       windowId);
   NS_ENSURE_SUCCESS(rv, true);
@@ -671,6 +684,20 @@ bool JSXrayTraits::resolveOwnProperty(
       // The optional .cause property can have any value.
       if (id == GetJSIDByIndex(cx, XPCJSContext::IDX_CAUSE)) {
         return getOwnPropertyFromWrapperIfSafe(cx, wrapper, id, desc);
+      }
+#endif
+
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+      if (key == JSProto_SuppressedError) {
+        // The .suppressed property of SuppressedErrors can have any value.
+        if (id == GetJSIDByIndex(cx, XPCJSContext::IDX_SUPPRESSED)) {
+          return getOwnPropertyFromWrapperIfSafe(cx, wrapper, id, desc);
+        }
+
+        // The .error property of SuppressedErrors can have any value.
+        if (id == GetJSIDByIndex(cx, XPCJSContext::IDX_ERROR)) {
+          return getOwnPropertyFromWrapperIfSafe(cx, wrapper, id, desc);
+        }
       }
 #endif
 
@@ -1209,7 +1236,7 @@ static nsIPrincipal* GetExpandoObjectPrincipal(JSObject* expandoObject) {
   return static_cast<nsIPrincipal*>(v.toPrivate());
 }
 
-static void ExpandoObjectFinalize(JS::GCContext* gcx, JSObject* obj) {
+void ExpandoObjectFinalize(JS::GCContext* gcx, JSObject* obj) {
   // Release the principal.
   nsIPrincipal* principal = GetExpandoObjectPrincipal(obj);
   NS_RELEASE(principal);
@@ -1503,26 +1530,6 @@ bool XrayTraits::cloneExpandoChain(JSContext* cx, HandleObject dst,
         JS::GetReservedSlot(oldHead, JSSLOT_EXPANDO_NEXT).toObjectOrNull();
   }
   return true;
-}
-
-void ClearXrayExpandoSlots(JSObject* target, size_t slotIndex) {
-  if (!NS_IsMainThread()) {
-    // No Xrays
-    return;
-  }
-
-  MOZ_ASSERT(slotIndex != JSSLOT_EXPANDO_NEXT);
-  MOZ_ASSERT(slotIndex != JSSLOT_EXPANDO_EXCLUSIVE_WRAPPER_HOLDER);
-  MOZ_ASSERT(GetXrayTraits(target) == &DOMXrayTraits::singleton);
-  RootingContext* rootingCx = RootingCx();
-  RootedObject rootedTarget(rootingCx, target);
-  RootedObject head(rootingCx,
-                    DOMXrayTraits::singleton.getExpandoChain(rootedTarget));
-  while (head) {
-    MOZ_ASSERT(JSCLASS_RESERVED_SLOTS(JS::GetClass(head)) > slotIndex);
-    JS::SetReservedSlot(head, slotIndex, UndefinedValue());
-    head = JS::GetReservedSlot(head, JSSLOT_EXPANDO_NEXT).toObjectOrNull();
-  }
 }
 
 JSObject* EnsureXrayExpandoObject(JSContext* cx, JS::HandleObject wrapper) {
@@ -2333,8 +2340,8 @@ bool XrayWrapper<Base, Traits>::getPropertyKeys(
  */
 
 template <typename Base, typename Traits>
-const xpc::XrayWrapper<Base, Traits> xpc::XrayWrapper<Base, Traits>::singleton(
-    0);
+MOZ_GLOBINIT const xpc::XrayWrapper<Base, Traits>
+    xpc::XrayWrapper<Base, Traits>::singleton(0);
 
 template class PermissiveXrayDOM;
 template class PermissiveXrayJS;

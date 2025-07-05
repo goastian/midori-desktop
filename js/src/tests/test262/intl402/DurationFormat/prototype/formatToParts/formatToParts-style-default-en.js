@@ -1,4 +1,4 @@
-// |reftest| skip -- Intl.DurationFormat is not supported
+// |reftest| skip-if(!Intl.hasOwnProperty('DurationFormat')) -- Intl.DurationFormat is not enabled unconditionally
 // Copyright (C) 2023 Igalia S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -39,9 +39,10 @@ const duration = {
   nanoseconds: 789,
 };
 
-const expected = partitionDurationFormatPattern(duration);
+const df = new Intl.DurationFormat('en');
 
-let df = new Intl.DurationFormat('en');
+const expected = partitionDurationFormatPattern(df, duration);
+
 compare(df.formatToParts(duration), expected, `Using style : default`);
 
 reportCompare(0, 0);

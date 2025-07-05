@@ -114,18 +114,18 @@ int vp9_cyclic_refresh_estimate_bits_at_q(const VP9_COMP *cpi,
   double weight_segment1 = (double)cr->actual_num_seg1_blocks / num8x8bl;
   double weight_segment2 = (double)cr->actual_num_seg2_blocks / num8x8bl;
   // Take segment weighted average for estimated bits.
-  estimated_bits =
-      (int)((1.0 - weight_segment1 - weight_segment2) *
-                vp9_estimate_bits_at_q(cm->frame_type, cm->base_qindex, mbs,
-                                       correction_factor, cm->bit_depth) +
-            weight_segment1 *
-                vp9_estimate_bits_at_q(cm->frame_type,
-                                       cm->base_qindex + cr->qindex_delta[1],
-                                       mbs, correction_factor, cm->bit_depth) +
-            weight_segment2 *
-                vp9_estimate_bits_at_q(cm->frame_type,
-                                       cm->base_qindex + cr->qindex_delta[2],
-                                       mbs, correction_factor, cm->bit_depth));
+  estimated_bits = (int)round(
+      (1.0 - weight_segment1 - weight_segment2) *
+          vp9_estimate_bits_at_q(cm->frame_type, cm->base_qindex, mbs,
+                                 correction_factor, cm->bit_depth) +
+      weight_segment1 *
+          vp9_estimate_bits_at_q(cm->frame_type,
+                                 cm->base_qindex + cr->qindex_delta[1], mbs,
+                                 correction_factor, cm->bit_depth) +
+      weight_segment2 *
+          vp9_estimate_bits_at_q(cm->frame_type,
+                                 cm->base_qindex + cr->qindex_delta[2], mbs,
+                                 correction_factor, cm->bit_depth));
   return estimated_bits;
 }
 
@@ -145,12 +145,13 @@ int vp9_cyclic_refresh_rc_bits_per_mb(const VP9_COMP *cpi, int i,
   else
     deltaq = -(cr->max_qdelta_perc * i) / 200;
   // Take segment weighted average for bits per mb.
-  bits_per_mb = (int)((1.0 - cr->weight_segment) *
-                          vp9_rc_bits_per_mb(cm->frame_type, i,
-                                             correction_factor, cm->bit_depth) +
-                      cr->weight_segment *
-                          vp9_rc_bits_per_mb(cm->frame_type, i + deltaq,
-                                             correction_factor, cm->bit_depth));
+  bits_per_mb =
+      (int)round((1.0 - cr->weight_segment) *
+                     vp9_rc_bits_per_mb(cm->frame_type, i, correction_factor,
+                                        cm->bit_depth) +
+                 cr->weight_segment *
+                     vp9_rc_bits_per_mb(cm->frame_type, i + deltaq,
+                                        correction_factor, cm->bit_depth));
   return bits_per_mb;
 }
 
@@ -602,14 +603,16 @@ void vp9_cyclic_refresh_setup(VP9_COMP *const cpi) {
       (cpi->use_svc && cpi->svc.high_source_sad_superframe);
   if (cm->current_video_frame == 0) cr->low_content_avg = 0.0;
   // Reset if resoluton change has occurred.
-  if (cpi->resize_pending != 0) vp9_cyclic_refresh_reset_resize(cpi);
+  if (cpi->resize_pending != 0 && cpi->svc.temporal_layer_id == 0)
+    vp9_cyclic_refresh_reset_resize(cpi);
   if (!cr->apply_cyclic_refresh || (cpi->force_update_segmentation) ||
       scene_change_detected) {
     // Set segmentation map to 0 and disable.
     unsigned char *const seg_map = cpi->segmentation_map;
     memset(seg_map, 0, cm->mi_rows * cm->mi_cols);
     vp9_disable_segmentation(&cm->seg);
-    if (cm->frame_type == KEY_FRAME || scene_change_detected) {
+    if ((cm->frame_type == KEY_FRAME || scene_change_detected) &&
+        cpi->svc.temporal_layer_id == 0) {
       memset(cr->last_coded_q_map, MAXQ,
              cm->mi_rows * cm->mi_cols * sizeof(*cr->last_coded_q_map));
       cr->sb_index = 0;

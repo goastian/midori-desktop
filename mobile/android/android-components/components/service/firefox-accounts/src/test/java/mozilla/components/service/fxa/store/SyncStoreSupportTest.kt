@@ -127,12 +127,12 @@ class SyncStoreSupportTest {
             whenever(deviceConstellation()).thenReturn(constellation)
             whenever(getCurrentDeviceId()).thenReturn("id")
             whenever(getSessionToken()).thenReturn("token")
-            whenever(getProfile()).thenReturn(profile)
+            whenever(getProfile(eq(false))).thenReturn(profile)
         }
 
         assertEquals(AccountState.NotAuthenticated, store.state.accountState)
 
-        accountObserver.onAuthenticated(account, mock<AuthType.Existing>())
+        accountObserver.onAuthenticated(account, AuthType.Existing)
         runCurrent()
 
         val expected = Account(
@@ -153,10 +153,10 @@ class SyncStoreSupportTest {
         val constellation = mock<DeviceConstellation>()
         val account = coMock<OAuthAccount> {
             whenever(deviceConstellation()).thenReturn(constellation)
-            whenever(getProfile()).thenReturn(null)
+            whenever(getProfile(eq(false))).thenReturn(null)
         }
 
-        accountObserver.onAuthenticated(account, mock<AuthType.Existing>())
+        accountObserver.onAuthenticated(account, AuthType.Existing)
         runCurrent()
 
         store.waitUntilIdle()
@@ -170,7 +170,7 @@ class SyncStoreSupportTest {
             whenever(deviceConstellation()).thenReturn(mock())
             whenever(getProfile()).thenReturn(null)
         }
-        accountObserver.onAuthenticated(account, mock<AuthType.Existing>())
+        accountObserver.onAuthenticated(account, AuthType.Existing)
         runCurrent()
 
         accountObserver.onLoggedOut()
@@ -198,7 +198,7 @@ class SyncStoreSupportTest {
         assertNull(store.state.account)
         assertEquals(AccountState.NotAuthenticated, store.state.accountState)
 
-        accountObserver.onFlowError(mock<AuthFlowError>())
+        accountObserver.onFlowError(AuthFlowError.FailedToBeginAuth)
         runCurrent()
 
         store.waitUntilIdle()
@@ -207,8 +207,27 @@ class SyncStoreSupportTest {
     }
 
     @Test
-    fun `GIVEN account observer WHEN onReady observed with profile THEN account states are updated`() = coroutineScope.runTest {
+    fun `GIVEN account observer WHEN onProfileUpdated then update the account state`() = coroutineScope.runTest {
+        // Prerequisite is having a non-null account already.
+        store.dispatch(SyncAction.UpdateAccount(Account(null, null, null, null, null, null)))
+        store.waitUntilIdle()
+
         val profile = generateProfile()
+        accountObserver.onProfileUpdated(profile)
+
+        runCurrent()
+        store.waitUntilIdle()
+
+        assertEquals(profile.uid, store.state.account!!.uid)
+        assertEquals(profile.avatar, store.state.account!!.avatar)
+        assertEquals(profile.email, store.state.account!!.email)
+        assertEquals(profile.displayName, store.state.account!!.displayName)
+    }
+
+    @Test
+    fun `GIVEN account observer WHEN onReady is triggered THEN do nothing`() = coroutineScope.runTest {
+        // `onReady` is too early for us (today) to try and get the auth status from the cached value.
+        // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1909779
         val currentDeviceId = "id"
         val sessionToken = "token"
         val constellation = mock<DeviceConstellation>()
@@ -216,16 +235,8 @@ class SyncStoreSupportTest {
             whenever(deviceConstellation()).thenReturn(constellation)
             whenever(getCurrentDeviceId()).thenReturn(currentDeviceId)
             whenever(getSessionToken()).thenReturn(sessionToken)
-            whenever(getProfile()).thenReturn(profile)
         }
-        val account = Account(
-            uid = profile.uid,
-            email = profile.email,
-            avatar = profile.avatar,
-            displayName = profile.displayName,
-            currentDeviceId = currentDeviceId,
-            sessionToken = sessionToken,
-        )
+        val initialState = store.state.copy()
 
         assertNull(store.state.account)
         assertEquals(AccountState.NotAuthenticated, store.state.accountState)
@@ -236,8 +247,7 @@ class SyncStoreSupportTest {
         runCurrent()
 
         store.waitUntilIdle()
-        assertEquals(account, store.state.account)
-        assertEquals(AccountState.AuthenticationProblem, store.state.accountState)
+        assertEquals(initialState, store.state)
 
         `when`(authenticatedAccount.checkAuthorizationStatus(eq(SCOPE_PROFILE))).thenReturn(true)
 
@@ -245,8 +255,7 @@ class SyncStoreSupportTest {
         runCurrent()
 
         store.waitUntilIdle()
-        assertEquals(account, store.state.account)
-        assertEquals(AccountState.Authenticated, store.state.accountState)
+        assertEquals(initialState, store.state)
     }
 
     @Test

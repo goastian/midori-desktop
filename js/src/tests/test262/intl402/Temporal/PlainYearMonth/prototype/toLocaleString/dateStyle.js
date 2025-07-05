@@ -1,11 +1,11 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2024 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 esid: sec-temporal.plainyearmonth.prototype.tolocalestring
 description: Basic tests that dateStyle option affects output
-locale: [en-u-ca-gregory, en-u-ca-islamic]
+locale: [en-u-ca-gregory, en-u-ca-islamic-tbla]
 features: [Temporal, Intl.DateTimeFormat-datetimestyle]
 ---*/
 
@@ -20,15 +20,21 @@ assert(
   "dateStyle: short does not write month of March out in full"
 );
 
-const dateIslamic = Temporal.PlainYearMonth.from({ year: 1445, monthCode: "M09", calendar: "islamic" });
+const dateIslamic = Temporal.PlainYearMonth.from({ year: 1445, monthCode: "M09", calendar: "islamic-tbla" });
 
 assert(
-  dateIslamic.toLocaleString("en-u-ca-islamic", { dateStyle: "long" }).includes("Ramadan"),
+  dateIslamic.toLocaleString("en-u-ca-islamic-tbla", { dateStyle: "long" }).includes("Ramadan"),
   "dateStyle: long writes month of Ramadan out in full"
 );
 assert(
-  !dateIslamic.toLocaleString("en-u-ca-islamic", { dateStyle: "short" }).includes("Ramadan"),
+  !dateIslamic.toLocaleString("en-u-ca-islamic-tbla", { dateStyle: "short" }).includes("Ramadan"),
   "dateStyle: short does not write month of Ramadan out in full"
+);
+
+const dateWithReferenceDay = new Temporal.PlainYearMonth(2024, 5, "gregory", 31);
+assert(
+  !dateWithReferenceDay.toLocaleString("en", { dateStyle: "full" }).includes("31"),
+  "dateStyle: full should not format reference day at all"
 );
 
 reportCompare(0, 0);

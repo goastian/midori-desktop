@@ -71,9 +71,9 @@ SOURCES += [
     'pthread.c',
     'pthread_frame.c',
     'pthread_slice.c',
-    'refstruct.c',
     'reverse.c',
     'simple_idct.c',
+    'threadprogress.c',
     'utils.c',
     'version.c',
     'vlc.c',
@@ -119,10 +119,18 @@ if not CONFIG['MOZ_FFVPX_AUDIOONLY']:
         'vp9recon.c',
         'vpx_rac.c',
     ]
-    USE_LIBS += [
-        'dav1d',
-        'media_libdav1d_asm',
-    ]
+
+    if CONFIG["MOZ_SYSTEM_AV1"]:
+        CFLAGS += CONFIG['MOZ_SYSTEM_LIBDAV1D_CFLAGS']
+        CFLAGS += CONFIG['MOZ_SYSTEM_LIBAOM_CFLAGS']
+        OS_LIBS += CONFIG['MOZ_SYSTEM_LIBDAV1D_LIBS']
+        OS_LIBS += CONFIG['MOZ_SYSTEM_LIBAOM_LIBS']
+    else:
+        USE_LIBS += [
+            'dav1d',
+            'media_libdav1d_asm',
+        ]
+
     if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
         LOCAL_INCLUDES += ['/media/mozva']
         SOURCES += [
@@ -134,16 +142,18 @@ if not CONFIG['MOZ_FFVPX_AUDIOONLY']:
         USE_LIBS += [
           'mozva'
         ]
+    elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+        SOURCES += [
+            'd3d11va.c',
+            'dxva2.c',
+            'dxva2_av1.c',
+            'dxva2_vp9.c',
+        ]
 
 LOCAL_INCLUDES += [
     '/media/libopus/include',
     '/media/libvorbis',
 ]
-
-c11_flags = ["-std=gnu11"]
-if CONFIG["CC_TYPE"] == "clang-cl":
-    c11_flags.insert(0, "-Xclang")
-CFLAGS += c11_flags
 
 if not CONFIG["MOZ_SYSTEM_LIBVPX"]:
   LOCAL_INCLUDES += ['/media/libvpx']

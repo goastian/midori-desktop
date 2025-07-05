@@ -34,12 +34,27 @@ namespace mozilla {
 
 class ServoCSSRuleList;
 class ServoStyleSet;
+class DeclarationBlock;
 
 using StyleSheetParsePromise = MozPromise</* Dummy */ bool,
                                           /* Dummy */ bool,
                                           /* IsExclusive = */ true>;
 
 enum class StyleRuleChangeKind : uint32_t;
+
+struct StyleRuleChange {
+  StyleRuleChange() = delete;
+  MOZ_IMPLICIT StyleRuleChange(StyleRuleChangeKind aKind) : mKind(aKind) {}
+  // Only relevant for Kind::StyleRuleDeclarations.
+  StyleRuleChange(StyleRuleChangeKind aKind, const DeclarationBlock* aOldBlock,
+                  const DeclarationBlock* aNewBlock)
+      : mKind(aKind), mOldBlock(aOldBlock), mNewBlock(aNewBlock) {}
+
+  const StyleRuleChangeKind mKind;
+  // mOldBlock and mNewBlock can be the same object.
+  const DeclarationBlock* const mOldBlock = nullptr;
+  const DeclarationBlock* const mNewBlock = nullptr;
+};
 
 namespace css {
 class GroupRule;
@@ -391,6 +406,12 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
   // True if the sheet was created through the Constructable StyleSheets API
   bool IsConstructed() const { return !!mConstructorDocument; }
 
+  // Whether this sheet is directly associated to the given doc or shadow root.
+  // That means that it's a non-imported regular, adopted, or additional style
+  // sheet, and thus that it should be in the top level list of sheets for that
+  // subtree. It can be cheaper than walking the whole list of stylesheets.
+  bool IsDirectlyAssociatedTo(dom::DocumentOrShadowRoot&) const;
+
   // True if any of this sheet's ancestors were created through the
   // Constructable StyleSheets API
   bool SelfOrAncestorIsConstructed() const {
@@ -405,7 +426,7 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
   // Add a document or shadow root to the list of adopters.
   // Adopters will be notified when styles are changed.
   void AddAdopter(dom::DocumentOrShadowRoot& aAdopter) {
-    MOZ_ASSERT(IsConstructed());
+    // MOZ_ASSERT(IsConstructed());
     MOZ_ASSERT(!mAdopters.Contains(&aAdopter));
     mAdopters.AppendElement(&aAdopter);
   }
@@ -431,7 +452,7 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
   //
   // FIXME(emilio): This shouldn't allow null, but MediaList doesn't know about
   // its owning media rule, plus it's used for the stylesheet media itself.
-  void RuleChanged(css::Rule*, StyleRuleChangeKind);
+  void RuleChanged(css::Rule*, const StyleRuleChange&);
 
   void AddStyleSet(ServoStyleSet* aStyleSet);
   void DropStyleSet(ServoStyleSet* aStyleSet);

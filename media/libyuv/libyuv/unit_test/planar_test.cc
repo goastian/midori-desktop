@@ -30,9 +30,9 @@
 #endif
 
 #if defined(LIBYUV_BIT_EXACT)
-#define EXPECTED_ATTENUATE_DIFF 0
+#define EXPECTED_UNATTENUATE_DIFF 0
 #else
-#define EXPECTED_ATTENUATE_DIFF 2
+#define EXPECTED_UNATTENUATE_DIFF 2
 #endif
 
 namespace libyuv {
@@ -57,12 +57,17 @@ TEST_F(LibYUVPlanarTest, TestAttenuate) {
   orig_pixels[2 * 4 + 0] = 16u;
   orig_pixels[2 * 4 + 1] = 64u;
   orig_pixels[2 * 4 + 2] = 192u;
-  orig_pixels[2 * 4 + 3] = 255u;
+  orig_pixels[2 * 4 + 3] = 128u;
   orig_pixels[3 * 4 + 0] = 16u;
   orig_pixels[3 * 4 + 1] = 64u;
   orig_pixels[3 * 4 + 2] = 192u;
-  orig_pixels[3 * 4 + 3] = 128u;
-  ARGBUnattenuate(orig_pixels, 0, unatten_pixels, 0, 4, 1);
+  orig_pixels[3 * 4 + 3] = 255u;
+  orig_pixels[4 * 4 + 0] = 255u;
+  orig_pixels[4 * 4 + 1] = 255u;
+  orig_pixels[4 * 4 + 2] = 255u;
+  orig_pixels[4 * 4 + 3] = 255u;
+
+  ARGBUnattenuate(orig_pixels, 0, unatten_pixels, 0, 5, 1);
   EXPECT_EQ(255u, unatten_pixels[0 * 4 + 0]);
   EXPECT_EQ(255u, unatten_pixels[0 * 4 + 1]);
   EXPECT_EQ(254u, unatten_pixels[0 * 4 + 2]);
@@ -71,14 +76,55 @@ TEST_F(LibYUVPlanarTest, TestAttenuate) {
   EXPECT_EQ(0u, unatten_pixels[1 * 4 + 1]);
   EXPECT_EQ(0u, unatten_pixels[1 * 4 + 2]);
   EXPECT_EQ(0u, unatten_pixels[1 * 4 + 3]);
-  EXPECT_EQ(16u, unatten_pixels[2 * 4 + 0]);
-  EXPECT_EQ(64u, unatten_pixels[2 * 4 + 1]);
-  EXPECT_EQ(192u, unatten_pixels[2 * 4 + 2]);
-  EXPECT_EQ(255u, unatten_pixels[2 * 4 + 3]);
-  EXPECT_EQ(32u, unatten_pixels[3 * 4 + 0]);
-  EXPECT_EQ(128u, unatten_pixels[3 * 4 + 1]);
-  EXPECT_EQ(255u, unatten_pixels[3 * 4 + 2]);
-  EXPECT_EQ(128u, unatten_pixels[3 * 4 + 3]);
+  EXPECT_EQ(32u, unatten_pixels[2 * 4 + 0]);
+  EXPECT_EQ(128u, unatten_pixels[2 * 4 + 1]);
+  EXPECT_EQ(255u, unatten_pixels[2 * 4 + 2]);
+  EXPECT_EQ(128u, unatten_pixels[2 * 4 + 3]);
+  EXPECT_EQ(16u, unatten_pixels[3 * 4 + 0]);
+  EXPECT_EQ(64u, unatten_pixels[3 * 4 + 1]);
+  EXPECT_EQ(192u, unatten_pixels[3 * 4 + 2]);
+  EXPECT_EQ(255u, unatten_pixels[3 * 4 + 3]);
+  EXPECT_EQ(255u, unatten_pixels[4 * 4 + 0]);
+  EXPECT_EQ(255u, unatten_pixels[4 * 4 + 1]);
+  EXPECT_EQ(255u, unatten_pixels[4 * 4 + 2]);
+  EXPECT_EQ(255u, unatten_pixels[4 * 4 + 3]);
+
+  ARGBAttenuate(orig_pixels, 0, atten_pixels, 0, 5, 1);
+  EXPECT_EQ(100u, atten_pixels[0 * 4 + 0]);
+  EXPECT_EQ(65u, atten_pixels[0 * 4 + 1]);
+  EXPECT_EQ(64u, atten_pixels[0 * 4 + 2]);
+  EXPECT_EQ(128u, atten_pixels[0 * 4 + 3]);
+  EXPECT_EQ(0u, atten_pixels[1 * 4 + 0]);
+  EXPECT_EQ(0u, atten_pixels[1 * 4 + 1]);
+  EXPECT_EQ(0u, atten_pixels[1 * 4 + 2]);
+  EXPECT_EQ(0u, atten_pixels[1 * 4 + 3]);
+  EXPECT_EQ(8u, atten_pixels[2 * 4 + 0]);
+  EXPECT_EQ(32u, atten_pixels[2 * 4 + 1]);
+  EXPECT_EQ(96u, atten_pixels[2 * 4 + 2]);
+  EXPECT_EQ(128u, atten_pixels[2 * 4 + 3]);
+  EXPECT_EQ(16u, atten_pixels[3 * 4 + 0]);
+  EXPECT_EQ(64u, atten_pixels[3 * 4 + 1]);
+  EXPECT_EQ(192u, atten_pixels[3 * 4 + 2]);
+  EXPECT_EQ(255u, atten_pixels[3 * 4 + 3]);
+  EXPECT_EQ(255u, atten_pixels[4 * 4 + 0]);
+  EXPECT_EQ(255u, atten_pixels[4 * 4 + 1]);
+  EXPECT_EQ(255u, atten_pixels[4 * 4 + 2]);
+  EXPECT_EQ(255u, atten_pixels[4 * 4 + 3]);
+
+  // test 255
+  for (int i = 0; i < 256; ++i) {
+    orig_pixels[i * 4 + 0] = i;
+    orig_pixels[i * 4 + 1] = 0;
+    orig_pixels[i * 4 + 2] = 0;
+    orig_pixels[i * 4 + 3] = 255;
+  }
+  ARGBAttenuate(orig_pixels, 0, atten_pixels, 0, 256, 1);
+  for (int i = 0; i < 256; ++i) {
+    EXPECT_EQ(orig_pixels[i * 4 + 0], atten_pixels[i * 4 + 0]);
+    EXPECT_EQ(0, atten_pixels[i * 4 + 1]);
+    EXPECT_EQ(0, atten_pixels[i * 4 + 2]);
+    EXPECT_EQ(255, atten_pixels[i * 4 + 3]);
+  }
 
   for (int i = 0; i < 1280; ++i) {
     orig_pixels[i * 4 + 0] = i;
@@ -92,10 +138,10 @@ TEST_F(LibYUVPlanarTest, TestAttenuate) {
     ARGBAttenuate(unatten_pixels, 0, atten2_pixels, 0, 1280, 1);
   }
   for (int i = 0; i < 1280; ++i) {
-    EXPECT_NEAR(atten_pixels[i * 4 + 0], atten2_pixels[i * 4 + 0], 2);
-    EXPECT_NEAR(atten_pixels[i * 4 + 1], atten2_pixels[i * 4 + 1], 2);
-    EXPECT_NEAR(atten_pixels[i * 4 + 2], atten2_pixels[i * 4 + 2], 2);
-    EXPECT_NEAR(atten_pixels[i * 4 + 3], atten2_pixels[i * 4 + 3], 2);
+    EXPECT_NEAR(atten_pixels[i * 4 + 0], atten2_pixels[i * 4 + 0], 1);
+    EXPECT_NEAR(atten_pixels[i * 4 + 1], atten2_pixels[i * 4 + 1], 1);
+    EXPECT_NEAR(atten_pixels[i * 4 + 2], atten2_pixels[i * 4 + 2], 1);
+    EXPECT_NEAR(atten_pixels[i * 4 + 3], atten2_pixels[i * 4 + 3], 1);
   }
   // Make sure transparent, 50% and opaque are fully accurate.
   EXPECT_EQ(0, atten_pixels[0 * 4 + 0]);
@@ -106,9 +152,9 @@ TEST_F(LibYUVPlanarTest, TestAttenuate) {
   EXPECT_EQ(32, atten_pixels[128 * 4 + 1]);
   EXPECT_EQ(21, atten_pixels[128 * 4 + 2]);
   EXPECT_EQ(128, atten_pixels[128 * 4 + 3]);
-  EXPECT_NEAR(254, atten_pixels[255 * 4 + 0], EXPECTED_ATTENUATE_DIFF);
-  EXPECT_NEAR(127, atten_pixels[255 * 4 + 1], EXPECTED_ATTENUATE_DIFF);
-  EXPECT_NEAR(85, atten_pixels[255 * 4 + 2], EXPECTED_ATTENUATE_DIFF);
+  EXPECT_EQ(255, atten_pixels[255 * 4 + 0]);
+  EXPECT_EQ(127, atten_pixels[255 * 4 + 1]);
+  EXPECT_EQ(85, atten_pixels[255 * 4 + 2]);
   EXPECT_EQ(255, atten_pixels[255 * 4 + 3]);
 
   free_aligned_buffer_page_end(atten2_pixels);
@@ -165,28 +211,28 @@ TEST_F(LibYUVPlanarTest, ARGBAttenuate_Any) {
                                 benchmark_iterations_, disable_cpu_flags_,
                                 benchmark_cpu_info_, +1, 0);
 
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_EQ(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBAttenuate_Unaligned) {
   int max_diff =
       TestAttenuateI(benchmark_width_, benchmark_height_, benchmark_iterations_,
                      disable_cpu_flags_, benchmark_cpu_info_, +1, 1);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_EQ(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBAttenuate_Invert) {
   int max_diff =
       TestAttenuateI(benchmark_width_, benchmark_height_, benchmark_iterations_,
                      disable_cpu_flags_, benchmark_cpu_info_, -1, 0);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_EQ(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBAttenuate_Opt) {
   int max_diff =
       TestAttenuateI(benchmark_width_, benchmark_height_, benchmark_iterations_,
                      disable_cpu_flags_, benchmark_cpu_info_, +1, 0);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_EQ(max_diff, 0);
 }
 
 static int TestUnattenuateI(int width,
@@ -238,28 +284,28 @@ TEST_F(LibYUVPlanarTest, ARGBUnattenuate_Any) {
   int max_diff = TestUnattenuateI(benchmark_width_ + 1, benchmark_height_,
                                   benchmark_iterations_, disable_cpu_flags_,
                                   benchmark_cpu_info_, +1, 0);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_LE(max_diff, EXPECTED_UNATTENUATE_DIFF);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBUnattenuate_Unaligned) {
   int max_diff = TestUnattenuateI(benchmark_width_, benchmark_height_,
                                   benchmark_iterations_, disable_cpu_flags_,
                                   benchmark_cpu_info_, +1, 1);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_LE(max_diff, EXPECTED_UNATTENUATE_DIFF);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBUnattenuate_Invert) {
   int max_diff = TestUnattenuateI(benchmark_width_, benchmark_height_,
                                   benchmark_iterations_, disable_cpu_flags_,
                                   benchmark_cpu_info_, -1, 0);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_LE(max_diff, EXPECTED_UNATTENUATE_DIFF);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBUnattenuate_Opt) {
   int max_diff = TestUnattenuateI(benchmark_width_, benchmark_height_,
                                   benchmark_iterations_, disable_cpu_flags_,
                                   benchmark_cpu_info_, +1, 0);
-  EXPECT_LE(max_diff, EXPECTED_ATTENUATE_DIFF);
+  EXPECT_LE(max_diff, EXPECTED_UNATTENUATE_DIFF);
 }
 
 TEST_F(LibYUVPlanarTest, TestARGBComputeCumulativeSum) {
@@ -1505,98 +1551,78 @@ TEST_F(LibYUVPlanarTest, TestAffine) {
 #endif
 }
 
-TEST_F(LibYUVPlanarTest, TestCopyPlane) {
-  int err = 0;
-  int yw = benchmark_width_;
-  int yh = benchmark_height_;
-  int b = 12;
-  int i, j;
-
-  int y_plane_size = (yw + b * 2) * (yh + b * 2);
-  align_buffer_page_end(orig_y, y_plane_size);
+static int TestCopyPlane(int benchmark_width,
+                         int benchmark_height,
+                         int benchmark_iterations,
+                         int disable_cpu_flags,
+                         int benchmark_cpu_info,
+                         int invert,
+                         int off) {
+  const int y_plane_size = benchmark_width * benchmark_height;
+  align_buffer_page_end(orig_y, y_plane_size + off);
   align_buffer_page_end(dst_c, y_plane_size);
   align_buffer_page_end(dst_opt, y_plane_size);
 
-  memset(orig_y, 0, y_plane_size);
-  memset(dst_c, 0, y_plane_size);
-  memset(dst_opt, 0, y_plane_size);
-
-  // Fill image buffers with random data.
-  for (i = b; i < (yh + b); ++i) {
-    for (j = b; j < (yw + b); ++j) {
-      orig_y[i * (yw + b * 2) + j] = fastrand() & 0xff;
-    }
-  }
-
-  // Fill destination buffers with random data.
-  for (i = 0; i < y_plane_size; ++i) {
-    uint8_t random_number = fastrand() & 0x7f;
-    dst_c[i] = random_number;
-    dst_opt[i] = dst_c[i];
-  }
-
-  int y_off = b * (yw + b * 2) + b;
-
-  int y_st = yw + b * 2;
-  int stride = 8;
-
-  // Disable all optimizations.
-  MaskCpuFlags(disable_cpu_flags_);
-  for (j = 0; j < benchmark_iterations_; j++) {
-    CopyPlane(orig_y + y_off, y_st, dst_c + y_off, stride, yw, yh);
-  }
-
-  // Enable optimizations.
-  MaskCpuFlags(benchmark_cpu_info_);
-  for (j = 0; j < benchmark_iterations_; j++) {
-    CopyPlane(orig_y + y_off, y_st, dst_opt + y_off, stride, yw, yh);
-  }
-
-  for (i = 0; i < y_plane_size; ++i) {
-    if (dst_c[i] != dst_opt[i]) {
-      ++err;
-    }
-  }
-
-  free_aligned_buffer_page_end(orig_y);
-  free_aligned_buffer_page_end(dst_c);
-  free_aligned_buffer_page_end(dst_opt);
-
-  EXPECT_EQ(0, err);
-}
-
-TEST_F(LibYUVPlanarTest, CopyPlane_Opt) {
-  int i;
-  int y_plane_size = benchmark_width_ * benchmark_height_;
-  align_buffer_page_end(orig_y, y_plane_size);
-  align_buffer_page_end(dst_c, y_plane_size);
-  align_buffer_page_end(dst_opt, y_plane_size);
-
-  MemRandomize(orig_y, y_plane_size);
+  MemRandomize(orig_y + off, y_plane_size);
   memset(dst_c, 1, y_plane_size);
   memset(dst_opt, 2, y_plane_size);
 
   // Disable all optimizations.
-  MaskCpuFlags(disable_cpu_flags_);
-  for (i = 0; i < benchmark_iterations_; i++) {
-    CopyPlane(orig_y, benchmark_width_, dst_c, benchmark_width_,
-              benchmark_width_, benchmark_height_);
+  MaskCpuFlags(disable_cpu_flags);
+  for (int i = 0; i < benchmark_iterations; i++) {
+    CopyPlane(orig_y + off, benchmark_width, dst_c, benchmark_width,
+              benchmark_width, benchmark_height * invert);
   }
 
   // Enable optimizations.
-  MaskCpuFlags(benchmark_cpu_info_);
-  for (i = 0; i < benchmark_iterations_; i++) {
-    CopyPlane(orig_y, benchmark_width_, dst_opt, benchmark_width_,
-              benchmark_width_, benchmark_height_);
+  MaskCpuFlags(benchmark_cpu_info);
+  for (int i = 0; i < benchmark_iterations; i++) {
+    CopyPlane(orig_y + off, benchmark_width, dst_opt, benchmark_width,
+              benchmark_width, benchmark_height * invert);
   }
 
-  for (i = 0; i < y_plane_size; ++i) {
-    EXPECT_EQ(dst_c[i], dst_opt[i]);
+  int max_diff = 0;
+  for (int i = 0; i < y_plane_size; ++i) {
+    int abs_diff =
+        abs(static_cast<int>(dst_c[i]) - static_cast<int>(dst_opt[i]));
+    if (abs_diff > max_diff) {
+      max_diff = abs_diff;
+    }
   }
 
   free_aligned_buffer_page_end(orig_y);
   free_aligned_buffer_page_end(dst_c);
   free_aligned_buffer_page_end(dst_opt);
+
+  return max_diff;
+}
+
+TEST_F(LibYUVPlanarTest, CopyPlane_Any) {
+  int max_diff = TestCopyPlane(benchmark_width_ + 1, benchmark_height_,
+                               benchmark_iterations_, disable_cpu_flags_,
+                               benchmark_cpu_info_, +1, 0);
+  EXPECT_LE(max_diff, 0);
+}
+
+TEST_F(LibYUVPlanarTest, CopyPlane_Unaligned) {
+  int max_diff =
+      TestCopyPlane(benchmark_width_, benchmark_height_, benchmark_iterations_,
+                    disable_cpu_flags_, benchmark_cpu_info_, +1, 1);
+  EXPECT_LE(max_diff, 0);
+}
+
+TEST_F(LibYUVPlanarTest, CopyPlane_Invert) {
+  int max_diff =
+      TestCopyPlane(benchmark_width_, benchmark_height_, benchmark_iterations_,
+                    disable_cpu_flags_, benchmark_cpu_info_, -1, 0);
+  EXPECT_LE(max_diff, 0);
+}
+
+TEST_F(LibYUVPlanarTest, CopyPlane_Opt) {
+  int max_diff =
+      TestCopyPlane(benchmark_width_, benchmark_height_, benchmark_iterations_,
+                    disable_cpu_flags_, benchmark_cpu_info_, +1, 0);
+  EXPECT_LE(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, TestCopyPlaneZero) {
@@ -1860,28 +1886,28 @@ TEST_F(LibYUVPlanarTest, ARGBMultiply_Any) {
   int max_diff = TestMultiply(benchmark_width_ + 1, benchmark_height_,
                               benchmark_iterations_, disable_cpu_flags_,
                               benchmark_cpu_info_, +1, 0);
-  EXPECT_LE(max_diff, 1);
+  EXPECT_LE(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBMultiply_Unaligned) {
   int max_diff =
       TestMultiply(benchmark_width_, benchmark_height_, benchmark_iterations_,
                    disable_cpu_flags_, benchmark_cpu_info_, +1, 1);
-  EXPECT_LE(max_diff, 1);
+  EXPECT_LE(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBMultiply_Invert) {
   int max_diff =
       TestMultiply(benchmark_width_, benchmark_height_, benchmark_iterations_,
                    disable_cpu_flags_, benchmark_cpu_info_, -1, 0);
-  EXPECT_LE(max_diff, 1);
+  EXPECT_LE(max_diff, 0);
 }
 
 TEST_F(LibYUVPlanarTest, ARGBMultiply_Opt) {
   int max_diff =
       TestMultiply(benchmark_width_, benchmark_height_, benchmark_iterations_,
                    disable_cpu_flags_, benchmark_cpu_info_, +1, 0);
-  EXPECT_LE(max_diff, 1);
+  EXPECT_LE(max_diff, 0);
 }
 
 static int TestAdd(int width,
@@ -2450,42 +2476,45 @@ TEST_F(LibYUVPlanarTest, DISABLED_ARM(TestARGBPolynomial)) {
   }
 }
 
-int TestHalfFloatPlane(int benchmark_width,
-                       int benchmark_height,
-                       int benchmark_iterations,
-                       int disable_cpu_flags,
-                       int benchmark_cpu_info,
-                       float scale,
-                       int mask) {
+static int TestHalfFloatPlane(int benchmark_width,
+                              int benchmark_height,
+                              int benchmark_iterations,
+                              int disable_cpu_flags,
+                              int benchmark_cpu_info,
+                              float scale,
+                              int mask,
+                              int invert,
+                              int off) {
   int i, j;
   const int y_plane_size = benchmark_width * benchmark_height * 2;
+  align_buffer_page_end(orig_y, y_plane_size + off);
+  align_buffer_page_end(dst_c, y_plane_size);
+  align_buffer_page_end(dst_opt, y_plane_size);
 
-  align_buffer_page_end(orig_y, y_plane_size * 3);
-  uint8_t* dst_opt = orig_y + y_plane_size;
-  uint8_t* dst_c = orig_y + y_plane_size * 2;
-
-  MemRandomize(orig_y, y_plane_size);
-  memset(dst_c, 0, y_plane_size);
-  memset(dst_opt, 1, y_plane_size);
+  MemRandomize(orig_y + off, y_plane_size);
+  memset(dst_c, 1, y_plane_size);
+  memset(dst_opt, 2, y_plane_size);
 
   for (i = 0; i < y_plane_size / 2; ++i) {
-    reinterpret_cast<uint16_t*>(orig_y)[i] &= mask;
+    reinterpret_cast<uint16_t*>(orig_y + off)[i] &= mask;
   }
 
   // Disable all optimizations.
   MaskCpuFlags(disable_cpu_flags);
   for (j = 0; j < benchmark_iterations; j++) {
-    HalfFloatPlane(reinterpret_cast<uint16_t*>(orig_y), benchmark_width * 2,
-                   reinterpret_cast<uint16_t*>(dst_c), benchmark_width * 2,
-                   scale, benchmark_width, benchmark_height);
+    HalfFloatPlane(reinterpret_cast<uint16_t*>(orig_y + off),
+                   benchmark_width * 2, reinterpret_cast<uint16_t*>(dst_c),
+                   benchmark_width * 2, scale, benchmark_width,
+                   benchmark_height * invert);
   }
 
   // Enable optimizations.
   MaskCpuFlags(benchmark_cpu_info);
   for (j = 0; j < benchmark_iterations; j++) {
-    HalfFloatPlane(reinterpret_cast<uint16_t*>(orig_y), benchmark_width * 2,
-                   reinterpret_cast<uint16_t*>(dst_opt), benchmark_width * 2,
-                   scale, benchmark_width, benchmark_height);
+    HalfFloatPlane(reinterpret_cast<uint16_t*>(orig_y + off),
+                   benchmark_width * 2, reinterpret_cast<uint16_t*>(dst_opt),
+                   benchmark_width * 2, scale, benchmark_width,
+                   benchmark_height * invert);
   }
 
   int max_diff = 0;
@@ -2499,97 +2528,130 @@ int TestHalfFloatPlane(int benchmark_width,
   }
 
   free_aligned_buffer_page_end(orig_y);
+  free_aligned_buffer_page_end(dst_c);
+  free_aligned_buffer_page_end(dst_opt);
   return max_diff;
-}
-
-#if defined(__arm__)
-static void EnableFlushDenormalToZero(void) {
-  uint32_t cw;
-  __asm__ __volatile__(
-      "vmrs   %0, fpscr         \n"
-      "orr    %0, %0, #0x1000000        \n"
-      "vmsr   fpscr, %0         \n"
-      : "=r"(cw)::"memory");
-}
-#endif
-
-// 5 bit exponent with bias of 15 will underflow to a denormal if scale causes
-// exponent to be less than 0.  15 - log2(65536) = -1/  This shouldnt normally
-// happen since scale is 1/(1<<bits) where bits is 9, 10 or 12.
-
-TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_16bit_denormal) {
-// 32 bit arm rounding on denormal case is off by 1 compared to C.
-#if defined(__arm__)
-  EnableFlushDenormalToZero();
-#endif
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 65536.0f, 65535);
-  EXPECT_EQ(0, diff);
 }
 
 TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_16bit_One) {
   int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
                                 benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f, 65535);
+                                benchmark_cpu_info_, 1.0f, 65535, +1, 0);
   EXPECT_LE(diff, 1);
 }
 
 TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_16bit_Opt) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 4096.0f, 65535);
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 65535.0f, 65535, +1, 0);
+  EXPECT_EQ(0, diff);
+}
+
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_12bit_Opt) {
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 4095.0f, 4095, +1, 0);
   EXPECT_EQ(0, diff);
 }
 
 TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_10bit_Opt) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 1024.0f, 1023);
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 1023.0f, 1023, +1, 0);
   EXPECT_EQ(0, diff);
 }
 
 TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_9bit_Opt) {
   int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
                                 benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 512.0f, 511);
+                                benchmark_cpu_info_, 1.0f / 511.0f, 511, +1, 0);
+  EXPECT_EQ(0, diff);
+}
+
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_Any) {
+  int diff = TestHalfFloatPlane(
+      benchmark_width_ + 1, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 4096.0f, 4095, +1, 0);
+  EXPECT_EQ(0, diff);
+}
+
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_Unaligned) {
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 4096.0f, 4095, +1, 2);
+  EXPECT_EQ(0, diff);
+}
+
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_Invert) {
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 4096.0f, 4095, -1, 0);
   EXPECT_EQ(0, diff);
 }
 
 TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_Opt) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 4096.0f, 4095);
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 4096.0f, 4095, +1, 0);
   EXPECT_EQ(0, diff);
 }
 
-TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_Offby1) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f / 4095.0f, 4095);
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_16bit_denormal) {
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 65535.0f, 65535, +1, 0);
   EXPECT_EQ(0, diff);
 }
 
-TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_One) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f, 2047);
+#if defined(__arm__)
+static void EnableFlushDenormalToZero(void) {
+  uint32_t cw;
+  asm volatile(
+      "vmrs   %0, fpscr                 \n"
+      "orr    %0, %0, #0x1000000        \n"
+      "vmsr   fpscr, %0                 \n"
+      : "=r"(cw)::"memory", "cc");  // Clobber List
+}
+
+static void DisableFlushDenormalToZero(void) {
+  uint32_t cw;
+  asm volatile(
+      "vmrs   %0, fpscr                 \n"
+      "bic    %0, %0, #0x1000000        \n"
+      "vmsr   fpscr, %0                 \n"
+      : "=r"(cw)::"memory", "cc");  // Clobber List
+}
+
+// 5 bit exponent with bias of 15 will underflow to a denormal if scale causes
+// exponent to be less than 0.  15 - log2(65536) = -1/  This shouldnt normally
+// happen since scale is 1/(1<<bits) where bits is 9, 10 or 12.
+
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_16bit_flush_denormal) {
+  // 32 bit arm rounding on denormal case is off by 1 compared to C.
+  EnableFlushDenormalToZero();
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 65535.0f, 65535, +1, 0);
+  DisableFlushDenormalToZero();
   EXPECT_EQ(0, diff);
 }
 
-TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_12bit_One) {
-  int diff = TestHalfFloatPlane(benchmark_width_, benchmark_height_,
-                                benchmark_iterations_, disable_cpu_flags_,
-                                benchmark_cpu_info_, 1.0f, 4095);
-  EXPECT_LE(diff, 1);
+TEST_F(LibYUVPlanarTest, TestHalfFloatPlane_10bit_flush_denormal) {
+  EnableFlushDenormalToZero();
+  int diff = TestHalfFloatPlane(
+      benchmark_width_, benchmark_height_, benchmark_iterations_,
+      disable_cpu_flags_, benchmark_cpu_info_, 1.0f / 1023.0f, 1023, +1, 0);
+  DisableFlushDenormalToZero();
+  EXPECT_EQ(0, diff);
 }
+#endif  // defined(__arm__)
 
-float TestByteToFloat(int benchmark_width,
-                      int benchmark_height,
-                      int benchmark_iterations,
-                      int disable_cpu_flags,
-                      int benchmark_cpu_info,
-                      float scale) {
+static float TestByteToFloat(int benchmark_width,
+                             int benchmark_height,
+                             int benchmark_iterations,
+                             int disable_cpu_flags,
+                             int benchmark_cpu_info,
+                             float scale) {
   int i, j;
   const int y_plane_size = benchmark_width * benchmark_height;
 
@@ -2749,12 +2811,23 @@ TEST_F(LibYUVPlanarTest, TestARGBExtractAlpha) {
   MaskCpuFlags(disable_cpu_flags_);
   ARGBExtractAlpha(src_pixels, benchmark_width_ * 4, dst_pixels_c,
                    benchmark_width_, benchmark_width_, benchmark_height_);
-  MaskCpuFlags(benchmark_cpu_info_);
+  double c_time = get_time();
+  ARGBExtractAlpha(src_pixels, benchmark_width_ * 4, dst_pixels_c,
+                   benchmark_width_, benchmark_width_, benchmark_height_);
+  c_time = (get_time() - c_time);
 
+  MaskCpuFlags(benchmark_cpu_info_);
+  ARGBExtractAlpha(src_pixels, benchmark_width_ * 4, dst_pixels_opt,
+                   benchmark_width_, benchmark_width_, benchmark_height_);
+  double opt_time = get_time();
   for (int i = 0; i < benchmark_iterations_; ++i) {
     ARGBExtractAlpha(src_pixels, benchmark_width_ * 4, dst_pixels_opt,
                      benchmark_width_, benchmark_width_, benchmark_height_);
   }
+  opt_time = (get_time() - opt_time) / benchmark_iterations_;
+  // Report performance of C vs OPT
+  printf("%8d us C - %8d us OPT\n", static_cast<int>(c_time * 1e6),
+         static_cast<int>(opt_time * 1e6));
   for (int i = 0; i < kPixels; ++i) {
     EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
   }
@@ -2777,12 +2850,24 @@ TEST_F(LibYUVPlanarTest, TestARGBCopyYToAlpha) {
   MaskCpuFlags(disable_cpu_flags_);
   ARGBCopyYToAlpha(orig_pixels, benchmark_width_, dst_pixels_c,
                    benchmark_width_ * 4, benchmark_width_, benchmark_height_);
-  MaskCpuFlags(benchmark_cpu_info_);
+  double c_time = get_time();
+  ARGBCopyYToAlpha(orig_pixels, benchmark_width_, dst_pixels_c,
+                   benchmark_width_ * 4, benchmark_width_, benchmark_height_);
+  c_time = (get_time() - c_time);
 
+  MaskCpuFlags(benchmark_cpu_info_);
+  ARGBCopyYToAlpha(orig_pixels, benchmark_width_, dst_pixels_opt,
+                   benchmark_width_ * 4, benchmark_width_, benchmark_height_);
+  double opt_time = get_time();
   for (int i = 0; i < benchmark_iterations_; ++i) {
     ARGBCopyYToAlpha(orig_pixels, benchmark_width_, dst_pixels_opt,
                      benchmark_width_ * 4, benchmark_width_, benchmark_height_);
   }
+  opt_time = (get_time() - opt_time) / benchmark_iterations_;
+
+  // Report performance of C vs OPT
+  printf("%8d us C - %8d us OPT\n", static_cast<int>(c_time * 1e6),
+         static_cast<int>(opt_time * 1e6));
   for (int i = 0; i < kPixels * 4; ++i) {
     EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
   }
@@ -3077,35 +3162,44 @@ TEST_F(LibYUVPlanarTest, MergeRGBPlane_Opt) {
   // Round count up to multiple of 16
   const int kPixels = benchmark_width_ * benchmark_height_;
   align_buffer_page_end(src_pixels, kPixels * 3);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(dst_pixels_opt, kPixels * 3);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
   align_buffer_page_end(dst_pixels_c, kPixels * 3);
+  align_buffer_page_end(dst_pixels_opt, kPixels * 3);
 
   MemRandomize(src_pixels, kPixels * 3);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(dst_pixels_opt, kPixels * 3);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
   MemRandomize(dst_pixels_c, kPixels * 3);
+  MemRandomize(dst_pixels_opt, kPixels * 3);
 
   MaskCpuFlags(disable_cpu_flags_);
-  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_r,
-                benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                benchmark_width_, benchmark_width_, benchmark_height_);
-  MergeRGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                tmp_pixels_b, benchmark_width_, dst_pixels_c,
-                benchmark_width_ * 3, benchmark_width_, benchmark_height_);
+  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_c_r,
+                benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                tmp_pixels_c_b, benchmark_width_, benchmark_width_,
+                benchmark_height_);
+  MergeRGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                benchmark_width_, tmp_pixels_c_b, benchmark_width_,
+                dst_pixels_c, benchmark_width_ * 3, benchmark_width_,
+                benchmark_height_);
   MaskCpuFlags(benchmark_cpu_info_);
 
-  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_r,
-                benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                benchmark_width_, benchmark_width_, benchmark_height_);
+  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_opt_r,
+                benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                tmp_pixels_opt_b, benchmark_width_, benchmark_width_,
+                benchmark_height_);
 
   for (int i = 0; i < benchmark_iterations_; ++i) {
-    MergeRGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g,
-                  benchmark_width_, tmp_pixels_b, benchmark_width_,
+    MergeRGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                  benchmark_width_, tmp_pixels_opt_b, benchmark_width_,
                   dst_pixels_opt, benchmark_width_ * 3, benchmark_width_,
                   benchmark_height_);
   }
@@ -3115,99 +3209,122 @@ TEST_F(LibYUVPlanarTest, MergeRGBPlane_Opt) {
   }
 
   free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
-  free_aligned_buffer_page_end(dst_pixels_opt);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
   free_aligned_buffer_page_end(dst_pixels_c);
+  free_aligned_buffer_page_end(dst_pixels_opt);
 }
 
 TEST_F(LibYUVPlanarTest, SplitRGBPlane_Opt) {
   // Round count up to multiple of 16
   const int kPixels = benchmark_width_ * benchmark_height_;
   align_buffer_page_end(src_pixels, kPixels * 3);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(dst_pixels_opt, kPixels * 3);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
   align_buffer_page_end(dst_pixels_c, kPixels * 3);
+  align_buffer_page_end(dst_pixels_opt, kPixels * 3);
 
   MemRandomize(src_pixels, kPixels * 3);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(dst_pixels_opt, kPixels * 3);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
   MemRandomize(dst_pixels_c, kPixels * 3);
+  MemRandomize(dst_pixels_opt, kPixels * 3);
 
   MaskCpuFlags(disable_cpu_flags_);
-  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_r,
-                benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                benchmark_width_, benchmark_width_, benchmark_height_);
-  MergeRGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                tmp_pixels_b, benchmark_width_, dst_pixels_c,
-                benchmark_width_ * 3, benchmark_width_, benchmark_height_);
+  SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_c_r,
+                benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                tmp_pixels_c_b, benchmark_width_, benchmark_width_,
+                benchmark_height_);
+  MergeRGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                benchmark_width_, tmp_pixels_c_b, benchmark_width_,
+                dst_pixels_c, benchmark_width_ * 3, benchmark_width_,
+                benchmark_height_);
   MaskCpuFlags(benchmark_cpu_info_);
 
   for (int i = 0; i < benchmark_iterations_; ++i) {
-    SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_r,
-                  benchmark_width_, tmp_pixels_g, benchmark_width_,
-                  tmp_pixels_b, benchmark_width_, benchmark_width_,
+    SplitRGBPlane(src_pixels, benchmark_width_ * 3, tmp_pixels_opt_r,
+                  benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                  tmp_pixels_opt_b, benchmark_width_, benchmark_width_,
                   benchmark_height_);
   }
-  MergeRGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                tmp_pixels_b, benchmark_width_, dst_pixels_opt,
-                benchmark_width_ * 3, benchmark_width_, benchmark_height_);
+  MergeRGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                benchmark_width_, tmp_pixels_opt_b, benchmark_width_,
+                dst_pixels_opt, benchmark_width_ * 3, benchmark_width_,
+                benchmark_height_);
 
   for (int i = 0; i < kPixels * 3; ++i) {
     EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
   }
 
   free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
-  free_aligned_buffer_page_end(dst_pixels_opt);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
   free_aligned_buffer_page_end(dst_pixels_c);
+  free_aligned_buffer_page_end(dst_pixels_opt);
 }
 
 TEST_F(LibYUVPlanarTest, MergeARGBPlane_Opt) {
   const int kPixels = benchmark_width_ * benchmark_height_;
   align_buffer_page_end(src_pixels, kPixels * 4);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(tmp_pixels_a, kPixels);
-  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
+  align_buffer_page_end(tmp_pixels_c_a, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_a, kPixels);
   align_buffer_page_end(dst_pixels_c, kPixels * 4);
+  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
 
   MemRandomize(src_pixels, kPixels * 4);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(tmp_pixels_a, kPixels);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
+  MemRandomize(tmp_pixels_c_a, kPixels);
+  MemRandomize(tmp_pixels_opt_a, kPixels);
   MemRandomize(dst_pixels_opt, kPixels * 4);
   MemRandomize(dst_pixels_c, kPixels * 4);
 
   MaskCpuFlags(disable_cpu_flags_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, tmp_pixels_a, benchmark_width_,
-                 benchmark_width_, benchmark_height_);
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, tmp_pixels_a, benchmark_width_,
-                 dst_pixels_c, benchmark_width_ * 4, benchmark_width_,
-                 benchmark_height_);
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_c_r,
+                 benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                 tmp_pixels_c_b, benchmark_width_, tmp_pixels_c_a,
+                 benchmark_width_, benchmark_width_, benchmark_height_);
+  MergeARGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                 benchmark_width_, tmp_pixels_c_b, benchmark_width_,
+                 tmp_pixels_c_a, benchmark_width_, dst_pixels_c,
+                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
 
   MaskCpuFlags(benchmark_cpu_info_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, tmp_pixels_a, benchmark_width_,
-                 benchmark_width_, benchmark_height_);
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_opt_r,
+                 benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                 tmp_pixels_opt_b, benchmark_width_, tmp_pixels_opt_a,
+                 benchmark_width_, benchmark_width_, benchmark_height_);
 
   for (int i = 0; i < benchmark_iterations_; ++i) {
-    MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g,
-                   benchmark_width_, tmp_pixels_b, benchmark_width_,
-                   tmp_pixels_a, benchmark_width_, dst_pixels_opt,
+    MergeARGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                   benchmark_width_, tmp_pixels_opt_b, benchmark_width_,
+                   tmp_pixels_opt_a, benchmark_width_, dst_pixels_opt,
                    benchmark_width_ * 4, benchmark_width_, benchmark_height_);
   }
 
@@ -3216,10 +3333,14 @@ TEST_F(LibYUVPlanarTest, MergeARGBPlane_Opt) {
   }
 
   free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
-  free_aligned_buffer_page_end(tmp_pixels_a);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
+  free_aligned_buffer_page_end(tmp_pixels_c_a);
+  free_aligned_buffer_page_end(tmp_pixels_opt_a);
   free_aligned_buffer_page_end(dst_pixels_opt);
   free_aligned_buffer_page_end(dst_pixels_c);
 }
@@ -3227,41 +3348,171 @@ TEST_F(LibYUVPlanarTest, MergeARGBPlane_Opt) {
 TEST_F(LibYUVPlanarTest, SplitARGBPlane_Opt) {
   const int kPixels = benchmark_width_ * benchmark_height_;
   align_buffer_page_end(src_pixels, kPixels * 4);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(tmp_pixels_a, kPixels);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
+  align_buffer_page_end(tmp_pixels_c_a, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_a, kPixels);
   align_buffer_page_end(dst_pixels_opt, kPixels * 4);
   align_buffer_page_end(dst_pixels_c, kPixels * 4);
 
   MemRandomize(src_pixels, kPixels * 4);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(tmp_pixels_a, kPixels);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
+  MemRandomize(tmp_pixels_c_a, kPixels);
+  MemRandomize(tmp_pixels_opt_a, kPixels);
   MemRandomize(dst_pixels_opt, kPixels * 4);
   MemRandomize(dst_pixels_c, kPixels * 4);
 
   MaskCpuFlags(disable_cpu_flags_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, tmp_pixels_a, benchmark_width_,
-                 benchmark_width_, benchmark_height_);
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, tmp_pixels_a, benchmark_width_,
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_c_r,
+                 benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                 tmp_pixels_c_b, benchmark_width_, tmp_pixels_c_a,
+                 benchmark_width_, benchmark_width_, benchmark_height_);
+  MergeARGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                 benchmark_width_, tmp_pixels_c_b, benchmark_width_,
+                 tmp_pixels_c_a, benchmark_width_, dst_pixels_c,
+                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
+
+  MaskCpuFlags(benchmark_cpu_info_);
+  for (int i = 0; i < benchmark_iterations_; ++i) {
+    SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_opt_r,
+                   benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                   tmp_pixels_opt_b, benchmark_width_, tmp_pixels_opt_a,
+                   benchmark_width_, benchmark_width_, benchmark_height_);
+  }
+
+  MergeARGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                 benchmark_width_, tmp_pixels_opt_b, benchmark_width_,
+                 tmp_pixels_opt_a, benchmark_width_, dst_pixels_opt,
+                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
+
+  for (int i = 0; i < kPixels * 4; ++i) {
+    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
+  }
+
+  free_aligned_buffer_page_end(src_pixels);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
+  free_aligned_buffer_page_end(tmp_pixels_c_a);
+  free_aligned_buffer_page_end(tmp_pixels_opt_a);
+  free_aligned_buffer_page_end(dst_pixels_c);
+  free_aligned_buffer_page_end(dst_pixels_opt);
+}
+
+TEST_F(LibYUVPlanarTest, MergeXRGBPlane_Opt) {
+  const int kPixels = benchmark_width_ * benchmark_height_;
+  align_buffer_page_end(src_pixels, kPixels * 4);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
+  align_buffer_page_end(dst_pixels_c, kPixels * 4);
+  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
+
+  MemRandomize(src_pixels, kPixels * 4);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
+  MemRandomize(dst_pixels_c, kPixels * 4);
+  MemRandomize(dst_pixels_opt, kPixels * 4);
+
+  MaskCpuFlags(disable_cpu_flags_);
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_c_r,
+                 benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                 tmp_pixels_c_b, benchmark_width_, NULL, 0, benchmark_width_,
+                 benchmark_height_);
+  MergeARGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                 benchmark_width_, tmp_pixels_c_b, benchmark_width_, NULL, 0,
+                 dst_pixels_c, benchmark_width_ * 4, benchmark_width_,
+                 benchmark_height_);
+
+  MaskCpuFlags(benchmark_cpu_info_);
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_opt_r,
+                 benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                 tmp_pixels_opt_b, benchmark_width_, NULL, 0, benchmark_width_,
+                 benchmark_height_);
+
+  for (int i = 0; i < benchmark_iterations_; ++i) {
+    MergeARGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                   benchmark_width_, tmp_pixels_opt_b, benchmark_width_, NULL,
+                   0, dst_pixels_opt, benchmark_width_ * 4, benchmark_width_,
+                   benchmark_height_);
+  }
+
+  for (int i = 0; i < kPixels * 4; ++i) {
+    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
+  }
+
+  free_aligned_buffer_page_end(src_pixels);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
+  free_aligned_buffer_page_end(dst_pixels_c);
+  free_aligned_buffer_page_end(dst_pixels_opt);
+}
+
+TEST_F(LibYUVPlanarTest, SplitXRGBPlane_Opt) {
+  const int kPixels = benchmark_width_ * benchmark_height_;
+  align_buffer_page_end(src_pixels, kPixels * 4);
+  align_buffer_page_end(tmp_pixels_c_r, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_r, kPixels);
+  align_buffer_page_end(tmp_pixels_c_g, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_g, kPixels);
+  align_buffer_page_end(tmp_pixels_c_b, kPixels);
+  align_buffer_page_end(tmp_pixels_opt_b, kPixels);
+  align_buffer_page_end(dst_pixels_c, kPixels * 4);
+  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
+
+  MemRandomize(src_pixels, kPixels * 4);
+  MemRandomize(tmp_pixels_c_r, kPixels);
+  MemRandomize(tmp_pixels_opt_r, kPixels);
+  MemRandomize(tmp_pixels_c_g, kPixels);
+  MemRandomize(tmp_pixels_opt_g, kPixels);
+  MemRandomize(tmp_pixels_c_b, kPixels);
+  MemRandomize(tmp_pixels_opt_b, kPixels);
+  MemRandomize(dst_pixels_c, kPixels * 4);
+  MemRandomize(dst_pixels_opt, kPixels * 4);
+
+  MaskCpuFlags(disable_cpu_flags_);
+  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_c_r,
+                 benchmark_width_, tmp_pixels_c_g, benchmark_width_,
+                 tmp_pixels_c_b, benchmark_width_, NULL, 0, benchmark_width_,
+                 benchmark_height_);
+  MergeARGBPlane(tmp_pixels_c_r, benchmark_width_, tmp_pixels_c_g,
+                 benchmark_width_, tmp_pixels_c_b, benchmark_width_, NULL, 0,
                  dst_pixels_c, benchmark_width_ * 4, benchmark_width_,
                  benchmark_height_);
 
   MaskCpuFlags(benchmark_cpu_info_);
   for (int i = 0; i < benchmark_iterations_; ++i) {
-    SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                   benchmark_width_, tmp_pixels_g, benchmark_width_,
-                   tmp_pixels_b, benchmark_width_, tmp_pixels_a,
-                   benchmark_width_, benchmark_width_, benchmark_height_);
+    SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_opt_r,
+                   benchmark_width_, tmp_pixels_opt_g, benchmark_width_,
+                   tmp_pixels_opt_b, benchmark_width_, NULL, 0,
+                   benchmark_width_, benchmark_height_);
   }
 
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, tmp_pixels_a, benchmark_width_,
+  MergeARGBPlane(tmp_pixels_opt_r, benchmark_width_, tmp_pixels_opt_g,
+                 benchmark_width_, tmp_pixels_opt_b, benchmark_width_, NULL, 0,
                  dst_pixels_opt, benchmark_width_ * 4, benchmark_width_,
                  benchmark_height_);
 
@@ -3270,111 +3521,14 @@ TEST_F(LibYUVPlanarTest, SplitARGBPlane_Opt) {
   }
 
   free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
-  free_aligned_buffer_page_end(tmp_pixels_a);
-  free_aligned_buffer_page_end(dst_pixels_opt);
+  free_aligned_buffer_page_end(tmp_pixels_c_r);
+  free_aligned_buffer_page_end(tmp_pixels_opt_r);
+  free_aligned_buffer_page_end(tmp_pixels_c_g);
+  free_aligned_buffer_page_end(tmp_pixels_opt_g);
+  free_aligned_buffer_page_end(tmp_pixels_c_b);
+  free_aligned_buffer_page_end(tmp_pixels_opt_b);
   free_aligned_buffer_page_end(dst_pixels_c);
-}
-
-TEST_F(LibYUVPlanarTest, MergeXRGBPlane_Opt) {
-  const int kPixels = benchmark_width_ * benchmark_height_;
-  align_buffer_page_end(src_pixels, kPixels * 4);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
-  align_buffer_page_end(dst_pixels_c, kPixels * 4);
-
-  MemRandomize(src_pixels, kPixels * 4);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(dst_pixels_opt, kPixels * 4);
-  MemRandomize(dst_pixels_c, kPixels * 4);
-
-  MaskCpuFlags(disable_cpu_flags_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, NULL, 0, benchmark_width_,
-                 benchmark_height_);
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, NULL, 0, dst_pixels_c,
-                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
-
-  MaskCpuFlags(benchmark_cpu_info_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, NULL, 0, benchmark_width_,
-                 benchmark_height_);
-
-  for (int i = 0; i < benchmark_iterations_; ++i) {
-    MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g,
-                   benchmark_width_, tmp_pixels_b, benchmark_width_, NULL, 0,
-                   dst_pixels_opt, benchmark_width_ * 4, benchmark_width_,
-                   benchmark_height_);
-  }
-
-  for (int i = 0; i < kPixels * 4; ++i) {
-    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
-  }
-
-  free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
   free_aligned_buffer_page_end(dst_pixels_opt);
-  free_aligned_buffer_page_end(dst_pixels_c);
-}
-
-TEST_F(LibYUVPlanarTest, SplitXRGBPlane_Opt) {
-  const int kPixels = benchmark_width_ * benchmark_height_;
-  align_buffer_page_end(src_pixels, kPixels * 4);
-  align_buffer_page_end(tmp_pixels_r, kPixels);
-  align_buffer_page_end(tmp_pixels_g, kPixels);
-  align_buffer_page_end(tmp_pixels_b, kPixels);
-  align_buffer_page_end(dst_pixels_opt, kPixels * 4);
-  align_buffer_page_end(dst_pixels_c, kPixels * 4);
-
-  MemRandomize(src_pixels, kPixels * 4);
-  MemRandomize(tmp_pixels_r, kPixels);
-  MemRandomize(tmp_pixels_g, kPixels);
-  MemRandomize(tmp_pixels_b, kPixels);
-  MemRandomize(dst_pixels_opt, kPixels * 4);
-  MemRandomize(dst_pixels_c, kPixels * 4);
-
-  MaskCpuFlags(disable_cpu_flags_);
-  SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                 benchmark_width_, tmp_pixels_g, benchmark_width_, tmp_pixels_b,
-                 benchmark_width_, NULL, 0, benchmark_width_,
-                 benchmark_height_);
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, NULL, 0, dst_pixels_c,
-                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
-
-  MaskCpuFlags(benchmark_cpu_info_);
-  for (int i = 0; i < benchmark_iterations_; ++i) {
-    SplitARGBPlane(src_pixels, benchmark_width_ * 4, tmp_pixels_r,
-                   benchmark_width_, tmp_pixels_g, benchmark_width_,
-                   tmp_pixels_b, benchmark_width_, NULL, 0, benchmark_width_,
-                   benchmark_height_);
-  }
-
-  MergeARGBPlane(tmp_pixels_r, benchmark_width_, tmp_pixels_g, benchmark_width_,
-                 tmp_pixels_b, benchmark_width_, NULL, 0, dst_pixels_opt,
-                 benchmark_width_ * 4, benchmark_width_, benchmark_height_);
-
-  for (int i = 0; i < kPixels * 4; ++i) {
-    EXPECT_EQ(dst_pixels_c[i], dst_pixels_opt[i]);
-  }
-
-  free_aligned_buffer_page_end(src_pixels);
-  free_aligned_buffer_page_end(tmp_pixels_r);
-  free_aligned_buffer_page_end(tmp_pixels_g);
-  free_aligned_buffer_page_end(tmp_pixels_b);
-  free_aligned_buffer_page_end(dst_pixels_opt);
-  free_aligned_buffer_page_end(dst_pixels_c);
 }
 
 // Merge 4 channels
@@ -3534,8 +3688,8 @@ TESTTPLANARTOP(MergeXR30, uint16_t, uint8_t, 16)
 // TODO(fbarchard): improve test for platforms and cpu detect
 #ifdef HAS_MERGEUVROW_16_AVX2
 TEST_F(LibYUVPlanarTest, MergeUVRow_16_Opt) {
-  // Round count up to multiple of 16
-  const int kPixels = (benchmark_width_ * benchmark_height_ + 15) & ~15;
+  // Round count up to multiple of 8
+  const int kPixels = (benchmark_width_ * benchmark_height_ + 7) & ~7;
 
   align_buffer_page_end(src_pixels_u, kPixels * 2);
   align_buffer_page_end(src_pixels_v, kPixels * 2);
@@ -3637,6 +3791,37 @@ TEST_F(LibYUVPlanarTest, Convert16To8Plane) {
     Convert16To8Plane(reinterpret_cast<const uint16_t*>(src_pixels_y),
                       benchmark_width_, dst_pixels_y_opt, benchmark_width_,
                       16384, benchmark_width_, benchmark_height_);
+  }
+
+  for (int i = 0; i < kPixels; ++i) {
+    EXPECT_EQ(dst_pixels_y_opt[i], dst_pixels_y_c[i]);
+  }
+
+  free_aligned_buffer_page_end(src_pixels_y);
+  free_aligned_buffer_page_end(dst_pixels_y_opt);
+  free_aligned_buffer_page_end(dst_pixels_y_c);
+}
+
+TEST_F(LibYUVPlanarTest, Convert8To8Plane) {
+  const int kPixels = benchmark_width_ * benchmark_height_;
+  align_buffer_page_end(src_pixels_y, kPixels);
+  align_buffer_page_end(dst_pixels_y_opt, kPixels);
+  align_buffer_page_end(dst_pixels_y_c, kPixels);
+
+  MemRandomize(src_pixels_y, kPixels);
+  memset(dst_pixels_y_opt, 0, kPixels);
+  memset(dst_pixels_y_c, 1, kPixels);
+
+  MaskCpuFlags(disable_cpu_flags_);
+  Convert8To8Plane(src_pixels_y, benchmark_width_, dst_pixels_y_c,
+                   benchmark_width_, 220, 16, benchmark_width_,
+                   benchmark_height_);
+  MaskCpuFlags(benchmark_cpu_info_);
+
+  for (int i = 0; i < benchmark_iterations_; ++i) {
+    Convert8To8Plane(src_pixels_y, benchmark_width_, dst_pixels_y_opt,
+                     benchmark_width_, 220, 16, benchmark_width_,
+                     benchmark_height_);
   }
 
   for (int i = 0; i < kPixels; ++i) {
@@ -4368,15 +4553,11 @@ TEST_F(LibYUVPlanarTest, HalfMergeUVPlane_Opt) {
   int dst_height = (benchmark_height_ + 1) / 2;
   align_buffer_page_end(src_pixels_u, benchmark_width_ * benchmark_height_);
   align_buffer_page_end(src_pixels_v, benchmark_width_ * benchmark_height_);
-  align_buffer_page_end(tmp_pixels_u, dst_width * dst_height);
-  align_buffer_page_end(tmp_pixels_v, dst_width * dst_height);
   align_buffer_page_end(dst_pixels_uv_opt, dst_width * 2 * dst_height);
   align_buffer_page_end(dst_pixels_uv_c, dst_width * 2 * dst_height);
 
   MemRandomize(src_pixels_u, benchmark_width_ * benchmark_height_);
   MemRandomize(src_pixels_v, benchmark_width_ * benchmark_height_);
-  MemRandomize(tmp_pixels_u, dst_width * dst_height);
-  MemRandomize(tmp_pixels_v, dst_width * dst_height);
   MemRandomize(dst_pixels_uv_opt, dst_width * 2 * dst_height);
   MemRandomize(dst_pixels_uv_c, dst_width * 2 * dst_height);
 
@@ -4398,8 +4579,6 @@ TEST_F(LibYUVPlanarTest, HalfMergeUVPlane_Opt) {
 
   free_aligned_buffer_page_end(src_pixels_u);
   free_aligned_buffer_page_end(src_pixels_v);
-  free_aligned_buffer_page_end(tmp_pixels_u);
-  free_aligned_buffer_page_end(tmp_pixels_v);
   free_aligned_buffer_page_end(dst_pixels_uv_opt);
   free_aligned_buffer_page_end(dst_pixels_uv_c);
 }
@@ -4467,5 +4646,84 @@ TEST_F(LibYUVPlanarTest, NV21Copy) {
   free_aligned_buffer_page_end(dst_y);
   free_aligned_buffer_page_end(dst_vu);
 }
+
+#if defined(ENABLE_ROW_TESTS) && !defined(LIBYUV_DISABLE_NEON) && \
+    defined(__aarch64__)
+
+TEST_F(LibYUVPlanarTest, TestConvertFP16ToFP32) {
+  int i, j;
+  const int y_plane_size = benchmark_width_ * benchmark_height_;
+
+  align_buffer_page_end(orig_f, y_plane_size * 4);
+  align_buffer_page_end(orig_y, y_plane_size * 2);
+  align_buffer_page_end(dst_opt, y_plane_size * 4);
+  align_buffer_page_end(rec_opt, y_plane_size * 2);
+
+  for (i = 0; i < y_plane_size; ++i) {
+    ((float*)orig_f)[i] = (float)(i % 10000) * 3.14f;
+  }
+  memset(orig_y, 1, y_plane_size * 2);
+  memset(dst_opt, 2, y_plane_size * 4);
+  memset(rec_opt, 3, y_plane_size * 2);
+
+  ConvertFP32ToFP16Row_NEON((const float*)orig_f, (uint16_t*)orig_y,
+                            y_plane_size);
+
+  for (j = 0; j < benchmark_iterations_; j++) {
+    ConvertFP16ToFP32Row_NEON((const uint16_t*)orig_y, (float*)dst_opt,
+                              y_plane_size);
+  }
+
+  ConvertFP32ToFP16Row_NEON((const float*)dst_opt, (uint16_t*)rec_opt,
+                            y_plane_size);
+
+  for (i = 0; i < y_plane_size; ++i) {
+    EXPECT_EQ(((const uint16_t*)orig_y)[i], ((const uint16_t*)rec_opt)[i]);
+  }
+
+  free_aligned_buffer_page_end(orig_f);
+  free_aligned_buffer_page_end(orig_y);
+  free_aligned_buffer_page_end(dst_opt);
+  free_aligned_buffer_page_end(rec_opt);
+}
+
+TEST_F(LibYUVPlanarTest, TestConvertFP16ToFP32Column) {
+  int i, j;
+  const int y_plane_size = benchmark_width_ * benchmark_height_;
+
+  align_buffer_page_end(orig_f, y_plane_size * 4);
+  align_buffer_page_end(orig_y, y_plane_size * 2);
+  align_buffer_page_end(dst_opt, y_plane_size * 4);
+  align_buffer_page_end(rec_opt, y_plane_size * 2);
+
+  for (i = 0; i < y_plane_size; ++i) {
+    ((float*)orig_f)[i] = (float)(i % 10000) * 3.14f;
+  }
+  memset(orig_y, 1, y_plane_size * 2);
+  memset(dst_opt, 2, y_plane_size * 4);
+  memset(rec_opt, 3, y_plane_size * 2);
+
+  ConvertFP32ToFP16Row_NEON((const float*)orig_f, (uint16_t*)orig_y,
+                            y_plane_size);
+
+  for (j = 0; j < benchmark_iterations_; j++) {
+    ConvertFP16ToFP32Column_NEON((const uint16_t*)orig_y, 1, (float*)dst_opt,
+                                 y_plane_size);
+  }
+
+  ConvertFP32ToFP16Row_NEON((const float*)dst_opt, (uint16_t*)rec_opt,
+                            y_plane_size);
+
+  for (i = 0; i < y_plane_size; ++i) {
+    EXPECT_EQ(((const uint16_t*)orig_y)[i], ((const uint16_t*)rec_opt)[i]);
+  }
+
+  free_aligned_buffer_page_end(orig_f);
+  free_aligned_buffer_page_end(orig_y);
+  free_aligned_buffer_page_end(dst_opt);
+  free_aligned_buffer_page_end(rec_opt);
+}
+
+#endif  // defined(ENABLE_ROW_TESTS) && defined(__aarch64__)
 
 }  // namespace libyuv

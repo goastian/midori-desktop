@@ -8,8 +8,10 @@ description: >
 includes: [propertyHelper.js]
 ---*/
 
-verifyNotEnumerable(this, "isFinite");
-verifyWritable(this, "isFinite");
-verifyConfigurable(this, "isFinite");
+verifyPrimordialCallableProperty(this, "isFinite", "isFinite", 1, {
+  writable: true,
+  enumerable: false,
+  configurable: true
+});
 
 reportCompare(0, 0);

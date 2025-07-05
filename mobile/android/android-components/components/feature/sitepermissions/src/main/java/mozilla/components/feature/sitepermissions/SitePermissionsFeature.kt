@@ -69,8 +69,9 @@ import mozilla.components.support.base.feature.PermissionsFeature
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.ktx.android.content.isPermissionGranted
 import mozilla.components.support.ktx.kotlin.getOrigin
-import mozilla.components.support.ktx.kotlin.stripDefaultPort
+import mozilla.components.support.ktx.kotlin.tryGetHostFromUrl
 import mozilla.components.support.ktx.kotlinx.coroutines.flow.filterChanged
+import java.net.URL
 import java.security.InvalidParameterException
 import mozilla.components.ui.icons.R as iconsR
 
@@ -499,10 +500,10 @@ class SitePermissionsFeature(
     internal fun handleNoRuledFlow(
         permissionFromStorage: SitePermissions?,
         permissionRequest: PermissionRequest,
-        host: String,
+        origin: String,
     ): SitePermissionsDialogFragment? {
         return if (shouldShowPrompt(permissionRequest, permissionFromStorage)) {
-            createPrompt(permissionRequest, host)
+            createPrompt(permissionRequest, origin)
         } else {
             val status = if (permissionFromStorage.isGranted(permissionRequest)) {
                 permissionRequest.grant()
@@ -671,9 +672,9 @@ class SitePermissionsFeature(
     }
 
     private fun PermissionRequest.toSitePermissions(
-        host: String,
+        origin: String,
         status: SitePermissions.Status,
-        initialSitePermission: SitePermissions = getInitialSitePermissions(host),
+        initialSitePermission: SitePermissions = getInitialSitePermissions(origin),
         permissions: List<Permission> = this.permissions,
     ): SitePermissions {
         var sitePermissions = initialSitePermission
@@ -685,14 +686,14 @@ class SitePermissionsFeature(
 
     @VisibleForTesting
     internal fun getInitialSitePermissions(
-        host: String,
+        origin: String,
     ): SitePermissions {
         val rules = sitePermissionsRules
         return rules?.toSitePermissions(
-            host,
+            origin,
             savedAt = System.currentTimeMillis(),
         )
-            ?: SitePermissions(host, savedAt = System.currentTimeMillis())
+            ?: SitePermissions(origin, savedAt = System.currentTimeMillis())
     }
 
     private fun PermissionRequest.isForAutoplay() =
@@ -773,17 +774,17 @@ class SitePermissionsFeature(
     @VisibleForTesting
     internal fun createPrompt(
         permissionRequest: PermissionRequest,
-        host: String,
+        origin: String,
     ): SitePermissionsDialogFragment {
         return if (!permissionRequest.containsVideoAndAudioSources()) {
             val permission = permissionRequest.permissions.first()
-            handlingSingleContentPermissions(permissionRequest, permission, host).also {
+            handlingSingleContentPermissions(permissionRequest, permission, origin).also {
                 emitPermissionDialogDisplayed(permission)
             }
         } else {
             createSinglePermissionPrompt(
                 context,
-                host,
+                origin,
                 permissionRequest,
                 R.string.mozac_feature_sitepermissions_camera_and_microphone,
                 iconsR.drawable.mozac_ic_microphone_24,
@@ -801,13 +802,13 @@ class SitePermissionsFeature(
     internal fun handlingSingleContentPermissions(
         permissionRequest: PermissionRequest,
         permission: Permission,
-        host: String,
+        origin: String,
     ): SitePermissionsDialogFragment {
         return when (permission) {
             is ContentGeoLocation -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_location_title,
                     iconsR.drawable.mozac_ic_location_24,
@@ -819,7 +820,7 @@ class SitePermissionsFeature(
             is ContentNotification -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_notification_title,
                     iconsR.drawable.mozac_ic_notification_24,
@@ -831,7 +832,7 @@ class SitePermissionsFeature(
             is ContentAudioCapture, is ContentAudioMicrophone -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_microfone_title,
                     iconsR.drawable.mozac_ic_microphone_24,
@@ -843,7 +844,7 @@ class SitePermissionsFeature(
             is ContentVideoCamera, is ContentVideoCapture -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_camera_title,
                     iconsR.drawable.mozac_ic_camera_24,
@@ -855,7 +856,7 @@ class SitePermissionsFeature(
             is ContentPersistentStorage -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_persistent_storage_title,
                     iconsR.drawable.mozac_ic_storage_24,
@@ -866,7 +867,7 @@ class SitePermissionsFeature(
             is ContentMediaKeySystemAccess -> {
                 createSinglePermissionPrompt(
                     context,
-                    host,
+                    origin,
                     permissionRequest,
                     R.string.mozac_feature_sitepermissions_media_key_system_access_title,
                     iconsR.drawable.mozac_ic_link_24,
@@ -877,7 +878,7 @@ class SitePermissionsFeature(
             is ContentCrossOriginStorageAccess -> {
                 createContentCrossOriginStorageAccessPermissionPrompt(
                     context = context,
-                    host = host,
+                    origin = origin,
                     permissionRequest = permissionRequest,
                     showDoNotAskAgainCheckBox = false,
                     shouldSelectRememberChoice = true,
@@ -889,9 +890,21 @@ class SitePermissionsFeature(
     }
 
     @VisibleForTesting
+    internal fun trimOriginHttpsSchemeAndPort(origin: String): String {
+        // Since Gecko scopes permissions to origins (like "https://www.example.com:443"), we want
+        // all permission checks to use origins, not just hostnames like "www.example.com". Only
+        // when we format the origin for the permission prompt UI here do we trim the HTTPS scheme
+        // or default HTTP ports 80 and 443. Any other scheme or port is unusual, so show them!
+        val url = URL(origin)
+        val scheme = if (url.protocol == "https") { "" } else { "${url.protocol}://" }
+        val port = if (url.port == url.defaultPort) { "" } else { ":${url.port}" }
+        return "$scheme${url.host}$port"
+    }
+
+    @VisibleForTesting
     internal fun createSinglePermissionPrompt(
         context: Context,
-        host: String,
+        origin: String,
         permissionRequest: PermissionRequest,
         @StringRes titleId: Int,
         @DrawableRes iconId: Int,
@@ -899,7 +912,8 @@ class SitePermissionsFeature(
         shouldSelectRememberChoice: Boolean,
         isNotificationRequest: Boolean = false,
     ): SitePermissionsDialogFragment {
-        val title = context.getString(titleId, host)
+        val trimmedOrigin = trimOriginHttpsSchemeAndPort(origin)
+        val title = context.getString(titleId, trimmedOrigin)
 
         val currentSessionId: String = store.state.findTabOrCustomTabOrSelectedTab(sessionId)?.id
             ?: throw IllegalStateException("Unable to find session for $sessionId or selected session")
@@ -919,22 +933,23 @@ class SitePermissionsFeature(
     @VisibleForTesting
     internal fun createContentCrossOriginStorageAccessPermissionPrompt(
         context: Context,
-        host: String,
+        origin: String,
         permissionRequest: PermissionRequest,
         showDoNotAskAgainCheckBox: Boolean,
         shouldSelectRememberChoice: Boolean,
     ): SitePermissionsDialogFragment {
+        val trimmedOrigin = trimOriginHttpsSchemeAndPort(origin)
         val currentSession = store.state.findTabOrCustomTabOrSelectedTab(sessionId)
             ?: throw IllegalStateException("Unable to find session for $sessionId or selected session")
 
         val title = context.getString(
             R.string.mozac_feature_sitepermissions_storage_access_title,
-            host.stripDefaultPort(),
-            currentSession.content.url.stripDefaultPort(),
+            trimmedOrigin,
+            currentSession.content.url.tryGetHostFromUrl(),
         )
         val message = context.getString(
             R.string.mozac_feature_sitepermissions_storage_access_message,
-            host.stripDefaultPort(),
+            trimmedOrigin,
         )
         val negativeButtonText = context.getString(R.string.mozac_feature_sitepermissions_storage_access_not_allow)
 

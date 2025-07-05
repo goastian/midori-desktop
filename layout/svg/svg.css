@@ -11,6 +11,10 @@ style, script {
  display: none;
 }
 
+svg {
+  -moz-min-font-size-ratio: 0%;
+}
+
 svg:not(:root), symbol, image, marker, pattern, foreignObject {
  overflow: hidden;
 }
@@ -62,7 +66,7 @@ foreignObject {
 }
 
 *[xml|space=preserve] {
-  white-space: -moz-pre-space;
+  white-space: preserve-spaces;
 }
 
 *|*::-moz-svg-marker-anon-child {

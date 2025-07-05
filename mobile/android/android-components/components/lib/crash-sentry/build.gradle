@@ -7,9 +7,9 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -17,12 +17,12 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.lib.crash.sentry'
+    namespace = 'mozilla.components.lib.crash.sentry'
 }
 
 dependencies {
@@ -31,15 +31,15 @@ dependencies {
     implementation project(':support-utils')
     implementation project(':lib-crash')
 
-    implementation ComponentsDependencies.thirdparty_sentry
-    testImplementation ComponentsDependencies.thirdparty_sentry
+    implementation libs.thirdparty.sentry
+    testImplementation libs.thirdparty.sentry
 
     testImplementation project(':support-test')
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

@@ -78,13 +78,13 @@ class SearchTermSuggestionsProviderTest {
     }
 
     @Test
-    fun `GIVEN an empty input WHEN querying suggestions THEN cleanup all read operations for the current query`() = runTest {
+    fun `GIVEN an empty input WHEN querying suggestions THEN do not cleanup read operations for the empty query`() = runTest {
         val provider = SearchTermSuggestionsProvider(storage, mock(), searchEngine)
 
         provider.onInputChanged("")
 
         verify(storage, never()).cancelReads()
-        verify(storage).cancelReads("")
+        verify(storage, never()).cancelReads("")
     }
 
     @Test

@@ -222,7 +222,7 @@ class AccessibleCaretCursorModeTestCase(MarionetteTestCase):
 
     def test_drag_caret_from_front_to_end_across_columns(self):
         self.open_test_html("layout/test_carets_columns.html")
-        el = self.marionette.find_element(By.ID, "columns-inner")
+        el = self.marionette.find_element(By.ID, "columns")
         sel = SelectionManager(el)
         content_to_add = "!"
         target_content = sel.content + content_to_add

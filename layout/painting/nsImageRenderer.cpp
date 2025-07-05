@@ -10,6 +10,9 @@
 
 #include "mozilla/webrender/WebRenderAPI.h"
 
+#ifdef MOZ_WIDGET_GTK
+#  include "nsIconChannel.h"
+#endif
 #include "gfxContext.h"
 #include "gfxDrawable.h"
 #include "ImageOps.h"
@@ -63,6 +66,57 @@ nsImageRenderer::nsImageRenderer(nsIFrame* aForFrame, const StyleImage* aImage,
       mFlags(aFlags),
       mExtendMode(ExtendMode::CLAMP),
       mMaskOp(StyleMaskMode::MatchSource) {}
+
+using SymbolicImageKey = std::tuple<RefPtr<nsAtom>, int, nscolor>;
+struct SymbolicImageEntry {
+  SymbolicImageKey mKey;
+  nsCOMPtr<imgIContainer> mImage;
+};
+struct SymbolicImageCache final
+    : public mozilla::MruCache<SymbolicImageKey, SymbolicImageEntry,
+                               SymbolicImageCache, 5> {
+  static HashNumber Hash(const KeyType& aKey) {
+    return AddToHash(std::get<0>(aKey)->hash(),
+                     HashGeneric(std::get<1>(aKey), std::get<2>(aKey)));
+  }
+  static bool Match(const KeyType& aKey, const ValueType& aVal) {
+    return aVal.mKey == aKey;
+  }
+};
+
+NS_DECLARE_FRAME_PROPERTY_DELETABLE(SymbolicImageCacheProp, SymbolicImageCache);
+
+static already_AddRefed<imgIContainer> GetSymbolicIconImage(nsAtom* aName,
+                                                            int aScale,
+                                                            nsIFrame* aFrame) {
+  if (NS_WARN_IF(!XRE_IsParentProcess())) {
+    return nullptr;
+  }
+  const auto fg = aFrame->StyleText()->mColor.ToColor();
+  auto key = std::make_tuple(aName, aScale, fg);
+  auto* cache = aFrame->GetProperty(SymbolicImageCacheProp());
+  if (!cache) {
+    cache = new SymbolicImageCache();
+    aFrame->SetProperty(SymbolicImageCacheProp(), cache);
+  }
+  auto lookup = cache->Lookup(key);
+  if (lookup) {
+    return do_AddRef(lookup.Data().mImage);
+  }
+  RefPtr<gfx::DataSourceSurface> surface;
+#ifdef MOZ_WIDGET_GTK
+  surface =
+      nsIconChannel::GetSymbolicIcon(nsAtomCString(aName), 16, aScale, fg);
+#endif
+  if (NS_WARN_IF(!surface)) {
+    return nullptr;
+  }
+  RefPtr drawable = new gfxSurfaceDrawable(surface, surface->GetSize());
+  nsCOMPtr<imgIContainer> container = ImageOps::CreateFromDrawable(drawable);
+  MOZ_ASSERT(container);
+  lookup.Set(SymbolicImageEntry{std::move(key), std::move(container)});
+  return do_AddRef(lookup.Data().mImage);
+}
 
 bool nsImageRenderer::PrepareImage() {
   if (mImage->IsNone()) {
@@ -183,6 +237,17 @@ bool nsImageRenderer::PrepareImage() {
     }
 
     mPrepareResult = ImgDrawResult::SUCCESS;
+  } else if (mImage->IsMozSymbolicIcon()) {
+    auto deviceScale =
+        std::ceil(mForFrame->PresContext()->CSSToDevPixelScale().scale);
+    mImageResolution.ScaleBy(deviceScale);
+    mImageContainer = GetSymbolicIconImage(mImage->AsMozSymbolicIcon().AsAtom(),
+                                           int(deviceScale), mForFrame);
+    if (!mImageContainer) {
+      mPrepareResult = ImgDrawResult::BAD_IMAGE;
+      return false;
+    }
+    mPrepareResult = ImgDrawResult::SUCCESS;
   } else if (mImage->IsCrossFade()) {
     // See bug 546052 - cross-fade implementation still being worked
     // on.
@@ -202,6 +267,7 @@ CSSSizeOrRatio nsImageRenderer::ComputeIntrinsicSize() {
 
   CSSSizeOrRatio result;
   switch (mType) {
+    case StyleImage::Tag::MozSymbolicIcon:
     case StyleImage::Tag::Url: {
       bool haveWidth, haveHeight;
       CSSIntSize imageIntSize;
@@ -259,7 +325,9 @@ CSSSizeOrRatio nsImageRenderer::ComputeIntrinsicSize() {
       break;
     }
     case StyleImage::Tag::ImageSet:
-      MOZ_FALLTHROUGH_ASSERT("image-set should be resolved already");
+      MOZ_FALLTHROUGH_ASSERT("image-set() should be resolved already");
+    case StyleImage::Tag::LightDark:
+      MOZ_FALLTHROUGH_ASSERT("light-dark() should be resolved already");
     // Bug 546052 cross-fade not yet implemented.
     case StyleImage::Tag::CrossFade:
     // Per <http://dev.w3.org/csswg/css3-images/#gradients>, gradients have no
@@ -487,6 +555,7 @@ ImgDrawResult nsImageRenderer::Draw(nsPresContext* aPresContext,
   }
 
   switch (mType) {
+    case StyleImage::Tag::MozSymbolicIcon:
     case StyleImage::Tag::Url: {
       result = nsLayoutUtils::DrawBackgroundImage(
           *ctx, mForFrame, aPresContext, mImageContainer, samplingFilter, aDest,
@@ -517,7 +586,9 @@ ImgDrawResult nsImageRenderer::Draw(nsPresContext* aPresContext,
       break;
     }
     case StyleImage::Tag::ImageSet:
-      MOZ_FALLTHROUGH_ASSERT("image-set should be resolved already");
+      MOZ_FALLTHROUGH_ASSERT("image-set() should be resolved already");
+    case StyleImage::Tag::LightDark:
+      MOZ_FALLTHROUGH_ASSERT("light-dark() should be resolved already");
     // See bug 546052 - cross-fade implementation still being worked
     // on.
     case StyleImage::Tag::CrossFade:
@@ -586,6 +657,7 @@ ImgDrawResult nsImageRenderer::BuildWebRenderDisplayItems(
                                           !aItem->BackfaceIsHidden(), aOpacity);
       break;
     }
+    case StyleImage::Tag::MozSymbolicIcon:
     case StyleImage::Tag::Url: {
       ExtendMode extendMode = mExtendMode;
       if (aDest.Contains(aFill)) {
@@ -782,31 +854,31 @@ ImgDrawResult nsImageRenderer::BuildWebRenderDisplayItemsForLayer(
  * tile used to fill the dest rect.
  * aFill The destination rect to be filled
  * aHFill and aVFill are the repeat patterns for the component -
- * StyleBorderImageRepeat - i.e., how a tiling unit is used to fill aFill
+ * StyleBorderImageRepeatKeyword - i.e., how a tiling unit is used to fill aFill
  * aUnitSize The size of the source rect in dest coords.
  */
-static nsRect ComputeTile(nsRect& aFill, StyleBorderImageRepeat aHFill,
-                          StyleBorderImageRepeat aVFill,
+static nsRect ComputeTile(nsRect& aFill, StyleBorderImageRepeatKeyword aHFill,
+                          StyleBorderImageRepeatKeyword aVFill,
                           const nsSize& aUnitSize, nsSize& aRepeatSize) {
   nsRect tile;
   switch (aHFill) {
-    case StyleBorderImageRepeat::Stretch:
+    case StyleBorderImageRepeatKeyword::Stretch:
       tile.x = aFill.x;
       tile.width = aFill.width;
       aRepeatSize.width = tile.width;
       break;
-    case StyleBorderImageRepeat::Repeat:
+    case StyleBorderImageRepeatKeyword::Repeat:
       tile.x = aFill.x + aFill.width / 2 - aUnitSize.width / 2;
       tile.width = aUnitSize.width;
       aRepeatSize.width = tile.width;
       break;
-    case StyleBorderImageRepeat::Round:
+    case StyleBorderImageRepeatKeyword::Round:
       tile.x = aFill.x;
       tile.width =
           nsCSSRendering::ComputeRoundedSize(aUnitSize.width, aFill.width);
       aRepeatSize.width = tile.width;
       break;
-    case StyleBorderImageRepeat::Space: {
+    case StyleBorderImageRepeatKeyword::Space: {
       nscoord space;
       aRepeatSize.width = nsCSSRendering::ComputeBorderSpacedRepeatSize(
           aUnitSize.width, aFill.width, space);
@@ -820,23 +892,23 @@ static nsRect ComputeTile(nsRect& aFill, StyleBorderImageRepeat aHFill,
   }
 
   switch (aVFill) {
-    case StyleBorderImageRepeat::Stretch:
+    case StyleBorderImageRepeatKeyword::Stretch:
       tile.y = aFill.y;
       tile.height = aFill.height;
       aRepeatSize.height = tile.height;
       break;
-    case StyleBorderImageRepeat::Repeat:
+    case StyleBorderImageRepeatKeyword::Repeat:
       tile.y = aFill.y + aFill.height / 2 - aUnitSize.height / 2;
       tile.height = aUnitSize.height;
       aRepeatSize.height = tile.height;
       break;
-    case StyleBorderImageRepeat::Round:
+    case StyleBorderImageRepeatKeyword::Round:
       tile.y = aFill.y;
       tile.height =
           nsCSSRendering::ComputeRoundedSize(aUnitSize.height, aFill.height);
       aRepeatSize.height = tile.height;
       break;
-    case StyleBorderImageRepeat::Space: {
+    case StyleBorderImageRepeatKeyword::Space: {
       nscoord space;
       aRepeatSize.height = nsCSSRendering::ComputeBorderSpacedRepeatSize(
           aUnitSize.height, aFill.height, space);
@@ -857,20 +929,21 @@ static nsRect ComputeTile(nsRect& aFill, StyleBorderImageRepeat aHFill,
  * the dest rect to be scaled from the source tile. See comment on ComputeTile
  * for argument descriptions.
  */
-static bool RequiresScaling(const nsRect& aFill, StyleBorderImageRepeat aHFill,
-                            StyleBorderImageRepeat aVFill,
+static bool RequiresScaling(const nsRect& aFill,
+                            StyleBorderImageRepeatKeyword aHFill,
+                            StyleBorderImageRepeatKeyword aVFill,
                             const nsSize& aUnitSize) {
   // If we have no tiling in either direction, we can skip the intermediate
   // scaling step.
-  return (aHFill != StyleBorderImageRepeat::Stretch ||
-          aVFill != StyleBorderImageRepeat::Stretch) &&
+  return (aHFill != StyleBorderImageRepeatKeyword::Stretch ||
+          aVFill != StyleBorderImageRepeatKeyword::Stretch) &&
          (aUnitSize.width != aFill.width || aUnitSize.height != aFill.height);
 }
 
 ImgDrawResult nsImageRenderer::DrawBorderImageComponent(
     nsPresContext* aPresContext, gfxContext& aRenderingContext,
     const nsRect& aDirtyRect, const nsRect& aFill, const CSSIntRect& aSrc,
-    StyleBorderImageRepeat aHFill, StyleBorderImageRepeat aVFill,
+    StyleBorderImageRepeatKeyword aHFill, StyleBorderImageRepeatKeyword aVFill,
     const nsSize& aUnitSize, uint8_t aIndex,
     const Maybe<nsSize>& aSVGViewportSize, const bool aHasIntrinsicRatio) {
   if (!IsReady()) {
@@ -884,10 +957,8 @@ ImgDrawResult nsImageRenderer::DrawBorderImageComponent(
     return ImgDrawResult::SUCCESS;
   }
 
-  const bool isRequestBacked = mType == StyleImage::Tag::Url;
-  MOZ_ASSERT(isRequestBacked == mImage->IsImageRequestType());
-
-  if (isRequestBacked || mType == StyleImage::Tag::Element) {
+  const bool hasImage = !!mImageContainer;
+  if (hasImage || mType == StyleImage::Tag::Element) {
     nsCOMPtr<imgIContainer> subImage;
 
     // To draw one portion of an image into a border component, we stretch that
@@ -906,10 +977,10 @@ ImgDrawResult nsImageRenderer::DrawBorderImageComponent(
     }
     // Retrieve or create the subimage we'll draw.
     nsIntRect srcRect(aSrc.x, aSrc.y, aSrc.width, aSrc.height);
-    if (isRequestBacked) {
+    if (hasImage) {
       subImage = ImageOps::Clip(mImageContainer, srcRect, aSVGViewportSize);
     } else {
-      // This path, for eStyleImageType_Element, is currently slower than it
+      // This path, for Element, is currently slower than it
       // needs to be because we don't cache anything. (In particular, if we have
       // to draw to a temporary surface inside ClippedImage, we don't cache that
       // temporary surface since we immediately throw the ClippedImage we create
@@ -1022,7 +1093,7 @@ ImgDrawResult nsImageRenderer::DrawShapeImage(nsPresContext* aPresContext,
   return ImgDrawResult::BAD_IMAGE;
 }
 
-bool nsImageRenderer::IsRasterImage() {
+bool nsImageRenderer::IsRasterImage() const {
   return mImageContainer &&
          mImageContainer->GetType() == imgIContainer::TYPE_RASTER;
 }

@@ -58,8 +58,9 @@ class nsCanvasFrame final : public nsContainerFrame,
   void RemoveFrame(DestroyContext&, ChildListID, nsIFrame*) override;
 #endif
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
+
   void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
               const ReflowInput& aReflowInput,
               nsReflowStatus& aStatus) override;
@@ -68,20 +69,6 @@ class nsCanvasFrame final : public nsContainerFrame,
   nsresult CreateAnonymousContent(nsTArray<ContentInfo>& aElements) override;
   void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                 uint32_t aFilter) override;
-
-  Element* GetCustomContentContainer() const { return mCustomContentContainer; }
-
-  /**
-   * Unhide the CustomContentContainer. This call only has an effect if
-   * mCustomContentContainer is non-null.
-   */
-  void ShowCustomContentContainer();
-
-  /**
-   * Hide the CustomContentContainer. This call only has an effect if
-   * mCustomContentContainer is non-null.
-   */
-  void HideCustomContentContainer();
 
   /** SetHasFocus tells the CanvasFrame to draw with focus ring
    *  @param aHasFocus true to show focus ring, false to hide it
@@ -100,9 +87,7 @@ class nsCanvasFrame final : public nsContainerFrame,
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override;
 #endif
-  nsresult GetContentForEvent(const mozilla::WidgetEvent* aEvent,
-                              nsIContent** aContent) override;
-
+  nsIContent* GetContentForEvent(const mozilla::WidgetEvent*) const override;
   nsRect CanvasArea() const;
 
  protected:
@@ -110,49 +95,12 @@ class nsCanvasFrame final : public nsContainerFrame,
   bool mDoPaintFocus;
   bool mAddedScrollPositionListener;
 
-  nsCOMPtr<Element> mCustomContentContainer;
   nsCOMPtr<Element> mTooltipContent;
 };
 
 namespace mozilla {
-/**
- * Override nsDisplayBackground methods so that we pass aBGClipRect to
- * PaintBackground, covering the whole overflow area.
- * We can also paint an "extra background color" behind the normal
- * background.
- */
-class nsDisplayCanvasBackgroundColor final : public nsDisplaySolidColorBase {
- public:
-  nsDisplayCanvasBackgroundColor(nsDisplayListBuilder* aBuilder,
-                                 nsIFrame* aFrame)
-      : nsDisplaySolidColorBase(aBuilder, aFrame, NS_RGBA(0, 0, 0, 0)) {}
 
-  nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) const override {
-    nsCanvasFrame* frame = static_cast<nsCanvasFrame*>(mFrame);
-    *aSnap = true;
-    return frame->CanvasArea() + ToReferenceFrame();
-  }
-  void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
-               HitTestState* aState, nsTArray<nsIFrame*>* aOutFrames) override {
-    // We need to override so we don't consider border-radius.
-    aOutFrames->AppendElement(mFrame);
-  }
-  bool CreateWebRenderCommands(
-      mozilla::wr::DisplayListBuilder& aBuilder,
-      mozilla::wr::IpcResourceUpdateQueue& aResources,
-      const StackingContextHelper& aSc,
-      mozilla::layers::RenderRootStateManager* aManager,
-      nsDisplayListBuilder* aDisplayListBuilder) override;
-  void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
-
-  void SetExtraBackgroundColor(nscolor aColor) { mColor = aColor; }
-
-  NS_DISPLAY_DECL_NAME("CanvasBackgroundColor", TYPE_CANVAS_BACKGROUND_COLOR)
-
-  void WriteDebugInfo(std::stringstream& aStream) override;
-};
-
-class nsDisplayCanvasBackgroundImage : public nsDisplayBackgroundImage {
+class nsDisplayCanvasBackgroundImage final : public nsDisplayBackgroundImage {
  public:
   explicit nsDisplayCanvasBackgroundImage(nsDisplayListBuilder* aBuilder,
                                           nsIFrame* aFrame,
@@ -169,21 +117,6 @@ class nsDisplayCanvasBackgroundImage : public nsDisplayBackgroundImage {
                                   const nsRect& aClipRect, gfxRect* aDestRect);
 
   NS_DISPLAY_DECL_NAME("CanvasBackgroundImage", TYPE_CANVAS_BACKGROUND_IMAGE)
-};
-
-class nsDisplayCanvasThemedBackground : public nsDisplayThemedBackground {
- public:
-  nsDisplayCanvasThemedBackground(nsDisplayListBuilder* aBuilder,
-                                  nsIFrame* aFrame)
-      : nsDisplayThemedBackground(aBuilder, aFrame,
-                                  aFrame->GetRectRelativeToSelf() +
-                                      aBuilder->ToReferenceFrame(aFrame)) {
-    nsDisplayThemedBackground::Init(aBuilder);
-  }
-
-  void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
-
-  NS_DISPLAY_DECL_NAME("CanvasThemedBackground", TYPE_CANVAS_THEMED_BACKGROUND)
 };
 
 }  // namespace mozilla

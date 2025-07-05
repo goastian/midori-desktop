@@ -44,7 +44,7 @@ SVGOuterSVGFrame::SVGOuterSVGFrame(ComputedStyle* aStyle,
   // Outer-<svg> has CSS layout, so remove this bit:
   RemoveStateBits(NS_FRAME_SVG_LAYOUT);
   AddStateBits(NS_FRAME_REFLOW_ROOT | NS_FRAME_FONT_INFLATION_CONTAINER |
-               NS_FRAME_FONT_INFLATION_FLOW_ROOT | NS_FRAME_MAY_BE_TRANSFORMED);
+               NS_FRAME_FONT_INFLATION_FLOW_ROOT);
 }
 
 // The CSS Containment spec says that size-contained replaced elements must be
@@ -121,20 +121,14 @@ NS_QUERYFRAME_TAIL_INHERITING(SVGDisplayContainerFrame)
 
 //----------------------------------------------------------------------
 // nsIFrame methods
-//----------------------------------------------------------------------
-// reflowing
 
-/* virtual */
-nscoord SVGOuterSVGFrame::GetMinISize(gfxContext* aRenderingContext) {
-  auto size = GetIntrinsicSize();
-  const auto& iSize = GetWritingMode().IsVertical() ? size.height : size.width;
-  return iSize.valueOr(0);
-}
+nscoord SVGOuterSVGFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                         IntrinsicISizeType aType) {
+  if (aType == IntrinsicISizeType::MinISize) {
+    return GetIntrinsicSize().ISize(GetWritingMode()).valueOr(0);
+  }
 
-/* virtual */
-nscoord SVGOuterSVGFrame::GetPrefISize(gfxContext* aRenderingContext) {
   nscoord result;
-
   SVGSVGElement* svg = static_cast<SVGSVGElement*>(GetContent());
   WritingMode wm = GetWritingMode();
   const SVGAnimatedLength& isize =
@@ -150,7 +144,8 @@ nscoord SVGOuterSVGFrame::GetPrefISize(gfxContext* aRenderingContext) {
     // is treated as 100%). The following if-condition, deciding to return
     // either the fallback intrinsic size or zero, is made to match blink and
     // webkit's behavior for webcompat.
-    if (isize.IsExplicitlySet() || StylePosition()->ISize(wm).HasPercent() ||
+    if (isize.IsExplicitlySet() ||
+        StylePosition()->ISize(wm, StyleDisplay()->mPosition)->HasPercent() ||
         !GetAspectRatio()) {
       result = wm.IsVertical() ? kFallbackIntrinsicSize.height
                                : kFallbackIntrinsicSize.width;
@@ -224,8 +219,10 @@ AspectRatio SVGOuterSVGFrame::GetIntrinsicRatio() const {
     // 2. width and height are non-negative numbers.
     // Otherwise, we use the viewbox rect.
     // https://github.com/w3c/csswg-drafts/issues/6286
-    const float w = width.GetAnimValue(content);
-    const float h = height.GetAnimValue(content);
+    // Note width/height may have different units and therefore be
+    // affected by zoom in different ways.
+    const float w = width.GetAnimValueWithZoom(content);
+    const float h = height.GetAnimValueWithZoom(content);
     if (w > 0.0f && h > 0.0f) {
       return AspectRatio::FromSize(w, h);
     }
@@ -233,7 +230,8 @@ AspectRatio SVGOuterSVGFrame::GetIntrinsicRatio() const {
 
   const auto& viewBox = content->GetViewBoxInternal();
   if (viewBox.HasRect()) {
-    const auto& anim = viewBox.GetAnimValue();
+    float zoom = Style()->EffectiveZoom().ToFloat();
+    const auto& anim = viewBox.GetAnimValue() * zoom;
     return AspectRatio::FromSize(anim.width, anim.height);
   }
 
@@ -459,17 +457,9 @@ void SVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
                   aDesiredSize.Width(), aDesiredSize.Height()));
 }
 
-void SVGOuterSVGFrame::DidReflow(nsPresContext* aPresContext,
-                                 const ReflowInput* aReflowInput) {
-  SVGDisplayContainerFrame::DidReflow(aPresContext, aReflowInput);
-
-  // Make sure elements styled by :hover get updated if script/animation moves
-  // them under or out from under the pointer:
-  PresShell()->SynthesizeMouseMove(false);
-}
-
 /* virtual */
-void SVGOuterSVGFrame::UnionChildOverflow(OverflowAreas& aOverflowAreas) {
+void SVGOuterSVGFrame::UnionChildOverflow(OverflowAreas& aOverflowAreas,
+                                          bool aAsIfScrolled) {
   // See the comments in Reflow above.
 
   // WARNING!! Keep this in sync with Reflow above!
@@ -491,8 +481,7 @@ nsresult SVGOuterSVGFrame::AttributeChanged(int32_t aNameSpaceID,
   if (aNameSpaceID == kNameSpaceID_None &&
       !HasAnyStateBits(NS_FRAME_FIRST_REFLOW | NS_FRAME_IS_NONDISPLAY)) {
     if (aAttribute == nsGkAtoms::viewBox ||
-        aAttribute == nsGkAtoms::preserveAspectRatio ||
-        aAttribute == nsGkAtoms::transform) {
+        aAttribute == nsGkAtoms::preserveAspectRatio) {
       // make sure our cached transform matrix gets (lazily) updated
       mCanvasTM = nullptr;
 
@@ -526,28 +515,6 @@ nsresult SVGOuterSVGFrame::AttributeChanged(int32_t aNameSpaceID,
   }
 
   return NS_OK;
-}
-
-bool SVGOuterSVGFrame::IsSVGTransformed(Matrix* aOwnTransform,
-                                        Matrix* aFromParentTransform) const {
-  // Our anonymous child's HasChildrenOnlyTransform() implementation makes sure
-  // our children-only transforms are applied to our children.  We only care
-  // about transforms that transform our own frame here.
-
-  bool foundTransform = false;
-
-  SVGSVGElement* content = static_cast<SVGSVGElement*>(GetContent());
-  SVGAnimatedTransformList* transformList = content->GetAnimatedTransformList();
-  if ((transformList && transformList->HasTransform()) ||
-      content->GetAnimateMotionTransform()) {
-    if (aOwnTransform) {
-      *aOwnTransform = gfx::ToMatrix(
-          content->PrependLocalTransformsTo(gfxMatrix(), eUserSpaceToParent));
-    }
-    foundTransform = true;
-  }
-
-  return foundTransform;
 }
 
 //----------------------------------------------------------------------
@@ -590,8 +557,7 @@ void SVGOuterSVGFrame::NotifyViewportOrTransformChanged(uint32_t aFlags) {
                                     FULL_ZOOM_CHANGED)),
              "Unexpected aFlags value");
 
-  SVGSVGElement* content = static_cast<SVGSVGElement*>(GetContent());
-
+  auto* content = static_cast<SVGSVGElement*>(GetContent());
   if (aFlags & COORD_CONTEXT_CHANGED) {
     if (content->HasViewBox()) {
       // Percentage lengths on children resolve against the viewBox rect so we
@@ -658,7 +624,7 @@ SVGBBox SVGOuterSVGFrame::GetBBoxContribution(
           !PrincipalChildList().FirstChild()->GetNextSibling(),
       "We should have a single, anonymous, child");
   // We must defer to our child so that we don't include our
-  // content->PrependLocalTransformsTo() transforms.
+  // content->ChildToUserSpaceTransform() transform.
   auto* anonKid = static_cast<SVGOuterSVGAnonChildFrame*>(
       PrincipalChildList().FirstChild());
   return anonKid->GetBBoxContribution(aToBBoxUserspace, aFlags);
@@ -669,13 +635,12 @@ SVGBBox SVGOuterSVGFrame::GetBBoxContribution(
 
 gfxMatrix SVGOuterSVGFrame::GetCanvasTM() {
   if (!mCanvasTM) {
-    SVGSVGElement* content = static_cast<SVGSVGElement*>(GetContent());
-
+    auto* content = static_cast<SVGSVGElement*>(GetContent());
     float devPxPerCSSPx = 1.0f / nsPresContext::AppUnitsToFloatCSSPixels(
                                      PresContext()->AppUnitsPerDevPixel());
 
-    gfxMatrix tm = content->PrependLocalTransformsTo(
-        gfxMatrix::Scaling(devPxPerCSSPx, devPxPerCSSPx));
+    gfxMatrix tm = content->ChildToUserSpaceTransform().PostScale(
+        devPxPerCSSPx, devPxPerCSSPx);
     mCanvasTM = MakeUnique<gfxMatrix>(tm);
   }
   return *mCanvasTM;
@@ -813,55 +778,31 @@ void SVGOuterSVGAnonChildFrame::BuildDisplayList(
                                                         &newList);
 }
 
-static Matrix ComputeOuterSVGAnonChildFrameTransform(
-    const SVGOuterSVGAnonChildFrame* aFrame) {
-  // Our elements 'transform' attribute is applied to our SVGOuterSVGFrame
-  // parent, and the element's children-only transforms are applied to us, the
-  // anonymous child frame. Since we are the child frame, we apply the
-  // children-only transforms as if they are our own transform.
-  SVGSVGElement* content = static_cast<SVGSVGElement*>(aFrame->GetContent());
-
+bool SVGOuterSVGFrame::HasChildrenOnlyTransform(Matrix* aTransform) const {
+  auto* content = static_cast<SVGSVGElement*>(GetContent());
   if (!content->HasChildrenOnlyTransform()) {
-    return Matrix();
+    return false;
   }
-
-  // Outer-<svg> doesn't use x/y, so we can pass eChildToUserSpace here.
-  gfxMatrix ownMatrix =
-      content->PrependLocalTransformsTo(gfxMatrix(), eChildToUserSpace);
-
-  if (ownMatrix.HasNonTranslation()) {
-    // viewBox, currentScale and currentTranslate should only produce a
-    // rectilinear transform.
-    MOZ_ASSERT(ownMatrix.IsRectilinear(),
-               "Non-rectilinear transform will break the following logic");
-
-    // The nsDisplayTransform code will apply this transform to our frame,
-    // including to our frame position.  We don't want our frame position to
-    // be scaled though, so we need to correct for that in the transform.
-    // XXX Yeah, this is a bit hacky.
-    CSSPoint pos = CSSPixel::FromAppUnits(aFrame->GetPosition());
-    CSSPoint scaledPos = CSSPoint(ownMatrix._11 * pos.x, ownMatrix._22 * pos.y);
-    CSSPoint deltaPos = scaledPos - pos;
-    ownMatrix *= gfxMatrix::Translation(-deltaPos.x, -deltaPos.y);
+  if (aTransform) {
+    // Outer-<svg> doesn't use x/y, so we can use the child-to-user-space
+    // transform here.
+    *aTransform = gfx::ToMatrix(content->ChildToUserSpaceTransform());
   }
-
-  return gfx::ToMatrix(ownMatrix);
+  return true;
 }
 
-// We want this frame to be a reference frame. An easy way to achieve that is
-// to always return true from this method, even for identity transforms.
-// This frame being a reference frame ensures that the offset between this
-// <svg> element and the parent reference frame is completely absorbed by the
-// nsDisplayTransform that's created for this frame, and that this offset does
-// not affect our descendants' transforms. Consequently, if the <svg> element
-// moves, e.g. during scrolling, the transform matrices of our contents are
-// unaffected. This simplifies invalidation.
-bool SVGOuterSVGAnonChildFrame::IsSVGTransformed(
-    Matrix* aOwnTransform, Matrix* aFromParentTransform) const {
-  if (aOwnTransform) {
-    *aOwnTransform = ComputeOuterSVGAnonChildFrameTransform(this);
-  }
-
+bool SVGOuterSVGAnonChildFrame::DoGetParentSVGTransforms(
+    Matrix* aFromParentTransform) const {
+  // We want this frame to be a reference frame. An easy way to achieve that is
+  // to always return true from this method, even for identity transforms.
+  // This frame being a reference frame ensures that the offset between this
+  // <svg> element and the parent reference frame is completely absorbed by the
+  // nsDisplayTransform that's created for this frame, and that this offset does
+  // not affect our descendants' transforms. Consequently, if the <svg> element
+  // moves, e.g. during scrolling, the transform matrices of our contents are
+  // unaffected. This simplifies invalidation.
+  // TODO(emilio): Is the comment above true for WebRender nowadays?
+  SVGUtils::GetParentSVGTransforms(this, aFromParentTransform);
   return true;
 }
 

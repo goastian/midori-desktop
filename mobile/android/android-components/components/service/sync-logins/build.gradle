@@ -7,25 +7,20 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
-    }
-
-    lint {
-        warningsAsErrors true
-        abortOnError true
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             consumerProguardFiles 'proguard-rules-consumer.pro'
         }
     }
 
-    namespace 'mozilla.components.browser.storage.sync.logins'
+    namespace = 'mozilla.components.browser.storage.sync.logins'
 }
 
 dependencies {
@@ -33,7 +28,7 @@ dependencies {
     api (ComponentsDependencies.mozilla_appservices_logins) {
       // Use our own version of the Glean dependency,
       // which might be different from the version declared by A-S.
-      exclude group: 'org.mozilla.components', module: 'service-glean'
+      exclude group: 'org.mozilla.telemetry', module: 'glean'
     }
     api ComponentsDependencies.mozilla_appservices_sync15
 
@@ -43,11 +38,11 @@ dependencies {
 
     implementation project(':concept-storage')
     implementation project(':support-utils')
-    implementation project(':service-glean')
+    implementation libs.mozilla.glean
 
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.kotlin.coroutines
 }
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

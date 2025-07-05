@@ -30,6 +30,7 @@ import mozilla.components.lib.state.Store
 import mozilla.components.support.base.android.DefaultPowerManagerInfoProvider
 import mozilla.components.support.base.android.StartForegroundService
 import mozilla.components.support.base.log.logger.Logger
+import java.io.File
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -62,6 +63,7 @@ class DownloadMiddleware(
             is DownloadAction.RemoveAllDownloadsAction -> removeDownloads()
             is DownloadAction.UpdateDownloadAction -> updateDownload(action.download, context)
             is DownloadAction.RestoreDownloadsStateAction -> restoreDownloads(context.store)
+            is DownloadAction.RemoveDeletedDownloads -> removeDeletedDownloads(context.store)
             is ContentAction.CancelDownloadAction -> closeDownloadResponse(context.store, action.sessionId)
             is DownloadAction.AddDownloadAction -> {
                 if (!action.download.private && !saveDownload(context.store, action.download)) {
@@ -103,10 +105,12 @@ class DownloadMiddleware(
     private fun removeDownload(
         downloadId: String,
         store: Store<BrowserState, BrowserAction>,
-    ) = scope.launch {
-        store.state.downloads[downloadId]?.let {
-            downloadStorage.remove(it)
-            logger.debug("Removed download ${it.fileName} from the storage")
+    ) {
+        val downloadToDelete = store.state.downloads[downloadId] ?: return
+
+        scope.launch {
+            downloadStorage.remove(downloadToDelete)
+            logger.debug("Removed download ${downloadToDelete.fileName} from the storage")
         }
     }
 
@@ -128,9 +132,18 @@ class DownloadMiddleware(
         }
     }
 
+    private fun removeDeletedDownloads(store: Store<BrowserState, BrowserAction>) = scope.launch {
+        downloadStorage.getDownloadsList().filter { !File(it.filePath).exists() }.forEach { download ->
+            store.dispatch(DownloadAction.RemoveDownloadAction(download.id))
+        }
+    }
+
     private fun restoreDownloads(store: Store<BrowserState, BrowserAction>) = scope.launch {
         downloadStorage.getDownloadsList().forEach { download ->
-            if (!store.state.downloads.containsKey(download.id) && !download.private) {
+            if (!File(download.filePath).exists()) {
+                downloadStorage.remove(download)
+                logger.debug("Removed deleted download ${download.fileName} from the storage")
+            } else if (!store.state.downloads.containsKey(download.id) && !download.private) {
                 store.dispatch(DownloadAction.RestoreDownloadStateAction(download))
                 logger.debug("Download restored from the storage ${download.fileName}")
             }

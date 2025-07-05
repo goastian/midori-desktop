@@ -6,6 +6,8 @@ package mozilla.components.support.ktx.android.graphics
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.get
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +25,7 @@ class BitmapKtTest {
 
     @Before
     fun setUp() {
-        subject = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+        subject = createBitmap(10, 10, Bitmap.Config.ARGB_8888)
     }
 
     @Ignore("convert to integration test. Robolectric's shadows are incomplete and cause this to fail.")
@@ -31,25 +33,26 @@ class BitmapKtTest {
     fun `WHEN withRoundedCorners is called THEN returned bitmap's corners should be transparent and center with color`() {
         val dimen = 200
         val fillColor = Color.RED
+        val config = Bitmap.Config.ARGB_8888
 
-        val bitmap = Bitmap.createBitmap(dimen, dimen, Bitmap.Config.ARGB_8888).apply {
+        val bitmap = createBitmap(dimen, dimen, config).apply {
             eraseColor(fillColor)
         }
-        val roundedBitmap = bitmap.withRoundedCorners(40f)
+        val roundedBitmap = bitmap.withRoundedCorners(40f, config)
 
         fun assertCornersAreTransparent() {
             val cornerLocations = listOf(0, dimen - 1)
 
             cornerLocations.forEach { x ->
                 cornerLocations.forEach { y ->
-                    assertEquals(Color.TRANSPARENT, roundedBitmap.getPixel(x, y))
+                    assertEquals(Color.TRANSPARENT, roundedBitmap[x, y])
                 }
             }
         }
 
         fun assertCenterIsFilled() {
             val center = dimen / 2
-            assertEquals(fillColor, roundedBitmap.getPixel(center, center))
+            assertEquals(fillColor, roundedBitmap[center, center])
         }
 
         assertNotSame(bitmap, roundedBitmap)

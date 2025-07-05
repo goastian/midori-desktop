@@ -107,7 +107,8 @@ class nsDisplayFieldSetBorder final : public nsPaintedDisplayItem {
       : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayFieldSetBorder);
   }
-  MOZ_COUNTED_DTOR_OVERRIDE(nsDisplayFieldSetBorder)
+
+  MOZ_COUNTED_DTOR_FINAL(nsDisplayFieldSetBorder)
 
   void Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) override;
   bool CreateWebRenderCommands(
@@ -321,8 +322,8 @@ ImgDrawResult nsFieldSetFrame::PaintBorder(nsDisplayListBuilder* aBuilder,
   return result;
 }
 
-nscoord nsFieldSetFrame::GetIntrinsicISize(gfxContext* aRenderingContext,
-                                           IntrinsicISizeType aType) {
+nscoord nsFieldSetFrame::IntrinsicISize(const IntrinsicSizeInput& aInput,
+                                        IntrinsicISizeType aType) {
   // Both inner and legend are children, and if the fieldset is
   // size-contained they should not contribute to the intrinsic size.
   if (Maybe<nscoord> containISize = ContainIntrinsicISize()) {
@@ -332,7 +333,7 @@ nscoord nsFieldSetFrame::GetIntrinsicISize(gfxContext* aRenderingContext,
   nscoord legendWidth = 0;
   if (nsIFrame* legend = GetLegend()) {
     legendWidth =
-        nsLayoutUtils::IntrinsicForContainer(aRenderingContext, legend, aType);
+        nsLayoutUtils::IntrinsicForContainer(aInput.mContext, legend, aType);
   }
 
   nscoord contentWidth = 0;
@@ -341,18 +342,11 @@ nscoord nsFieldSetFrame::GetIntrinsicISize(gfxContext* aRenderingContext,
     // outer instead, and the padding computed for the inner is wrong
     // for percentage padding.
     contentWidth = nsLayoutUtils::IntrinsicForContainer(
-        aRenderingContext, inner, aType, nsLayoutUtils::IGNORE_PADDING);
+        aInput.mContext, inner, aType, aInput.mPercentageBasisForChildren,
+        nsLayoutUtils::IGNORE_PADDING);
   }
 
   return std::max(legendWidth, contentWidth);
-}
-
-nscoord nsFieldSetFrame::GetMinISize(gfxContext* aRenderingContext) {
-  return GetIntrinsicISize(aRenderingContext, IntrinsicISizeType::MinISize);
-}
-
-nscoord nsFieldSetFrame::GetPrefISize(gfxContext* aRenderingContext) {
-  return GetIntrinsicISize(aRenderingContext, IntrinsicISizeType::PrefISize);
 }
 
 /* virtual */
@@ -419,7 +413,9 @@ void nsFieldSetFrame::Reflow(nsPresContext* aPresContext,
     const auto legendWM = legend->GetWritingMode();
     LogicalSize legendAvailSize = availSize.ConvertTo(legendWM, wm);
     ComputeSizeFlags sizeFlags;
-    if (legend->StylePosition()->ISize(wm).IsAuto()) {
+    if (legend->StylePosition()
+            ->ISize(wm, legend->StyleDisplay()->mPosition)
+            ->IsAuto()) {
       sizeFlags = ComputeSizeFlag::ShrinkWrap;
     }
     ReflowInput::InitFlags initFlags;  // intentionally empty

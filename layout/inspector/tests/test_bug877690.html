@@ -89,6 +89,10 @@ function do_test() {
     expected.push("cross-fade");
   }
 
+  if(SpecialPowers.getBoolPref("layout.css.light-dark.images.enabled")) {
+    expected.push("light-dark");
+  }
+
   ok(testValues(values, expected), "property background values.");
 
   var prop = "border";
@@ -133,7 +137,68 @@ function do_test() {
   var prop = "margin";
   var values = InspectorUtils.getCSSValuesForProperty(prop);
   var expected = [ "initial", "unset", "auto", "inherit", "revert", "revert-layer" ];
+
+  if(SpecialPowers.getBoolPref("layout.css.anchor-positioning.enabled")) {
+    expected.push("anchor-size");
+  }
+
   ok(testValues(values, expected), "property margin's values.");
+
+  var prop = "inset";
+  var values = InspectorUtils.getCSSValuesForProperty(prop);
+  var expected = [ "initial", "unset", "auto", "inherit", "revert", "revert-layer" ];
+
+  if(SpecialPowers.getBoolPref("layout.css.anchor-positioning.enabled")) {
+    expected.push(...["anchor", "anchor-size"]);
+  }
+
+  ok(testValues(values, expected), "property inset's values.");
+
+  var prop = "width";
+  var values = InspectorUtils.getCSSValuesForProperty(prop);
+  var expected = [
+    "-moz-available",
+    "-webkit-fill-available",
+    "auto",
+    "fit-content",
+    "inherit",
+    "initial",
+    "max-content",
+    "min-content",
+    "revert",
+    "revert-layer",
+    "stretch",
+    "unset",
+  ];
+
+  if(SpecialPowers.getBoolPref("layout.css.anchor-positioning.enabled")) {
+    expected.push("anchor-size");
+  }
+
+  ok(testValues(values, expected), "property width's values.");
+
+  var prop = "max-width";
+  var values = InspectorUtils.getCSSValuesForProperty(prop);
+  var expected = [
+    "-moz-available",
+    "-webkit-fill-available",
+    "none",
+    "fit-content",
+    "inherit",
+    "initial",
+    "max-content",
+    "min-content",
+    "revert",
+    "revert-layer",
+    "stretch",
+    "unset",
+  ];
+
+  if(SpecialPowers.getBoolPref("layout.css.anchor-positioning.enabled")) {
+    expected.push("anchor-size");
+  }
+
+  ok(testValues(values, expected), "property max-width's values.");
 
   // Test property with "normal"
   var prop = "font-style";
@@ -263,6 +328,36 @@ function do_test() {
   var values = InspectorUtils.getCSSValuesForProperty("cursor");
   ok(values.includes("url"), "property cursor values include url");
   ok(values.includes("image-set"), "property cursor values include image-set");
+
+  // Test for bug 1935181.
+  var values = InspectorUtils.getCSSValuesForProperty("align-items");
+  var expected = [
+    "baseline",
+    "center",
+    "end",
+    "first baseline",
+    "flex-end",
+    "flex-start",
+    "inherit",
+    "initial",
+    "last baseline",
+    "normal",
+    "revert",
+    "revert-layer",
+    "safe",
+    "self-end",
+    "self-start",
+    "start",
+    "stretch",
+    "unsafe",
+    "unset"
+  ];
+
+  if(SpecialPowers.getBoolPref("layout.css.anchor-positioning.enabled")) {
+    expected.push("anchor-center");
+  }
+
+  ok(testValues(values, expected), "property align-items values.");
 
   SimpleTest.finish();
 }

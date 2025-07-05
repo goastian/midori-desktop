@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 buildscript {
     repositories {
         maven {
-            url "https://maven.mozilla.org/maven2"
+            url = "https://maven.mozilla.org/maven2"
         }
     }
 
@@ -17,7 +17,7 @@ buildscript {
 }
 
 plugins {
-    id "com.jetbrains.python.envs" version "$python_envs_plugin"
+    alias(libs.plugins.python.envs.plugin)
 }
 
 apply plugin: 'com.android.library'
@@ -25,28 +25,24 @@ apply plugin: 'kotlin-android'
 
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    namespace 'mozilla.components.feature.fxsuggest'
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.freeCompilerArgs += '-opt-in=kotlin.ExperimentalUnsignedTypes'
+    namespace = 'mozilla.components.feature.fxsuggest'
 }
 
 dependencies {
-    api ComponentsDependencies.mozilla_appservices_suggest
+    api ComponentsDependencies.mozilla_remote_settings
 
     implementation project(':browser-state')
     implementation project(':concept-awesomebar')
@@ -54,19 +50,23 @@ dependencies {
     implementation project(':feature-session')
     implementation project(':service-nimbus')
     implementation project(':support-base')
+    implementation project(':support-remotesettings')
     implementation project(':support-ktx')
 
-    implementation ComponentsDependencies.androidx_work_runtime
-    implementation ComponentsDependencies.kotlin_coroutines
+    implementation libs.androidx.work.runtime
+    implementation libs.kotlin.coroutines
+
+    implementation ComponentsDependencies.mozilla_appservices_suggest
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.androidx_work_testing
-    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_forUnitTests
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.androidx.concurrent
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.androidx.work.testing
+    testImplementation ComponentsDependencies.mozilla_appservices_full_megazord_libsForTests
+    testImplementation libs.testing.coroutines
+    testImplementation libs.testing.robolectric
 }
 
 apply from: '../../../android-lint.gradle'
@@ -84,4 +84,4 @@ nimbus {
     applicationServicesDir = gradle.hasProperty('localProperties.autoPublish.application-services.dir')
         ? gradle.getProperty('localProperties.autoPublish.application-services.dir') : null
 }
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

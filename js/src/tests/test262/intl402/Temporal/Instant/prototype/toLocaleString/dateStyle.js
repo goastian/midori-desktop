@@ -1,11 +1,11 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2024 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
 /*---
 esid: sec-temporal.instant.prototype.tolocalestring
 description: Basic tests that dateStyle option affects output
-locale: [en-u-ca-gregory, en-u-ca-islamic]
+locale: [en-u-ca-gregory, en-u-ca-islamic-tbla]
 features: [Temporal, Intl.DateTimeFormat-datetimestyle]
 ---*/
 
@@ -20,11 +20,11 @@ assert(
   "dateStyle: short does not write month of March out in full"
 );
 assert(
-  instant.toLocaleString("en-u-ca-islamic", { dateStyle: "long" }).includes("Ramadan"),
+  instant.toLocaleString("en-u-ca-islamic-tbla", { dateStyle: "long" }).includes("Ramadan"),
   "dateStyle: long writes month of Ramadan out in full"
 );
 assert(
-  !instant.toLocaleString("en-u-ca-islamic", { dateStyle: "short" }).includes("Ramadan"),
+  !instant.toLocaleString("en-u-ca-islamic-tbla", { dateStyle: "short" }).includes("Ramadan"),
   "dateStyle: short does not write month of Ramadan out in full"
 );
 

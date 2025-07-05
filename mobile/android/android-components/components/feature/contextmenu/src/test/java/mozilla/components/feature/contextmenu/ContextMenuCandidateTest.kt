@@ -4,12 +4,15 @@
 
 package mozilla.components.feature.contextmenu
 
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
 import android.view.View
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.MainScope
+import mozilla.components.browser.state.action.BrowserAction
+import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.engine.EngineMiddleware
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.state.state.BrowserState
@@ -17,7 +20,7 @@ import mozilla.components.browser.state.state.ContentState
 import mozilla.components.browser.state.state.EngineState
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.state.TabSessionState
-import mozilla.components.browser.state.state.content.ShareInternetResourceState
+import mozilla.components.browser.state.state.content.ShareResourceState
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineSession
@@ -29,6 +32,7 @@ import mozilla.components.support.test.any
 import mozilla.components.support.test.argumentCaptor
 import mozilla.components.support.test.eq
 import mozilla.components.support.test.libstate.ext.waitUntilIdle
+import mozilla.components.support.test.middleware.CaptureActionsMiddleware
 import mozilla.components.support.test.mock
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.ui.widgets.SnackbarDelegate
@@ -43,6 +47,7 @@ import org.junit.runner.RunWith
 import org.mockito.ArgumentMatchers.anyBoolean
 import org.mockito.Mockito
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.spy
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
@@ -270,6 +275,43 @@ class ContextMenuCandidateTest {
         store.waitUntilIdle()
 
         assertEquals("https://www.mozilla_uri.org", store.state.tabs.last().content.url)
+    }
+
+    @Test
+    fun `Open Link in New Tab with text fragment`() {
+        val middleware = CaptureActionsMiddleware<BrowserState, BrowserAction>()
+        val store = BrowserStore(
+            middleware = listOf(middleware),
+            initialState = BrowserState(
+                tabs = listOf(
+                    createTab("https://www.mozilla.org", id = "mozilla"),
+                ),
+                selectedTabId = "mozilla",
+            ),
+        )
+
+        val tabsUseCases = TabsUseCases(store)
+        val parentView = CoordinatorLayout(testContext)
+
+        val openInNewTab = ContextMenuCandidate.createOpenInNewTabCandidate(
+            testContext,
+            tabsUseCases,
+            parentView,
+            snackbarDelegate,
+        )
+
+        assertEquals(1, store.state.tabs.size)
+
+        openInNewTab.action.invoke(
+            store.state.tabs.first(),
+            HitResult.UNKNOWN("https://www.mozilla.org"),
+        )
+        store.waitUntilIdle()
+
+        middleware.assertLastAction(EngineAction.LoadUrlAction::class) { action ->
+            assertEquals("https://www.mozilla.org", action.url)
+            assertEquals(true, action.textDirectiveUserActivation)
+        }
     }
 
     @Test
@@ -1211,6 +1253,36 @@ class ContextMenuCandidateTest {
     }
 
     @Test
+    fun `GIVEN share error WHEN invoking share link candidate THEN does not crash`() {
+        val context = spy(testContext)
+        var errorThrown = false
+
+        doThrow(ActivityNotFoundException()).`when`(context).startActivity(any())
+        val shareLink = ContextMenuCandidate.createShareLinkCandidate(context)
+
+        val store = BrowserStore(
+            initialState = BrowserState(
+                tabs = listOf(
+                    createTab("https://www.mozilla.org", id = "mozilla", private = true),
+                ),
+                selectedTabId = "mozilla",
+            ),
+        )
+
+        try {
+            shareLink.action.invoke(
+                store.state.tabs.first(),
+                HitResult.IMAGE_SRC("https://firefox.com", "https://getpocket.com"),
+            )
+        } catch (e: Exception) {
+            errorThrown = true
+        }
+
+        verify(context).startActivity(any())
+        assertFalse(errorThrown)
+    }
+
+    @Test
     fun `Candidate 'Share image'`() {
         val store = BrowserStore(
             initialState = BrowserState(
@@ -1223,7 +1295,7 @@ class ContextMenuCandidateTest {
         val shareUsecase: ContextMenuUseCases.InjectShareInternetResourceUseCase = mock()
         doReturn(shareUsecase).`when`(usecases).injectShareFromInternet
         val shareImage = ContextMenuCandidate.createShareImageCandidate(context, usecases)
-        val shareStateCaptor = argumentCaptor<ShareInternetResourceState>()
+        val shareStateCaptor = argumentCaptor<ShareResourceState.InternetResource>()
         // showFor
 
         assertTrue(
@@ -1298,7 +1370,7 @@ class ContextMenuCandidateTest {
         val copyUseCase: ContextMenuUseCases.InjectCopyInternetResourceUseCase = mock()
         doReturn(copyUseCase).`when`(useCases).injectCopyFromInternet
         val copyImage = ContextMenuCandidate.createCopyImageCandidate(context, useCases)
-        val shareStateCaptor = argumentCaptor<ShareInternetResourceState>()
+        val shareStateCaptor = argumentCaptor<ShareResourceState.InternetResource>()
 
         // showFor
 
@@ -1600,15 +1672,15 @@ class ContextMenuCandidateTest {
         val getAppLinkRedirectMock: AppLinksUseCases.GetAppLinkRedirect = mock()
 
         doReturn(
-            AppLinkRedirect(mock(), null, null),
+            AppLinkRedirect(mock(), "", null, null),
         ).`when`(getAppLinkRedirectMock).invoke(eq("https://www.example.com"))
 
         doReturn(
-            AppLinkRedirect(null, null, mock()),
+            AppLinkRedirect(null, "", null, mock()),
         ).`when`(getAppLinkRedirectMock).invoke(eq("intent:www.example.com#Intent;scheme=https;package=org.mozilla.fenix;end"))
 
         doReturn(
-            AppLinkRedirect(null, null, null),
+            AppLinkRedirect(null, "", null, null),
         ).`when`(getAppLinkRedirectMock).invoke(eq("https://www.otherexample.com"))
 
         // This mock exists only to verify that it was called
@@ -1699,10 +1771,10 @@ class ContextMenuCandidateTest {
         val tab = createTab("https://www.mozilla.org")
         val getAppLinkRedirectMock: AppLinksUseCases.GetAppLinkRedirect = mock()
         doReturn(
-            AppLinkRedirect(mock(), null, null),
+            AppLinkRedirect(mock(), "", null, null),
         ).`when`(getAppLinkRedirectMock).invoke(eq("https://www.example.com"))
         doReturn(
-            AppLinkRedirect(null, null, mock()),
+            AppLinkRedirect(null, "", null, mock()),
         ).`when`(getAppLinkRedirectMock).invoke(eq("intent:www.example.com#Intent;scheme=https;package=org.mozilla.fenix;end"))
         val openAppLinkRedirectMock: AppLinksUseCases.OpenAppLinkRedirect = mock()
         val appLinksUseCasesMock: AppLinksUseCases = mock()
@@ -2056,8 +2128,24 @@ private class TestSnackbarDelegate : SnackbarDelegate {
     var hasShownSnackbar = false
     var lastActionListener: ((v: View) -> Unit)? = null
 
-    override fun show(snackBarParentView: View, text: Int, duration: Int, action: Int, listener: ((v: View) -> Unit)?) {
+    override fun show(
+        snackBarParentView: View,
+        text: Int,
+        duration: Int,
+        isError: Boolean,
+        action: Int,
+        listener: ((v: View) -> Unit)?,
+    ) {
         hasShownSnackbar = true
         lastActionListener = listener
     }
+
+    override fun show(
+        snackBarParentView: View,
+        text: String,
+        duration: Int,
+        isError: Boolean,
+        action: String?,
+        listener: ((v: View) -> Unit)?,
+    ) = show(snackBarParentView, 0, duration, isError, 0, listener)
 }

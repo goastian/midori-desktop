@@ -9,9 +9,10 @@
  */
 
 #include <climits>
+#include <cstdint>
 
 #include "vpx/vpx_image.h"
-#include "third_party/googletest/src/include/gtest/gtest.h"
+#include "gtest/gtest.h"
 
 TEST(VpxImageTest, VpxImgWrapInvalidAlign) {
   const int kWidth = 128;

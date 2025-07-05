@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2018 Bloomberg LP. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -30,13 +30,5 @@ assert.sameValue(
   `${yearmonth.toLocaleString("de-AT", { timeZone: "Europe/Vienna", calendar })}`,
   `11${deMonthYearSeparator}1976`
 );
-
-// should ignore units not in the data type
-assert.sameValue(yearmonth.toLocaleString("en-US", { timeZoneName: "long" }), "11/1976");
-assert.sameValue(yearmonth.toLocaleString("en-US", { day: "numeric" }), "11/1976");
-assert.sameValue(yearmonth.toLocaleString("en-US", { hour: "numeric" }), "11/1976");
-assert.sameValue(yearmonth.toLocaleString("en-US", { minute: "numeric" }), "11/1976");
-assert.sameValue(yearmonth.toLocaleString("en-US", { second: "numeric" }), "11/1976");
-assert.sameValue(yearmonth.toLocaleString("en-US", { weekday: "long" }), "11/1976");
 
 reportCompare(0, 0);

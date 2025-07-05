@@ -33,10 +33,7 @@ const FEATURES = {
   reflowCounts: "layout.reflow.showframecounts",
 };
 
-const COMMANDS = [
-  "dumpContent",
-  "dumpFrames",
-  "dumpFramesInCSSPixels",
+const SIMPLE_COMMANDS = [
   "dumpTextRuns",
   "dumpViews",
   "dumpCounterManager",
@@ -51,6 +48,8 @@ class Debugger {
     this._flags = new Map();
     this._pagedMode = false;
     this._attached = false;
+    this._anonymousSubtreeDumping = false;
+    this._deterministicFrameDumping = false;
 
     for (let [name, pref] of Object.entries(FEATURES)) {
       this._flags.set(name, !!Services.prefs.getBoolPref(pref, false));
@@ -105,8 +104,39 @@ class Debugger {
     this._sendMessage("setPagedMode", v);
   }
 
+  get anonymousSubtreeDumping() {
+    return this._anonymousSubtreeDumping;
+  }
+
+  set anonymousSubtreeDumping(v) {
+    this._anonymousSubtreeDumping = !!v;
+  }
+
+  get deterministicFrameDumping() {
+    return this._deterministicFrameDumping;
+  }
+
+  set deterministicFrameDumping(v) {
+    this._deterministicFrameDumping = !!v;
+  }
+
   openDevTools() {
     lazy.BrowserToolboxLauncher.init();
+  }
+
+  sendDumpContent() {
+    this._sendMessage("dumpContent", this.anonymousSubtreeDumping);
+  }
+
+  sendDumpFrames(css_pixels) {
+    let flags = 0;
+    if (css_pixels) {
+      flags |= Ci.nsILayoutDebuggingTools.DUMP_FRAME_FLAGS_CSS_PIXELS;
+    }
+    if (this.deterministicFrameDumping) {
+      flags |= Ci.nsILayoutDebuggingTools.DUMP_FRAME_FLAGS_DETERMINISTIC;
+    }
+    this._sendMessage("dumpFrames", flags);
   }
 
   async _sendMessage(name, arg) {
@@ -145,11 +175,23 @@ for (let [name, pref] of Object.entries(FEATURES)) {
   });
 }
 
-for (let name of COMMANDS) {
+for (let name of SIMPLE_COMMANDS) {
   Debugger.prototype[name] = function () {
     this._sendMessage(name);
   };
 }
+
+Debugger.prototype.dumpContent = function () {
+  this.sendDumpContent();
+};
+
+Debugger.prototype.dumpFrames = function () {
+  this.sendDumpFrames(false);
+};
+
+Debugger.prototype.dumpFramesInCSSPixels = function () {
+  this.sendDumpFrames(true);
+};
 
 function autoCloseIfNeeded(aCrash) {
   if (!gArgs.autoclose) {
@@ -272,6 +314,8 @@ function parseArguments() {
     autoclose: false,
     delay: 0,
     paged: false,
+    anonymousSubtreeDumping: false,
+    deterministicFrameDumping: false,
   };
   if (window.arguments) {
     args.url = window.arguments[0];
@@ -285,6 +329,10 @@ function parseArguments() {
         args.profileFilename = RegExp.$1;
       } else if (/^paged$/.test(arg)) {
         args.paged = true;
+      } else if (/^anonymous-subtree-dumping$/.test(arg)) {
+        args.anonymousSubtreeDumping = true;
+      } else if (/^deterministic-frame-dumping$/.test(arg)) {
+        args.deterministicFrameDumping = true;
       } else {
         throw `Unknown option ${arg}`;
       }
@@ -310,6 +358,115 @@ const TabCrashedObserver = {
 };
 
 function OnLDBLoad() {
+  window.addEventListener("close", event => OnLDBBeforeUnload(event));
+  window.addEventListener("unload", OnLDBUnload);
+  document
+    .getElementById("tasksCommands")
+    .addEventListener("command", event => {
+      switch (event.target.id) {
+        case "cmd_open":
+          openFile();
+          break;
+        case "cmd_close":
+          window.close();
+          break;
+        case "cmd_focusURLBar":
+          focusURLBar();
+          break;
+        case "cmd_reload":
+          gBrowser.reload();
+          break;
+        case "cmd_dumpContent":
+          gDebugger.dumpContent();
+          break;
+        case "cmd_dumpFrames":
+          gDebugger.dumpFrames();
+          break;
+        case "cmd_dumpFramesInCSSPixels":
+          gDebugger.dumpFramesInCSSPixels();
+          break;
+        case "cmd_dumpTextRuns":
+          gDebugger.dumpTextRuns();
+          break;
+        case "cmd_openDevTools":
+          gDebugger.openDevTools();
+          break;
+        default:
+          // Default means that we are not handling a command so we should
+          // probably let people know.
+          throw new Error("Unhandled command event");
+      }
+    });
+  document
+    .getElementById("layoutdebug-toggle-menu")
+    .addEventListener("command", event => {
+      toggle(event.target);
+    });
+  document
+    .getElementById("layoutdebug-dump-menu")
+    .addEventListener("command", event => {
+      switch (event.target.id) {
+        case "menu_processIDs":
+          gDebugger.dumpProcessIDs();
+          break;
+        case "menu_dumpContent":
+          gDebugger.dumpContent();
+          break;
+        case "menu_dumpFrames":
+          gDebugger.dumpFrames();
+          break;
+        case "menu_dumpFramesInCSSPixels":
+          gDebugger.dumpFramesInCSSPixels();
+          break;
+        case "menu_dumpTextRuns":
+          gDebugger.dumTextRuns();
+          break;
+        case "menu_dumpViews":
+          gDebugger.dumpViews();
+          break;
+        case "menu_dumpCounterManager":
+          gDebugger.dumpCounterManager();
+          break;
+        case "menu_dumpStyleSheets":
+          gDebugger.dumpStyleSheets();
+          break;
+        case "menu_dumpMatchedRules":
+          gDebugger.dumpMatchedRules();
+          break;
+        case "menu_dumpComputedStyles":
+          gDebugger.dumpComputedStyles();
+          break;
+        case "menu_dumpReflowStats":
+          gDebugger.dumpReflowStats();
+          break;
+        default:
+          // Default means that we are not handling a command so we should
+          // probably let people know.
+          throw new Error("Unhandled command event");
+      }
+    });
+  document.getElementById("nav-toolbar").addEventListener("command", event => {
+    switch (event.target.id) {
+      case "back-button":
+        gBrowser.goBack();
+        break;
+      case "forward-button":
+        gBrowser.goForward();
+        break;
+      case "stop-button":
+        gBrowser.stop();
+        break;
+      default:
+        // Default means that we are not handling a command so we should
+        // probably let people know.
+        throw new Error("Unhandled command event");
+    }
+  });
+  document.getElementById("urlbar").addEventListener("keypress", event => {
+    if (event.key == "Enter") {
+      go();
+    }
+  });
   gBrowser = document.getElementById("browser");
   gURLBar = document.getElementById("urlbar");
 
@@ -371,6 +528,9 @@ function OnLDBLoad() {
     loadStringURI(gArgs.url);
   }
 
+  gDebugger._anonymousSubtreeDumping = gArgs.anonymousSubtreeDumping;
+  gDebugger._deterministicFrameDumping = gArgs.deterministicFrameDumping;
+
   // Some command line arguments may toggle menu items. Call this after
   // processing all the arguments.
   checkPersistentMenus();
@@ -390,6 +550,8 @@ function checkPersistentMenus() {
   checkPersistentMenu("crossingEventDumping");
   checkPersistentMenu("reflowCounts");
   checkPersistentMenu("pagedMode");
+  checkPersistentMenu("anonymousSubtreeDumping");
+  checkPersistentMenu("deterministicFrameDumping");
 }
 
 function dumpProfile() {
@@ -518,3 +680,5 @@ function go() {
   loadStringURI(gURLBar.value);
   gBrowser.focus();
 }
+
+window.addEventListener("load", OnLDBLoad);

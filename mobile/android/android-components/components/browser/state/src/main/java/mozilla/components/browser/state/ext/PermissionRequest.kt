@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 package mozilla.components.browser.state.ext
 import mozilla.components.concept.engine.permission.PermissionRequest
 
@@ -11,5 +12,19 @@ fun List<PermissionRequest>.containsPermission(permissionRequest: PermissionRequ
     return this.any {
         it.uri == permissionRequest.uri &&
             it.permissions == permissionRequest.permissions
+    }
+}
+
+/**
+ * Merge the given [permissionRequest] if it is contained in this list.
+ */
+fun List<PermissionRequest>.mergePermissions(permissionRequest: PermissionRequest) {
+    run loop@{
+        this.forEach {
+            if (it.uri == permissionRequest.uri && it.permissions == permissionRequest.permissions) {
+                it.merge(permissionRequest)
+                return@loop
+            }
+        }
     }
 }

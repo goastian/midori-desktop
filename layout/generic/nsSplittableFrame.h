@@ -48,12 +48,12 @@ class nsSplittableFrame : public nsIFrame {
   nsIFrame* GetNextContinuation() const final;
 
   // Set a previous non-fluid continuation.
-  void SetPrevContinuation(nsIFrame*) final;
-
-  // Set a next non-fluid continuation.
   //
   // WARNING: this method updates caches for next-continuations, so it has O(n)
   // time complexity over the length of next-continuations in the chain.
+  void SetPrevContinuation(nsIFrame*) final;
+
+  // Set a next non-fluid continuation.
   void SetNextContinuation(nsIFrame*) final;
 
   // Get the first/last continuation for this frame.
@@ -71,21 +71,21 @@ class nsSplittableFrame : public nsIFrame {
   nsIFrame* GetNextInFlow() const final;
 
   // Set a previous fluid continuation.
-  void SetPrevInFlow(nsIFrame*) final;
-
-  // Set a next fluid continuation.
   //
   // WARNING: this method updates caches for next-continuations, so it has O(n)
   // time complexity over the length of next-continuations in the chain.
+  void SetPrevInFlow(nsIFrame*) final;
+
+  // Set a next fluid continuation.
   void SetNextInFlow(nsIFrame*) final;
 
   // Get the first/last frame in the current flow.
   nsIFrame* FirstInFlow() const final;
   nsIFrame* LastInFlow() const final;
 
-  // Remove the frame from the flow. Connects the frame's prev-in-flow
-  // and its next-in-flow. This should only be called in frame Destroy()
-  // methods.
+  // Remove the frame from the flow. Connects the frame's prev-in-flow and its
+  // next-in-flow. This should only be called during frame destruction, e.g. in
+  // frame's Destroy() method.
   static void RemoveFromFlow(nsIFrame* aFrame);
 
  protected:
@@ -161,6 +161,14 @@ class nsSplittableFrame : public nsIFrame {
 
   nsIFrame* mPrevContinuation = nullptr;
   nsIFrame* mNextContinuation = nullptr;
+
+  /**
+   * Cached pointers to the first-continuation and first-in-flow, if currently
+   * known. These may be null, in which case the first-* will need to be found
+   * by following the chain.
+   */
+  nsIFrame* mFirstContinuation = nullptr;
+  nsIFrame* mFirstInFlow = nullptr;
 };
 
 #endif /* nsSplittableFrame_h___ */

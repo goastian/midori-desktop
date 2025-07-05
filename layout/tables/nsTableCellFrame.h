@@ -84,8 +84,11 @@ class nsTableCellFrame : public nsContainerFrame,
 #endif
 
   nsContainerFrame* GetContentInsertionFrame() override {
-    return PrincipalChildList().FirstChild()->GetContentInsertionFrame();
+    return Inner()->GetContentInsertionFrame();
   }
+
+  // Return our anonymous inner frame.
+  nsIFrame* Inner() const;
 
   nsIFrame* CellContentFrame() const;
 
@@ -102,8 +105,9 @@ class nsTableCellFrame : public nsContainerFrame,
                               nsDisplayListBuilder* aBuilder,
                               const nsDisplayListSet& aLists);
 
-  nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord IntrinsicISize(const mozilla::IntrinsicSizeInput& aInput,
+                         mozilla::IntrinsicISizeType aType) override;
+
   IntrinsicSizeOffsetData IntrinsicISizeOffsets(
       nscoord aPercentageBasis = NS_UNCONSTRAINEDSIZE) override;
 
@@ -115,9 +119,15 @@ class nsTableCellFrame : public nsContainerFrame,
   nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  // Align the cell's child frame within the cell.
-  void BlockDirAlignChild(mozilla::WritingMode aWM, nscoord aMaxAscent,
-                          mozilla::ForceAlignTopForTableCell aForceAlignTop);
+  // Align the cell's anonymous-block child within the cell. This applies the
+  // CSS `vertical-align` property to position the child frame appropriately
+  // (in terms of the writing mode of the cell contents, which may be different
+  // from the table's WM).
+  // This also resets the child's inline position, which in the case of an
+  // orthogonal child may have been based on an unknown container size when
+  // it was initially reflowed.
+  void AlignChildWithinCell(nscoord aMaxAscent,
+                            mozilla::ForceAlignTopForTableCell aForceAlignTop);
 
   /*
    * Get the value of vertical-align adjusted for CSS 2's rules for a
@@ -135,7 +145,7 @@ class nsTableCellFrame : public nsContainerFrame,
    * Get the first-line baseline of the cell relative to its block-start border
    * edge, as if the cell were vertically aligned to the top of the row.
    */
-  nscoord GetCellBaseline() const;
+  Maybe<nscoord> GetCellBaseline() const;
 
   /**
    * return the cell's specified row span. this is what was specified in the

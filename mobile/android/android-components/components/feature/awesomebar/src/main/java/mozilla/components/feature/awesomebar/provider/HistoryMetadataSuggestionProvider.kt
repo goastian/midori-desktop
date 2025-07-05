@@ -64,12 +64,11 @@ class HistoryMetadataSuggestionProvider(
     }
 
     override suspend fun onInputChanged(text: String): List<AwesomeBar.Suggestion> {
-        historyStorage.cancelReads(text)
-
         if (text.isNullOrBlank()) {
             return emptyList()
         }
 
+        historyStorage.cancelReads(text)
         val suggestions = when (resultsUriFilter) {
             null -> getHistorySuggestions(text)
             else -> getHistorySuggestionsFromHost(resultsUriFilter, text)
@@ -119,7 +118,7 @@ internal suspend fun Iterable<HistoryMetadata>.into(
             description = result.key.url,
             editSuggestion = if (showEditSuggestion) result.key.url else null,
             onSuggestionClicked = {
-                loadUrlUseCase.invoke(result.key.url)
+                loadUrlUseCase(result.key.url)
                 emitHistorySuggestionClickedFact()
             },
         )

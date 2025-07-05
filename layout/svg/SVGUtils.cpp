@@ -287,42 +287,42 @@ nsIFrame* SVGUtils::GetOuterSVGFrameAndCoveredRegion(nsIFrame* aFrame,
   }
 
   if (aFrame->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
-    *aRect = nsRect(0, 0, 0, 0);
-  } else {
-    uint32_t flags = SVGUtils::eForGetClientRects | SVGUtils::eBBoxIncludeFill |
-                     SVGUtils::eBBoxIncludeStroke |
-                     SVGUtils::eBBoxIncludeMarkers |
-                     SVGUtils::eUseUserSpaceOfUseElement;
-
-    auto ctm = nsLayoutUtils::GetTransformToAncestor(RelativeTo{aFrame},
-                                                     RelativeTo{outer});
-
-    float initPositionX = NSAppUnitsToFloatPixels(aFrame->GetPosition().x,
-                                                  AppUnitsPerCSSPixel()),
-          initPositionY = NSAppUnitsToFloatPixels(aFrame->GetPosition().y,
-                                                  AppUnitsPerCSSPixel());
-
-    Matrix mm;
-    ctm.ProjectTo2D();
-    ctm.CanDraw2D(&mm);
-    gfxMatrix m = ThebesMatrix(mm);
-
-    float appUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
-    float devPixelPerCSSPixel =
-        float(AppUnitsPerCSSPixel()) / appUnitsPerDevPixel;
-
-    // The matrix that GetBBox accepts should operate on "user space",
-    // i.e. with CSS pixel unit.
-    m = m.PreScale(devPixelPerCSSPixel, devPixelPerCSSPixel);
-
-    // Both SVGUtils::GetBBox and nsLayoutUtils::GetTransformToAncestor
-    // will count this displacement, we should remove it here to avoid
-    // double-counting.
-    m = m.PreTranslate(-initPositionX, -initPositionY);
-
-    gfxRect bbox = SVGUtils::GetBBox(aFrame, flags, &m);
-    *aRect = nsLayoutUtils::RoundGfxRectToAppRect(bbox, appUnitsPerDevPixel);
+    *aRect = nsRect();
+    return outer;
   }
+
+  auto ctm = nsLayoutUtils::GetTransformToAncestor(RelativeTo{aFrame},
+                                                   RelativeTo{outer});
+
+  Matrix mm;
+  ctm.ProjectTo2D();
+  ctm.CanDraw2D(&mm);
+  gfxMatrix m = ThebesMatrix(mm);
+
+  float appUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
+  float devPixelPerCSSPixel =
+      float(AppUnitsPerCSSPixel()) / appUnitsPerDevPixel;
+
+  // The matrix that GetBBox accepts should operate on "user space",
+  // i.e. with CSS pixel unit.
+  m.PreScale(devPixelPerCSSPixel, devPixelPerCSSPixel);
+
+  auto initPosition = gfxPoint(
+      NSAppUnitsToFloatPixels(aFrame->GetPosition().x, AppUnitsPerCSSPixel()),
+      NSAppUnitsToFloatPixels(aFrame->GetPosition().y, AppUnitsPerCSSPixel()));
+
+  // Both SVGUtils::GetBBox and nsLayoutUtils::GetTransformToAncestor
+  // will count this displacement, we should remove it here to avoid
+  // double-counting.
+  m.PreTranslate(-initPosition);
+
+  uint32_t flags = SVGUtils::eForGetClientRects | SVGUtils::eBBoxIncludeFill |
+                   SVGUtils::eBBoxIncludeStroke |
+                   SVGUtils::eBBoxIncludeMarkers |
+                   SVGUtils::eUseUserSpaceOfUseElement;
+
+  gfxRect bbox = SVGUtils::GetBBox(aFrame, flags, &m);
+  *aRect = nsLayoutUtils::RoundGfxRectToAppRect(bbox, appUnitsPerDevPixel);
 
   return outer;
 }
@@ -347,34 +347,18 @@ gfxMatrix SVGUtils::GetCanvasTM(nsIFrame* aFrame) {
   auto* parent = static_cast<SVGContainerFrame*>(aFrame->GetParent());
   auto* content = static_cast<SVGElement*>(aFrame->GetContent());
 
-  return content->PrependLocalTransformsTo(parent->GetCanvasTM());
+  return content->ChildToUserSpaceTransform() * parent->GetCanvasTM();
 }
 
-bool SVGUtils::IsSVGTransformed(const nsIFrame* aFrame,
-                                gfx::Matrix* aOwnTransform,
-                                gfx::Matrix* aFromParentTransform) {
+bool SVGUtils::GetParentSVGTransforms(const nsIFrame* aFrame,
+                                      gfx::Matrix* aFromParentTransform) {
   MOZ_ASSERT(aFrame->HasAllStateBits(NS_FRAME_SVG_LAYOUT |
                                      NS_FRAME_MAY_BE_TRANSFORMED),
              "Expecting an SVG frame that can be transformed");
-  bool foundTransform = false;
-
-  // Check if our parent has children-only transforms:
   if (SVGContainerFrame* parent = do_QueryFrame(aFrame->GetParent())) {
-    foundTransform = parent->HasChildrenOnlyTransform(aFromParentTransform);
+    return parent->HasChildrenOnlyTransform(aFromParentTransform);
   }
-
-  if (auto* content = SVGElement::FromNode(aFrame->GetContent())) {
-    auto* transformList = content->GetAnimatedTransformList();
-    if ((transformList && transformList->HasTransform()) ||
-        content->GetAnimateMotionTransform()) {
-      if (aOwnTransform) {
-        *aOwnTransform = gfx::ToMatrix(
-            content->PrependLocalTransformsTo(gfxMatrix(), eUserSpaceToParent));
-      }
-      foundTransform = true;
-    }
-  }
-  return foundTransform;
+  return false;
 }
 
 void SVGUtils::NotifyChildrenOfSVGChange(nsIFrame* aFrame, uint32_t aFlags) {
@@ -582,6 +566,9 @@ void SVGUtils::PaintFrameWithEffects(nsIFrame* aFrame, gfxContext& aContext,
 
   if (auto* svg = SVGElement::FromNode(aFrame->GetContent())) {
     if (!svg->HasValidDimensions()) {
+      return;
+    }
+    if (aFrame->IsSVGSymbolFrame() && !svg->IsInSVGUseShadowTree()) {
       return;
     }
   }
@@ -901,8 +888,8 @@ gfxRect SVGUtils::GetBBox(nsIFrame* aFrame, uint32_t aFlags,
     // NOTE: When changing this to apply to other frame types, make sure to
     // also update SVGUtils::FrameSpaceInCSSPxToUserSpaceOffset.
     MOZ_ASSERT(aFrame->GetContent()->IsSVGElement(), "bad cast");
-    SVGElement* element = static_cast<SVGElement*>(aFrame->GetContent());
-    matrix = element->PrependLocalTransformsTo(matrix, eChildToUserSpace);
+    auto* element = static_cast<SVGElement*>(aFrame->GetContent());
+    matrix = element->ChildToUserSpaceTransform() * matrix;
   }
   gfxRect bbox =
       svg->GetBBoxContribution(ToMatrix(matrix), aFlags).ToThebesRect();
@@ -979,9 +966,8 @@ gfxPoint SVGUtils::FrameSpaceInCSSPxToUserSpaceOffset(const nsIFrame* aFrame) {
   // For foreignObject frames, SVGUtils::GetBBox applies their local
   // transform, so we need to do the same here.
   if (aFrame->IsSVGForeignObjectFrame()) {
-    gfxMatrix transform =
-        static_cast<SVGElement*>(aFrame->GetContent())
-            ->PrependLocalTransformsTo(gfxMatrix(), eChildToUserSpace);
+    gfxMatrix transform = static_cast<SVGElement*>(aFrame->GetContent())
+                              ->ChildToUserSpaceTransform();
     NS_ASSERTION(!transform.HasNonTranslation(),
                  "we're relying on this being an offset-only transform");
     return transform.GetTranslation();
@@ -1078,10 +1064,26 @@ bool SVGUtils::GetNonScalingStrokeTransform(const nsIFrame* aFrame,
 
   MOZ_ASSERT(aFrame->GetContent()->IsSVGElement(), "should be an SVG element");
 
-  *aUserToOuterSVG = ThebesMatrix(
-      SVGContentUtils::GetCTM(static_cast<SVGElement*>(aFrame->GetContent())));
+  SVGElement* content = static_cast<SVGElement*>(aFrame->GetContent());
+  *aUserToOuterSVG =
+      ThebesMatrix(SVGContentUtils::GetNonScalingStrokeCTM(content));
 
   return aUserToOuterSVG->HasNonTranslation() && !aUserToOuterSVG->IsSingular();
+}
+
+void SVGUtils::UpdateNonScalingStrokeStateBit(nsIFrame* aFrame) {
+  MOZ_ASSERT(aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT),
+             "Called on invalid frame type");
+  MOZ_ASSERT(aFrame->StyleSVGReset()->HasNonScalingStroke(),
+             "Expecting initial frame to have non-scaling-stroke style");
+
+  do {
+    MOZ_ASSERT(aFrame->IsSVGFrame(), "Unexpected frame type");
+    aFrame->AddStateBits(NS_STATE_SVG_MAY_CONTAIN_NON_SCALING_STROKE);
+    if (aFrame->IsSVGOuterSVGFrame()) {
+      return;
+    }
+  } while ((aFrame = aFrame->GetParent()));
 }
 
 // The logic here comes from _cairo_stroke_style_max_distance_from_path
@@ -1154,7 +1156,7 @@ gfxRect SVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
 
 /* static */
 nscolor SVGUtils::GetFallbackOrPaintColor(
-    const ComputedStyle& aStyle, StyleSVGPaint nsStyleSVG::*aFillOrStroke,
+    const ComputedStyle& aStyle, StyleSVGPaint nsStyleSVG::* aFillOrStroke,
     nscolor aDefaultContextFallbackColor) {
   const auto& paint = aStyle.StyleSVG()->*aFillOrStroke;
   nscolor color;
@@ -1474,9 +1476,9 @@ bool SVGUtils::GetSVGGlyphExtents(const Element* aElement,
     return false;
   }
 
-  gfxMatrix transform(aSVGToAppSpace);
+  gfxMatrix transform = aSVGToAppSpace;
   if (auto* svg = SVGElement::FromNode(frame->GetContent())) {
-    transform = svg->PrependLocalTransformsTo(aSVGToAppSpace);
+    transform = svg->ChildToUserSpaceTransform() * transform;
   }
 
   *aResult =
@@ -1528,15 +1530,11 @@ gfxMatrix SVGUtils::GetTransformMatrixInUserSpace(const nsIFrame* aFrame) {
 
   Matrix svgTransform;
   Matrix4x4 trans;
-  (void)aFrame->IsSVGTransformed(&svgTransform);
-
   if (properties.HasTransform()) {
     trans = nsStyleTransformMatrix::ReadTransforms(
         properties.mTranslate, properties.mRotate, properties.mScale,
         properties.mMotion.ptrOr(nullptr), properties.mTransform, refBox,
         AppUnitsPerCSSPixel());
-  } else {
-    trans = Matrix4x4::From2D(svgTransform);
   }
 
   trans.ChangeBasis(svgTransformOrigin);

@@ -7,31 +7,11 @@ apply plugin: 'kotlin-android'
 
 def generatedSrcDir = new File(layout.buildDirectory.get().asFile, "generated/components/src/main/java")
 
-// This vcsHash functionality is duplicated in publish.gradle.
-def getVcsHash = { ->
-    def stdout = new ByteArrayOutputStream()
-    def stderr = new ByteArrayOutputStream()
-    try {
-        exec {
-            commandLine 'git', 'rev-parse', '--short', 'HEAD'
-            standardOutput = stdout
-            errorOutput = stderr
-        }
-    } catch (Exception e) {
-        exec {
-            commandLine 'hg', 'id', '--id'
-            environment 'HGPLAIN', '1'
-            standardOutput = stdout
-        }
-    }
-    return stdout.toString().trim()
-}
-
 android {
     defaultConfig {
-        minSdkVersion config.minSdkVersion
-        compileSdk config.compileSdkVersion
-        targetSdkVersion config.targetSdkVersion
+        minSdkVersion = config.minSdkVersion
+        compileSdk = config.compileSdkVersion
+        targetSdkVersion = config.targetSdkVersion
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -42,16 +22,18 @@ android {
 
         buildConfigField("String", "LIBRARY_VERSION", "\"" + config.componentsVersion + "\"")
         buildConfigField("String", "APPLICATION_SERVICES_VERSION", "\"" + appServicesVersion + "\"")
-        buildConfigField("String", "GLEAN_SDK_VERSION", "\"" + Versions.mozilla_glean + "\"")
-        buildConfigField("String", "VCS_HASH", "\"dev build\"")
+        buildConfigField("String", "GLEAN_SDK_VERSION", "\"" + libs.versions.mozilla.glean.get() + "\"")
+        if (gradle.mozconfig.substs.MOZ_INCLUDE_SOURCE_INFO) {
+            buildConfigField("String", "VCS_HASH", "\"" + gradle.mozconfig.source_repo.MOZ_SOURCE_STAMP + "\"")
+        } else {
+            buildConfigField("String", "VCS_HASH", "\"\"")
+        }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-
-            buildConfigField("String", "VCS_HASH", "\"" + getVcsHash() + "\"")
         }
     }
 
@@ -64,29 +46,32 @@ android {
     }
 
     buildFeatures {
-        viewBinding true
-        buildConfig true
+        viewBinding = true
+        buildConfig = true
     }
 
-    namespace 'mozilla.components.support.base'
+    namespace = 'mozilla.components.support.base'
 
 }
 
 dependencies {
-    implementation ComponentsDependencies.kotlin_coroutines
-    implementation ComponentsDependencies.androidx_core_ktx
-    implementation ComponentsDependencies.androidx_lifecycle_viewmodel
+    implementation libs.kotlin.coroutines
+    implementation libs.androidx.activity
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.lifecycle.viewmodel
+
+    implementation project(':concept-fetch')
 
     api project(":concept-base")
     // We expose the app-compat as API so that consumers get access to the Lifecycle classes automatically
-    api ComponentsDependencies.androidx_appcompat
+    api libs.androidx.appcompat
 
     testImplementation project(':support-test')
 
-    testImplementation ComponentsDependencies.testing_coroutines
-    testImplementation ComponentsDependencies.androidx_test_core
-    testImplementation ComponentsDependencies.androidx_test_junit
-    testImplementation ComponentsDependencies.testing_robolectric
+    testImplementation libs.testing.coroutines
+    testImplementation libs.androidx.test.core
+    testImplementation libs.androidx.test.junit
+    testImplementation libs.testing.robolectric
 }
 
 
@@ -97,6 +82,7 @@ preBuild.finalizedBy("generateComponentEnum")
  * Generates a "Components" enum listing all published components.
  */
 tasks.register("generateComponentEnum") {
+    def buildConfigCache = buildConfig
     doLast {
         generatedSrcDir.mkdirs()
 
@@ -104,13 +90,17 @@ tasks.register("generateComponentEnum") {
         file.delete()
         file.createNewFile()
 
+        file << "/* This Source Code Form is subject to the terms of the Mozilla Public\n" +
+                " * License, v. 2.0. If a copy of the MPL was not distributed with this\n" +
+                " * file, You can obtain one at http://mozilla.org/MPL/2.0/. */\n"
+
         file << "package mozilla.components.support.base" << "\n"
         file << "\n"
         file << "// Automatically generated file. DO NOT MODIFY" << "\n"
         file << "\n"
         file << "enum class Component {" << "\n"
 
-        file << buildConfig.projects.findAll { project ->
+        file << buildConfigCache.projects.findAll { project ->
             project.value.publish
         }.collect { project ->
             "    " + project.key.replace("-", "_").toUpperCase(Locale.US)
@@ -124,4 +114,4 @@ tasks.register("generateComponentEnum") {
 
 apply from: '../../../android-lint.gradle'
 apply from: '../../../publish.gradle'
-ext.configurePublish(config.componentsGroupId, archivesBaseName, project.ext.description)
+ext.configurePublish(config.componentsGroupId, project.name, project.ext.description)

@@ -38,6 +38,7 @@ import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.support.base.feature.LifecycleAwareFeature
 import mozilla.components.support.base.feature.OnNeedToRequestPermissions
 import mozilla.components.support.base.feature.PermissionsFeature
+import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.ktx.android.content.appName
 import mozilla.components.support.ktx.android.content.isPermissionGranted
 import mozilla.components.support.ktx.kotlin.isSameOriginAs
@@ -94,6 +95,7 @@ value class NegativeActionCallback(val value: () -> Unit)
  * responsible for performing the downloads.
  * @property store a reference to the application's [BrowserStore].
  * @property useCases [DownloadsUseCases] instance for consuming processed downloads.
+ * @property fileSystemHelper A helper for file system operations.
  * @property fragmentManager a reference to a [FragmentManager]. If a fragment
  * manager is provided, a dialog will be shown before every download.
  * @property promptsStyling styling properties for the dialog.
@@ -103,6 +105,7 @@ value class NegativeActionCallback(val value: () -> Unit)
  * that will be processed by the current application.
  * @property customThirdPartyDownloadDialog An optional delegate for showing a dialog for a download
  * that can be processed by multiple installed applications including the current one.
+ * @property fileHasNotEnoughStorageDialog A callback invoked when there is not enough storage space.
  */
 @Suppress("LargeClass")
 class DownloadsFeature(
@@ -110,6 +113,7 @@ class DownloadsFeature(
     private val store: BrowserStore,
     @get:VisibleForTesting(otherwise = PRIVATE)
     internal val useCases: DownloadsUseCases,
+    private val fileSystemHelper: FileSystemHelper = DefaultFileSystemHelper(),
     override var onNeedToRequestPermissions: OnNeedToRequestPermissions = { },
     onDownloadStopped: onDownloadStopped = noop,
     private val downloadManager: DownloadManager = AndroidDownloadManager(applicationContext, store),
@@ -117,11 +121,16 @@ class DownloadsFeature(
     private val fragmentManager: FragmentManager? = null,
     private val promptsStyling: PromptsStyling? = null,
     private val shouldForwardToThirdParties: () -> Boolean = { false },
-    private val customFirstPartyDownloadDialog:
-    ((Filename, ContentSize, PositiveActionCallback, NegativeActionCallback) -> Unit)? = null,
-    private val customThirdPartyDownloadDialog:
-    ((ThirdPartyDownloaderApps, ThirdPartyDownloaderAppChosenCallback, NegativeActionCallback) -> Unit)? = null,
+    private val customFirstPartyDownloadDialog: (
+        (Filename, ContentSize, PositiveActionCallback, NegativeActionCallback) -> Unit
+    )? = null,
+    private val customThirdPartyDownloadDialog: (
+        (ThirdPartyDownloaderApps, ThirdPartyDownloaderAppChosenCallback, NegativeActionCallback) -> Unit
+    )? = null,
+    private val fileHasNotEnoughStorageDialog: ((Filename) -> Unit) = {},
 ) : LifecycleAwareFeature, PermissionsFeature {
+
+    private val logger = Logger("DownloadsFeature")
 
     var onDownloadStopped: onDownloadStopped
         get() = downloadManager.onDownloadStopped
@@ -258,6 +267,16 @@ class DownloadsFeature(
 
     @VisibleForTesting
     internal fun startDownload(download: DownloadState): Boolean {
+        fileSystemHelper.createDirectoryIfNotExists(download.directoryPath)
+
+        if (isDownloadBiggerThanAvailableSpace(download)) {
+            fileHasNotEnoughStorageDialog.invoke(
+                Filename(download.realFilenameOrGuessed),
+            )
+            download.sessionId?.let { useCases.cancelDownloadRequest.invoke(it, download.id) }
+            return false
+        }
+
         val id = downloadManager.download(download)
         return if (id != null) {
             true
@@ -306,7 +325,6 @@ class DownloadsFeature(
         ).show()
     }
 
-    @VisibleForTesting(otherwise = PRIVATE)
     internal fun showDownloadDialog(
         tab: SessionState,
         download: DownloadState,
@@ -333,6 +351,20 @@ class DownloadsFeature(
         return findPreviousDownloadDialogFragment() ?: SimpleDownloadDialogFragment.newInstance(
             promptsStyling = promptsStyling,
         )
+    }
+
+    @VisibleForTesting
+    internal fun isDownloadBiggerThanAvailableSpace(download: DownloadState): Boolean {
+        download.contentLength?.let { downloadLength ->
+            if (fileSystemHelper.isDirectory(download.directoryPath)) {
+                try {
+                    return downloadLength > fileSystemHelper.availableBytesInDirectory(download.directoryPath)
+                } catch (e: IllegalArgumentException) {
+                    logger.error("Invalid path for StatFs: ${download.directoryPath}", e)
+                }
+            }
+        }
+        return false
     }
 
     @VisibleForTesting

@@ -4,21 +4,23 @@
 
 package mozilla.components.feature.contextmenu
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.view.View
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import com.google.android.material.snackbar.Snackbar
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.state.content.DownloadState
-import mozilla.components.browser.state.state.content.ShareInternetResourceState
+import mozilla.components.browser.state.state.content.ShareResourceState
 import mozilla.components.concept.engine.HitResult
 import mozilla.components.feature.app.links.AppLinksUseCases
 import mozilla.components.feature.contextmenu.ContextMenuCandidate.Companion.MAX_TITLE_LENGTH
 import mozilla.components.feature.tabs.TabsUseCases
+import mozilla.components.support.base.log.Log
 import mozilla.components.support.ktx.android.content.addContact
 import mozilla.components.support.ktx.android.content.createChooserExcludingCurrentApp
 import mozilla.components.support.ktx.android.content.share
@@ -123,6 +125,7 @@ data class ContextMenuCandidate(
                     hitResult.getLink(),
                     selectTab = false,
                     startLoading = true,
+                    textDirectiveUserActivation = true,
                     parentId = parent.id,
                     contextId = parent.contextId,
                 )
@@ -166,15 +169,16 @@ data class ContextMenuCandidate(
                     hitResult.getLink(),
                     selectTab = false,
                     startLoading = true,
+                    textDirectiveUserActivation = true,
                     parentId = parent.id,
                     private = true,
                 )
 
                 snackbarDelegate.show(
-                    snackBarParentView,
-                    R.string.mozac_feature_contextmenu_snackbar_new_private_tab_opened,
-                    Snackbar.LENGTH_LONG,
-                    R.string.mozac_feature_contextmenu_snackbar_action_switch,
+                    snackBarParentView = snackBarParentView,
+                    text = R.string.mozac_feature_contextmenu_snackbar_new_private_tab_opened,
+                    duration = Snackbar.LENGTH_LONG,
+                    action = R.string.mozac_feature_contextmenu_snackbar_action_switch,
                 ) {
                     tabsUseCases.selectTab(tab)
                 }
@@ -392,7 +396,7 @@ data class ContextMenuCandidate(
             action = { tab, hitResult ->
                 contextMenuUseCases.injectCopyFromInternet(
                     tab.id,
-                    ShareInternetResourceState(
+                    ShareResourceState.InternetResource(
                         url = hitResult.src,
                         private = tab.content.private,
                         referrerUrl = tab.content.url,
@@ -491,12 +495,22 @@ data class ContextMenuCandidate(
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     putExtra(Intent.EXTRA_TEXT, hitResult.getLink())
                 }
-                context.startActivity(
-                    intent.createChooserExcludingCurrentApp(
-                        context,
-                        context.getString(R.string.mozac_feature_contextmenu_share_link),
-                    ),
-                )
+
+                try {
+                    context.startActivity(
+                        intent.createChooserExcludingCurrentApp(
+                            context,
+                            context.getString(R.string.mozac_feature_contextmenu_share_link),
+                        ),
+                    )
+                } catch (e: ActivityNotFoundException) {
+                    Log.log(
+                        Log.Priority.WARN,
+                        message = "No activity to share to found",
+                        throwable = e,
+                        tag = "createShareLinkCandidate",
+                    )
+                }
             },
         )
 
@@ -523,7 +537,7 @@ data class ContextMenuCandidate(
             action = { tab, hitResult ->
                 contextMenuUseCases.injectShareFromInternet(
                     tab.id,
-                    ShareInternetResourceState(
+                    ShareResourceState.InternetResource(
                         url = hitResult.src,
                         private = tab.content.private,
                         referrerUrl = tab.content.url,
@@ -682,7 +696,7 @@ internal fun SessionState.isUrlSchemeAllowed(url: String): Boolean {
     return when (val engineSession = engineState.engineSession) {
         null -> true
         else -> {
-            val urlScheme = Uri.parse(url).normalizeScheme().scheme
+            val urlScheme = url.toUri().normalizeScheme().scheme
             !engineSession.getBlockedSchemes().contains(urlScheme)
         }
     }

@@ -170,9 +170,9 @@ void SVGImageFrame::DidSetComputedStyle(ComputedStyle* aOldStyle) {
   // TODO(heycam): We should handle aspect-ratio, like nsImageFrame does.
 }
 
-bool SVGImageFrame::IsSVGTransformed(gfx::Matrix* aOwnTransform,
-                                     gfx::Matrix* aFromParentTransform) const {
-  return SVGUtils::IsSVGTransformed(this, aOwnTransform, aFromParentTransform);
+bool SVGImageFrame::DoGetParentSVGTransforms(
+    gfx::Matrix* aFromParentTransform) const {
+  return SVGUtils::GetParentSVGTransforms(this, aFromParentTransform);
 }
 
 //----------------------------------------------------------------------
@@ -188,6 +188,17 @@ nsresult SVGImageFrame::AttributeChanged(int32_t aNameSpaceID,
       // recomposite.
       InvalidateFrame();
       return NS_OK;
+    }
+  }
+  if (aModType == dom::MutationEvent_Binding::REMOVAL &&
+      (aNameSpaceID == kNameSpaceID_None ||
+       aNameSpaceID == kNameSpaceID_XLink) &&
+      aAttribute == nsGkAtoms::href) {
+    auto* element = static_cast<SVGImageElement*>(GetContent());
+    if (aNameSpaceID == kNameSpaceID_None ||
+        !element->mStringAttributes[SVGImageElement::HREF].IsExplicitlySet()) {
+      mImageContainer = nullptr;
+      InvalidateFrame();
     }
   }
 
@@ -238,7 +249,6 @@ bool SVGImageFrame::GetIntrinsicImageDimensions(
   }
 
   ImageResolution resolution = mImageContainer->GetResolution();
-
   int32_t width, height;
   if (NS_FAILED(mImageContainer->GetWidth(&width))) {
     aSize.width = -1;
@@ -254,9 +264,7 @@ bool SVGImageFrame::GetIntrinsicImageDimensions(
     resolution.ApplyYTo(aSize.height);
   }
 
-  Maybe<AspectRatio> asp = mImageContainer->GetIntrinsicRatio();
-  aAspectRatio = asp.valueOr(AspectRatio{});
-
+  aAspectRatio = mImageContainer->GetIntrinsicRatio();
   return true;
 }
 
@@ -312,12 +320,14 @@ void SVGImageFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
     nsCOMPtr<imgIRequest> currentRequest;
     nsCOMPtr<nsIImageLoadingContent> imageLoader =
         do_QueryInterface(GetContent());
-    if (imageLoader)
+    if (imageLoader) {
       imageLoader->GetRequest(nsIImageLoadingContent::CURRENT_REQUEST,
                               getter_AddRefs(currentRequest));
+    }
 
-    if (currentRequest)
+    if (currentRequest) {
       currentRequest->GetImage(getter_AddRefs(mImageContainer));
+    }
   }
 
   if (mImageContainer) {

@@ -19,12 +19,17 @@ namespace mozilla {
 
 nsGenConNode* ContainStyleScope::GetPrecedingElementInGenConList(
     nsGenConList* aList) {
-  auto IsAfter = [this](nsGenConNode* aNode) {
+  nsContentUtils::NodeIndexCache cache;
+  auto IsAfter = [this, &cache](nsGenConNode* aNode) {
     return nsContentUtils::CompareTreePosition<TreeKind::Flat>(
                mContent, aNode->mPseudoFrame->GetContent(),
-               /* aCommonAncestor = */ nullptr) > 0;
+               /* aCommonAncestor = */ nullptr, &cache) >= 0;
   };
-  return aList->BinarySearch(IsAfter);
+  auto* last = aList->GetLast();
+  if (!last || IsAfter(last)) {
+    return last;
+  }
+  return aList->BinarySearch(IsAfter)->getPrevious();
 }
 
 void ContainStyleScope::RecalcAllCounters() {

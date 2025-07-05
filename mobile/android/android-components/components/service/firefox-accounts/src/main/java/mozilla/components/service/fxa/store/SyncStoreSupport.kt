@@ -18,7 +18,6 @@ import mozilla.components.concept.sync.OAuthAccount
 import mozilla.components.concept.sync.Profile
 import mozilla.components.service.fxa.manager.AccountState
 import mozilla.components.service.fxa.manager.FxaAccountManager
-import mozilla.components.service.fxa.manager.SCOPE_PROFILE
 import mozilla.components.service.fxa.sync.SyncStatusObserver
 import java.lang.Exception
 
@@ -98,23 +97,6 @@ internal class FxaAccountObserver(
     private val autoPause: Boolean,
     private val coroutineScope: CoroutineScope,
 ) : AccountObserver {
-    override fun onReady(authenticatedAccount: OAuthAccount?) {
-        coroutineScope.launch {
-            if (authenticatedAccount == null) {
-                return@launch
-            }
-
-            val syncAccount =
-                authenticatedAccount.getProfile()?.toAccount(authenticatedAccount) ?: return@launch
-            store.dispatch(SyncAction.UpdateAccount(account = syncAccount))
-
-            val accountState = when (authenticatedAccount.checkAuthorizationStatus(SCOPE_PROFILE)) {
-                true -> AccountState.Authenticated
-                null, false -> AccountState.AuthenticationProblem
-            }
-            store.dispatch(SyncAction.UpdateAccountState(accountState = accountState))
-        }
-    }
 
     override fun onAuthenticated(account: OAuthAccount, authType: AuthType) {
         coroutineScope.launch(Dispatchers.Main) {
@@ -144,6 +126,17 @@ internal class FxaAccountObserver(
     override fun onFlowError(error: AuthFlowError) {
         store.dispatch(SyncAction.UpdateAccount(account = null))
         store.dispatch(SyncAction.UpdateAccountState(accountState = AccountState.NotAuthenticated))
+    }
+
+    override fun onProfileUpdated(profile: Profile) {
+        val currentAccount = store.state.account ?: return
+        val updatedAccount = currentAccount.copy(
+            uid = profile.uid,
+            email = profile.email,
+            avatar = profile.avatar,
+            displayName = profile.displayName,
+        )
+        store.dispatch(SyncAction.UpdateAccount(updatedAccount))
     }
 }
 

@@ -1,4 +1,4 @@
-// |reftest| skip-if(!this.hasOwnProperty('Temporal')) -- Temporal is not enabled unconditionally
+// |reftest| shell-option(--enable-temporal) skip-if(!this.hasOwnProperty('Temporal')||!xulRuntime.shell) -- Temporal is not enabled unconditionally, requires shell-options
 // Copyright (C) 2021 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -9,8 +9,7 @@ includes: [temporalHelpers.js]
 features: [Temporal]
 ---*/
 
-const timeZone = new Temporal.TimeZone("Africa/Monrovia");
-const instance = Temporal.ZonedDateTime.from({ year: 1970, month: 1, day: 1, hour: 12, timeZone });
+const instance = Temporal.ZonedDateTime.from({ year: 1970, month: 1, day: 1, hour: 12, timeZone: "Africa/Monrovia" });
 assert.sameValue(instance.offset, "-00:44:30", "original offset");
 const properties = { day: 2, offset: "-00:45" };
 

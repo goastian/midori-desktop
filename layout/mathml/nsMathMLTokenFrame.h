@@ -29,7 +29,7 @@ class nsMathMLTokenFrame : public nsMathMLContainerFrame {
   TransmitAutomaticData() override {
     // The REC defines the following elements to be space-like:
     // * an mtext, mspace, maligngroup, or malignmark element;
-    if (mContent->IsMathMLElement(nsGkAtoms::mtext_)) {
+    if (mContent->IsMathMLElement(nsGkAtoms::mtext)) {
       mPresentationData.flags |= NS_MATHML_SPACE_LIKE;
     }
     return NS_OK;
@@ -38,7 +38,7 @@ class nsMathMLTokenFrame : public nsMathMLContainerFrame {
   NS_IMETHOD
   InheritAutomaticData(nsIFrame* aParent) override;
 
-  virtual eMathMLFrameType GetMathMLFrameType() override;
+  eMathMLFrameType GetMathMLFrameType() override;
 
   void SetInitialChildList(ChildListID aListID,
                            nsFrameList&& aChildList) override;
@@ -49,12 +49,12 @@ class nsMathMLTokenFrame : public nsMathMLContainerFrame {
                     const nsLineList::iterator* aPrevFrameLine,
                     nsFrameList&& aChildList) override;
 
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
-  virtual nsresult Place(DrawTarget* aDrawTarget, bool aPlaceOrigin,
-                         ReflowOutput& aDesiredSize) override;
+  nsresult Place(DrawTarget* aDrawTarget, const PlaceFlags& aFlags,
+                 ReflowOutput& aDesiredSize) override;
 
  protected:
   explicit nsMathMLTokenFrame(ComputedStyle* aStyle,

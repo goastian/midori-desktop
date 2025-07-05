@@ -38,9 +38,6 @@ import mozilla.components.concept.engine.manifest.WebAppManifest
 import mozilla.components.concept.engine.mediasession.MediaSession
 import mozilla.components.concept.engine.permission.PermissionRequest
 import mozilla.components.concept.engine.prompt.PromptRequest
-import mozilla.components.concept.engine.shopping.ProductAnalysis
-import mozilla.components.concept.engine.shopping.ProductAnalysisStatus
-import mozilla.components.concept.engine.shopping.ProductRecommendation
 import mozilla.components.concept.engine.translate.TranslationError
 import mozilla.components.concept.engine.translate.TranslationOperation
 import mozilla.components.concept.engine.translate.TranslationOptions
@@ -50,6 +47,7 @@ import mozilla.components.support.test.libstate.ext.waitUntilIdle
 import mozilla.components.support.test.middleware.CaptureActionsMiddleware
 import mozilla.components.support.test.mock
 import mozilla.components.support.test.whenever
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -58,7 +56,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 
 @RunWith(AndroidJUnit4::class)
 class EngineObserverTest {
@@ -85,45 +85,13 @@ class EngineObserverTest {
                 onResult: (Boolean) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-            override fun requestProductAnalysis(
-                url: String,
-                onResult: (ProductAnalysis) -> Unit,
+            override fun getWebCompatInfo(
+                onResult: (JSONObject) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-
-            override fun requestProductRecommendations(
-                url: String,
-                onResult: (List<ProductRecommendation>) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reanalyzeProduct(
-                url: String,
-                onResult: (String) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun requestAnalysisStatus(
-                url: String,
-                onResult: (ProductAnalysisStatus) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendClickAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendImpressionAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendPlacementAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reportBackInStock(
-                url: String,
-                onResult: (String) -> Unit,
+            override fun sendMoreWebCompatInfo(
+                info: JSONObject,
+                onResult: () -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
             override fun requestTranslate(
@@ -159,6 +127,8 @@ class EngineObserverTest {
                 parent: EngineSession?,
                 flags: LoadUrlFlags,
                 additionalHeaders: Map<String, String>?,
+                originalInput: String?,
+                textDirectiveUserActivation: Boolean,
             ) {
                 notifyObservers { onLocationChange(url, false) }
                 notifyObservers { onProgress(100) }
@@ -206,45 +176,13 @@ class EngineObserverTest {
                 onResult: (Boolean) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-            override fun requestProductAnalysis(
-                url: String,
-                onResult: (ProductAnalysis) -> Unit,
+            override fun getWebCompatInfo(
+                onResult: (JSONObject) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-
-            override fun requestProductRecommendations(
-                url: String,
-                onResult: (List<ProductRecommendation>) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reanalyzeProduct(
-                url: String,
-                onResult: (String) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun requestAnalysisStatus(
-                url: String,
-                onResult: (ProductAnalysisStatus) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendClickAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendImpressionAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendPlacementAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reportBackInStock(
-                url: String,
-                onResult: (String) -> Unit,
+            override fun sendMoreWebCompatInfo(
+                info: JSONObject,
+                onResult: () -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
             override fun requestTranslate(
@@ -275,6 +213,8 @@ class EngineObserverTest {
                 parent: EngineSession?,
                 flags: LoadUrlFlags,
                 additionalHeaders: Map<String, String>?,
+                originalInput: String?,
+                textDirectiveUserActivation: Boolean,
             ) {
                 if (url.startsWith("https://")) {
                     notifyObservers { onSecurityChange(true, "host", "issuer") }
@@ -323,46 +263,13 @@ class EngineObserverTest {
                 onResult: (Boolean) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-
-            override fun requestProductRecommendations(
-                url: String,
-                onResult: (List<ProductRecommendation>) -> Unit,
+            override fun getWebCompatInfo(
+                onResult: (JSONObject) -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
-
-            override fun requestProductAnalysis(
-                url: String,
-                onResult: (ProductAnalysis) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reanalyzeProduct(
-                url: String,
-                onResult: (String) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun requestAnalysisStatus(
-                url: String,
-                onResult: (ProductAnalysisStatus) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendClickAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendImpressionAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun sendPlacementAttributionEvent(
-                aid: String,
-                onResult: (Boolean) -> Unit,
-                onException: (Throwable) -> Unit,
-            ) {}
-            override fun reportBackInStock(
-                url: String,
-                onResult: (String) -> Unit,
+            override fun sendMoreWebCompatInfo(
+                info: JSONObject,
+                onResult: () -> Unit,
                 onException: (Throwable) -> Unit,
             ) {}
             override fun requestTranslate(
@@ -385,6 +292,8 @@ class EngineObserverTest {
                 parent: EngineSession?,
                 flags: LoadUrlFlags,
                 additionalHeaders: Map<String, String>?,
+                originalInput: String?,
+                textDirectiveUserActivation: Boolean,
             ) {}
             override fun loadData(data: String, mimeType: String, encoding: String) {}
             override fun requestPdfToDownload() = Unit
@@ -420,6 +329,218 @@ class EngineObserverTest {
     }
 
     @Test
+    fun `WHEN the first page load is complete, set the translations initialized`() {
+        val engineSession = object : EngineSession() {
+            override val settings: Settings = mock()
+            override fun goBack(userInteraction: Boolean) {}
+            override fun goForward(userInteraction: Boolean) {}
+            override fun goToHistoryIndex(index: Int) {}
+            override fun stopLoading() {}
+            override fun reload(flags: LoadUrlFlags) {}
+            override fun restoreState(state: EngineSessionState): Boolean { return false }
+            override fun updateTrackingProtection(policy: TrackingProtectionPolicy) {}
+            override fun toggleDesktopMode(enable: Boolean, reload: Boolean) {}
+            override fun hasCookieBannerRuleForSession(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun checkForPdfViewer(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun getWebCompatInfo(
+                onResult: (JSONObject) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun sendMoreWebCompatInfo(
+                info: JSONObject,
+                onResult: () -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun requestTranslate(
+                fromLanguage: String,
+                toLanguage: String,
+                options: TranslationOptions?,
+            ) {}
+            override fun requestTranslationRestore() {}
+            override fun getNeverTranslateSiteSetting(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun setNeverTranslateSiteSetting(
+                setting: Boolean,
+                onResult: () -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun findAll(text: String) {}
+            override fun findNext(forward: Boolean) {}
+            override fun clearFindMatches() {}
+            override fun exitFullScreenMode() {}
+            override fun purgeHistory() {}
+            override fun loadData(data: String, mimeType: String, encoding: String) {}
+            override fun requestPdfToDownload() = Unit
+            override fun requestPrintContent() = Unit
+            override fun loadUrl(
+                url: String,
+                parent: EngineSession?,
+                flags: LoadUrlFlags,
+                additionalHeaders: Map<String, String>?,
+                originalInput: String?,
+                textDirectiveUserActivation: Boolean,
+            ) {
+                notifyObservers { onProgress(100) }
+            }
+        }
+
+        val store = BrowserStore(
+            initialState = BrowserState(
+                tabs = listOf(
+                    createTab("https://www.mozilla.org", id = "mozilla"),
+                ),
+            ),
+        )
+
+        assertEquals(false, store.state.translationsInitialized)
+
+        engineSession.register(EngineObserver("mozilla", store))
+
+        engineSession.loadUrl("https://mozilla.org")
+        store.waitUntilIdle()
+
+        assertEquals(true, store.state.translationsInitialized)
+    }
+
+    @Test
+    fun `WHEN the first page load is not complete, do not set the translations initialized`() {
+        val engineSession = object : EngineSession() {
+            override val settings: Settings = mock()
+            override fun goBack(userInteraction: Boolean) {}
+            override fun goForward(userInteraction: Boolean) {}
+            override fun goToHistoryIndex(index: Int) {}
+            override fun stopLoading() {}
+            override fun reload(flags: LoadUrlFlags) {}
+            override fun restoreState(state: EngineSessionState): Boolean { return false }
+            override fun updateTrackingProtection(policy: TrackingProtectionPolicy) {}
+            override fun toggleDesktopMode(enable: Boolean, reload: Boolean) {}
+            override fun hasCookieBannerRuleForSession(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun checkForPdfViewer(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun getWebCompatInfo(
+                onResult: (JSONObject) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun sendMoreWebCompatInfo(
+                info: JSONObject,
+                onResult: () -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun requestTranslate(
+                fromLanguage: String,
+                toLanguage: String,
+                options: TranslationOptions?,
+            ) {}
+            override fun requestTranslationRestore() {}
+            override fun getNeverTranslateSiteSetting(
+                onResult: (Boolean) -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun setNeverTranslateSiteSetting(
+                setting: Boolean,
+                onResult: () -> Unit,
+                onException: (Throwable) -> Unit,
+            ) {}
+            override fun findAll(text: String) {}
+            override fun findNext(forward: Boolean) {}
+            override fun clearFindMatches() {}
+            override fun exitFullScreenMode() {}
+            override fun purgeHistory() {}
+            override fun loadData(data: String, mimeType: String, encoding: String) {}
+            override fun requestPdfToDownload() = Unit
+            override fun requestPrintContent() = Unit
+            override fun loadUrl(
+                url: String,
+                parent: EngineSession?,
+                flags: LoadUrlFlags,
+                additionalHeaders: Map<String, String>?,
+                originalInput: String?,
+                textDirectiveUserActivation: Boolean,
+            ) {
+                notifyObservers { onProgress(80) }
+            }
+        }
+
+        val store = BrowserStore(
+            initialState = BrowserState(
+                tabs = listOf(
+                    createTab("https://www.mozilla.org", id = "mozilla"),
+                ),
+            ),
+        )
+
+        assertEquals(false, store.state.translationsInitialized)
+
+        engineSession.register(EngineObserver("mozilla", store))
+
+        engineSession.loadUrl("https://mozilla.org")
+        store.waitUntilIdle()
+
+        assertEquals(false, store.state.translationsInitialized)
+    }
+
+    @Test
+    fun `Do not initialize the translations flow if the page load is not complete`() {
+        val store: BrowserStore = mock()
+        val state: BrowserState = mock()
+        `when`(store.state).thenReturn(state)
+        `when`(store.state.translationsInitialized).thenReturn(false)
+
+        val observer = EngineObserver("mozilla", store)
+
+        observer.onProgress(80)
+
+        verify(store, never()).dispatch(
+            TranslationsAction.InitTranslationsBrowserState,
+        )
+    }
+
+    @Test
+    fun `Initialize the translations flow if page load is complete and it is not yet initialized`() {
+        val store: BrowserStore = mock()
+        val state: BrowserState = mock()
+        `when`(store.state).thenReturn(state)
+        `when`(store.state.translationsInitialized).thenReturn(false)
+
+        val observer = EngineObserver("mozilla", store)
+
+        observer.onProgress(100)
+
+        verify(store).dispatch(
+            TranslationsAction.InitTranslationsBrowserState,
+        )
+    }
+
+    @Test
+    fun `Do not initialize the translations flow if it is already initialized`() {
+        val store: BrowserStore = mock()
+        val state: BrowserState = mock()
+        `when`(store.state).thenReturn(state)
+        `when`(store.state.translationsInitialized).thenReturn(true)
+
+        val observer = EngineObserver("mozilla", store)
+
+        observer.onProgress(100)
+
+        verify(store, never()).dispatch(
+            TranslationsAction.InitTranslationsBrowserState,
+        )
+    }
+
+    @Test
     fun engineSessionObserverExcludedOnTrackingProtection() {
         val store: BrowserStore = mock()
         val observer = EngineObserver("mozilla", store)
@@ -445,6 +566,21 @@ class EngineObserverTest {
             CookieBannerAction.UpdateStatusAction(
                 "mozilla",
                 HANDLED,
+            ),
+        )
+    }
+
+    @Test
+    fun `WHEN onTranslatePageChange is called THEN dispatch a TranslationsAction SetTranslateProcessingAction`() {
+        val store: BrowserStore = mock()
+        val observer = EngineObserver("mozilla", store)
+
+        observer.onTranslatePageChange()
+
+        verify(store).dispatch(
+            TranslationsAction.SetTranslateProcessingAction(
+                "mozilla",
+                false,
             ),
         )
     }
@@ -970,14 +1106,14 @@ class EngineObserverTest {
 
         observer.onDesktopModeChange(true)
         store.waitUntilIdle()
-        middleware.assertFirstAction(ContentAction.UpdateDesktopModeAction::class) { action ->
+        middleware.assertFirstAction(ContentAction.UpdateTabDesktopMode::class) { action ->
             assertEquals("tab-id", action.sessionId)
             assertTrue(action.enabled)
         }
 
         observer.onDesktopModeChange(false)
         store.waitUntilIdle()
-        middleware.assertLastAction(ContentAction.UpdateDesktopModeAction::class) { action ->
+        middleware.assertLastAction(ContentAction.UpdateTabDesktopMode::class) { action ->
             assertEquals("tab-id", action.sessionId)
             assertFalse(action.enabled)
         }
@@ -1595,9 +1731,9 @@ class EngineObserverTest {
         val store: BrowserStore = mock()
         val observer = EngineObserver("test-id", store)
         val intent: Intent = mock()
-        observer.onLaunchIntentRequest(url = url, appIntent = intent)
+        observer.onLaunchIntentRequest(url = url, appIntent = intent, fallbackUrl = null, appName = null)
 
-        verify(store).dispatch(ContentAction.UpdateAppIntentAction("test-id", AppIntentState(url, intent)))
+        verify(store).dispatch(ContentAction.UpdateAppIntentAction("test-id", AppIntentState(url, intent, null, null)))
     }
 
     @Test

@@ -4,6 +4,7 @@
 
 package mozilla.components.browser.state.state.extension
 
+import mozilla.components.concept.engine.webextension.PermissionPromptResponse
 import mozilla.components.concept.engine.webextension.WebExtension
 import mozilla.components.concept.engine.webextension.WebExtensionInstallException
 
@@ -43,31 +44,35 @@ sealed class WebExtensionPromptRequest {
          */
         sealed class Permissions(
             override val extension: WebExtension,
-            open val onConfirm: (Boolean) -> Unit,
         ) : AfterInstallation(extension) {
             /**
              * Value type that represents a request for a required permissions prompt.
              * @property extension The [WebExtension] that requested the dialog to be shown.
              * @property permissions The permissions to list in the dialog.
-             * @property onConfirm A callback indicating whether the permissions were granted or not.
+             * @property origins The origins to list in the dialog.
+             * @property onConfirm A callback indicating the prompt has been confirmed and pass
+             * [PermissionPromptResponse] result.
              */
             data class Required(
                 override val extension: WebExtension,
                 val permissions: List<String>,
-                override val onConfirm: (Boolean) -> Unit,
-            ) : Permissions(extension, onConfirm)
+                val origins: List<String>,
+                val onConfirm: (PermissionPromptResponse) -> Unit,
+            ) : Permissions(extension)
 
             /**
              * Value type that represents a request for an optional permissions prompt.
              * @property extension The [WebExtension] that requested the dialog to be shown.
              * @property permissions The optional permissions to list in the dialog.
+             * @property origins The optional host permissions to list in the dialog.
              * @property onConfirm A callback indicating whether the permissions were granted or not.
              */
             data class Optional(
                 override val extension: WebExtension,
                 val permissions: List<String>,
-                override val onConfirm: (Boolean) -> Unit,
-            ) : Permissions(extension, onConfirm)
+                val origins: List<String>,
+                val onConfirm: (Boolean) -> Unit,
+            ) : Permissions(extension)
         }
 
         /**

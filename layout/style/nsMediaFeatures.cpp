@@ -24,6 +24,7 @@
 #include "nsContentUtils.h"
 #include "mozilla/RelativeLuminanceUtils.h"
 #include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/GeckoBindings.h"
@@ -89,13 +90,15 @@ static nsSize GetDeviceSize(const Document& aDocument) {
     return pc->GetPageSize();
   }
 
-  nsSize size;
-  pc->DeviceContext()->GetDeviceSurfaceDimensions(size.width, size.height);
-  return size;
+  return pc->DeviceContext()->GetDeviceSurfaceDimensions();
 }
 
 bool Gecko_MediaFeatures_IsResourceDocument(const Document* aDocument) {
   return aDocument->IsResourceDoc();
+}
+
+bool Gecko_MediaFeatures_InAndroidPipMode(const Document* aDocument) {
+  return aDocument->InAndroidPipMode();
 }
 
 bool Gecko_MediaFeatures_UseOverlayScrollbars(const Document* aDocument) {
@@ -142,15 +145,20 @@ int32_t Gecko_MediaFeatures_GetMonochromeBitsPerPixel(
   return color ? 0 : kDefaultMonochromeBpp;
 }
 
-dom::ScreenColorGamut Gecko_MediaFeatures_ColorGamut(
-    const Document* aDocument) {
-  auto colorGamut = dom::ScreenColorGamut::Srgb;
-  if (!aDocument->ShouldResistFingerprinting(RFPTarget::CSSColorInfo)) {
-    if (auto* dx = GetDeviceContextFor(aDocument)) {
-      colorGamut = dx->GetColorGamut();
-    }
+StyleColorGamut Gecko_MediaFeatures_ColorGamut(const Document* aDocument) {
+  auto* dx = GetDeviceContextFor(aDocument);
+  if (!dx || aDocument->ShouldResistFingerprinting(RFPTarget::CSSColorInfo)) {
+    return StyleColorGamut::Srgb;
   }
-  return colorGamut;
+  switch (dx->GetColorGamut()) {
+    case dom::ScreenColorGamut::Srgb:
+      return StyleColorGamut::Srgb;
+    case dom::ScreenColorGamut::Rec2020:
+      return StyleColorGamut::Rec2020;
+    case dom::ScreenColorGamut::P3:
+      return StyleColorGamut::P3;
+  }
+  return StyleColorGamut::Srgb;
 }
 
 int32_t Gecko_MediaFeatures_GetColorDepth(const Document* aDocument) {
@@ -190,7 +198,7 @@ float Gecko_MediaFeatures_GetResolution(const Document* aDocument) {
   }
 
   if (aDocument->ShouldResistFingerprinting(RFPTarget::CSSResolution)) {
-    return pc->DeviceContext()->GetFullZoom();
+    return float(nsRFPService::GetDevicePixelRatioAtZoom(pc->GetFullZoom()));
   }
   // Get the actual device pixel ratio, which also takes zoom into account.
   return float(AppUnitsPerCSSPixel()) /
@@ -340,6 +348,11 @@ StyleDynamicRange Gecko_MediaFeatures_VideoDynamicRange(
       !StaticPrefs::layout_css_video_dynamic_range_allows_high()) {
     return StyleDynamicRange::Standard;
   }
+#ifdef MOZ_WAYLAND
+  if (!StaticPrefs::gfx_wayland_hdr_AtStartup()) {
+    return StyleDynamicRange::Standard;
+  }
+#endif
   // video-dynamic-range: high has 3 requirements:
   // 1) high peak brightness
   // 2) high contrast ratio

@@ -10,6 +10,7 @@ import mozilla.components.concept.fetch.Request
 import mozilla.components.concept.fetch.Response
 import mozilla.components.service.pocket.stories.api.PocketResponse
 import mozilla.components.support.test.any
+import mozilla.components.support.test.helpers.MockResponses
 import mozilla.components.support.test.whenever
 import org.junit.Assert.assertEquals
 import org.mockito.Mockito.mock
@@ -53,7 +54,7 @@ fun assertRequestParams(client: Client, makeRequest: () -> Unit, assertParams: (
 fun assertSuccessfulRequestReturnsResponseBody(client: Client, makeRequest: () -> String?) {
     val expectedBody = "{\"jsonStr\": true}"
     val body = mock(Response.Body::class.java).also {
-        whenever(it.string()).thenReturn(expectedBody)
+        whenever(it.string(Charsets.UTF_8)).thenReturn(expectedBody)
     }
     val response = MockResponses.getSuccess().also {
         whenever(it.body).thenReturn(body)

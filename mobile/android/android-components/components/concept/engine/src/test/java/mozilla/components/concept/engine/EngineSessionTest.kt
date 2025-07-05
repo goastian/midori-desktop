@@ -12,12 +12,10 @@ import mozilla.components.concept.engine.content.blocking.Tracker
 import mozilla.components.concept.engine.history.HistoryItem
 import mozilla.components.concept.engine.mediasession.MediaSession
 import mozilla.components.concept.engine.permission.PermissionRequest
-import mozilla.components.concept.engine.shopping.ProductAnalysis
-import mozilla.components.concept.engine.shopping.ProductAnalysisStatus
-import mozilla.components.concept.engine.shopping.ProductRecommendation
 import mozilla.components.concept.engine.translate.TranslationOptions
 import mozilla.components.concept.engine.window.WindowRequest
 import mozilla.components.support.test.mock
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -81,7 +79,7 @@ class EngineSessionTest {
         session.notifyInternalObservers { onMediaFullscreenChanged(true, mediaSessionElementMetadata) }
         session.notifyInternalObservers { onCrash() }
         session.notifyInternalObservers { onLoadRequest("https://www.mozilla.org", true, true) }
-        session.notifyInternalObservers { onLaunchIntentRequest("https://www.mozilla.org", null) }
+        session.notifyInternalObservers { onLaunchIntentRequest("https://www.mozilla.org", null, null, null) }
         session.notifyInternalObservers { onProcessKilled() }
         session.notifyInternalObservers { onShowDynamicToolbar() }
 
@@ -116,7 +114,7 @@ class EngineSessionTest {
         verify(observer).onMediaFullscreenChanged(true, mediaSessionElementMetadata)
         verify(observer).onCrash()
         verify(observer).onLoadRequest("https://www.mozilla.org", true, true)
-        verify(observer).onLaunchIntentRequest("https://www.mozilla.org", null)
+        verify(observer).onLaunchIntentRequest("https://www.mozilla.org", null, null, null)
         verify(observer).onProcessKilled()
         verify(observer).onShowDynamicToolbar()
         verifyNoMoreInteractions(observer)
@@ -154,7 +152,7 @@ class EngineSessionTest {
         session.notifyInternalObservers { onWindowRequest(windowRequest) }
         session.notifyInternalObservers { onCrash() }
         session.notifyInternalObservers { onLoadRequest("https://www.mozilla.org", true, true) }
-        session.notifyInternalObservers { onLaunchIntentRequest("https://www.mozilla.org", null) }
+        session.notifyInternalObservers { onLaunchIntentRequest("https://www.mozilla.org", null, null, null) }
         session.notifyInternalObservers { onShowDynamicToolbar() }
         session.unregister(observer)
 
@@ -191,7 +189,7 @@ class EngineSessionTest {
         session.notifyInternalObservers { onMediaFullscreenChanged(true, mediaSessionElementMetadata) }
         session.notifyInternalObservers { onCrash() }
         session.notifyInternalObservers { onLoadRequest("https://www.mozilla.org", true, true) }
-        session.notifyInternalObservers { onLaunchIntentRequest("https://www.firefox.com", null) }
+        session.notifyInternalObservers { onLaunchIntentRequest("https://www.firefox.com", null, null, null) }
         session.notifyInternalObservers { onShowDynamicToolbar() }
 
         verify(observer).onScrollChange(1234, 4321)
@@ -213,7 +211,7 @@ class EngineSessionTest {
         verify(observer).onWindowRequest(windowRequest)
         verify(observer).onCrash()
         verify(observer).onLoadRequest("https://www.mozilla.org", true, true)
-        verify(observer).onLaunchIntentRequest("https://www.mozilla.org", null)
+        verify(observer).onLaunchIntentRequest("https://www.mozilla.org", null, null, null)
         verify(observer).onShowDynamicToolbar()
         verify(observer, never()).onScrollChange(2345, 5432)
         verify(observer, never()).onLocationChange("https://www.firefox.com", false)
@@ -241,7 +239,7 @@ class EngineSessionTest {
         verify(observer, never()).onMediaMuteChanged(true)
         verify(observer, never()).onMediaFullscreenChanged(true, mediaSessionElementMetadata)
         verify(observer, never()).onLoadRequest("https://www.mozilla.org", false, true)
-        verify(observer, never()).onLaunchIntentRequest("https://www.firefox.com", null)
+        verify(observer, never()).onLaunchIntentRequest("https://www.firefox.com", null, null, null)
         verifyNoMoreInteractions(observer)
     }
 
@@ -966,7 +964,7 @@ class EngineSessionTest {
         observer.onWindowRequest(windowRequest)
         observer.onCrash()
         observer.onLoadRequest("https://www.mozilla.org", true, true)
-        observer.onLaunchIntentRequest("https://www.mozilla.org", null)
+        observer.onLaunchIntentRequest("https://www.mozilla.org", null, null, null)
         observer.onProcessKilled()
         observer.onShowDynamicToolbar()
     }
@@ -983,6 +981,8 @@ open class DummyEngineSession : EngineSession() {
         parent: EngineSession?,
         flags: LoadUrlFlags,
         additionalHeaders: Map<String, String>?,
+        originalInput: String?,
+        textDirectiveUserActivation: Boolean,
     ) {}
 
     override fun loadData(data: String, mimeType: String, encoding: String) {}
@@ -1015,51 +1015,14 @@ open class DummyEngineSession : EngineSession() {
         onException: (Throwable) -> Unit,
     ) {}
 
-    override fun requestProductRecommendations(
-        url: String,
-        onResult: (List<ProductRecommendation>) -> Unit,
+    override fun getWebCompatInfo(
+        onResult: (JSONObject) -> Unit,
         onException: (Throwable) -> Unit,
     ) {}
 
-    override fun requestProductAnalysis(
-        url: String,
-        onResult: (ProductAnalysis) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun reanalyzeProduct(
-        url: String,
-        onResult: (String) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun requestAnalysisStatus(
-        url: String,
-        onResult: (ProductAnalysisStatus) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun sendClickAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun sendImpressionAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun sendPlacementAttributionEvent(
-        aid: String,
-        onResult: (Boolean) -> Unit,
-        onException: (Throwable) -> Unit,
-    ) {}
-
-    override fun reportBackInStock(
-        url: String,
-        onResult: (String) -> Unit,
+    override fun sendMoreWebCompatInfo(
+        info: JSONObject,
+        onResult: () -> Unit,
         onException: (Throwable) -> Unit,
     ) {}
 

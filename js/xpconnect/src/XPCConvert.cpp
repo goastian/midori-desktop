@@ -164,15 +164,7 @@ bool XPCConvert::NativeData2JS(JSContext* cx, MutableHandleValue d,
         d.setNull();
         return true;
       }
-
-      StringBuffer* buf;
-      if (!XPCStringConvert::ReadableToJSVal(cx, *p, &buf, d)) {
-        return false;
-      }
-      if (buf) {
-        buf->AddRef();
-      }
-      return true;
+      return NonVoidStringToJsval(cx, *p, d);
     }
 
     case nsXPTType::T_CHAR_STR: {
@@ -252,17 +244,10 @@ bool XPCConvert::NativeData2JS(JSContext* cx, MutableHandleValue d,
 
       // Is the string buffer is already valid latin1 (i.e. it is ASCII).
       //
-      // NOTE: XPCStringConvert::UTF8ToJSVal cannot be used here because
+      // NOTE: NonVoidUTF8StringToJsval cannot be used here because
       //       it requires valid UTF-8 sequence.
       if (mozilla::IsAscii(*utf8String)) {
-        StringBuffer* buf;
-        if (!XPCStringConvert::Latin1ToJSVal(cx, *utf8String, &buf, d)) {
-          return false;
-        }
-        if (buf) {
-          buf->AddRef();
-        }
-        return true;
+        return NonVoidLatin1StringToJsval(cx, *utf8String, d);
       }
 
       // 1-byte sequences decode to 1 UTF-16 code unit
@@ -312,14 +297,7 @@ bool XPCConvert::NativeData2JS(JSContext* cx, MutableHandleValue d,
       }
 
       // c-strings (binary blobs) are Latin1 string in JSAPI.
-      StringBuffer* buf;
-      if (!XPCStringConvert::Latin1ToJSVal(cx, *cString, &buf, d)) {
-        return false;
-      }
-      if (buf) {
-        buf->AddRef();
-      }
-      return true;
+      return NonVoidLatin1StringToJsval(cx, *cString, d);
     }
 
     case nsXPTType::T_INTERFACE:
@@ -1145,15 +1123,13 @@ static nsresult JSErrorToXPCException(JSContext* cx, const char* toStringResult,
       bestMessage.AssignLiteral("JavaScript Error");
     }
 
-    const char16_t* linebuf = report->linebuf();
     uint32_t flags = report->isWarning() ? nsIScriptError::warningFlag
                                          : nsIScriptError::errorFlag;
 
     data = new nsScriptError();
     data->nsIScriptError::InitWithWindowID(
-        bestMessage, NS_ConvertUTF8toUTF16(report->filename.c_str()),
-        linebuf ? nsDependentString(linebuf, report->linebufLength())
-                : EmptyString(),
+        bestMessage,
+        nsDependentCString(report->filename ? report->filename.c_str() : ""),
         report->lineno, report->column.oneOriginValue(), flags,
         "XPConnect JavaScript"_ns,
         nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(cx));

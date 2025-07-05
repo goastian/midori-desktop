@@ -14,7 +14,7 @@ from mach.decorators import Command, CommandArgument
     "args", nargs=argparse.REMAINDER, help="Arguments to provide to xpcshell"
 )
 def xpcshell(command_context, args):
-    dist_bin = Path(command_context._topobjdir, "dist", "bin")
+    dist_bin = Path(command_context.topobjdir, "dist", "bin")
     browser_dir = dist_bin / "browser"
 
     if sys.platform == "win32":
@@ -30,6 +30,11 @@ def xpcshell(command_context, args):
         str(browser_dir),
     ]
 
+    # Disable the socket process (see https://bugzilla.mozilla.org/show_bug.cgi?id=1903631).
+    env = {
+        "MOZ_DISABLE_SOCKET_PROCESS": "1",
+    }
+
     if args:
         command.extend(args)
 
@@ -37,4 +42,5 @@ def xpcshell(command_context, args):
         command,
         pass_thru=True,
         ensure_exit_code=False,
+        append_env=env,
     )

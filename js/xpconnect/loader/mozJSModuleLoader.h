@@ -11,19 +11,15 @@
 #include "mozilla/Attributes.h"  // MOZ_STACK_CLASS
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/FileLocation.h"
-#include "mozilla/Maybe.h"  // mozilla::Maybe
-#include "mozilla/MemoryReporting.h"
+#include "mozilla/Maybe.h"   // mozilla::Maybe
 #include "mozilla/RefPtr.h"  // RefPtr, mozilla::StaticRefPtr
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ThreadLocal.h"  // MOZ_THREAD_LOCAL
-#include "nsIMemoryReporter.h"
-#include "nsISupports.h"
 #include "nsIURI.h"
 #include "nsClassHashtable.h"
 #include "jsapi.h"
 #include "js/CompileOptions.h"
 #include "js/experimental/JSStencil.h"
-#include "SkipCheckForBrokenURLOrZeroSized.h"
 
 #include "xpcpublic.h"
 
@@ -48,19 +44,12 @@ class NonSharedGlobalSyncModuleLoaderScope;
 
 }  // namespace mozilla::loader
 
-class mozJSModuleLoader final : public nsIMemoryReporter {
+class mozJSModuleLoader final {
  public:
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSIMEMORYREPORTER
-
-  // Returns the list of all JSMs.
-  void GetLoadedModules(nsTArray<nsCString>& aLoadedModules);
+  NS_INLINE_DECL_REFCOUNTING(mozJSModuleLoader);
 
   // Returns the list of all ESMs.
   nsresult GetLoadedESModules(nsTArray<nsCString>& aLoadedModules);
-
-  // Returns the list of all JSMs and ESMs.
-  nsresult GetLoadedJSAndESModules(nsTArray<nsCString>& aLoadedModules);
 
   nsresult GetModuleImportStack(const nsACString& aLocation,
                                 nsACString& aRetval);
@@ -93,49 +82,15 @@ class mozJSModuleLoader final : public nsIMemoryReporter {
   static mozJSModuleLoader* GetDevToolsLoader() { return sDevToolsLoader; }
   static mozJSModuleLoader* GetOrCreateDevToolsLoader(JSContext* aCx);
 
-  nsresult ImportInto(const nsACString& aResourceURI,
-                      JS::HandleValue aTargetObj, JSContext* aCx, uint8_t aArgc,
-                      JS::MutableHandleValue aRetval);
-
-  // Load a JSM.
-  nsresult Import(JSContext* aCx, const nsACString& aResourceURI,
-                  JS::MutableHandleObject aModuleGlobal,
-                  JS::MutableHandleObject aModuleExports,
-                  bool aIgnoreExports = false);
-
   // Synchronously load an ES6 module and all its dependencies.
-  nsresult ImportESModule(
-      JSContext* aCx, const nsACString& aResourceURI,
-      JS::MutableHandleObject aModuleNamespace,
-      mozilla::loader::SkipCheckForBrokenURLOrZeroSized aSkipCheck =
-          mozilla::loader::SkipCheckForBrokenURLOrZeroSized::No);
-
-  // Fallback from Import to ImportESModule.
-  nsresult TryFallbackToImportESModule(JSContext* aCx,
-                                       const nsACString& aResourceURI,
-                                       JS::MutableHandleObject aModuleGlobal,
-                                       JS::MutableHandleObject aModuleExports,
-                                       bool aIgnoreExports);
-
-  // If the request was handled by fallback before, fills the output and
-  // sets *aFound to true and returns NS_OK.
-  // If the request wasn't yet handled by fallback, sets *Found to false
-  // and returns NS_OK.
-  nsresult TryCachedFallbackToImportESModule(
-      JSContext* aCx, const nsACString& aResourceURI,
-      JS::MutableHandleObject aModuleGlobal,
-      JS::MutableHandleObject aModuleExports, bool aIgnoreExports,
-      bool* aFound);
+  nsresult ImportESModule(JSContext* aCx, const nsACString& aResourceURI,
+                          JS::MutableHandleObject aModuleNamespace);
 
 #ifdef STARTUP_RECORDER_ENABLED
-  void RecordImportStack(JSContext* aCx, const nsACString& aLocation);
   void RecordImportStack(JSContext* aCx,
                          JS::loader::ModuleLoadRequest* aRequest);
 #endif
 
-  nsresult Unload(const nsACString& aResourceURI);
-  nsresult IsModuleLoaded(const nsACString& aResourceURI, bool* aRetval);
-  nsresult IsJSModuleLoaded(const nsACString& aResourceURI, bool* aRetval);
   nsresult IsESModuleLoaded(const nsACString& aResourceURI, bool* aRetval);
   bool IsLoaderGlobal(JSObject* aObj) { return mLoaderGlobal == aObj; }
   bool IsDevToolsLoader() const { return this == sDevToolsLoader; }
@@ -188,15 +143,6 @@ class mozJSModuleLoader final : public nsIMemoryReporter {
 
   static bool LocationIsRealFile(nsIURI* aURI);
 
-  JSObject* PrepareObjectForLocation(JSContext* aCx, nsIFile* aModuleFile,
-                                     nsIURI* aURI, bool aRealFile);
-
-  nsresult ObjectForLocation(ModuleLoaderInfo& aInfo, nsIFile* aModuleFile,
-                             JS::MutableHandleObject aObject,
-                             JS::MutableHandleScript aTableScript,
-                             char** aLocation, bool aCatchException,
-                             JS::MutableHandleValue aException);
-
   static void SetModuleOptions(JS::CompileOptions& aOptions);
 
   // Get the script for a given location, either from a cached stencil or by
@@ -206,14 +152,7 @@ class mozJSModuleLoader final : public nsIMemoryReporter {
                                        JS::MutableHandleScript aScriptOut,
                                        char** aLocationOut = nullptr);
 
-  static already_AddRefed<JS::Stencil> CompileStencil(
-      JSContext* aCx, const JS::CompileOptions& aOptions,
-      JS::SourceText<mozilla::Utf8Unit>& aSource, bool aIsModule);
-  static JSScript* InstantiateStencil(JSContext* aCx, JS::Stencil* aStencil,
-                                      bool aIsModule);
-
-  nsresult ImportInto(const nsACString& aLocation, JS::HandleObject targetObj,
-                      JSContext* callercx, JS::MutableHandleObject vp);
+  static JSScript* InstantiateStencil(JSContext* aCx, JS::Stencil* aStencil);
 
   class ModuleEntry {
    public:
@@ -254,40 +193,9 @@ class mozJSModuleLoader final : public nsIMemoryReporter {
     nsCString resolvedURL;
   };
 
-  class FallbackModuleEntry {
-   public:
-    explicit FallbackModuleEntry(JS::RootingContext* aRootingCx)
-        : globalProxy(aRootingCx), moduleNamespace(aRootingCx) {}
-
-    ~FallbackModuleEntry() { Clear(); }
-
-    void Clear() {
-      globalProxy = nullptr;
-      moduleNamespace = nullptr;
-    }
-
-    size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
-      return aMallocSizeOf(this);
-    }
-
-    JS::PersistentRootedObject globalProxy;
-    JS::PersistentRootedObject moduleNamespace;
-  };
-
-  nsresult ExtractExports(JSContext* aCx, ModuleLoaderInfo& aInfo,
-                          ModuleEntry* aMod, JS::MutableHandleObject aExports);
-
-  nsClassHashtable<nsCStringHashKey, ModuleEntry> mImports;
-  nsTHashMap<nsCStringHashKey, ModuleEntry*> mInProgressImports;
-  nsClassHashtable<nsCStringHashKey, FallbackModuleEntry> mFallbackImports;
 #ifdef STARTUP_RECORDER_ENABLED
   nsTHashMap<nsCStringHashKey, nsCString> mImportStacks;
 #endif
-
-  // A map of on-disk file locations which are loaded as modules to the
-  // pre-resolved URIs they were loaded from. Used to prevent the same file
-  // from being loaded separately, from multiple URLs.
-  nsClassHashtable<nsCStringHashKey, nsCString> mLocations;
 
   bool mInitialized;
   bool mIsUnloaded = false;

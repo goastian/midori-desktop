@@ -4,8 +4,12 @@
  * This program is made available under an ISC-style license.  See the
  * accompanying file LICENSE for details.
  */
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0603
+#endif // !_WIN32_WINNT
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif // !NOMINMAX
 
 #include <algorithm>
 #include <atomic>
@@ -3314,7 +3318,8 @@ wasapi_create_device(cubeb * ctx, cubeb_device_info & ret,
     ret.preferred =
         (cubeb_device_pref)(ret.preferred | CUBEB_DEVICE_PREF_MULTIMEDIA |
                             CUBEB_DEVICE_PREF_NOTIFICATION);
-  } else if (defaults->is_default(flow, eCommunications, device_id.get())) {
+  }
+  if (defaults->is_default(flow, eCommunications, device_id.get())) {
     ret.preferred =
         (cubeb_device_pref)(ret.preferred | CUBEB_DEVICE_PREF_VOICE);
   }
